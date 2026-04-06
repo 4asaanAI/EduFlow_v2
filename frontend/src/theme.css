@@ -1,0 +1,19 @@
+/* EduFlow — Light Theme overrides */
+[data-theme="light"] {
+  --bg-main: #F8F9FC;
+  --bg-sidebar: #FFFFFF;
+  --bg-card: #FFFFFF;
+  --bg-popover: #F1F5F9;
+  --bg-input: #F1F5F9;
+  --border: #E2E8F0;
+  --border-subtle: #EEF2F7;
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --text-muted: #94A3B8;
+}
+[data-theme="light"] body { background: #F8F9FC; }
+[data-theme="light"] .prose-chat { color: #475569; }
+[data-theme="light"] .prose-chat strong { color: #0F172A; }
+[data-theme="light"] .prose-chat tbody td { color: #475569; }
+[data-theme="light"] .prose-chat thead th { background: #F1F5F9; color: #64748B; }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: #CBD5E1; }

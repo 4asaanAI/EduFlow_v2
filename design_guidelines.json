@@ -1,0 +1,110 @@
+{
+  "theme": "dark",
+  "archetype": "Archetype 5 (Jewel & Luxury) mixed with Archetype 4 (Swiss & High-Contrast Dark)",
+  "rationale": "EduFlow is a Chat-first school management app. Dark theme was explicitly requested. The design optimizes for a 'Claude-like' chat interface, prioritizing high contrast data presentation (Archetype 4) while maintaining a modern, premium SaaS feel with subtle colorful accents (Archetype 5) on tool icons to differentiate the extensive suite of tools.",
+  "typography": {
+    "headings_font": "Outfit",
+    "body_font": "Manrope",
+    "monospace_font": "JetBrains Mono",
+    "hierarchy": {
+      "h1": "text-3xl sm:text-4xl tracking-tight font-semibold",
+      "h2": "text-2xl sm:text-3xl tracking-tight font-medium",
+      "h3": "text-xl sm:text-2xl tracking-tight font-medium",
+      "h4": "text-lg sm:text-xl font-medium",
+      "body": "text-sm md:text-base leading-relaxed text-slate-300",
+      "labels": "text-xs tracking-wider uppercase font-semibold text-slate-500"
+    }
+  },
+  "color_palette": {
+    "background": {
+      "main": "#0A0A0F",
+      "sidebar": "#12121A",
+      "card": "#161622",
+      "popover": "#1C1C28",
+      "input": "#1C1C28"
+    },
+    "foreground": {
+      "primary": "#FFFFFF",
+      "secondary": "#94A3B8",
+      "muted": "#64748B"
+    },
+    "borders": {
+      "default": "#222230",
+      "subtle": "#1A1A24"
+    },
+    "brand_accents": {
+      "primary": "#3B82F6",
+      "success": "#10B981",
+      "warning": "#F59E0B",
+      "error": "#EF4444"
+    },
+    "tool_icon_colors": {
+      "pulse": "#F97316",
+      "fee": "#3B82F6",
+      "staff": "#10B981",
+      "analytics": "#8B5CF6",
+      "alerts": "#EF4444",
+      "reports": "#06B6D4",
+      "health": "#EC4899",
+      "announcements": "#EAB308"
+    }
+  },
+  "layout_and_spacing": {
+    "sidebar": {
+      "width": "w-[120px]",
+      "padding": "p-3",
+      "item_layout": "flex flex-col items-center justify-center text-center gap-1.5 p-2 rounded-xl transition-colors hover:bg-white/5 w-full",
+      "icon_size": "w-10 h-10 rounded-full flex items-center justify-center mb-1",
+      "text_title": "text-[11px] font-semibold text-slate-200 leading-tight",
+      "text_subtitle": "text-[9px] text-slate-500 leading-tight"
+    },
+    "chat_area": {
+      "max_width": "max-w-4xl mx-auto w-full",
+      "message_spacing": "gap-6",
+      "user_bubble": "bg-[#1C1C28] border border-[#222230] rounded-2xl rounded-tr-sm px-5 py-3.5 max-w-[85%] ml-auto text-slate-200 shadow-sm",
+      "ai_bubble": "bg-transparent w-full flex gap-4 text-slate-300",
+      "ai_avatar": "w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center font-bold font-outfit shrink-0",
+      "input_container": "fixed bottom-0 left-[120px] right-0 bg-gradient-to-t from-[#0A0A0F] via-[#0A0A0F] to-transparent pt-10 pb-6 px-4 md:px-8 z-40",
+      "input_box": "bg-[#1C1C28] border border-[#222230] rounded-2xl flex items-center p-2 shadow-2xl mx-auto max-w-4xl"
+    },
+    "header": {
+      "height": "h-16",
+      "padding": "px-6",
+      "layout": "flex items-center justify-between border-b border-[#222230] bg-[#0A0A0F] sticky top-0 z-50 ml-[120px]"
+    }
+  },
+  "components": {
+    "rich_cards": {
+      "style": "bg-[#161622] border border-[#222230] rounded-xl p-5 shadow-lg mt-3 overflow-hidden",
+      "tables": "w-full text-sm text-left text-slate-300 divide-y divide-[#222230]",
+      "stat_grid": "grid grid-cols-2 md:grid-cols-4 gap-4"
+    },
+    "search_bar": {
+      "style": "bg-[#161622] border border-[#222230] text-slate-200 rounded-full px-4 py-2 w-full max-w-md focus:outline-none focus:ring-1 focus:ring-slate-500 transition-shadow text-sm placeholder:text-slate-500"
+    },
+    "role_indicator": {
+      "style": "flex items-center gap-3 bg-[#161622] border border-[#222230] rounded-full pl-2 pr-4 py-1.5 cursor-pointer hover:bg-[#1C1C28] transition-colors"
+    }
+  },
+  "interactive_states": {
+    "hover": "hover:bg-white/5 transition-colors duration-200",
+    "focus": "focus-visible:ring-1 focus-visible:ring-indigo-500 focus-visible:outline-none",
+    "active": "active:scale-[0.98]"
+  },
+  "media_and_assets": {
+    "user_avatar": "https://images.unsplash.com/photo-1649433658557-54cf58577c68?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjBwcm9mZXNzaW9uYWwlMjBtYW4lMjBwb3J0cmFpdHxlbnwwfHx8fDE3NzUyNjU4MzZ8MA&ixlib=rb-4.1.0&q=85",
+    "ai_logo": "E",
+    "icons_library": "lucide-react"
+  },
+  "instructions_to_main_agent": [
+    "Ensure dark mode is strictly enforced globally. Use the specific hex codes provided (e.g., bg-[#0A0A0F], border-[#222230]) directly in Tailwind utility classes rather than relying entirely on generic tailwind slate/gray colors.",
+    "Implement the left sidebar fixed at 120px width. Sidebar items should be vertically stacked blocks (Icon above, Title, Subtitle below). Use tight line heights and smaller text for titles (text-[11px]) and subtitles (text-[9px]) to fit.",
+    "Install Google Fonts 'Outfit' (for headings/brand/avatar) and 'Manrope' (for body) and configure them in your global CSS.",
+    "For the AI message avatar, use an 'E' text logo inside a rounded-lg box with an indigo-500/20 background and indigo text.",
+    "The chat input should be 'floating' at the bottom of the main chat area with a dark rounded-2xl styling. Provide adequate bottom padding to the chat list so the last message isn't hidden behind the floating input.",
+    "Add 'data-testid' to all interactive elements, buttons, inputs, and key sections for robust automated testing.",
+    "For rich data cards generated in the chat (tables, stat cards, metric blocks), strictly use the designated component styles (bg-[#161622] with border-[#222230]).",
+    "Ensure the footer text 'EduFlow\\'s AI can make mistakes...' is styled as text-xs text-slate-500 and placed below the input box inside the floating input container.",
+    "Make sure to install 'lucide-react' for all iconography across the app."
+  ]
+}
