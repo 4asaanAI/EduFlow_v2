@@ -1,16 +1,14 @@
 from fastapi import APIRouter, Request, HTTPException
 from database import get_db
 from models.schemas import AttendanceBulkRequest, StudentAttendance, StaffAttendance
+from middleware.auth import get_current_user
 from datetime import date, datetime
 
 router = APIRouter(prefix="/api/attendance", tags=["attendance"])
 
 
 def get_user(req: Request):
-    return {
-        "id": req.headers.get("X-User-Id", "user-owner-001"),
-        "role": req.headers.get("X-User-Role", "owner"),
-    }
+    return get_current_user(req)
 
 
 @router.post("/student/bulk")
@@ -118,6 +116,58 @@ async def mark_staff_attendance(request: Request):
         )
 
     return {"success": True}
+
+
+@router.get("/low-attendance")
+async def get_low_attendance_students(request: Request, threshold: float = 75.0, days: int = 30):
+    """Return students whose attendance rate over the last `days` days is below `threshold` percent."""
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["owner", "admin"]:
+        raise HTTPException(403, "Forbidden")
+
+    from datetime import timedelta
+    end = date.today()
+    start = (end - timedelta(days=days)).strftime("%Y-%m-%d")
+    end_str = end.strftime("%Y-%m-%d")
+
+    # Aggregate attendance per student for the period
+    pipeline = [
+        {"$match": {"date": {"$gte": start, "$lte": end_str}}},
+        {"$group": {
+            "_id": "$student_id",
+            "total": {"$sum": 1},
+            "present": {"$sum": {"$cond": [{"$eq": ["$status", "present"]}, 1, 0]}},
+        }},
+    ]
+    agg = await db.student_attendance.aggregate(pipeline).to_list(2000)
+
+    results = []
+    for a in agg:
+        if a["total"] == 0:
+            continue
+        rate = round(a["present"] / a["total"] * 100, 1)
+        if rate < threshold:
+            student = await db.students.find_one({"id": a["_id"], "is_active": True}, {"_id": 0})
+            if not student:
+                continue
+            # Resolve parent phone: try guardian first, then student record
+            guardian = await db.guardians.find_one({"student_id": a["_id"]}, {"_id": 0})
+            phone = (guardian or {}).get("phone") or student.get("guardian_phone") or student.get("phone") or ""
+            class_obj = await db.classes.find_one({"id": student.get("class_id")}, {"_id": 0})
+            results.append({
+                "student_id": a["_id"],
+                "student_name": student.get("name", ""),
+                "class": class_obj.get("name", "") + (" " + class_obj.get("section", "") if class_obj else "") if class_obj else student.get("class_id", ""),
+                "attendance_rate": rate,
+                "present_days": a["present"],
+                "total_days": a["total"],
+                "phone": phone,
+                "guardian_name": (guardian or {}).get("name") or student.get("guardian_name", ""),
+            })
+
+    results.sort(key=lambda x: x["attendance_rate"])
+    return {"success": True, "data": results, "meta": {"threshold": threshold, "days": days, "count": len(results)}}
 
 
 @router.get("/staff")

@@ -2,17 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { executeTool, updateLeave, getStaff } from '../../lib/api';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, useToolData, LineChartWidget, BarChartWidget, PieChartWidget } from './ToolPage';
-import { Activity, CheckCircle, XCircle, AlertTriangle, Plus, RefreshCw, Save, TrendingUp, Users, FileText, Send } from 'lucide-react';
+import { Activity, CheckCircle, XCircle, AlertTriangle, Plus, RefreshCw, Save, TrendingUp, Users, FileText, Send, Download } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
-function h(user) { return { 'Content-Type': 'application/json', 'X-User-Role': user?.role || 'owner', 'X-User-Id': user?.id || 'user-owner-001', 'X-User-Name': user?.name || 'Aman' }; }
+function h() { const t = localStorage.getItem('eduflow_token'); return { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) }; }
 
 // 1. School Pulse
 export function SchoolPulse() {
   const { currentUser } = useUser();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [threshold, setThreshold] = useState(85);
 
   useEffect(() => { load(); }, []);
 
@@ -29,66 +28,211 @@ export function SchoolPulse() {
     <ToolPage title="School Pulse" subtitle="Today's complete overview" onRefresh={load} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 1000 }}>
         {/* Quick Actions */}
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 12, padding: 20 }}>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 14, fontWeight: 600, color: '#E2E8F0', marginBottom: 14 }}>Quick Actions</h3>
+        <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 12, padding: 20 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 600, color: '#e5e5e5', marginBottom: 14 }}>Quick Actions</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {[
-              { icon: Users, label: "Mark Today's Attendance", color: '#3B82F6', action: () => window.dispatchEvent(new CustomEvent('open-tool', { detail: 'attendance-recorder' })) },
-              { icon: Send, label: 'Send Fee Reminders', color: '#10B981', action: async () => { alert('Fee reminders will be sent via WhatsApp (Phase 2)'); } },
-              { icon: AlertTriangle, label: 'View Active Alerts', color: '#EF4444', action: () => window.dispatchEvent(new CustomEvent('open-tool', { detail: 'smart-alerts' })) },
-              { icon: FileText, label: 'Generate Daily Report', color: '#8B5CF6', action: async () => { alert('Daily report generation coming in Phase 2'); } },
+              { icon: Users, label: "Mark Today's Attendance", color: '#4f8ff7', action: () => window.dispatchEvent(new CustomEvent('open-tool', { detail: 'attendance-recorder' })) },
+              { icon: Send, label: 'Send Fee Reminders', color: '#34d399', action: async () => { alert('Fee reminders will be sent via WhatsApp (Phase 2)'); } },
+              { icon: AlertTriangle, label: 'View Active Alerts', color: '#f87171', action: () => window.dispatchEvent(new CustomEvent('open-tool', { detail: 'smart-alerts' })) },
+              { icon: FileText, label: 'Generate Daily Report', color: '#a78bfa', action: async () => {
+                try {
+                  // Fetch all data in parallel
+                  let pulseData = data;
+                  const [pulseRes, feeRes, attRes, alertsRes] = await Promise.all([
+                    pulseData ? Promise.resolve({ success: true, data: pulseData }) : executeTool('get_school_pulse', {}, currentUser),
+                    executeTool('get_fee_summary', {}, currentUser),
+                    executeTool('get_attendance_overview', { days: 30 }, currentUser),
+                    executeTool('get_smart_alerts', {}, currentUser),
+                  ]);
+                  if (pulseRes.success && !pulseData) { pulseData = pulseRes.data; setData(pulseRes.data); }
+                  const feeData = feeRes.success ? feeRes.data : null;
+                  const attData = attRes.success ? attRes.data : null;
+                  const alertsData = alertsRes.success ? alertsRes.data : null;
+
+                  const { jsPDF } = await import('jspdf');
+                  const doc = new jsPDF();
+                  const today = new Date().toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' });
+                  const s = pulseData?.summary || {};
+
+                  // Helpers
+                  let y = 0;
+                  const maxY = 272;
+                  const newPage = () => { doc.addPage(); y = 18; };
+                  const sectionTitle = (title) => {
+                    if (y > maxY - 30) newPage();
+                    doc.setFontSize(13); doc.setTextColor(30, 30, 30);
+                    doc.text(title, 15, y); y += 2;
+                    doc.setDrawColor(180, 180, 180); doc.line(15, y + 2, 195, y + 2); y += 8;
+                  };
+                  const line11 = (label, val) => {
+                    if (y > maxY) newPage();
+                    doc.setFontSize(10); doc.setTextColor(80, 80, 80);
+                    doc.text(label, 20, y);
+                    doc.setTextColor(30, 30, 30);
+                    doc.text(String(val ?? 'N/A'), 95, y);
+                    y += 7;
+                  };
+                  const bullet = (text) => {
+                    if (y > maxY) newPage();
+                    doc.setFontSize(10); doc.setTextColor(70, 70, 70);
+                    doc.text('- ' + String(text).slice(0, 85), 22, y); y += 6;
+                  };
+
+                  // === COVER ===
+                  doc.setFontSize(22); doc.setTextColor(20, 20, 20);
+                  doc.text('Daily School Report', 105, 22, { align: 'center' });
+                  doc.setFontSize(11); doc.setTextColor(100, 100, 100);
+                  doc.text(`Date: ${today}`, 105, 31, { align: 'center' });
+                  doc.setDrawColor(200, 200, 200); doc.line(15, 36, 195, 36);
+                  y = 48;
+
+                  // === SECTION 1: TODAY'S SNAPSHOT ===
+                  sectionTitle('1. Today\'s Snapshot');
+                  line11('Total Students Enrolled:', s.total_students || 0);
+                  line11('Total Staff:', s.total_staff || 0);
+                  line11("Today's Attendance Rate:", s.attendance_rate || 'N/A');
+                  line11('Avg Attendance (30 days):', attData?.avg_attendance_rate || 'N/A');
+                  line11('Total Attendance Records:', attData?.total_records || 0);
+                  line11('Fees Collected Today:', pulseData?.fee_stats?.paid || 'N/A');
+                  line11('Total Overdue Fees:', pulseData?.fee_stats?.overdue || 'N/A');
+                  y += 4;
+
+                  // === SECTION 2: CLASS-WISE ATTENDANCE ===
+                  const classStats = attData?.class_stats_today || [];
+                  if (classStats.length > 0) {
+                    sectionTitle('2. Class-wise Attendance (Today)');
+                    doc.setFontSize(8); doc.setTextColor(60, 60, 60);
+                    doc.text('Class', 20, y); doc.text('Present', 75, y); doc.text('Total', 115, y); doc.text('Rate', 155, y);
+                    y += 4; doc.setDrawColor(200, 200, 200); doc.line(20, y, 190, y); y += 4;
+                    doc.setFontSize(9); doc.setTextColor(70, 70, 70);
+                    classStats.forEach((c, ri) => {
+                      if (y > maxY) newPage();
+                      if (ri % 2 === 0) { doc.setFillColor(248, 248, 248); doc.rect(18, y - 4, 174, 6, 'F'); }
+                      doc.text(String(c.class), 20, y); doc.text(String(c.present), 75, y); doc.text(String(c.total), 115, y); doc.text(String(c.rate), 155, y);
+                      y += 6;
+                    });
+                    y += 6;
+                  }
+
+                  // === SECTION 3: FEE SUMMARY ===
+                  if (feeData) {
+                    sectionTitle('3. Fee Collection Summary');
+                    const fs = feeData.stats || {};
+                    line11('Total Collected:', fs.total_collected || 'N/A');
+                    line11('Total Overdue:', fs.total_overdue || 'N/A');
+                    line11('Collection Rate:', fs.collection_rate || 'N/A');
+                    line11('Students with Dues:', fs.students_with_dues || 0);
+                    line11('Overdue 60+ Days:', fs.overdue_60_days || 0);
+                    // Top defaulters table
+                    const defaulters = feeData.defaulters || [];
+                    if (defaulters.length > 0) {
+                      if (y > maxY - 20) newPage();
+                      doc.setFontSize(10); doc.setTextColor(50, 50, 50); doc.text('Top Fee Defaulters:', 20, y); y += 6;
+                      doc.setFontSize(8); doc.setTextColor(60, 60, 60);
+                      doc.text('Student', 20, y); doc.text('Class', 90, y); doc.text('Overdue', 130, y); doc.text('Days', 170, y);
+                      y += 4; doc.setDrawColor(200, 200, 200); doc.line(20, y, 190, y); y += 4;
+                      doc.setFontSize(8.5); doc.setTextColor(70, 70, 70);
+                      defaulters.slice(0, 15).forEach((d, ri) => {
+                        if (y > maxY) newPage();
+                        if (ri % 2 === 0) { doc.setFillColor(248, 248, 248); doc.rect(18, y - 4, 174, 6, 'F'); }
+                        doc.text(String(d.student_name || '').slice(0, 22), 20, y);
+                        doc.text(String(d.class || ''), 90, y);
+                        doc.text(String(d.amount_overdue_fmt || ''), 130, y);
+                        doc.text(String(d.days_overdue || '') + 'd', 170, y);
+                        y += 6;
+                      });
+                    }
+                    y += 6;
+                  }
+
+                  // === SECTION 4: STAFF ALERTS ===
+                  sectionTitle('4. Staff Alerts');
+                  const staffAbsent = pulseData?.staff_absent_today || [];
+                  line11('Staff Absent Today:', staffAbsent.length || 0);
+                  staffAbsent.forEach(name => bullet(name));
+                  const leaves = pulseData?.pending_leave_requests || [];
+                  line11('Pending Leave Requests:', leaves.length || 0);
+                  leaves.forEach(lr => bullet(`${lr.staff_name} — ${lr.leave_type} (${lr.start_date} to ${lr.end_date})`));
+                  y += 4;
+
+                  // === SECTION 5: CHRONIC ABSENTEES ===
+                  const chronic = pulseData?.chronic_absent_students || [];
+                  sectionTitle('5. Chronic Absentees (3+ consecutive days)');
+                  if (chronic.length > 0) {
+                    chronic.forEach(st => bullet(st.name || st));
+                  } else {
+                    doc.setFontSize(10); doc.setTextColor(80, 80, 80); doc.text('No chronic absentees today.', 20, y); y += 7;
+                  }
+                  y += 4;
+
+                  // === SECTION 6: SMART ALERTS ===
+                  const alerts = alertsData?.alerts || [];
+                  if (alerts.length > 0) {
+                    sectionTitle('6. Active Smart Alerts');
+                    alerts.forEach(a => {
+                      if (y > maxY) newPage();
+                      doc.setFontSize(10); doc.setTextColor(70, 70, 70);
+                      doc.text(`[${(a.priority || '').toUpperCase()}] ${a.text}`, 20, y); y += 7;
+                    });
+                    y += 4;
+                  }
+
+                  // === FOOTER on all pages ===
+                  const totalPages = doc.getNumberOfPages();
+                  for (let p = 1; p <= totalPages; p++) {
+                    doc.setPage(p);
+                    doc.setFontSize(8); doc.setTextColor(160, 160, 160);
+                    doc.text('EduFlow — Daily Report — Confidential', 105, 290, { align: 'center' });
+                    doc.text(`Page ${p} of ${totalPages}`, 190, 290, { align: 'right' });
+                  }
+
+                  doc.save(`daily-report-${new Date().toISOString().slice(0, 10)}.pdf`);
+                } catch (err) { alert(`PDF generation failed: ${err.message}`); }
+              }},
             ].map((a, i) => (
-              <button key={i} data-testid={`quick-action-${i}`} onClick={a.action} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, background: 'transparent', border: '1px solid #222230', borderRadius: 10, padding: '14px 8px', cursor: 'pointer', color: '#94A3B8', fontSize: 11, fontWeight: 500, transition: 'all 0.15s' }}
+              <button key={i} data-testid={`quick-action-${i}`} onClick={a.action} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, background: 'transparent', border: '1px solid #2e2e2e', borderRadius: 10, padding: '14px 8px', cursor: 'pointer', color: '#a3a3a3', fontSize: 11, fontWeight: 500, transition: 'all 0.15s' }}
                 onMouseEnter={e => { e.currentTarget.style.background = `${a.color}10`; e.currentTarget.style.borderColor = `${a.color}40`; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#222230'; }}>
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#2e2e2e'; }}>
                 <a.icon size={18} color={a.color} />
                 <span style={{ textAlign: 'center', lineHeight: 1.3 }}>{a.label}</span>
               </button>
             ))}
           </div>
-          <div style={{ marginTop: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: 10, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>ATTENDANCE ALERT THRESHOLD</span>
-              <span style={{ fontSize: 12, color: '#3B82F6', fontWeight: 700 }}>{threshold}%</span>
-            </div>
-            <input type="range" min={50} max={100} value={threshold} onChange={e => setThreshold(+e.target.value)} data-testid="threshold-slider" style={{ width: '100%', accentColor: '#3B82F6' }} />
-          </div>
-          <button data-testid="save-settings-btn" onClick={async () => {
-            await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/settings/school`, {
-              method: 'PATCH', headers: h(currentUser), body: JSON.stringify({ attendance_threshold: threshold })
-            });
-            alert(`Attendance threshold saved as ${threshold}%`);
-          }} style={{ width: '100%', marginTop: 12, background: '#3B82F6', border: 'none', borderRadius: 8, padding: '10px', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Save Settings</button>
+          <button data-testid="open-att-alerts-btn" onClick={() => window.dispatchEvent(new CustomEvent('open-tool', { detail: 'attendance-alerts' }))}
+            style={{ width: '100%', marginTop: 12, background: 'transparent', border: '1px solid #a78bfa', borderRadius: 8, padding: '10px', color: '#a78bfa', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            Configure Attendance Alerts
+          </button>
         </div>
 
         {/* Snapshot */}
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 12, padding: 20 }}>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 14, fontWeight: 600, color: '#E2E8F0', marginBottom: 14 }}>Today's Snapshot</h3>
+        <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 12, padding: 20 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 600, color: '#e5e5e5', marginBottom: 14 }}>Today's Snapshot</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
-            <StatCard value={s.attendance_rate || '0%'} label="ATTENDANCE" color="#10B981" small />
-            <StatCard value={s.total_students || 0} label="ENROLLED" color="#E2E8F0" small />
-            <StatCard value={data?.fee_stats?.paid || '₹0'} label="FEES PAID" color="#3B82F6" small />
-            <StatCard value={data?.fee_stats?.overdue || '₹0'} label="OVERDUE" color="#EF4444" small />
+            <StatCard value={s.attendance_rate || '0%'} label="ATTENDANCE" color="#34d399" small />
+            <StatCard value={s.total_students || 0} label="ENROLLED" color="#e5e5e5" small />
+            <StatCard value={data?.fee_stats?.paid || '₹0'} label="FEES PAID" color="#4f8ff7" small />
+            <StatCard value={data?.fee_stats?.overdue || '₹0'} label="OVERDUE" color="#f87171" small />
           </div>
-          {(data?.staff_absent_today?.length || 0) > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 7, padding: '8px 12px', marginBottom: 6, fontSize: 12, color: '#FCD34D' }}><AlertTriangle size={12} />{data.staff_absent_today.length} teachers absent today</div>}
-          {(data?.chronic_absent_students?.length || 0) > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 7, padding: '8px 12px', marginBottom: 6, fontSize: 12, color: '#FCA5A5' }}><AlertTriangle size={12} />{data.chronic_absent_students.length} students absent 3+ days</div>}
-          {data?.fee_stats?.paid && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 7, padding: '8px 12px', marginBottom: 6, fontSize: 12, color: '#6EE7B7' }}><CheckCircle size={12} />Fee collection: {data.fee_stats.paid} collected</div>}
-          {leaves.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 7, padding: '8px 12px', fontSize: 12, color: '#93C5FD' }}><Activity size={12} />{leaves.length} leave requests pending</div>}
+          {(data?.staff_absent_today?.length || 0) > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 7, padding: '8px 12px', marginBottom: 6, fontSize: 12, color: '#fcd34d' }}><AlertTriangle size={12} />{data.staff_absent_today.length} teachers absent today</div>}
+          {(data?.chronic_absent_students?.length || 0) > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 7, padding: '8px 12px', marginBottom: 6, fontSize: 12, color: '#fca5a5' }}><AlertTriangle size={12} />{data.chronic_absent_students.length} students absent 3+ days</div>}
+          {data?.fee_stats?.paid && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 7, padding: '8px 12px', marginBottom: 6, fontSize: 12, color: '#6ee7b7' }}><CheckCircle size={12} />Fee collection: {data.fee_stats.paid} collected</div>}
+          {leaves.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 7, padding: '8px 12px', fontSize: 12, color: '#93c5fd' }}><Activity size={12} />{leaves.length} leave requests pending</div>}
         </div>
       </div>
 
       {/* Pending Leaves quick actions */}
       {leaves.length > 0 && (
-        <div style={{ marginTop: 16, background: '#161622', border: '1px solid #222230', borderRadius: 11, overflow: 'hidden', maxWidth: 1000 }}>
-          <div style={{ padding: '10px 16px', borderBottom: '1px solid #222230' }}>
-            <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 600, fontSize: 13, color: '#E2E8F0' }}>Pending Leave Requests</span>
+        <div style={{ marginTop: 16, background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 11, overflow: 'hidden', maxWidth: 1000 }}>
+          <div style={{ padding: '10px 16px', borderBottom: '1px solid #2e2e2e' }}>
+            <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: 13, color: '#e5e5e5' }}>Pending Leave Requests</span>
           </div>
           {leaves.map((lr, i) => (
-            <div key={lr.id || i} style={{ padding: '12px 16px', borderBottom: i < leaves.length - 1 ? '1px solid #1A1A24' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div key={lr.id || i} style={{ padding: '12px 16px', borderBottom: i < leaves.length - 1 ? '1px solid #242424' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <span style={{ fontWeight: 600, color: '#E2E8F0', fontSize: 13 }}>{lr.staff_name}</span>
-                <span style={{ color: '#64748B', fontSize: 11, marginLeft: 10 }}>{lr.leave_type} · {lr.start_date} – {lr.end_date}</span>
-                <div style={{ fontSize: 11, color: '#475569', marginTop: 2, fontStyle: 'italic' }}>{lr.reason}</div>
+                <span style={{ fontWeight: 600, color: '#e5e5e5', fontSize: 13 }}>{lr.staff_name}</span>
+                <span style={{ color: '#737373', fontSize: 11, marginLeft: 10 }}>{lr.leave_type} · {lr.start_date} – {lr.end_date}</span>
+                <div style={{ fontSize: 11, color: '#525252', marginTop: 2, fontStyle: 'italic' }}>{lr.reason}</div>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <ActionBtn label="Approve" variant="success" icon={<CheckCircle size={11} />} onClick={async () => { await updateLeave(lr.id, 'approved', currentUser); load(); }} />
@@ -118,16 +262,16 @@ export function FeeCollection() {
   return (
     <ToolPage title="Fee collection" subtitle="Revenue summary & defaulters" onRefresh={loadData} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18, maxWidth: 900 }}>
-        <StatCard value={stats.total_overdue || '₹0'} label="TOTAL OVERDUE" color="#EF4444" />
-        <StatCard value={stats.students_with_dues || 0} label="STUDENTS WITH DUES" color="#F59E0B" />
-        <StatCard value={stats.overdue_60_days || 0} label="OVERDUE 60+ DAYS" color="#EF4444" />
-        <StatCard value={stats.collection_rate || '0%'} label="COLLECTION RATE" color="#10B981" />
+        <StatCard value={stats.total_overdue || '₹0'} label="TOTAL OVERDUE" color="#f87171" />
+        <StatCard value={stats.students_with_dues || 0} label="STUDENTS WITH DUES" color="#fbbf24" />
+        <StatCard value={stats.overdue_60_days || 0} label="OVERDUE 60+ DAYS" color="#f87171" />
+        <StatCard value={stats.collection_rate || '0%'} label="COLLECTION RATE" color="#34d399" />
       </div>
       {chartData.length > 0 && (
-        <BarChartWidget data={chartData} xKey="name" bars={[{ key: 'amount', color: '#EF4444', name: 'Overdue (₹)' }]} title="Top Defaulters — Amount Overdue" height={200} />
+        <BarChartWidget data={chartData} xKey="name" bars={[{ key: 'amount', color: '#f87171', name: 'Overdue (₹)' }]} title="Top Defaulters — Amount Overdue" height={200} />
       )}
       <DataTable title={`Fee Defaulters — Top ${defaulters.length}`} headers={['Student', 'Class', 'Amount Overdue', 'Days Overdue']}
-        rows={defaulters.map(d => [d.student_name, d.class, <span style={{ color: '#EF4444', fontWeight: 600 }}>{d.amount_overdue_fmt}</span>, <span style={{ color: d.days_overdue > 60 ? '#EF4444' : '#F59E0B' }}>{d.days_overdue} days</span>])}
+        rows={defaulters.map(d => [d.student_name, d.class, <span style={{ color: '#f87171', fontWeight: 600 }}>{d.amount_overdue_fmt}</span>, <span style={{ color: d.days_overdue > 60 ? '#f87171' : '#fbbf24' }}>{d.days_overdue} days</span>])}
         emptyMsg="No fee defaulters — great collection rate!"
       />
     </ToolPage>
@@ -145,22 +289,58 @@ export function StudentStrength() {
     try {
       const [classRes, studRes] = await Promise.all([
         fetch(`${API}/settings/classes`, { headers: h(currentUser) }).then(r => r.json()),
-        fetch(`${API}/students/`, { headers: h(currentUser) }).then(r => r.json()),
+        fetch(`${API}/students/?limit=2000`, { headers: h(currentUser) }).then(r => r.json()),
       ]);
-      setData({ classes: classRes.data || [], total: studRes.meta?.total || 0 });
+      const classes = classRes.data || [];
+      const students = studRes.data || [];
+      // Count students per class_id
+      const classCounts = {};
+      students.forEach(s => {
+        const cid = s.class_id;
+        if (cid) classCounts[cid] = (classCounts[cid] || 0) + 1;
+      });
+      // Count boys / girls per class
+      const classGender = {};
+      students.forEach(s => {
+        const cid = s.class_id;
+        if (!cid) return;
+        if (!classGender[cid]) classGender[cid] = { boys: 0, girls: 0 };
+        if ((s.gender || '').toLowerCase() === 'male' || (s.gender || '').toLowerCase() === 'boy') classGender[cid].boys++;
+        else if ((s.gender || '').toLowerCase() === 'female' || (s.gender || '').toLowerCase() === 'girl') classGender[cid].girls++;
+      });
+      const classesWithCount = classes.map(c => ({
+        ...c,
+        student_count: classCounts[c.id] || 0,
+        boys: classGender[c.id]?.boys || 0,
+        girls: classGender[c.id]?.girls || 0,
+      })).sort((a, b) => (b.student_count - a.student_count));
+      const total = students.length || studRes.meta?.total || 0;
+      setData({ classes: classesWithCount, total });
     } catch {}
     setLoading(false);
   };
 
+  const totalStudents = data?.total || 0;
+  const totalClasses = data?.classes?.length || 0;
+  const avgPerClass = totalClasses > 0 ? Math.round(totalStudents / totalClasses) : 0;
+
   return (
     <ToolPage title="Student Strength" subtitle="Class-wise enrollment overview" onRefresh={load} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 20, maxWidth: 600 }}>
-        <StatCard value={data?.total || 0} label="TOTAL STUDENTS" color="#3B82F6" />
-        <StatCard value={data?.classes?.length || 0} label="CLASSES" color="#10B981" />
-        <StatCard value={data ? Math.round((data.total || 0) / (data.classes?.length || 1)) : 0} label="AVG PER CLASS" color="#8B5CF6" />
+        <StatCard value={totalStudents} label="TOTAL STUDENTS" color="#4f8ff7" />
+        <StatCard value={totalClasses} label="TOTAL CLASSES" color="#34d399" />
+        <StatCard value={avgPerClass} label="AVG PER CLASS" color="#a78bfa" />
       </div>
-      <DataTable title="Class-wise Strength" headers={['Class', 'Section', 'Academic Year']}
-        rows={(data?.classes || []).map(c => [c.name, c.section, '2025-26'])}
+      <DataTable title="Class-wise Strength" headers={['Class', 'Section', 'Students', 'Boys', 'Girls', 'Academic Year']}
+        rows={(data?.classes || []).map(c => [
+          c.name,
+          c.section || '—',
+          <span style={{ fontWeight: 700, color: '#4f8ff7', fontSize: 14 }}>{c.student_count}</span>,
+          <span style={{ color: '#60a5fa' }}>{c.boys}</span>,
+          <span style={{ color: '#f9a8d4' }}>{c.girls}</span>,
+          '2025-26',
+        ])}
+        emptyMsg="No classes configured yet"
       />
     </ToolPage>
   );
@@ -170,25 +350,70 @@ export function StudentStrength() {
 export function AttendanceOverview() {
   const { currentUser } = useUser();
   const [data, setData] = useState(null);
+  const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => { load(); }, []);
-  const load = async () => { setLoading(true); try { const r = await executeTool('get_attendance_overview', { days: 30 }, currentUser); if (r.success) setData(r.data); } catch {} setLoading(false); };
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [attRes, classRes] = await Promise.all([
+        executeTool('get_attendance_overview', { days: 30 }, currentUser),
+        fetch(`${API}/settings/classes`, { headers: h(currentUser) }).then(r => r.json()),
+      ]);
+      if (attRes.success) setData(attRes.data);
+      setClasses(classRes.data || []);
+    } catch {}
+    setLoading(false);
+  };
 
   const chartData = (data?.daily_trend || []).map(d => ({ date: d.date?.slice(5), rate: d.rate, present: d.present, absent: d.absent }));
+
+  // Merge class_stats_today with all classes; show "Not marked" for missing ones
+  // Backend formats class key as "Name-Section" (e.g. "5-A"), match all variants
+  const classStatMap = {};
+  (data?.class_stats_today || []).forEach(c => { classStatMap[c.class] = c; });
+  const allClassRows = classes.length > 0
+    ? classes.map(cls => {
+        const sec = cls.section || '';
+        const stat = classStatMap[cls.name]
+          || classStatMap[`${cls.name}-${sec}`]
+          || classStatMap[`${cls.name} ${sec}`]
+          || classStatMap[`${cls.name}${sec}`];
+        if (stat) {
+          return [
+            `${cls.name}${cls.section ? ' ' + cls.section : ''}`,
+            stat.present,
+            stat.total,
+            <span style={{ color: parseFloat(stat.rate) >= 85 ? '#34d399' : '#f87171', fontWeight: 600 }}>{stat.rate}</span>,
+          ];
+        }
+        return [
+          `${cls.name}${cls.section ? ' ' + cls.section : ''}`,
+          <span style={{ color: '#737373' }}>—</span>,
+          <span style={{ color: '#737373' }}>—</span>,
+          <span style={{ color: '#737373', fontSize: 11 }}>Not marked</span>,
+        ];
+      })
+    : (data?.class_stats_today || []).map(c => [
+        c.class,
+        c.present,
+        c.total,
+        <span style={{ color: parseFloat(c.rate) >= 85 ? '#34d399' : '#f87171', fontWeight: 600 }}>{c.rate}</span>,
+      ]);
 
   return (
     <ToolPage title="Attendance Overview" subtitle="Trends and class-wise analysis" onRefresh={load} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16, maxWidth: 500 }}>
-        <StatCard value={data?.avg_attendance_rate || '0%'} label="AVG RATE (30 DAYS)" color="#10B981" />
-        <StatCard value={data?.total_records || 0} label="TOTAL RECORDS" color="#3B82F6" />
-        <StatCard value="Last 30 days" label="PERIOD" color="#8B5CF6" />
+        <StatCard value={data?.avg_attendance_rate || '0%'} label="AVG RATE (30 DAYS)" color="#34d399" />
+        <StatCard value={data?.total_records || 0} label="TOTAL RECORDS" color="#4f8ff7" />
+        <StatCard value="Last 30 days" label="PERIOD" color="#a78bfa" />
       </div>
       {chartData.length > 0 && (
-        <LineChartWidget data={chartData} xKey="date" lines={[{ key: 'rate', color: '#10B981', name: 'Attendance %' }, { key: 'absent', color: '#EF4444', name: 'Absent' }]} title="7-Day Attendance Trend" height={200} />
+        <LineChartWidget data={chartData} xKey="date" lines={[{ key: 'rate', color: '#34d399', name: 'Attendance %' }, { key: 'absent', color: '#f87171', name: 'Absent' }]} title="30-Day Attendance Trend" height={200} />
       )}
       <DataTable title="Class-wise Today" headers={['Class', 'Present', 'Total', 'Rate']}
-        rows={(data?.class_stats_today || []).map(c => [c.class, c.present, c.total, <span style={{ color: parseFloat(c.rate) >= 85 ? '#10B981' : '#EF4444', fontWeight: 600 }}>{c.rate}</span>])}
-        emptyMsg="Attendance not yet marked for today"
+        rows={allClassRows}
+        emptyMsg="No classes configured"
       />
     </ToolPage>
   );
@@ -204,19 +429,19 @@ export function StaffAttendanceTracker() {
   const load = async () => { setLoading(true); try { const r = await executeTool('get_staff_status', {}, currentUser); if (r.success) setData(r.data); } catch {} setLoading(false); };
   const staff = data?.staff_list || [];
   const leaves = data?.pending_leaves || [];
-  const statusColors = { present: '#10B981', absent: '#EF4444', late: '#F59E0B', not_marked: '#64748B', 'on-leave': '#8B5CF6' };
+  const statusColors = { present: '#34d399', absent: '#f87171', late: '#fbbf24', not_marked: '#737373', 'on-leave': '#a78bfa' };
 
   return (
     <ToolPage title="Staff Tracker" subtitle="Attendance & leave management" onRefresh={load} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18, maxWidth: 700 }}>
-        <StatCard value={data?.total_staff || 0} label="TOTAL STAFF" color="#E2E8F0" />
-        <StatCard value={data?.present_today || 0} label="PRESENT" color="#10B981" />
-        <StatCard value={data?.absent_today || 0} label="ABSENT" color="#EF4444" />
-        <StatCard value={leaves.length} label="PENDING LEAVES" color="#F59E0B" />
+        <StatCard value={data?.total_staff || 0} label="TOTAL STAFF" color="#e5e5e5" />
+        <StatCard value={data?.present_today || 0} label="PRESENT" color="#34d399" />
+        <StatCard value={data?.absent_today || 0} label="ABSENT" color="#f87171" />
+        <StatCard value={leaves.length} label="PENDING LEAVES" color="#fbbf24" />
       </div>
-      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #222230', marginBottom: 14 }}>
+      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #2e2e2e', marginBottom: 14 }}>
         {['attendance', 'leaves'].map(t => (
-          <button key={t} onClick={() => setActiveTab(t)} data-testid={`tab-${t}`} style={{ background: 'none', border: 'none', padding: '8px 14px', borderBottom: activeTab === t ? '2px solid #3B82F6' : '2px solid transparent', color: activeTab === t ? '#fff' : '#64748B', fontSize: 13, fontWeight: 500, cursor: 'pointer', marginBottom: -1 }}>
+          <button key={t} onClick={() => setActiveTab(t)} data-testid={`tab-${t}`} style={{ background: 'none', border: 'none', padding: '8px 14px', borderBottom: activeTab === t ? '2px solid #4f8ff7' : '2px solid transparent', color: activeTab === t ? '#fff' : '#737373', fontSize: 13, fontWeight: 500, cursor: 'pointer', marginBottom: -1 }}>
             {t === 'attendance' ? "Today's Attendance" : `Pending Leaves (${leaves.length})`}
           </button>
         ))}
@@ -228,9 +453,9 @@ export function StaffAttendanceTracker() {
       )}
       {activeTab === 'leaves' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {leaves.length === 0 ? <div style={{ padding: 24, textAlign: 'center', color: '#64748B', fontSize: 13, background: '#161622', border: '1px solid #222230', borderRadius: 11 }}>No pending leave requests</div> : leaves.map((lr, i) => (
-            <div key={lr.id || i} style={{ background: '#161622', border: '1px solid #222230', borderRadius: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div><div style={{ fontWeight: 600, color: '#E2E8F0', fontSize: 13 }}>{lr.staff_name}</div><div style={{ color: '#64748B', fontSize: 11 }}>{lr.leave_type} · {lr.start_date} – {lr.end_date}</div><div style={{ color: '#94A3B8', fontSize: 11, marginTop: 3, fontStyle: 'italic' }}>{lr.reason}</div></div>
+          {leaves.length === 0 ? <div style={{ padding: 24, textAlign: 'center', color: '#737373', fontSize: 13, background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 11 }}>No pending leave requests</div> : leaves.map((lr, i) => (
+            <div key={lr.id || i} style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div><div style={{ fontWeight: 600, color: '#e5e5e5', fontSize: 13 }}>{lr.staff_name}</div><div style={{ color: '#737373', fontSize: 11 }}>{lr.leave_type} · {lr.start_date} – {lr.end_date}</div><div style={{ color: '#a3a3a3', fontSize: 11, marginTop: 3, fontStyle: 'italic' }}>{lr.reason}</div></div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <ActionBtn label="Approve" variant="success" icon={<CheckCircle size={11} />} onClick={async () => { await updateLeave(lr.id, 'approved', currentUser); load(); }} />
                 <ActionBtn label="Reject" variant="danger" icon={<XCircle size={11} />} onClick={async () => { await updateLeave(lr.id, 'rejected', currentUser); load(); }} />
@@ -269,16 +494,16 @@ export function FinancialReports() {
   return (
     <ToolPage title="Financial Reports" subtitle="Revenue, expenses & analysis" onRefresh={load} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 18, maxWidth: 700 }}>
-        <StatCard value={data?.total_collected || '₹0'} label="TOTAL COLLECTED" color="#10B981" />
-        <StatCard value={fmtExp || '₹0'} label="TOTAL EXPENSES" color="#EF4444" />
-        <StatCard value={data?.collection_rate || '0%'} label="COLLECTION RATE" color="#3B82F6" />
+        <StatCard value={data?.total_collected || '₹0'} label="TOTAL COLLECTED" color="#34d399" />
+        <StatCard value={fmtExp || '₹0'} label="TOTAL EXPENSES" color="#f87171" />
+        <StatCard value={data?.collection_rate || '0%'} label="COLLECTION RATE" color="#4f8ff7" />
       </div>
       <DataTable title="Revenue by Fee Type" headers={['Fee Type', 'Expected', 'Collected']}
-        rows={(data?.by_fee_type || []).map(r => [r.fee_type, r.expected, <span style={{ color: '#10B981' }}>{r.collected}</span>])}
+        rows={(data?.by_fee_type || []).map(r => [r.fee_type, r.expected, <span style={{ color: '#34d399' }}>{r.collected}</span>])}
         emptyMsg="No fee data available"
       />
       <DataTable title="Recent Expenses" headers={['Date', 'Category', 'Description', 'Amount']}
-        rows={expenses.slice(0, 10).map(e => [e.date, e.category, e.description, <span style={{ color: '#EF4444' }}>₹{(e.amount || 0).toLocaleString('en-IN')}</span>])}
+        rows={expenses.slice(0, 10).map(e => [e.date, e.category, e.description, <span style={{ color: '#f87171' }}>₹{(e.amount || 0).toLocaleString('en-IN')}</span>])}
         emptyMsg="No expenses recorded"
       />
     </ToolPage>
@@ -289,44 +514,124 @@ export function FinancialReports() {
 export function AnnouncementBroadcaster() {
   const { currentUser } = useUser();
   const [announcements, setAnnouncements] = useState([]);
+  const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ title: '', content: '', audience_type: 'all' });
+  const [form, setForm] = useState({ title: '', content: '', audience_type: 'all', audience_roles: [], audience_classes: [] });
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
+
+  const ROLES = ['teacher', 'parent', 'student', 'admin'];
 
   useEffect(() => { load(); }, []);
   const load = async () => {
     setLoading(true);
-    try { const r = await fetch(`${API}/ops/announcements`, { headers: h(currentUser) }).then(r => r.json()); if (r.success) setAnnouncements(r.data || []); } catch {}
+    try {
+      const [annRes, classRes] = await Promise.all([
+        fetch(`${API}/ops/announcements`, { headers: h(currentUser) }).then(r => r.json()),
+        fetch(`${API}/settings/classes`, { headers: h(currentUser) }).then(r => r.json()),
+      ]);
+      if (annRes.success) setAnnouncements(annRes.data || []);
+      setClasses(classRes.data || []);
+    } catch {}
     setLoading(false);
   };
 
+  const toggleRole = (role) => setForm(p => ({
+    ...p,
+    audience_roles: p.audience_roles.includes(role) ? p.audience_roles.filter(r => r !== role) : [...p.audience_roles, role],
+  }));
+
+  const toggleClass = (cls) => setForm(p => ({
+    ...p,
+    audience_classes: p.audience_classes.includes(cls) ? p.audience_classes.filter(c => c !== cls) : [...p.audience_classes, cls],
+  }));
+
+  const resetForm = () => { setForm({ title: '', content: '', audience_type: 'all', audience_roles: [], audience_classes: [] }); setShowForm(false); };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.title || !form.content) return;
-    await fetch(`${API}/ops/announcements`, { method: 'POST', headers: h(currentUser), body: JSON.stringify({ ...form, is_draft: false }) });
-    setShowForm(false); setForm({ title: '', content: '', audience_type: 'all' }); load();
+    if (!form.title.trim() || !form.content.trim()) return;
+    setSaving(true);
+    try {
+      const payload = {
+        title: form.title,
+        content: form.content,
+        audience_type: form.audience_type,
+        audience_roles: form.audience_type === 'role' ? form.audience_roles : [],
+        audience_classes: form.audience_type === 'class' ? form.audience_classes : [],
+        is_draft: false,
+      };
+      const r = await fetch(`${API}/ops/announcements`, { method: 'POST', headers: h(currentUser), body: JSON.stringify(payload) }).then(r => r.json());
+      if (r.success) { resetForm(); load(); }
+      else alert('Failed to send announcement. Please try again.');
+    } catch { alert('Network error. Please try again.'); }
+    setSaving(false);
+  };
+
+  const audienceLabel = (a) => {
+    if (a.audience_type === 'role' && a.audience_roles?.length) return `Roles: ${a.audience_roles.join(', ')}`;
+    if (a.audience_type === 'class' && a.audience_classes?.length) return `Classes: ${a.audience_classes.join(', ')}`;
+    return a.audience_type === 'all' ? 'All Staff & Students' : a.audience_type;
   };
 
   return (
     <ToolPage title="Announcement Broadcaster" subtitle="Broadcast messages to school" onRefresh={load} loading={loading}
-      actions={<ActionBtn label="New Announcement" onClick={() => setShowForm(true)} icon={<Plus size={11} />} />}>
+      actions={(currentUser.role === 'owner' || currentUser.role === 'admin') && (
+        <ActionBtn label="New Announcement" onClick={() => setShowForm(true)} icon={<Plus size={11} />} />
+      )}>
       {showForm && (
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20, marginBottom: 18 }}>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>New Announcement</h3>
+        <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 11, padding: 20, marginBottom: 18 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#e5e5e5', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>New Announcement</h3>
           <form onSubmit={handleSubmit}>
             <FormField label="Title" value={form.title} onChange={f('title')} placeholder="Announcement title" required />
             <FormField label="Message" type="textarea" value={form.content} onChange={f('content')} placeholder="Write your announcement..." required />
-            <FormField label="Audience" type="select" value={form.audience_type} onChange={f('audience_type')} options={[{ value: 'all', label: 'All' }, { value: 'role', label: 'By Role' }, { value: 'class', label: 'By Class' }]} />
+            <FormField label="Audience" type="select" value={form.audience_type} onChange={f('audience_type')}
+              options={[{ value: 'all', label: 'Everyone (All Staff & Students)' }, { value: 'role', label: 'By Role' }, { value: 'class', label: 'By Class' }]} />
+
+            {/* Role selector */}
+            {form.audience_type === 'role' && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 12, color: '#737373', marginBottom: 8, fontWeight: 600 }}>Select Roles *</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {ROLES.map(role => (
+                    <label key={role} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: form.audience_roles.includes(role) ? 'rgba(79,143,247,0.15)' : '#252525', border: `1px solid ${form.audience_roles.includes(role) ? '#4f8ff7' : '#333'}`, borderRadius: 8, cursor: 'pointer', fontSize: 12, color: form.audience_roles.includes(role) ? '#4f8ff7' : '#a0a0a0', textTransform: 'capitalize' }}>
+                      <input type="checkbox" checked={form.audience_roles.includes(role)} onChange={() => toggleRole(role)} style={{ accentColor: '#4f8ff7' }} />
+                      {role}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Class selector */}
+            {form.audience_type === 'class' && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 12, color: '#737373', marginBottom: 8, fontWeight: 600 }}>Select Classes *</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, maxHeight: 160, overflowY: 'auto' }}>
+                  {classes.map(cls => {
+                    const key = cls.name + (cls.section ? ' ' + cls.section : '');
+                    return (
+                      <label key={cls.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: form.audience_classes.includes(key) ? 'rgba(79,143,247,0.15)' : '#252525', border: `1px solid ${form.audience_classes.includes(key) ? '#4f8ff7' : '#333'}`, borderRadius: 8, cursor: 'pointer', fontSize: 12, color: form.audience_classes.includes(key) ? '#4f8ff7' : '#a0a0a0' }}>
+                        <input type="checkbox" checked={form.audience_classes.includes(key)} onChange={() => toggleClass(key)} style={{ accentColor: '#4f8ff7' }} />
+                        {key}
+                      </label>
+                    );
+                  })}
+                  {classes.length === 0 && <span style={{ color: '#737373', fontSize: 12 }}>No classes configured</span>}
+                </div>
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <ActionBtn label="Send Now" onClick={() => {}} />
-              <ActionBtn label="Cancel" variant="secondary" onClick={() => setShowForm(false)} />
+              <ActionBtn label={saving ? 'Sending...' : 'Send Now'} type="submit" disabled={saving} icon={<Send size={11} />} />
+              <ActionBtn label="Cancel" variant="secondary" onClick={resetForm} />
             </div>
           </form>
         </div>
       )}
       <DataTable title="Recent Announcements" headers={['Title', 'Audience', 'Date', 'Status']}
-        rows={announcements.map(a => [a.title, a.audience_type, a.created_at?.slice(0, 10), <Badge text={a.is_draft ? 'Draft' : 'Sent'} color={a.is_draft ? 'gray' : 'green'} />])}
+        rows={announcements.map(a => [a.title, audienceLabel(a), a.created_at?.slice(0, 10), <Badge text={a.is_draft ? 'Draft' : 'Sent'} color={a.is_draft ? 'gray' : 'green'} />])}
         emptyMsg="No announcements yet"
       />
     </ToolPage>
@@ -346,16 +651,16 @@ export function AdmissionFunnel() {
   return (
     <ToolPage title="Admission Funnel" subtitle="Enquiries & conversion pipeline" onRefresh={load} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18, maxWidth: 800 }}>
-        <StatCard value={data?.total || 0} label="TOTAL ENQUIRIES" color="#3B82F6" />
-        <StatCard value={funnel.enrolled || 0} label="ENROLLED" color="#10B981" />
-        <StatCard value={funnel.new || 0} label="NEW TODAY" color="#F59E0B" />
-        <StatCard value={funnel.lost || 0} label="LOST" color="#EF4444" />
+        <StatCard value={data?.total || 0} label="TOTAL ENQUIRIES" color="#4f8ff7" />
+        <StatCard value={funnel.enrolled || 0} label="ENROLLED" color="#34d399" />
+        <StatCard value={funnel.new || 0} label="NEW TODAY" color="#fbbf24" />
+        <StatCard value={funnel.lost || 0} label="LOST" color="#f87171" />
       </div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18 }}>
         {stages.map(s => (
-          <div key={s} style={{ background: '#161622', border: '1px solid #222230', borderRadius: 8, padding: '8px 12px', textAlign: 'center', minWidth: 80 }}>
-            <div style={{ fontSize: 18, fontWeight: 700, color: '#E2E8F0', fontFamily: 'Outfit, sans-serif' }}>{funnel[s] || 0}</div>
-            <div style={{ fontSize: 9, color: '#64748B', textTransform: 'capitalize', fontWeight: 600 }}>{s.replace('_', ' ')}</div>
+          <div key={s} style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 8, padding: '8px 12px', textAlign: 'center', minWidth: 80 }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#e5e5e5', fontFamily: 'Inter, sans-serif' }}>{funnel[s] || 0}</div>
+            <div style={{ fontSize: 9, color: '#737373', textTransform: 'capitalize', fontWeight: 600 }}>{s.replace('_', ' ')}</div>
           </div>
         ))}
       </div>
@@ -381,19 +686,115 @@ export function StaffLeaveManager() {
 export function StaffPerformance() {
   const { currentUser } = useUser();
   const [staff, setStaff] = useState([]);
+  const [staffStats, setStaffStats] = useState({});
+  const [leaves, setLeaves] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedStaff, setSelectedStaff] = useState(null);
   useEffect(() => { load(); }, []);
+
   const load = async () => {
     setLoading(true);
-    try { const r = await getStaff(currentUser); if (r.success) setStaff(r.data || []); } catch {}
+    try {
+      const [staffRes, attRes] = await Promise.all([
+        getStaff(currentUser),
+        fetch(`${API}/attendance/staff`, { headers: h(currentUser) }).then(r => r.json()),
+      ]);
+      const staffList = staffRes.success ? (staffRes.data || []) : [];
+      setStaff(staffList);
+
+      // Aggregate attendance stats per staff
+      const records = attRes.success ? (attRes.data || []) : [];
+      const stats = {};
+      records.forEach(rec => {
+        const sid = rec.staff_id;
+        if (!stats[sid]) stats[sid] = { present: 0, absent: 0, late: 0, total: 0 };
+        stats[sid].total++;
+        if (rec.status === 'present') stats[sid].present++;
+        else if (rec.status === 'absent') stats[sid].absent++;
+        else if (rec.status === 'late') stats[sid].late++;
+      });
+      setStaffStats(stats);
+    } catch {}
     setLoading(false);
   };
+
+  const getRate = (s) => {
+    const st = staffStats[s.id];
+    if (!st || st.total === 0) return '—';
+    return `${Math.round((st.present / st.total) * 100)}%`;
+  };
+
+  const getRateColor = (s) => {
+    const st = staffStats[s.id];
+    if (!st || st.total === 0) return '#737373';
+    const rate = Math.round((st.present / st.total) * 100);
+    return rate >= 90 ? '#34d399' : rate >= 75 ? '#fbbf24' : '#f87171';
+  };
+
   return (
-    <ToolPage title="Staff Performance" subtitle="Attendance patterns & punctuality" onRefresh={load} loading={loading}>
-      <DataTable title="All Staff" headers={['Name', 'Type', 'Employee ID', 'Join Date']}
-        rows={staff.map(s => [s.name, s.staff_type, s.employee_id || 'N/A', s.join_date || 'N/A'])}
+    <ToolPage title="Staff Performance" subtitle="Individual staff stats & attendance analytics" onRefresh={load} loading={loading}>
+      {/* Summary Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 20, maxWidth: 800 }}>
+        <StatCard value={staff.length} label="TOTAL STAFF" color="#e5e5e5" />
+        <StatCard value={staff.filter(s => s.staff_type === 'teacher').length} label="TEACHERS" color="#4f8ff7" />
+        <StatCard value={staff.filter(s => s.staff_type !== 'teacher').length} label="NON-TEACHING" color="#a78bfa" />
+        <StatCard
+          value={staff.length > 0 ? `${Math.round(staff.filter(s => { const st = staffStats[s.id]; return st && st.total > 0 && (st.present / st.total) * 100 >= 90; }).length / staff.length * 100)}%` : '—'}
+          label="ABOVE 90% ATT." color="#34d399" />
+      </div>
+
+      {/* Per-staff detail table */}
+      <DataTable title="Individual Staff Performance" headers={['Name', 'Type', 'Dept.', 'Employee ID', 'Join Date', 'Present', 'Absent', 'Late', 'Att. Rate']}
+        rows={staff.map(s => {
+          const st = staffStats[s.id];
+          return [
+            <span style={{ fontWeight: 600, color: '#e5e5e5', cursor: 'pointer' }} onClick={() => setSelectedStaff(selectedStaff?.id === s.id ? null : s)}>{s.name}</span>,
+            <Badge text={s.staff_type || 'staff'} color={s.staff_type === 'teacher' ? 'blue' : 'purple'} />,
+            s.department || '—',
+            s.employee_id || '—',
+            s.join_date || '—',
+            <span style={{ color: '#34d399', fontWeight: 600 }}>{st?.present ?? '—'}</span>,
+            <span style={{ color: '#f87171', fontWeight: 600 }}>{st?.absent ?? '—'}</span>,
+            <span style={{ color: '#fbbf24', fontWeight: 600 }}>{st?.late ?? '—'}</span>,
+            <span style={{ color: getRateColor(s), fontWeight: 700 }}>{getRate(s)}</span>,
+          ];
+        })}
         emptyMsg="No staff data"
       />
+
+      {/* Expanded staff detail panel */}
+      {selectedStaff && (
+        <div style={{ background: '#1e1e1e', border: '1px solid #4f8ff7', borderRadius: 12, padding: 20, marginTop: 4, marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+            <div>
+              <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#e5e5e5', fontSize: 15, fontWeight: 700, marginBottom: 4 }}>{selectedStaff.name}</h3>
+              <span style={{ fontSize: 12, color: '#737373' }}>{selectedStaff.staff_type} · {selectedStaff.department || 'N/A'} · Emp #{selectedStaff.employee_id || 'N/A'}</span>
+            </div>
+            <button onClick={() => setSelectedStaff(null)} style={{ background: 'none', border: 'none', color: '#737373', cursor: 'pointer', fontSize: 18 }}>×</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
+            <StatCard value={selectedStaff.email || '—'} label="EMAIL" color="#4f8ff7" small />
+            <StatCard value={selectedStaff.phone || '—'} label="PHONE" color="#a78bfa" small />
+            <StatCard value={selectedStaff.join_date || '—'} label="JOIN DATE" color="#34d399" small />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+            <StatCard value={staffStats[selectedStaff.id]?.present ?? '—'} label="DAYS PRESENT" color="#34d399" small />
+            <StatCard value={staffStats[selectedStaff.id]?.absent ?? '—'} label="DAYS ABSENT" color="#f87171" small />
+            <StatCard value={staffStats[selectedStaff.id]?.late ?? '—'} label="LATE ARRIVALS" color="#fbbf24" small />
+            <StatCard value={getRate(selectedStaff)} label="ATTENDANCE RATE" color={getRateColor(selectedStaff)} small />
+          </div>
+          {selectedStaff.subjects?.length > 0 && (
+            <div style={{ marginTop: 12, fontSize: 12, color: '#a0a0a0' }}>
+              <b style={{ color: '#e5e5e5' }}>Subjects: </b>{selectedStaff.subjects.join(', ')}
+            </div>
+          )}
+          {selectedStaff.qualification && (
+            <div style={{ marginTop: 6, fontSize: 12, color: '#a0a0a0' }}>
+              <b style={{ color: '#e5e5e5' }}>Qualification: </b>{selectedStaff.qualification}
+            </div>
+          )}
+        </div>
+      )}
     </ToolPage>
   );
 }
@@ -420,24 +821,24 @@ export function AiHealthReport() {
       {!report ? (
         <div style={{ textAlign: 'center', padding: '40px 0' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🏥</div>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 16, marginBottom: 8 }}>AI School Health Report</h3>
-          <p style={{ color: '#64748B', fontSize: 12, marginBottom: 20 }}>Generate a comprehensive AI-powered analysis of your school's current health status</p>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#e5e5e5', fontSize: 16, marginBottom: 8 }}>AI School Health Report</h3>
+          <p style={{ color: '#737373', fontSize: 12, marginBottom: 20 }}>Generate a comprehensive AI-powered analysis of your school's current health status</p>
           <ActionBtn label={loading ? 'Generating...' : 'Generate Report'} onClick={generate} disabled={loading} />
         </div>
       ) : (
         <div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 18 }}>
-            <StatCard value={`${report.score}/100`} label="HEALTH SCORE" color="#10B981" />
-            <StatCard value={report.generated} label="GENERATED" color="#3B82F6" />
-            <StatCard value={report.alerts.length} label="ACTION ITEMS" color="#EF4444" />
+            <StatCard value={`${report.score}/100`} label="HEALTH SCORE" color="#34d399" />
+            <StatCard value={report.generated} label="GENERATED" color="#4f8ff7" />
+            <StatCard value={report.alerts.length} label="ACTION ITEMS" color="#f87171" />
           </div>
-          <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20, marginBottom: 14 }}>
-            <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#10B981', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Highlights</h3>
-            {report.highlights.map((h, i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 13, color: '#94A3B8' }}><CheckCircle size={12} color="#10B981" />{h}</div>)}
+          <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 11, padding: 20, marginBottom: 14 }}>
+            <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#34d399', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Highlights</h3>
+            {report.highlights.map((h, i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 13, color: '#a3a3a3' }}><CheckCircle size={12} color="#34d399" />{h}</div>)}
           </div>
-          <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20 }}>
-            <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#EF4444', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Action Items</h3>
-            {report.alerts.map((a, i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 13, color: '#94A3B8' }}><AlertTriangle size={12} color="#EF4444" />{a}</div>)}
+          <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 11, padding: 20 }}>
+            <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#f87171', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Action Items</h3>
+            {report.alerts.map((a, i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 13, color: '#a3a3a3' }}><AlertTriangle size={12} color="#f87171" />{a}</div>)}
           </div>
         </div>
       )}
@@ -457,15 +858,15 @@ export function SmartAlerts() {
   return (
     <ToolPage title="Smart Alerts" subtitle="Active exceptions & flags" onRefresh={load} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 18, maxWidth: 500 }}>
-        <StatCard value={data?.total_alerts || 0} label="TOTAL ALERTS" color="#F59E0B" />
-        <StatCard value={data?.critical_count || 0} label="CRITICAL" color="#EF4444" />
+        <StatCard value={data?.total_alerts || 0} label="TOTAL ALERTS" color="#fbbf24" />
+        <StatCard value={data?.critical_count || 0} label="CRITICAL" color="#f87171" />
       </div>
-      {alerts.length === 0 ? <div style={{ padding: 32, textAlign: 'center', color: '#64748B', background: '#161622', border: '1px solid #222230', borderRadius: 11, fontSize: 13 }}>No active alerts — all good!</div> : (
+      {alerts.length === 0 ? <div style={{ padding: 32, textAlign: 'center', color: '#737373', background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 11, fontSize: 13 }}>No active alerts — all good!</div> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {alerts.map((a, i) => (
-            <div key={i} style={{ background: '#161622', border: '1px solid #222230', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div key={i} style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
               <Badge text={a.category} color={colors[a.type] || 'blue'} />
-              <span style={{ fontSize: 13, color: '#E2E8F0', flex: 1 }}>{a.text}</span>
+              <span style={{ fontSize: 13, color: '#e5e5e5', flex: 1 }}>{a.text}</span>
               <Badge text={a.priority} color={a.priority === 'high' ? 'red' : a.priority === 'medium' ? 'yellow' : 'gray'} />
             </div>
           ))}
@@ -485,14 +886,28 @@ export function ExpenseTracker() {
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
   useEffect(() => { load(); }, []);
   const load = async () => { setLoading(true); try { const r = await fetch(`${API}/ops/expenses`, { headers: h(currentUser) }).then(r => r.json()); if (r.success) setExpenses(r.data || []); } catch {} setLoading(false); };
-  const handleAdd = async (e) => { e.preventDefault(); await fetch(`${API}/ops/expenses`, { method: 'POST', headers: h(currentUser), body: JSON.stringify({ ...form, amount: parseFloat(form.amount) }) }); setShowForm(false); setForm({ category: '', description: '', amount: '', date: new Date().toISOString().slice(0, 10), vendor: '' }); load(); };
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    if (!form.category || !form.amount) { alert('Category and Amount are required.'); return; }
+    try {
+      const r = await fetch(`${API}/ops/expenses`, {
+        method: 'POST', headers: h(currentUser),
+        body: JSON.stringify({ ...form, amount: parseFloat(form.amount) }),
+      }).then(res => res.json());
+      if (r.success) {
+        setShowForm(false);
+        setForm({ category: '', description: '', amount: '', date: new Date().toISOString().slice(0, 10), vendor: '' });
+        load();
+      } else { alert('Failed to save expense. Please try again.'); }
+    } catch { alert('Network error. Please try again.'); }
+  };
   const total = expenses.reduce((s, e) => s + (e.amount || 0), 0);
 
   return (
     <ToolPage title="Expense Tracker" subtitle="Track & manage school expenses" onRefresh={load} loading={loading}
       actions={<ActionBtn label="Add Expense" onClick={() => setShowForm(true)} icon={<Plus size={11} />} />}>
       {showForm && (
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20, marginBottom: 16 }}>
+        <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 11, padding: 20, marginBottom: 16 }}>
           <form onSubmit={handleAdd}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Category" type="select" value={form.category} onChange={f('category')} options={['utilities', 'maintenance', 'salary', 'events', 'stationery', 'transport', 'other'].map(v => ({ value: v, label: v }))} required />
@@ -501,16 +916,16 @@ export function ExpenseTracker() {
               <FormField label="Vendor" value={form.vendor} onChange={f('vendor')} placeholder="Vendor name" />
             </div>
             <FormField label="Description" type="textarea" value={form.description} onChange={f('description')} placeholder="Expense description" />
-            <div style={{ display: 'flex', gap: 8 }}><ActionBtn label="Save Expense" /><ActionBtn label="Cancel" variant="secondary" onClick={() => setShowForm(false)} /></div>
+            <div style={{ display: 'flex', gap: 8 }}><ActionBtn label="Save Expense" type="submit" icon={<Save size={11} />} /><ActionBtn label="Cancel" variant="secondary" onClick={() => setShowForm(false)} /></div>
           </form>
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16, maxWidth: 400 }}>
-        <StatCard value={`₹${(total / 1000).toFixed(1)}K`} label="TOTAL EXPENSES" color="#EF4444" />
-        <StatCard value={expenses.length} label="RECORDS" color="#E2E8F0" />
+        <StatCard value={`₹${(total / 1000).toFixed(1)}K`} label="TOTAL EXPENSES" color="#f87171" />
+        <StatCard value={expenses.length} label="RECORDS" color="#e5e5e5" />
       </div>
       <DataTable headers={['Date', 'Category', 'Description', 'Vendor', 'Amount']}
-        rows={expenses.map(e => [e.date, e.category, e.description, e.vendor || 'N/A', <span style={{ color: '#EF4444' }}>₹{(e.amount || 0).toLocaleString('en-IN')}</span>])}
+        rows={expenses.map(e => [e.date, e.category, e.description, e.vendor || 'N/A', <span style={{ color: '#f87171' }}>₹{(e.amount || 0).toLocaleString('en-IN')}</span>])}
       />
     </ToolPage>
   );
@@ -527,9 +942,9 @@ export function ComplaintTracker() {
   return (
     <ToolPage title="Complaint & Grievance Tracker" subtitle="Manage and resolve complaints" onRefresh={load} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16, maxWidth: 500 }}>
-        <StatCard value={complaints.filter(c => c.status === 'open').length} label="OPEN" color="#EF4444" />
-        <StatCard value={complaints.filter(c => c.status === 'resolved').length} label="RESOLVED" color="#10B981" />
-        <StatCard value={complaints.length} label="TOTAL" color="#E2E8F0" />
+        <StatCard value={complaints.filter(c => c.status === 'open').length} label="OPEN" color="#f87171" />
+        <StatCard value={complaints.filter(c => c.status === 'resolved').length} label="RESOLVED" color="#34d399" />
+        <StatCard value={complaints.length} label="TOTAL" color="#e5e5e5" />
       </div>
       <DataTable headers={['Subject', 'Category', 'Priority', 'Status', 'Date']}
         rows={complaints.map(c => [c.subject, c.category, <Badge text={c.priority} color={c.priority === 'urgent' ? 'red' : c.priority === 'high' ? 'yellow' : 'gray'} />, <Badge text={c.status} color={statusColors[c.status] || 'gray'} />, c.created_at?.slice(0, 10)])}
@@ -542,68 +957,233 @@ export function ComplaintTracker() {
 // 15. Custom Report Builder
 export function CustomReportBuilder() {
   const { currentUser } = useUser();
-  const [sources, setSources] = useState([]);
   const [selectedSources, setSelectedSources] = useState([]);
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   const dataSources = [
-    { id: 'students', label: 'Student Data', icon: '👥' },
-    { id: 'attendance', label: 'Attendance Records', icon: '📋' },
-    { id: 'fee_transactions', label: 'Fee Transactions', icon: '₹' },
-    { id: 'staff', label: 'Staff Information', icon: '👨‍🏫' },
-    { id: 'expenses', label: 'Expenses', icon: '💰' },
-    { id: 'exam_results', label: 'Exam Results', icon: '📊' },
-    { id: 'enquiries', label: 'Admission Enquiries', icon: '📝' },
+    { id: 'students', label: 'Student Data', icon: '👥', endpoint: 'students' },
+    { id: 'attendance', label: 'Attendance Records', icon: '📋', endpoint: 'attendance' },
+    { id: 'fee-transactions', label: 'Fee Transactions', icon: '₹', endpoint: 'fee-transactions' },
+    { id: 'staff', label: 'Staff Information', icon: '👨‍🏫', endpoint: 'staff' },
+    { id: 'expenses', label: 'Expenses', icon: '💰', endpoint: 'expenses' },
+    { id: 'exam-results', label: 'Exam Results', icon: '📊', endpoint: 'exam-results' },
+    { id: 'enquiries', label: 'Admission Enquiries', icon: '📝', endpoint: 'enquiries' },
   ];
 
   const toggle = (id) => setSelectedSources(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
 
+  const buildUrl = (endpoint) => {
+    let url = `${process.env.REACT_APP_BACKEND_URL}/api/export/${endpoint}`;
+    const params = [];
+    if (dateRange.start) params.push(`start_date=${dateRange.start}`);
+    if (dateRange.end) params.push(`end_date=${dateRange.end}`);
+    if (params.length) url += '?' + params.join('&');
+    return url;
+  };
+
+  // Prepare CSV download links
   const generateReport = async () => {
     if (selectedSources.length === 0) return;
     setLoading(true);
-    // Generate download links for selected sources
-    const links = selectedSources.map(src => {
-      let url = `${process.env.REACT_APP_BACKEND_URL}/api/export/${src.replace('_', '-')}`;
-      if (dateRange.start) url += `?start_date=${dateRange.start}`;
-      if (dateRange.end) url += `${dateRange.start ? '&' : '?'}end_date=${dateRange.end}`;
-      return { source: src, url, label: dataSources.find(d => d.id === src)?.label };
+    const links = selectedSources.map(srcId => {
+      const src = dataSources.find(d => d.id === srcId);
+      return { source: srcId, url: buildUrl(src.endpoint), label: src.label };
     });
     setReport({ links, generated: new Date().toLocaleString('en-IN') });
     setLoading(false);
   };
 
+  // Parse CSV properly — handles quoted fields containing commas
+  const parseCSV = (text) => {
+    const lines = text.trim().split('\n');
+    return lines.map(line => {
+      const cells = [];
+      let cur = '', inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') { inQ = !inQ; }
+        else if (ch === ',' && !inQ) { cells.push(cur.trim()); cur = ''; }
+        else { cur += ch; }
+      }
+      cells.push(cur.trim());
+      return cells;
+    });
+  };
+
+  // Generate a PDF summary report by fetching data from the backend
+  const generatePDF = async () => {
+    if (selectedSources.length === 0) return;
+    setPdfLoading(true);
+    const errors = [];
+    try {
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF();
+      const today = new Date().toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' });
+
+      // PDF Header
+      doc.setFontSize(20); doc.setTextColor(40, 40, 40);
+      doc.text('Custom School Report', 105, 18, { align: 'center' });
+      doc.setFontSize(10); doc.setTextColor(100, 100, 100);
+      doc.text(`Generated: ${today}`, 105, 26, { align: 'center' });
+      if (dateRange.start || dateRange.end) {
+        doc.text(`Period: ${dateRange.start || 'All time'} to ${dateRange.end || 'Today'}`, 105, 33, { align: 'center' });
+      }
+      doc.setDrawColor(200, 200, 200); doc.line(15, 38, 195, 38);
+
+      let y = 48;
+      const maxY = 272;
+      const newPage = () => { doc.addPage(); y = 18; };
+
+      let sectionNum = 0;
+
+      for (const srcId of selectedSources) {
+        const src = dataSources.find(d => d.id === srcId);
+        if (!src) continue;
+        sectionNum++;
+
+        let csvRows = [];
+        let colHeaders = [];
+        let fetchOk = false;
+
+        try {
+          const res = await fetch(buildUrl(src.endpoint), { headers: h(currentUser) });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const text = await res.text();
+          const parsed = parseCSV(text);
+          if (parsed.length > 0) {
+            colHeaders = parsed[0];
+            csvRows = parsed.slice(1).filter(r => r.some(c => c));
+          }
+          fetchOk = true;
+        } catch (e) {
+          errors.push(`${src.label}: ${e.message}`);
+        }
+
+        // Section header — no emoji, plain ASCII
+        if (y > maxY - 40) newPage();
+        doc.setFontSize(13); doc.setTextColor(30, 30, 30);
+        doc.text(`${sectionNum}. ${src.label}`, 15, y); y += 7;
+        doc.setFontSize(9); doc.setTextColor(110, 110, 110);
+        if (!fetchOk) {
+          doc.text('Could not load data for this source.', 20, y); y += 12;
+          continue;
+        }
+        doc.text(`Total records: ${csvRows.length}`, 20, y); y += 7;
+
+        if (colHeaders.length === 0 || csvRows.length === 0) {
+          doc.text('No records found.', 20, y); y += 10;
+          continue;
+        }
+
+        // Limit to 6 columns max, compute widths
+        const maxCols = Math.min(colHeaders.length, 6);
+        const colW = Math.floor(175 / maxCols);
+
+        // Column headers row
+        doc.setFontSize(8); doc.setTextColor(50, 50, 50);
+        colHeaders.slice(0, maxCols).forEach((col, i) => {
+          doc.text(String(col).slice(0, Math.floor(colW / 2.2)), 15 + i * colW, y);
+        });
+        y += 4;
+        doc.setDrawColor(180, 180, 180); doc.line(15, y, 195, y); y += 3;
+
+        // Data rows — ALL rows with page breaks
+        doc.setFontSize(7.5); doc.setTextColor(70, 70, 70);
+        csvRows.forEach((row, ri) => {
+          if (y > maxY) newPage();
+          // Alternating row background
+          if (ri % 2 === 0) {
+            doc.setFillColor(248, 248, 248);
+            doc.rect(15, y - 4, 180, 6, 'F');
+          }
+          row.slice(0, maxCols).forEach((cell, i) => {
+            const cellStr = String(cell || '').slice(0, Math.floor(colW / 2.2));
+            doc.text(cellStr, 15 + i * colW, y);
+          });
+          y += 6;
+        });
+        y += 8;
+      }
+
+      // Error summary if any sources failed
+      if (errors.length > 0) {
+        if (y > maxY - 20) newPage();
+        doc.setFontSize(9); doc.setTextColor(180, 60, 60);
+        doc.text('Note: Some sources could not be loaded:', 15, y); y += 6;
+        errors.forEach(e => { doc.text(`  - ${e}`, 15, y); y += 5; });
+      }
+
+      // Footer on every page
+      const totalPages = doc.getNumberOfPages();
+      for (let p = 1; p <= totalPages; p++) {
+        doc.setPage(p);
+        doc.setFontSize(8); doc.setTextColor(160, 160, 160);
+        doc.text('EduFlow — Confidential Report', 105, 290, { align: 'center' });
+        doc.text(`Page ${p} of ${totalPages}`, 190, 290, { align: 'right' });
+      }
+
+      const fname = `custom-report-${new Date().toISOString().slice(0, 10)}.pdf`;
+      doc.save(fname);
+    } catch (err) {
+      alert(`PDF generation failed: ${err.message}`);
+    }
+    setPdfLoading(false);
+  };
+
   return (
-    <ToolPage title="Custom Report Builder" subtitle="Select data sources and download reports">
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 900 }}>
+    <ToolPage title="Custom Report Builder" subtitle="Select data sources, download CSV or generate PDF">
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 960 }}>
+        {/* Source selector */}
         <div>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Select Data Sources</h3>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#e5e5e5', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Select Data Sources</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {dataSources.map(src => (
-              <label key={src.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: selectedSources.includes(src.id) ? 'rgba(59,130,246,0.1)' : '#161622', border: `1px solid ${selectedSources.includes(src.id) ? '#3B82F6' : '#222230'}`, borderRadius: 8, cursor: 'pointer' }}>
-                <input type="checkbox" checked={selectedSources.includes(src.id)} onChange={() => toggle(src.id)} />
-                <span style={{ fontSize: 18 }}>{src.icon}</span>
-                <span style={{ fontSize: 13, color: '#E2E8F0' }}>{src.label}</span>
+              <label key={src.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: selectedSources.includes(src.id) ? 'rgba(59,130,246,0.1)' : '#1e1e1e', border: `1px solid ${selectedSources.includes(src.id) ? '#4f8ff7' : '#2e2e2e'}`, borderRadius: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={selectedSources.includes(src.id)} onChange={() => toggle(src.id)} style={{ accentColor: '#4f8ff7' }} />
+                <span style={{ fontSize: 16 }}>{src.icon}</span>
+                <span style={{ fontSize: 13, color: '#e5e5e5' }}>{src.label}</span>
               </label>
             ))}
           </div>
         </div>
+
+        {/* Right panel: date range + actions + downloads */}
         <div>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Date Range (Optional)</h3>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#e5e5e5', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Date Range (Optional)</h3>
           <FormField label="From Date" type="date" value={dateRange.start} onChange={v => setDateRange(p => ({ ...p, start: v }))} />
           <FormField label="To Date" type="date" value={dateRange.end} onChange={v => setDateRange(p => ({ ...p, end: v }))} />
-          <ActionBtn label={loading ? 'Preparing...' : `Generate ${selectedSources.length} Report(s)`} onClick={generateReport} disabled={loading || selectedSources.length === 0} />
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <ActionBtn
+              label={loading ? 'Preparing...' : `CSV Downloads (${selectedSources.length})`}
+              onClick={generateReport}
+              disabled={loading || selectedSources.length === 0}
+              icon={<Download size={11} />}
+              variant="secondary"
+            />
+            <ActionBtn
+              label={pdfLoading ? 'Building PDF...' : 'Generate PDF Report'}
+              onClick={generatePDF}
+              disabled={pdfLoading || selectedSources.length === 0}
+              icon={<FileText size={11} />}
+            />
+          </div>
 
           {report && (
             <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 11, color: '#10B981', marginBottom: 10 }}>Reports ready — click to download:</div>
+              <div style={{ fontSize: 11, color: '#34d399', marginBottom: 10 }}>CSV files ready — click to download:</div>
               {report.links.map((link, i) => (
                 <a key={i} href={link.url} download target="_blank" rel="noreferrer"
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#161622', border: '1px solid #10B981', borderRadius: 7, color: '#10B981', fontSize: 12, marginBottom: 6, textDecoration: 'none' }}>
-                  ⬇️ {link.label} (CSV)
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 7, color: '#34d399', fontSize: 12, marginBottom: 6, textDecoration: 'none' }}>
+                  <Download size={12} /> {link.label} (CSV)
                 </a>
               ))}
+              <div style={{ marginTop: 8, fontSize: 11, color: '#737373' }}>
+                Or click "Generate PDF Report" for a formatted PDF summary.
+              </div>
             </div>
           )}
         </div>
@@ -617,56 +1197,244 @@ export function BoardReport() {
   const { currentUser } = useUser();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const generate = async () => {
     setLoading(true);
+    setError(null);
     try {
-      const [pulse, fee, smart] = await Promise.all([
+      const [pulse, fee, smart, att, staffRes, expRes] = await Promise.all([
         executeTool('get_school_pulse', {}, currentUser),
         executeTool('get_fee_summary', {}, currentUser),
         executeTool('get_smart_alerts', {}, currentUser),
+        executeTool('get_attendance_overview', { days: 30 }, currentUser),
+        fetch(`${API}/staff/`, { headers: h(currentUser) }).then(r => r.json()).catch(() => ({ data: [] })),
+        fetch(`${API}/ops/expenses`, { headers: h(currentUser) }).then(r => r.json()).catch(() => ({ data: [] })),
       ]);
+      const expenses = expRes.data || [];
+      const totalExp = expenses.reduce((s, e) => s + (e.amount || 0), 0);
       setData({
         generated: new Date().toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' }),
         pulse: pulse.data,
         fee: fee.data,
         alerts: smart.data,
+        attendance: att.data,
+        staff: staffRes.data || [],
+        expenses,
+        totalExp,
       });
-    } catch {}
+    } catch (e) {
+      setError('Some data could not be loaded. Showing partial report.');
+    }
     setLoading(false);
   };
 
+  const downloadPDF = async () => {
+    if (!data) return;
+    setPdfLoading(true);
+    try {
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF();
+      const s = data.pulse?.summary || {};
+      const fee = data.fee?.stats || {};
+
+      // Cover
+      doc.setFontSize(22); doc.setTextColor(30, 30, 30);
+      doc.text('Board / Trust Meeting Report', 105, 22, { align: 'center' });
+      doc.setFontSize(11); doc.setTextColor(100, 100, 100);
+      doc.text(`Generated: ${data.generated}`, 105, 31, { align: 'center' });
+      doc.setDrawColor(200, 200, 200); doc.line(15, 36, 195, 36);
+
+      // Section 1 — School Overview
+      let y = 46;
+      doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('1. School Overview', 15, y); y += 9;
+      doc.setFontSize(10); doc.setTextColor(60, 60, 60);
+      doc.text(`Total Students Enrolled: ${s.total_students || 0}`, 20, y); y += 7;
+      doc.text(`Total Staff: ${s.total_staff || 0}`, 20, y); y += 7;
+      doc.text(`Today's Attendance Rate: ${s.attendance_rate || 'N/A'}`, 20, y); y += 7;
+      doc.text(`Avg Attendance (30 days): ${data.attendance?.avg_attendance_rate || 'N/A'}`, 20, y); y += 7;
+      doc.text(`Total Attendance Records: ${data.attendance?.total_records || 0}`, 20, y); y += 12;
+
+      // Section 2 — Fee Summary
+      doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('2. Fee & Finance Summary', 15, y); y += 9;
+      doc.setFontSize(10); doc.setTextColor(60, 60, 60);
+      doc.text(`Total Fees Collected: ${fee.total_collected || '₹0'}`, 20, y); y += 7;
+      doc.text(`Total Overdue: ${fee.total_overdue || '₹0'}`, 20, y); y += 7;
+      doc.text(`Collection Rate: ${fee.collection_rate || 'N/A'}`, 20, y); y += 7;
+      doc.text(`Students with Dues: ${fee.students_with_dues || 0}`, 20, y); y += 7;
+      doc.text(`Overdue 60+ Days: ${fee.overdue_60_days || 0} transactions`, 20, y); y += 7;
+      const expFmt = data.totalExp >= 100000
+        ? `₹${(data.totalExp / 100000).toFixed(2)}L`
+        : `₹${data.totalExp.toLocaleString('en-IN')}`;
+      doc.text(`Total Expenses Recorded: ${expFmt}`, 20, y); y += 12;
+
+      // Section 3 — Staff
+      doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('3. Staff Summary', 15, y); y += 9;
+      doc.setFontSize(10); doc.setTextColor(60, 60, 60);
+      const teachers = (data.staff || []).filter(st => st.staff_type === 'teacher').length;
+      const nonTeach = (data.staff || []).length - teachers;
+      doc.text(`Total Staff: ${(data.staff || []).length}`, 20, y); y += 7;
+      doc.text(`Teaching Staff: ${teachers}`, 20, y); y += 7;
+      doc.text(`Non-Teaching Staff: ${nonTeach}`, 20, y); y += 7;
+      const absentToday = (data.pulse?.staff_absent_today || []).length;
+      doc.text(`Absent Today: ${absentToday}`, 20, y); y += 7;
+      const pendingLeaves = (data.pulse?.pending_leave_requests || []).length;
+      doc.text(`Pending Leave Requests: ${pendingLeaves}`, 20, y); y += 12;
+
+      // Section 4 — Class-wise Attendance (today)
+      const classStats = data.attendance?.class_stats_today || [];
+      if (classStats.length > 0) {
+        if (y > 220) { doc.addPage(); y = 20; }
+        doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('4. Class-wise Attendance (Today)', 15, y); y += 9;
+        doc.setFontSize(9); doc.setTextColor(80, 80, 80);
+        doc.text('Class', 20, y); doc.text('Present', 70, y); doc.text('Total', 110, y); doc.text('Rate', 150, y);
+        y += 5; doc.setDrawColor(220, 220, 220); doc.line(20, y, 190, y); y += 4;
+        classStats.forEach(c => {
+          if (y > 270) { doc.addPage(); y = 20; }
+          doc.text(String(c.class), 20, y); doc.text(String(c.present), 70, y); doc.text(String(c.total), 110, y); doc.text(String(c.rate), 150, y);
+          y += 6;
+        });
+        y += 8;
+      }
+
+      // Section 5 — Alerts
+      const alerts = data.alerts?.alerts || [];
+      if (alerts.length > 0) {
+        if (y > 220) { doc.addPage(); y = 20; }
+        doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('5. Active Alerts', 15, y); y += 9;
+        doc.setFontSize(10); doc.setTextColor(80, 80, 80);
+        alerts.forEach(a => {
+          if (y > 270) { doc.addPage(); y = 20; }
+          doc.text(`[${a.priority?.toUpperCase()}] ${a.text}`, 20, y); y += 7;
+        });
+        y += 6;
+      }
+
+      // Section 6 — Top Fee Defaulters
+      const defaulters = data.fee?.defaulters || [];
+      if (defaulters.length > 0) {
+        if (y > 220) { doc.addPage(); y = 20; }
+        doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('6. Top Fee Defaulters', 15, y); y += 9;
+        doc.setFontSize(9); doc.setTextColor(80, 80, 80);
+        doc.text('Student', 20, y); doc.text('Class', 90, y); doc.text('Overdue', 140, y); doc.text('Days', 175, y);
+        y += 5; doc.setDrawColor(220, 220, 220); doc.line(20, y, 190, y); y += 4;
+        defaulters.slice(0, 10).forEach(d => {
+          if (y > 270) { doc.addPage(); y = 20; }
+          doc.text(String(d.student_name || '').slice(0, 20), 20, y);
+          doc.text(String(d.class || ''), 90, y);
+          doc.text(String(d.amount_overdue_fmt || ''), 140, y);
+          doc.text(String(d.days_overdue || ''), 175, y);
+          y += 6;
+        });
+      }
+
+      // Footer
+      doc.setFontSize(8); doc.setTextColor(160, 160, 160);
+      doc.text('EduFlow — Board Report — Confidential', 105, 290, { align: 'center' });
+
+      doc.save(`board-report-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (err) { alert('PDF generation failed. Please try again.'); }
+    setPdfLoading(false);
+  };
+
   const s = data?.pulse?.summary || {};
+  const fee = data?.fee?.stats || {};
+
   return (
     <ToolPage title="Board / Trust Meeting Report" subtitle="Consolidated school metrics for trust meetings">
       {!data ? (
         <div style={{ textAlign: 'center', padding: '40px 0' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 16, marginBottom: 8 }}>Board Meeting Report</h3>
-          <p style={{ color: '#64748B', fontSize: 12, marginBottom: 20 }}>Generate a comprehensive report combining all school metrics suitable for board/trust meetings</p>
-          <ActionBtn label={loading ? 'Generating...' : 'Generate Report'} onClick={generate} disabled={loading} />
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#e5e5e5', fontSize: 16, marginBottom: 8 }}>Board Meeting Report</h3>
+          <p style={{ color: '#737373', fontSize: 12, marginBottom: 20 }}>Fetches all school metrics — students, fees, attendance, staff, alerts, and defaulters</p>
+          {error && <div style={{ color: '#fbbf24', fontSize: 12, marginBottom: 12 }}>{error}</div>}
+          <ActionBtn label={loading ? 'Generating...' : 'Generate Full Report'} onClick={generate} disabled={loading} />
         </div>
       ) : (
         <div>
-          <div style={{ marginBottom: 16, color: '#64748B', fontSize: 12 }}>Generated: {data.generated}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 20 }}>
-            <StatCard value={s.total_students || 0} label="ENROLLED STUDENTS" color="#3B82F6" />
-            <StatCard value={s.attendance_rate || 'N/A'} label="ATTENDANCE RATE" color="#10B981" />
-            <StatCard value={data.fee?.stats?.collection_rate || 'N/A'} label="FEE COLLECTION" color="#10B981" />
-            <StatCard value={data.alerts?.critical_count || 0} label="CRITICAL ALERTS" color="#EF4444" />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+            <span style={{ color: '#737373', fontSize: 12 }}>Generated: {data.generated}</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <ActionBtn label={pdfLoading ? 'Exporting...' : 'Download PDF'} onClick={downloadPDF} disabled={pdfLoading} icon={<Download size={11} />} />
+              <ActionBtn label={loading ? 'Refreshing...' : 'Re-generate'} variant="secondary" onClick={generate} disabled={loading} />
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-            <StatCard value={data.fee?.stats?.total_collected || '₹0'} label="TOTAL COLLECTED" color="#10B981" />
-            <StatCard value={data.fee?.stats?.total_overdue || '₹0'} label="TOTAL OVERDUE" color="#EF4444" />
-            <StatCard value={s.total_staff || 0} label="TOTAL STAFF" color="#E2E8F0" />
+          {error && <div style={{ color: '#fbbf24', fontSize: 12, marginBottom: 12, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 8, padding: '8px 12px' }}>{error}</div>}
+
+          {/* Section 1 — School Overview */}
+          <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 12, padding: 18, marginBottom: 14 }}>
+            <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#e5e5e5', fontSize: 13, fontWeight: 700, marginBottom: 12 }}>School Overview</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+              <StatCard value={s.total_students || 0} label="ENROLLED STUDENTS" color="#4f8ff7" small />
+              <StatCard value={s.total_staff || 0} label="TOTAL STAFF" color="#e5e5e5" small />
+              <StatCard value={s.attendance_rate || 'N/A'} label="TODAY'S ATT." color="#34d399" small />
+              <StatCard value={data.attendance?.avg_attendance_rate || 'N/A'} label="AVG ATT. (30d)" color="#a78bfa" small />
+            </div>
           </div>
-          {data.alerts?.alerts?.length > 0 && (
-            <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 16, marginBottom: 14 }}>
-              <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#EF4444', fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Active Alerts ({data.alerts.total_alerts})</h3>
-              {data.alerts.alerts.map((a, i) => <div key={i} style={{ fontSize: 12, color: '#94A3B8', marginBottom: 4 }}>• {a.text}</div>)}
+
+          {/* Section 2 — Fee & Finance */}
+          <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 12, padding: 18, marginBottom: 14 }}>
+            <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#e5e5e5', fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Fee & Finance</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
+              <StatCard value={fee.total_collected || '₹0'} label="TOTAL COLLECTED" color="#34d399" small />
+              <StatCard value={fee.total_overdue || '₹0'} label="TOTAL OVERDUE" color="#f87171" small />
+              <StatCard value={fee.collection_rate || 'N/A'} label="COLLECTION RATE" color="#4f8ff7" small />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+              <StatCard value={fee.students_with_dues || 0} label="STUDENTS WITH DUES" color="#fbbf24" small />
+              <StatCard value={fee.overdue_60_days || 0} label="OVERDUE 60+ DAYS" color="#f87171" small />
+              <StatCard value={data.totalExp >= 100000 ? `₹${(data.totalExp / 100000).toFixed(1)}L` : `₹${(data.totalExp || 0).toLocaleString('en-IN')}`} label="TOTAL EXPENSES" color="#f87171" small />
+            </div>
+          </div>
+
+          {/* Section 3 — Staff */}
+          <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 12, padding: 18, marginBottom: 14 }}>
+            <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#e5e5e5', fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Staff Summary</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+              <StatCard value={(data.staff || []).filter(st => st.staff_type === 'teacher').length} label="TEACHERS" color="#4f8ff7" small />
+              <StatCard value={(data.staff || []).filter(st => st.staff_type !== 'teacher').length} label="NON-TEACHING" color="#a78bfa" small />
+              <StatCard value={(data.pulse?.staff_absent_today || []).length} label="ABSENT TODAY" color="#f87171" small />
+              <StatCard value={(data.pulse?.pending_leave_requests || []).length} label="PENDING LEAVES" color="#fbbf24" small />
+            </div>
+          </div>
+
+          {/* Section 4 — Class-wise Attendance */}
+          {(data.attendance?.class_stats_today || []).length > 0 && (
+            <DataTable title="Class-wise Attendance (Today)" headers={['Class', 'Present', 'Total', 'Rate']}
+              rows={(data.attendance.class_stats_today || []).map(c => [
+                c.class,
+                c.present,
+                c.total,
+                <span style={{ color: parseFloat(c.rate) >= 85 ? '#34d399' : '#f87171', fontWeight: 600 }}>{c.rate}</span>,
+              ])}
+            />
+          )}
+
+          {/* Section 5 — Alerts */}
+          {(data.alerts?.alerts || []).length > 0 && (
+            <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 11, padding: 16, marginBottom: 14 }}>
+              <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#f87171', fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Active Alerts ({data.alerts.total_alerts})</h3>
+              {data.alerts.alerts.map((a, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <Badge text={a.priority} color={a.priority === 'high' ? 'red' : a.priority === 'medium' ? 'yellow' : 'gray'} />
+                  <span style={{ fontSize: 12, color: '#a3a3a3' }}>{a.text}</span>
+                </div>
+              ))}
             </div>
           )}
-          <ActionBtn label="Re-generate" variant="secondary" onClick={generate} disabled={loading} />
+
+          {/* Section 6 — Top Defaulters */}
+          {(data.fee?.defaulters || []).length > 0 && (
+            <DataTable title="Top Fee Defaulters" headers={['Student', 'Class', 'Overdue Amount', 'Days Overdue']}
+              rows={(data.fee.defaulters || []).slice(0, 8).map(d => [
+                d.student_name,
+                d.class,
+                <span style={{ color: '#f87171', fontWeight: 600 }}>{d.amount_overdue_fmt}</span>,
+                <span style={{ color: d.days_overdue > 60 ? '#f87171' : '#fbbf24' }}>{d.days_overdue} days</span>,
+              ])}
+            />
+          )}
         </div>
       )}
     </ToolPage>
@@ -703,7 +1471,7 @@ export function YearEndTransition() {
       <div style={{ maxWidth: 520 }}>
         {!result ? (
           <>
-            <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 10, padding: '12px 16px', marginBottom: 20, fontSize: 12, color: '#FCD34D' }}>
+            <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 10, padding: '12px 16px', marginBottom: 20, fontSize: 12, color: '#fcd34d' }}>
               ⚠️ This will archive the current academic year (2025-26) and create a new one. All existing students and data are preserved.
             </div>
             <FormField label="New Academic Year Name" value={newYear} onChange={setNewYear} placeholder="e.g. 2026-27" required />
@@ -712,7 +1480,7 @@ export function YearEndTransition() {
               <FormField label="End Date" type="date" value={endDate} onChange={setEndDate} />
             </div>
             {confirmed && (
-              <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#FCA5A5' }}>
+              <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#fca5a5' }}>
                 Are you absolutely sure? Click again to confirm. This cannot be undone.
               </div>
             )}
@@ -722,11 +1490,11 @@ export function YearEndTransition() {
         ) : (
           <div style={{ textAlign: 'center', padding: '24px 0' }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>🎓</div>
-            <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#10B981', fontSize: 16, marginBottom: 8 }}>Year Transition Complete!</h3>
-            <p style={{ color: '#94A3B8', fontSize: 13, marginBottom: 16 }}>{result.message}</p>
-            <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 8, padding: '12px 16px', textAlign: 'left' }}>
-              <div style={{ fontSize: 12, color: '#E2E8F0' }}><b>New Year:</b> {result.new_year?.name}</div>
-              <div style={{ fontSize: 12, color: '#E2E8F0', marginTop: 4 }}><b>Students Carried Forward:</b> {result.students_carried_forward}</div>
+            <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#34d399', fontSize: 16, marginBottom: 8 }}>Year Transition Complete!</h3>
+            <p style={{ color: '#a3a3a3', fontSize: 13, marginBottom: 16 }}>{result.message}</p>
+            <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 8, padding: '12px 16px', textAlign: 'left' }}>
+              <div style={{ fontSize: 12, color: '#e5e5e5' }}><b>New Year:</b> {result.new_year?.name}</div>
+              <div style={{ fontSize: 12, color: '#e5e5e5', marginTop: 4 }}><b>Students Carried Forward:</b> {result.students_carried_forward}</div>
             </div>
           </div>
         )}
@@ -734,3 +1502,293 @@ export function YearEndTransition() {
     </ToolPage>
   );
 }
+
+export function AttendanceAlerts() {
+  const { currentUser } = useUser();
+  const [threshold, setThreshold] = useState(75);
+  const [days, setDays] = useState(30);
+  const [students, setStudents] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [fetched, setFetched] = useState(false);
+  const [twilioConfigured, setTwilioConfigured] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [smsForm, setSmsForm] = useState({ phone: '', message: '' });
+  const [sending, setSending] = useState(false);
+  const [smsResult, setSmsResult] = useState(null);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkTemplate, setBulkTemplate] = useState("Dear {name}'s parent, your child's attendance is {attendance}% which is below the required {threshold}%. Please ensure regular attendance. Contact school for more info.");
+  const [bulkSending, setBulkSending] = useState(false);
+  const [bulkResult, setBulkResult] = useState(null);
+  const [selectedRows, setSelectedRows] = useState([]);
+  const [viewMode, setViewMode] = useState('students');
+  const [smsLogs, setSmsLogs] = useState([]);
+
+  useEffect(() => {
+    fetch(`${API}/sms/config-status`, { headers: h(currentUser) })
+      .then(r => r.json())
+      .then(r => { if (r.success) setTwilioConfigured(r.data.configured); })
+      .catch(() => {});
+  }, []);
+
+  const fetchStudents = async () => {
+    setLoading(true);
+    setFetched(false);
+    try {
+      const res = await fetch(`${API}/attendance/low-attendance?threshold=${threshold}&days=${days}`, { headers: h(currentUser) });
+      const r = await res.json();
+      if (r.success) { setStudents(r.data || []); setFetched(true); setSelectedRows([]); }
+    } catch (e) {
+      console.error('low-attendance:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadLogs = async () => {
+    const r = await fetch(`${API}/sms/logs`, { headers: h(currentUser) }).then(r => r.json());
+    if (r.success) setSmsLogs(r.data || []);
+  };
+
+  const openSmsForm = (s) => {
+    setSelectedStudent(s);
+    setSmsResult(null);
+    setSmsForm({
+      phone: s.phone || '',
+      message: `Dear ${s.guardian_name || "Parent"}, your child ${s.student_name}'s attendance is ${s.attendance_rate}% which is below the required ${threshold}%. Please ensure regular attendance. Contact school for more info.`,
+    });
+  };
+
+  const handleSendSingle = async (e) => {
+    e.preventDefault();
+    if (!smsForm.phone) { setSmsResult({ error: 'Phone number is required' }); return; }
+    setSending(true);
+    setSmsResult(null);
+    try {
+      const res = await fetch(`${API}/sms/send-parent-message`, {
+        method: 'POST',
+        headers: h(currentUser),
+        body: JSON.stringify({
+          student_id: selectedStudent.student_id,
+          student_name: selectedStudent.student_name,
+          phone: smsForm.phone,
+          message: smsForm.message,
+        }),
+      }).then(r => r.json());
+      if (res.success) setSmsResult({ success: true, status: res.data?.status });
+      else setSmsResult({ error: res.detail || 'Failed to send' });
+    } catch (err) {
+      setSmsResult({ error: err.message });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleSendBulk = async () => {
+    const targets = selectedRows.length > 0
+      ? students.filter(s => selectedRows.includes(s.student_id))
+      : students;
+    if (!targets.length) return;
+    setBulkSending(true);
+    setBulkResult(null);
+    try {
+      const res = await fetch(`${API}/sms/send-bulk`, {
+        method: 'POST',
+        headers: h(currentUser),
+        body: JSON.stringify({
+          message_template: bulkTemplate,
+          recipients: targets.map(s => ({
+            student_id: s.student_id,
+            student_name: s.student_name,
+            phone: s.phone || '',
+            attendance: s.attendance_rate,
+            threshold,
+          })),
+        }),
+      }).then(r => r.json());
+      if (res.success) setBulkResult(res.data);
+      else setBulkResult({ error: res.detail || 'Failed' });
+    } catch (err) {
+      setBulkResult({ error: err.message });
+    } finally {
+      setBulkSending(false);
+    }
+  };
+
+  const toggleRow = (id) => setSelectedRows(p => p.includes(id) ? p.filter(r => r !== id) : [...p, id]);
+  const toggleAll = () => setSelectedRows(p => p.length === students.length ? [] : students.map(s => s.student_id));
+
+  return (
+    <ToolPage title="Attendance Alerts" subtitle="Find students below threshold & send SMS to parents">
+      {!twilioConfigured && (
+        <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#fbbf24' }}>
+          Warning: Twilio not configured. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER to .env to enable SMS.
+        </div>
+      )}
+
+      {/* Threshold Config */}
+      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 18, marginBottom: 16 }}>
+        <h4 style={{ color: 'var(--c-text)', fontSize: 13, fontWeight: 600, marginBottom: 14 }}>Alert Configuration</h4>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+              Attendance Threshold: <span style={{ color: '#f87171', fontWeight: 700 }}>{threshold}%</span>
+            </label>
+            <input type="range" min={50} max={95} step={5} value={threshold}
+              onChange={e => setThreshold(Number(e.target.value))}
+              style={{ width: 180, accentColor: '#f87171' }} />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+              Look-back Period
+            </label>
+            <select value={days} onChange={e => setDays(Number(e.target.value))}
+              style={{ background: 'var(--c-deep)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '7px 10px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
+              {[7, 14, 30, 60, 90].map(d => <option key={d} value={d}>{d} days</option>)}
+            </select>
+          </div>
+          <button onClick={fetchStudents} disabled={loading}
+            style={{ padding: '8px 18px', borderRadius: 6, background: '#f87171', border: '1px solid #f87171', color: '#fff', fontSize: 12, cursor: loading ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: loading ? 0.7 : 1 }}>
+            {loading ? 'Loading...' : 'Find Students'}
+          </button>
+        </div>
+      </div>
+
+      {fetched && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16, maxWidth: 500 }}>
+            <StatCard value={students.length} label="BELOW THRESHOLD" color="#f87171" />
+            <StatCard value={`${threshold}%`} label="THRESHOLD" color="#fbbf24" />
+            <StatCard value={`${days}d`} label="PERIOD" color="#a78bfa" />
+          </div>
+
+          {/* View Tabs */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14, borderBottom: '1px solid var(--c-border)', paddingBottom: 12 }}>
+            {['students', 'bulk', 'logs'].map(v => (
+              <button key={v} onClick={() => { setViewMode(v); if (v === 'logs') loadLogs(); }}
+                style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === v ? '1px solid #a78bfa' : '1px solid var(--c-border)', background: viewMode === v ? 'rgba(167,139,250,0.1)' : 'var(--c-bg)', color: viewMode === v ? '#a78bfa' : 'var(--c-muted)', fontSize: 12, cursor: 'pointer', textTransform: 'capitalize' }}>
+                {v === 'students' ? 'Students' : v === 'bulk' ? 'Bulk SMS' : 'SMS Logs'}
+              </button>
+            ))}
+          </div>
+
+          {viewMode === 'students' && (
+            <>
+              {selectedStudent && (
+                <div style={{ background: 'var(--c-bg)', border: '1px solid #a78bfa', borderRadius: 11, padding: 18, marginBottom: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <h4 style={{ color: 'var(--c-text)', fontSize: 13, fontWeight: 600 }}>Send SMS — {selectedStudent.student_name}</h4>
+                    <button onClick={() => { setSelectedStudent(null); setSmsResult(null); }} style={{ background: 'transparent', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 16 }}>x</button>
+                  </div>
+                  <form onSubmit={handleSendSingle}>
+                    <div style={{ marginBottom: 10 }}>
+                      <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>PARENT PHONE</label>
+                      <input value={smsForm.phone} onChange={e => setSmsForm(p => ({ ...p, phone: e.target.value }))}
+                        placeholder="e.g. 9876543210" required
+                        style={{ width: '100%', background: 'var(--c-deep)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '8px 10px', color: 'var(--c-text)', fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+                    </div>
+                    <div style={{ marginBottom: 10 }}>
+                      <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>MESSAGE ({smsForm.message.length}/160)</label>
+                      <textarea value={smsForm.message} onChange={e => setSmsForm(p => ({ ...p, message: e.target.value }))}
+                        maxLength={320} required rows={3}
+                        style={{ width: '100%', background: 'var(--c-deep)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '8px 10px', color: 'var(--c-text)', fontSize: 12, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }} />
+                    </div>
+                    {smsResult && (
+                      <div style={{ padding: '8px 12px', borderRadius: 6, marginBottom: 10, fontSize: 12,
+                        background: smsResult.success ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                        border: `1px solid ${smsResult.success ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                        color: smsResult.success ? '#34d399' : '#f87171' }}>
+                        {smsResult.success ? `SMS ${smsResult.status === 'not_configured' ? 'logged (Twilio not configured)' : 'sent successfully!'}` : `Error: ${smsResult.error}`}
+                      </div>
+                    )}
+                    <button type="submit" disabled={sending}
+                      style={{ padding: '8px 16px', borderRadius: 6, background: '#a78bfa', border: '1px solid #a78bfa', color: '#fff', fontSize: 12, cursor: sending ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: sending ? 0.6 : 1 }}>
+                      {sending ? 'Sending...' : 'Send SMS'}
+                    </button>
+                  </form>
+                </div>
+              )}
+              <DataTable
+                headers={['Student', 'Class', 'Attendance', 'Present/Total', 'Parent Phone', 'Action']}
+                rows={students.map(s => [
+                  s.student_name,
+                  s.class,
+                  <span style={{ color: s.attendance_rate < 60 ? '#f87171' : '#fbbf24', fontWeight: 600 }}>{s.attendance_rate}%</span>,
+                  `${s.present_days}/${s.total_days}`,
+                  s.phone || <span style={{ color: 'var(--c-faint)' }}>N/A</span>,
+                  <button onClick={() => openSmsForm(s)}
+                    style={{ background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: 5, padding: '4px 10px', color: '#a78bfa', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>
+                    SMS Parent
+                  </button>
+                ])}
+                emptyMsg="No students below threshold"
+              />
+            </>
+          )}
+
+          {viewMode === 'bulk' && (
+            <div style={{ maxWidth: 600 }}>
+              <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 18, marginBottom: 14 }}>
+                <h4 style={{ color: 'var(--c-text)', fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Bulk SMS to Parents</h4>
+                <p style={{ color: 'var(--c-faint)', fontSize: 12, marginBottom: 12 }}>
+                  Use <code style={{ background: 'var(--c-deep)', padding: '1px 4px', borderRadius: 3, color: 'var(--c-muted)' }}>{'{name}'}</code>, <code style={{ background: 'var(--c-deep)', padding: '1px 4px', borderRadius: 3, color: 'var(--c-muted)' }}>{'{attendance}'}</code>, and <code style={{ background: 'var(--c-deep)', padding: '1px 4px', borderRadius: 3, color: 'var(--c-muted)' }}>{'{threshold}'}</code> as placeholders.
+                </p>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>MESSAGE TEMPLATE ({bulkTemplate.length}/160)</label>
+                  <textarea value={bulkTemplate} onChange={e => setBulkTemplate(e.target.value)} rows={4} maxLength={320}
+                    style={{ width: '100%', background: 'var(--c-deep)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '8px 10px', color: 'var(--c-text)', fontSize: 12, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }} />
+                </div>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>RECIPIENTS</label>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button onClick={toggleAll}
+                      style={{ padding: '5px 10px', borderRadius: 5, border: '1px solid var(--c-border)', background: 'var(--c-deep)', color: 'var(--c-muted)', fontSize: 11, cursor: 'pointer' }}>
+                      {selectedRows.length === students.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                    <span style={{ color: 'var(--c-faint)', fontSize: 12, alignSelf: 'center' }}>
+                      {selectedRows.length > 0 ? `${selectedRows.length} selected` : `All ${students.length} students`}
+                    </span>
+                  </div>
+                </div>
+                {bulkResult && (
+                  <div style={{ padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 12, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', color: 'var(--c-text)' }}>
+                    {bulkResult.error ? (
+                      <span style={{ color: '#f87171' }}>Error: {bulkResult.error}</span>
+                    ) : (
+                      <>Sent: <strong style={{ color: '#34d399' }}>{bulkResult.sent}</strong> &nbsp; Failed: <strong style={{ color: '#f87171' }}>{bulkResult.failed}</strong></>
+                    )}
+                  </div>
+                )}
+                <button onClick={handleSendBulk} disabled={bulkSending || students.length === 0}
+                  style={{ padding: '9px 18px', borderRadius: 6, background: '#a78bfa', border: '1px solid #a78bfa', color: '#fff', fontSize: 12, cursor: bulkSending ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: bulkSending ? 0.6 : 1 }}>
+                  {bulkSending ? 'Sending...' : `Send to ${selectedRows.length > 0 ? selectedRows.length : students.length} Parents`}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {viewMode === 'logs' && (
+            <DataTable headers={['Student', 'Phone', 'Status', 'Sent At', 'By']}
+              rows={smsLogs.map(l => [
+                l.student_name,
+                l.phone,
+                <Badge text={l.status} color={l.status === 'sent' ? 'green' : l.status === 'not_configured' ? 'yellow' : 'red'} />,
+                l.sent_at?.slice(0, 16).replace('T', ' '),
+                l.sent_by_name || 'Admin',
+              ])}
+              emptyMsg="No SMS logs yet"
+            />
+          )}
+        </>
+      )}
+
+      {!fetched && !loading && (
+        <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--c-faint)', fontSize: 13 }}>
+          Set threshold above and click "Find Students" to get started.
+        </div>
+      )}
+    </ToolPage>
+  );
+}
+
+// Re-export SmartFeeDefaulter from AdminTools so owner can use it
+export { SmartFeeDefaulter } from './AdminTools';

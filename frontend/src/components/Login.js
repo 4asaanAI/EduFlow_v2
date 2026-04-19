@@ -1,204 +1,299 @@
 import React, { useState } from 'react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { Sparkles, KeyRound, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
-
-const ROLES = [
-  { key: 'owner',   label: 'Owner',   color: '#F97316', icon: '👑', free: true,  hint: 'Click to enter' },
-  { key: 'admin',   label: 'Admin',   color: '#3B82F6', icon: '🛡️', free: true,  hint: 'Click to enter' },
-  { key: 'teacher', label: 'Teacher', color: '#10B981', icon: '📚', free: false, hint: 'Enter name & password' },
-  { key: 'student', label: 'Student', color: '#8B5CF6', icon: '🎓', free: false, hint: 'Enter admission no & password' },
+// All seeded accounts — grouped by role
+const CREDENTIAL_GROUPS = [
+  {
+    role: 'Owner',
+    color: '#fb923c',
+    accounts: [
+      { label: 'Aman Sharma', username: 'owner', password: 'owner@123', note: 'Full access' },
+    ],
+  },
+  {
+    role: 'Admin',
+    color: '#4f8ff7',
+    accounts: [
+      { label: 'Priya Sharma', username: 'admin', password: 'admin@123', note: 'School management' },
+    ],
+  },
+  {
+    role: 'Teacher',
+    color: '#34d399',
+    accounts: [
+      { label: 'Rajesh Kumar', username: 'Rajesh Kumar', password: 'teacher@123', note: 'Class 9A · Math' },
+      { label: 'Sunita Devi', username: 'Sunita Devi', password: 'teacher@123', note: 'Class 9B · English' },
+      { label: 'Manoj Tiwari', username: 'Manoj Tiwari', password: 'teacher@123', note: 'Class 10A · Science' },
+      { label: 'Deepa Verma', username: 'Deepa Verma', password: 'teacher@123', note: 'Class 10B · Hindi' },
+      { label: 'Ankit Sharma', username: 'Ankit Sharma', password: 'teacher@123', note: 'Class 11A · SST' },
+    ],
+  },
+  {
+    role: 'Student',
+    color: '#a78bfa',
+    accounts: [
+      { label: 'Rahul Singh', username: 'ADM20250001', password: 'student@123', note: 'Class 9A · Roll 1' },
+      { label: 'Sneha Kumari', username: 'ADM20250002', password: 'student@123', note: 'Class 9A · Roll 2' },
+      { label: 'Sohail Khan', username: 'ADM20250011', password: 'student@123', note: 'Class 9B · Roll 1' },
+    ],
+  },
 ];
 
 export default function Login() {
-  const { login } = useUser();
+  const { loginPassword } = useUser();
   const { isDark } = useTheme();
-  const [activeRole, setActiveRole] = useState('owner');
+
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [expandedGroup, setExpandedGroup] = useState(null);
 
-  const role = ROLES.find(r => r.key === activeRole);
+  const bg = isDark ? '#111111' : '#f5f5f5';
+  const card = isDark ? '#1a1a1a' : '#ffffff';
+  const border = isDark ? '#2e2e2e' : '#e5e5e5';
+  const text = isDark ? '#f5f5f5' : '#171717';
+  const muted = isDark ? '#666' : '#a3a3a3';
+  const secondary = isDark ? '#a0a0a0' : '#525252';
+  const inputBg = isDark ? '#252525' : '#fafafa';
+  const inputBorder = isDark ? '#333' : '#e5e5e5';
+  const rowHover = isDark ? '#252525' : '#f9fafb';
+  const accent = '#4f8ff7';
 
-  const handleRoleChange = (key) => {
-    setActiveRole(key);
-    setUsername('');
-    setPassword('');
-    setError('');
+  const inputStyle = {
+    width: '100%', padding: '12px 14px', background: inputBg,
+    border: `1px solid ${inputBorder}`, borderRadius: 10, color: text,
+    fontSize: 15, outline: 'none', boxSizing: 'border-box',
+    transition: 'border-color 0.2s ease',
   };
+
+  const buttonStyle = (disabled) => ({
+    width: '100%', padding: '13px', borderRadius: 12, border: 'none',
+    background: disabled ? muted : (isDark ? '#f5f5f5' : '#171717'),
+    color: disabled ? '#fff' : (isDark ? '#171717' : '#fff'),
+    fontSize: 14, fontWeight: 600,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    transition: 'all 0.2s ease', opacity: disabled ? 0.7 : 1,
+    letterSpacing: '-0.01em',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+  });
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (!username.trim() || !password.trim()) {
+      setError('Enter username and password');
+      return;
+    }
     setError('');
     setLoading(true);
     try {
-      const res = await fetch(`${API}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: activeRole, username, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.detail || 'Login failed');
-      } else {
-        login(data.user);
-      }
-    } catch {
-      setError('Cannot connect to server. Is the backend running?');
+      await loginPassword(username.trim(), password.trim());
+    } catch (err) {
+      setError(err.message);
     }
     setLoading(false);
   };
 
-  const bg = isDark ? '#0A0A0F' : '#F8F9FC';
-  const card = isDark ? '#111118' : '#FFFFFF';
-  const border = isDark ? '#1E1E2E' : '#E2E8F0';
-  const text = isDark ? '#E2E8F0' : '#0F172A';
-  const muted = isDark ? '#64748B' : '#94A3B8';
-  const inputBg = isDark ? '#161622' : '#F8F9FC';
-  const inputBorder = isDark ? '#2A2A3E' : '#E2E8F0';
+  const fillCredentials = (account) => {
+    setUsername(account.username);
+    setPassword(account.password);
+    setError('');
+  };
+
+  const toggleGroup = (role) => {
+    setExpandedGroup(prev => prev === role ? null : role);
+  };
 
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: bg, fontFamily: 'Outfit, sans-serif', padding: 20,
+      background: bg, padding: 20,
     }}>
       <div style={{ width: '100%', maxWidth: 440 }}>
-        {/* Logo / Branding */}
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+        {/* Logo */}
+        <div className="fade-in" style={{ textAlign: 'center', marginBottom: 40 }}>
           <div style={{
-            width: 56, height: 56, borderRadius: 14, background: 'linear-gradient(135deg, #3B82F6, #8B5CF6)',
+            width: 52, height: 52, borderRadius: 16,
+            background: 'linear-gradient(135deg, #4f8ff7, #a78bfa)',
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 26, marginBottom: 12, boxShadow: '0 8px 24px rgba(59,130,246,0.3)',
-          }}>📚</div>
-          <h1 style={{ fontSize: 26, fontWeight: 700, color: text, margin: 0 }}>EduFlow</h1>
-          <p style={{ fontSize: 13, color: muted, marginTop: 4 }}>The Aaryans CBSE School</p>
+            marginBottom: 16, boxShadow: '0 8px 24px rgba(79,143,247,0.25)',
+          }}>
+            <Sparkles size={24} color="#fff" />
+          </div>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: text, margin: 0, letterSpacing: '-0.03em' }}>EduFlow</h1>
+          <p style={{ fontSize: 14, color: muted, marginTop: 6 }}>The Aaryans CBSE School</p>
         </div>
 
-        {/* Card */}
-        <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 16, overflow: 'hidden', boxShadow: isDark ? '0 8px 32px rgba(0,0,0,0.4)' : '0 4px 24px rgba(0,0,0,0.08)' }}>
-          {/* Role Tabs */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', borderBottom: `1px solid ${border}` }}>
-            {ROLES.map(r => (
-              <button
-                key={r.key}
-                onClick={() => handleRoleChange(r.key)}
-                style={{
-                  padding: '12px 4px', border: 'none', background: activeRole === r.key
-                    ? isDark ? '#1A1A2E' : '#F0F6FF'
-                    : 'transparent',
-                  borderBottom: activeRole === r.key ? `2px solid ${r.color}` : '2px solid transparent',
-                  color: activeRole === r.key ? r.color : muted,
-                  fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                  transition: 'all 0.15s', textAlign: 'center',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-                }}
-              >
-                <span style={{ fontSize: 16 }}>{r.icon}</span>
-                {r.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Form */}
-          <div style={{ padding: 28 }}>
-            <p style={{ fontSize: 12, color: muted, marginBottom: 20, textAlign: 'center' }}>{role.hint}</p>
+        {/* Login Card */}
+        <div className="fade-in" style={{
+          background: card, border: `1px solid ${border}`, borderRadius: 20,
+          overflow: 'hidden', boxShadow: isDark ? 'var(--shadow-lg)' : 'var(--shadow-md)',
+        }}>
+          <div style={{ padding: 32 }}>
+            <div style={{ textAlign: 'center', marginBottom: 28 }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: 14, margin: '0 auto 14px',
+                background: `${accent}12`, display: 'flex', alignItems: 'center',
+                justifyContent: 'center', border: `1px solid ${accent}20`,
+              }}>
+                <KeyRound size={22} color={accent} />
+              </div>
+              <h2 style={{ fontSize: 18, fontWeight: 600, color: text, margin: '0 0 4px' }}>
+                Sign In
+              </h2>
+              <p style={{ fontSize: 13, color: muted, margin: 0 }}>
+                Enter your credentials to continue
+              </p>
+            </div>
 
             <form onSubmit={handleLogin}>
-              {!role.free && (
-                <>
-                  <div style={{ marginBottom: 14 }}>
-                    <label style={{ display: 'block', fontSize: 10, color: muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
-                      {activeRole === 'student' ? 'Admission Number' : 'Full Name'}
-                    </label>
-                    <input
-                      type="text"
-                      value={username}
-                      onChange={e => setUsername(e.target.value)}
-                      placeholder={activeRole === 'student' ? 'e.g. ADM20250001' : 'e.g. Rajesh Kumar'}
-                      required
-                      style={{
-                        width: '100%', padding: '10px 14px', background: inputBg,
-                        border: `1px solid ${inputBorder}`, borderRadius: 8, color: text,
-                        fontSize: 13, outline: 'none', boxSizing: 'border-box',
-                      }}
-                    />
-                  </div>
-                  <div style={{ marginBottom: 20 }}>
-                    <label style={{ display: 'block', fontSize: 10, color: muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
-                      Password
-                    </label>
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={e => setPassword(e.target.value)}
-                      placeholder={activeRole === 'student' ? 'Same as admission number' : 'Enter password'}
-                      required
-                      style={{
-                        width: '100%', padding: '10px 14px', background: inputBg,
-                        border: `1px solid ${inputBorder}`, borderRadius: 8, color: text,
-                        fontSize: 13, outline: 'none', boxSizing: 'border-box',
-                      }}
-                    />
-                  </div>
-                </>
-              )}
-
-              {role.free && (
-                <div style={{ textAlign: 'center', padding: '16px 0 20px' }}>
-                  <div style={{ fontSize: 36, marginBottom: 8 }}>{role.icon}</div>
-                  <p style={{ fontSize: 13, color: text, fontWeight: 600 }}>
-                    {role.label} — No password required
-                  </p>
-                  <p style={{ fontSize: 11, color: muted, marginTop: 4 }}>
-                    Direct access granted
-                  </p>
-                </div>
-              )}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 12, color: secondary, fontWeight: 600, marginBottom: 8 }}>
+                  Username
+                </label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={e => { setUsername(e.target.value); setError(''); }}
+                  placeholder="Username, name, or admission number"
+                  required
+                  autoFocus
+                  autoComplete="username"
+                  style={inputStyle}
+                  onFocus={e => e.target.style.borderColor = accent}
+                  onBlur={e => e.target.style.borderColor = inputBorder}
+                />
+              </div>
+              <div style={{ marginBottom: 24 }}>
+                <label style={{ display: 'block', fontSize: 12, color: secondary, fontWeight: 600, marginBottom: 8 }}>
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={e => { setPassword(e.target.value); setError(''); }}
+                  placeholder="Enter password"
+                  required
+                  autoComplete="current-password"
+                  style={inputStyle}
+                  onFocus={e => e.target.style.borderColor = accent}
+                  onBlur={e => e.target.style.borderColor = inputBorder}
+                />
+              </div>
 
               {error && (
-                <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>
-                  <p style={{ fontSize: 12, color: '#EF4444', margin: 0 }}>{error}</p>
+                <div style={{
+                  background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)',
+                  borderRadius: 10, padding: '10px 14px', marginBottom: 16,
+                }}>
+                  <p style={{ fontSize: 13, color: '#f87171', margin: 0 }}>{error}</p>
                 </div>
               )}
 
-              <button
-                type="submit"
-                disabled={loading}
-                style={{
-                  width: '100%', padding: '11px', borderRadius: 9, border: 'none',
-                  background: loading ? muted : role.color,
-                  color: '#fff', fontSize: 14, fontWeight: 600,
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  transition: 'opacity 0.15s', opacity: loading ? 0.7 : 1,
-                }}
-              >
-                {loading ? 'Signing in...' : `Sign in as ${role.label}`}
+              <button type="submit" disabled={loading} style={buttonStyle(loading)}>
+                {loading && <Loader2 size={16} className="spin" />}
+                {loading ? 'Signing in...' : 'Sign In'}
               </button>
             </form>
           </div>
         </div>
 
-        {/* Quick credentials hint */}
-        <div style={{ marginTop: 20, background: isDark ? '#0E0E1A' : '#F1F5F9', border: `1px solid ${border}`, borderRadius: 10, padding: '14px 16px' }}>
-          <p style={{ fontSize: 10, color: muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Demo Credentials</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-            {[
-              { label: 'Teacher 1', user: 'Rajesh Kumar', pass: 'teacher@123', color: '#10B981' },
-              { label: 'Teacher 2', user: 'Sunita Devi', pass: 'teacher@123', color: '#10B981' },
-              { label: 'Student 1', user: 'ADM20250001', pass: 'ADM20250001', color: '#8B5CF6' },
-              { label: 'Student 2', user: 'ADM20250002', pass: 'ADM20250002', color: '#8B5CF6' },
-            ].map(c => (
-              <div key={c.label} style={{ background: isDark ? '#161622' : '#fff', border: `1px solid ${border}`, borderRadius: 7, padding: '8px 10px' }}>
-                <p style={{ fontSize: 9, color: c.color, fontWeight: 700, margin: '0 0 3px', textTransform: 'uppercase' }}>{c.label}</p>
-                <p style={{ fontSize: 10, color: text, margin: '0 0 1px', fontFamily: 'monospace' }}>{c.user}</p>
-                <p style={{ fontSize: 9, color: muted, margin: 0, fontFamily: 'monospace' }}>{c.pass}</p>
-              </div>
-            ))}
+        {/* Demo Credentials — grouped by role */}
+        <div className="fade-in" style={{
+          marginTop: 20, background: card, border: `1px solid ${border}`,
+          borderRadius: 16, overflow: 'hidden',
+        }}>
+          <div style={{ padding: '14px 18px 10px', borderBottom: `1px solid ${border}` }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: muted, margin: 0, letterSpacing: '0.06em' }}>
+              DEMO CREDENTIALS — CLICK TO FILL
+            </p>
           </div>
+
+          {CREDENTIAL_GROUPS.map((group, gi) => {
+            const isExpanded = expandedGroup === group.role;
+            const isLast = gi === CREDENTIAL_GROUPS.length - 1;
+
+            return (
+              <div key={group.role} style={{ borderBottom: isLast ? 'none' : `1px solid ${border}` }}>
+                {/* Role header — clickable to expand/collapse */}
+                <button
+                  onClick={() => toggleGroup(group.role)}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '12px 18px', background: 'transparent', border: 'none',
+                    cursor: 'pointer', transition: 'background 0.15s ease',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = rowHover}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{
+                      width: 8, height: 8, borderRadius: '50%', background: group.color, flexShrink: 0,
+                    }} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: group.color }}>{group.role}</span>
+                    <span style={{ fontSize: 11, color: muted }}>
+                      {group.accounts.length} account{group.accounts.length > 1 ? 's' : ''}
+                    </span>
+                    {/* Quick-fill for single-account roles */}
+                    {group.accounts.length === 1 && (
+                      <span
+                        style={{ fontSize: 11, color: secondary, fontFamily: 'monospace' }}
+                        onClick={e => { e.stopPropagation(); fillCredentials(group.accounts[0]); }}
+                      >
+                        {group.accounts[0].username}
+                      </span>
+                    )}
+                  </div>
+                  {group.accounts.length > 1
+                    ? (isExpanded ? <ChevronUp size={14} color={muted} /> : <ChevronDown size={14} color={muted} />)
+                    : null}
+                </button>
+
+                {/* Expanded account list */}
+                {(isExpanded || group.accounts.length === 1) && (
+                  <div style={{ paddingBottom: 6 }}>
+                    {group.accounts.map((account, ai) => (
+                      <div
+                        key={ai}
+                        onClick={() => fillCredentials(account)}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '8px 18px 8px 36px', cursor: 'pointer',
+                          transition: 'background 0.15s ease',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = rowHover}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <div>
+                          <p style={{ fontSize: 12, color: text, fontWeight: 500, margin: '0 0 2px' }}>
+                            {account.label}
+                          </p>
+                          <p style={{ fontSize: 11, color: muted, margin: 0 }}>{account.note}</p>
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
+                          <p style={{ fontSize: 11, color: secondary, margin: '0 0 2px', fontFamily: 'monospace' }}>
+                            {account.username}
+                          </p>
+                          <p style={{ fontSize: 10, color: muted, margin: 0, fontFamily: 'monospace' }}>
+                            {account.password}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spin { animation: spin 1s linear infinite; }
+      `}</style>
     </div>
   );
 }

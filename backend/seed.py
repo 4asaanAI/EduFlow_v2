@@ -5,6 +5,7 @@ Run: python seed.py
 import asyncio
 import os
 import uuid
+import bcrypt
 from datetime import datetime, date, timedelta
 from dotenv import load_dotenv
 from pathlib import Path
@@ -21,6 +22,10 @@ def gid():
     return str(uuid.uuid4())
 
 
+def hash_pw(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
 def today_minus(days):
     return (date.today() - timedelta(days=days)).strftime("%Y-%m-%d")
 
@@ -31,9 +36,17 @@ def today_plus(days):
 
 TODAY = date.today().strftime("%Y-%m-%d")
 
+# ─── Demo credentials (displayed on login screen) ───────────────────────────
+DEMO_CREDENTIALS = {
+    "owner": {"username": "owner", "password": "owner@123"},
+    "admin": {"username": "admin", "password": "admin@123"},
+    "teacher": {"username": "Rajesh Kumar", "password": "teacher@123"},
+    "student": {"username": "ADM20250001", "password": "student@123"},
+}
+
 
 async def seed():
-    client = AsyncIOMotorClient(MONGO_URL)
+    client = AsyncIOMotorClient(MONGO_URL, serverSelectionTimeoutMS=10000, retryWrites=True)
     db = client[DB_NAME]
 
     # Clear existing data
@@ -41,7 +54,7 @@ async def seed():
                 "staff", "student_attendance", "staff_attendance", "fee_structures",
                 "fee_transactions", "conversations", "messages", "leave_requests",
                 "enquiries", "announcements", "school_settings", "exam_results", "exams",
-                "auth_users", "custom_forms", "form_responses"]:
+                "auth_users", "custom_forms", "form_responses", "login_attempts"]:
         await db[col].delete_many({})
 
     print("Cleared existing data...")
@@ -91,6 +104,30 @@ async def seed():
                        "role": "teacher", "phone": f"98765432{30+i}", "preferred_language": "en", "is_active": True})
 
     await db.users.insert_many(users)
+
+    # ─── Auth users (ALL with bcrypt hashed passwords) ───────────────────────
+
+    # Owner auth
+    await db.auth_users.insert_one({
+        "id": gid(),
+        "username": "owner",
+        "username_lower": "owner",
+        "password_hash": hash_pw("owner@123"),
+        "role": "owner",
+        "phone": "9876543210",
+        "user_info": {"id": owner_id, "name": "Aman Sharma", "role": "owner", "initials": "AS"},
+    })
+
+    # Admin auth
+    await db.auth_users.insert_one({
+        "id": gid(),
+        "username": "admin",
+        "username_lower": "admin",
+        "password_hash": hash_pw("admin@123"),
+        "role": "admin",
+        "phone": "9876543211",
+        "user_info": {"id": admin_id, "name": "Priya Sharma", "role": "admin", "initials": "PS"},
+    })
 
     # Classes
     class_data = [
@@ -143,20 +180,24 @@ async def seed():
             "created_at": datetime.now().isoformat(),
         })
 
-    # Auth users for teachers
+    # Auth users for teachers (bcrypt hashed)
     teacher_info = [
         ("user-teacher-001", "Rajesh Kumar", "RK"),
-        ("user-teacher-002", "Sunita Devi",  "SD"),
+        ("user-teacher-002", "Sunita Devi", "SD"),
         ("user-teacher-003", "Manoj Tiwari", "MT"),
-        ("user-teacher-004", "Deepa Verma",  "DV"),
+        ("user-teacher-004", "Deepa Verma", "DV"),
         ("user-teacher-005", "Ankit Sharma", "AS"),
     ]
+    teacher_password_hash = hash_pw("teacher@123")
     teacher_auth_docs = []
     for uid, name, initials in teacher_info:
         teacher_auth_docs.append({
-            "id": gid(), "username": name, "password": "teacher@123",
+            "id": gid(),
+            "username": name,
+            "username_lower": name.lower(),
+            "password_hash": teacher_password_hash,
             "role": "teacher",
-            "user_info": {"id": uid, "name": name, "role": "teacher", "initials": initials}
+            "user_info": {"id": uid, "name": name, "role": "teacher", "initials": initials},
         })
     await db.auth_users.insert_many(teacher_auth_docs)
 
@@ -170,6 +211,7 @@ async def seed():
     student_ids = []
     idx = 0
     all_classes = list(class_ids.items())
+    student_password_hash = hash_pw("student@123")
     for class_key, cid in all_classes:
         count = 10 if "A" in class_key else 6
         for j in range(count):
@@ -203,35 +245,40 @@ async def seed():
 
     print(f"Created {idx} students across {len(class_ids)} classes")
 
-    # Auth users for students (password = admission number)
+    # Auth users for students (all use "student@123" password, bcrypt hashed)
     student_auth_docs = []
     for sid, cid, sname, adm, uid in student_ids:
         initials = "".join(w[0] for w in sname.split())[:2].upper()
         student_auth_docs.append({
-            "id": gid(), "username": adm, "password": adm,
+            "id": gid(),
+            "username": adm,
+            "username_lower": adm.lower(),
+            "password_hash": student_password_hash,
             "role": "student",
-            "user_info": {"id": uid or sid, "name": sname, "role": "student", "initials": initials}
+            "user_info": {"id": uid or sid, "name": sname, "role": "student", "initials": initials},
         })
     await db.auth_users.insert_many(student_auth_docs)
     print(f"Created {len(student_auth_docs)} student auth entries and {len(teacher_auth_docs)} teacher auth entries")
+
+    # Create index for case-insensitive login
+    await db.auth_users.create_index("username_lower")
 
     # Staff attendance (last 30 days)
     for days_ago in range(30):
         d = today_minus(days_ago)
         day_of_week = (date.today() - timedelta(days=days_ago)).weekday()
-        if day_of_week >= 5:  # skip weekends
+        if day_of_week >= 5:
             continue
         for staff_rec in staff_data:
             staff_id = staff_rec[0]
-            # Occasional absences/late
             import random
             random.seed(days_ago * 100 + hash(staff_id) % 100)
             if days_ago > 0:
                 r = random.random()
                 if staff_id == "staff-004" and days_ago in [2, 4, 6, 8]:
-                    status = "absent"  # Sunita Devi pattern
+                    status = "absent"
                 elif staff_id == "staff-005" and days_ago in [1, 3, 5, 7]:
-                    status = "late"   # Manoj Kumar late pattern
+                    status = "late"
                 elif r < 0.03:
                     status = "absent"
                 elif r < 0.08:
@@ -293,7 +340,7 @@ async def seed():
             import random
             random.seed(i * 10 + m_idx)
             r = random.random()
-            if m_idx < 2:  # older months mostly paid
+            if m_idx < 2:
                 status = "paid" if r > 0.15 else "overdue"
             elif m_idx == 2:
                 status = "paid" if r > 0.25 else ("overdue" if r < 0.15 else "pending")
@@ -367,7 +414,6 @@ async def seed():
         "created_at": datetime.now().isoformat(),
     })
 
-    first_class_id = list(class_ids.values())[0]
     first_student_id = student_ids[0][0]
     for subj_key, subj_id in list(subject_ids.items())[:5]:
         if list(class_ids.values())[0] in subj_key or subj_key.startswith("Class 9-A"):
@@ -403,24 +449,12 @@ async def seed():
         "updated_at": today_minus(1) + "T14:10:00",
     })
 
-    conv_id_3 = gid()
-    await db.conversations.insert_one({
-        "id": conv_id_3, "user_id": owner_id,
-        "title": "Fee collection report for March",
-        "is_pinned": False, "is_starred": False,
-        "created_at": today_minus(1) + "T16:00:00",
-        "updated_at": today_minus(1) + "T16:05:00",
-    })
-
-    print("✅ Seed complete! Summary:")
-    print(f"  - Academic Year: 2025-26")
-    print(f"  - Classes: {len(class_ids)}")
-    print(f"  - Students: {idx}")
-    print(f"  - Staff: {len(staff_data)}")
-    print(f"  - Attendance records created for last 30 days")
-    print(f"  - Fee transactions created")
-    print(f"  - Leave requests: {len(leave_staff)}")
-    print(f"  - Enquiries: {len(enquiries_data)}")
+    print("Seed complete! Demo credentials:")
+    print(f"  Owner:   username=owner        password=owner@123")
+    print(f"  Admin:   username=admin        password=admin@123")
+    print(f"  Teacher: username=Rajesh Kumar password=teacher@123")
+    print(f"  Student: username=ADM20250001  password=student@123")
+    print(f"\n  Classes: {len(class_ids)}, Students: {idx}, Staff: {len(staff_data)}")
 
     client.close()
 

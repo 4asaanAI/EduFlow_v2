@@ -1,19 +1,26 @@
 /* EduFlow — Light Theme overrides */
 [data-theme="light"] {
-  --bg-main: #F8F9FC;
-  --bg-sidebar: #FFFFFF;
-  --bg-card: #FFFFFF;
-  --bg-popover: #F1F5F9;
-  --bg-input: #F1F5F9;
-  --border: #E2E8F0;
-  --border-subtle: #EEF2F7;
-  --text-primary: #0F172A;
-  --text-secondary: #475569;
-  --text-muted: #94A3B8;
+  --bg-main: #f5f5f5;
+  --bg-sidebar: #ffffff;
+  --bg-card: #ffffff;
+  --bg-popover: #fafafa;
+  --bg-input: #fafafa;
+  --bg-hover: rgba(0,0,0,0.03);
+  --bg-active: rgba(0,0,0,0.06);
+  --border: #e5e5e5;
+  --border-subtle: #eeeeee;
+  --text-primary: #171717;
+  --text-secondary: #525252;
+  --text-muted: #a3a3a3;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.1);
+  --shadow-xl: 0 24px 64px rgba(0,0,0,0.12);
 }
-[data-theme="light"] body { background: #F8F9FC; }
-[data-theme="light"] .prose-chat { color: #475569; }
-[data-theme="light"] .prose-chat strong { color: #0F172A; }
-[data-theme="light"] .prose-chat tbody td { color: #475569; }
-[data-theme="light"] .prose-chat thead th { background: #F1F5F9; color: #64748B; }
-[data-theme="light"] ::-webkit-scrollbar-thumb { background: #CBD5E1; }
+[data-theme="light"] body { background: #f5f5f5; }
+[data-theme="light"] .prose-chat { color: #525252; }
+[data-theme="light"] .prose-chat strong { color: #171717; }
+[data-theme="light"] .prose-chat tbody td { color: #525252; }
+[data-theme="light"] .prose-chat thead th { background: #fafafa; color: #737373; }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: #d4d4d4; }
+[data-theme="light"] ::selection { background: rgba(79,143,247,0.15); }

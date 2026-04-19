@@ -1,6 +1,5 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
-import ssl
 
 _client = None
 _db = None
@@ -10,10 +9,8 @@ async def connect_db():
     global _client, _db
     mongo_url = os.environ["MONGO_URL"]
 
-    # Connection options for MongoDB Atlas
     client_options = {
         "serverSelectionTimeoutMS": 10000,
-        "tlsInsecure": True,
         "retryWrites": True,
     }
 
@@ -57,3 +54,11 @@ async def _create_indexes():
     await db.assignments.create_index("class_id")
     await db.leave_requests.create_index("staff_id")
     await db.enquiries.create_index("status")
+    # OTP TTL index — auto-deletes expired OTP documents
+    await db.otps.create_index("expires_at", expireAfterSeconds=0)
+    await db.otps.create_index("phone")
+    # Token budget indexes
+    await db.token_balances.create_index("branch_id", unique=True)
+    await db.token_usage.create_index([("branch_id", 1), ("user_id", 1), ("month", 1)])
+    await db.token_usage.create_index("created_at")
+    await db.token_purchases.create_index("payment_id", unique=True)

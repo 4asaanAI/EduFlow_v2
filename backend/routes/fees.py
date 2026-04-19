@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request, HTTPException
 from database import get_db
 from models.schemas import FeePaymentRequest, FeeTransaction
+from middleware.auth import get_current_user
 from datetime import datetime
 import uuid
 
@@ -8,10 +9,7 @@ router = APIRouter(prefix="/api/fees", tags=["fees"])
 
 
 def get_user(req: Request):
-    return {
-        "id": req.headers.get("X-User-Id", "user-owner-001"),
-        "role": req.headers.get("X-User-Role", "owner"),
-    }
+    return get_current_user(req)
 
 
 @router.get("/structures")

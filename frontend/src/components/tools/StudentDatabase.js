@@ -23,10 +23,10 @@ function AddStudentModal({ classes, onClose, onSuccess }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
-      <div style={{ background: '#1C1C28', border: '1px solid #222230', borderRadius: 14, padding: 28, width: 480, maxHeight: '90vh', overflowY: 'auto' }}>
+      <div style={{ background: 'var(--c-input)', border: '1px solid var(--c-border)', borderRadius: 14, padding: 28, width: 480, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 16, fontWeight: 600, color: '#fff' }}>Add New Student</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#64748B', cursor: 'pointer' }}><X size={16} /></button>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 16, fontWeight: 600, color: 'var(--c-text)' }}>Add New Student</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--c-faint)', cursor: 'pointer' }}><X size={16} /></button>
         </div>
         <form onSubmit={handleSubmit}>
           {[
@@ -37,35 +37,35 @@ function AddStudentModal({ classes, onClose, onSuccess }) {
             { key: 'guardian_phone', label: 'Guardian Phone', placeholder: '10-digit mobile number', type: 'tel' },
           ].map(f => (
             <div key={f.key} style={{ marginBottom: 12 }}>
-              <label style={{ display: 'block', fontSize: 11, color: '#64748B', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{f.label}</label>
+              <label style={{ display: 'block', fontSize: 11, color: 'var(--c-faint)', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{f.label}</label>
               <input type={f.type} placeholder={f.placeholder} value={form[f.key]}
                 onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
-                style={{ width: '100%', background: '#161622', border: '1px solid #222230', borderRadius: 8, padding: '9px 12px', color: '#E2E8F0', fontSize: 13, outline: 'none' }}
+                style={{ width: '100%', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '9px 12px', color: 'var(--c-text)', fontSize: 13, outline: 'none' }}
               />
             </div>
           ))}
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: 'block', fontSize: 11, color: '#64748B', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Class *</label>
+            <label style={{ display: 'block', fontSize: 11, color: 'var(--c-faint)', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Class *</label>
             <select value={form.class_id} onChange={e => setForm(p => ({ ...p, class_id: e.target.value }))}
-              style={{ width: '100%', background: '#161622', border: '1px solid #222230', borderRadius: 8, padding: '9px 12px', color: '#E2E8F0', fontSize: 13, outline: 'none' }}>
+              style={{ width: '100%', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '9px 12px', color: 'var(--c-text)', fontSize: 13, outline: 'none' }}>
               <option value="">Select class...</option>
               {classes.map(c => (<option key={c.id} value={c.id}>{c.name}-{c.section}</option>))}
             </select>
           </div>
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: 'block', fontSize: 11, color: '#64748B', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Gender</label>
+            <label style={{ display: 'block', fontSize: 11, color: 'var(--c-faint)', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Gender</label>
             <select value={form.gender} onChange={e => setForm(p => ({ ...p, gender: e.target.value }))}
-              style={{ width: '100%', background: '#161622', border: '1px solid #222230', borderRadius: 8, padding: '9px 12px', color: '#E2E8F0', fontSize: 13, outline: 'none' }}>
+              style={{ width: '100%', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '9px 12px', color: 'var(--c-text)', fontSize: 13, outline: 'none' }}>
               <option value="">Select...</option>
               <option value="male">Male</option>
               <option value="female">Female</option>
               <option value="other">Other</option>
             </select>
           </div>
-          {error && <div style={{ color: '#EF4444', fontSize: 12, marginBottom: 12 }}>{error}</div>}
+          {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{error}</div>}
           <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-            <button type="button" onClick={onClose} style={{ flex: 1, background: '#161622', border: '1px solid #222230', borderRadius: 8, padding: '10px', color: '#94A3B8', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
-            <button type="submit" disabled={saving} data-testid="submit-student-btn" style={{ flex: 1, background: saving ? '#1E3A5F' : '#3B82F6', border: 'none', borderRadius: 8, padding: '10px', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            <button type="button" onClick={onClose} style={{ flex: 1, background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '10px', color: 'var(--c-muted)', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+            <button type="submit" disabled={saving} data-testid="submit-student-btn" style={{ flex: 1, background: saving ? '#1e3a5f' : '#4f8ff7', border: 'none', borderRadius: 8, padding: '10px', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
               {saving ? 'Saving...' : 'Add Student'}
             </button>
           </div>
@@ -112,11 +112,11 @@ export default function StudentDatabase() {
     <div data-testid="student-database-tool" style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 22, fontWeight: 600, color: '#fff' }}>Student database</h1>
-          <div style={{ color: '#64748B', fontSize: 12, marginTop: 2 }}>{total} students enrolled</div>
+          <h1 style={{ fontFamily: 'Inter, sans-serif', fontSize: 22, fontWeight: 600, color: 'var(--c-text)' }}>Student database</h1>
+          <div style={{ color: 'var(--c-faint)', fontSize: 12, marginTop: 2 }}>{total} students enrolled</div>
         </div>
         {currentUser.role !== 'teacher' && (
-          <button data-testid="add-student-btn" onClick={() => setShowAdd(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#3B82F6', border: 'none', borderRadius: 8, padding: '9px 16px', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+          <button data-testid="add-student-btn" onClick={() => setShowAdd(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#4f8ff7', border: 'none', borderRadius: 8, padding: '9px 16px', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
             <Plus size={14} />Add Student
           </button>
         )}
@@ -125,33 +125,33 @@ export default function StudentDatabase() {
       {/* Filters */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', flex: 1, maxWidth: 300 }}>
-          <Search size={13} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#64748B' }} />
+          <Search size={13} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--c-faint)' }} />
           <input type="text" placeholder="Search by name or admission no..." value={search}
             onChange={e => { setSearch(e.target.value); setPage(1); }}
             data-testid="student-search"
-            style={{ width: '100%', background: '#161622', border: '1px solid #222230', borderRadius: 8, padding: '9px 12px 9px 32px', color: '#E2E8F0', fontSize: 13, outline: 'none' }}
+            style={{ width: '100%', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '9px 12px 9px 32px', color: 'var(--c-text)', fontSize: 13, outline: 'none' }}
           />
         </div>
         <select value={filterClass} onChange={e => { setFilterClass(e.target.value); setPage(1); }}
           data-testid="class-filter"
-          style={{ background: '#161622', border: '1px solid #222230', borderRadius: 8, padding: '9px 14px', color: '#E2E8F0', fontSize: 13, outline: 'none' }}>
+          style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '9px 14px', color: 'var(--c-text)', fontSize: 13, outline: 'none' }}>
           <option value="">All classes</option>
           {classes.map(c => (<option key={c.id} value={c.id}>{c.name}-{c.section}</option>))}
         </select>
       </div>
 
       {/* Table */}
-      <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 12, overflow: 'hidden' }}>
         {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#64748B', fontSize: 13 }}>Loading...</div>
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13 }}>Loading...</div>
         ) : students.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#64748B', fontSize: 13 }}>No students found</div>
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13 }}>No students found</div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
                 {['Name', 'Class', 'Adm. No.', 'Gender', 'Status'].map(h => (
-                  <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.06em', background: '#0F0F1A', borderBottom: '1px solid #222230' }}>
+                  <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.06em', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>
                     {h}
                   </th>
                 ))}
@@ -159,15 +159,15 @@ export default function StudentDatabase() {
             </thead>
             <tbody>
               {students.map((s, i) => (
-                <tr key={s.id || i} style={{ borderBottom: i < students.length - 1 ? '1px solid #1A1A24' : 'none' }}>
-                  <td style={{ padding: '10px 16px', fontSize: 13, color: '#E2E8F0', fontWeight: 500 }}>{s.name}</td>
-                  <td style={{ padding: '10px 16px', fontSize: 12, color: '#94A3B8' }}>
+                <tr key={s.id || i} style={{ borderBottom: i < students.length - 1 ? '1px solid #242424' : 'none' }}>
+                  <td style={{ padding: '10px 16px', fontSize: 13, color: 'var(--c-text)', fontWeight: 500 }}>{s.name}</td>
+                  <td style={{ padding: '10px 16px', fontSize: 12, color: 'var(--c-muted)' }}>
                     {s.class_info ? `${s.class_info.name}-${s.class_info.section}` : 'N/A'}
                   </td>
-                  <td style={{ padding: '10px 16px', fontSize: 12, color: '#94A3B8', fontFamily: 'JetBrains Mono, monospace' }}>{s.admission_number || 'N/A'}</td>
-                  <td style={{ padding: '10px 16px', fontSize: 12, color: '#94A3B8', textTransform: 'capitalize' }}>{s.gender || 'N/A'}</td>
+                  <td style={{ padding: '10px 16px', fontSize: 12, color: 'var(--c-muted)', fontFamily: 'JetBrains Mono, monospace' }}>{s.admission_number || 'N/A'}</td>
+                  <td style={{ padding: '10px 16px', fontSize: 12, color: 'var(--c-muted)', textTransform: 'capitalize' }}>{s.gender || 'N/A'}</td>
                   <td style={{ padding: '10px 16px' }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 5, background: s.status === 'active' ? 'rgba(16,185,129,0.1)' : 'rgba(100,116,139,0.1)', color: s.status === 'active' ? '#10B981' : '#64748B' }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 5, background: s.status === 'active' ? 'rgba(16,185,129,0.1)' : 'rgba(100,116,139,0.1)', color: s.status === 'active' ? '#34d399' : 'var(--c-faint)' }}>
                       {s.status}
                     </span>
                   </td>
@@ -181,11 +181,11 @@ export default function StudentDatabase() {
       {/* Pagination */}
       {total > 20 && (
         <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 14 }}>
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} style={{ background: '#161622', border: '1px solid #222230', borderRadius: 7, padding: '6px 14px', color: '#94A3B8', fontSize: 12, cursor: 'pointer' }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '6px 14px', color: 'var(--c-muted)', fontSize: 12, cursor: 'pointer' }}>
             Prev
           </button>
-          <span style={{ color: '#64748B', fontSize: 12, alignSelf: 'center' }}>Page {page} · {total} total</span>
-          <button onClick={() => setPage(p => p + 1)} disabled={students.length < 20} style={{ background: '#161622', border: '1px solid #222230', borderRadius: 7, padding: '6px 14px', color: '#94A3B8', fontSize: 12, cursor: 'pointer' }}>
+          <span style={{ color: 'var(--c-faint)', fontSize: 12, alignSelf: 'center' }}>Page {page} · {total} total</span>
+          <button onClick={() => setPage(p => p + 1)} disabled={students.length < 20} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '6px 14px', color: 'var(--c-muted)', fontSize: 12, cursor: 'pointer' }}>
             Next
           </button>
         </div>

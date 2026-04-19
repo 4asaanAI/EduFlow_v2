@@ -6,8 +6,20 @@ import Layout from './components/Layout';
 import Login from './components/Login';
 
 function AppContent() {
-  const { currentUser } = useUser();
-  return currentUser ? <Layout /> : <Login />;
+  const { isAuthenticated, loading } = useUser();
+
+  if (loading) {
+    return (
+      <div style={{
+        minHeight: '100vh', display: 'flex', alignItems: 'center',
+        justifyContent: 'center', background: 'var(--bg-primary, #111)',
+      }}>
+        <div className="spinner" style={{ width: 24, height: 24 }} />
+      </div>
+    );
+  }
+
+  return isAuthenticated ? <Layout /> : <Login />;
 }
 
 export default function App() {

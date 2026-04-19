@@ -10,7 +10,7 @@ import html2pdf from 'html2pdf.js';
 export { FormSubmissions } from './StudentTools';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
-function h(user) { return { 'Content-Type': 'application/json', 'X-User-Role': user?.role || 'teacher', 'X-User-Id': user?.id || 'user-teacher-001', 'X-User-Name': user?.name || 'Rajesh' }; }
+function h() { const t = localStorage.getItem('eduflow_token'); return { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) }; }
 const btnStyle = (color) => ({ background: `${color}20`, border: `1px solid ${color}50`, borderRadius: 5, padding: '3px 8px', color, fontSize: 11, cursor: 'pointer', fontWeight: 600 });
 
 function markdownToHtml(text) {
@@ -52,16 +52,16 @@ export function ClassAttendanceMarker() {
   return (
     <ToolPage title="Class Attendance" subtitle="Mark attendance for your class">
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} style={{ background: '#161622', border: '1px solid #222230', borderRadius: 7, padding: '8px 12px', color: '#E2E8F0', fontSize: 12, outline: 'none' }}>
+        <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
         </select>
-        <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ background: '#161622', border: '1px solid #222230', borderRadius: 7, padding: '8px 12px', color: '#E2E8F0', fontSize: 12, outline: 'none' }} />
+        <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }} />
         <ActionBtn label="All Present" variant="success" onClick={() => markAll('present')} />
         <ActionBtn label="All Absent" variant="danger" onClick={() => markAll('absent')} />
       </div>
       {records.length > 0 && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-          {[['Present', records.filter(r => r.status === 'present').length, '#10B981'], ['Absent', records.filter(r => r.status === 'absent').length, '#EF4444'], ['Total', records.length, '#E2E8F0']].map(([l, v, c]) => (
+          {[['Present', records.filter(r => r.status === 'present').length, '#34d399'], ['Absent', records.filter(r => r.status === 'absent').length, '#f87171'], ['Total', records.length, 'var(--c-text)']].map(([l, v, c]) => (
             <StatCard key={l} value={v} label={l} color={c} small />
           ))}
         </div>
@@ -72,15 +72,15 @@ export function ClassAttendanceMarker() {
           s.name,
           <Badge text={s.status} color={{ present: 'green', absent: 'red', late: 'yellow', holiday: 'gray', not_marked: 'gray' }[s.status] || 'gray'} />,
           <div style={{ display: 'flex', gap: 3 }}>
-            {[['P', 'present', '#10B981'], ['A', 'absent', '#EF4444'], ['L', 'late', '#F59E0B']].map(([lbl, val, col]) => (
+            {[['P', 'present', '#34d399'], ['A', 'absent', '#f87171'], ['L', 'late', '#fbbf24']].map(([lbl, val, col]) => (
               <button key={lbl} onClick={() => setRecords(prev => prev.map(st => st.student_id === s.student_id ? { ...st, status: val } : st))}
-                style={{ background: s.status === val ? `${col}20` : 'transparent', border: `1px solid ${s.status === val ? col + '50' : '#222230'}`, borderRadius: 4, padding: '3px 7px', color: s.status === val ? col : '#64748B', fontSize: 10, cursor: 'pointer', fontWeight: 700 }}>{lbl}</button>
+                style={{ background: s.status === val ? `${col}20` : 'transparent', border: `1px solid ${s.status === val ? col + '50' : 'var(--c-border)'}`, borderRadius: 4, padding: '3px 7px', color: s.status === val ? col : 'var(--c-faint)', fontSize: 10, cursor: 'pointer', fontWeight: 700 }}>{lbl}</button>
             ))}
           </div>
         ])}
         emptyMsg={loading ? 'Loading...' : 'No students found'}
       />
-      {records.length > 0 && <button onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 7, background: saved ? '#10B981' : '#3B82F6', border: 'none', borderRadius: 8, padding: '10px 20px', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 12 }}>
+      {records.length > 0 && <button onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 7, background: saved ? '#34d399' : '#4f8ff7', border: 'none', borderRadius: 8, padding: '10px 20px', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 12 }}>
         {saved ? <CheckCircle size={14} /> : <Save size={14} />}{saved ? 'Saved!' : saving ? 'Saving...' : 'Save Attendance'}
       </button>}
     </ToolPage>
@@ -145,8 +145,8 @@ export function AssignmentGenerator() {
     <ToolPage title="Assignments" subtitle="Create & manage assignments" loading={loading}
       actions={<ActionBtn label="New Assignment" onClick={openCreate} icon={<Plus size={11} />} />}>
       {showForm && (
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20, marginBottom: 16 }}>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingId ? 'Edit Assignment' : 'New Assignment'}</h3>
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingId ? 'Edit Assignment' : 'New Assignment'}</h3>
           <form onSubmit={handleSubmit}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Class" type="select" value={form.class_id} onChange={v => { f('class_id')(v); loadSubjects(v); }} options={classes.map(c => ({ value: c.id, label: `${c.name}-${c.section}` }))} required />
@@ -155,7 +155,7 @@ export function AssignmentGenerator() {
               <FormField label="Due Date" type="date" value={form.due_date} onChange={f('due_date')} />
             </div>
             <FormField label="Description / Instructions" type="textarea" value={form.description} onChange={f('description')} placeholder="Assignment instructions..." />
-            {error && <p style={{ color: '#EF4444', fontSize: 12, marginBottom: 12 }}>{error}</p>}
+            {error && <p style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{error}</p>}
             <div style={{ display: 'flex', gap: 8 }}>
               <ActionBtn label={saving ? 'Saving...' : editingId ? 'Update' : 'Create'} type="submit" disabled={saving} />
               <ActionBtn label="Cancel" variant="secondary" onClick={() => setShowForm(false)} />
@@ -163,23 +163,23 @@ export function AssignmentGenerator() {
           </form>
         </div>
       )}
-      <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, overflow: 'hidden' }}>
+      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr style={{ borderBottom: '1px solid #222230' }}>
-            {['Title', 'Class', 'Subject', 'Due Date', 'Actions'].map(h2 => <th key={h2} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>{h2}</th>)}
+          <thead><tr style={{ borderBottom: '1px solid var(--c-border)' }}>
+            {['Title', 'Class', 'Subject', 'Due Date', 'Actions'].map(h2 => <th key={h2} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase' }}>{h2}</th>)}
           </tr></thead>
           <tbody>
-            {assignments.length === 0 ? <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: '#64748B', fontSize: 12 }}>No assignments yet</td></tr>
+            {assignments.length === 0 ? <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No assignments yet</td></tr>
               : assignments.map((a, i) => (
-                <tr key={a.id} style={{ borderBottom: i < assignments.length - 1 ? '1px solid #222230' : 'none' }}>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: '#E2E8F0' }}>{a.title}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: '#94A3B8' }}>{a.class_name || 'N/A'}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: '#94A3B8' }}>{a.subject_name || 'N/A'}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: '#94A3B8' }}>{a.due_date || 'N/A'}</td>
+                <tr key={a.id} style={{ borderBottom: i < assignments.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
+                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-text)' }}>{a.title}</td>
+                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{a.class_name || 'N/A'}</td>
+                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{a.subject_name || 'N/A'}</td>
+                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{a.due_date || 'N/A'}</td>
                   <td style={{ padding: '10px 14px' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => openEdit(a)} style={btnStyle('#3B82F6')}>Edit</button>
-                      <button onClick={() => handleDelete(a.id)} style={btnStyle('#EF4444')}>Delete</button>
+                      <button onClick={() => openEdit(a)} style={btnStyle('#4f8ff7')}>Edit</button>
+                      <button onClick={() => handleDelete(a.id)} style={btnStyle('#f87171')}>Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -204,6 +204,7 @@ export function QuestionPaperCreator() {
   const [generatedPaper, setGeneratedPaper] = useState(null);
   const [editedContent, setEditedContent] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [saveFeedback, setSaveFeedback] = useState('');
   const editorRef = useRef(null);
   const pendingContentRef = useRef('');
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
@@ -288,19 +289,39 @@ export function QuestionPaperCreator() {
 
   const downloadPdf = () => {
     const liveContent = editorRef.current?.innerHTML || editedContent;
-    // Create an off-screen full-height element so html2pdf captures all content
-    const container = document.createElement('div');
-    container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#fff;padding:32px;font-family:Arial,sans-serif;color:#1a1a1a;line-height:1.6;';
-    container.innerHTML = liveContent;
-    document.body.appendChild(container);
+    // Create a visible overlay — html2canvas cannot capture off-screen/fixed elements
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#ffffff;overflow:auto;display:flex;justify-content:center;';
+    const inner = document.createElement('div');
+    inner.style.cssText = 'width:794px;padding:40px 48px;font-family:Arial,sans-serif;font-size:13px;line-height:1.7;color:#111111;background:#ffffff;';
+    inner.innerHTML = liveContent;
+    overlay.appendChild(inner);
+    document.body.appendChild(overlay);
     const opt = {
-      margin: [10, 10, 10, 10],
-      filename: `${generatedPaper?.title || 'question-paper'}.pdf`,
+      margin: [12, 12, 12, 12],
+      filename: `${(generatedPaper?.title || 'question-paper').replace(/\s+/g, '-')}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, logging: false },
+      html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
       jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' },
     };
-    html2pdf().set(opt).from(container).save().finally(() => document.body.removeChild(container));
+    html2pdf().set(opt).from(inner).save().finally(() => document.body.removeChild(overlay));
+  };
+
+  const downloadWord = () => {
+    const liveContent = editorRef.current?.innerHTML || editedContent;
+    const wordHtml = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="UTF-8"><title>${generatedPaper?.title || 'Question Paper'}</title>
+<style>body{font-family:Arial,sans-serif;font-size:12pt;line-height:1.6;margin:2cm;}h1{font-size:18pt;}h2{font-size:15pt;}h3{font-size:13pt;}p{margin:6pt 0;}strong{font-weight:bold;}</style></head>
+<body>${liveContent}</body></html>`;
+    const blob = new Blob(['\ufeff', wordHtml], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(generatedPaper?.title || 'question-paper').replace(/\s+/g, '-')}.doc`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const downloadHtml = () => {
@@ -338,14 +359,22 @@ export function QuestionPaperCreator() {
     if (!generatedPaper?.id) return;
     const content = editorRef.current?.innerHTML || editedContent;
     setEditedContent(content);
-    await fetch(`${API}/academics/question-papers/${generatedPaper.id}`, { method: 'PATCH', headers: h(currentUser), body: JSON.stringify({ title: generatedPaper.title, generated_content: content }) });
-    const r = await fetch(`${API}/academics/question-papers`, { headers: h(currentUser) }).then(r => r.json());
-    if (r.success) setPapers(r.data || []);
+    setSaveFeedback('saving');
+    try {
+      await fetch(`${API}/academics/question-papers/${generatedPaper.id}`, { method: 'PATCH', headers: h(currentUser), body: JSON.stringify({ title: generatedPaper.title, generated_content: content }) });
+      const r = await fetch(`${API}/academics/question-papers`, { headers: h(currentUser) }).then(r => r.json());
+      if (r.success) setPapers(r.data || []);
+      setSaveFeedback('saved');
+      setTimeout(() => setSaveFeedback(''), 2000);
+    } catch {
+      setSaveFeedback('error');
+      setTimeout(() => setSaveFeedback(''), 2000);
+    }
   };
 
   const toolbarBtn = (onClick, icon, title) => (
     <button title={title} onMouseDown={e => { e.preventDefault(); onClick(); }}
-      style={{ background: 'none', border: '1px solid #222230', borderRadius: 5, padding: '3px 7px', color: '#94A3B8', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+      style={{ background: 'none', border: '1px solid var(--c-border)', borderRadius: 5, padding: '3px 7px', color: 'var(--c-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
       {icon}
     </button>
   );
@@ -353,30 +382,33 @@ export function QuestionPaperCreator() {
   if (generatedPaper && isEditing) {
     return (
       <ToolPage title={generatedPaper.title} subtitle="Edit and export your question paper">
-        <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <ActionBtn label="← Back to List" onClick={() => { setGeneratedPaper(null); setIsEditing(false); }} />
-          <ActionBtn label="Save Changes" onClick={saveEditedPaper} variant="success" />
+        <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <ActionBtn label="← Back to List" onClick={() => { setGeneratedPaper(null); setIsEditing(false); setSaveFeedback(''); }} />
+          <ActionBtn label={saveFeedback === 'saving' ? 'Saving...' : 'Save Changes'} onClick={saveEditedPaper} variant="success" disabled={saveFeedback === 'saving'} />
+          {saveFeedback === 'saved' && <span style={{ fontSize: 11, color: '#34d399', fontWeight: 600 }}>Saved!</span>}
+          {saveFeedback === 'error' && <span style={{ fontSize: 11, color: '#f87171', fontWeight: 600 }}>Save failed</span>}
           <ActionBtn label="Download PDF" onClick={downloadPdf} />
+          <ActionBtn label="Download Word" onClick={downloadWord} />
           <ActionBtn label="Download HTML" onClick={downloadHtml} />
         </div>
 
         {/* Toolbar */}
-        <div style={{ display: 'flex', gap: 4, marginBottom: 8, padding: '6px 10px', background: '#161622', border: '1px solid #222230', borderRadius: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: 10, color: '#64748B', fontWeight: 700, marginRight: 6 }}>FORMAT</span>
+        <div style={{ display: 'flex', gap: 4, marginBottom: 8, padding: '6px 10px', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 10, color: 'var(--c-faint)', fontWeight: 700, marginRight: 6 }}>FORMAT</span>
           {toolbarBtn(() => execFormat('bold'), <Bold size={12} />, 'Bold')}
           {toolbarBtn(() => execFormat('underline'), <Underline size={12} />, 'Underline')}
           {toolbarBtn(() => execFormat('insertUnorderedList'), <List size={12} />, 'Bullet List')}
-          <div style={{ width: 1, height: 18, background: '#222230', margin: '0 4px' }} />
+          <div style={{ width: 1, height: 18, background: 'var(--c-border)', margin: '0 4px' }} />
           {toolbarBtn(() => execFormat('formatBlock', 'h2'), <span style={{ fontSize: 11, fontWeight: 700 }}>H2</span>, 'Heading 2')}
           {toolbarBtn(() => execFormat('formatBlock', 'h3'), <span style={{ fontSize: 11, fontWeight: 700 }}>H3</span>, 'Heading 3')}
           {toolbarBtn(() => execFormat('formatBlock', 'p'), <span style={{ fontSize: 11 }}>P</span>, 'Paragraph')}
-          <div style={{ width: 1, height: 18, background: '#222230', margin: '0 4px' }} />
+          <div style={{ width: 1, height: 18, background: 'var(--c-border)', margin: '0 4px' }} />
           {toolbarBtn(() => execFormat('undo'), <span style={{ fontSize: 11 }}>↩</span>, 'Undo')}
           {toolbarBtn(() => execFormat('redo'), <span style={{ fontSize: 11 }}>↪</span>, 'Redo')}
         </div>
 
         {/* Editor */}
-        <div style={{ border: '1px solid #222230', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
+        <div style={{ border: '1px solid var(--c-border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
           <div
             ref={editorRef}
             contentEditable
@@ -393,25 +425,25 @@ export function QuestionPaperCreator() {
     <ToolPage title="Question Paper Creator" subtitle="Create question papers with AI assistance" loading={loading}
       actions={<ActionBtn label="Create Paper" onClick={() => setShowForm(true)} icon={<Plus size={11} />} />}>
       {showForm && (
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20, marginBottom: 16 }}>
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
           <form onSubmit={handleGenerate}>
             <FormField label="Subject" type="select" value={form.subject_id} onChange={f('subject_id')} options={subjects.map(s => ({ value: s.id, label: s.name }))} required />
             <FormField label="Paper Title" value={form.title} onChange={f('title')} placeholder="e.g. Mid-Term Science Paper" required />
             <FormField label="Chapters (comma-separated)" value={form.chapters} onChange={f('chapters')} placeholder="e.g. Chapter 1, Chapter 2, Chapter 3" required />
             <FormField label="Total Marks" type="number" value={form.total_marks} onChange={v => f('total_marks')(+v)} />
             <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 10, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 8 }}>DIFFICULTY MIX</label>
+              <label style={{ fontSize: 10, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 8 }}>DIFFICULTY MIX</label>
               <div style={{ display: 'flex', gap: 10 }}>
-                {[['Easy', 'easy', '#10B981'], ['Medium', 'medium', '#F59E0B'], ['Hard', 'hard', '#EF4444']].map(([l, k, c]) => (
+                {[['Easy', 'easy', '#34d399'], ['Medium', 'medium', '#fbbf24'], ['Hard', 'hard', '#f87171']].map(([l, k, c]) => (
                   <div key={k} style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: 11, color: c, fontWeight: 700, marginBottom: 4 }}>{form[k]}%</div>
                     <input type="range" min={0} max={100} value={form[k]} onChange={e => f(k)(+e.target.value)} style={{ width: 80, accentColor: c }} />
-                    <div style={{ fontSize: 9, color: '#64748B' }}>{l}</div>
+                    <div style={{ fontSize: 9, color: 'var(--c-faint)' }}>{l}</div>
                   </div>
                 ))}
               </div>
             </div>
-            {error && <p style={{ color: '#EF4444', fontSize: 12, marginBottom: 12 }}>{error}</p>}
+            {error && <p style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{error}</p>}
             <div style={{ display: 'flex', gap: 8 }}>
               <ActionBtn label={generating ? 'Generating...' : 'Generate with AI'} type="submit" disabled={generating} />
               <ActionBtn label="Cancel" variant="secondary" onClick={() => setShowForm(false)} disabled={generating} />
@@ -420,23 +452,33 @@ export function QuestionPaperCreator() {
         </div>
       )}
       {papers.length > 0 ? (
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, overflow: 'hidden' }}>
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid #222230' }}>
-                {['Title', 'Subject', 'Created', 'Actions'].map(c => <th key={c} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>{c}</th>)}
+              <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
+                {['Title', 'Subject', 'Created', 'Actions'].map(c => <th key={c} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase' }}>{c}</th>)}
               </tr>
             </thead>
             <tbody>
               {papers.map((p, i) => (
-                <tr key={p.id || i} style={{ borderBottom: i < papers.length - 1 ? '1px solid #222230' : 'none' }}>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: '#E2E8F0' }}>{p.title}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: '#94A3B8' }}>{p.subject_id || 'N/A'}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: '#94A3B8' }}>{new Date(p.created_at).toLocaleDateString()}</td>
+                <tr key={p.id || i} style={{ borderBottom: i < papers.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
+                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-text)' }}>{p.title}</td>
+                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{p.subject_id || 'N/A'}</td>
+                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{new Date(p.created_at).toLocaleDateString()}</td>
                   <td style={{ padding: '10px 14px' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => { const html = markdownToHtml(p.generated_content || ''); pendingContentRef.current = html; setGeneratedPaper(p); setEditedContent(html); setIsEditing(true); }} style={btnStyle('#3B82F6')}>Edit</button>
-                      <button onClick={async () => { if (!window.confirm('Delete this question paper?')) return; await fetch(`${API}/academics/question-papers/${p.id}`, { method: 'DELETE', headers: h(currentUser) }); const r = await fetch(`${API}/academics/question-papers`, { headers: h(currentUser) }).then(r => r.json()); if (r.success) setPapers(r.data || []); }} style={btnStyle('#EF4444')}>Delete</button>
+                      <button onClick={async () => {
+                        const res = await fetch(`${API}/academics/question-papers/${p.id}`, { headers: h(currentUser) }).then(r => r.json());
+                        const full = res.success ? res.data : p;
+                        const rawContent = full.generated_content || '';
+                        // Content may already be HTML (saved after editing) or markdown (fresh from AI)
+                        const html = rawContent.trim().startsWith('<') ? rawContent : markdownToHtml(rawContent);
+                        pendingContentRef.current = html;
+                        setGeneratedPaper(full);
+                        setEditedContent(html);
+                        setIsEditing(true);
+                      }} style={btnStyle('#4f8ff7')}>Edit</button>
+                      <button onClick={async () => { if (!window.confirm('Delete this question paper?')) return; await fetch(`${API}/academics/question-papers/${p.id}`, { method: 'DELETE', headers: h(currentUser) }); const r = await fetch(`${API}/academics/question-papers`, { headers: h(currentUser) }).then(r => r.json()); if (r.success) setPapers(r.data || []); }} style={btnStyle('#f87171')}>Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -445,7 +487,7 @@ export function QuestionPaperCreator() {
           </table>
         </div>
       ) : (
-        <div style={{ padding: 32, textAlign: 'center', color: '#64748B', background: '#161622', border: '1px solid #222230', borderRadius: 11, fontSize: 12 }}>
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, fontSize: 12 }}>
           No question papers yet. Create one to get started.
         </div>
       )}
@@ -504,8 +546,8 @@ export function LeaveApplication() {
 
   return (
     <ToolPage title="Leave Application" subtitle="Apply for leave & view history" loading={loading}>
-      <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20, marginBottom: 16, maxWidth: 520 }}>
-        <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Apply for Leave</h3>
+      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16, maxWidth: 520 }}>
+        <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Apply for Leave</h3>
         <form onSubmit={handleApply}>
           <FormField label="Leave Type" type="select" value={form.leave_type} onChange={f('leave_type')}
             options={['casual', 'medical', 'earned', 'maternity', 'paternity', 'unpaid'].map(v => ({ value: v, label: v.charAt(0).toUpperCase() + v.slice(1) }))} />
@@ -515,8 +557,8 @@ export function LeaveApplication() {
           </div>
           <FormField label="Reason" type="textarea" value={form.reason} onChange={f('reason')} placeholder="Reason for leave..." required />
           <ActionBtn label={submitted ? 'Submitted!' : submitting ? 'Submitting...' : 'Submit Application'} disabled={submitting} type="submit" />
-          {submitted && <p style={{ color: '#10B981', fontSize: 12, marginTop: 8 }}>Leave application submitted successfully!</p>}
-          {error && <p style={{ color: '#EF4444', fontSize: 12, marginTop: 8 }}>{error}</p>}
+          {submitted && <p style={{ color: '#34d399', fontSize: 12, marginTop: 8 }}>Leave application submitted successfully!</p>}
+          {error && <p style={{ color: '#f87171', fontSize: 12, marginTop: 8 }}>{error}</p>}
         </form>
       </div>
       <DataTable title="My Leave History" headers={['Type', 'Start Date', 'End Date', 'Status', 'Reason']}
@@ -586,8 +628,8 @@ export function LessonPlanGenerator() {
     <ToolPage title="Lesson Plans" subtitle="Create & manage lesson plans" loading={loading}
       actions={<ActionBtn label="New Plan" onClick={openCreate} icon={<Plus size={11} />} />}>
       {showForm && (
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20, marginBottom: 16 }}>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingId ? 'Edit Plan' : 'New Lesson Plan'}</h3>
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingId ? 'Edit Plan' : 'New Lesson Plan'}</h3>
           <form onSubmit={handleSubmit}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Class" type="select" value={form.class_id} onChange={f('class_id')} options={classes.map(c => ({ value: c.id, label: `${c.name}-${c.section}` }))} />
@@ -602,26 +644,26 @@ export function LessonPlanGenerator() {
           </form>
         </div>
       )}
-      <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, overflow: 'hidden' }}>
+      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr style={{ borderBottom: '1px solid #222230' }}>
-            {['Chapter', 'Subject', 'Class', 'Created', 'Actions'].map(c => <th key={c} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>{c}</th>)}
+          <thead><tr style={{ borderBottom: '1px solid var(--c-border)' }}>
+            {['Chapter', 'Subject', 'Class', 'Created', 'Actions'].map(c => <th key={c} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase' }}>{c}</th>)}
           </tr></thead>
           <tbody>
-            {plans.length === 0 ? <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: '#64748B', fontSize: 12 }}>No lesson plans yet</td></tr>
+            {plans.length === 0 ? <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No lesson plans yet</td></tr>
               : plans.map((p, i) => {
                 const subj = subjects.find(s => s.id === p.subject_id);
                 const cls = classes.find(c => c.id === p.class_id);
                 return (
-                  <tr key={p.id} style={{ borderBottom: i < plans.length - 1 ? '1px solid #222230' : 'none' }}>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#E2E8F0' }}>{p.chapter}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#94A3B8' }}>{subj?.name || 'N/A'}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#94A3B8' }}>{cls ? `${cls.name}-${cls.section}` : 'N/A'}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#94A3B8' }}>{p.created_at?.slice(0, 10) || 'N/A'}</td>
+                  <tr key={p.id} style={{ borderBottom: i < plans.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-text)' }}>{p.chapter}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{subj?.name || 'N/A'}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{cls ? `${cls.name}-${cls.section}` : 'N/A'}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{p.created_at?.slice(0, 10) || 'N/A'}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={() => openEdit(p)} style={btnStyle('#3B82F6')}>Edit</button>
-                        <button onClick={() => handleDelete(p.id)} style={btnStyle('#EF4444')}>Delete</button>
+                        <button onClick={() => openEdit(p)} style={btnStyle('#4f8ff7')}>Edit</button>
+                        <button onClick={() => handleDelete(p.id)} style={btnStyle('#f87171')}>Delete</button>
                       </div>
                     </td>
                   </tr>
@@ -682,8 +724,8 @@ export function WorksheetCreator() {
     <ToolPage title="Worksheets" subtitle="Create & manage practice sheets" loading={loading}
       actions={<ActionBtn label="New Worksheet" onClick={openCreate} icon={<Plus size={11} />} />}>
       {showForm && (
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20, marginBottom: 16 }}>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingId ? 'Edit Worksheet' : 'New Worksheet'}</h3>
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingId ? 'Edit Worksheet' : 'New Worksheet'}</h3>
           <form onSubmit={handleSubmit}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Subject" type="select" value={form.subject_id} onChange={f('subject_id')} options={subjects.map(s => ({ value: s.id, label: s.name }))} />
@@ -698,23 +740,23 @@ export function WorksheetCreator() {
           </form>
         </div>
       )}
-      <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, overflow: 'hidden' }}>
+      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr style={{ borderBottom: '1px solid #222230' }}>
-            {['Topic', 'Subject', 'Type', 'Created', 'Actions'].map(c => <th key={c} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>{c}</th>)}
+          <thead><tr style={{ borderBottom: '1px solid var(--c-border)' }}>
+            {['Topic', 'Subject', 'Type', 'Created', 'Actions'].map(c => <th key={c} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase' }}>{c}</th>)}
           </tr></thead>
           <tbody>
-            {worksheets.length === 0 ? <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: '#64748B', fontSize: 12 }}>No worksheets yet</td></tr>
+            {worksheets.length === 0 ? <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No worksheets yet</td></tr>
               : worksheets.map((w, i) => (
-                <tr key={w.id} style={{ borderBottom: i < worksheets.length - 1 ? '1px solid #222230' : 'none' }}>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: '#E2E8F0' }}>{w.topic}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: '#94A3B8' }}>{subjects.find(s => s.id === w.subject_id)?.name || 'N/A'}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: '#94A3B8' }}>{w.type}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: '#94A3B8' }}>{w.created_at?.slice(0, 10)}</td>
+                <tr key={w.id} style={{ borderBottom: i < worksheets.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
+                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-text)' }}>{w.topic}</td>
+                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{subjects.find(s => s.id === w.subject_id)?.name || 'N/A'}</td>
+                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{w.type}</td>
+                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{w.created_at?.slice(0, 10)}</td>
                   <td style={{ padding: '10px 14px' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => openEdit(w)} style={btnStyle('#3B82F6')}>Edit</button>
-                      <button onClick={() => handleDelete(w.id)} style={btnStyle('#EF4444')}>Delete</button>
+                      <button onClick={() => openEdit(w)} style={btnStyle('#4f8ff7')}>Edit</button>
+                      <button onClick={() => handleDelete(w.id)} style={btnStyle('#f87171')}>Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -741,7 +783,7 @@ export function SubstitutionViewer() {
   return (
     <ToolPage title="Substitution Viewer" subtitle="View your schedule changes" loading={loading}>
       {subs.length === 0 ? (
-        <div style={{ padding: 32, textAlign: 'center', color: '#64748B', background: '#161622', border: '1px solid #222230', borderRadius: 11, fontSize: 13 }}>
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, fontSize: 13 }}>
           No substitution assignments for today. Check back later.
         </div>
       ) : (
@@ -789,25 +831,25 @@ export function ClassPerformanceAnalytics() {
     <ToolPage title="Student Performance" subtitle="View performance by class" loading={loading}>
       <div style={{ marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <select value={selectedClass} onChange={e => handleClassChange(e.target.value)}
-          style={{ background: '#161622', border: '1px solid #222230', borderRadius: 7, padding: '8px 12px', color: '#E2E8F0', fontSize: 12, outline: 'none', minWidth: 160 }}>
+          style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none', minWidth: 160 }}>
           <option value="">Select Class & Section</option>
           {classes.map(c => <option key={c.id} value={c.id}>{c.name} - {c.section}</option>)}
         </select>
-        {selectedCls && <span style={{ fontSize: 12, color: '#64748B' }}>{students.length} students enrolled</span>}
+        {selectedCls && <span style={{ fontSize: 12, color: 'var(--c-faint)' }}>{students.length} students enrolled</span>}
       </div>
       {!selectedClass ? (
-        <div style={{ padding: 32, textAlign: 'center', color: '#64748B', background: '#161622', border: '1px solid #222230', borderRadius: 11, fontSize: 13 }}>
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, fontSize: 13 }}>
           Select a class to view student performance
         </div>
       ) : loadingResults ? (
-        <div style={{ padding: 32, textAlign: 'center', color: '#64748B', fontSize: 13 }}>Loading...</div>
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13 }}>Loading...</div>
       ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18 }}>
-            <StatCard value={students.length} label="STUDENTS" color="#3B82F6" />
-            <StatCard value={results.length} label="RESULT ENTRIES" color="#8B5CF6" />
-            <StatCard value={results.length ? `${avgMarks}/100` : 'N/A'} label="AVG MARKS" color="#10B981" />
-            <StatCard value={results.filter(r => r.marks_obtained >= 80).length} label="ABOVE 80%" color="#F59E0B" />
+            <StatCard value={students.length} label="STUDENTS" color="#4f8ff7" />
+            <StatCard value={results.length} label="RESULT ENTRIES" color="#a78bfa" />
+            <StatCard value={results.length ? `${avgMarks}/100` : 'N/A'} label="AVG MARKS" color="#34d399" />
+            <StatCard value={results.filter(r => r.marks_obtained >= 80).length} label="ABOVE 80%" color="#fbbf24" />
           </div>
           {results.length > 0 ? (
             <DataTable headers={['Student', 'Subject', 'Marks', 'Grade']}
@@ -886,8 +928,8 @@ export function PtmNotes() {
     <ToolPage title="PTM Notes" subtitle="Record parent-teacher meeting notes" loading={loading}
       actions={<ActionBtn label="New Note" onClick={openCreate} icon={<Plus size={11} />} />}>
       {showForm && (
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20, marginBottom: 16, maxWidth: 520 }}>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingId ? 'Edit PTM Note' : 'New PTM Note'}</h3>
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16, maxWidth: 520 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingId ? 'Edit PTM Note' : 'New PTM Note'}</h3>
           <form onSubmit={handleSubmit}>
             <FormField label="Class & Section" type="select" value={form.class_id} onChange={handleClassChange}
               options={classes.map(c => ({ value: c.id, label: `${c.name} - ${c.section}` }))} required />
@@ -901,22 +943,22 @@ export function PtmNotes() {
           </form>
         </div>
       )}
-      <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, overflow: 'hidden' }}>
+      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr style={{ borderBottom: '1px solid #222230' }}>
-            {['Student', 'Notes', 'Date', 'Actions'].map(c => <th key={c} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>{c}</th>)}
+          <thead><tr style={{ borderBottom: '1px solid var(--c-border)' }}>
+            {['Student', 'Notes', 'Date', 'Actions'].map(c => <th key={c} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase' }}>{c}</th>)}
           </tr></thead>
           <tbody>
-            {notes.length === 0 ? <tr><td colSpan={4} style={{ padding: 20, textAlign: 'center', color: '#64748B', fontSize: 12 }}>No PTM notes yet</td></tr>
+            {notes.length === 0 ? <tr><td colSpan={4} style={{ padding: 20, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No PTM notes yet</td></tr>
               : notes.map((n, i) => (
-                <tr key={n.id} style={{ borderBottom: i < notes.length - 1 ? '1px solid #222230' : 'none' }}>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: '#E2E8F0' }}>{n.student_name}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: '#94A3B8' }}>{(n.notes?.slice(0, 60) || '') + (n.notes?.length > 60 ? '...' : '')}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: '#94A3B8' }}>{n.created_at?.slice(0, 10)}</td>
+                <tr key={n.id} style={{ borderBottom: i < notes.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
+                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-text)' }}>{n.student_name}</td>
+                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{(n.notes?.slice(0, 60) || '') + (n.notes?.length > 60 ? '...' : '')}</td>
+                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{n.created_at?.slice(0, 10)}</td>
                   <td style={{ padding: '10px 14px' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => openEdit(n)} style={btnStyle('#3B82F6')}>Edit</button>
-                      <button onClick={() => handleDelete(n.id)} style={btnStyle('#EF4444')}>Delete</button>
+                      <button onClick={() => openEdit(n)} style={btnStyle('#4f8ff7')}>Edit</button>
+                      <button onClick={() => handleDelete(n.id)} style={btnStyle('#f87171')}>Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -978,8 +1020,8 @@ export function CurriculumTracker() {
     <ToolPage title="Curriculum Tracker" subtitle="Track & manage syllabus coverage" loading={loading}
       actions={<ActionBtn label="Add Topic" onClick={openCreate} icon={<Plus size={11} />} />}>
       {showForm && (
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20, marginBottom: 16 }}>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingId ? 'Edit Entry' : 'Add Topic'}</h3>
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingId ? 'Edit Entry' : 'Add Topic'}</h3>
           <form onSubmit={handleSubmit}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
               <FormField label="Class" type="select" value={form.class_id} onChange={f('class_id')} options={classes.map(c => ({ value: c.id, label: `${c.name}-${c.section}` }))} />
@@ -994,27 +1036,27 @@ export function CurriculumTracker() {
           </form>
         </div>
       )}
-      <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, overflow: 'hidden' }}>
+      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr style={{ borderBottom: '1px solid #222230' }}>
-            {['Topic', 'Class', 'Subject', 'Status', 'Updated', 'Actions'].map(c => <th key={c} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>{c}</th>)}
+          <thead><tr style={{ borderBottom: '1px solid var(--c-border)' }}>
+            {['Topic', 'Class', 'Subject', 'Status', 'Updated', 'Actions'].map(c => <th key={c} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase' }}>{c}</th>)}
           </tr></thead>
           <tbody>
-            {progress.length === 0 ? <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: '#64748B', fontSize: 12 }}>No curriculum entries yet</td></tr>
+            {progress.length === 0 ? <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No curriculum entries yet</td></tr>
               : progress.map((p, i) => {
                 const cls = classes.find(c => c.id === p.class_id);
                 const subj = subjects.find(s => s.id === p.subject_id);
                 return (
-                  <tr key={p.id} style={{ borderBottom: i < progress.length - 1 ? '1px solid #222230' : 'none' }}>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#E2E8F0' }}>{p.topic}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#94A3B8' }}>{cls ? `${cls.name}-${cls.section}` : 'N/A'}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#94A3B8' }}>{subj?.name || 'N/A'}</td>
+                  <tr key={p.id} style={{ borderBottom: i < progress.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-text)' }}>{p.topic}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{cls ? `${cls.name}-${cls.section}` : 'N/A'}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{subj?.name || 'N/A'}</td>
                     <td style={{ padding: '10px 14px' }}><Badge text={p.status?.replace('_', ' ')} color={statusColors[p.status] || 'gray'} /></td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#94A3B8' }}>{p.updated_at?.slice(0, 10)}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{p.updated_at?.slice(0, 10)}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={() => openEdit(p)} style={btnStyle('#3B82F6')}>Edit</button>
-                        <button onClick={() => handleDelete(p.id)} style={btnStyle('#EF4444')}>Delete</button>
+                        <button onClick={() => openEdit(p)} style={btnStyle('#4f8ff7')}>Edit</button>
+                        <button onClick={() => handleDelete(p.id)} style={btnStyle('#f87171')}>Delete</button>
                       </div>
                     </td>
                   </tr>

@@ -1,11 +1,25 @@
 """
 Chat routes — conversation CRUD + SSE streaming message handler
+
+Handles:
+  - Conversation CRUD (list, create, update, delete, get messages)
+  - SSE streaming chat with tool detection, execution, and response generation
+  - Thinking events for frontend progress indication
+  - Scope enforcement per user role
+  - Content filtering (especially for students)
+  - Confirm-action flow for write operations
+  - Navigate events for "open X" commands
+  - Multi-tool chaining (up to 3 rounds)
+  - LLM parameter extraction with entity resolution
 """
 import json
 import asyncio
 import re
+import time
 import uuid
-from datetime import datetime
+import logging
+from datetime import datetime, date, timedelta
+from typing import Optional
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from database import get_db
@@ -13,17 +27,165 @@ from models.schemas import Conversation, Message, ConversationUpdate
 from ai.llm_client import llm_client
 from ai.prompts import build_system_prompt
 from ai.context_builder import build_school_context, detect_language
-from ai.tool_functions import TOOL_REGISTRY
+from ai.tool_functions_v2 import TOOL_REGISTRY
+from ai.scope_resolver import resolve_scope
+from ai.content_filter import filter_response, check_input_safety
+from middleware.auth import get_current_user
+from services.token_service import check_and_reserve_tokens, record_usage
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
+# ─── Constants ────────────────────────────────────────────────────────────────
 
-def get_current_user(request: Request) -> dict:
-    role = request.headers.get("X-User-Role", "owner")
-    user_id = request.headers.get("X-User-Id", "user-owner-001")
-    name = request.headers.get("X-User-Name", "Aman")
-    return {"id": user_id, "role": role, "name": name}
+MAX_TOOL_ROUNDS = 3
+KEEPALIVE_INTERVAL = 15  # seconds
+CHAR_BUDGET = 24000
+HISTORY_LIMIT = 20
+HISTORY_KEEP_FIRST = 2
+HISTORY_KEEP_RECENT = 10
+THINKING_DELAY_MIN = 0.15  # 150ms
+THINKING_DELAY_MAX = 0.30  # 300ms
 
+# Tools that require user confirmation before execution
+WRITE_ACTION_TOOLS = {
+    "record_fee_payment",
+    "mark_attendance",
+    "approve_leave",
+    "award_house_points",
+}
+
+# ─── Keyword → Tool Map ──────────────────────────────────────────────────────
+
+KEYWORD_TOOL_MAP = [
+    # School pulse
+    (["/school-pulse", "school status", "school pulse", "today's status",
+      "today's overview", "school overview", "how is school", "pulse",
+      "aaj ka status", "school ka status"], "get_school_pulse"),
+    # Daily brief
+    (["/daily-brief", "daily brief", "morning summary", "morning brief",
+      "aaj ka haal", "morning status", "what happened today",
+      "today's summary"], "get_daily_brief"),
+    # Fee collection / summary
+    (["/fee-collection", "/fee-summary", "fee defaulter", "fee summary",
+      "fee collection", "who owes", "overdue fee", "pending fee",
+      "collect fee", "fee ke baare mein"], "get_fee_summary"),
+    # Staff status
+    (["/staff-tracker", "/leave-manager", "staff absent", "staff status",
+      "staff tracker", "who is absent", "which staff", "staff attendance",
+      "leave request", "pending leave", "staff ki leave"], "get_staff_status"),
+    # Attendance overview
+    (["/attendance-overview", "attendance trend", "attendance overview",
+      "attendance report", "how is attendance",
+      "attendance kaisi hai"], "get_attendance_overview"),
+    # Alerts
+    (["/smart-alerts", "smart alert", "active alert", "flag", "exception",
+      "koi dikkat"], "get_smart_alerts"),
+    # Financial
+    (["/financial-reports", "financial report", "financial summary",
+      "revenue", "expense", "paisa", "finance"], "get_financial_report"),
+    # Students search
+    (["/student-database", "search student", "find student", "student named",
+      "which student", "student dhundo"], "search_students"),
+    # Fee transactions
+    (["/fee-tracker", "fee transaction", "payment history", "who paid",
+      "payment record"], "get_fee_transactions"),
+    # Leave approval
+    (["approve leave", "reject leave", "leave approve"], "approve_leave"),
+    # Enquiries
+    (["/admission-funnel", "/enquiry-register", "enquiry",
+      "admission funnel", "new student inquiry",
+      "admission"], "get_enquiries"),
+    # Health report
+    (["/health-report", "/ai-health-report", "health report",
+      "school health", "health score"], "get_smart_alerts"),
+    # ── NEW keyword entries ──
+    # Student database
+    (["student database", "all students", "student list"], "get_student_database"),
+    # Fee structure
+    (["fee structure", "class fees", "annual fee"], "get_fee_structures"),
+    # Class-wise attendance
+    (["class attendance", "class wise attendance"], "get_class_wise_attendance"),
+    # Pending leaves
+    (["pending leaves", "leave requests", "leave status"], "get_leave_requests"),
+    # Staff list
+    (["staff list", "all teachers", "all staff",
+      "teacher list"], "get_staff_list"),
+    # Class list
+    (["class list", "all classes", "class teacher"], "get_class_list"),
+    # Fee defaulters
+    (["fee defaulters", "defaulters list",
+      "who hasn't paid"], "get_fee_defaulters"),
+    # Student profile
+    (["student profile", "student details"], "get_student_profile"),
+    # House standings
+    (["house standings", "house points",
+      "which house is leading"], "get_house_standings"),
+    # My class students (teacher)
+    (["my class students", "my students"], "get_my_class_students"),
+    # Today class attendance
+    (["today's class attendance", "mark attendance"], "get_today_class_attendance"),
+    # Library
+    (["library books", "overdue books", "book issue"], "get_library_status"),
+    # Transport
+    (["transport", "bus route", "bus status"], "get_transport_status"),
+    # Inventory
+    (["inventory", "school items", "stock"], "get_inventory_status"),
+]
+
+# ─── Navigate Map ─────────────────────────────────────────────────────────────
+
+NAVIGATE_MAP = {
+    "open student database": "student-database",
+    "show student database": "student-database",
+    "go to student database": "student-database",
+    "open fee collection": "fee-collection",
+    "show fee collection": "fee-collection",
+    "go to fee collection": "fee-collection",
+    "open attendance": "attendance-recorder",
+    "show attendance": "attendance-recorder",
+    "go to attendance": "attendance-recorder",
+    "open attendance recorder": "attendance-recorder",
+    "open staff tracker": "staff-tracker",
+    "show staff tracker": "staff-tracker",
+    "open leave manager": "leave-manager",
+    "show leave manager": "leave-manager",
+    "open fee tracker": "fee-tracker",
+    "show fee tracker": "fee-tracker",
+    "open admission funnel": "admission-funnel",
+    "show admission funnel": "admission-funnel",
+    "open enquiry register": "enquiry-register",
+    "show enquiry register": "enquiry-register",
+    "open smart alerts": "smart-alerts",
+    "show smart alerts": "smart-alerts",
+    "open financial reports": "financial-reports",
+    "show financial reports": "financial-reports",
+    "open school pulse": "school-pulse",
+    "show school pulse": "school-pulse",
+    "open daily brief": "daily-brief",
+    "show daily brief": "daily-brief",
+    "open settings": "settings",
+    "open profile": "profile",
+    "open library": "library",
+    "show library": "library",
+    "open transport": "transport",
+    "show transport": "transport",
+    "open inventory": "inventory",
+    "show inventory": "inventory",
+    "open house points": "house-points",
+    "show house points": "house-points",
+    "open timetable": "timetable",
+    "show timetable": "timetable",
+    "open exam results": "exam-results",
+    "show exam results": "exam-results",
+    "open report cards": "report-cards",
+    "show report cards": "report-cards",
+}
+
+
+# ─── CRUD routes (unchanged) ─────────────────────────────────────────────────
+# Note: get_current_user is imported from middleware.auth
 
 @router.get("/conversations")
 async def list_conversations(request: Request):
@@ -47,6 +209,11 @@ async def create_conversation(request: Request):
 @router.patch("/conversations/{conv_id}")
 async def update_conversation(conv_id: str, body: ConversationUpdate, request: Request):
     db = get_db()
+    user = get_current_user(request)
+    conv = await db.conversations.find_one({"id": conv_id})
+    if not conv or conv.get("user_id") != user["id"]:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Conversation not found")
     update_data = {k: v for k, v in body.dict().items() if v is not None}
     update_data["updated_at"] = datetime.now().isoformat()
     await db.conversations.update_one({"id": conv_id}, {"$set": update_data})
@@ -56,6 +223,11 @@ async def update_conversation(conv_id: str, body: ConversationUpdate, request: R
 @router.delete("/conversations/{conv_id}")
 async def delete_conversation(conv_id: str, request: Request):
     db = get_db()
+    user = get_current_user(request)
+    conv = await db.conversations.find_one({"id": conv_id})
+    if not conv or conv.get("user_id") != user["id"]:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Conversation not found")
     await db.conversations.delete_one({"id": conv_id})
     await db.messages.delete_many({"conversation_id": conv_id})
     return {"success": True}
@@ -64,11 +236,18 @@ async def delete_conversation(conv_id: str, request: Request):
 @router.get("/conversations/{conv_id}/messages")
 async def get_messages(conv_id: str, request: Request):
     db = get_db()
+    user = get_current_user(request)
+    conv = await db.conversations.find_one({"id": conv_id})
+    if not conv or conv.get("user_id") != user["id"]:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Conversation not found")
     msgs = await db.messages.find(
         {"conversation_id": conv_id}, {"_id": 0}
     ).sort("created_at", 1).to_list(100)
     return {"success": True, "data": msgs}
 
+
+# ─── Rich content extraction ─────────────────────────────────────────────────
 
 def _extract_rich_content(text: str):
     """Extract <<<RICH_CONTENT>>>...<<<END>>> block from LLM response."""
@@ -84,51 +263,63 @@ def _extract_rich_content(text: str):
     return text.strip(), None
 
 
-def _parse_tool_call(text: str):
-    """Check if LLM response contains a tool call JSON anywhere in the text."""
-    # Search for {"action": ...} pattern anywhere in the response
-    pattern = r'\{[^{}]*"action"\s*:\s*"([^"]+)"[^{}]*\}'
-    match = re.search(pattern, text, re.DOTALL)
+# ─── Tool call JSON parser (BUG FIX #3: strip markdown fences) ───────────────
+
+def _parse_tool_call(text: str) -> Optional[dict]:
+    """
+    Check if LLM response contains a tool call JSON.
+
+    Handles:
+      - Raw JSON: {"action": "tool_name", "params": {...}, "reason": "..."}
+      - Wrapped in markdown code blocks: ```json ... ```
+      - Wrapped in plain code blocks: ``` ... ```
+    """
+    # BUG FIX #3: Strip markdown code block fences before parsing
+    cleaned = text.strip()
+
+    # Remove ```json ... ``` wrappers
+    fence_pattern = r"```(?:json)?\s*\n?(.*?)\n?\s*```"
+    fence_match = re.search(fence_pattern, cleaned, re.DOTALL)
+    if fence_match:
+        cleaned = fence_match.group(1).strip()
+
+    # Try to parse the cleaned text as a full JSON object with "action"
+    try:
+        data = json.loads(cleaned)
+        if isinstance(data, dict) and "action" in data:
+            return data
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Fall back: search for {"action": ...} pattern anywhere in the text
+    # Use a more robust approach that handles nested braces
+    pattern = r'\{[^{}]*"action"\s*:\s*"([^"]+)"[^{}]*(?:\{[^{}]*\}[^{}]*)?\}'
+    match = re.search(pattern, cleaned, re.DOTALL)
     if match:
         try:
             data = json.loads(match.group(0))
             if "action" in data:
                 return data
-        except Exception:
+        except (json.JSONDecodeError, ValueError):
             pass
+
+    # Final fallback: simpler pattern without nested braces
+    simple_pattern = r'\{[^{}]*"action"\s*:\s*"([^"]+)"[^{}]*\}'
+    match = re.search(simple_pattern, cleaned, re.DOTALL)
+    if match:
+        try:
+            data = json.loads(match.group(0))
+            if "action" in data:
+                return data
+        except (json.JSONDecodeError, ValueError):
+            pass
+
     return None
 
 
-# Keyword-based tool detection for reliable intent routing
-KEYWORD_TOOL_MAP = [
-    # School pulse - with slash variants
-    (["/school-pulse", "school status", "school pulse", "today's status", "today's overview", "school overview", "how is school", "pulse", "aaj ka status", "school ka status"], "get_school_pulse"),
-    # Daily brief
-    (["/daily-brief", "daily brief", "morning summary", "morning brief", "aaj ka haal", "morning status", "what happened today", "today's summary"], "get_daily_brief"),
-    # Fee collection
-    (["/fee-collection", "/fee-summary", "fee defaulter", "fee summary", "fee collection", "who owes", "overdue fee", "pending fee", "collect fee", "fee ke baare mein"], "get_fee_summary"),
-    # Staff status
-    (["/staff-tracker", "/leave-manager", "staff absent", "staff status", "staff tracker", "who is absent", "which staff", "staff attendance", "leave request", "pending leave", "staff ki leave"], "get_staff_status"),
-    # Attendance
-    (["/attendance-overview", "attendance trend", "attendance overview", "attendance report", "how is attendance", "attendance kaisi hai"], "get_attendance_overview"),
-    # Alerts
-    (["/smart-alerts", "smart alert", "active alert", "flag", "exception", "koi dikkat"], "get_smart_alerts"),
-    # Financial
-    (["/financial-reports", "financial report", "financial summary", "revenue", "expense", "paisa", "finance"], "get_financial_report"),
-    # Students
-    (["/student-database", "search student", "find student", "student named", "student list", "which student", "student dhundo"], "search_students"),
-    # Fee transactions
-    (["/fee-tracker", "fee transaction", "payment history", "who paid", "payment record"], "get_fee_transactions"),
-    # Leave approval
-    (["approve leave", "reject leave", "leave approve"], "approve_leave"),
-    # Enquiries
-    (["/admission-funnel", "/enquiry-register", "enquiry", "admission funnel", "new student inquiry", "admission"], "get_enquiries"),
-    # Health report
-    (["/health-report", "/ai-health-report", "health report", "school health", "health score"], "get_smart_alerts"),
-]
+# ─── Keyword detection ────────────────────────────────────────────────────────
 
-
-def detect_tool_from_keywords(text: str, role: str) -> str | None:
+def detect_tool_from_keywords(text: str, role: str) -> Optional[str]:
     """Detect which tool to call based on keywords in the user message."""
     text_lower = text.lower()
     for keywords, tool_name in KEYWORD_TOOL_MAP:
@@ -139,12 +330,292 @@ def detect_tool_from_keywords(text: str, role: str) -> str | None:
     return None
 
 
-async def _generate_chat_sse(conv_id: str, user_text: str, user: dict):
-    """SSE generator for chat streaming."""
-    db = get_db()
+# ─── Navigate detection ──────────────────────────────────────────────────────
 
+def detect_navigate(text: str) -> Optional[str]:
+    """Detect if user wants to navigate to a specific tool/page."""
+    text_lower = text.lower().strip()
+    for phrase, tool_id in NAVIGATE_MAP.items():
+        if phrase in text_lower:
+            return tool_id
+    return None
+
+
+# ─── Thinking event helper ────────────────────────────────────────────────────
+
+def thinking_event(step: str, message: str, tool: str = None, count: int = None) -> str:
+    """Build a thinking SSE event."""
+    data = {
+        "type": "thinking",
+        "step": step,
+        "message": message,
+        "ts": time.time(),
+    }
+    if tool:
+        data["tool"] = tool
+    if count is not None:
+        data["count"] = count
+    return f"data: {json.dumps(data)}\n\n"
+
+
+# ─── Keepalive SSE event ─────────────────────────────────────────────────────
+
+def keepalive_event() -> str:
+    return f"data: {json.dumps({'type': 'keepalive', 'ts': time.time()})}\n\n"
+
+
+# ─── Token counting with null-check (BUG FIX #1) ────────────────────────────
+
+def safe_token_count(tokens_from_api, fallback_text: str = "") -> int:
+    """Return token count with fallback if API returns None."""
+    if tokens_from_api is not None and isinstance(tokens_from_api, (int, float)):
+        return int(tokens_from_api)
+    # Fallback: rough estimate of 1 token per 4 characters
+    return max(1, len(fallback_text) // 4)
+
+
+# ─── Conversation history trimming (BUG FIX #2) ──────────────────────────────
+
+def _trim_history(messages: list[dict]) -> list[dict]:
+    """
+    Trim conversation history to fit within char budget.
+    If total chars > CHAR_BUDGET, keep first HISTORY_KEEP_FIRST messages
+    and most recent HISTORY_KEEP_RECENT messages.
+    """
+    if not messages:
+        return messages
+
+    total_chars = sum(len(m.get("content", "") or "") for m in messages)
+    if total_chars <= CHAR_BUDGET:
+        return messages
+
+    # Keep first N and last M messages
+    if len(messages) <= HISTORY_KEEP_FIRST + HISTORY_KEEP_RECENT:
+        return messages
+
+    first_msgs = messages[:HISTORY_KEEP_FIRST]
+    recent_msgs = messages[-HISTORY_KEEP_RECENT:]
+    trimmed = first_msgs + recent_msgs
+
+    # If still too large, progressively drop the oldest from the recent set
+    while len(trimmed) > HISTORY_KEEP_FIRST + 2:
+        total = sum(len(m.get("content", "") or "") for m in trimmed)
+        if total <= CHAR_BUDGET:
+            break
+        # Remove the message right after the preserved first messages
+        trimmed.pop(HISTORY_KEEP_FIRST)
+
+    return trimmed
+
+
+# ─── Extract count from tool result ──────────────────────────────────────────
+
+def _extract_result_count(result: dict) -> Optional[int]:
+    """Try to extract a record count from a tool result dict."""
+    if not isinstance(result, dict):
+        return None
+
+    # Direct count fields
+    for key in ("total", "count", "total_alerts", "total_defaulters",
+                "total_staff", "total_students"):
+        if key in result and isinstance(result[key], (int, float)):
+            return int(result[key])
+
+    # Check for lists and return their length
+    for key, val in result.items():
+        if isinstance(val, list) and key not in ("rich_blocks", "action_buttons"):
+            return len(val)
+
+    # Check nested summary
+    if "summary" in result and isinstance(result["summary"], dict):
+        for key in ("total_students", "total_staff"):
+            if key in result["summary"]:
+                return int(result["summary"][key])
+
+    return None
+
+
+# ─── Extract empty-result message (BUG FIX #6) ───────────────────────────────
+
+def _extract_empty_message(result: dict) -> Optional[str]:
+    """
+    If tool returned an empty data set, extract the context-aware
+    empty message if present.
+    """
+    if not isinstance(result, dict):
+        return None
+
+    # Check if there's an explicit message with empty data
+    has_empty_data = False
+    for key, val in result.items():
+        if isinstance(val, list) and len(val) == 0:
+            has_empty_data = True
+            break
+
+    if has_empty_data and "message" in result:
+        return result["message"]
+
+    # Also check total == 0
+    for count_key in ("total", "count", "total_alerts", "total_defaulters"):
+        if result.get(count_key) == 0 and "message" in result:
+            return result["message"]
+
+    return None
+
+
+# ─── Parameter resolution ────────────────────────────────────────────────────
+
+async def _resolve_params(params: dict, db) -> dict:
+    """
+    Resolve human-readable parameters to database IDs.
+    e.g. class_name "4B" → class_id, student_name "Rahul" → student_id,
+         "last 7 days" → date range.
+    """
+    resolved = dict(params)
+
+    # Resolve class_name → class_id
+    if "class_name" in resolved and "class_id" not in resolved:
+        class_name = resolved["class_name"]
+        # Try exact match first, then regex
+        cls = await db.classes.find_one({
+            "$or": [
+                {"name": class_name},
+                {"name": {"$regex": f"^{re.escape(class_name)}$", "$options": "i"}},
+            ]
+        })
+        if not cls:
+            # Try splitting like "4B" into name="4" section="B"
+            m = re.match(r"^(\d+)\s*([A-Za-z])$", class_name)
+            if m:
+                cls = await db.classes.find_one({
+                    "name": {"$regex": f"^{re.escape(m.group(1))}$", "$options": "i"},
+                    "section": {"$regex": f"^{re.escape(m.group(2))}$", "$options": "i"},
+                })
+        if cls:
+            resolved["class_id"] = cls["id"]
+            resolved["_resolved_class"] = f"{cls.get('name', '')}-{cls.get('section', '')}"
+
+    # Resolve student_name → student_id
+    if "student_name" in resolved and "student_id" not in resolved:
+        student_name = resolved["student_name"]
+        student = await db.students.find_one({
+            "name": {"$regex": re.escape(student_name), "$options": "i"},
+            "is_active": True,
+        })
+        if student:
+            resolved["student_id"] = student["id"]
+            resolved["_resolved_student"] = student["name"]
+
+    # Resolve "days" or date descriptors → date range
+    if "days" in resolved:
+        try:
+            days = int(resolved["days"])
+            end_date = date.today()
+            start_date = end_date - timedelta(days=days)
+            resolved["start_date"] = start_date.strftime("%Y-%m-%d")
+            resolved["end_date"] = end_date.strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            pass
+
+    # Resolve staff_name → staff_id
+    if "staff_name" in resolved and "staff_id" not in resolved:
+        staff_name = resolved["staff_name"]
+        staff = await db.staff.find_one({
+            "name": {"$regex": re.escape(staff_name), "$options": "i"},
+            "is_active": True,
+        })
+        if staff:
+            resolved["staff_id"] = staff["id"]
+            resolved["_resolved_staff"] = staff["name"]
+
+    return resolved
+
+
+# ─── Build confirm action display text ────────────────────────────────────────
+
+def _build_confirm_display(tool_name: str, params: dict) -> str:
+    """Build a human-readable confirmation message for a write action."""
+    displays = {
+        "record_fee_payment": lambda p: (
+            f"Record fee payment of {p.get('amount', '?')} "
+            f"for student {p.get('_resolved_student', p.get('student_id', '?'))} "
+            f"via {p.get('payment_mode', 'N/A')}"
+        ),
+        "mark_attendance": lambda p: (
+            f"Mark attendance for class "
+            f"{p.get('_resolved_class', p.get('class_id', '?'))} "
+            f"on {p.get('date', date.today().strftime('%Y-%m-%d'))}"
+        ),
+        "approve_leave": lambda p: (
+            f"{p.get('action', 'Approve').capitalize()} leave request "
+            f"{p.get('leave_id', '?')}"
+        ),
+        "award_house_points": lambda p: (
+            f"Award {p.get('points', '?')} house points to "
+            f"{p.get('house', '?')} for {p.get('reason', 'N/A')}"
+        ),
+    }
+    builder = displays.get(tool_name)
+    if builder:
+        try:
+            return builder(params)
+        except Exception:
+            pass
+    return f"Execute {tool_name} with parameters: {json.dumps(params, ensure_ascii=False)}"
+
+
+# ─── Thinking delay helper ────────────────────────────────────────────────────
+
+async def _thinking_delay():
+    """Add a small random-ish delay between thinking steps for natural feel."""
+    delay = THINKING_DELAY_MIN + (time.time() % 1) * (THINKING_DELAY_MAX - THINKING_DELAY_MIN)
+    await asyncio.sleep(delay)
+
+
+# ─── SSE Generator (main pipeline) ───────────────────────────────────────────
+
+async def _generate_chat_sse(conv_id: str, user_text: str, user: dict):
+    """
+    SSE generator for chat streaming.
+
+    Pipeline:
+      1. Save user message + auto-title
+      2. Input safety check (content filter)
+      3. Navigate detection
+      4. Build context + system prompt
+      5. Load + trim conversation history
+      6. Keyword tool detection
+      7. If no keyword match, ask LLM → parse tool call from response
+      8. Scope enforcement + tool execution (or confirm-action for writes)
+      9. Multi-tool chaining (up to 3 rounds)
+      10. Final LLM response generation
+      11. Content filtering on output
+      12. Stream text + rich content
+      13. Persist assistant message
+      14. Done event
+    """
+    db = get_db()
+    total_tokens_used = 0
+
+    # ── Phase 0: Token budget check ──────────────────────────────────────
+    branch_id = user.get("branch_id") or "branch-aaryans-joya"
+    budget_check = {"allowed": True, "source": "unlimited", "message": "", "can_recharge": False}
     try:
-        # 1. Save user message
+        budget_check = await check_and_reserve_tokens(user, branch_id, estimated_tokens=2000)
+        if not budget_check["allowed"]:
+            yield thinking_event("error", budget_check["message"])
+            yield f"data: {json.dumps({'type': 'text_delta', 'delta': budget_check['message']})}\n\n"
+            if budget_check.get("can_recharge"):
+                yield f"data: {json.dumps({'type': 'token_exhausted', 'can_recharge': True, 'message': budget_check['message']})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            return
+    except Exception as e:
+        logger.error(f"Phase 0 (token budget check) error: {e}")
+        # Non-fatal: allow the call to proceed if the budget system fails
+        budget_check = {"allowed": True, "source": "unlimited", "message": "", "can_recharge": False}
+
+    # ── Phase 1: Save user message ────────────────────────────────────────
+    try:
         lang = detect_language(user_text)
         user_msg = Message(
             conversation_id=conv_id,
@@ -154,45 +625,240 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict):
         )
         await db.messages.insert_one({**user_msg.dict(), "_id": user_msg.id})
 
-        # Update conversation timestamp and auto-title
+        # Update conversation timestamp + auto-title
         conv = await db.conversations.find_one({"id": conv_id})
         update_fields = {"updated_at": datetime.now().isoformat()}
         if conv and conv.get("title") in ("New conversation", None, ""):
             update_fields["title"] = user_text[:50].strip()
         await db.conversations.update_one({"id": conv_id}, {"$set": update_fields})
 
-        # 2. Build context and system prompt
+    except Exception as e:
+        logger.error(f"Phase 1 (save user message) error: {e}")
+        yield f"data: {json.dumps({'type': 'error', 'phase': 'save_message', 'message': 'Failed to save your message. Please try again.'})}\n\n"
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        return
+
+    # ── Thinking: understanding ───────────────────────────────────────────
+    yield thinking_event("understanding", "Reading your question...")
+    await _thinking_delay()
+
+    # ── Phase 2: Input safety check (BUG FIX #8 + CONTENT FILTER) ────────
+    try:
+        safety = check_input_safety(user_text, user["role"])
+        if not safety["safe"]:
+            rejection_text = safety.get("filtered_message", safety.get("message",
+                "I can't process that request. Please ask a school-related question."))
+            logger.info(f"Input blocked for user {user['id']}: {safety.get('reason', 'unknown')}")
+
+            # Stream the rejection message
+            yield thinking_event("composing", "Writing your answer...")
+            await _thinking_delay()
+
+            chunk_size = 4
+            for i in range(0, len(rejection_text), chunk_size):
+                chunk = rejection_text[i:i + chunk_size]
+                yield f"data: {json.dumps({'type': 'text_delta', 'delta': chunk})}\n\n"
+                await asyncio.sleep(0.008)
+
+            # Persist the rejection as assistant message
+            ai_msg = Message(
+                conversation_id=conv_id,
+                role="assistant",
+                content=rejection_text,
+                language_detected=lang,
+                is_flagged=True,
+                flag_reason=safety.get("reason", "content_filter"),
+            )
+            await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
+            yield f"data: {json.dumps({'type': 'done', 'message_id': ai_msg.id, 'tokens_used': 0})}\n\n"
+            return
+
+    except Exception as e:
+        logger.error(f"Phase 2 (input safety) error: {e}")
+        # Non-fatal: continue even if filter fails
+
+    # ── Phase 3: Navigate detection ───────────────────────────────────────
+    try:
+        nav_target = detect_navigate(user_text)
+        if nav_target:
+            yield f"data: {json.dumps({'type': 'navigate', 'tool_id': nav_target})}\n\n"
+            # Also send a brief text response
+            nav_text = f"Opening **{nav_target.replace('-', ' ').title()}** for you."
+            chunk_size = 4
+            for i in range(0, len(nav_text), chunk_size):
+                chunk = nav_text[i:i + chunk_size]
+                yield f"data: {json.dumps({'type': 'text_delta', 'delta': chunk})}\n\n"
+                await asyncio.sleep(0.008)
+
+            ai_msg = Message(
+                conversation_id=conv_id,
+                role="assistant",
+                content=nav_text,
+                language_detected=lang,
+            )
+            await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
+            yield f"data: {json.dumps({'type': 'done', 'message_id': ai_msg.id, 'tokens_used': 0})}\n\n"
+            return
+
+    except Exception as e:
+        logger.error(f"Phase 3 (navigate detection) error: {e}")
+        # Non-fatal: continue to normal chat flow
+
+    # ── Phase 4: Build context + system prompt ────────────────────────────
+    try:
         school_context = await build_school_context(user["role"], user["id"])
         system_prompt = build_system_prompt(user, school_context, lang)
 
-        # 3. Get conversation history (last 14 messages, not including current)
-        history = await db.messages.find(
+    except Exception as e:
+        logger.error(f"Phase 4 (build context) error: {e}")
+        yield f"data: {json.dumps({'type': 'error', 'phase': 'context', 'message': 'Failed to load school context. Please try again.'})}\n\n"
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        return
+
+    # ── Phase 5: Load + trim conversation history (BUG FIX #2) ───────────
+    try:
+        history_raw = await db.messages.find(
             {"conversation_id": conv_id, "role": {"$in": ["user", "assistant"]}},
             {"_id": 0},
-        ).sort("created_at", 1).to_list(20)
+        ).sort("created_at", 1).to_list(HISTORY_LIMIT)
 
-        messages_for_llm = [{"role": m["role"], "content": m.get("content", "") or ""} for m in history]
+        messages_for_llm = [
+            {"role": m["role"], "content": m.get("content", "") or ""}
+            for m in history_raw
+        ]
+        messages_for_llm = _trim_history(messages_for_llm)
 
-        # 4. Detect tool from keywords FIRST (reliable intent detection)
-        detected_tool = detect_tool_from_keywords(user_text, user["role"])
-        tool_result = None
-        tool_name = None
+    except Exception as e:
+        logger.error(f"Phase 5 (load history) error: {e}")
+        # Fall back to just the current message
+        messages_for_llm = [{"role": "user", "content": user_text}]
 
-        if detected_tool:
-            tool_name = detected_tool
-            tool_def = TOOL_REGISTRY.get(tool_name)
+    # ── Phase 6: Resolve scope ────────────────────────────────────────────
+    try:
+        scope = await resolve_scope(user, db)
+    except Exception as e:
+        logger.error(f"Scope resolution error: {e}")
+        scope = {"role": user["role"], "user_id": user["id"]}
+
+    # ── Phase 7: Keyword tool detection ───────────────────────────────────
+    detected_tool = detect_tool_from_keywords(user_text, user["role"])
+    tool_result = None
+    tool_name = None
+    all_tool_calls = []  # Track all tool calls for message persistence
+
+    if detected_tool:
+        tool_name = detected_tool
+        tool_def = TOOL_REGISTRY.get(tool_name)
+
+        # Determine intent description for thinking event
+        intent_desc = tool_name.replace("get_", "").replace("_", " ")
+        yield thinking_event("decision", f"You're asking about {intent_desc}. Fetching data...")
+        await _thinking_delay()
+
+        # ── BUG FIX #5: Role validation (explicit check) ─────────────
+        if not tool_def or user["role"] not in tool_def["roles"]:
+            logger.warning(f"Role {user['role']} not allowed for tool {tool_name}")
+            tool_name = None
+            detected_tool = None
+        else:
+            # ── Check if this is a write action requiring confirmation ──
+            if tool_name in WRITE_ACTION_TOOLS:
+                # We need params - try to extract from user text via LLM
+                params = {}
+                resolved_params = await _resolve_params(params, db)
+
+                yield thinking_event("tool_start", f"Preparing {tool_name}...", tool=tool_name)
+                await _thinking_delay()
+
+                action_id = str(uuid.uuid4())
+                confirm_event = {
+                    "type": "confirm_action",
+                    "action_id": action_id,
+                    "tool": tool_name,
+                    "params": {k: v for k, v in resolved_params.items() if not k.startswith("_")},
+                    "display": _build_confirm_display(tool_name, resolved_params),
+                    "buttons": [
+                        {"label": "Confirm", "action": "confirm"},
+                        {"label": "Cancel", "action": "cancel"},
+                    ],
+                }
+                yield f"data: {json.dumps(confirm_event)}\n\n"
+
+                # Send a brief explanation
+                confirm_text = f"I need your confirmation before proceeding. Please review the action above."
+                yield thinking_event("composing", "Writing your answer...")
+                await _thinking_delay()
+
+                chunk_size = 4
+                for i in range(0, len(confirm_text), chunk_size):
+                    chunk = confirm_text[i:i + chunk_size]
+                    yield f"data: {json.dumps({'type': 'text_delta', 'delta': chunk})}\n\n"
+                    await asyncio.sleep(0.008)
+
+                ai_msg = Message(
+                    conversation_id=conv_id,
+                    role="assistant",
+                    content=confirm_text,
+                    actions=[confirm_event],
+                    language_detected=lang,
+                )
+                await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
+                yield f"data: {json.dumps({'type': 'done', 'message_id': ai_msg.id, 'tokens_used': 0})}\n\n"
+                return
+
+            # ── Execute read tool ─────────────────────────────────────
+            yield thinking_event("tool_start", f"Querying {tool_name}...", tool=tool_name)
+            await _thinking_delay()
+
             yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'running'})}\n\n"
-            try:
-                tool_result = await tool_def["fn"]({}, user)
-                yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'done'})}\n\n"
-            except Exception as e:
-                tool_result = {"error": str(e)}
-                yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'error'})}\n\n"
 
-        # 5. Build LLM message list
+            # Start keepalive task
+            keepalive_stop = asyncio.Event()
+
+            async def _keepalive_sender():
+                while not keepalive_stop.is_set():
+                    try:
+                        await asyncio.wait_for(keepalive_stop.wait(), timeout=KEEPALIVE_INTERVAL)
+                    except asyncio.TimeoutError:
+                        pass  # keepalive will be yielded in the main loop
+                    if keepalive_stop.is_set():
+                        break
+
+            try:
+                tool_result = await tool_def["fn"]({}, user, scope) if _tool_accepts_scope(tool_def) else await tool_def["fn"]({}, user)
+                result_count = _extract_result_count(tool_result)
+                count_msg = f"Found {result_count} records" if result_count is not None else "Data retrieved"
+
+                yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'done'})}\n\n"
+                yield thinking_event("tool_done", count_msg, tool=tool_name, count=result_count)
+                await _thinking_delay()
+
+                all_tool_calls.append({"tool": tool_name, "result": tool_result})
+
+            except Exception as e:
+                logger.error(f"Tool execution error ({tool_name}): {e}")
+                tool_result = {"error": str(e)}
+                yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'error', 'error': str(e)})}\n\n"
+                all_tool_calls.append({"tool": tool_name, "result": tool_result})
+
+    # ── Phase 8: First LLM call ───────────────────────────────────────────
+    try:
         if tool_result:
-            tool_result_msg = f"Tool '{tool_name}' returned the following data:\n{json.dumps(tool_result, ensure_ascii=False, indent=2)}\n\nNow provide a comprehensive, well-formatted response to the user's question based on this data. Use markdown tables and formatting. Include a <<<RICH_CONTENT>>> block if you have stats or tables to show."
-            messages_for_llm_final = messages_for_llm[:-1] + [  # exclude the user msg we just saved
+            # BUG FIX #6: Check for empty results message
+            empty_msg = _extract_empty_message(tool_result)
+            empty_note = ""
+            if empty_msg:
+                empty_note = f"\n\nNote: The tool returned no data with this message: \"{empty_msg}\". Relay this to the user helpfully."
+
+            tool_result_msg = (
+                f"Tool '{tool_name}' returned the following data:\n"
+                f"{json.dumps(tool_result, ensure_ascii=False, indent=2)}"
+                f"{empty_note}\n\n"
+                f"Now provide a comprehensive, well-formatted response to the user's question "
+                f"based on this data. Use markdown tables and formatting. "
+                f"Include a <<<RICH_CONTENT>>> block if you have stats or tables to show."
+            )
+            messages_for_llm_final = messages_for_llm[:-1] + [
                 {"role": "user", "content": user_text},
                 {"role": "assistant", "content": f"Fetching {tool_name} data..."},
                 {"role": "user", "content": tool_result_msg},
@@ -200,79 +866,306 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict):
         else:
             messages_for_llm_final = messages_for_llm
 
-        # 6. Call LLM
-        session_id = f"{conv_id}-{uuid.uuid4()}"
-        llm_response, tokens_used = await llm_client.chat(system_prompt, messages_for_llm_final, session_id)
+        yield thinking_event("analyzing", "Processing the data..." if tool_result else "Thinking about your question...")
+        await _thinking_delay()
 
-        # 7. Check if LLM also wants a tool call (for cases not caught by keywords)
-        if not tool_result:
-            llm_tool_call = _parse_tool_call(llm_response)
-            if llm_tool_call:
-                llm_tool_name = llm_tool_call.get("action")
-                llm_tool_params = llm_tool_call.get("params", {})
-                tool_def = TOOL_REGISTRY.get(llm_tool_name)
-                if tool_def and user["role"] in tool_def["roles"]:
-                    tool_name = llm_tool_name
-                    yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'running'})}\n\n"
-                    try:
-                        tool_result = await tool_def["fn"](llm_tool_params, user)
-                        yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'done'})}\n\n"
-                    except Exception as e:
-                        tool_result = {"error": str(e)}
+        # BUG FIX #4: keepalive during LLM call
+        llm_task_done = asyncio.Event()
+        llm_response = ""
+        llm_tokens = 0
 
-                    # Second LLM pass — provide data, ask for formatted response
-                    # IMPORTANT: Strip any JSON from previous response to prevent it showing to user
-                    tool_msg = f"Tool '{tool_name}' data:\n{json.dumps(tool_result, ensure_ascii=False, indent=2)}\n\nNow provide a comprehensive, well-formatted natural language response. Do NOT output any JSON tool calls."
-                    messages_for_llm_final = messages_for_llm[:-1] + [
-                        {"role": "user", "content": user_text},
-                        {"role": "assistant", "content": "Fetching data..."},
-                        {"role": "user", "content": tool_msg},
-                    ]
-                    session_id_2 = f"{conv_id}-{uuid.uuid4()}"
-                    second_response, second_tokens = await llm_client.chat(system_prompt, messages_for_llm_final, session_id_2)
-                    llm_response = second_response
-                    tokens_used += second_tokens
+        async def _llm_call():
+            nonlocal llm_response, llm_tokens
+            session_id = f"{conv_id}-{uuid.uuid4()}"
+            result = await llm_client.chat(system_prompt, messages_for_llm_final, session_id)
+            if isinstance(result, tuple):
+                llm_response, llm_tokens = result
+            else:
+                llm_response = result
+                llm_tokens = 0
+            llm_task_done.set()
 
-        # Strip any residual JSON tool call patterns from final response (safety net)
+        asyncio.create_task(_llm_call())
+
+        # Yield keepalive events while waiting for LLM (BUG FIX #4)
+        while not llm_task_done.is_set():
+            try:
+                await asyncio.wait_for(llm_task_done.wait(), timeout=KEEPALIVE_INTERVAL)
+            except asyncio.TimeoutError:
+                yield keepalive_event()
+
+        # BUG FIX #1: Safe token counting
+        total_tokens_used += safe_token_count(llm_tokens, llm_response)
+
+    except Exception as e:
+        logger.error(f"Phase 8 (first LLM call) error: {e}")
+        yield f"data: {json.dumps({'type': 'error', 'phase': 'llm_call', 'message': 'Failed to generate response. Please try again.'})}\n\n"
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        return
+
+    # ── Phase 9: LLM tool detection + multi-tool chaining ─────────────────
+    tool_rounds = 0
+
+    try:
+        while not tool_result or tool_rounds < MAX_TOOL_ROUNDS:
+            # Only enter the loop body if we haven't already executed a keyword tool
+            # or if the LLM is requesting another tool after a previous result
+            if tool_result and tool_rounds == 0:
+                # Already have a result from keyword detection; check if LLM wants another tool
+                llm_tool_call = _parse_tool_call(llm_response)
+                if not llm_tool_call:
+                    break
+            elif not tool_result and tool_rounds == 0:
+                # No keyword tool was triggered; check if LLM wants a tool
+                llm_tool_call = _parse_tool_call(llm_response)
+                if not llm_tool_call:
+                    break
+            else:
+                # Subsequent rounds: check if the latest LLM response requests another tool
+                llm_tool_call = _parse_tool_call(llm_response)
+                if not llm_tool_call:
+                    break
+
+            tool_rounds += 1
+            llm_tool_name = llm_tool_call.get("action")
+            llm_tool_params = llm_tool_call.get("params", {})
+
+            tool_def = TOOL_REGISTRY.get(llm_tool_name)
+            if not tool_def or user["role"] not in tool_def["roles"]:
+                break  # Not allowed
+
+            tool_name = llm_tool_name
+
+            # Thinking: decision (if first round)
+            if tool_rounds == 1 and not detected_tool:
+                intent_desc = tool_name.replace("get_", "").replace("_", " ")
+                reason = llm_tool_call.get("reason", f"Fetching {intent_desc}")
+                yield thinking_event("decision", f"You're asking about {intent_desc}. {reason}")
+                await _thinking_delay()
+
+            # Resolve parameters
+            resolved_params = await _resolve_params(llm_tool_params, db)
+
+            # ── Write action confirmation ─────────────────────────────
+            if tool_name in WRITE_ACTION_TOOLS:
+                action_id = str(uuid.uuid4())
+                confirm_event = {
+                    "type": "confirm_action",
+                    "action_id": action_id,
+                    "tool": tool_name,
+                    "params": {k: v for k, v in resolved_params.items() if not k.startswith("_")},
+                    "display": _build_confirm_display(tool_name, resolved_params),
+                    "buttons": [
+                        {"label": "Confirm", "action": "confirm"},
+                        {"label": "Cancel", "action": "cancel"},
+                    ],
+                }
+                yield f"data: {json.dumps(confirm_event)}\n\n"
+
+                confirm_text = "I need your confirmation before proceeding. Please review the action above."
+                yield thinking_event("composing", "Writing your answer...")
+                await _thinking_delay()
+
+                chunk_size = 4
+                for i in range(0, len(confirm_text), chunk_size):
+                    chunk = confirm_text[i:i + chunk_size]
+                    yield f"data: {json.dumps({'type': 'text_delta', 'delta': chunk})}\n\n"
+                    await asyncio.sleep(0.008)
+
+                ai_msg = Message(
+                    conversation_id=conv_id,
+                    role="assistant",
+                    content=confirm_text,
+                    actions=[confirm_event],
+                    tool_calls=all_tool_calls if all_tool_calls else None,
+                    language_detected=lang,
+                )
+                await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
+                yield f"data: {json.dumps({'type': 'done', 'message_id': ai_msg.id, 'tokens_used': total_tokens_used})}\n\n"
+                return
+
+            # ── Execute read tool ─────────────────────────────────────
+            yield thinking_event("tool_start", f"Querying {tool_name}...", tool=tool_name)
+            await _thinking_delay()
+
+            yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'running'})}\n\n"
+
+            try:
+                tool_result = await tool_def["fn"](resolved_params, user, scope) if _tool_accepts_scope(tool_def) else await tool_def["fn"](resolved_params, user)
+                result_count = _extract_result_count(tool_result)
+                count_msg = f"Found {result_count} records" if result_count is not None else "Data retrieved"
+
+                yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'done'})}\n\n"
+                yield thinking_event("tool_done", count_msg, tool=tool_name, count=result_count)
+                await _thinking_delay()
+
+                all_tool_calls.append({"tool": tool_name, "params": resolved_params, "result": tool_result})
+
+            except Exception as e:
+                logger.error(f"Tool execution error ({tool_name}): {e}")
+                tool_result = {"error": str(e)}
+                yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'error', 'error': str(e)})}\n\n"
+                all_tool_calls.append({"tool": tool_name, "params": resolved_params, "result": tool_result})
+                break  # Stop chaining on error
+
+            # ── Second (or subsequent) LLM pass with tool data ────────
+            yield thinking_event("analyzing", "Processing the data...")
+            await _thinking_delay()
+
+            # BUG FIX #6: Check for empty results
+            empty_msg = _extract_empty_message(tool_result)
+            empty_note = ""
+            if empty_msg:
+                empty_note = f"\n\nNote: The tool returned no data with this message: \"{empty_msg}\". Relay this to the user helpfully."
+
+            tool_msg = (
+                f"Tool '{tool_name}' data:\n"
+                f"{json.dumps(tool_result, ensure_ascii=False, indent=2)}"
+                f"{empty_note}\n\n"
+                f"Now provide a comprehensive, well-formatted natural language response. "
+                f"Do NOT output any JSON tool calls."
+            )
+            messages_for_llm_final = messages_for_llm[:-1] + [
+                {"role": "user", "content": user_text},
+                {"role": "assistant", "content": "Fetching data..."},
+                {"role": "user", "content": tool_msg},
+            ]
+
+            # LLM call with keepalive (BUG FIX #4)
+            llm_task_done = asyncio.Event()
+            llm_response = ""
+            llm_tokens = 0
+
+            async def _llm_followup():
+                nonlocal llm_response, llm_tokens
+                session_id = f"{conv_id}-{uuid.uuid4()}"
+                result = await llm_client.chat(system_prompt, messages_for_llm_final, session_id)
+                if isinstance(result, tuple):
+                    llm_response, llm_tokens = result
+                else:
+                    llm_response = result
+                    llm_tokens = 0
+                llm_task_done.set()
+
+            asyncio.create_task(_llm_followup())
+
+            while not llm_task_done.is_set():
+                try:
+                    await asyncio.wait_for(llm_task_done.wait(), timeout=KEEPALIVE_INTERVAL)
+                except asyncio.TimeoutError:
+                    yield keepalive_event()
+
+            total_tokens_used += safe_token_count(llm_tokens, llm_response)
+
+            # Check if LLM wants yet another tool (will loop back)
+            # The while condition + _parse_tool_call at top of loop handles this
+
+    except Exception as e:
+        logger.error(f"Phase 9 (multi-tool chaining) error: {e}")
+        # Continue with whatever llm_response we have
+
+    # ── Phase 10: Strip residual JSON tool patterns from final response ───
+    try:
         llm_response = re.sub(
-            r'\{"action"\s*:\s*"[^"]+"\s*,\s*"params"\s*:\s*\{[^}]*\}\s*\}',
+            r'\{"action"\s*:\s*"[^"]+"\s*,\s*"params"\s*:\s*\{[^}]*\}(?:\s*,\s*"reason"\s*:\s*"[^"]*")?\s*\}',
             '', llm_response
         ).strip()
 
-        # 8. Parse rich content from final response
-        clean_text, rich_content = _extract_rich_content(llm_response)
+        # Also strip leftover markdown-fenced JSON tool calls
+        llm_response = re.sub(
+            r'```(?:json)?\s*\{[^}]*"action"[^}]*\}\s*```',
+            '', llm_response
+        ).strip()
 
-        # 9. Stream text response
+    except Exception as e:
+        logger.error(f"Phase 10 (strip JSON) error: {e}")
+
+    # ── Phase 11: Content filter on output ────────────────────────────────
+    try:
+        clean_response = filter_response(llm_response, user["role"])
+    except Exception as e:
+        logger.error(f"Phase 11 (content filter) error: {e}")
+        clean_response = llm_response
+
+    # ── Phase 12: Parse rich content ──────────────────────────────────────
+    clean_text, rich_content = _extract_rich_content(clean_response)
+
+    # ── Phase 13: Stream text response ────────────────────────────────────
+    yield thinking_event("composing", "Writing your answer...")
+    await _thinking_delay()
+
+    try:
         chunk_size = 4
         for i in range(0, len(clean_text), chunk_size):
-            chunk = clean_text[i: i + chunk_size]
+            chunk = clean_text[i:i + chunk_size]
             yield f"data: {json.dumps({'type': 'text_delta', 'delta': chunk})}\n\n"
             await asyncio.sleep(0.008)
 
-        # 10. Send rich content block
+        # Send rich content block
         if rich_content:
             yield f"data: {json.dumps({'type': 'rich_blocks', 'blocks': rich_content.get('rich_blocks', []), 'action_buttons': rich_content.get('action_buttons', [])})}\n\n"
 
-        # 11. Save AI message to DB
+    except Exception as e:
+        logger.error(f"Phase 13 (streaming) error: {e}")
+        yield f"data: {json.dumps({'type': 'error', 'phase': 'streaming', 'message': 'Error while streaming response.'})}\n\n"
+
+    # ── Phase 14: Save AI message to DB (BUG FIX #7: persist BEFORE done event) ──
+    try:
+        has_content = bool(clean_text and clean_text.strip())
+        has_rich = bool(rich_content and (rich_content.get('rich_blocks') or rich_content.get('action_buttons')))
+        if not has_content and not has_rich:
+            yield f"data: {json.dumps({'type': 'done', 'message_id': f'empty-{conv_id}', 'tokens_used': total_tokens_used})}\n\n"
+            return
         ai_msg = Message(
             conversation_id=conv_id,
             role="assistant",
             content=clean_text,
             rich_content=rich_content,
-            tool_calls=[{"tool": tool_name, "result": tool_result}] if tool_name else None,
+            tool_calls=all_tool_calls if all_tool_calls else None,
             language_detected=lang,
         )
         await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
 
-        yield f"data: {json.dumps({'type': 'done', 'message_id': ai_msg.id, 'tokens_used': tokens_used})}\n\n"
+        # ── Phase 14b: Record token usage ────────────────────────────────
+        try:
+            await record_usage(
+                user, branch_id, total_tokens_used,
+                budget_check.get("source", "unlimited"),
+                conversation_id=conv_id,
+                tool_name=tool_name,
+            )
+        except Exception as e:
+            logger.error(f"Phase 14b (record token usage) error: {e}")
+
+        # BUG FIX #7: done event comes AFTER persistence
+        yield f"data: {json.dumps({'type': 'done', 'message_id': ai_msg.id, 'tokens_used': total_tokens_used})}\n\n"
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        error_msg = f"I encountered an error: {str(e)}. Please try again."
-        yield f"data: {json.dumps({'type': 'text_delta', 'delta': error_msg})}\n\n"
-        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        logger.error(f"Phase 14 (persistence) error: {e}")
+        # Still send done event even if persistence fails
+        yield f"data: {json.dumps({'type': 'done', 'tokens_used': total_tokens_used, 'error': 'Message saved but may not persist.'})}\n\n"
 
+
+# ─── Helper: check if tool function accepts scope parameter ───────────────────
+
+def _tool_accepts_scope(tool_def: dict) -> bool:
+    """
+    Check if a tool function accepts a scope parameter (3 args vs 2).
+    Existing tools take (params, user). New tools may take (params, user, scope).
+    We try gracefully: if the function signature has 3+ params, pass scope.
+    """
+    import inspect
+    fn = tool_def.get("fn")
+    if fn is None:
+        return False
+    try:
+        sig = inspect.signature(fn)
+        return len(sig.parameters) >= 3
+    except (ValueError, TypeError):
+        return False
+
+
+# ─── SSE streaming endpoint ──────────────────────────────────────────────────
 
 @router.post("/conversations/{conv_id}/messages")
 async def send_message(conv_id: str, request: Request):
@@ -293,6 +1186,8 @@ async def send_message(conv_id: str, request: Request):
     )
 
 
+# ─── Action execution endpoint ───────────────────────────────────────────────
+
 @router.post("/conversations/{conv_id}/action")
 async def execute_action(conv_id: str, request: Request):
     """Execute an action button directly (not through LLM) and add result to chat."""
@@ -310,7 +1205,14 @@ async def execute_action(conv_id: str, request: Request):
         return {"success": False, "error": "Not allowed for your role"}
 
     try:
-        result = await tool_def["fn"](params, user)
+        # Resolve scope for the action
+        scope = await resolve_scope(user, db)
+
+        if _tool_accepts_scope(tool_def):
+            result = await tool_def["fn"](params, user, scope)
+        else:
+            result = await tool_def["fn"](params, user)
+
         msg_content = result.get("message", f"Action '{label}' completed successfully.")
 
         # Save as AI message
@@ -322,8 +1224,95 @@ async def execute_action(conv_id: str, request: Request):
             language_detected="en",
         )
         await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
-        await db.conversations.update_one({"id": conv_id}, {"$set": {"updated_at": datetime.now().isoformat()}})
+        await db.conversations.update_one(
+            {"id": conv_id},
+            {"$set": {"updated_at": datetime.now().isoformat()}},
+        )
 
-        return {"success": True, "data": {"message": msg_content, "result": result, "message_id": ai_msg.id}}
+        return {
+            "success": True,
+            "data": {
+                "message": msg_content,
+                "result": result,
+                "message_id": ai_msg.id,
+            },
+        }
     except Exception as e:
+        logger.error(f"Action execution error ({action}): {e}")
+        return {"success": False, "error": str(e)}
+
+
+# ─── Confirm action endpoint ─────────────────────────────────────────────────
+
+@router.post("/conversations/{conv_id}/confirm")
+async def confirm_action(conv_id: str, request: Request):
+    """
+    Handle user's response to a confirm_action event.
+    Body: {"action_id": "...", "tool": "...", "params": {...}, "confirmed": true/false}
+    """
+    db = get_db()
+    user = get_current_user(request)
+    body = await request.json()
+
+    action_id = body.get("action_id", "")
+    tool_name = body.get("tool", "")
+    params = body.get("params", {})
+    # Support both "confirmed: true" and "decision: confirm" from frontend
+    decision = body.get("decision", "")
+    confirmed = body.get("confirmed", False) or (decision == "confirm")
+
+    if not confirmed:
+        # User cancelled
+        cancel_msg = "Action cancelled. Let me know if you need anything else."
+        ai_msg = Message(
+            conversation_id=conv_id,
+            role="assistant",
+            content=cancel_msg,
+            language_detected="en",
+        )
+        await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
+        return {
+            "success": True,
+            "data": {"message": cancel_msg, "message_id": ai_msg.id, "cancelled": True},
+        }
+
+    tool_def = TOOL_REGISTRY.get(tool_name)
+    if not tool_def:
+        return {"success": False, "error": f"Unknown tool: {tool_name}"}
+    if user["role"] not in tool_def["roles"]:
+        return {"success": False, "error": "Not allowed for your role"}
+
+    try:
+        scope = await resolve_scope(user, db)
+
+        if _tool_accepts_scope(tool_def):
+            result = await tool_def["fn"](params, user, scope)
+        else:
+            result = await tool_def["fn"](params, user)
+
+        msg_content = result.get("message", f"Action '{tool_name}' completed successfully.")
+
+        ai_msg = Message(
+            conversation_id=conv_id,
+            role="assistant",
+            content=msg_content,
+            tool_calls=[{"tool": tool_name, "params": params, "result": result, "action_id": action_id}],
+            language_detected="en",
+        )
+        await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
+        await db.conversations.update_one(
+            {"id": conv_id},
+            {"$set": {"updated_at": datetime.now().isoformat()}},
+        )
+
+        return {
+            "success": True,
+            "data": {
+                "message": msg_content,
+                "result": result,
+                "message_id": ai_msg.id,
+            },
+        }
+    except Exception as e:
+        logger.error(f"Confirm action error ({tool_name}): {e}")
         return {"success": False, "error": str(e)}

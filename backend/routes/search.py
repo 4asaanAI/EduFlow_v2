@@ -1,6 +1,8 @@
 """Search API — role-scoped search across all data"""
+import re
 from fastapi import APIRouter, Request
 from database import get_db
+from middleware.auth import get_current_user
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -48,7 +50,7 @@ TOOLS_BY_ROLE = {
 
 
 def get_user(req: Request):
-    return {"id": req.headers.get("X-User-Id", "user-owner-001"), "role": req.headers.get("X-User-Role", "owner")}
+    return get_current_user(req)
 
 
 @router.get("")
@@ -62,6 +64,7 @@ async def search(request: Request, q: str = "", type: str = "all"):
         return {"success": True, "data": []}
 
     q_lower = q.lower()
+    q_safe = re.escape(q)
 
     # Search tools (all roles)
     if type in ["all", "tool"]:
@@ -71,7 +74,7 @@ async def search(request: Request, q: str = "", type: str = "all"):
 
     # Search persons (role-scoped)
     if type in ["all", "persons", "students"] and role in ["owner", "admin", "teacher"]:
-        student_query = {"$or": [{"name": {"$regex": q, "$options": "i"}}, {"admission_number": {"$regex": q, "$options": "i"}}], "is_active": True}
+        student_query = {"$or": [{"name": {"$regex": q_safe, "$options": "i"}}, {"admission_number": {"$regex": q_safe, "$options": "i"}}], "is_active": True}
         # Teacher: only see their own class students
         if role == "teacher":
             import os
@@ -85,7 +88,7 @@ async def search(request: Request, q: str = "", type: str = "all"):
 
     if type in ["all", "persons", "staff"] and role in ["owner", "admin"]:
         staff = await db.staff.find(
-            {"name": {"$regex": q, "$options": "i"}, "is_active": True},
+            {"name": {"$regex": q_safe, "$options": "i"}, "is_active": True},
             {"_id": 0, "id": 1, "name": 1, "staff_type": 1, "department": 1, "specialization": 1}
         ).to_list(8)
         for s in staff:
@@ -110,7 +113,7 @@ async def search(request: Request, q: str = "", type: str = "all"):
     # Search announcements
     if type in ["all", "announcements"]:
         annts = await db.announcements.find(
-            {"$or": [{"title": {"$regex": q, "$options": "i"}}, {"content": {"$regex": q, "$options": "i"}}], "is_draft": False},
+            {"$or": [{"title": {"$regex": q_safe, "$options": "i"}}, {"content": {"$regex": q_safe, "$options": "i"}}], "is_draft": False},
             {"_id": 0, "id": 1, "title": 1, "created_at": 1}
         ).to_list(5)
         for a in annts:

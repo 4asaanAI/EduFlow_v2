@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Request, HTTPException
 from database import get_db
+from middleware.auth import get_current_user
 from datetime import datetime
 import uuid
 
@@ -7,11 +8,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
 def get_user(req: Request):
-    return {
-        "id": req.headers.get("X-User-Id", "user-owner-001"),
-        "role": req.headers.get("X-User-Role", "owner"),
-        "name": req.headers.get("X-User-Name", "Aman"),
-    }
+    return get_current_user(req)
 
 
 # --- Token Usage Tracking ---
@@ -83,10 +80,8 @@ async def year_end_transition(request: Request):
     }
 
 
-# --- CRUD: Soft Delete students ---
-# (In students.py) —-- handled there
-
-
+@router.patch("/school")
+async def update_school_settings(request: Request):
     db = get_db()
     user = get_user(request)
     if user["role"] not in ["owner"]:
@@ -95,7 +90,7 @@ async def year_end_transition(request: Request):
     allowed = {"attendance_threshold", "school_name", "board", "city", "ai_context"}
     update = {k: v for k, v in body.items() if k in allowed}
     from datetime import datetime as dt
-    await db.school_settings.update_one({"id": "main"}, {"$set": {**update, "updated_at": dt.now().isoformat()}})
+    await db.school_settings.update_one({"id": "main"}, {"$set": {**update, "updated_at": dt.now().isoformat()}}, upsert=True)
     return {"success": True}
 
 

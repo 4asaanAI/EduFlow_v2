@@ -4,7 +4,7 @@ Each function queries MongoDB and returns structured data.
 """
 from datetime import datetime, date, timedelta
 from database import get_db
-import logging
+import logging, re
 
 logger = logging.getLogger(__name__)
 
@@ -386,12 +386,13 @@ async def tool_search_students(params: dict, user: dict) -> dict:
 
     filter_q = {"is_active": True}
     if query_str:
+        safe_q = re.escape(query_str)
         filter_q["$or"] = [
-            {"name": {"$regex": query_str, "$options": "i"}},
-            {"admission_number": {"$regex": query_str, "$options": "i"}},
+            {"name": {"$regex": safe_q, "$options": "i"}},
+            {"admission_number": {"$regex": safe_q, "$options": "i"}},
         ]
     if class_name:
-        cls = await db.classes.find_one({"name": {"$regex": class_name, "$options": "i"}})
+        cls = await db.classes.find_one({"name": {"$regex": re.escape(class_name), "$options": "i"}})
         if cls:
             filter_q["class_id"] = cls["id"]
 

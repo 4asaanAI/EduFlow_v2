@@ -1,49 +1,146 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
-const MOCK_USERS = {
-  owner:   { id: 'user-owner-001', name: 'Aman',         role: 'owner',   initials: 'A'  },
-  admin:   { id: 'user-admin-001', name: 'Priya Sharma', role: 'admin',   initials: 'PS' },
-  teacher: { id: 'user-teacher-001', name: 'Rajesh Kumar', role: 'teacher', initials: 'RK' },
-  student: { id: 'user-student-001', name: 'Rahul Singh',  role: 'student', initials: 'RS' },
-};
+const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
-const STORAGE_KEY = 'eduflow_user';
+const TOKEN_KEY = 'eduflow_token';
+const USER_KEY = 'eduflow_user';
 
-function loadStoredUser() {
+// ─── Token helpers ──────────────────────────────────────────────────────────
+
+function getStoredToken() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    return localStorage.getItem(TOKEN_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+function getStoredUser() {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 }
 
+function storeAuth(token, user) {
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+function clearAuth() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+
+// ─── Authenticated fetch wrapper ────────────────────────────────────────────
+
+export async function authFetch(url, options = {}) {
+  const token = getStoredToken();
+  const headers = { ...options.headers };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(url, { ...options, headers });
+
+  if (res.status === 401) {
+    clearAuth();
+    if (window.location.pathname !== '/login') {
+      window.location.href = '/login';
+    }
+  }
+
+  return res;
+}
+
+// ─── Context ────────────────────────────────────────────────────────────────
+
 const UserContext = createContext(null);
 
 export function UserProvider({ children }) {
-  const [currentUser, setCurrentUser] = useState(() => loadStoredUser());
+  const [currentUser, setCurrentUser] = useState(() => getStoredUser());
+  const [token, setToken] = useState(() => getStoredToken());
+  const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  const login = (user) => {
-    setCurrentUser(user);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-  };
+  // Validate token on app load
+  useEffect(() => {
+    async function validateToken() {
+      const storedToken = getStoredToken();
+      if (!storedToken) {
+        setLoading(false);
+        setIsAuthenticated(false);
+        return;
+      }
 
-  const logout = () => {
-    setCurrentUser(null);
-    localStorage.removeItem(STORAGE_KEY);
-  };
-
-  // Dev helper — switch role using mock users (for testing without re-login)
-  const switchRole = (role) => {
-    if (MOCK_USERS[role]) {
-      const user = MOCK_USERS[role];
-      setCurrentUser(user);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+      try {
+        const res = await fetch(`${API}/auth/me`, {
+          headers: { Authorization: `Bearer ${storedToken}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setCurrentUser(data.user);
+          setToken(storedToken);
+          setIsAuthenticated(true);
+          localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+        } else {
+          clearAuth();
+          setCurrentUser(null);
+          setToken(null);
+          setIsAuthenticated(false);
+        }
+      } catch {
+        // Network error — clear auth, require re-login
+        clearAuth();
+        setCurrentUser(null);
+        setToken(null);
+        setIsAuthenticated(false);
+      }
+      setLoading(false);
     }
-  };
+
+    validateToken();
+  }, []);
+
+  // ─── Password login ──────────────────────────────────────────────────────
+
+  const loginPassword = useCallback(async (username, password) => {
+    const res = await fetch(`${API}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Login failed');
+
+    storeAuth(data.token, data.user);
+    setToken(data.token);
+    setCurrentUser(data.user);
+    setIsAuthenticated(true);
+    return data;
+  }, []);
+
+  // ─── Logout ───────────────────────────────────────────────────────────────
+
+  const logout = useCallback(() => {
+    clearAuth();
+    setCurrentUser(null);
+    setToken(null);
+    setIsAuthenticated(false);
+  }, []);
 
   return (
-    <UserContext.Provider value={{ currentUser, login, logout, switchRole, MOCK_USERS }}>
+    <UserContext.Provider value={{
+      currentUser,
+      token,
+      loading,
+      isAuthenticated,
+      loginPassword,
+      logout,
+    }}>
       {children}
     </UserContext.Provider>
   );

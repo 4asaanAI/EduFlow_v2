@@ -1,6 +1,7 @@
 """Routes: assignments, exams, results, subjects, timetable"""
 from fastapi import APIRouter, Request, HTTPException
 from database import get_db
+from middleware.auth import get_current_user
 from datetime import datetime
 import uuid
 
@@ -8,7 +9,7 @@ router = APIRouter(prefix="/api/academics", tags=["academics"])
 
 
 def get_user(req: Request):
-    return {"id": req.headers.get("X-User-Id", "user-owner-001"), "role": req.headers.get("X-User-Role", "owner")}
+    return get_current_user(req)
 
 
 # --- Assignments ---
@@ -270,7 +271,8 @@ Make questions appropriate for Classes 9-12 CBSE standard."""
         )
         # Save to DB
         db = get_db()
-        subj = await db.subjects.find_one({"name": {"$regex": subject, "$options": "i"}}, {"_id": 0})
+        import re as _re
+        subj = await db.subjects.find_one({"name": {"$regex": _re.escape(subject), "$options": "i"}}, {"_id": 0})
         qp = {
             "id": str(uuid.uuid4()),
             "teacher_id": user["id"],

@@ -9,7 +9,7 @@ import { Search, Plus, CheckCircle, XCircle, Save, RefreshCw, X, FileDown } from
 import html2pdf from 'html2pdf.js';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
-function h(user) { return { 'Content-Type': 'application/json', 'X-User-Role': user?.role || 'admin', 'X-User-Id': user?.id || 'user-admin-001', 'X-User-Name': user?.name || 'Priya' }; }
+function h() { const t = localStorage.getItem('eduflow_token'); return { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) }; }
 
 // 1. Student Database Manager
 export function StudentDatabase() {
@@ -22,7 +22,7 @@ export function StudentDatabase() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: '', class_id: '', admission_number: '', dob: '', gender: '', guardian_name: '', guardian_phone: '' });
+  const [form, setForm] = useState({ name: '', class_id: '', admission_number: '', dob: '', gender: '', guardian_name: '', guardian_phone: '', roll_number: '' });
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
 
   useEffect(() => { getAllClasses(currentUser).then(r => { if (r.success) setClasses(r.data || []); }); }, []);
@@ -45,13 +45,11 @@ export function StudentDatabase() {
     if (!form.name || !form.class_id) { setAddError('Name and class are required'); return; }
     setSaving(true);
     setAddError('');
-    console.log('Creating student with form:', form);
     try {
       const res = await createStudent(currentUser, form);
-      console.log('Create student response:', res);
       if (res.success) {
         setShowAdd(false);
-        setForm({ name: '', class_id: '', admission_number: '', dob: '', gender: '', guardian_name: '', guardian_phone: '' });
+        setForm({ name: '', class_id: '', admission_number: '', dob: '', gender: '', guardian_name: '', guardian_phone: '', roll_number: '' });
         load();
       } else {
         setAddError(res.detail || res.message || 'Failed to add student');
@@ -67,29 +65,30 @@ export function StudentDatabase() {
     <ToolPage title="Student Database" subtitle={`${total} students enrolled`} onRefresh={load} loading={loading}
       actions={<ActionBtn label="Add Student" onClick={() => setShowAdd(true)} icon={<Plus size={11} />} />}>
       {showAdd && (
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20, marginBottom: 16 }}>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Add New Student</h3>
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Add New Student</h3>
           <form onSubmit={handleAdd}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Full Name" value={form.name} onChange={f('name')} placeholder="Student full name" required />
               <FormField label="Class" type="select" value={form.class_id} onChange={f('class_id')} options={classes.map(c => ({ value: c.id, label: `${c.name}-${c.section}` }))} required />
               <FormField label="Admission No." value={form.admission_number} onChange={f('admission_number')} placeholder="Auto-generated if empty" />
+              <FormField label="Roll Number" value={form.roll_number} onChange={f('roll_number')} placeholder="Enter roll number" />
               <FormField label="Date of Birth" type="date" value={form.dob} onChange={f('dob')} />
               <FormField label="Guardian Name" value={form.guardian_name} onChange={f('guardian_name')} placeholder="Parent/guardian name" />
               <FormField label="Guardian Phone" type="tel" value={form.guardian_phone} onChange={f('guardian_phone')} placeholder="10-digit mobile" />
             </div>
             <FormField label="Gender" type="select" value={form.gender} onChange={f('gender')} options={[{ value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }, { value: 'other', label: 'Other' }]} />
-            {addError && <div style={{ color: '#EF4444', fontSize: 12, marginBottom: 8 }}>{addError}</div>}
+            {addError && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 8 }}>{addError}</div>}
             <div style={{ display: 'flex', gap: 8 }}><ActionBtn label={saving ? 'Saving...' : 'Add Student'} type="submit" disabled={saving} /><ActionBtn label="Cancel" variant="secondary" onClick={() => { setShowAdd(false); setAddError(''); }} /></div>
           </form>
         </div>
       )}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', flex: 1, maxWidth: 280 }}>
-          <Search size={12} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748B' }} />
-          <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} data-testid="student-search" placeholder="Search by name or admission no..." style={{ width: '100%', background: '#161622', border: '1px solid #222230', borderRadius: 7, padding: '8px 10px 8px 28px', color: '#E2E8F0', fontSize: 12, outline: 'none' }} />
+          <Search size={12} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--c-faint)' }} />
+          <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} data-testid="student-search" placeholder="Search by name or admission no..." style={{ width: '100%', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 10px 8px 28px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }} />
         </div>
-        <select value={filterClass} onChange={e => { setFilterClass(e.target.value); setPage(1); }} data-testid="class-filter" style={{ background: '#161622', border: '1px solid #222230', borderRadius: 7, padding: '8px 12px', color: '#E2E8F0', fontSize: 12, outline: 'none' }}>
+        <select value={filterClass} onChange={e => { setFilterClass(e.target.value); setPage(1); }} data-testid="class-filter" style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
           <option value="">All classes</option>
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
         </select>
@@ -107,7 +106,7 @@ export function StudentDatabase() {
       {total > 20 && (
         <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 12 }}>
           <ActionBtn label="Prev" variant="secondary" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} />
-          <span style={{ color: '#64748B', fontSize: 12, alignSelf: 'center' }}>Page {page} of {Math.ceil(total / 20)}</span>
+          <span style={{ color: 'var(--c-faint)', fontSize: 12, alignSelf: 'center' }}>Page {page} of {Math.ceil(total / 20)}</span>
           <ActionBtn label="Next" variant="secondary" onClick={() => setPage(p => p + 1)} disabled={students.length < 20} />
         </div>
       )}
@@ -223,8 +222,8 @@ export function FeeTracker() {
       actions={<ActionBtn label="Record Payment" onClick={handleOpenForm} icon={<Plus size={11} />} />}>
 
       {showForm && (
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20, marginBottom: 16 }}>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Record Fee Payment</h3>
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Record Fee Payment</h3>
           <form onSubmit={handleRecord}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Class" type="select" value={form.class_id} onChange={f('class_id')} options={[{ value: '', label: '-- Select Class --' }, ...classes.map(c => ({ value: c.id, label: `${c.name}-${c.section}` }))]} required />
@@ -236,7 +235,7 @@ export function FeeTracker() {
                   ]}
                   disabled={!form.class_id || loadingStudents} required />
                 {form.class_id && !loadingStudents && allStudents.length === 0 && (
-                  <div style={{ fontSize: 11, color: '#F59E0B', marginTop: 4 }}>
+                  <div style={{ fontSize: 11, color: '#fbbf24', marginTop: 4 }}>
                     ⚠️ No students in this class. Add students in Student Database first.
                   </div>
                 )}
@@ -249,12 +248,12 @@ export function FeeTracker() {
                 <FormField label="Due Date" type="date" value={form.due_date} onChange={f('due_date')} />
               )}
             </div>
-            {error && <div style={{ color: '#EF4444', fontSize: 12, marginBottom: 12, marginTop: 8 }}>{error}</div>}
+            {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12, marginTop: 8 }}>{error}</div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button type="submit" disabled={saving} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #3B82F6', background: '#3B82F6', color: '#fff', fontSize: 12, cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: saving ? 0.6 : 1 }}>
+              <button type="submit" disabled={saving} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #4f8ff7', background: '#4f8ff7', color: '#fff', fontSize: 12, cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: saving ? 0.6 : 1 }}>
                 {saving ? 'Recording...' : 'Record'}
               </button>
-              <button type="button" onClick={() => { setShowForm(false); setError(''); }} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #222230', background: '#161622', color: '#E2E8F0', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>
+              <button type="button" onClick={() => { setShowForm(false); setError(''); }} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-text)', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>
                 Cancel
               </button>
             </div>
@@ -264,28 +263,28 @@ export function FeeTracker() {
 
       {/* Summary stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
-        <StatCard value={`₹${totalPaid.toLocaleString('en-IN')}`} label="COLLECTED" color="#10B981" />
-        <StatCard value={`₹${totalPending.toLocaleString('en-IN')}`} label="PENDING" color="#EF4444" />
-        <StatCard value={txns.length} label="TRANSACTIONS" color="#3B82F6" />
+        <StatCard value={`₹${totalPaid.toLocaleString('en-IN')}`} label="COLLECTED" color="#34d399" />
+        <StatCard value={`₹${totalPending.toLocaleString('en-IN')}`} label="PENDING" color="#f87171" />
+        <StatCard value={txns.length} label="TRANSACTIONS" color="#4f8ff7" />
       </div>
 
       {/* View toggle */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
         {['transactions', 'classwise'].map(v => (
-          <button key={v} onClick={() => setView(v)} style={{ background: view === v ? '#3B82F6' : '#161622', border: `1px solid ${view === v ? '#3B82F6' : '#222230'}`, borderRadius: 6, padding: '5px 14px', color: view === v ? '#fff' : '#94A3B8', fontSize: 11, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>
+          <button key={v} onClick={() => setView(v)} style={{ background: view === v ? '#4f8ff7' : 'var(--c-bg)', border: `1px solid ${view === v ? '#4f8ff7' : 'var(--c-border)'}`, borderRadius: 6, padding: '5px 14px', color: view === v ? '#fff' : 'var(--c-muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>
             {v === 'classwise' ? 'Class-wise' : 'Transactions'}
           </button>
         ))}
         {view === 'transactions' && (
           <>
-            <div style={{ width: 1, height: 20, background: '#222230', margin: '0 4px' }} />
+            <div style={{ width: 1, height: 20, background: 'var(--c-border)', margin: '0 4px' }} />
             {['', 'paid', 'pending', 'overdue'].map(s => (
-              <button key={s} onClick={() => setStatusFilter(s)} style={{ background: statusFilter === s ? '#6366F1' : '#161622', border: `1px solid ${statusFilter === s ? '#6366F1' : '#222230'}`, borderRadius: 6, padding: '5px 12px', color: statusFilter === s ? '#fff' : '#94A3B8', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+              <button key={s} onClick={() => setStatusFilter(s)} style={{ background: statusFilter === s ? '#6366F1' : 'var(--c-bg)', border: `1px solid ${statusFilter === s ? '#6366F1' : 'var(--c-border)'}`, borderRadius: 6, padding: '5px 12px', color: statusFilter === s ? '#fff' : 'var(--c-muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                 {s || 'All'}
               </button>
             ))}
-            <div style={{ width: 1, height: 20, background: '#222230', margin: '0 4px' }} />
-            <select value={classFilter} onChange={e => setClassFilter(e.target.value)} style={{ background: '#161622', border: '1px solid #222230', borderRadius: 6, padding: '5px 10px', color: '#E2E8F0', fontSize: 11, outline: 'none' }}>
+            <div style={{ width: 1, height: 20, background: 'var(--c-border)', margin: '0 4px' }} />
+            <select value={classFilter} onChange={e => setClassFilter(e.target.value)} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '5px 10px', color: 'var(--c-text)', fontSize: 11, outline: 'none' }}>
               <option value="">All classes</option>
               {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
             </select>
@@ -307,32 +306,32 @@ export function FeeTracker() {
           emptyMsg="No transactions found"
         />
       ) : (
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, overflow: 'hidden' }}>
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
                 {['Class', 'Students', 'Collected', 'Pending', 'Total', 'Txns', 'Collection %'].map(h => (
-                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.06em', background: '#0F0F1A', borderBottom: '1px solid #222230' }}>{h}</th>
+                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.06em', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {classSummary.length === 0 ? (
-                <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', color: '#64748B', fontSize: 12 }}>No data available</td></tr>
+                <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No data available</td></tr>
               ) : classSummary.map((cls, i) => {
                 const pct = cls.total > 0 ? Math.round((cls.paid / cls.total) * 100) : 0;
-                const barColor = pct >= 75 ? '#10B981' : pct >= 40 ? '#F59E0B' : '#EF4444';
+                const barColor = pct >= 75 ? '#34d399' : pct >= 40 ? '#fbbf24' : '#f87171';
                 return (
-                  <tr key={cls.class_id} style={{ borderBottom: i < classSummary.length - 1 ? '1px solid #1A1A24' : 'none' }}>
-                    <td style={{ padding: '10px 14px', fontSize: 13, color: '#E2E8F0', fontWeight: 600 }}>{cls.class_name}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#94A3B8' }}>{cls.total_students}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#10B981', fontWeight: 600 }}>₹{(cls.paid || 0).toLocaleString('en-IN')}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#EF4444' }}>₹{(cls.pending || 0).toLocaleString('en-IN')}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#E2E8F0' }}>₹{(cls.total || 0).toLocaleString('en-IN')}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#94A3B8' }}>{cls.transactions}</td>
+                  <tr key={cls.class_id} style={{ borderBottom: i < classSummary.length - 1 ? '1px solid #242424' : 'none' }}>
+                    <td style={{ padding: '10px 14px', fontSize: 13, color: 'var(--c-text)', fontWeight: 600 }}>{cls.class_name}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{cls.total_students}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#34d399', fontWeight: 600 }}>₹{(cls.paid || 0).toLocaleString('en-IN')}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#f87171' }}>₹{(cls.pending || 0).toLocaleString('en-IN')}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-text)' }}>₹{(cls.total || 0).toLocaleString('en-IN')}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{cls.transactions}</td>
                     <td style={{ padding: '10px 14px', minWidth: 120 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ flex: 1, height: 6, background: '#222230', borderRadius: 3, overflow: 'hidden' }}>
+                        <div style={{ flex: 1, height: 6, background: 'var(--c-border)', borderRadius: 3, overflow: 'hidden' }}>
                           <div style={{ width: `${pct}%`, height: '100%', background: barColor, borderRadius: 3, transition: 'width 0.4s' }} />
                         </div>
                         <span style={{ fontSize: 11, color: barColor, fontWeight: 700, minWidth: 32 }}>{pct}%</span>
@@ -386,42 +385,42 @@ export function AttendanceRecorder() {
   return (
     <ToolPage title="Attendance Recorder" subtitle="Mark class attendance">
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} data-testid="class-select" style={{ background: '#161622', border: '1px solid #222230', borderRadius: 7, padding: '8px 12px', color: '#E2E8F0', fontSize: 12, outline: 'none' }}>
+        <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} data-testid="class-select" style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
         </select>
-        <input type="date" value={date} onChange={e => setDate(e.target.value)} data-testid="date-picker" style={{ background: '#161622', border: '1px solid #222230', borderRadius: 7, padding: '8px 12px', color: '#E2E8F0', fontSize: 12, outline: 'none' }} />
+        <input type="date" value={date} onChange={e => setDate(e.target.value)} data-testid="date-picker" style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }} />
         <ActionBtn label="All Present" variant="success" onClick={() => markAll('present')} data-testid="mark-all-present" />
         <ActionBtn label="All Absent" variant="danger" onClick={() => markAll('absent')} data-testid="mark-all-absent" />
       </div>
       {records.length > 0 && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
-          {[{ label: 'Present', val: presentCount, color: '#10B981' }, { label: 'Absent', val: records.filter(r => r.status === 'absent').length, color: '#EF4444' }, { label: 'Late', val: records.filter(r => r.status === 'late').length, color: '#F59E0B' }, { label: 'Total', val: records.length, color: '#E2E8F0' }].map(s => (
+          {[{ label: 'Present', val: presentCount, color: '#34d399' }, { label: 'Absent', val: records.filter(r => r.status === 'absent').length, color: '#f87171' }, { label: 'Late', val: records.filter(r => r.status === 'late').length, color: '#fbbf24' }, { label: 'Total', val: records.length, color: 'var(--c-text)' }].map(s => (
             <StatCard key={s.label} value={s.val} label={s.label} color={s.color} small />
           ))}
         </div>
       )}
-      <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, overflow: 'hidden', marginBottom: 14 }}>
-        {loading ? <div style={{ padding: 32, textAlign: 'center', color: '#64748B', fontSize: 12 }}>Loading students...</div> : records.length === 0 ? <div style={{ padding: 32, textAlign: 'center', color: '#64748B', fontSize: 12 }}>No students or no class selected</div> : (
+      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden', marginBottom: 14 }}>
+        {loading ? <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>Loading students...</div> : records.length === 0 ? <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No students or no class selected</div> : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr>
-              {['Roll', 'Student Name', 'Status', 'Quick Mark'].map(h => <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: 9.5, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.06em', background: '#0F0F1A', borderBottom: '1px solid #222230' }}>{h}</th>)}
+              {['Roll', 'Student Name', 'Status', 'Quick Mark'].map(h => <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: 9.5, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.06em', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{h}</th>)}
             </tr></thead>
             <tbody>
               {records.map((s, i) => {
-                const statusOpt = { present: { color: '#10B981' }, absent: { color: '#EF4444' }, late: { color: '#F59E0B' }, holiday: { color: '#64748B' } };
-                const sc = statusOpt[s.status] || { color: '#64748B' };
+                const statusOpt = { present: { color: '#34d399' }, absent: { color: '#f87171' }, late: { color: '#fbbf24' }, holiday: { color: 'var(--c-faint)' } };
+                const sc = statusOpt[s.status] || { color: 'var(--c-faint)' };
                 return (
-                  <tr key={s.student_id || i} style={{ borderBottom: i < records.length - 1 ? '1px solid #1A1A24' : 'none' }}>
-                    <td style={{ padding: '8px 14px', fontSize: 11, color: '#64748B', fontFamily: 'JetBrains Mono, monospace' }}>{s.roll_number || '-'}</td>
-                    <td style={{ padding: '8px 14px', fontSize: 13, color: '#E2E8F0', fontWeight: 500 }}>{s.name}</td>
+                  <tr key={s.student_id || i} style={{ borderBottom: i < records.length - 1 ? '1px solid #242424' : 'none' }}>
+                    <td style={{ padding: '8px 14px', fontSize: 11, color: 'var(--c-faint)', fontFamily: 'JetBrains Mono, monospace' }}>{s.roll_number || '-'}</td>
+                    <td style={{ padding: '8px 14px', fontSize: 13, color: 'var(--c-text)', fontWeight: 500 }}>{s.name}</td>
                     <td style={{ padding: '8px 14px' }}><span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: `${sc.color}15`, color: sc.color }}>{s.status}</span></td>
                     <td style={{ padding: '8px 14px' }}>
                       <div style={{ display: 'flex', gap: 3 }}>
                         {['P', 'A', 'L'].map((lbl, li) => {
                           const vals = ['present', 'absent', 'late'];
-                          const c = [{ color: '#10B981' }, { color: '#EF4444' }, { color: '#F59E0B' }][li];
+                          const c = [{ color: '#34d399' }, { color: '#f87171' }, { color: '#fbbf24' }][li];
                           return <button key={lbl} onClick={() => setRecords(prev => prev.map(st => st.student_id === s.student_id ? { ...st, status: vals[li] } : st))}
-                            style={{ background: s.status === vals[li] ? `${c.color}20` : 'transparent', border: `1px solid ${s.status === vals[li] ? c.color + '50' : '#222230'}`, borderRadius: 4, padding: '3px 7px', color: s.status === vals[li] ? c.color : '#64748B', fontSize: 10, cursor: 'pointer', fontWeight: 700 }}>{lbl}</button>;
+                            style={{ background: s.status === vals[li] ? `${c.color}20` : 'transparent', border: `1px solid ${s.status === vals[li] ? c.color + '50' : 'var(--c-border)'}`, borderRadius: 4, padding: '3px 7px', color: s.status === vals[li] ? c.color : 'var(--c-faint)', fontSize: 10, cursor: 'pointer', fontWeight: 700 }}>{lbl}</button>;
                         })}
                       </div>
                     </td>
@@ -432,7 +431,7 @@ export function AttendanceRecorder() {
           </table>
         )}
       </div>
-      {records.length > 0 && <button data-testid="save-attendance-btn" onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 7, background: saved ? '#10B981' : saving ? '#1E3A5F' : '#3B82F6', border: 'none', borderRadius: 8, padding: '10px 20px', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+      {records.length > 0 && <button data-testid="save-attendance-btn" onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 7, background: saved ? '#34d399' : saving ? '#1e3a5f' : '#4f8ff7', border: 'none', borderRadius: 8, padding: '10px 20px', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
         {saved ? <CheckCircle size={14} /> : <Save size={14} />}
         {saved ? 'Saved!' : saving ? 'Saving...' : 'Save Attendance'}
       </button>}
@@ -560,8 +559,8 @@ export function CertificateGenerator() {
       <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 20 }}>
         {/* Generator form */}
         <div>
-          <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20, marginBottom: 16 }}>
-            <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Generate Certificate</h3>
+          <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
+            <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Generate Certificate</h3>
             <FormField label="Student" type="select" value={form.student_id} onChange={f('student_id')}
               options={students.map(s => ({ value: s.id, label: s.name }))} required />
             <FormField label="Certificate Type" type="select" value={form.cert_type} onChange={f('cert_type')}
@@ -570,13 +569,13 @@ export function CertificateGenerator() {
           </div>
 
           {generated && (
-            <div style={{ background: '#161622', border: '1px solid #10B98130', borderRadius: 11, padding: 16 }}>
-              <div style={{ fontSize: 11, color: '#10B981', fontWeight: 700, marginBottom: 10 }}>Certificate Generated!</div>
-              <div style={{ fontSize: 12, color: '#94A3B8', lineHeight: 1.8 }}>
-                <div><b style={{ color: '#E2E8F0' }}>Type:</b> {CERT_LABELS[generated.cert_type]}</div>
-                <div><b style={{ color: '#E2E8F0' }}>Serial:</b> <span style={{ fontFamily: 'monospace' }}>{generated.serial_number}</span></div>
-                <div><b style={{ color: '#E2E8F0' }}>Student:</b> {generated.content_data?.student_name}</div>
-                <div><b style={{ color: '#E2E8F0' }}>Date:</b> {generated.issued_date}</div>
+            <div style={{ background: 'var(--c-bg)', border: '1px solid #34d39930', borderRadius: 11, padding: 16 }}>
+              <div style={{ fontSize: 11, color: '#34d399', fontWeight: 700, marginBottom: 10 }}>Certificate Generated!</div>
+              <div style={{ fontSize: 12, color: 'var(--c-muted)', lineHeight: 1.8 }}>
+                <div><b style={{ color: 'var(--c-text)' }}>Type:</b> {CERT_LABELS[generated.cert_type]}</div>
+                <div><b style={{ color: 'var(--c-text)' }}>Serial:</b> <span style={{ fontFamily: 'monospace' }}>{generated.serial_number}</span></div>
+                <div><b style={{ color: 'var(--c-text)' }}>Student:</b> {generated.content_data?.student_name}</div>
+                <div><b style={{ color: 'var(--c-text)' }}>Date:</b> {generated.issued_date}</div>
               </div>
               <div style={{ marginTop: 12 }}>
                 <ActionBtn label={downloading === generated.id ? 'Downloading...' : 'Download PDF'} icon={<FileDown size={11} />}
@@ -587,31 +586,31 @@ export function CertificateGenerator() {
         </div>
 
         {/* History */}
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, overflow: 'hidden' }}>
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid #222230', fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--c-border)', fontSize: 11, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase' }}>
             Generated Certificates ({certs.length})
           </div>
           {certs.length === 0 ? (
-            <div style={{ padding: 32, textAlign: 'center', color: '#64748B', fontSize: 12 }}>No certificates generated yet</div>
+            <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No certificates generated yet</div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
                   {['Student', 'Type', 'Serial No.', 'Date', ''].map((hd, i) => (
-                    <th key={i} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', background: '#0F0F1A', borderBottom: '1px solid #222230' }}>{hd}</th>
+                    <th key={i} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{hd}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {certs.map((c, i) => (
-                  <tr key={c.id || i} style={{ borderBottom: i < certs.length - 1 ? '1px solid #1A1A24' : 'none' }}>
-                    <td style={{ padding: '9px 14px', fontSize: 12, color: '#E2E8F0' }}>{c.student_name || c.content_data?.student_name || 'N/A'}</td>
-                    <td style={{ padding: '9px 14px', fontSize: 12, color: '#94A3B8' }}>{CERT_LABELS[c.cert_type] || c.cert_type}</td>
-                    <td style={{ padding: '9px 14px', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: '#94A3B8' }}>{c.serial_number}</td>
-                    <td style={{ padding: '9px 14px', fontSize: 12, color: '#94A3B8' }}>{c.issued_date}</td>
+                  <tr key={c.id || i} style={{ borderBottom: i < certs.length - 1 ? '1px solid #242424' : 'none' }}>
+                    <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--c-text)' }}>{c.student_name || c.content_data?.student_name || 'N/A'}</td>
+                    <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{CERT_LABELS[c.cert_type] || c.cert_type}</td>
+                    <td style={{ padding: '9px 14px', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: 'var(--c-muted)' }}>{c.serial_number}</td>
+                    <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{c.issued_date}</td>
                     <td style={{ padding: '9px 14px' }}>
                       <button onClick={() => downloadPdf(c)} disabled={downloading === (c.id || c.serial_number)}
-                        style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '4px 9px', color: '#93C5FD', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '4px 9px', color: '#93c5fd', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
                         <FileDown size={11} />
                         {downloading === (c.id || c.serial_number) ? '...' : 'PDF'}
                       </button>
@@ -690,24 +689,24 @@ export function CircularSender() {
 
   const chipStyle = (active) => ({
     display: 'inline-flex', alignItems: 'center', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
-    background: active ? 'rgba(59,130,246,0.2)' : '#0F0F1A',
-    border: `1px solid ${active ? '#3B82F6' : '#222230'}`,
-    color: active ? '#93C5FD' : '#64748B',
+    background: active ? 'rgba(59,130,246,0.2)' : 'var(--c-deep)',
+    border: `1px solid ${active ? '#4f8ff7' : 'var(--c-border)'}`,
+    color: active ? '#93c5fd' : 'var(--c-faint)',
     userSelect: 'none',
   });
 
   return (
     <ToolPage title="Circular & Notice Sender" subtitle="Send notices to all, by class, or by role" loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start' }}>
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20 }}>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>New Circular</h3>
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>New Circular</h3>
           <form onSubmit={send}>
             <FormField label="Title" value={form.title} onChange={f('title')} placeholder="Circular title" required />
             <FormField label="Content" type="textarea" value={form.content} onChange={f('content')} placeholder="Write the circular..." required />
 
             {/* Audience type */}
             <div style={{ marginBottom: 12 }}>
-              <label style={{ display: 'block', fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Send To</label>
+              <label style={{ display: 'block', fontSize: 11, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Send To</label>
               <div style={{ display: 'flex', gap: 6 }}>
                 {[['all', 'Everyone'], ['class', 'By Class'], ['role', 'By Role']].map(([val, lbl]) => (
                   <span key={val} style={chipStyle(form.audience_type === val)} onClick={() => f('audience_type')(val)}>{lbl}</span>
@@ -718,14 +717,14 @@ export function CircularSender() {
             {/* Class multi-select */}
             {form.audience_type === 'class' && (
               <div style={{ marginBottom: 12 }}>
-                <label style={{ display: 'block', fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Select Classes</label>
+                <label style={{ display: 'block', fontSize: 11, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Select Classes</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {classes.map(c => {
                     const label = `${c.name}-${c.section}`;
                     const active = form.audience_classes.includes(label);
                     return <span key={c.id} style={chipStyle(active)} onClick={() => toggleArr('audience_classes', label)}>{label}</span>;
                   })}
-                  {classes.length === 0 && <span style={{ fontSize: 11, color: '#64748B' }}>No classes found</span>}
+                  {classes.length === 0 && <span style={{ fontSize: 11, color: 'var(--c-faint)' }}>No classes found</span>}
                 </div>
               </div>
             )}
@@ -733,7 +732,7 @@ export function CircularSender() {
             {/* Role multi-select */}
             {form.audience_type === 'role' && (
               <div style={{ marginBottom: 12 }}>
-                <label style={{ display: 'block', fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Select Roles</label>
+                <label style={{ display: 'block', fontSize: 11, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Select Roles</label>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {ROLES.map(role => (
                     <span key={role} style={chipStyle(form.audience_roles.includes(role))} onClick={() => toggleArr('audience_roles', role)}
@@ -743,7 +742,7 @@ export function CircularSender() {
               </div>
             )}
 
-            {error && <div style={{ color: '#EF4444', fontSize: 12, marginBottom: 10 }}>{error}</div>}
+            {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 10 }}>{error}</div>}
             <ActionBtn
               type="submit"
               label={sending ? 'Sending...' : sent ? '✓ Sent!' : 'Send Circular'}
@@ -753,27 +752,27 @@ export function CircularSender() {
           </form>
         </div>
 
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, overflow: 'hidden' }}>
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid #222230', fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--c-border)', fontSize: 11, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase' }}>
             Recent Circulars ({announcements.length})
           </div>
           {announcements.length === 0 ? (
-            <div style={{ padding: 32, textAlign: 'center', color: '#64748B', fontSize: 12 }}>No circulars sent yet</div>
+            <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No circulars sent yet</div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
                   {['Title', 'Sent To', 'Date'].map(hd => (
-                    <th key={hd} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', background: '#0F0F1A', borderBottom: '1px solid #222230' }}>{hd}</th>
+                    <th key={hd} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{hd}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {announcements.map((a, i) => (
-                  <tr key={a.id || i} style={{ borderBottom: i < announcements.length - 1 ? '1px solid #1A1A24' : 'none' }}>
-                    <td style={{ padding: '9px 14px', fontSize: 12, color: '#E2E8F0', fontWeight: 500 }}>{a.title}</td>
-                    <td style={{ padding: '9px 14px', fontSize: 11, color: '#94A3B8' }}>{audienceLabel(a)}</td>
-                    <td style={{ padding: '9px 14px', fontSize: 11, color: '#64748B' }}>{a.created_at?.slice(0, 10)}</td>
+                  <tr key={a.id || i} style={{ borderBottom: i < announcements.length - 1 ? '1px solid #242424' : 'none' }}>
+                    <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--c-text)', fontWeight: 500 }}>{a.title}</td>
+                    <td style={{ padding: '9px 14px', fontSize: 11, color: 'var(--c-muted)' }}>{audienceLabel(a)}</td>
+                    <td style={{ padding: '9px 14px', fontSize: 11, color: 'var(--c-faint)' }}>{a.created_at?.slice(0, 10)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -833,8 +832,8 @@ export function EnquiryRegister() {
     <ToolPage title="Enquiry Register" subtitle="Track admission leads through pipeline" onRefresh={load} loading={loading}
       actions={<ActionBtn label="New Enquiry" onClick={() => setShowForm(true)} icon={<Plus size={11} />} />}>
       {showForm && (
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20, marginBottom: 16 }}>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Add New Enquiry</h3>
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Add New Enquiry</h3>
           <form onSubmit={handleAdd}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Student Name" value={form.student_name} onChange={f('student_name')} placeholder="Prospective student" required />
@@ -849,25 +848,25 @@ export function EnquiryRegister() {
                 { value: 'ad', label: 'Advertisement' }
               ]} />
             </div>
-            {error && <div style={{ color: '#EF4444', fontSize: 12, marginBottom: 8, marginTop: 8 }}>{error}</div>}
+            {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 8, marginTop: 8 }}>{error}</div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button type="submit" style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #3B82F6', background: '#3B82F6', color: '#fff', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Add Enquiry</button>
-              <button type="button" onClick={() => { setShowForm(false); setError(''); }} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #222230', background: '#161622', color: '#E2E8F0', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Cancel</button>
+              <button type="submit" style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #4f8ff7', background: '#4f8ff7', color: '#fff', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Add Enquiry</button>
+              <button type="button" onClick={() => { setShowForm(false); setError(''); }} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-text)', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Cancel</button>
             </div>
           </form>
         </div>
       )}
 
       {selectedEnquiry && (
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 16, marginBottom: 16 }}>
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 16, marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
-            <h4 style={{ color: '#E2E8F0', fontSize: 13, fontWeight: 600 }}>{selectedEnquiry.student_name} - Move to Stage</h4>
-            <button onClick={() => setSelectedEnquiry(null)} style={{ background: 'transparent', border: 'none', color: '#64748B', cursor: 'pointer', fontSize: 14 }}>✕</button>
+            <h4 style={{ color: 'var(--c-text)', fontSize: 13, fontWeight: 600 }}>{selectedEnquiry.student_name} - Move to Stage</h4>
+            <button onClick={() => setSelectedEnquiry(null)} style={{ background: 'transparent', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 14 }}>✕</button>
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {stages.map(s => (
               <button key={s} onClick={() => updateStatus(selectedEnquiry.id, s)} disabled={selectedEnquiry.status === s}
-                style={{ padding: '6px 10px', borderRadius: 6, border: `1px solid ${selectedEnquiry.status === s ? '#64748B' : '#3B82F6'}`, background: selectedEnquiry.status === s ? '#0F0F1A' : '#3B82F6', color: selectedEnquiry.status === s ? '#64748B' : '#fff', fontSize: 11, cursor: selectedEnquiry.status === s ? 'default' : 'pointer', fontWeight: 500, opacity: selectedEnquiry.status === s ? 0.5 : 1 }}>
+                style={{ padding: '6px 10px', borderRadius: 6, border: `1px solid ${selectedEnquiry.status === s ? 'var(--c-faint)' : '#4f8ff7'}`, background: selectedEnquiry.status === s ? 'var(--c-deep)' : '#4f8ff7', color: selectedEnquiry.status === s ? 'var(--c-faint)' : '#fff', fontSize: 11, cursor: selectedEnquiry.status === s ? 'default' : 'pointer', fontWeight: 500, opacity: selectedEnquiry.status === s ? 0.5 : 1 }}>
                 {stageLabels[s]}
               </button>
             ))}
@@ -884,7 +883,7 @@ export function EnquiryRegister() {
           <Badge text={stageLabels[e.status] || e.status} color={statusColors[e.status] || 'blue'} />,
           e.source?.replace('_', ' '),
           e.created_at?.slice(0, 10),
-          <button onClick={() => setSelectedEnquiry(e)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: '#3B82F6', fontSize: 10, cursor: 'pointer', fontWeight: 500 }}>Move Stage</button>
+          <button onClick={() => setSelectedEnquiry(e)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: '#4f8ff7', fontSize: 10, cursor: 'pointer', fontWeight: 500 }}>Move Stage</button>
         ])}
         emptyMsg="No enquiries yet"
       />
@@ -933,7 +932,7 @@ export function DocumentScanner() {
     try {
       const res = await fetch(`${API}/uploads`, {
         method: 'POST',
-        headers: { 'X-User-Role': currentUser.role, 'X-User-Id': currentUser.id, 'X-User-Name': currentUser.name },
+        headers: localStorage.getItem('eduflow_token') ? { Authorization: `Bearer ${localStorage.getItem('eduflow_token')}` } : {},
         body: formData,
       }).then(r => r.json());
       if (res.success) {
@@ -948,14 +947,14 @@ export function DocumentScanner() {
     e.target.value = '';
   };
 
-  const selStyle = { width: '100%', background: '#161622', border: '1px solid #222230', borderRadius: 8, padding: '9px 12px', color: '#E2E8F0', fontSize: 13, outline: 'none', marginBottom: 12 };
-  const lbl = (t) => <label style={{ display: 'block', fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>{t}</label>;
+  const selStyle = { width: '100%', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '9px 12px', color: 'var(--c-text)', fontSize: 13, outline: 'none', marginBottom: 12 };
+  const lbl = (t) => <label style={{ display: 'block', fontSize: 11, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>{t}</label>;
 
   return (
     <ToolPage title="Document Scanner & Extractor" subtitle="Upload and file student documents by class" loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 900 }}>
         <div>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 14, fontWeight: 600, color: '#E2E8F0', marginBottom: 14 }}>Upload Document</h3>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 600, color: 'var(--c-text)', marginBottom: 14 }}>Upload Document</h3>
 
           {/* Class dropdown */}
           <div style={{ marginBottom: 12 }}>
@@ -989,22 +988,22 @@ export function DocumentScanner() {
           <ActionBtn label={uploading ? 'Uploading...' : 'Choose & Upload File'} onClick={() => { if (!studentId) { setResult({ error: 'Please select a student first' }); return; } inputRef.current?.click(); }} disabled={uploading} />
 
           {result && (
-            <div style={{ marginTop: 12, padding: 12, background: result.error ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)', border: `1px solid ${result.error ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)'}`, borderRadius: 8, fontSize: 12, color: result.error ? '#EF4444' : '#10B981' }}>
+            <div style={{ marginTop: 12, padding: 12, background: result.error ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)', border: `1px solid ${result.error ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)'}`, borderRadius: 8, fontSize: 12, color: result.error ? '#f87171' : '#34d399' }}>
               {result.error ? result.error : `✓ Uploaded: ${result.file_name}`}
             </div>
           )}
         </div>
 
         <div>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 14, fontWeight: 600, color: '#E2E8F0', marginBottom: 14 }}>Session Uploads ({files.length})</h3>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 600, color: 'var(--c-text)', marginBottom: 14 }}>Session Uploads ({files.length})</h3>
           {files.length === 0 ? (
-            <p style={{ color: '#64748B', fontSize: 12 }}>No documents uploaded yet in this session.</p>
+            <p style={{ color: 'var(--c-faint)', fontSize: 12 }}>No documents uploaded yet in this session.</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {files.map((f, i) => (
-                <div key={i} style={{ background: '#161622', border: '1px solid #222230', borderRadius: 8, padding: '10px 14px' }}>
-                  <div style={{ fontSize: 12, color: '#E2E8F0', fontWeight: 500 }}>{f.file_name}</div>
-                  <div style={{ fontSize: 11, color: '#64748B', marginTop: 3 }}>{f.student_name} · {f.doc_type} {f.file_size_kb ? `· ${f.file_size_kb}KB` : ''}</div>
+                <div key={i} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '10px 14px' }}>
+                  <div style={{ fontSize: 12, color: 'var(--c-text)', fontWeight: 500 }}>{f.file_name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--c-faint)', marginTop: 3 }}>{f.student_name} · {f.doc_type} {f.file_size_kb ? `· ${f.file_size_kb}KB` : ''}</div>
                 </div>
               ))}
             </div>
@@ -1144,23 +1143,23 @@ export function SmartFeeDefaulter() {
 
       {/* Config Warning */}
       {!twilioConfigured && (
-        <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#F59E0B' }}>
+        <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#fbbf24' }}>
           ⚠️ Twilio not configured. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER to your .env file to enable SMS sending.
         </div>
       )}
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16, maxWidth: 600 }}>
-        <StatCard value={data?.stats?.total_overdue || '₹0'} label="TOTAL OVERDUE" color="#EF4444" />
-        <StatCard value={data?.stats?.students_with_dues || 0} label="STUDENTS" color="#F59E0B" />
-        <StatCard value={data?.stats?.collection_rate || '0%'} label="COLLECTION RATE" color="#10B981" />
+        <StatCard value={data?.stats?.total_overdue || '₹0'} label="TOTAL OVERDUE" color="#f87171" />
+        <StatCard value={data?.stats?.students_with_dues || 0} label="STUDENTS" color="#fbbf24" />
+        <StatCard value={data?.stats?.collection_rate || '0%'} label="COLLECTION RATE" color="#34d399" />
       </div>
 
       {/* View Tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14, borderBottom: '1px solid #222230', paddingBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, borderBottom: '1px solid var(--c-border)', paddingBottom: 12 }}>
         {['defaulters', 'bulk', 'logs'].map(v => (
           <button key={v} onClick={() => { setViewMode(v); if (v === 'logs') loadLogs(); }}
-            style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === v ? '1px solid #3B82F6' : '1px solid #222230', background: viewMode === v ? 'rgba(59,130,246,0.1)' : '#161622', color: viewMode === v ? '#3B82F6' : '#94A3B8', fontSize: 12, cursor: 'pointer', textTransform: 'capitalize' }}>
+            style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === v ? '1px solid #4f8ff7' : '1px solid var(--c-border)', background: viewMode === v ? 'rgba(59,130,246,0.1)' : 'var(--c-bg)', color: viewMode === v ? '#4f8ff7' : 'var(--c-muted)', fontSize: 12, cursor: 'pointer', textTransform: 'capitalize' }}>
             {v === 'defaulters' ? 'Defaulters' : v === 'bulk' ? 'Bulk Reminder' : 'SMS Logs'}
           </button>
         ))}
@@ -1171,34 +1170,34 @@ export function SmartFeeDefaulter() {
         <>
           {/* Single SMS Panel */}
           {selectedDefaulter && (
-            <div style={{ background: '#161622', border: '1px solid #3B82F6', borderRadius: 11, padding: 18, marginBottom: 16 }}>
+            <div style={{ background: 'var(--c-bg)', border: '1px solid #4f8ff7', borderRadius: 11, padding: 18, marginBottom: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <h4 style={{ color: '#E2E8F0', fontSize: 13, fontWeight: 600 }}>Send SMS — {selectedDefaulter.student_name}</h4>
-                <button onClick={() => { setSelectedDefaulter(null); setSmsResult(null); }} style={{ background: 'transparent', border: 'none', color: '#64748B', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                <h4 style={{ color: 'var(--c-text)', fontSize: 13, fontWeight: 600 }}>Send SMS — {selectedDefaulter.student_name}</h4>
+                <button onClick={() => { setSelectedDefaulter(null); setSmsResult(null); }} style={{ background: 'transparent', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 16 }}>✕</button>
               </div>
               <form onSubmit={handleSendSingle}>
                 <div style={{ marginBottom: 10 }}>
-                  <label style={{ fontSize: 11, color: '#64748B', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>PHONE NUMBER</label>
+                  <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>PHONE NUMBER</label>
                   <input value={smsForm.phone} onChange={e => setSmsForm(p => ({ ...p, phone: e.target.value }))}
                     placeholder="e.g. 9876543210" required
-                    style={{ width: '100%', background: '#0F0F1A', border: '1px solid #222230', borderRadius: 6, padding: '8px 10px', color: '#E2E8F0', fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+                    style={{ width: '100%', background: 'var(--c-deep)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '8px 10px', color: 'var(--c-text)', fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
                 </div>
                 <div style={{ marginBottom: 10 }}>
-                  <label style={{ fontSize: 11, color: '#64748B', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>MESSAGE ({smsForm.message.length}/160)</label>
+                  <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>MESSAGE ({smsForm.message.length}/160)</label>
                   <textarea value={smsForm.message} onChange={e => setSmsForm(p => ({ ...p, message: e.target.value }))}
                     maxLength={320} required rows={3}
-                    style={{ width: '100%', background: '#0F0F1A', border: '1px solid #222230', borderRadius: 6, padding: '8px 10px', color: '#E2E8F0', fontSize: 12, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }} />
+                    style={{ width: '100%', background: 'var(--c-deep)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '8px 10px', color: 'var(--c-text)', fontSize: 12, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }} />
                 </div>
                 {smsResult && (
                   <div style={{ padding: '8px 12px', borderRadius: 6, marginBottom: 10, fontSize: 12,
                     background: smsResult.success ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
                     border: `1px solid ${smsResult.success ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
-                    color: smsResult.success ? '#10B981' : '#EF4444' }}>
+                    color: smsResult.success ? '#34d399' : '#f87171' }}>
                     {smsResult.success ? `✓ SMS ${smsResult.status === 'not_configured' ? 'logged (Twilio not configured)' : 'sent successfully!'}` : `✗ ${smsResult.error}`}
                   </div>
                 )}
                 <button type="submit" disabled={sending}
-                  style={{ padding: '8px 16px', borderRadius: 6, background: '#3B82F6', border: '1px solid #3B82F6', color: '#fff', fontSize: 12, cursor: sending ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: sending ? 0.6 : 1 }}>
+                  style={{ padding: '8px 16px', borderRadius: 6, background: '#4f8ff7', border: '1px solid #4f8ff7', color: '#fff', fontSize: 12, cursor: sending ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: sending ? 0.6 : 1 }}>
                   {sending ? 'Sending...' : '📱 Send SMS'}
                 </button>
               </form>
@@ -1209,10 +1208,10 @@ export function SmartFeeDefaulter() {
             rows={defaulters.map(d => [
               d.student_name,
               d.class,
-              <span style={{ color: '#EF4444', fontWeight: 600 }}>{d.amount_overdue_fmt}</span>,
-              <span style={{ color: d.days_overdue > 30 ? '#EF4444' : '#F59E0B' }}>{d.days_overdue} days</span>,
+              <span style={{ color: '#f87171', fontWeight: 600 }}>{d.amount_overdue_fmt}</span>,
+              <span style={{ color: d.days_overdue > 30 ? '#f87171' : '#fbbf24' }}>{d.days_overdue} days</span>,
               <button onClick={() => openSmsForm(d)}
-                style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '4px 10px', color: '#3B82F6', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>
+                style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '4px 10px', color: '#4f8ff7', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>
                 📱 Remind
               </button>
             ])}
@@ -1224,39 +1223,39 @@ export function SmartFeeDefaulter() {
       {/* Bulk Reminder */}
       {viewMode === 'bulk' && (
         <div style={{ maxWidth: 600 }}>
-          <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 18, marginBottom: 14 }}>
-            <h4 style={{ color: '#E2E8F0', fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Bulk SMS Reminder</h4>
-            <p style={{ color: '#64748B', fontSize: 12, marginBottom: 12 }}>
-              Use <code style={{ background: '#0F0F1A', padding: '1px 4px', borderRadius: 3, color: '#94A3B8' }}>{'{name}'}</code> and <code style={{ background: '#0F0F1A', padding: '1px 4px', borderRadius: 3, color: '#94A3B8' }}>{'{amount}'}</code> as placeholders.
+          <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 18, marginBottom: 14 }}>
+            <h4 style={{ color: 'var(--c-text)', fontSize: 13, fontWeight: 600, marginBottom: 12 }}>Bulk SMS Reminder</h4>
+            <p style={{ color: 'var(--c-faint)', fontSize: 12, marginBottom: 12 }}>
+              Use <code style={{ background: 'var(--c-deep)', padding: '1px 4px', borderRadius: 3, color: 'var(--c-muted)' }}>{'{name}'}</code> and <code style={{ background: 'var(--c-deep)', padding: '1px 4px', borderRadius: 3, color: 'var(--c-muted)' }}>{'{amount}'}</code> as placeholders.
             </p>
             <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 11, color: '#64748B', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>MESSAGE TEMPLATE ({bulkTemplate.length}/160)</label>
+              <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>MESSAGE TEMPLATE ({bulkTemplate.length}/160)</label>
               <textarea value={bulkTemplate} onChange={e => setBulkTemplate(e.target.value)} rows={4} maxLength={320}
-                style={{ width: '100%', background: '#0F0F1A', border: '1px solid #222230', borderRadius: 6, padding: '8px 10px', color: '#E2E8F0', fontSize: 12, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }} />
+                style={{ width: '100%', background: 'var(--c-deep)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '8px 10px', color: 'var(--c-text)', fontSize: 12, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }} />
             </div>
             <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 11, color: '#64748B', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>RECIPIENTS</label>
+              <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>RECIPIENTS</label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button onClick={toggleAll}
-                  style={{ padding: '5px 10px', borderRadius: 5, border: '1px solid #222230', background: '#0F0F1A', color: '#94A3B8', fontSize: 11, cursor: 'pointer' }}>
+                  style={{ padding: '5px 10px', borderRadius: 5, border: '1px solid var(--c-border)', background: 'var(--c-deep)', color: 'var(--c-muted)', fontSize: 11, cursor: 'pointer' }}>
                   {selectedRows.length === defaulters.length ? 'Deselect All' : 'Select All'}
                 </button>
-                <span style={{ color: '#64748B', fontSize: 12, alignSelf: 'center' }}>
+                <span style={{ color: 'var(--c-faint)', fontSize: 12, alignSelf: 'center' }}>
                   {selectedRows.length > 0 ? `${selectedRows.length} selected` : `All ${defaulters.length} defaulters`}
                 </span>
               </div>
             </div>
             {bulkResult && (
-              <div style={{ padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 12, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', color: '#E2E8F0' }}>
+              <div style={{ padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 12, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', color: 'var(--c-text)' }}>
                 {bulkResult.error ? (
-                  <span style={{ color: '#EF4444' }}>✗ {bulkResult.error}</span>
+                  <span style={{ color: '#f87171' }}>✗ {bulkResult.error}</span>
                 ) : (
-                  <>✓ Sent: <strong style={{ color: '#10B981' }}>{bulkResult.sent}</strong> &nbsp; Failed: <strong style={{ color: '#EF4444' }}>{bulkResult.failed}</strong></>
+                  <>✓ Sent: <strong style={{ color: '#34d399' }}>{bulkResult.sent}</strong> &nbsp; Failed: <strong style={{ color: '#f87171' }}>{bulkResult.failed}</strong></>
                 )}
               </div>
             )}
             <button onClick={handleSendBulk} disabled={bulkSending || defaulters.length === 0}
-              style={{ padding: '9px 18px', borderRadius: 6, background: '#3B82F6', border: '1px solid #3B82F6', color: '#fff', fontSize: 12, cursor: bulkSending ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: bulkSending ? 0.6 : 1 }}>
+              style={{ padding: '9px 18px', borderRadius: 6, background: '#4f8ff7', border: '1px solid #4f8ff7', color: '#fff', fontSize: 12, cursor: bulkSending ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: bulkSending ? 0.6 : 1 }}>
               {bulkSending ? 'Sending...' : `📱 Send to ${selectedRows.length > 0 ? selectedRows.length : defaulters.length} Students`}
             </button>
           </div>
@@ -1290,9 +1289,9 @@ function AdmissionFunnelAdmin() {
   return (
     <ToolPage title="Admission Pipeline" subtitle="Track conversion funnel" loading={loading}>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18 }}>
-        {stages.map(s => <div key={s} style={{ background: '#161622', border: '1px solid #222230', borderRadius: 8, padding: '8px 12px', textAlign: 'center', minWidth: 85 }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: s === 'enrolled' ? '#10B981' : s === 'lost' ? '#EF4444' : '#E2E8F0', fontFamily: 'Outfit, sans-serif' }}>{counts[s] || 0}</div>
-          <div style={{ fontSize: 9, color: '#64748B', textTransform: 'capitalize', fontWeight: 600 }}>{s.replace('_', ' ')}</div>
+        {stages.map(s => <div key={s} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '8px 12px', textAlign: 'center', minWidth: 85 }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: s === 'enrolled' ? '#34d399' : s === 'lost' ? '#f87171' : 'var(--c-text)', fontFamily: 'Inter, sans-serif' }}>{counts[s] || 0}</div>
+          <div style={{ fontSize: 9, color: 'var(--c-faint)', textTransform: 'capitalize', fontWeight: 600 }}>{s.replace('_', ' ')}</div>
         </div>)}
       </div>
     </ToolPage>
@@ -1300,60 +1299,171 @@ function AdmissionFunnelAdmin() {
 }
 export function ParentMessage() {
   const { currentUser } = useUser();
-  const [students, setStudents] = useState([]);
-  const [selectedStudents, setSelectedStudents] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [allStudents, setAllStudents] = useState([]);
+  const [selectedClass, setSelectedClass] = useState('');
+  const [selectedStudents, setSelectedStudents] = useState(new Set());
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [result, setResult] = useState(null);
   const [log, setLog] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API}/students/`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setStudents(r.data || []); });
+    Promise.all([
+      fetch(`${API}/settings/classes`, { headers: h(currentUser) }).then(r => r.json()),
+      fetch(`${API}/students/`, { headers: h(currentUser) }).then(r => r.json()),
+    ]).then(([cls, stu]) => {
+      if (cls.success) setClasses(cls.data || []);
+      if (stu.success) setAllStudents(stu.data || []);
+    }).finally(() => setLoading(false));
   }, []);
 
+  const studentsInClass = selectedClass
+    ? allStudents.filter(s => s.class_id === selectedClass)
+    : allStudents;
+
+
+  const allInClassSelected = studentsInClass.length > 0 && studentsInClass.every(s => selectedStudents.has(s.id));
+
+  const toggleStudent = (id) => {
+    setSelectedStudents(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllInClass = () => {
+    setSelectedStudents(prev => {
+      const next = new Set(prev);
+      if (allInClassSelected) {
+        studentsInClass.forEach(s => next.delete(s.id));
+      } else {
+        studentsInClass.forEach(s => next.add(s.id));
+      }
+      return next;
+    });
+  };
+
   const handleSend = async () => {
-    if (!message.trim() || selectedStudents.length === 0) return;
+    if (!message.trim() || selectedStudents.size === 0) return;
     setSending(true);
-    // Save as notification log entries
-    for (const sid of selectedStudents) {
-      const student = students.find(s => s.id === sid);
-      await fetch(`${API}/ops/announcements`, {
-        method: 'POST', headers: h(currentUser),
-        body: JSON.stringify({ title: 'Parent Message', content: message, audience_type: 'custom', is_draft: false })
-      });
-    }
-    setLog(prev => [...prev, { message, count: selectedStudents.length, time: new Date().toLocaleTimeString() }]);
-    setSent(true); setMessage(''); setSelectedStudents([]);
-    setTimeout(() => setSent(false), 3000);
+    setResult(null);
+    try {
+      const res = await fetch(`${API}/sms/send-parent-message`, {
+        method: 'POST',
+        headers: h(currentUser),
+        body: JSON.stringify({ student_ids: [...selectedStudents], message }),
+      }).then(r => r.json());
+      if (res.success) {
+        const d = res.data;
+        setResult(d);
+        setLog(prev => [{
+          message,
+          count: selectedStudents.size,
+          sent: d.sent,
+          failed: d.failed,
+          no_phone: d.no_phone,
+          not_configured: d.not_configured,
+          time: new Date().toLocaleTimeString(),
+        }, ...prev]);
+        setMessage('');
+        setSelectedStudents(new Set());
+      }
+    } catch { setResult({ error: 'Network error. Please try again.' }); }
     setSending(false);
   };
 
+  const inp = { width: '100%', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' };
+
   return (
-    <ToolPage title="Parent Message Composer" subtitle="Send messages to parents/guardians">
-      <div style={{ maxWidth: 600 }}>
-        <div style={{ background: '#161622', border: '1px solid #fbbf2430', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 11, color: '#F59E0B' }}>
-          WhatsApp delivery requires Twilio setup (Phase 3). Messages are currently logged in the system.
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 10, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>SELECT RECIPIENTS</label>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-            {['all', 'class-9a', 'class-10a'].map(g => (
-              <button key={g} onClick={() => { if (g === 'all') setSelectedStudents(students.map(s => s.id)); }}
-                style={{ background: '#161622', border: '1px solid #222230', borderRadius: 6, padding: '5px 10px', color: '#94A3B8', fontSize: 11, cursor: 'pointer' }}>
-                {g === 'all' ? 'All Students' : g}
-              </button>
-            ))}
+    <ToolPage title="Parent Message Composer" subtitle="Send SMS to parents via Twilio" loading={loading}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 980 }}>
+
+        {/* Left — recipient selector */}
+        <div>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 10, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>1. Select Class</label>
+            <select value={selectedClass} onChange={e => { setSelectedClass(e.target.value); setSelectedStudents(new Set()); }} style={inp}>
+              <option value="">— All Classes —</option>
+              {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
+            </select>
           </div>
-          <p style={{ fontSize: 11, color: '#64748B' }}>{selectedStudents.length} recipients selected</p>
-        </div>
-        <FormField label="Message" type="textarea" value={message} onChange={setMessage} placeholder="Type your message to parents... (e.g., PTM scheduled for Friday at 10 AM)" />
-        <ActionBtn label={sent ? 'Sent!' : sending ? 'Sending...' : `Send to ${selectedStudents.length} Parents`} onClick={handleSend} disabled={sending || !message.trim() || selectedStudents.length === 0} />
-        {log.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <h4 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 13, color: '#E2E8F0', marginBottom: 8 }}>Message Log</h4>
-            {log.map((l, i) => <div key={i} style={{ fontSize: 11, color: '#64748B', marginBottom: 4 }}>{l.time} — Sent to {l.count} parents</div>)}
+
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <label style={{ fontSize: 10, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                2. Select Students ({selectedStudents.size} selected)
+              </label>
+              {studentsInClass.length > 0 && (
+                <button onClick={toggleAllInClass} style={{ fontSize: 10, fontWeight: 700, color: '#4f8ff7', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                  {allInClassSelected ? 'Deselect All' : 'Select All'}
+                </button>
+              )}
+            </div>
+            <div style={{ border: '1px solid var(--c-border)', borderRadius: 8, maxHeight: 320, overflowY: 'auto' }}>
+              {studentsInClass.length === 0 ? (
+                <div style={{ padding: 20, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No students found</div>
+              ) : studentsInClass.map((s, i) => (
+                <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: i < studentsInClass.length - 1 ? '1px solid var(--c-border)' : 'none', cursor: 'pointer', background: selectedStudents.has(s.id) ? 'rgba(59,130,246,0.06)' : 'transparent' }}>
+                  <input type="checkbox" checked={selectedStudents.has(s.id)} onChange={() => toggleStudent(s.id)} style={{ accentColor: '#4f8ff7' }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text)' }}>{s.name}</div>
+                    <div style={{ fontSize: 10, color: 'var(--c-faint)' }}>Roll {s.roll_number || 'N/A'} · {classes.find(c => c.id === s.class_id) ? `${classes.find(c => c.id === s.class_id).name}-${classes.find(c => c.id === s.class_id).section}` : ''}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
           </div>
-        )}
+        </div>
+
+        {/* Right — compose & send */}
+        <div>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 10, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>3. Compose SMS</label>
+            <textarea value={message} onChange={e => setMessage(e.target.value)} rows={6} placeholder="Type your message to parents... e.g. PTM is scheduled for Friday 10 AM. Please attend."
+              style={{ ...inp, resize: 'vertical' }} />
+            <div style={{ fontSize: 10, color: 'var(--c-faint)', marginTop: 4 }}>{message.length}/160 characters{message.length > 160 ? ' (will be split into multiple SMS)' : ''}</div>
+          </div>
+
+          <div style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 11, color: '#4f8ff7' }}>
+            SMS sent via Twilio to guardian/parent phone numbers on record.
+          </div>
+
+          <ActionBtn
+            label={sending ? 'Sending...' : `Send SMS to ${selectedStudents.size} Parent${selectedStudents.size !== 1 ? 's' : ''}`}
+            onClick={handleSend}
+            disabled={sending || !message.trim() || selectedStudents.size === 0}
+          />
+
+          {result && (
+            <div style={{ marginTop: 12, background: result.error ? 'rgba(239,68,68,0.06)' : 'rgba(16,185,129,0.06)', border: `1px solid ${result.error ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)'}`, borderRadius: 8, padding: '12px 14px', fontSize: 12 }}>
+              {result.error ? (
+                <span style={{ color: '#f87171' }}>{result.error}</span>
+              ) : (
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                  {result.sent > 0 && <span style={{ color: '#34d399' }}>✓ {result.sent} sent</span>}
+                  {result.failed > 0 && <span style={{ color: '#f87171' }}>✗ {result.failed} failed</span>}
+                  {result.no_phone > 0 && <span style={{ color: '#fbbf24' }}>⚠ {result.no_phone} no phone</span>}
+                  {result.not_configured > 0 && <span style={{ color: 'var(--c-faint)' }}>Twilio not configured — {result.not_configured} logged</span>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {log.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <h4 style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Send History</h4>
+              {log.map((l, i) => (
+                <div key={i} style={{ fontSize: 11, color: 'var(--c-faint)', padding: '6px 0', borderBottom: '1px solid var(--c-border)' }}>
+                  <span style={{ color: 'var(--c-text)', fontWeight: 600 }}>{l.time}</span> — {l.count} students selected · {l.sent ?? 0} sent · {l.failed ?? 0} failed
+                  <div style={{ color: 'var(--c-faint)', fontSize: 10, marginTop: 2, fontStyle: 'italic' }}>{l.message.slice(0, 60)}{l.message.length > 60 ? '…' : ''}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </ToolPage>
   );
@@ -1445,18 +1555,18 @@ export function StudentTransfer() {
 
   const reset = () => { setDone(null); setSelectedStudent(null); setReason(''); setDestinationClass(''); setDestinationSchool(''); setSearch(''); setError(''); };
 
-  const inpStyle = { flex: 1, background: '#161622', border: '1px solid #222230', borderRadius: 7, padding: '8px 12px', color: '#E2E8F0', fontSize: 12, outline: 'none' };
-  const chipStyle = (active) => ({ padding: '5px 14px', borderRadius: 6, border: `1px solid ${active ? '#6366F1' : '#222230'}`, background: active ? 'rgba(99,102,241,0.15)' : '#161622', color: active ? '#A5B4FC' : '#94A3B8', fontSize: 11, fontWeight: 600, cursor: 'pointer' });
+  const inpStyle = { flex: 1, background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' };
+  const chipStyle = (active) => ({ padding: '5px 14px', borderRadius: 6, border: `1px solid ${active ? '#6366F1' : 'var(--c-border)'}`, background: active ? 'rgba(99,102,241,0.15)' : 'var(--c-bg)', color: active ? '#A5B4FC' : 'var(--c-muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer' });
 
   if (done) {
     return (
       <ToolPage title="Student Transfer / Withdrawal" subtitle="Process student transfers and generate TC">
-        <div style={{ maxWidth: 520, padding: 32, textAlign: 'center', background: '#161622', border: '1px solid #10B98130', borderRadius: 12 }}>
+        <div style={{ maxWidth: 520, padding: 32, textAlign: 'center', background: 'var(--c-bg)', border: '1px solid #34d39930', borderRadius: 12 }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>✅</div>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#10B981', fontSize: 16, marginBottom: 8 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#34d399', fontSize: 16, marginBottom: 8 }}>
             {done.type === 'class_change' ? 'Class Changed' : done.type === 'transfer' ? 'Transfer Processed' : 'Withdrawal Processed'}
           </h3>
-          <p style={{ color: '#94A3B8', fontSize: 13, lineHeight: 1.6 }}>{done.msg}</p>
+          <p style={{ color: 'var(--c-muted)', fontSize: 13, lineHeight: 1.6 }}>{done.msg}</p>
           <div style={{ marginTop: 20 }}>
             <ActionBtn label="Process Another" variant="secondary" onClick={reset} />
           </div>
@@ -1471,7 +1581,7 @@ export function StudentTransfer() {
 
         {/* Left: find student */}
         <div>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 13, fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>1. Find Student</h3>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, fontWeight: 600, color: 'var(--c-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>1. Find Student</h3>
           <div style={{ marginBottom: 10 }}>
             <select value={selectedClass} onChange={e => { setSelectedClass(e.target.value); setSelectedStudent(null); }} style={{ ...inpStyle, width: '100%', marginBottom: 8 }}>
               <option value="">All Classes</option>
@@ -1481,12 +1591,12 @@ export function StudentTransfer() {
           </div>
           <div style={{ maxHeight: 340, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
             {filteredStudents.length === 0 ? (
-              <p style={{ fontSize: 12, color: '#64748B', padding: '8px 0' }}>No students found</p>
+              <p style={{ fontSize: 12, color: 'var(--c-faint)', padding: '8px 0' }}>No students found</p>
             ) : filteredStudents.map(s => (
               <div key={s.id} onClick={() => { setSelectedStudent(s); setError(''); }}
-                style={{ padding: '10px 14px', background: selectedStudent?.id === s.id ? 'rgba(99,102,241,0.12)' : '#161622', border: `1px solid ${selectedStudent?.id === s.id ? '#6366F1' : '#222230'}`, borderRadius: 8, cursor: 'pointer' }}>
-                <div style={{ fontWeight: 600, color: '#E2E8F0', fontSize: 13 }}>{s.name}</div>
-                <div style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                style={{ padding: '10px 14px', background: selectedStudent?.id === s.id ? 'rgba(99,102,241,0.12)' : 'var(--c-bg)', border: `1px solid ${selectedStudent?.id === s.id ? '#6366F1' : 'var(--c-border)'}`, borderRadius: 8, cursor: 'pointer' }}>
+                <div style={{ fontWeight: 600, color: 'var(--c-text)', fontSize: 13 }}>{s.name}</div>
+                <div style={{ fontSize: 11, color: 'var(--c-faint)', marginTop: 2 }}>
                   {s.class_info ? `${s.class_info.name}-${s.class_info.section}` : 'N/A'} · {s.admission_number || 'No Adm. No.'}
                 </div>
               </div>
@@ -1496,23 +1606,23 @@ export function StudentTransfer() {
 
         {/* Right: action */}
         <div>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 13, fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>2. Action</h3>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, fontWeight: 600, color: 'var(--c-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>2. Action</h3>
 
           {!selectedStudent ? (
-            <div style={{ padding: 24, textAlign: 'center', color: '#64748B', background: '#161622', border: '1px solid #222230', borderRadius: 10, fontSize: 12 }}>Select a student from the left</div>
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--c-faint)', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 10, fontSize: 12 }}>Select a student from the left</div>
           ) : (
             <>
               {/* Selected student card */}
               <div style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
-                <div style={{ fontWeight: 700, color: '#E2E8F0', fontSize: 14 }}>{selectedStudent.name}</div>
-                <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 3 }}>
+                <div style={{ fontWeight: 700, color: 'var(--c-text)', fontSize: 14 }}>{selectedStudent.name}</div>
+                <div style={{ fontSize: 11, color: 'var(--c-muted)', marginTop: 3 }}>
                   {selectedStudent.class_info ? `Class ${selectedStudent.class_info.name}-${selectedStudent.class_info.section}` : 'N/A'} · {selectedStudent.admission_number || 'No Adm. No.'}
                 </div>
               </div>
 
               {/* Transfer type */}
               <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Action Type</label>
+                <label style={{ display: 'block', fontSize: 11, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Action Type</label>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {[['transfer', 'Transfer Out'], ['withdrawal', 'Withdraw'], ['class_change', 'Change Class']].map(([val, lbl]) => (
                     <span key={val} style={chipStyle(transferType === val)} onClick={() => { setTransferType(val); setError(''); }}>{lbl}</span>
@@ -1523,9 +1633,9 @@ export function StudentTransfer() {
               {/* Destination class (class change only) */}
               {transferType === 'class_change' && (
                 <div style={{ marginBottom: 12 }}>
-                  <label style={{ display: 'block', fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Destination Class *</label>
+                  <label style={{ display: 'block', fontSize: 11, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Destination Class *</label>
                   <select value={destinationClass} onChange={e => setDestinationClass(e.target.value)}
-                    style={{ width: '100%', background: '#161622', border: '1px solid #222230', borderRadius: 7, padding: '8px 12px', color: '#E2E8F0', fontSize: 12, outline: 'none' }}>
+                    style={{ width: '100%', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
                     <option value="">Select new class...</option>
                     {classes.filter(c => c.id !== selectedStudent.class_id).map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
                   </select>
@@ -1535,27 +1645,27 @@ export function StudentTransfer() {
               {/* Destination school (transfer only) */}
               {transferType === 'transfer' && (
                 <div style={{ marginBottom: 12 }}>
-                  <label style={{ display: 'block', fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Destination School (optional)</label>
+                  <label style={{ display: 'block', fontSize: 11, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Destination School (optional)</label>
                   <input value={destinationSchool} onChange={e => setDestinationSchool(e.target.value)} placeholder="e.g. DPS Lucknow"
-                    style={{ width: '100%', background: '#161622', border: '1px solid #222230', borderRadius: 7, padding: '8px 12px', color: '#E2E8F0', fontSize: 12, outline: 'none' }} />
+                    style={{ width: '100%', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }} />
                 </div>
               )}
 
               {/* Reason */}
               <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Reason *</label>
+                <label style={{ display: 'block', fontSize: 11, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Reason *</label>
                 <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3}
                   placeholder={transferType === 'class_change' ? 'e.g. Section rearrangement' : 'e.g. Family relocation to Delhi'}
-                  style={{ width: '100%', background: '#161622', border: '1px solid #222230', borderRadius: 7, padding: '8px 12px', color: '#E2E8F0', fontSize: 12, outline: 'none', resize: 'vertical' }} />
+                  style={{ width: '100%', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none', resize: 'vertical' }} />
               </div>
 
               {transferType !== 'class_change' && (
-                <div style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#FCA5A5' }}>
+                <div style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#fca5a5' }}>
                   This will deactivate the student and auto-generate a Transfer Certificate.
                 </div>
               )}
 
-              {error && <div style={{ color: '#EF4444', fontSize: 12, marginBottom: 10 }}>{error}</div>}
+              {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 10 }}>{error}</div>}
 
               <ActionBtn
                 label={processing ? 'Processing...' : transferType === 'class_change' ? 'Move to New Class' : `Process ${transferType === 'transfer' ? 'Transfer' : 'Withdrawal'} & Generate TC`}
@@ -1598,8 +1708,8 @@ export function IdCardGenerator() {
       <html><head><title>ID Cards</title>
       <style>
         body { font-family: Arial, sans-serif; margin: 0; }
-        .card { width: 85mm; height: 54mm; border: 2px solid #3B82F6; border-radius: 6px; padding: 10px; margin: 8px; display: inline-block; vertical-align: top; box-sizing: border-box; }
-        .school { font-weight: bold; font-size: 10px; color: #3B82F6; text-align: center; }
+        .card { width: 85mm; height: 54mm; border: 2px solid #4f8ff7; border-radius: 6px; padding: 10px; margin: 8px; display: inline-block; vertical-align: top; box-sizing: border-box; }
+        .school { font-weight: bold; font-size: 10px; color: #4f8ff7; text-align: center; }
         .name { font-size: 14px; font-weight: bold; margin: 6px 0 2px; }
         .info { font-size: 10px; color: #666; }
         @media print { @page { margin: 5mm; } }
@@ -1608,7 +1718,7 @@ export function IdCardGenerator() {
         ${selected.map(s => `
           <div class="card">
             <div class="school">THE AARYANS — CBSE, LUCKNOW</div>
-            <hr style="border:1px solid #3B82F6;margin:4px 0"/>
+            <hr style="border:1px solid #4f8ff7;margin:4px 0"/>
             <div class="name">${s.name}</div>
             <div class="info">Class: ${s.class_info ? `${s.class_info.name}-${s.class_info.section}` : 'N/A'}</div>
             <div class="info">Adm No: ${s.admission_number || 'N/A'}</div>
@@ -1629,7 +1739,7 @@ export function IdCardGenerator() {
   return (
     <ToolPage title="ID Card Generator" subtitle="Generate printable student ID cards" loading={loading}>
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-        <select value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ background: '#161622', border: '1px solid #222230', borderRadius: 7, padding: '8px 12px', color: '#E2E8F0', fontSize: 12, outline: 'none' }}>
+        <select value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
           <option value="">All Classes</option>
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
         </select>
@@ -1771,16 +1881,16 @@ export function TimetableBuilder() {
       actions={selectedClass && <ActionBtn label="Add Period" onClick={() => { setEditingSlot(null); setShowForm(true); }} icon={<Plus size={11} />} />}>
 
       <div style={{ marginBottom: 16 }}>
-        <label style={{ fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Select Class</label>
-        <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} style={{ background: '#161622', border: '1px solid #222230', borderRadius: 7, padding: '8px 12px', color: '#E2E8F0', fontSize: 12, outline: 'none', width: '100%', maxWidth: 300 }}>
+        <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Select Class</label>
+        <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none', width: '100%', maxWidth: 300 }}>
           <option value="">-- Select --</option>
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
         </select>
       </div>
 
       {showForm && (
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20, marginBottom: 16 }}>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingSlot ? 'Edit Period' : 'Add New Period'}</h3>
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingSlot ? 'Edit Period' : 'Add New Period'}</h3>
           <form onSubmit={handleSave}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
               <FormField label="Day" type="select" value={form.day_of_week} onChange={f('day_of_week')} options={dayOptions} required />
@@ -1791,12 +1901,12 @@ export function TimetableBuilder() {
               <FormField label="End Time" type="time" value={form.end_time} onChange={f('end_time')} required />
               <FormField label="Room (Optional)" value={form.room} onChange={f('room')} placeholder="e.g. Room 12" />
             </div>
-            {error && <div style={{ color: '#EF4444', fontSize: 12, marginBottom: 12 }}>{error}</div>}
+            {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{error}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
-              <button type="submit" disabled={saving} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #3B82F6', background: '#3B82F6', color: '#fff', fontSize: 12, cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: saving ? 0.6 : 1 }}>
+              <button type="submit" disabled={saving} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #4f8ff7', background: '#4f8ff7', color: '#fff', fontSize: 12, cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: saving ? 0.6 : 1 }}>
                 {saving ? 'Saving...' : editingSlot ? 'Update' : 'Add'}
               </button>
-              <button type="button" onClick={() => { setShowForm(false); setEditingSlot(null); setError(''); }} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #222230', background: '#161622', color: '#E2E8F0', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Cancel</button>
+              <button type="button" onClick={() => { setShowForm(false); setEditingSlot(null); setError(''); }} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-text)', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Cancel</button>
             </div>
           </form>
         </div>
@@ -1811,8 +1921,8 @@ export function TimetableBuilder() {
           `${s.start_time} – ${s.end_time}`,
           s.room || 'N/A',
           <div style={{ display: 'flex', gap: 4 }}>
-            <button onClick={() => handleEdit(s)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: '#3B82F6', fontSize: 10, cursor: 'pointer' }}>Edit</button>
-            <button onClick={() => handleDelete(s.id)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 5, padding: '3px 8px', color: '#EF4444', fontSize: 10, cursor: 'pointer' }}>Delete</button>
+            <button onClick={() => handleEdit(s)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: '#4f8ff7', fontSize: 10, cursor: 'pointer' }}>Edit</button>
+            <button onClick={() => handleDelete(s.id)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 5, padding: '3px 8px', color: '#f87171', fontSize: 10, cursor: 'pointer' }}>Delete</button>
           </div>
         ])}
         emptyMsg={selectedClass ? "No periods added yet" : "Select a class to view timetable"}
@@ -1883,8 +1993,8 @@ export function AssetTracker() {
     <ToolPage title="Asset Tracker" subtitle="Track school inventory & assets" onRefresh={load} loading={loading}
       actions={<ActionBtn label="Add Asset" onClick={() => setShowForm(true)} icon={<Plus size={11} />} />}>
       {showForm && (
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20, marginBottom: 16 }}>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Add New Asset</h3>
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Add New Asset</h3>
           <form onSubmit={handleAdd}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Asset Name" value={form.name} onChange={f('name')} placeholder="e.g. Computer, Desk, Projector" required />
@@ -1904,12 +2014,12 @@ export function AssetTracker() {
                 { value: 'damaged', label: 'Damaged' }
               ]} />
             </div>
-            {error && <div style={{ color: '#EF4444', fontSize: 12, marginBottom: 12, marginTop: 8 }}>{error}</div>}
+            {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12, marginTop: 8 }}>{error}</div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button type="submit" disabled={saving} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #3B82F6', background: '#3B82F6', color: '#fff', fontSize: 12, cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: saving ? 0.6 : 1 }}>
+              <button type="submit" disabled={saving} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #4f8ff7', background: '#4f8ff7', color: '#fff', fontSize: 12, cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: saving ? 0.6 : 1 }}>
                 {saving ? 'Adding...' : 'Add Asset'}
               </button>
-              <button type="button" onClick={() => { setShowForm(false); setError(''); }} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #222230', background: '#161622', color: '#E2E8F0', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Cancel</button>
+              <button type="button" onClick={() => { setShowForm(false); setError(''); }} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-text)', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Cancel</button>
             </div>
           </form>
         </div>
@@ -2023,14 +2133,14 @@ export function TransportManager() {
     <ToolPage title="Transport Manager" subtitle="Routes, vehicles & student assignments" loading={loading}
       actions={viewMode === 'routes' && <ActionBtn label="Add Route" onClick={() => { setShowForm(true); setEditingId(null); setForm({ route_name: '', start_point: '', end_point: '', driver_name: '', driver_phone: '', vehicle_no: '', capacity: '', fare: '' }); }} icon={<Plus size={11} />} />}>
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 14, borderBottom: '1px solid #222230', paddingBottom: 12 }}>
-        <button onClick={() => { setViewMode('routes'); setSelectedRoute(null); }} style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === 'routes' ? '1px solid #3B82F6' : '1px solid #222230', background: viewMode === 'routes' ? 'rgba(59,130,246,0.1)' : '#161622', color: viewMode === 'routes' ? '#3B82F6' : '#94A3B8', fontSize: 12, cursor: 'pointer' }}>Routes</button>
-        <button onClick={() => { setViewMode('assignments'); setSelectedRoute(null); }} style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === 'assignments' ? '1px solid #10B981' : '1px solid #222230', background: viewMode === 'assignments' ? 'rgba(16,185,129,0.1)' : '#161622', color: viewMode === 'assignments' ? '#10B981' : '#94A3B8', fontSize: 12, cursor: 'pointer' }}>Student Assignments</button>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 14, borderBottom: '1px solid var(--c-border)', paddingBottom: 12 }}>
+        <button onClick={() => { setViewMode('routes'); setSelectedRoute(null); }} style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === 'routes' ? '1px solid #4f8ff7' : '1px solid var(--c-border)', background: viewMode === 'routes' ? 'rgba(59,130,246,0.1)' : 'var(--c-bg)', color: viewMode === 'routes' ? '#4f8ff7' : 'var(--c-muted)', fontSize: 12, cursor: 'pointer' }}>Routes</button>
+        <button onClick={() => { setViewMode('assignments'); setSelectedRoute(null); }} style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === 'assignments' ? '1px solid #34d399' : '1px solid var(--c-border)', background: viewMode === 'assignments' ? 'rgba(16,185,129,0.1)' : 'var(--c-bg)', color: viewMode === 'assignments' ? '#34d399' : 'var(--c-muted)', fontSize: 12, cursor: 'pointer' }}>Student Assignments</button>
       </div>
 
       {showForm && (
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20, marginBottom: 16 }}>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingId ? 'Edit Route' : 'Add New Route'}</h3>
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingId ? 'Edit Route' : 'Add New Route'}</h3>
           <form onSubmit={handleSave}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Route Name" value={form.route_name} onChange={f('route_name')} placeholder="e.g. Route 1 - City Center" required />
@@ -2051,14 +2161,14 @@ export function TransportManager() {
       )}
 
       {showAssign && (
-        <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20, marginBottom: 16 }}>
-          <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Assign Student to Route</h3>
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Assign Student to Route</h3>
           <form onSubmit={handleAssign}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Route" type="select" value={assignForm.bus_route} onChange={fa('bus_route')} options={routes.map(r => ({ value: r.id, label: r.route_name }))} required />
               <FormField label="Student" type="select" value={assignForm.student_id} onChange={fa('student_id')} options={students.map(s => ({ value: s.id, label: s.name }))} required />
             </div>
-            {assignError && <div style={{ color: '#EF4444', fontSize: 12, marginBottom: 8 }}>{assignError}</div>}
+            {assignError && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 8 }}>{assignError}</div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
               <ActionBtn label="Assign" type="submit" />
               <ActionBtn label="Cancel" variant="secondary" onClick={() => { setShowAssign(false); setAssignError(''); }} />
@@ -2079,8 +2189,8 @@ export function TransportManager() {
               r.fare ? `₹${r.fare}` : 'N/A',
               <Badge text={r.is_active ? 'Active' : 'Inactive'} color={r.is_active ? 'green' : 'gray'} />,
               <div style={{ display: 'flex', gap: 4 }}>
-                <button onClick={() => handleEdit(r)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: '#3B82F6', fontSize: 10, cursor: 'pointer' }}>Edit</button>
-                <button onClick={() => handleDelete(r.id)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 5, padding: '3px 8px', color: '#EF4444', fontSize: 10, cursor: 'pointer' }}>Delete</button>
+                <button onClick={() => handleEdit(r)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: '#4f8ff7', fontSize: 10, cursor: 'pointer' }}>Edit</button>
+                <button onClick={() => handleDelete(r.id)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 5, padding: '3px 8px', color: '#f87171', fontSize: 10, cursor: 'pointer' }}>Delete</button>
               </div>
             ])}
             emptyMsg="No transport routes configured"
@@ -2094,12 +2204,12 @@ export function TransportManager() {
       {viewMode === 'assignments' && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 16 }}>
-            <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 12 }}>
-              <h4 style={{ color: '#94A3B8', fontSize: 11, fontWeight: 600, marginBottom: 10, textTransform: 'uppercase' }}>Routes</h4>
+            <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 12 }}>
+              <h4 style={{ color: 'var(--c-muted)', fontSize: 11, fontWeight: 600, marginBottom: 10, textTransform: 'uppercase' }}>Routes</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {routes.map(r => (
-                  <button key={r.id} onClick={() => setSelectedRoute(r)} style={{ padding: '8px 10px', borderRadius: 6, border: selectedRoute?.id === r.id ? '1px solid #3B82F6' : '1px solid #222230', background: selectedRoute?.id === r.id ? 'rgba(59,130,246,0.1)' : '#0A0A0F', color: '#E2E8F0', fontSize: 12, textAlign: 'left', cursor: 'pointer' }}>
-                    {r.route_name} <span style={{ color: '#64748B', fontSize: 10 }}>({students.filter(s => s.bus_route === r.id).length})</span>
+                  <button key={r.id} onClick={() => setSelectedRoute(r)} style={{ padding: '8px 10px', borderRadius: 6, border: selectedRoute?.id === r.id ? '1px solid #4f8ff7' : '1px solid var(--c-border)', background: selectedRoute?.id === r.id ? 'rgba(59,130,246,0.1)' : 'var(--c-app)', color: 'var(--c-text)', fontSize: 12, textAlign: 'left', cursor: 'pointer' }}>
+                    {r.route_name} <span style={{ color: 'var(--c-faint)', fontSize: 10 }}>({students.filter(s => s.bus_route === r.id).length})</span>
                   </button>
                 ))}
               </div>
@@ -2107,13 +2217,13 @@ export function TransportManager() {
             <div>
               {selectedRoute ? (
                 <div>
-                  <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 14, marginBottom: 12 }}>
-                    <h4 style={{ color: '#E2E8F0', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{selectedRoute.route_name}</h4>
+                  <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 14, marginBottom: 12 }}>
+                    <h4 style={{ color: 'var(--c-text)', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{selectedRoute.route_name}</h4>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 11 }}>
-                      <div><span style={{ color: '#94A3B8' }}>Route:</span> {selectedRoute.start_point} → {selectedRoute.end_point}</div>
-                      <div><span style={{ color: '#94A3B8' }}>Driver:</span> {selectedRoute.driver_name || 'N/A'}</div>
-                      <div><span style={{ color: '#94A3B8' }}>Vehicle:</span> {selectedRoute.vehicle_no || 'N/A'}</div>
-                      <div><span style={{ color: '#94A3B8' }}>Fare:</span> ₹{selectedRoute.fare || 'N/A'}</div>
+                      <div><span style={{ color: 'var(--c-muted)' }}>Route:</span> {selectedRoute.start_point} → {selectedRoute.end_point}</div>
+                      <div><span style={{ color: 'var(--c-muted)' }}>Driver:</span> {selectedRoute.driver_name || 'N/A'}</div>
+                      <div><span style={{ color: 'var(--c-muted)' }}>Vehicle:</span> {selectedRoute.vehicle_no || 'N/A'}</div>
+                      <div><span style={{ color: 'var(--c-muted)' }}>Fare:</span> ₹{selectedRoute.fare || 'N/A'}</div>
                     </div>
                   </div>
                   <DataTable headers={['Student Name', 'Class', 'Status']}
@@ -2122,7 +2232,7 @@ export function TransportManager() {
                   />
                 </div>
               ) : (
-                <div style={{ color: '#64748B', textAlign: 'center', padding: '40px 20px' }}>Select a route to view assigned students</div>
+                <div style={{ color: 'var(--c-faint)', textAlign: 'center', padding: '40px 20px' }}>Select a route to view assigned students</div>
               )}
             </div>
           </div>
@@ -2136,19 +2246,19 @@ export function AutomatedReport() {
   const [schedules, setSchedules] = useState([{ name: 'Weekly Attendance Report', frequency: 'weekly', day: 'Monday', time: '08:00', active: true }, { name: 'Monthly Fee Summary', frequency: 'monthly', day: '1', time: '09:00', active: true }]);
   return (
     <ToolPage title="Automated Reports" subtitle="Schedule recurring reports">
-      <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20, marginBottom: 16, maxWidth: 600 }}>
-        <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Scheduled Reports</h3>
+      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16, maxWidth: 600 }}>
+        <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Scheduled Reports</h3>
         {schedules.map((s, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #1A1A24' }}>
+          <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #242424' }}>
             <div>
-              <div style={{ fontSize: 13, color: '#E2E8F0', fontWeight: 500 }}>{s.name}</div>
-              <div style={{ fontSize: 11, color: '#64748B' }}>{s.frequency} · {s.day} at {s.time}</div>
+              <div style={{ fontSize: 13, color: 'var(--c-text)', fontWeight: 500 }}>{s.name}</div>
+              <div style={{ fontSize: 11, color: 'var(--c-faint)' }}>{s.frequency} · {s.day} at {s.time}</div>
             </div>
             <Badge text={s.active ? 'Active' : 'Paused'} color={s.active ? 'green' : 'gray'} />
           </div>
         ))}
         <div style={{ marginTop: 14 }}>
-          <p style={{ fontSize: 11, color: '#64748B' }}>Full scheduling system with email delivery coming in Phase 3. Reports are available via Export section.</p>
+          <p style={{ fontSize: 11, color: 'var(--c-faint)' }}>Full scheduling system with email delivery coming in Phase 3. Reports are available via Export section.</p>
         </div>
       </div>
     </ToolPage>
@@ -2199,17 +2309,12 @@ export function CustomFormBuilder() {
         }))
       };
       const headers = h(currentUser);
-      console.log('Current user:', currentUser);
-      console.log('Headers:', headers);
-      console.log('Saving form:', payload);
       const fetchRes = await fetch(`${API}/settings/forms`, {
         method: 'POST',
         headers: headers,
         body: JSON.stringify(payload)
       });
-      console.log('Response status:', fetchRes.status);
       const res = await fetchRes.json();
-      console.log('Response data:', res);
       if (res.success) {
         setShowCreate(false);
         setFormName('');
@@ -2253,8 +2358,8 @@ export function CustomFormBuilder() {
       {viewMode === 'list' && (
         <>
           {showCreate && (
-            <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 20, marginBottom: 16 }}>
-              <h3 style={{ fontFamily: 'Outfit, sans-serif', color: '#E2E8F0', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Create New Form</h3>
+            <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
+              <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Create New Form</h3>
               <FormField label="Form Title" value={formName} onChange={setFormName} placeholder="e.g. Student Health Survey" required />
               <FormField label="Audience" type="select" value={audience} onChange={setAudience} options={[
                 { value: 'all', label: 'Everyone' },
@@ -2263,11 +2368,11 @@ export function CustomFormBuilder() {
                 { value: 'parents', label: 'Parents Only' }
               ]} />
               <div style={{ marginBottom: 10 }}>
-                <label style={{ fontSize: 10, color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 8 }}>FORM FIELDS</label>
+                <label style={{ fontSize: 10, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 8 }}>FORM FIELDS</label>
                 {fields.map((field, i) => (
                   <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 8, alignItems: 'flex-end' }}>
-                    <input value={field.label} onChange={e => updateField(i, 'label', e.target.value)} placeholder="Field label" style={{ flex: 2, background: '#0F0F1A', border: '1px solid #222230', borderRadius: 6, padding: '6px 10px', color: '#E2E8F0', fontSize: 12, outline: 'none' }} />
-                    <select value={field.type} onChange={e => updateField(i, 'type', e.target.value)} style={{ flex: 1, background: '#0F0F1A', border: '1px solid #222230', borderRadius: 6, padding: '6px', color: '#E2E8F0', fontSize: 12, outline: 'none' }}>
+                    <input value={field.label} onChange={e => updateField(i, 'label', e.target.value)} placeholder="Field label" style={{ flex: 2, background: 'var(--c-deep)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '6px 10px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }} />
+                    <select value={field.type} onChange={e => updateField(i, 'type', e.target.value)} style={{ flex: 1, background: 'var(--c-deep)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '6px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
                       <option value="text">Text</option>
                       <option value="number">Number</option>
                       <option value="email">Email</option>
@@ -2277,17 +2382,17 @@ export function CustomFormBuilder() {
                       <option value="textarea">Long Text</option>
                     </select>
                     {(field.type === 'select' || field.type === 'radio') && (
-                      <input value={field.options} onChange={e => updateField(i, 'options', e.target.value)} placeholder="Option 1, Option 2" style={{ flex: 1.5, background: '#0F0F1A', border: '1px solid #222230', borderRadius: 6, padding: '6px 10px', color: '#E2E8F0', fontSize: 12, outline: 'none' }} />
+                      <input value={field.options} onChange={e => updateField(i, 'options', e.target.value)} placeholder="Option 1, Option 2" style={{ flex: 1.5, background: 'var(--c-deep)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '6px 10px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }} />
                     )}
-                    <button onClick={() => removeField(i)} style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#EF4444', fontSize: 11, cursor: 'pointer' }}>Remove</button>
+                    <button onClick={() => removeField(i)} style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#f87171', fontSize: 11, cursor: 'pointer' }}>Remove</button>
                   </div>
                 ))}
               </div>
-              {error && <div style={{ color: '#EF4444', fontSize: 12, marginBottom: 12 }}>{error}</div>}
+              {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{error}</div>}
               <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={addField} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #222230', background: '#161622', color: '#E2E8F0', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>+ Add Field</button>
-                <button onClick={save} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #3B82F6', background: '#3B82F6', color: '#fff', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Create Form</button>
-                <button onClick={() => { setShowCreate(false); setError(''); }} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #222230', background: '#161622', color: '#E2E8F0', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Cancel</button>
+                <button onClick={addField} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-text)', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>+ Add Field</button>
+                <button onClick={save} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #4f8ff7', background: '#4f8ff7', color: '#fff', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Create Form</button>
+                <button onClick={() => { setShowCreate(false); setError(''); }} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-text)', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Cancel</button>
               </div>
             </div>
           )}
@@ -2296,11 +2401,11 @@ export function CustomFormBuilder() {
               f.title,
               <span style={{ textTransform: 'capitalize', fontSize: 11 }}>{f.audience}</span>,
               f.fields?.length || 0,
-              <button onClick={() => handleViewResponses(f)} style={{ color: '#3B82F6', fontSize: 11, background: 'transparent', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>View</button>,
+              <button onClick={() => handleViewResponses(f)} style={{ color: '#4f8ff7', fontSize: 11, background: 'transparent', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>View</button>,
               f.created_at?.slice(0, 10),
               <div style={{ display: 'flex', gap: 4 }}>
-                <button onClick={() => handleViewResponses(f)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: '#3B82F6', fontSize: 10, cursor: 'pointer' }}>Responses</button>
-                <button onClick={() => handleDelete(f.id)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 5, padding: '3px 8px', color: '#EF4444', fontSize: 10, cursor: 'pointer' }}>Delete</button>
+                <button onClick={() => handleViewResponses(f)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: '#4f8ff7', fontSize: 10, cursor: 'pointer' }}>Responses</button>
+                <button onClick={() => handleDelete(f.id)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 5, padding: '3px 8px', color: '#f87171', fontSize: 10, cursor: 'pointer' }}>Delete</button>
               </div>
             ])}
             emptyMsg="No forms created yet"
@@ -2311,36 +2416,36 @@ export function CustomFormBuilder() {
       {viewMode === 'responses' && selectedForm && (
         <>
           <div style={{ marginBottom: 14 }}>
-            <button onClick={() => { setViewMode('list'); setSelectedForm(null); setResponses([]); }} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #222230', background: '#161622', color: '#94A3B8', fontSize: 12, cursor: 'pointer' }}>← Back to Forms</button>
+            <button onClick={() => { setViewMode('list'); setSelectedForm(null); setResponses([]); }} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-muted)', fontSize: 12, cursor: 'pointer' }}>← Back to Forms</button>
           </div>
-          <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 11, padding: 14, marginBottom: 14 }}>
-            <h4 style={{ color: '#E2E8F0', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{selectedForm.title}</h4>
-            <p style={{ color: '#64748B', fontSize: 11 }}>Responses: {responses.length} | Audience: <span style={{ textTransform: 'capitalize' }}>{selectedForm.audience}</span></p>
+          <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 14, marginBottom: 14 }}>
+            <h4 style={{ color: 'var(--c-text)', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{selectedForm.title}</h4>
+            <p style={{ color: 'var(--c-faint)', fontSize: 11 }}>Responses: {responses.length} | Audience: <span style={{ textTransform: 'capitalize' }}>{selectedForm.audience}</span></p>
           </div>
           {responses.length === 0 ? (
-            <div style={{ textAlign: 'center', color: '#64748B', padding: '40px 20px' }}>No responses yet</div>
+            <div style={{ textAlign: 'center', color: 'var(--c-faint)', padding: '40px 20px' }}>No responses yet</div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid #222230' }}>
-                    <th style={{ padding: '8px', textAlign: 'left', color: '#94A3B8', fontWeight: 600 }}>Submitted By</th>
-                    <th style={{ padding: '8px', textAlign: 'left', color: '#94A3B8', fontWeight: 600 }}>Role</th>
+                  <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
+                    <th style={{ padding: '8px', textAlign: 'left', color: 'var(--c-muted)', fontWeight: 600 }}>Submitted By</th>
+                    <th style={{ padding: '8px', textAlign: 'left', color: 'var(--c-muted)', fontWeight: 600 }}>Role</th>
                     {selectedForm.fields?.slice(0, 3).map(f => (
-                      <th key={f.label} style={{ padding: '8px', textAlign: 'left', color: '#94A3B8', fontWeight: 600 }}>{f.label}</th>
+                      <th key={f.label} style={{ padding: '8px', textAlign: 'left', color: 'var(--c-muted)', fontWeight: 600 }}>{f.label}</th>
                     ))}
-                    <th style={{ padding: '8px', textAlign: 'left', color: '#94A3B8', fontWeight: 600 }}>Date</th>
+                    <th style={{ padding: '8px', textAlign: 'left', color: 'var(--c-muted)', fontWeight: 600 }}>Date</th>
                   </tr>
                 </thead>
                 <tbody>
                   {responses.map(resp => (
-                    <tr key={resp.id} style={{ borderBottom: '1px solid #222230' }}>
-                      <td style={{ padding: '8px', color: '#E2E8F0' }}>{resp.submitted_by_name}</td>
-                      <td style={{ padding: '8px', color: '#E2E8F0', textTransform: 'capitalize' }}>{resp.submitted_by_role}</td>
+                    <tr key={resp.id} style={{ borderBottom: '1px solid var(--c-border)' }}>
+                      <td style={{ padding: '8px', color: 'var(--c-text)' }}>{resp.submitted_by_name}</td>
+                      <td style={{ padding: '8px', color: 'var(--c-text)', textTransform: 'capitalize' }}>{resp.submitted_by_role}</td>
                       {selectedForm.fields?.slice(0, 3).map(f => (
-                        <td key={f.label} style={{ padding: '8px', color: '#CBD5E1', fontSize: 11 }}>{String(resp.answers?.[f.label] || 'N/A').slice(0, 30)}</td>
+                        <td key={f.label} style={{ padding: '8px', color: '#d4d4d4', fontSize: 11 }}>{String(resp.answers?.[f.label] || 'N/A').slice(0, 30)}</td>
                       ))}
-                      <td style={{ padding: '8px', color: '#64748B', fontSize: 10 }}>{resp.submitted_at?.slice(0, 10)}</td>
+                      <td style={{ padding: '8px', color: 'var(--c-faint)', fontSize: 10 }}>{resp.submitted_at?.slice(0, 10)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -2367,7 +2472,7 @@ export function ReportCardBuilder() {
   return (
     <ToolPage title="Report Card Builder" subtitle="Enter marks & generate report cards" loading={loading}>
       <div style={{ marginBottom: 14 }}>
-        <select value={selectedExam} onChange={e => setSelectedExam(e.target.value)} style={{ background: '#161622', border: '1px solid #222230', borderRadius: 7, padding: '8px 12px', color: '#E2E8F0', fontSize: 12, outline: 'none' }}>
+        <select value={selectedExam} onChange={e => setSelectedExam(e.target.value)} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
           <option value="">Select exam...</option>
           {exams.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
         </select>
@@ -2426,21 +2531,21 @@ export function StudentPerformanceViewer() {
   return (
     <ToolPage title="Student Performance" subtitle="Marks, grades & attendance analytics" loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18, maxWidth: 700 }}>
-        <StatCard value={students.length} label="STUDENTS" color="#3B82F6" />
-        <StatCard value={results.length} label="EXAM ENTRIES" color="#8B5CF6" />
-        <StatCard value={studentStats.filter(s => s.avg && s.avg >= 80).length} label="ABOVE 80%" color="#10B981" />
-        <StatCard value={studentStats.filter(s => s.avg && s.avg < 60).length} label="BELOW 60%" color="#EF4444" />
+        <StatCard value={students.length} label="STUDENTS" color="#4f8ff7" />
+        <StatCard value={results.length} label="EXAM ENTRIES" color="#a78bfa" />
+        <StatCard value={studentStats.filter(s => s.avg && s.avg >= 80).length} label="ABOVE 80%" color="#34d399" />
+        <StatCard value={studentStats.filter(s => s.avg && s.avg < 60).length} label="BELOW 60%" color="#f87171" />
       </div>
 
       {selectedStudent ? (
         <div>
           <div style={{ display: 'flex', gap: 10, marginBottom: 14, alignItems: 'center' }}>
             <ActionBtn label="← Back to All" variant="secondary" onClick={() => setSelectedStudent(null)} />
-            <span style={{ fontFamily: 'Outfit, sans-serif', fontSize: 15, fontWeight: 600, color: '#E2E8F0' }}>{selectedStudent.name}</span>
+            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 15, fontWeight: 600, color: 'var(--c-text)' }}>{selectedStudent.name}</span>
           </div>
           {studentAtt && (
             <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
-              {[['Attendance', studentAtt.rate, '#10B981'], ['Present', studentAtt.present, '#10B981'], ['Absent', studentAtt.absent, '#EF4444'], ['Total Days', studentAtt.total, '#E2E8F0']].map(([l, v, c]) => (
+              {[['Attendance', studentAtt.rate, '#34d399'], ['Present', studentAtt.present, '#34d399'], ['Absent', studentAtt.absent, '#f87171'], ['Total Days', studentAtt.total, 'var(--c-text)']].map(([l, v, c]) => (
                 <StatCard key={l} value={v} label={l} color={c} small />
               ))}
             </div>
@@ -2456,9 +2561,9 @@ export function StudentPerformanceViewer() {
             s.name,
             s.class_info ? `${s.class_info.name}-${s.class_info.section}` : 'N/A',
             s.exams,
-            s.avg !== null ? <span style={{ color: s.avg >= 80 ? '#10B981' : s.avg >= 60 ? '#F59E0B' : '#EF4444', fontWeight: 600 }}>{s.avg}%</span> : 'No data',
-            s.grade !== 'N/A' ? <Badge text={s.grade} color={gradeColor[s.grade[0]] || 'gray'} /> : <span style={{ color: '#64748B' }}>N/A</span>,
-            <button onClick={() => viewStudent(s)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: '#93C5FD', fontSize: 10, cursor: 'pointer' }}>View</button>
+            s.avg !== null ? <span style={{ color: s.avg >= 80 ? '#34d399' : s.avg >= 60 ? '#fbbf24' : '#f87171', fontWeight: 600 }}>{s.avg}%</span> : 'No data',
+            s.grade !== 'N/A' ? <Badge text={s.grade} color={gradeColor[s.grade[0]] || 'gray'} /> : <span style={{ color: 'var(--c-faint)' }}>N/A</span>,
+            <button onClick={() => viewStudent(s)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: '#93c5fd', fontSize: 10, cursor: 'pointer' }}>View</button>
           ])}
           emptyMsg="No students found"
         />
@@ -2466,3 +2571,6 @@ export function StudentPerformanceViewer() {
     </ToolPage>
   );
 }
+
+// Re-export AttendanceAlerts from OwnerTools so admin can use it
+export { AttendanceAlerts } from './OwnerTools';

@@ -1,14 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { Search, Bell, ChevronDown, ChevronLeft, User, Settings, Menu, X, Zap, LogOut } from 'lucide-react';
+import { Search, Bell, ChevronLeft, Menu, X } from 'lucide-react';
 
-const ROLE_COLORS = { owner: '#F97316', admin: '#3B82F6', teacher: '#10B981', student: '#8B5CF6' };
-const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', teacher: 'Teacher', student: 'Student' };
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
-function getH(user) {
-  return { 'X-User-Role': user?.role || 'owner', 'X-User-Id': user?.id || 'user-owner-001', 'X-User-Name': user?.name || 'Aman' };
+function getH() {
+  const t = localStorage.getItem('eduflow_token');
+  return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
 function SearchPanel({ user, onClose, isDark }) {
@@ -16,7 +15,6 @@ function SearchPanel({ user, onClose, isDark }) {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef(null);
-
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -33,14 +31,12 @@ function SearchPanel({ user, onClose, isDark }) {
     return () => clearTimeout(timer);
   }, [query]);
 
- 
+  const bg = isDark ? '#1e1e1e' : '#fff';
+  const border = isDark ? '#2e2e2e' : '#e5e5e5';
+  const text = isDark ? '#f5f5f5' : '#171717';
+  const muted = isDark ? '#666' : '#a3a3a3';
 
-  const bg = isDark ? '#1C1C28' : '#fff';
-  const border = isDark ? '#222230' : '#E2E8F0';
-  const text = isDark ? '#E2E8F0' : '#0F172A';
-  const muted = isDark ? '#64748B' : '#94A3B8';
-
-  const typeColors = { tool: '#8B5CF6', student: '#3B82F6', staff: '#10B981', announcement: '#EAB308' };
+  const typeColors = { tool: '#a78bfa', student: '#4f8ff7', staff: '#34d399', announcement: '#fbbf24' };
 
   const handleResultClick = (r) => {
     onClose();
@@ -51,41 +47,40 @@ function SearchPanel({ user, onClose, isDark }) {
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 70 }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />
-      <div style={{ position: 'relative', width: 560, background: bg, border: `1px solid ${border}`, borderRadius: 14, boxShadow: '0 24px 64px rgba(0,0,0,0.4)', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', gap: 10, borderBottom: `1px solid ${border}` }}>
-          <Search size={14} color={muted} />
-          <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)} placeholder="Search tools, students, staff, announcements..."
-            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: text, fontSize: 14 }} />
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 80 }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }} />
+      <div className="fade-in-scale" style={{ position: 'relative', width: 560, maxWidth: '90vw', background: bg, border: `1px solid ${border}`, borderRadius: 16, boxShadow: 'var(--shadow-xl)', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '14px 18px', gap: 12, borderBottom: `1px solid ${border}` }}>
+          <Search size={16} color={muted} />
+          <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)} placeholder="Search tools, students, staff..."
+            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: text, fontSize: 15, fontWeight: 400 }} />
           {loading && <div className="spinner" style={{ width: 14, height: 14 }} />}
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: muted, cursor: 'pointer' }}><X size={14} /></button>
+          <button onClick={onClose} style={{ background: isDark ? '#333' : '#e5e5e5', border: 'none', color: muted, cursor: 'pointer', borderRadius: 6, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>ESC</button>
         </div>
         {results.length > 0 && (
-          <div style={{ maxHeight: 400, overflowY: 'auto', padding: 8 }}>
+          <div style={{ maxHeight: 400, overflowY: 'auto', padding: 6 }}>
             {results.map((r, i) => (
-              <div key={i} onClick={() => handleResultClick(r)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, cursor: 'pointer' }}
-                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'}
+              <div key={i} onClick={() => handleResultClick(r)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', transition: 'var(--transition-fast)' }}
+                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                <div style={{ width: 28, height: 28, borderRadius: 7, background: `${typeColors[r.type] || '#64748B'}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: typeColors[r.type] || '#64748B', fontWeight: 700 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: `${typeColors[r.type] || '#666'}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: typeColors[r.type] || '#666', fontWeight: 700 }}>
                   {r.type?.[0]?.toUpperCase()}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: text }}>{r.name || r.title}</div>
-                  <div style={{ fontSize: 11, color: muted }}>{r.subtitle || r.type}</div>
+                  <div style={{ fontSize: 14, fontWeight: 500, color: text }}>{r.name || r.title}</div>
+                  <div style={{ fontSize: 12, color: muted }}>{r.subtitle || r.type}</div>
                 </div>
-                <span style={{ fontSize: 10, color: muted, background: `${typeColors[r.type] || '#64748B'}15`, padding: '2px 6px', borderRadius: 4 }}>{r.type}</span>
+                <span style={{ fontSize: 11, color: muted, background: isDark ? '#252525' : '#f5f5f5', padding: '3px 8px', borderRadius: 6, fontWeight: 500 }}>{r.type}</span>
               </div>
             ))}
           </div>
         )}
         {query && results.length === 0 && !loading && (
-          <div style={{ padding: 24, textAlign: 'center', color: muted, fontSize: 13 }}>No results for "{query}"</div>
+          <div style={{ padding: 32, textAlign: 'center', color: muted, fontSize: 14 }}>No results for "{query}"</div>
         )}
         {!query && (
-          <div style={{ padding: '16px' }}>
-            <div style={{ fontSize: 10, color: muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Quick Tips</div>
-            <div style={{ fontSize: 12, color: muted }}>Search for students, staff, tools, or announcements. Results are scoped to your role.</div>
+          <div style={{ padding: '20px' }}>
+            <div style={{ fontSize: 12, color: muted }}>Search for students, staff, tools, or announcements.</div>
           </div>
         )}
       </div>
@@ -96,57 +91,77 @@ function SearchPanel({ user, onClose, isDark }) {
 function NotificationsPanel({ user, onClose, isDark }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
 
   useEffect(() => {
-    fetch(`${API}/notifications`, { headers: getH(user) }).then(r => r.json())
-      .then(r => { if (r.success) setNotifications(r.data || []); })
-      .catch(() => {}).finally(() => setLoading(false));
-  }, []);
+    setLoading(true);
+    setFetchError(false);
+    fetch(`${API}/notifications`, { headers: getH(user) })
+      .then(r => r.json())
+      .then(r => {
+        if (r.success) setNotifications(r.data || []);
+        else setFetchError(true);
+      })
+      .catch(() => setFetchError(true))
+      .finally(() => setLoading(false));
+  }, [user.id, user.role]);
 
-  const bg = isDark ? '#1C1C28' : '#fff';
-  const border = isDark ? '#222230' : '#E2E8F0';
-  const text = isDark ? '#E2E8F0' : '#0F172A';
-  const muted = isDark ? '#64748B' : '#94A3B8';
-  const typeColors = { info: '#3B82F6', warning: '#F59E0B', success: '#10B981', error: '#EF4444' };
+  const bg = isDark ? '#1e1e1e' : '#fff';
+  const border = isDark ? '#2e2e2e' : '#e5e5e5';
+  const text = isDark ? '#f5f5f5' : '#171717';
+  const muted = isDark ? '#666' : '#a3a3a3';
+  const typeColors = { info: '#4f8ff7', warning: '#fbbf24', success: '#34d399', error: '#f87171' };
+
+  const adminRouteMap = { 'Pending Leave Requests': 'staff-leave-manager', 'Fee Overdue': 'fee-collection', 'Announcement': 'announcement-broadcaster' };
+  const teacherRouteMap = { 'Leave Status': 'leave-application' };
+  const studentRouteMap = { 'Low Attendance': 'attendance-self-check', 'Fee Due': 'fee-status-viewer', 'Announcement': 'announcement-broadcaster' };
 
   const handleNotifClick = (n) => {
-    onClose();
-    const routeMap = {
-      'Pending Leave Requests': 'staff-leave-manager',
-      'Fee Overdue': 'fee-collection',
-      'Leave Status': 'leave-application',
-      'Low Attendance': 'attendance-self-check',
-      'Fee Due': 'fee-status-viewer',
-      'Announcement': 'announcement-broadcaster',
-    };
-    const tool = routeMap[n.title];
-    if (tool) window.dispatchEvent(new CustomEvent('open-tool', { detail: tool }));
+    let tool = null;
+    if (user.role === 'owner' || user.role === 'admin') tool = adminRouteMap[n.title];
+    else if (user.role === 'teacher') tool = teacherRouteMap[n.title];
+    else if (user.role === 'student') tool = studentRouteMap[n.title];
+    if (tool) { onClose(); window.dispatchEvent(new CustomEvent('open-tool', { detail: tool })); }
   };
 
   return (
-    <div style={{ position: 'absolute', top: '110%', right: 0, width: 320, background: bg, border: `1px solid ${border}`, borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.3)', zIndex: 100, overflow: 'hidden' }}>
-      <div style={{ padding: '12px 14px', borderBottom: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: text }}>Notifications</span>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', color: muted, cursor: 'pointer' }}><X size={13} /></button>
+    <div className="fade-in-scale" style={{ position: 'absolute', top: 'calc(100% + 8px)', right: -8, width: 340, background: bg, border: `1px solid ${border}`, borderRadius: 14, boxShadow: 'var(--shadow-lg)', zIndex: 100, overflow: 'hidden' }}>
+      <div style={{ padding: '14px 16px', borderBottom: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: text }}>Notifications</span>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', color: muted, cursor: 'pointer', padding: 2, borderRadius: 4 }}><X size={14} /></button>
       </div>
-      <div style={{ maxHeight: 340, overflowY: 'auto' }}>
+      <div style={{ maxHeight: 380, overflowY: 'auto' }}>
         {loading ? (
-          <div style={{ padding: 24, textAlign: 'center', color: muted, fontSize: 12 }}>Loading...</div>
+          <div style={{ padding: 32, textAlign: 'center' }}>
+            <div className="spinner" style={{ margin: '0 auto 8px', width: 18, height: 18 }} />
+            <span style={{ color: muted, fontSize: 13 }}>Loading...</span>
+          </div>
+        ) : fetchError ? (
+          <div style={{ padding: 32, textAlign: 'center', color: '#f87171', fontSize: 13 }}>Could not load notifications.</div>
         ) : notifications.length === 0 ? (
-          <div style={{ padding: 24, textAlign: 'center', color: muted, fontSize: 12 }}>No new notifications</div>
+          <div style={{ padding: 40, textAlign: 'center', color: muted, fontSize: 13 }}>No new notifications</div>
         ) : (
-          notifications.map((n, i) => (
-            <div key={i} onClick={() => handleNotifClick(n)} style={{ padding: '10px 14px', borderBottom: i < notifications.length - 1 ? `1px solid ${border}` : 'none', display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer' }}
-              onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: typeColors[n.type] || '#64748B', marginTop: 5, flexShrink: 0 }} />
-              <div>
-                <div style={{ fontSize: 12, color: text, fontWeight: 500 }}>{n.title}</div>
-                <div style={{ fontSize: 11, color: muted, marginTop: 2 }}>{n.message}</div>
-                <div style={{ fontSize: 10, color: muted, marginTop: 3 }}>{n.time}</div>
+          notifications.map((n, i) => {
+            const isClickable = (() => {
+              if (user.role === 'owner' || user.role === 'admin') return !!adminRouteMap[n.title];
+              if (user.role === 'teacher') return !!teacherRouteMap[n.title];
+              if (user.role === 'student') return !!studentRouteMap[n.title];
+              return false;
+            })();
+            return (
+              <div key={i} onClick={() => handleNotifClick(n)}
+                style={{ padding: '12px 16px', borderBottom: i < notifications.length - 1 ? `1px solid ${border}` : 'none', display: 'flex', gap: 12, alignItems: 'flex-start', cursor: isClickable ? 'pointer' : 'default', transition: 'var(--transition-fast)' }}
+                onMouseEnter={e => { if (isClickable) e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'; }}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: typeColors[n.type] || '#666', marginTop: 6, flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, color: text, fontWeight: 500, lineHeight: 1.3 }}>{n.title}</div>
+                  <div style={{ fontSize: 12, color: muted, marginTop: 3, lineHeight: 1.4 }}>{n.message}</div>
+                  <div style={{ fontSize: 11, color: muted, marginTop: 4, opacity: 0.7 }}>{n.time}</div>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
@@ -154,9 +169,8 @@ function NotificationsPanel({ user, onClose, isDark }) {
 }
 
 export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpenSettings, onToggleSidebar, activeConvTitle }) {
-  const { currentUser, switchRole, logout, MOCK_USERS } = useUser();
+  const { currentUser } = useUser();
   const { isDark } = useTheme();
-  const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
   const notifRef = useRef(null);
@@ -168,106 +182,95 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-   useEffect(() => {
-  const checkScreen = () => {
-    setIsMobile(window.innerWidth <= 768);
-  };
+  useEffect(() => {
+    const checkScreen = () => setIsMobile(window.innerWidth <= 768);
+    checkScreen();
+    window.addEventListener('resize', checkScreen);
+    return () => window.removeEventListener('resize', checkScreen);
+  }, []);
 
-  checkScreen();
-
-  window.addEventListener('resize', checkScreen);
-  return () => window.removeEventListener('resize', checkScreen);
-}, []);
+  // Keyboard shortcut for search
+  useEffect(() => {
+    const h = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setShowSearch(true); } };
+    document.addEventListener('keydown', h);
+    return () => document.removeEventListener('keydown', h);
+  }, []);
 
   const title = activeTool
     ? activeTool?.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' ')
     : '';
 
-  const bg = isDark ? '#0A0A0F' : '#FFFFFF';
-  const border = isDark ? '#222230' : '#E2E8F0';
-  const tp = isDark ? '#fff' : '#0F172A';
-  const muted = isDark ? '#64748B' : '#94A3B8';
-  const cardBg = isDark ? '#161622' : '#F8F9FC';
-  const cardBorder = isDark ? '#222230' : '#E2E8F0';
+  const bg = isDark ? '#1a1a1a' : '#ffffff';
+  const border = isDark ? '#2e2e2e' : '#e5e5e5';
+  const tp = isDark ? '#f5f5f5' : '#171717';
+  const muted = isDark ? '#666' : '#a3a3a3';
+  const secondary = isDark ? '#a0a0a0' : '#525252';
 
   return (
     <>
-      <header data-testid="main-header" style={{ height: 50, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px', borderBottom: `1px solid ${border}`, background: bg, position: 'sticky', top: 0, zIndex: 50, gap: 10, flexShrink: 0 }}>
+      <header data-testid="main-header" style={{
+        height: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0 16px', borderBottom: `1px solid ${border}`, background: bg,
+        position: 'sticky', top: 0, zIndex: 50, gap: 12, flexShrink: 0,
+      }}>
         {/* Left */}
-       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: '0 0 auto' }}>
-          <button onClick={onToggleSidebar} style={{ background: 'none', border: 'none', color: muted, cursor: 'pointer', display: 'flex', padding: 4, display: isMobile ? 'flex' : 'none',}}>
-            <Menu size={16} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: '0 0 auto' }}>
+          <button onClick={onToggleSidebar} style={{
+            background: 'none', border: 'none', color: muted, cursor: 'pointer', padding: 6, borderRadius: 8,
+            display: isMobile ? 'flex' : 'none', transition: 'var(--transition-fast)',
+          }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+            <Menu size={18} />
           </button>
           {activeTool ? (
-            <button data-testid="back-to-chat-btn" onClick={onBackToChat} style={{ background: 'none', border: 'none', color: muted, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, fontSize: 12 }}>
-              <ChevronLeft size={13} />Chat
+            <button data-testid="back-to-chat-btn" onClick={onBackToChat} style={{
+              background: isDark ? '#252525' : '#f5f5f5', border: 'none', color: secondary,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
+              fontSize: 13, fontWeight: 500, padding: '5px 10px', borderRadius: 8,
+              transition: 'var(--transition-fast)',
+            }}
+              onMouseEnter={e => e.currentTarget.style.background = isDark ? '#333' : '#e5e5e5'}
+              onMouseLeave={e => e.currentTarget.style.background = isDark ? '#252525' : '#f5f5f5'}>
+              <ChevronLeft size={14} /> Back
             </button>
           ) : null}
-          <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 600, fontSize: 14, color: tp, whiteSpace: 'nowrap' }}>
+          <span style={{ fontWeight: 600, fontSize: 15, color: tp, whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
             {title}
           </span>
         </div>
 
         {/* Center: search */}
-        <div style={{ flex: 1, maxWidth: 400 }}>
-          <button onClick={() => setShowSearch(true)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, background: cardBg, border: `1px solid ${cardBorder}`, borderRadius: 20, padding: '6px 14px', cursor: 'pointer', color: muted, fontSize: 12 }}>
-            <Search size={12} color={muted} />
-            <span>Search tools, people, or anything...</span>
+        <div style={{ flex: 1, maxWidth: 420, display: 'flex', justifyContent: 'center' }}>
+          <button onClick={() => setShowSearch(true)} style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+            background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`,
+            borderRadius: 10, padding: '7px 14px', cursor: 'pointer', color: muted, fontSize: 13,
+            transition: 'var(--transition-fast)',
+          }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = isDark ? '#444' : '#ccc'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = border}>
+            <Search size={14} />
+            <span style={{ flex: 1, textAlign: 'left' }}>Search...</span>
+            <kbd style={{ fontSize: 11, color: muted, background: isDark ? '#333' : '#e5e5e5', padding: '1px 6px', borderRadius: 4, fontFamily: 'Inter, sans-serif', fontWeight: 500 }}>
+              {navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}K
+            </kbd>
           </button>
         </div>
 
-        {/* Right: compact */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-          {/* Notifications */}
+        {/* Right */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
           <div ref={notifRef} style={{ position: 'relative' }}>
-            <button data-testid="notifications-btn" onClick={() => setShowNotif(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: muted, padding: 5, position: 'relative' }}>
-              <Bell size={15} />
-              <span style={{ position: 'absolute', top: 3, right: 3, width: 5, height: 5, background: '#EF4444', borderRadius: '50%' }} />
+            <button data-testid="notifications-btn" onClick={() => setShowNotif(v => !v)} style={{
+              background: 'none', border: 'none', cursor: 'pointer', color: muted,
+              padding: 7, borderRadius: 8, position: 'relative', transition: 'var(--transition-fast)',
+            }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              <Bell size={17} />
+              <span style={{ position: 'absolute', top: 5, right: 5, width: 6, height: 6, background: '#f87171', borderRadius: '50%', border: `2px solid ${bg}` }} />
             </button>
             {showNotif && <NotificationsPanel user={currentUser} onClose={() => setShowNotif(false)} isDark={isDark} />}
-          </div>
-
-          <button data-testid="profile-btn" onClick={onOpenProfile} style={{ background: 'none', border: 'none', cursor: 'pointer', color: muted, padding: 5 }}>
-            <User size={15} />
-          </button>
-          <button data-testid="settings-btn" onClick={onOpenSettings} style={{ background: 'none', border: 'none', cursor: 'pointer', color: muted, padding: 5 }}>
-            <Settings size={15} />
-          </button>
-
-          {/* Compact role + name */}
-          <div style={{ position: 'relative' }}>
-            <button data-testid="role-switcher-btn" onClick={() => setShowRoleMenu(v => !v)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, background: cardBg, border: `1px solid ${cardBorder}`, borderRadius: 8, padding: '4px 8px 4px 6px', cursor: 'pointer' }}>
-              <div style={{ width: 22, height: 22, borderRadius: '50%', background: ROLE_COLORS[currentUser.role], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#fff' }}>
-                {currentUser.initials}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: tp, lineHeight: 1 }}>{currentUser.name.split(' ')[0]}</span>
-                <span style={{ fontSize: 9, color: ROLE_COLORS[currentUser.role], fontWeight: 700, lineHeight: 1, marginTop: 1 }}>{ROLE_LABELS[currentUser.role]}</span>
-              </div>
-              <ChevronDown size={9} color={muted} />
-            </button>
-
-            {showRoleMenu && (
-              <div data-testid="role-menu" style={{ position: 'absolute', top: '110%', right: 0, background: isDark ? '#1C1C28' : '#fff', border: `1px solid ${cardBorder}`, borderRadius: 10, padding: 5, minWidth: 160, zIndex: 100, boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
-                <div style={{ fontSize: 9, color: muted, padding: '3px 8px 6px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Switch Role (Dev)</div>
-                {Object.entries(MOCK_USERS).map(([role, user]) => (
-                  <button key={role} data-testid={`switch-role-${role}`}
-                    onClick={() => { switchRole(role); setShowRoleMenu(false); }}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 9px', background: currentUser.role === role ? (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)') : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', color: tp, fontSize: 11 }}>
-                    <div style={{ width: 7, height: 7, borderRadius: '50%', background: ROLE_COLORS[role] }} />
-                    <span style={{ fontWeight: 500 }}>{ROLE_LABELS[role]}</span>
-                    <span style={{ color: muted, marginLeft: 'auto', fontSize: 10 }}>{user.name.split(' ')[0]}</span>
-                  </button>
-                ))}
-                <div style={{ borderTop: `1px solid ${cardBorder}`, margin: '4px 0' }} />
-                <button onClick={() => { logout(); setShowRoleMenu(false); }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 9px', background: 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', color: '#EF4444', fontSize: 11 }}>
-                  <LogOut size={11} />
-                  <span style={{ fontWeight: 500 }}>Sign Out</span>
-                </button>
-              </div>
-            )}
           </div>
         </div>
       </header>

@@ -1,18 +1,15 @@
 from fastapi import APIRouter, Request, HTTPException
 from database import get_db
 from models.schemas import Student, Guardian, StudentCreate
+from middleware.auth import get_current_user
 from datetime import datetime
-import uuid
+import uuid, re
 
 router = APIRouter(prefix="/api/students", tags=["students"])
 
 
 def get_user(req: Request):
-    return {
-        "id": req.headers.get("X-User-Id", "user-owner-001"),
-        "role": req.headers.get("X-User-Role", "owner"),
-        "name": req.headers.get("X-User-Name", "Aman"),
-    }
+    return get_current_user(req)
 
 
 @router.get("/")
@@ -26,14 +23,15 @@ async def list_students(request: Request, class_id: str = None, search: str = No
     if class_id:
         query["class_id"] = class_id
     if search:
+        safe_search = re.escape(search)
         query["$or"] = [
-            {"name": {"$regex": search, "$options": "i"}},
-            {"admission_number": {"$regex": search, "$options": "i"}},
+            {"name": {"$regex": safe_search, "$options": "i"}},
+            {"admission_number": {"$regex": safe_search, "$options": "i"}},
         ]
 
-    per_page = 20
+    per_page = 200
     skip = (page - 1) * per_page
-    students = await db.students.find(query, {"_id": 0}).skip(skip).limit(per_page).to_list(per_page)
+    students = await db.students.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(per_page).to_list(per_page)
     total = await db.students.count_documents(query)
 
     # Batch class lookups (fix N+1)
@@ -81,6 +79,20 @@ async def create_student(body: StudentCreate, request: Request):
         await db.guardians.insert_one({**guardian.dict(), "_id": guardian.id})
 
     return {"success": True, "data": student.dict()}
+
+
+@router.get("/me")
+async def get_my_profile(request: Request):
+    db = get_db()
+    user = get_user(request)
+    if user["role"] != "student":
+        raise HTTPException(403, "Only students can access this endpoint")
+    student = await db.students.find_one({"user_id": user["id"]}, {"_id": 0})
+    if not student:
+        return {"success": True, "data": None}
+    cls = await db.classes.find_one({"id": student.get("class_id")}, {"_id": 0})
+    student["class_info"] = cls
+    return {"success": True, "data": student}
 
 
 @router.get("/{student_id}")

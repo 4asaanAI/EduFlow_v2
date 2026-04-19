@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from database import get_db
+from middleware.auth import get_current_user
 import csv
 import io
 from datetime import date
@@ -10,7 +11,7 @@ router = APIRouter(prefix="/api/export", tags=["export"])
 
 
 def get_user(req: Request):
-    return {"id": req.headers.get("X-User-Id", "user-owner-001"), "role": req.headers.get("X-User-Role", "owner")}
+    return get_current_user(req)
 
 
 def make_csv_response(rows: list, headers: list, filename: str):

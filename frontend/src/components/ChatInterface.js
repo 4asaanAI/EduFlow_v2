@@ -4,11 +4,16 @@ import { useTheme } from '../contexts/ThemeContext';
 import { createConversation, getMessages, sendMessageStream } from '../lib/api';
 import MessageRenderer from './MessageRenderer';
 import InputBar from './InputBar';
+import TokenBudgetBar from './TokenBudgetBar';
 import { executeTool } from '../lib/api';
+import { Sparkles } from 'lucide-react';
+import ThinkingProcess from './ThinkingProcess';
+import ConfirmActionCard from './ConfirmActionCard';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
-function getHeaders(user) {
-  return { 'Content-Type': 'application/json', 'X-User-Role': user?.role || 'owner', 'X-User-Id': user?.id || 'user-owner-001', 'X-User-Name': user?.name || 'Aman' };
+function getHeaders() {
+  const t = localStorage.getItem('eduflow_token');
+  return { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) };
 }
 
 async function executeAction(convId, action, params, label, user) {
@@ -21,9 +26,15 @@ async function executeAction(convId, action, params, label, user) {
 
 function TypingIndicator() {
   return (
-    <div style={{ display: 'flex', gap: 12, padding: '8px 0', alignItems: 'flex-start' }}>
-      <div style={{ width: 30, height: 30, borderRadius: 8, background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: 13, color: '#818CF8', flexShrink: 0 }}>AI</div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, paddingTop: 6 }}>
+    <div style={{ display: 'flex', gap: 14, padding: '12px 0', alignItems: 'flex-start' }}>
+      <div style={{
+        width: 28, height: 28, borderRadius: 8,
+        background: 'linear-gradient(135deg, rgba(79,143,247,0.15), rgba(167,139,250,0.15))',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+      }}>
+        <Sparkles size={13} color="#a78bfa" />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, paddingTop: 8 }}>
         <div className="typing-dot" /><div className="typing-dot" /><div className="typing-dot" />
       </div>
     </div>
@@ -31,16 +42,23 @@ function TypingIndicator() {
 }
 
 function ToolCallBadge({ tool, status }) {
+  const { isDark } = useTheme();
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.25)', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#93C5FD', marginBottom: 8 }}>
-      {status === 'running' ? <div className="spinner" style={{ width: 10, height: 10 }} /> : <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981' }} />}
-      <span style={{ fontFamily: 'JetBrains Mono, monospace' }}>{tool}</span>
-      <span style={{ color: '#64748B' }}>{status === 'running' ? '...' : 'done'}</span>
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 7,
+      background: isDark ? 'rgba(79,143,247,0.08)' : 'rgba(79,143,247,0.06)',
+      border: `1px solid ${isDark ? 'rgba(79,143,247,0.15)' : 'rgba(79,143,247,0.12)'}`,
+      borderRadius: 8, padding: '4px 10px', fontSize: 12, color: '#4f8ff7', marginBottom: 10,
+    }}>
+      {status === 'running' ? <div className="spinner" style={{ width: 10, height: 10 }} /> : <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#34d399' }} />}
+      <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>{tool}</span>
+      <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{status === 'running' ? 'running...' : 'completed'}</span>
     </div>
   );
 }
 
 function HealthScoreWidget({ user }) {
+  const { isDark } = useTheme();
   const [score, setScore] = useState(null);
   useEffect(() => {
     if (user.role !== 'owner' && user.role !== 'admin') return;
@@ -56,17 +74,54 @@ function HealthScoreWidget({ user }) {
   }, [user.id]);
 
   if (score === null || (user.role !== 'owner' && user.role !== 'admin')) return null;
-  const color = score >= 80 ? '#10B981' : score >= 60 ? '#F59E0B' : '#EF4444';
+  const color = score >= 80 ? '#34d399' : score >= 60 ? '#fbbf24' : '#f87171';
 
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, background: '#161622', border: `1px solid ${color}30`, borderRadius: 10, padding: '10px 16px', marginBottom: 20 }}>
-      <div style={{ width: 48, height: 48, borderRadius: '50%', border: `3px solid ${color}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ fontSize: 16, fontWeight: 800, color, fontFamily: 'Outfit, sans-serif' }}>{score}</span>
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 14,
+      background: isDark ? '#1e1e1e' : '#ffffff',
+      border: `1px solid ${isDark ? '#2e2e2e' : '#e5e5e5'}`,
+      borderRadius: 14, padding: '14px 20px', marginBottom: 24,
+      boxShadow: 'var(--shadow-sm)',
+    }}>
+      <div style={{
+        width: 52, height: 52, borderRadius: 14,
+        border: `3px solid ${color}`, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: `${color}10`,
+      }}>
+        <span style={{ fontSize: 18, fontWeight: 800, color }}>{score}</span>
       </div>
       <div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#E2E8F0' }}>School Health Score</div>
-        <div style={{ fontSize: 11, color: '#64748B' }}>Based on attendance, fees & alerts</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>School Health</div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Attendance, fees & alerts</div>
       </div>
+    </div>
+  );
+}
+
+// Quick action suggestions for the greeting screen
+function QuickActions({ onSend, isDark }) {
+  const suggestions = [
+    "Show today's attendance overview",
+    "How many fee defaulters are there?",
+    "Generate a school health report",
+    "List all pending leave requests",
+  ];
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, maxWidth: 500, margin: '0 auto' }}>
+      {suggestions.map((s, i) => (
+        <button key={i} onClick={() => onSend(s)} style={{
+          background: isDark ? '#1e1e1e' : '#ffffff',
+          border: `1px solid ${isDark ? '#2e2e2e' : '#e5e5e5'}`,
+          borderRadius: 12, padding: '12px 14px', textAlign: 'left',
+          color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer',
+          transition: 'all var(--transition-fast)', lineHeight: 1.4,
+        }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = isDark ? '#444' : '#ccc'; e.currentTarget.style.background = isDark ? '#252525' : '#fafafa'; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = isDark ? '#2e2e2e' : '#e5e5e5'; e.currentTarget.style.background = isDark ? '#1e1e1e' : '#ffffff'; }}>
+          {s}
+        </button>
+      ))}
     </div>
   );
 }
@@ -80,19 +135,46 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   const [currentStreamMsg, setCurrentStreamMsg] = useState(null);
   const messagesEndRef = useRef(null);
 
-  // Refs to prevent React Strict Mode double-fire issues
   const justCreatedRef = useRef(false);
   const pendingFinalMsgRef = useRef(null);
   const processedMessageIds = useRef(new Set());
 
-  // Sync external convId
+  // New state variables for thinking, confirm action
+  const [thinkingSteps, setThinkingSteps] = useState([]);
+  const [thinkingCollapsed, setThinkingCollapsed] = useState(false);
+  const [thinkingStartTime, setThinkingStartTime] = useState(null);
+  const [confirmAction, setConfirmAction] = useState(null); // {action_id, tool, params, display, buttons}
+
+  // Token budget state
+  const [tokenUsed, setTokenUsed] = useState(0);
+  const [tokenLimit, setTokenLimit] = useState(-1); // -1 = unlimited
+  const [tokenCanRecharge, setTokenCanRecharge] = useState(false);
+  const [tokenSelfRechargeEnabled, setTokenSelfRechargeEnabled] = useState(true);
+  const [tokenExhausted, setTokenExhausted] = useState(false);
+
+  // Ref to track thinkingStartTime inside SSE callback without stale closure
+  const thinkingStartTimeRef = useRef(null);
+  // Ref to track thinkingCollapsed and thinkingSteps inside SSE callback
+  const thinkingCollapsedRef = useRef(false);
+  const thinkingStepsRef = useRef([]);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    thinkingStartTimeRef.current = thinkingStartTime;
+  }, [thinkingStartTime]);
+  useEffect(() => {
+    thinkingCollapsedRef.current = thinkingCollapsed;
+  }, [thinkingCollapsed]);
+  useEffect(() => {
+    thinkingStepsRef.current = thinkingSteps;
+  }, [thinkingSteps]);
+
   useEffect(() => {
     if (activeConvId && activeConvId !== convId) {
       setConvId(activeConvId);
     }
   }, [activeConvId]);
 
-  // Load messages when conversation changes (but skip on new creation)
   useEffect(() => {
     if (convId) {
       if (justCreatedRef.current) {
@@ -108,7 +190,6 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     }
   }, [convId, currentUser.id]);
 
-  // Add final message when streaming stops (avoids nested setState anti-pattern)
   useEffect(() => {
     if (!streaming && pendingFinalMsgRef.current) {
       const finalMsg = pendingFinalMsgRef.current;
@@ -123,6 +204,50 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, currentStreamMsg]);
+
+  // Fetch token usage on mount and when user changes
+  const fetchTokenUsage = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/tokens/usage/me`, { headers: getHeaders(currentUser) });
+      const data = await res.json();
+      if (data.success && data.data) {
+        const d = data.data;
+        setTokenUsed(d.total_used || 0);
+        setTokenLimit(d.role_limit != null ? d.role_limit : -1);
+        setTokenSelfRechargeEnabled(d.self_recharge_enabled !== false);
+        const isExhausted = d.role_limit > 0 && d.total_used >= d.role_limit && (d.personal_topup_balance || 0) <= 0;
+        setTokenExhausted(isExhausted);
+        setTokenCanRecharge(isExhausted && d.self_recharge_enabled !== false);
+      }
+    } catch {
+      // Non-fatal — token bar just won't show
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    fetchTokenUsage();
+  }, [fetchTokenUsage]);
+
+  const handleRecharge = async (packId) => {
+    // In production this would trigger Razorpay payment flow first.
+    // For now, record a placeholder purchase for demo purposes.
+    try {
+      const paymentId = 'pay_demo_' + Date.now();
+      const res = await fetch(`${API}/tokens/purchase`, {
+        method: 'POST',
+        headers: { ...getHeaders(currentUser), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pack_id: packId, payment_id: paymentId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTokenExhausted(false);
+        setTokenCanRecharge(false);
+        fetchTokenUsage();
+      }
+    } catch {
+      // Payment flow error — silently ignore for now
+    }
+  };
 
   const loadMessages = async (id) => {
     try {
@@ -153,21 +278,80 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     const userMsg = { id: tempId, role: 'user', content: text, created_at: new Date().toISOString() };
     processedMessageIds.current.add(tempId);
     setMessages(prev => [...prev, userMsg]);
+
+    // Reset thinking state before starting SSE
+    setThinkingSteps([]);
+    setThinkingCollapsed(false);
+    setThinkingStartTime(null);
+    setConfirmAction(null);
+    thinkingStartTimeRef.current = null;
+    thinkingCollapsedRef.current = false;
+    thinkingStepsRef.current = [];
+
     setStreaming(true);
     setCurrentStreamMsg({ id: 'streaming', role: 'assistant', content: '', toolCall: null, richBlocks: [], actionButtons: [] });
 
     try {
       await sendMessageStream(cid, text, currentUser, (event) => {
-        if (event.type === 'text_delta') {
+        const parsed = event;
+
+        if (event.type === 'thinking') {
+          // Append to thinking steps
+          setThinkingSteps(prev => {
+            const updated = [...prev];
+            // Mark previous active step as done
+            const activeIdx = updated.findIndex(s => s.status === 'active');
+            if (activeIdx >= 0) updated[activeIdx].status = 'done';
+            // Add new step as active
+            updated.push({
+              step: parsed.step,
+              message: parsed.message,
+              status: 'active',
+              timestamp: Date.now(),
+              tool: parsed.tool || null,
+              count: parsed.count || null
+            });
+            return updated;
+          });
+          if (!thinkingStartTimeRef.current) {
+            const now = Date.now();
+            setThinkingStartTime(now);
+            thinkingStartTimeRef.current = now;
+          }
+        } else if (event.type === 'text_delta') {
+          // Collapse thinking on first text_delta
+          if (!thinkingCollapsedRef.current && thinkingStepsRef.current.length > 0) {
+            setThinkingCollapsed(true);
+            thinkingCollapsedRef.current = true;
+            // Mark all remaining active steps as done
+            setThinkingSteps(prev => prev.map(s => ({ ...s, status: s.status === 'active' ? 'done' : s.status })));
+          }
+          // Existing text_delta handling
           setCurrentStreamMsg(prev => prev ? ({ ...prev, content: (prev.content || '') + event.delta }) : prev);
         } else if (event.type === 'tool_call') {
           setCurrentStreamMsg(prev => prev ? ({ ...prev, toolCall: { tool: event.tool, status: event.status } }) : prev);
         } else if (event.type === 'rich_blocks') {
           setCurrentStreamMsg(prev => prev ? ({ ...prev, richBlocks: event.blocks || [], actionButtons: event.action_buttons || [] }) : prev);
+        } else if (event.type === 'confirm_action') {
+          setConfirmAction(parsed);
+        } else if (event.type === 'navigate') {
+          // Trigger tool panel switch
+          if (parsed.tool_id) {
+            window.dispatchEvent(new CustomEvent('eduflow-navigate', { detail: { toolId: parsed.tool_id } }));
+          }
+        } else if (event.type === 'token_exhausted') {
+          // Token budget exhausted — show recharge prompt and disable input
+          setTokenExhausted(true);
+          setTokenCanRecharge(!!event.can_recharge);
+          fetchTokenUsage();
+        } else if (event.type === 'keepalive') {
+          // Ignore - just prevents SSE timeout
         } else if (event.type === 'done') {
           const messageId = event.message_id || `ai-${Date.now()}`;
-          // Track token usage in localStorage
           if (event.tokens_used) {
+            // Update token usage locally for immediate bar feedback
+            setTokenUsed(prev => prev + event.tokens_used);
+            // Also persist to localStorage for backward compat
             const key = `token-usage-${currentUser.id}`;
             let usage = { used: 0, limit: 50000, sessions: 0 };
             try { usage = JSON.parse(localStorage.getItem(key) || '{}') || usage; } catch {}
@@ -176,7 +360,8 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
             usage.limit = usage.limit || 50000;
             localStorage.setItem(key, JSON.stringify(usage));
           }
-          // Save final message to ref, clear streaming state
+          // Finalize thinking - mark all steps as done
+          setThinkingSteps(prev => prev.map(s => ({ ...s, status: 'done' })));
           setCurrentStreamMsg(prev => {
             if (prev && !processedMessageIds.current.has(messageId)) {
               processedMessageIds.current.add(messageId);
@@ -187,17 +372,73 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           setStreaming(false);
         }
       });
+      setStreaming(prev => {
+        if (prev) {
+          setCurrentStreamMsg(cm => {
+            if (cm) {
+              const fallbackId = `ai-${Date.now()}`;
+              if (!processedMessageIds.current.has(fallbackId)) {
+                processedMessageIds.current.add(fallbackId);
+                pendingFinalMsgRef.current = { ...cm, id: fallbackId, role: 'assistant' };
+              }
+            }
+            return null;
+          });
+        }
+        return false;
+      });
     } catch {
+      // On SSE error: append "(Response interrupted)" and show Retry
+      setCurrentStreamMsg(prev => {
+        if (prev && prev.content) {
+          const interruptedId = `err-${Date.now()}`;
+          if (!processedMessageIds.current.has(interruptedId)) {
+            processedMessageIds.current.add(interruptedId);
+            pendingFinalMsgRef.current = {
+              ...prev,
+              id: interruptedId,
+              role: 'assistant',
+              content: prev.content + '\n\n*(Response interrupted)*',
+              interrupted: true,
+            };
+          }
+        }
+        return null;
+      });
       setStreaming(false);
-      setCurrentStreamMsg(null);
-      setMessages(prev => [...prev, { id: `err-${Date.now()}`, role: 'assistant', content: 'Something went wrong. Please try again.', created_at: new Date().toISOString() }]);
+      // Finalize thinking on error
+      setThinkingSteps(prev => prev.map(s => ({ ...s, status: 'done' })));
+      // If there was no content at all, show a plain error message with retry
+      setMessages(prev => {
+        // Only add fallback error if pendingFinalMsgRef was not set (no partial content)
+        if (!pendingFinalMsgRef.current) {
+          return [...prev, {
+            id: `err-${Date.now()}`,
+            role: 'assistant',
+            content: 'Something went wrong. Please try again.',
+            interrupted: true,
+            created_at: new Date().toISOString(),
+          }];
+        }
+        return prev;
+      });
+    }
+  };
+
+  const handleRetry = () => {
+    // Find the last user message and resend it
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        handleSend(messages[i].content);
+        break;
+      }
     }
   };
 
   const handleActionButton = async (action, params, label) => {
     if (!convId) return;
     const actionId = `act-${Date.now()}`;
-    setMessages(prev => [...prev, { id: actionId, role: 'user', content: `▶ ${label || action}`, isAction: true, created_at: new Date().toISOString() }]);
+    setMessages(prev => [...prev, { id: actionId, role: 'user', content: `\u25B6 ${label || action}`, isAction: true, created_at: new Date().toISOString() }]);
     try {
       const res = await executeAction(convId, action, params, label, currentUser);
       if (res.success) {
@@ -208,37 +449,69 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   };
 
   const isNewChat = !convId || messages.length === 0;
-  const chatBg = isDark ? '#0A0A0F' : '#F8F9FC';
-  const titleBorder = isDark ? '#1A1A24' : '#F1F5F9';
-  const titleColor = isDark ? '#64748B' : '#94A3B8';
-  const greetColor = isDark ? '#fff' : '#0F172A';
-  const greetSub = isDark ? '#64748B' : '#94A3B8';
+  const chatBg = isDark ? '#1a1a1a' : '#f5f5f5';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', background: chatBg }}>
-      {activeConvTitle && !isNewChat && (
-        <div style={{ padding: '7px 24px', borderBottom: `1px solid ${titleBorder}`, fontSize: 11, color: titleColor, fontWeight: 500, background: chatBg, flexShrink: 0 }}>
-          {activeConvTitle}
-        </div>
-      )}
-
-      <div data-testid="messages-area" style={{ flex: 1, overflowY: 'auto', padding: '20px 0 200px' }}>
-        <div style={{ maxWidth: 820, margin: '0 auto', padding: '0 24px' }}>
+      <div data-testid="messages-area" style={{ flex: 1, overflowY: 'auto', padding: '24px 0 200px' }}>
+        <div style={{ maxWidth: 760, margin: '0 auto', padding: '0 24px' }}>
           {isNewChat && (
-            <div className="fade-in" style={{ textAlign: 'center', padding: '48px 0 32px' }}>
-              <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 22, fontWeight: 600, color: greetColor, marginBottom: 8 }}>
-                Hello {currentUser.name}!
+            <div className="fade-in" style={{ textAlign: 'center', padding: '60px 0 40px' }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: 14, margin: '0 auto 20px',
+                background: 'linear-gradient(135deg, #4f8ff7, #a78bfa)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 8px 24px rgba(79,143,247,0.2)',
+              }}>
+                <Sparkles size={22} color="#fff" />
+              </div>
+              <h2 style={{
+                fontSize: 26, fontWeight: 700, color: 'var(--text-primary)',
+                marginBottom: 8, letterSpacing: '-0.03em',
+              }}>
+                Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {currentUser.name.split(' ')[0]}
               </h2>
-              <p style={{ color: greetSub, fontSize: 13, marginBottom: 24 }}>
-                What can I assist you with today?
+              <p style={{ color: 'var(--text-muted)', fontSize: 15, marginBottom: 28, fontWeight: 400 }}>
+                How can I help you today?
               </p>
               <HealthScoreWidget user={currentUser} />
+              <QuickActions onSend={handleSend} isDark={isDark} />
             </div>
           )}
 
-          {messages.map((msg, idx) => (
+          {messages.filter(msg => {
+            if (msg.role !== 'assistant') return true;
+            const hasContent = msg.content && msg.content.trim();
+            const richBlocks = msg.richBlocks || msg.rich_content?.rich_blocks || [];
+            const actionButtons = msg.actionButtons || msg.rich_content?.action_buttons || msg.actions || [];
+            return hasContent || richBlocks.length > 0 || actionButtons.length > 0;
+          }).map((msg, idx) => (
             <div key={msg.id || idx} className="fade-in">
-              <MessageRenderer message={msg} onActionButton={handleActionButton} />
+              <div className="prose-chat">
+                <MessageRenderer message={msg} onActionButton={handleActionButton} />
+              </div>
+              {msg.interrupted && (
+                <div style={{ paddingLeft: 42, marginTop: 8 }}>
+                  <button
+                    onClick={handleRetry}
+                    style={{
+                      background: isDark ? '#2a2a2a' : '#ffffff',
+                      border: `1px solid ${isDark ? '#3a3a3a' : '#ddd'}`,
+                      borderRadius: 8,
+                      padding: '6px 14px',
+                      fontSize: 12,
+                      color: '#4f8ff7',
+                      cursor: 'pointer',
+                      fontWeight: 500,
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = isDark ? '#333' : '#f0f4ff'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = isDark ? '#2a2a2a' : '#ffffff'; }}
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
             </div>
           ))}
 
@@ -249,17 +522,60 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
                   <ToolCallBadge tool={currentStreamMsg.toolCall.tool} status={currentStreamMsg.toolCall.status} />
                 </div>
               )}
+              {thinkingSteps.some(s => ['decision', 'tool_start', 'tool_done', 'searching'].includes(s.step)) && (
+                <ThinkingProcess
+                  steps={thinkingSteps}
+                  isStreaming={streaming}
+                  collapsed={thinkingCollapsed}
+                  duration={thinkingStartTime ? Date.now() - thinkingStartTime : 0}
+                />
+              )}
               {currentStreamMsg.content ? (
-                <MessageRenderer message={{ ...currentStreamMsg, role: 'assistant' }} isStreaming onActionButton={handleActionButton} />
+                <div className="prose-chat">
+                  <MessageRenderer message={{ ...currentStreamMsg, role: 'assistant' }} isStreaming onActionButton={handleActionButton} />
+                </div>
               ) : (
-                <TypingIndicator isDark={isDark} />
+                !thinkingSteps.some(s => ['decision', 'tool_start', 'tool_done', 'searching'].includes(s.step)) && <TypingIndicator />
               )}
             </div>
           )}
+
+          {confirmAction && (
+            <ConfirmActionCard
+              action={confirmAction}
+              conversationId={convId}
+              onComplete={(result) => {
+                setConfirmAction(null);
+                // Add result as a message
+                if (result && result.message) {
+                  const resultId = `confirm-res-${Date.now()}`;
+                  setMessages(prev => [...prev, {
+                    id: resultId,
+                    role: 'assistant',
+                    content: result.message,
+                    created_at: new Date().toISOString(),
+                  }]);
+                }
+              }}
+            />
+          )}
+
           <div ref={messagesEndRef} />
         </div>
       </div>
-      <InputBar onSend={handleSend} disabled={streaming} isDark={isDark} />
+      <InputBar onSend={handleSend} disabled={streaming || tokenExhausted} isDark={isDark} />
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0,
+        padding: '0 24px 4px', zIndex: 39, pointerEvents: 'auto',
+      }}>
+        <TokenBudgetBar
+          used={tokenUsed}
+          limit={tokenLimit}
+          canRecharge={tokenCanRecharge}
+          onRecharge={handleRecharge}
+          selfRechargeEnabled={tokenSelfRechargeEnabled}
+        />
+      </div>
     </div>
   );
 }

@@ -4,10 +4,10 @@ import { getAllClasses, getTodayAttendance, bulkMarkAttendance } from '../../lib
 import { CheckCircle, XCircle, Clock, RefreshCw, Save } from 'lucide-react';
 
 const STATUS_OPTIONS = [
-  { value: 'present', label: 'Present', color: '#10B981' },
-  { value: 'absent', label: 'Absent', color: '#EF4444' },
-  { value: 'late', label: 'Late', color: '#F59E0B' },
-  { value: 'holiday', label: 'Holiday', color: '#64748B' },
+  { value: 'present', label: 'Present', color: '#34d399' },
+  { value: 'absent', label: 'Absent', color: '#f87171' },
+  { value: 'late', label: 'Late', color: '#fbbf24' },
+  { value: 'holiday', label: 'Holiday', color: 'var(--c-faint)' },
 ];
 
 export default function AttendanceRecorder() {
@@ -76,25 +76,25 @@ export default function AttendanceRecorder() {
   return (
     <div data-testid="attendance-recorder-tool" style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <h1 style={{ fontFamily: 'Outfit, sans-serif', fontSize: 22, fontWeight: 600, color: '#fff' }}>Attendance recorder</h1>
+        <h1 style={{ fontFamily: 'Inter, sans-serif', fontSize: 22, fontWeight: 600, color: 'var(--c-text)' }}>Attendance recorder</h1>
       </div>
 
       {/* Controls */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
         <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)}
           data-testid="class-select"
-          style={{ background: '#161622', border: '1px solid #222230', borderRadius: 8, padding: '9px 14px', color: '#E2E8F0', fontSize: 13, outline: 'none' }}>
+          style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '9px 14px', color: 'var(--c-text)', fontSize: 13, outline: 'none' }}>
           {classes.map(c => (<option key={c.id} value={c.id}>{c.name}-{c.section}</option>))}
         </select>
         <input type="date" value={date} onChange={e => setDate(e.target.value)}
           data-testid="date-picker"
-          style={{ background: '#161622', border: '1px solid #222230', borderRadius: 8, padding: '9px 14px', color: '#E2E8F0', fontSize: 13, outline: 'none' }}
+          style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '9px 14px', color: 'var(--c-text)', fontSize: 13, outline: 'none' }}
         />
         {/* Quick mark buttons */}
-        <button onClick={() => markAll('present')} data-testid="mark-all-present" style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 8, padding: '9px 14px', color: '#10B981', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+        <button onClick={() => markAll('present')} data-testid="mark-all-present" style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 8, padding: '9px 14px', color: '#34d399', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
           All Present
         </button>
-        <button onClick={() => markAll('absent')} data-testid="mark-all-absent" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '9px 14px', color: '#EF4444', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+        <button onClick={() => markAll('absent')} data-testid="mark-all-absent" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '9px 14px', color: '#f87171', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
           All Absent
         </button>
       </div>
@@ -103,31 +103,31 @@ export default function AttendanceRecorder() {
       {attendanceData.length > 0 && (
         <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
           {[
-            { count: presentCount, label: 'Present', color: '#10B981' },
-            { count: absentCount, label: 'Absent', color: '#EF4444' },
-            { count: lateCount, label: 'Late', color: '#F59E0B' },
-            { count: attendanceData.length, label: 'Total', color: '#94A3B8' },
+            { count: presentCount, label: 'Present', color: '#34d399' },
+            { count: absentCount, label: 'Absent', color: '#f87171' },
+            { count: lateCount, label: 'Late', color: '#fbbf24' },
+            { count: attendanceData.length, label: 'Total', color: 'var(--c-muted)' },
           ].map(s => (
-            <div key={s.label} style={{ background: '#161622', border: '1px solid #222230', borderRadius: 8, padding: '10px 14px', textAlign: 'center', minWidth: 80 }}>
-              <div style={{ fontSize: 18, fontWeight: 700, color: s.color, fontFamily: 'Outfit, sans-serif' }}>{s.count}</div>
-              <div style={{ fontSize: 10, color: '#64748B', fontWeight: 600, textTransform: 'uppercase' }}>{s.label}</div>
+            <div key={s.label} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '10px 14px', textAlign: 'center', minWidth: 80 }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: s.color, fontFamily: 'Inter, sans-serif' }}>{s.count}</div>
+              <div style={{ fontSize: 10, color: 'var(--c-faint)', fontWeight: 600, textTransform: 'uppercase' }}>{s.label}</div>
             </div>
           ))}
         </div>
       )}
 
       {/* Student list */}
-      <div style={{ background: '#161622', border: '1px solid #222230', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
+      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
         {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#64748B' }}>Loading students...</div>
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--c-faint)' }}>Loading students...</div>
         ) : attendanceData.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#64748B' }}>No students in this class or class not selected</div>
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--c-faint)' }}>No students in this class or class not selected</div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
                 {['Roll No.', 'Student Name', 'Status', 'Action'].map(h => (
-                  <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.06em', background: '#0F0F1A', borderBottom: '1px solid #222230' }}>
+                  <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.06em', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>
                     {h}
                   </th>
                 ))}
@@ -137,9 +137,9 @@ export default function AttendanceRecorder() {
               {attendanceData.map((s, i) => {
                 const statusOpt = STATUS_OPTIONS.find(o => o.value === s.status) || STATUS_OPTIONS[0];
                 return (
-                  <tr key={s.student_id || i} style={{ borderBottom: i < attendanceData.length - 1 ? '1px solid #1A1A24' : 'none' }}>
-                    <td style={{ padding: '9px 16px', fontSize: 12, color: '#64748B', fontFamily: 'JetBrains Mono, monospace' }}>{s.roll_number || '-'}</td>
-                    <td style={{ padding: '9px 16px', fontSize: 13, color: '#E2E8F0', fontWeight: 500 }}>{s.name}</td>
+                  <tr key={s.student_id || i} style={{ borderBottom: i < attendanceData.length - 1 ? '1px solid #242424' : 'none' }}>
+                    <td style={{ padding: '9px 16px', fontSize: 12, color: 'var(--c-faint)', fontFamily: 'JetBrains Mono, monospace' }}>{s.roll_number || '-'}</td>
+                    <td style={{ padding: '9px 16px', fontSize: 13, color: 'var(--c-text)', fontWeight: 500 }}>{s.name}</td>
                     <td style={{ padding: '9px 16px' }}>
                       <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 5, background: `${statusOpt.color}15`, color: statusOpt.color }}>
                         {statusOpt.label}
@@ -152,8 +152,8 @@ export default function AttendanceRecorder() {
                             data-testid={`mark-${s.student_id}-${opt.value}`}
                             style={{
                               background: s.status === opt.value ? `${opt.color}20` : 'transparent',
-                              border: `1px solid ${s.status === opt.value ? opt.color + '50' : '#222230'}`,
-                              borderRadius: 5, padding: '4px 8px', color: s.status === opt.value ? opt.color : '#64748B',
+                              border: `1px solid ${s.status === opt.value ? opt.color + '50' : 'var(--c-border)'}`,
+                              borderRadius: 5, padding: '4px 8px', color: s.status === opt.value ? opt.color : 'var(--c-faint)',
                               fontSize: 10, cursor: 'pointer', fontWeight: 600, transition: 'all 0.1s',
                             }}>
                             {opt.label[0]}
@@ -174,7 +174,7 @@ export default function AttendanceRecorder() {
         <button data-testid="save-attendance-btn" onClick={handleSave} disabled={saving}
           style={{
             display: 'flex', alignItems: 'center', gap: 8,
-            background: saved ? '#10B981' : saving ? '#1E3A5F' : '#3B82F6',
+            background: saved ? '#34d399' : saving ? '#1e3a5f' : '#4f8ff7',
             border: 'none', borderRadius: 8, padding: '11px 24px',
             color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s',
           }}>

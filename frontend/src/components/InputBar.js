@@ -1,57 +1,87 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, AtSign, Slash } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { ArrowUp, Slash, AtSign } from 'lucide-react';
 import { useUser } from '../contexts/UserContext';
 
 const TOOLS_BY_ROLE = {
   owner: [
     { id: 'school-pulse', label: 'school-pulse', desc: "Today's school overview" },
+    { id: 'daily-brief', label: 'daily-brief', desc: 'Morning summary' },
     { id: 'fee-collection', label: 'fee-collection', desc: 'Fee summary & defaulters' },
-    { id: 'student-strength', label: 'student-strength', desc: 'Class-wise enrollment' },
+    { id: 'fee-defaulters', label: 'fee-defaulters', desc: 'Overdue fee list' },
+    { id: 'fee-structures', label: 'fee-structures', desc: 'Class-wise fee breakdown' },
+    { id: 'student-database', label: 'student-database', desc: 'Search & filter students' },
+    { id: 'student-profile', label: 'student-profile', desc: 'Full student details' },
     { id: 'attendance-overview', label: 'attendance-overview', desc: 'Attendance trends' },
-    { id: 'staff-attendance-tracker', label: 'staff-tracker', desc: 'Staff attendance & leaves' },
+    { id: 'class-attendance', label: 'class-attendance', desc: 'Class-wise attendance' },
+    { id: 'staff-tracker', label: 'staff-tracker', desc: 'Staff attendance & leaves' },
+    { id: 'staff-list', label: 'staff-list', desc: 'All staff directory' },
+    { id: 'leave-requests', label: 'leave-requests', desc: 'Pending leave approvals' },
     { id: 'financial-reports', label: 'financial-reports', desc: 'Revenue & expenses' },
     { id: 'smart-alerts', label: 'smart-alerts', desc: 'Active alerts & flags' },
-    { id: 'ai-health-report', label: 'ai-health-report', desc: 'Weekly school health summary' },
-    { id: 'staff-leave-manager', label: 'leave-manager', desc: 'Approve / reject leaves' },
-    { id: 'admission-funnel', label: 'admission-funnel', desc: 'Enquiries & conversions' },
-    { id: 'expense-tracker', label: 'expense-tracker', desc: 'Track school expenses' },
-    { id: 'complaint-tracker', label: 'complaint-tracker', desc: 'Grievance management' },
+    { id: 'class-list', label: 'class-list', desc: 'All classes & teachers' },
+    { id: 'house-standings', label: 'house-standings', desc: 'House points leaderboard' },
+    { id: 'student-council', label: 'student-council', desc: 'Prefects & positions' },
+    { id: 'library', label: 'library', desc: 'Books & overdue status' },
+    { id: 'transport', label: 'transport', desc: 'Bus routes & status' },
+    { id: 'inventory', label: 'inventory', desc: 'School inventory & stock' },
+    { id: 'enquiries', label: 'enquiries', desc: 'Admission enquiries' },
+    { id: 'branch-comparison', label: 'branch-comparison', desc: 'Cross-branch stats' },
+    { id: 'record-fee', label: 'record-fee', desc: 'Record a fee payment' },
+    { id: 'mark-attendance', label: 'mark-attendance', desc: 'Mark class attendance' },
+    { id: 'award-points', label: 'award-points', desc: 'Award house points' },
   ],
   admin: [
+    { id: 'school-pulse', label: 'school-pulse', desc: "Today's overview" },
     { id: 'student-database', label: 'student-database', desc: 'Search & manage students' },
-    { id: 'fee-tracker', label: 'fee-tracker', desc: 'Fee payments & dues' },
-    { id: 'attendance-recorder', label: 'attendance', desc: 'Mark & track attendance' },
-    { id: 'certificate-generator', label: 'certificates', desc: 'TC, Bonafide, Character' },
-    { id: 'enquiry-register', label: 'enquiry-register', desc: 'Admission leads' },
-    { id: 'smart-fee-defaulter', label: 'fee-defaulters', desc: 'Smart reminders' },
-    { id: 'timetable-builder', label: 'timetable', desc: 'Build & manage timetable' },
-    { id: 'asset-tracker', label: 'assets', desc: 'Inventory & items' },
-    { id: 'visitor-log', label: 'visitor-log', desc: 'Entry & exit' },
-    { id: 'transport-manager', label: 'transport', desc: 'Routes & buses' },
+    { id: 'student-profile', label: 'student-profile', desc: 'Full student details' },
+    { id: 'fee-collection', label: 'fee-collection', desc: 'Fee payments & dues' },
+    { id: 'fee-defaulters', label: 'fee-defaulters', desc: 'Overdue fee list' },
+    { id: 'fee-structures', label: 'fee-structures', desc: 'Fee breakdown by class' },
+    { id: 'attendance-overview', label: 'attendance-overview', desc: 'Attendance trends' },
+    { id: 'class-attendance', label: 'class-attendance', desc: 'Per-class attendance' },
+    { id: 'staff-tracker', label: 'staff-tracker', desc: 'Staff attendance & leaves' },
+    { id: 'staff-list', label: 'staff-list', desc: 'Staff directory' },
+    { id: 'leave-requests', label: 'leave-requests', desc: 'Approve / reject leaves' },
+    { id: 'class-list', label: 'class-list', desc: 'Classes & teachers' },
+    { id: 'enquiries', label: 'enquiries', desc: 'Admission leads' },
+    { id: 'house-standings', label: 'house-standings', desc: 'House points' },
+    { id: 'library', label: 'library', desc: 'Library status' },
+    { id: 'transport', label: 'transport', desc: 'Routes & buses' },
+    { id: 'inventory', label: 'inventory', desc: 'School assets' },
+    { id: 'record-fee', label: 'record-fee', desc: 'Record a payment' },
+    { id: 'mark-attendance', label: 'mark-attendance', desc: 'Mark attendance' },
   ],
   teacher: [
-    { id: 'class-attendance-marker', label: 'attendance', desc: 'Mark my class attendance' },
-    { id: 'assignment-generator', label: 'assignments', desc: 'Create & manage assignments' },
-    { id: 'report-card-builder', label: 'report-cards', desc: 'Enter marks & generate cards' },
-    { id: 'student-performance-viewer', label: 'student-performance', desc: 'View marks & trends' },
+    { id: 'school-pulse', label: 'school-pulse', desc: "Today's overview" },
+    { id: 'my-class-students', label: 'my-students', desc: 'My class roster' },
+    { id: 'class-attendance', label: 'class-attendance', desc: 'My class attendance' },
+    { id: 'mark-attendance', label: 'mark-attendance', desc: 'Mark today\'s attendance' },
+    { id: 'assignments', label: 'assignments', desc: 'Create & manage' },
+    { id: 'report-cards', label: 'report-cards', desc: 'Enter marks' },
+    { id: 'house-standings', label: 'house-standings', desc: 'House points' },
+    { id: 'award-points', label: 'award-points', desc: 'Award house points' },
+    { id: 'library', label: 'library', desc: 'Class book status' },
     { id: 'leave-application', label: 'leave-application', desc: 'Apply for leave' },
-    { id: 'lesson-plan-generator', label: 'lesson-plans', desc: 'Plan chapters' },
-    { id: 'ptm-notes', label: 'ptm-notes', desc: 'Parent meet notes' },
-    { id: 'curriculum-tracker', label: 'curriculum', desc: 'Track syllabus coverage' },
+    { id: 'lesson-plans', label: 'lesson-plans', desc: 'Plan chapters' },
+    { id: 'curriculum', label: 'curriculum', desc: 'Syllabus coverage' },
   ],
   student: [
-    { id: 'ai-tutor', label: 'ai-tutor', desc: 'Get study help' },
-    { id: 'doubt-solver', label: 'doubt-solver', desc: 'Ask any doubt' },
-    { id: 'homework-viewer', label: 'homework', desc: 'My assignments' },
-    { id: 'attendance-self-check', label: 'my-attendance', desc: 'View attendance record' },
-    { id: 'result-viewer', label: 'my-results', desc: 'View exam marks' },
-    { id: 'fee-status-viewer', label: 'my-fees', desc: 'Payment status' },
+    { id: 'ai-tutor', label: 'ai-tutor', desc: 'Study help & doubt solving' },
+    { id: 'my-attendance', label: 'my-attendance', desc: 'View attendance record' },
+    { id: 'my-results', label: 'my-results', desc: 'View exam marks' },
+    { id: 'my-fees', label: 'my-fees', desc: 'Payment status' },
+    { id: 'homework', label: 'homework', desc: 'My assignments' },
+    { id: 'house-standings', label: 'house-standings', desc: 'House points' },
+    { id: 'library', label: 'library', desc: 'My issued books' },
+    { id: 'announcements', label: 'announcements', desc: 'School notices' },
+    { id: 'career-guide', label: 'career-guide', desc: 'Explore career options' },
   ],
 };
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
-function getHeaders(user) {
-  return { 'X-User-Role': user?.role || 'owner', 'X-User-Id': user?.id || 'user-owner-001', 'X-User-Name': user?.name || 'Aman' };
+function getHeaders() {
+  const t = localStorage.getItem('eduflow_token');
+  return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
 export default function InputBar({ onSend, disabled, isDark = true }) {
@@ -64,14 +94,12 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
   const [slashFiltered, setSlashFiltered] = useState([]);
   const [atResults, setAtResults] = useState([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const [highlights, setHighlights] = useState([]); // [{text, type}]
   const textareaRef = useRef(null);
   const slashPosRef = useRef(-1);
   const atPosRef = useRef(-1);
 
   const allTools = TOOLS_BY_ROLE[currentUser.role] || [];
 
-  // Detect / and @ anywhere in the text
   const handleChange = (e) => {
     const val = e.target.value;
     setText(val);
@@ -79,7 +107,6 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
     e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px';
 
     const cursor = e.target.selectionStart;
-    // Find the last / before cursor without space
     const beforeCursor = val.slice(0, cursor);
     const slashMatch = beforeCursor.match(/\/([a-zA-Z0-9-]*)$/);
     const atMatch = beforeCursor.match(/@([a-zA-Z0-9 ]*)$/);
@@ -102,7 +129,6 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
       setShowSlash(false);
       setShowAt(true);
       setSelectedIdx(0);
-      // Fetch persons from DB
       if (query.length >= 1) {
         fetch(`${API}/search?q=${encodeURIComponent(query)}&type=persons`, { headers: getHeaders(currentUser) })
           .then(r => r.json())
@@ -124,7 +150,6 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
     setText(newText);
     setShowSlash(false);
     textareaRef.current?.focus();
-    // Position cursor after insertion
     setTimeout(() => {
       const newPos = beforeSlash.length + insertion.length;
       textareaRef.current?.setSelectionRange(newPos, newPos);
@@ -174,60 +199,53 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
   };
 
-  // Render text with highlights
-  const renderHighlighted = () => {
-    const parts = [];
-    let i = 0;
-    const regex = /(\/[a-zA-Z0-9-]+|@[a-zA-Z0-9 ]+)/g;
-    let match;
-    while ((match = regex.exec(text)) !== null) {
-      if (match.index > i) parts.push(<span key={i}>{text.slice(i, match.index)}</span>);
-      const isSlash = match[0].startsWith('/');
-      parts.push(
-        <span key={match.index} style={{ background: isSlash ? 'rgba(99,102,241,0.25)' : 'rgba(16,185,129,0.25)', color: isSlash ? '#818CF8' : '#6EE7B7', borderRadius: 3, padding: '0 2px' }}>
-          {match[0]}
-        </span>
-      );
-      i = match.index + match[0].length;
-    }
-    if (i < text.length) parts.push(<span key={i}>{text.slice(i)}</span>);
-    return parts;
-  };
-
-  const inputBg = isDark ? '#1C1C28' : '#FFFFFF';
-  const inputBorder = isDark ? '#222230' : '#E2E8F0';
-  const inputColor = isDark ? '#E2E8F0' : '#0F172A';
-  const inputPlaceholder = isDark ? '#475569' : '#94A3B8';
-  const dropdownBg = isDark ? '#1C1C28' : '#FFFFFF';
-  const dropdownBorder = isDark ? '#222230' : '#E2E8F0';
-  const gradBg = isDark ? '#0A0A0F' : '#F8F9FC';
-  const footerColor = isDark ? '#374151' : '#94A3B8';
+  const inputBg = isDark ? '#252525' : '#ffffff';
+  const inputBorder = isDark ? '#333' : '#e5e5e5';
+  const inputColor = isDark ? '#f5f5f5' : '#171717';
+  const dropdownBg = isDark ? '#252525' : '#ffffff';
+  const dropdownBorder = isDark ? '#333' : '#e5e5e5';
+  const gradBg = isDark ? '#1a1a1a' : '#f5f5f5';
+  const footerColor = isDark ? '#444' : '#a3a3a3';
+  const muted = isDark ? '#666' : '#a3a3a3';
 
   const showList = showSlash ? slashFiltered : showAt ? atResults : [];
 
   return (
-    <div data-testid="input-bar" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: `linear-gradient(to top, ${gradBg} 70%, transparent)`, padding: '28px 24px 20px', zIndex: 40 }}>
-      <div style={{ maxWidth: 820, margin: '0 auto', position: 'relative' }}>
+    <div data-testid="input-bar" style={{
+      position: 'absolute', bottom: 0, left: 0, right: 0,
+      background: `linear-gradient(to top, ${gradBg} 75%, transparent)`,
+      padding: '32px 24px 20px', zIndex: 40,
+    }}>
+      <div style={{ maxWidth: 760, margin: '0 auto', position: 'relative' }}>
         {showList.length > 0 && (
-          <div style={{ position: 'absolute', bottom: '100%', left: 0, right: 0, background: dropdownBg, border: `1px solid ${dropdownBorder}`, borderRadius: 10, marginBottom: 6, maxHeight: 280, overflowY: 'auto', boxShadow: '0 -8px 32px rgba(0,0,0,0.3)' }}>
-            {showSlash && <div style={{ padding: '6px 14px 4px', fontSize: 9, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em', borderBottom: `1px solid ${dropdownBorder}` }}>Tools for {currentUser.role}</div>}
-            {showAt && <div style={{ padding: '6px 14px 4px', fontSize: 9, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em', borderBottom: `1px solid ${dropdownBorder}` }}>Mention a person</div>}
+          <div className="fade-in-scale" style={{
+            position: 'absolute', bottom: '100%', left: 0, right: 0,
+            background: dropdownBg, border: `1px solid ${dropdownBorder}`,
+            borderRadius: 14, marginBottom: 8, maxHeight: 300, overflowY: 'auto',
+            boxShadow: 'var(--shadow-lg)',
+          }}>
+            {showSlash && <div style={{ padding: '8px 16px 6px', fontSize: 11, color: muted, fontWeight: 600, borderBottom: `1px solid ${dropdownBorder}` }}>Tools</div>}
+            {showAt && <div style={{ padding: '8px 16px 6px', fontSize: 11, color: muted, fontWeight: 600, borderBottom: `1px solid ${dropdownBorder}` }}>Mention a person</div>}
             {showList.map((item, i) => (
               <button key={item.id || item.name || i} data-testid={`suggestion-${item.id || i}`}
                 onMouseDown={e => { e.preventDefault(); if (showSlash) insertSlashTool(item); else insertAtMention(item); }}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', background: i === selectedIdx ? (isDark ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.08)') : 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
+                  background: i === selectedIdx ? (isDark ? 'rgba(79,143,247,0.1)' : 'rgba(79,143,247,0.06)') : 'transparent',
+                  border: 'none', cursor: 'pointer', textAlign: 'left', transition: 'var(--transition-fast)',
+                }}
                 onMouseEnter={() => setSelectedIdx(i)}>
                 {showSlash ? (
                   <>
-                    <code style={{ fontSize: 12, color: '#818CF8', fontFamily: 'JetBrains Mono, monospace', minWidth: 120 }}>/{item.label}</code>
-                    <span style={{ fontSize: 11, color: '#64748B' }}>{item.desc}</span>
+                    <code style={{ fontSize: 13, color: '#a78bfa', fontFamily: 'JetBrains Mono, monospace', minWidth: 130, fontWeight: 500 }}>/{item.label}</code>
+                    <span style={{ fontSize: 12, color: muted }}>{item.desc}</span>
                   </>
                 ) : (
                   <>
-                    <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#3B82F620', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#60A5FA' }}>{(item.name || '?')[0]}</div>
-                    <span style={{ fontSize: 12, color: inputColor, fontWeight: 500 }}>{item.name}</span>
-                    <span style={{ fontSize: 10, color: '#64748B' }}>{item.sub_role || item.role}</span>
-                    <span style={{ fontSize: 10, color: '#64748B', marginLeft: 'auto' }}>{item.role}</span>
+                    <div style={{ width: 26, height: 26, borderRadius: 7, background: '#4f8ff715', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#4f8ff7' }}>{(item.name || '?')[0]}</div>
+                    <span style={{ fontSize: 13, color: inputColor, fontWeight: 500 }}>{item.name}</span>
+                    <span style={{ fontSize: 11, color: muted }}>{item.sub_role || item.role}</span>
+                    <span style={{ fontSize: 11, color: muted, marginLeft: 'auto' }}>{item.role}</span>
                   </>
                 )}
               </button>
@@ -235,21 +253,41 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
           </div>
         )}
 
-        <div style={{ background: inputBg, border: `1px solid ${disabled ? (isDark ? '#1A1A24' : '#F1F5F9') : inputBorder}`, borderRadius: 14, display: 'flex', alignItems: 'flex-end', padding: '10px 12px', gap: 8 }}>
+        <div style={{
+          background: inputBg,
+          border: `1px solid ${disabled ? (isDark ? '#222' : '#eee') : inputBorder}`,
+          borderRadius: 16, display: 'flex', alignItems: 'flex-end',
+          padding: '12px 14px', gap: 10,
+          boxShadow: isDark ? '0 2px 12px rgba(0,0,0,0.3)' : '0 2px 12px rgba(0,0,0,0.06)',
+          transition: 'border-color var(--transition-fast), box-shadow var(--transition-fast)',
+        }}
+          onFocus={() => {}}
+        >
           <textarea ref={textareaRef} data-testid="chat-input" value={text} onChange={handleChange} onKeyDown={handleKeyDown}
-            placeholder={disabled ? 'EduFlow AI is thinking...' : 'Describe what you need, type / for tools or @ to mention...'}
+            placeholder={disabled ? 'EduFlow is thinking...' : 'Message EduFlow...'}
             disabled={disabled} rows={1}
-            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: disabled ? '#475569' : inputColor, fontSize: 13, resize: 'none', lineHeight: 1.5, padding: 0, fontFamily: 'Manrope, sans-serif', maxHeight: 160, overflowY: 'auto' }}
+            style={{
+              flex: 1, background: 'transparent', border: 'none', outline: 'none',
+              color: disabled ? muted : inputColor, fontSize: 14, resize: 'none',
+              lineHeight: 1.5, padding: 0, fontFamily: 'Inter, -apple-system, sans-serif',
+              maxHeight: 160, overflowY: 'auto',
+            }}
           />
           <button data-testid="send-btn" onClick={handleSend} disabled={disabled || !text.trim()}
-            style={{ width: 32, height: 32, borderRadius: 8, background: disabled || !text.trim() ? (isDark ? '#1A1A24' : '#E2E8F0') : '#3B82F6', border: 'none', cursor: disabled || !text.trim() ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background 0.15s' }}>
-            <Send size={13} color={disabled || !text.trim() ? '#64748B' : '#fff'} />
+            style={{
+              width: 32, height: 32, borderRadius: 10,
+              background: disabled || !text.trim() ? (isDark ? '#333' : '#e5e5e5') : '#171717',
+              border: 'none', cursor: disabled || !text.trim() ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              transition: 'all var(--transition-fast)',
+            }}>
+            <ArrowUp size={15} color={disabled || !text.trim() ? '#666' : '#fff'} strokeWidth={2.5} />
           </button>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 14, marginTop: 6, color: footerColor, fontSize: 10 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}><Slash size={8} color={footerColor} /> tool search</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}><AtSign size={8} color={footerColor} /> mentions</span>
-          <span>EduFlow AI can make mistakes. Please double-check responses</span>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8, color: footerColor, fontSize: 11, fontWeight: 400 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Slash size={10} /> tools</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><AtSign size={10} /> mention</span>
+          <span>EduFlow AI can make mistakes</span>
         </div>
       </div>
     </div>

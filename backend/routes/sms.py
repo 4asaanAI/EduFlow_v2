@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Request, HTTPException
 from database import get_db
+from middleware.auth import get_current_user
 from datetime import datetime
 import os
 import uuid
@@ -8,11 +9,7 @@ router = APIRouter(prefix="/api/sms", tags=["sms"])
 
 
 def get_user(req: Request):
-    return {
-        "id": req.headers.get("X-User-Id", "user-admin-001"),
-        "role": req.headers.get("X-User-Role", "admin"),
-        "name": req.headers.get("X-User-Name", "Admin"),
-    }
+    return get_current_user(req)
 
 
 def get_twilio_client():
@@ -156,6 +153,95 @@ async def send_bulk_reminders(request: Request):
             "message": msg_text,
             "amount": amount,
             "sent_by": user["id"],
+            "status": sms_status,
+            "sms_sid": sms_sid,
+            "error": error_msg,
+            "sent_at": datetime.now().isoformat(),
+        }
+        await db.sms_logs.insert_one({**log, "_id": log["id"]})
+        results["logs"].append(log)
+
+    return {"success": True, "data": results}
+
+
+@router.post("/send-parent-message")
+async def send_parent_message(request: Request):
+    """Send SMS to parents of selected students via Twilio."""
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["admin", "owner"]:
+        raise HTTPException(403, "Forbidden")
+
+    body = await request.json()
+    student_ids = body.get("student_ids", [])
+    message_text = body.get("message", "").strip()
+
+    if not student_ids:
+        raise HTTPException(400, "No students selected")
+    if not message_text:
+        raise HTTPException(400, "Message is required")
+
+    twilio_phone = os.environ.get("TWILIO_PHONE_NUMBER", "")
+    client = get_twilio_client()
+
+    results = {"sent": 0, "failed": 0, "no_phone": 0, "not_configured": 0, "logs": []}
+
+    for sid in student_ids:
+        student = await db.students.find_one({"id": sid}, {"_id": 0})
+        if not student:
+            continue
+
+        # Look up guardian phone as primary contact
+        guardian = await db.guardians.find_one({"student_id": sid}, {"_id": 0})
+        phone = (guardian or {}).get("phone") or student.get("phone") or ""
+
+        if not phone:
+            results["no_phone"] += 1
+            log = {
+                "id": str(uuid.uuid4()),
+                "student_id": sid,
+                "student_name": student.get("name", ""),
+                "phone": "",
+                "message": message_text,
+                "sent_by": user["id"],
+                "sent_by_name": user["name"],
+                "status": "no_phone",
+                "error": "No phone number on record",
+                "sent_at": datetime.now().isoformat(),
+            }
+            await db.sms_logs.insert_one({**log, "_id": log["id"]})
+            results["logs"].append(log)
+            continue
+
+        sms_status = "sent"
+        sms_sid = None
+        error_msg = None
+
+        if client and twilio_phone:
+            try:
+                normalized = phone.strip()
+                if not normalized.startswith("+"):
+                    normalized = "+91" + normalized.lstrip("0")
+                msg = client.messages.create(body=message_text, from_=twilio_phone, to=normalized)
+                sms_sid = msg.sid
+                results["sent"] += 1
+            except Exception as e:
+                sms_status = "failed"
+                error_msg = str(e)
+                results["failed"] += 1
+        else:
+            sms_status = "not_configured"
+            error_msg = "Twilio credentials not configured"
+            results["not_configured"] += 1
+
+        log = {
+            "id": str(uuid.uuid4()),
+            "student_id": sid,
+            "student_name": student.get("name", ""),
+            "phone": phone,
+            "message": message_text,
+            "sent_by": user["id"],
+            "sent_by_name": user["name"],
             "status": sms_status,
             "sms_sid": sms_sid,
             "error": error_msg,

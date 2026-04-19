@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Request, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse
 from database import get_db
+from middleware.auth import get_current_user
 from datetime import datetime
 import uuid
 import os
@@ -24,7 +25,7 @@ MAX_SIZE_MB = 50
 
 
 def get_user(req: Request):
-    return {"id": req.headers.get("X-User-Id", "user-owner-001"), "role": req.headers.get("X-User-Role", "owner")}
+    return get_current_user(req)
 
 
 @router.post("")
@@ -77,7 +78,14 @@ async def upload_file(
 
 @router.get("/serve/{filename}")
 async def serve_file(filename: str):
-    file_path = UPLOAD_DIR / filename
+    # Prevent path traversal — only allow safe filenames
+    safe_name = Path(filename).name
+    if safe_name != filename or ".." in filename:
+        raise HTTPException(400, "Invalid filename")
+    file_path = UPLOAD_DIR / safe_name
+    # Verify the resolved path is within UPLOAD_DIR
+    if not file_path.resolve().is_relative_to(UPLOAD_DIR.resolve()):
+        raise HTTPException(403, "Access denied")
     if not file_path.exists():
         raise HTTPException(404, "File not found")
     return FileResponse(str(file_path))

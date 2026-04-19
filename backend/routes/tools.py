@@ -4,7 +4,8 @@ Direct tool execution endpoint — for tool panel UI (non-chat mode)
 import logging
 from fastapi import APIRouter, Request, HTTPException
 from database import get_db
-from ai.tool_functions import TOOL_REGISTRY
+from ai.tool_functions_v2 import TOOL_REGISTRY
+from middleware.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -12,11 +13,7 @@ router = APIRouter(prefix="/api/tools", tags=["tools"])
 
 
 def get_user(req: Request):
-    return {
-        "id": req.headers.get("X-User-Id", "user-owner-001"),
-        "role": req.headers.get("X-User-Role", "owner"),
-        "name": req.headers.get("X-User-Name", "Aman"),
-    }
+    return get_current_user(req)
 
 
 @router.post("/{tool_id}/execute")
