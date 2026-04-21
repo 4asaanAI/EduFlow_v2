@@ -5,6 +5,7 @@ import Sidebar from './Sidebar';
 import Header from './Header';
 import ChatInterface from './ChatInterface';
 import ToolDashboard from './ToolDashboard';
+import FloatingAssistant from './FloatingAssistant';
 import { createConversation, getConversations } from '../lib/api';
 import ProfileModal from './ProfileModal';
 import SettingsModal from './SettingsModal';
@@ -166,6 +167,7 @@ export default function Layout() {
 
       {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {isToolDashboardRole && <FloatingAssistant />}
     </div>
   );
 }
