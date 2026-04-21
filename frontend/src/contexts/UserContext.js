@@ -113,7 +113,14 @@ export function UserProvider({ children }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
-    const data = await res.json();
+
+    let data = {};
+    try {
+      data = await res.json();
+    } catch {
+      throw new Error(res.ok ? 'Unexpected server response' : 'Invalid username or password');
+    }
+
     if (!res.ok) throw new Error(data.detail || 'Login failed');
 
     storeAuth(data.token, data.user);

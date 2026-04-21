@@ -26,6 +26,11 @@ def get_user(req: Request):
     return get_current_user(req)
 
 
+def _is_it_tech(user: dict) -> bool:
+    """Only admin/it_tech may resolve, reopen, or delete tickets."""
+    return user["role"] == "admin" and user.get("sub_category") == "it_tech"
+
+
 # ─── GET /api/queries ────────────────────────────────────────────────────────
 
 @router.get("")
@@ -109,6 +114,8 @@ async def create_query(
 @router.patch("/{ticket_id}/resolve")
 async def resolve_query(ticket_id: str, request: Request):
     user = get_user(request)
+    if not _is_it_tech(user):
+        raise HTTPException(403, "Only IT & Tech staff can resolve tickets")
     db = get_db()
     ticket = await db.queries.find_one({"id": ticket_id}, {"_id": 0})
     if not ticket:
@@ -130,7 +137,9 @@ async def resolve_query(ticket_id: str, request: Request):
 
 @router.patch("/{ticket_id}/unresolve")
 async def unresolve_query(ticket_id: str, request: Request):
-    get_user(request)
+    user = get_user(request)
+    if not _is_it_tech(user):
+        raise HTTPException(403, "Only IT & Tech staff can reopen tickets")
     db = get_db()
     ticket = await db.queries.find_one({"id": ticket_id}, {"_id": 0})
     if not ticket:
@@ -151,8 +160,7 @@ async def delete_query(ticket_id: str, request: Request):
     ticket = await db.queries.find_one({"id": ticket_id}, {"_id": 0})
     if not ticket:
         raise HTTPException(404, "Ticket not found")
-    # Only creator or owner/admin can delete
-    if ticket["created_by"] != user["id"] and user["role"] not in ("owner", "admin"):
-        raise HTTPException(403, "Forbidden")
+    if not _is_it_tech(user):
+        raise HTTPException(403, "Only IT & Tech staff can delete tickets")
     await db.queries.delete_one({"id": ticket_id})
     return {"success": True}

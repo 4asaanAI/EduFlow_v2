@@ -1,6 +1,8 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from dotenv import load_dotenv
 from pathlib import Path
 import os
@@ -59,6 +61,32 @@ app.add_middleware(
 )
 
 
+def _add_cors(response: JSONResponse, origin: str | None) -> JSONResponse:
+    """Inject CORS headers onto exception responses that bypass middleware."""
+    if origin and origin in allowed_origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    response = JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+    )
+    return _add_cors(response, request.headers.get("origin"))
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    response = JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
+    )
+    return _add_cors(response, request.headers.get("origin"))
+
+
 # ─── Security headers middleware ─────────────────────────────────────────────
 
 @app.middleware("http")
@@ -95,12 +123,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"success": False, "detail": "An internal error occurred"},
     )
-    # Add CORS headers manually
-    origin = request.headers.get("origin")
-    if origin and origin in allowed_origins:
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-    return response
+    return _add_cors(response, request.headers.get("origin"))
 
 
 # ─── Routers ────────────────────────────────────────────────────────────────

@@ -71,6 +71,10 @@ function AttachmentPreview({ url, type, isDark }) {
   return null;
 }
 
+function isItTech(user) {
+  return user.role === 'admin' && user.sub_category === 'it_tech';
+}
+
 function TicketCard({ ticket, currentUser, isDark, onResolve, onUnresolve, onDelete }) {
   const border = isDark ? '#2e2e2e' : '#e5e5e5';
   const card = isDark ? '#1e1e1e' : '#ffffff';
@@ -79,7 +83,8 @@ function TicketCard({ ticket, currentUser, isDark, onResolve, onUnresolve, onDel
   const secondary = isDark ? '#a0a0a0' : '#525252';
   const resolved = ticket.status === 'resolved';
   const roleColor = ROLE_COLORS[ticket.created_by_role] || '#737373';
-  const canDelete = ticket.created_by === currentUser.id || ['owner', 'admin'].includes(currentUser.role);
+  const canDelete = isItTech(currentUser);
+  const canResolve = isItTech(currentUser);
 
   return (
     <div style={{
@@ -113,22 +118,24 @@ function TicketCard({ ticket, currentUser, isDark, onResolve, onUnresolve, onDel
 
         {/* Actions */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          <button
-            onClick={() => resolved ? onUnresolve(ticket.id) : onResolve(ticket.id)}
-            title={resolved ? 'Mark as open' : 'Mark as resolved'}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              padding: '6px 12px', borderRadius: 8, border: 'none', cursor: 'pointer',
-              fontSize: 12, fontWeight: 600,
-              background: resolved ? (isDark ? '#1a3a2a' : '#dcfce7') : (isDark ? '#1a2e1a' : '#f0fdf4'),
-              color: '#34d399', transition: 'all 0.15s ease',
-            }}
-            onMouseEnter={e => e.currentTarget.style.opacity = '0.75'}
-            onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-          >
-            {resolved ? <Circle size={12} /> : <CheckCircle2 size={12} />}
-            {resolved ? 'Reopen' : 'Resolve'}
-          </button>
+          {canResolve && (
+            <button
+              onClick={() => resolved ? onUnresolve(ticket.id) : onResolve(ticket.id)}
+              title={resolved ? 'Mark as open' : 'Mark as resolved'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                padding: '6px 12px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                fontSize: 12, fontWeight: 600,
+                background: resolved ? (isDark ? '#1a3a2a' : '#dcfce7') : (isDark ? '#1a2e1a' : '#f0fdf4'),
+                color: '#34d399', transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={e => e.currentTarget.style.opacity = '0.75'}
+              onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+            >
+              {resolved ? <Circle size={12} /> : <CheckCircle2 size={12} />}
+              {resolved ? 'Reopen' : 'Resolve'}
+            </button>
+          )}
           {canDelete && (
             <button
               onClick={() => onDelete(ticket.id)}
