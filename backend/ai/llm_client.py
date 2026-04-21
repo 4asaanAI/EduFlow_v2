@@ -40,6 +40,7 @@ class LLMClient:
             az_messages.append({"role": role, "content": msg.get("content", "")})
 
         def _call():
+            print(f"[AI] azure | session={session_id} | deployment={self.deployment} | messages={len(az_messages)}")
             response = self._client.chat.completions.create(
                 model=self.deployment,
                 messages=az_messages,
@@ -50,6 +51,7 @@ class LLMClient:
                 tokens = (response.usage.prompt_tokens or 0) + (response.usage.completion_tokens or 0)
             except Exception:
                 tokens = max(1, len(text) // 4)
+            print(f"[AI] azure | done | tokens={tokens}")
             return text, tokens
 
         try:
