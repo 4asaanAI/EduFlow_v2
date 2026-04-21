@@ -3,9 +3,9 @@ Floating AI Assistant — EduFlow admin/teacher knowledge base Q&A
 Strictly scoped to EduFlow dashboard features only.
 """
 import logging
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
-from auth_middleware import require_auth
+from middleware.auth import get_current_user
 from ai.llm_client import llm_client
 
 logger = logging.getLogger(__name__)
@@ -205,7 +205,8 @@ TIPS
 
 
 @router.post("")
-async def assistant_chat(request: Request, user=Depends(require_auth)):
+async def assistant_chat(request: Request):
+    user = get_current_user(request)
     if user["role"] not in ("admin", "teacher"):
         return JSONResponse(status_code=403, content={"success": False, "detail": "Access denied"})
 
