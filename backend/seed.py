@@ -91,17 +91,25 @@ async def seed():
     # Users
     owner_id = "user-owner-001"
     admin_id = "user-admin-001"
-    teacher_ids = [f"user-teacher-{i:03}" for i in range(1, 6)]
+    admin_accountant_id = "user-admin-002"
+    admin_transport_id = "user-admin-003"
+    admin_reception_id = "user-admin-004"
+    admin_it_id = "user-admin-005"
+    teacher_ids = [f"user-teacher-{i:03}" for i in range(1, 8)]  # 7 teachers
     student_user_ids = [f"user-student-{i:03}" for i in range(1, 16)]
 
     users = [
         {"id": owner_id, "name": "Aman Sharma", "role": "owner", "phone": "9876543210", "email": "aman@theararyans.edu.in", "preferred_language": "en", "is_active": True},
         {"id": admin_id, "name": "Priya Sharma", "role": "admin", "phone": "9876543211", "email": "priya@theararyans.edu.in", "preferred_language": "en", "is_active": True},
+        {"id": admin_accountant_id, "name": "Meena Gupta", "role": "admin", "phone": "9876543212", "email": "meena@theararyans.edu.in", "preferred_language": "en", "is_active": True},
+        {"id": admin_transport_id, "name": "Suresh Yadav", "role": "admin", "phone": "9876543213", "email": "suresh@theararyans.edu.in", "preferred_language": "en", "is_active": True},
+        {"id": admin_reception_id, "name": "Kavita Singh", "role": "admin", "phone": "9876543214", "email": "kavita@theararyans.edu.in", "preferred_language": "en", "is_active": True},
+        {"id": admin_it_id, "name": "Rahul Tech", "role": "admin", "phone": "9876543215", "email": "rahul.tech@theararyans.edu.in", "preferred_language": "en", "is_active": True},
         {"id": "user-student-001", "name": "Rahul Singh", "role": "student", "phone": "9876543220", "preferred_language": "en", "is_active": True},
     ]
+    teacher_names = ["Rajesh Kumar", "Sunita Devi", "Manoj Tiwari", "Deepa Verma", "Ankit Sharma", "Vikash Singh", "Nisha Verma"]
     for i, tid in enumerate(teacher_ids):
-        users.append({"id": tid, "name": ["Rajesh Kumar", "Sunita Devi", "Manoj Tiwari", "Deepa Verma", "Ankit Sharma"][i],
-                       "role": "teacher", "phone": f"98765432{30+i}", "preferred_language": "en", "is_active": True})
+        users.append({"id": tid, "name": teacher_names[i], "role": "teacher", "phone": f"98765432{30+i}", "preferred_language": "en", "is_active": True})
 
     await db.users.insert_many(users)
 
@@ -118,7 +126,7 @@ async def seed():
         "user_info": {"id": owner_id, "name": "Aman Sharma", "role": "owner", "initials": "AS"},
     })
 
-    # Admin auth
+    # Admin auth — principal (full ops)
     await db.auth_users.insert_one({
         "id": gid(),
         "username": "admin",
@@ -126,7 +134,47 @@ async def seed():
         "password_hash": hash_pw("admin@123"),
         "role": "admin",
         "phone": "9876543211",
-        "user_info": {"id": admin_id, "name": "Priya Sharma", "role": "admin", "initials": "PS"},
+        "user_info": {"id": admin_id, "name": "Priya Sharma", "role": "admin", "sub_category": "principal", "initials": "PS"},
+    })
+    # Admin auth — accountant (financial data only)
+    await db.auth_users.insert_one({
+        "id": gid(),
+        "username": "accountant",
+        "username_lower": "accountant",
+        "password_hash": hash_pw("accountant@123"),
+        "role": "admin",
+        "phone": "9876543212",
+        "user_info": {"id": admin_accountant_id, "name": "Meena Gupta", "role": "admin", "sub_category": "accountant", "initials": "MG"},
+    })
+    # Admin auth — transport head (transport data only)
+    await db.auth_users.insert_one({
+        "id": gid(),
+        "username": "transport",
+        "username_lower": "transport",
+        "password_hash": hash_pw("transport@123"),
+        "role": "admin",
+        "phone": "9876543213",
+        "user_info": {"id": admin_transport_id, "name": "Suresh Yadav", "role": "admin", "sub_category": "transport_head", "initials": "SY"},
+    })
+    # Admin auth — receptionist (enquiries only)
+    await db.auth_users.insert_one({
+        "id": gid(),
+        "username": "reception",
+        "username_lower": "reception",
+        "password_hash": hash_pw("reception@123"),
+        "role": "admin",
+        "phone": "9876543214",
+        "user_info": {"id": admin_reception_id, "name": "Kavita Singh", "role": "admin", "sub_category": "receptionist", "initials": "KS"},
+    })
+    # Admin auth — IT & Tech (query resolution + form builder)
+    await db.auth_users.insert_one({
+        "id": gid(),
+        "username": "ittech",
+        "username_lower": "ittech",
+        "password_hash": hash_pw("ittech@123"),
+        "role": "admin",
+        "phone": "9876543215",
+        "user_info": {"id": admin_it_id, "name": "Rahul Tech", "role": "admin", "sub_category": "it_tech", "initials": "RT"},
     })
 
     # Classes
@@ -158,46 +206,82 @@ async def seed():
                 "max_marks": 100,
             })
 
-    # Staff
+    # Staff — with sub_category and role-specific class references
+    c9a  = class_ids.get("Class 9-A")
+    c9b  = class_ids.get("Class 9-B")
+    c10a = class_ids.get("Class 10-A")
+    c10b = class_ids.get("Class 10-B")
+
     staff_data = [
-        ("staff-001", owner_id, "Aman Sharma", "principal", "EMP001", 75000),
-        ("staff-002", admin_id, "Priya Sharma", "admin", "EMP002", 35000),
-        ("staff-003", teacher_ids[0], "Rajesh Kumar", "teacher", "EMP003", 32000),
-        ("staff-004", teacher_ids[1], "Sunita Devi", "teacher", "EMP004", 30000),
-        ("staff-005", teacher_ids[2], "Manoj Tiwari", "teacher", "EMP005", 30000),
-        ("staff-006", teacher_ids[3], "Deepa Verma", "teacher", "EMP006", 28000),
-        ("staff-007", teacher_ids[4], "Ankit Sharma", "teacher", "EMP007", 28000),
-        ("staff-008", gid(), "Ramesh Yadav", "peon", "EMP008", 18000),
+        # Owner acting as school head
+        {"id": "staff-001", "user_id": owner_id,           "name": "Aman Sharma",  "staff_type": "principal",
+         "sub_category": "principal",    "employee_id": "EMP001", "salary": 75000},
+        # Admin sub-roles
+        {"id": "staff-002", "user_id": admin_id,           "name": "Priya Sharma", "staff_type": "admin",
+         "sub_category": "principal",    "employee_id": "EMP002", "salary": 35000},
+        {"id": "staff-009", "user_id": admin_accountant_id,"name": "Meena Gupta",  "staff_type": "admin",
+         "sub_category": "accountant",   "employee_id": "EMP009", "salary": 30000},
+        {"id": "staff-010", "user_id": admin_transport_id, "name": "Suresh Yadav", "staff_type": "admin",
+         "sub_category": "transport_head","employee_id": "EMP010", "salary": 28000},
+        {"id": "staff-011", "user_id": admin_reception_id, "name": "Kavita Singh", "staff_type": "admin",
+         "sub_category": "receptionist", "employee_id": "EMP011", "salary": 22000},
+        # Teacher sub-roles
+        {"id": "staff-003", "user_id": teacher_ids[0],     "name": "Rajesh Kumar", "staff_type": "teacher",
+         "sub_category": "class_teacher","class_teacher_of": c9a,
+         "subject": "Mathematics",       "employee_id": "EMP003", "salary": 32000},
+        {"id": "staff-004", "user_id": teacher_ids[1],     "name": "Sunita Devi",  "staff_type": "teacher",
+         "sub_category": "class_teacher","class_teacher_of": c9b,
+         "subject": "English",           "employee_id": "EMP004", "salary": 30000},
+        {"id": "staff-005", "user_id": teacher_ids[2],     "name": "Manoj Tiwari", "staff_type": "teacher",
+         "sub_category": "subject_teacher","assigned_class_ids": [c9a, c10a],
+         "subject": "Science",           "employee_id": "EMP005", "salary": 30000},
+        {"id": "staff-006", "user_id": teacher_ids[3],     "name": "Deepa Verma",  "staff_type": "teacher",
+         "sub_category": "coordinator",  "coordinator_range": "9-12",
+         "subject": "Hindi",             "employee_id": "EMP006", "salary": 28000},
+        {"id": "staff-007", "user_id": teacher_ids[4],     "name": "Ankit Sharma", "staff_type": "teacher",
+         "sub_category": "subject_teacher","assigned_class_ids": [c9b, c10b],
+         "subject": "Social Science",    "employee_id": "EMP007", "salary": 28000},
+        {"id": "staff-012", "user_id": teacher_ids[5],     "name": "Vikash Singh", "staff_type": "teacher",
+         "sub_category": "hod",          "subject": "Mathematics",
+         "designation": "HOD Mathematics","employee_id": "EMP012", "salary": 36000},
+        {"id": "staff-013", "user_id": teacher_ids[6],     "name": "Nisha Verma",  "staff_type": "teacher",
+         "sub_category": "kg_incharge",  "is_incharge": True,
+         "designation": "KG In-charge",  "employee_id": "EMP013", "salary": 25000},
+        # Support staff
+        {"id": "staff-014", "user_id": admin_it_id,          "name": "Rahul Tech",   "staff_type": "admin",
+         "sub_category": "it_tech",      "designation": "IT & Tech", "employee_id": "EMP014", "salary": 26000},
+        {"id": "staff-008", "user_id": gid(),              "name": "Ramesh Yadav", "staff_type": "peon",
+         "sub_category": "support_staff","employee_id": "EMP008", "salary": 18000},
     ]
     staff_ids = {}
-    for staff_id, uid, name, stype, empid, salary in staff_data:
-        staff_ids[staff_id] = staff_id
+    for rec in staff_data:
+        staff_ids[rec["id"]] = rec["id"]
         await db.staff.insert_one({
-            "id": staff_id, "user_id": uid, "name": name, "staff_type": stype,
-            "employee_id": empid, "salary": salary, "is_active": True,
+            **rec, "is_active": True,
             "casual_leave_balance": 12, "medical_leave_balance": 10, "earned_leave_balance": 15,
             "join_date": "2020-06-01",
             "created_at": datetime.now().isoformat(),
         })
 
-    # Auth users for teachers (bcrypt hashed)
+    # Auth users for teachers (bcrypt hashed, each with sub_category)
     teacher_info = [
-        ("user-teacher-001", "Rajesh Kumar", "RK"),
-        ("user-teacher-002", "Sunita Devi", "SD"),
-        ("user-teacher-003", "Manoj Tiwari", "MT"),
-        ("user-teacher-004", "Deepa Verma", "DV"),
-        ("user-teacher-005", "Ankit Sharma", "AS"),
+        ("user-teacher-001", "Rajesh Kumar", "RK", "class_teacher",   "teacher@123"),
+        ("user-teacher-002", "Sunita Devi",  "SD", "class_teacher",   "teacher@123"),
+        ("user-teacher-003", "Manoj Tiwari", "MT", "subject_teacher", "teacher@123"),
+        ("user-teacher-004", "Deepa Verma",  "DV", "coordinator",     "teacher@123"),
+        ("user-teacher-005", "Ankit Sharma", "AS", "subject_teacher", "teacher@123"),
+        ("user-teacher-006", "Vikash Singh", "VS", "hod",             "hod@123"),
+        ("user-teacher-007", "Nisha Verma",  "NV", "kg_incharge",     "kg@123"),
     ]
-    teacher_password_hash = hash_pw("teacher@123")
     teacher_auth_docs = []
-    for uid, name, initials in teacher_info:
+    for uid, name, initials, sub_cat, pw in teacher_info:
         teacher_auth_docs.append({
             "id": gid(),
             "username": name,
             "username_lower": name.lower(),
-            "password_hash": teacher_password_hash,
+            "password_hash": hash_pw(pw),
             "role": "teacher",
-            "user_info": {"id": uid, "name": name, "role": "teacher", "initials": initials},
+            "user_info": {"id": uid, "name": name, "role": "teacher", "sub_category": sub_cat, "initials": initials},
         })
     await db.auth_users.insert_many(teacher_auth_docs)
 
@@ -270,7 +354,7 @@ async def seed():
         if day_of_week >= 5:
             continue
         for staff_rec in staff_data:
-            staff_id = staff_rec[0]
+            staff_id = staff_rec["id"]
             import random
             random.seed(days_ago * 100 + hash(staff_id) % 100)
             if days_ago > 0:
@@ -450,10 +534,18 @@ async def seed():
     })
 
     print("Seed complete! Demo credentials:")
-    print(f"  Owner:   username=owner        password=owner@123")
-    print(f"  Admin:   username=admin        password=admin@123")
-    print(f"  Teacher: username=Rajesh Kumar password=teacher@123")
-    print(f"  Student: username=ADM20250001  password=student@123")
+    print(f"  Owner:             username=owner        password=owner@123")
+    print(f"  Admin (Principal): username=admin        password=admin@123")
+    print(f"  Admin (Accountant):username=accountant   password=accountant@123")
+    print(f"  Admin (Transport): username=transport    password=transport@123")
+    print(f"  Admin (Reception): username=reception    password=reception@123")
+    print(f"  Admin (IT & Tech): username=ittech       password=ittech@123")
+    print(f"  Teacher (HOD):     username=Vikash Singh password=hod@123")
+    print(f"  Teacher (Coord):   username=Deepa Verma  password=teacher@123")
+    print(f"  Teacher (Class):   username=Rajesh Kumar password=teacher@123")
+    print(f"  Teacher (Subject): username=Manoj Tiwari password=teacher@123")
+    print(f"  Teacher (KG):      username=Nisha Verma  password=kg@123")
+    print(f"  Student:           username=ADM20250001  password=student@123")
     print(f"\n  Classes: {len(class_ids)}, Students: {idx}, Staff: {len(staff_data)}")
 
     client.close()

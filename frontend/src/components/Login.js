@@ -3,40 +3,46 @@ import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { Sparkles, KeyRound, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 
-// All seeded accounts — grouped by role
+// All seeded accounts — grouped by role (with sub-roles)
 const CREDENTIAL_GROUPS = [
   {
     role: 'Owner',
     color: '#fb923c',
     accounts: [
-      { label: 'Aman Sharma', username: 'owner', password: 'owner@123', note: 'Full access' },
+      { label: 'Aman Sharma', username: 'owner', password: 'owner@123', note: 'Full access · All data' },
     ],
   },
   {
     role: 'Admin',
     color: '#4f8ff7',
     accounts: [
-      { label: 'Priya Sharma', username: 'admin', password: 'admin@123', note: 'School management' },
+      { label: 'Priya Sharma',  username: 'admin',       password: 'admin@123',       note: 'Principal · Full ops' },
+      { label: 'Meena Gupta',   username: 'accountant',  password: 'accountant@123',  note: 'Accountant · Fees only' },
+      { label: 'Suresh Yadav',  username: 'transport',   password: 'transport@123',   note: 'Transport Head' },
+      { label: 'Kavita Singh',  username: 'reception',   password: 'reception@123',   note: 'Receptionist · Enquiries' },
+      { label: 'Rahul Tech',    username: 'ittech',      password: 'ittech@123',      note: 'IT & Tech · Support' },
     ],
   },
   {
     role: 'Teacher',
     color: '#34d399',
     accounts: [
-      { label: 'Rajesh Kumar', username: 'Rajesh Kumar', password: 'teacher@123', note: 'Class 9A · Math' },
-      { label: 'Sunita Devi', username: 'Sunita Devi', password: 'teacher@123', note: 'Class 9B · English' },
-      { label: 'Manoj Tiwari', username: 'Manoj Tiwari', password: 'teacher@123', note: 'Class 10A · Science' },
-      { label: 'Deepa Verma', username: 'Deepa Verma', password: 'teacher@123', note: 'Class 10B · Hindi' },
-      { label: 'Ankit Sharma', username: 'Ankit Sharma', password: 'teacher@123', note: 'Class 11A · SST' },
+      { label: 'Vikash Singh',  username: 'Vikash Singh',  password: 'hod@123',      note: 'HOD · Mathematics' },
+      { label: 'Deepa Verma',   username: 'Deepa Verma',   password: 'teacher@123',  note: 'Coordinator · Class 9-12' },
+      { label: 'Rajesh Kumar',  username: 'Rajesh Kumar',  password: 'teacher@123',  note: 'Class Teacher · 9A' },
+      { label: 'Sunita Devi',   username: 'Sunita Devi',   password: 'teacher@123',  note: 'Class Teacher · 9B' },
+      { label: 'Manoj Tiwari',  username: 'Manoj Tiwari',  password: 'teacher@123',  note: 'Subject Teacher · Science' },
+      { label: 'Ankit Sharma',  username: 'Ankit Sharma',  password: 'teacher@123',  note: 'Subject Teacher · SST' },
+      { label: 'Nisha Verma',   username: 'Nisha Verma',   password: 'kg@123',       note: 'KG In-charge · Nursery' },
     ],
   },
   {
     role: 'Student',
     color: '#a78bfa',
     accounts: [
-      { label: 'Rahul Singh', username: 'ADM20250001', password: 'student@123', note: 'Class 9A · Roll 1' },
-      { label: 'Sneha Kumari', username: 'ADM20250002', password: 'student@123', note: 'Class 9A · Roll 2' },
-      { label: 'Sohail Khan', username: 'ADM20250011', password: 'student@123', note: 'Class 9B · Roll 1' },
+      { label: 'Rahul Singh',   username: 'ADM20250001', password: 'student@123', note: 'Class 9A · Roll 1' },
+      { label: 'Sneha Kumari',  username: 'ADM20250002', password: 'student@123', note: 'Class 9A · Roll 2' },
+      { label: 'Sohail Khan',   username: 'ADM20250011', password: 'student@123', note: 'Class 9B · Roll 1' },
     ],
   },
 ];

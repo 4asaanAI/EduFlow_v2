@@ -2,53 +2,62 @@ import os
 import uuid
 import asyncio
 import logging
-import google.generativeai as genai
+from openai import AzureOpenAI
 
 logger = logging.getLogger(__name__)
 
 
 class LLMClient:
     def __init__(self):
-        self.api_key = os.environ.get("GEMINI_API_KEY", "")
-        self.model_name = os.environ.get("LLM_MODEL", "gemini-2.5-flash-preview-04-17")
-        if self.api_key:
-            genai.configure(api_key=self.api_key)
-        else:
-            logger.warning("GEMINI_API_KEY not set")
+        self.api_key = os.environ.get("AZURE_OPENAI_API_KEY", "")
+        self.endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
+        self.deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-5.3-chat")
+        self.api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
 
-    async def chat(self, system_prompt: str, messages: list, session_id: str = None) -> str:
+        if self.api_key and self.endpoint:
+            self._client = AzureOpenAI(
+                api_key=self.api_key,
+                azure_endpoint=self.endpoint,
+                api_version=self.api_version,
+            )
+        else:
+            self._client = None
+            logger.warning("AZURE_OPENAI_API_KEY or AZURE_OPENAI_ENDPOINT not set")
+
+    async def chat(self, system_prompt: str, messages: list, session_id: str = None) -> tuple:
         if not session_id:
             session_id = f"sess-{uuid.uuid4()}"
 
-        if not self.api_key:
-            return "LLM not configured. Please set GEMINI_API_KEY environment variable."
+        if not self._client:
+            return "Azure OpenAI not configured. Please set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT.", 0
 
-        history = []
-        for msg in messages[:-1]:
-            role = "user" if msg["role"] == "user" else "model"
-            history.append({"role": role, "parts": [msg["content"]]})
-
-        last_msg = messages[-1]["content"] if messages else ""
+        az_messages = [{"role": "system", "content": system_prompt}]
+        for msg in messages:
+            role = msg.get("role", "user")
+            # Azure OpenAI uses "assistant" not "model"
+            if role == "model":
+                role = "assistant"
+            az_messages.append({"role": role, "content": msg.get("content", "")})
 
         def _call():
-            model = genai.GenerativeModel(
-                model_name=self.model_name,
-                system_instruction=system_prompt,
+            print(f"[AI] azure | session={session_id} | deployment={self.deployment} | messages={len(az_messages)}")
+            response = self._client.chat.completions.create(
+                model=self.deployment,
+                messages=az_messages,
             )
-            chat = model.start_chat(history=history)
-            response = chat.send_message(last_msg)
+            text = response.choices[0].message.content or ""
             tokens = 0
             try:
-                usage = response.usage_metadata
-                tokens = (usage.prompt_token_count or 0) + (usage.candidates_token_count or 0)
+                tokens = (response.usage.prompt_tokens or 0) + (response.usage.completion_tokens or 0)
             except Exception:
-                tokens = max(1, len(response.text) // 4)
-            return response.text, tokens
+                tokens = max(1, len(text) // 4)
+            print(f"[AI] azure | done | tokens={tokens}")
+            return text, tokens
 
         try:
             return await asyncio.to_thread(_call)
         except Exception as e:
-            logger.error(f"LLM error: {e}")
+            logger.error(f"Azure OpenAI error: {e}")
             return f"Error: {str(e)}", 0
 
 

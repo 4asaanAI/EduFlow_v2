@@ -6,7 +6,6 @@ import { useUser } from '../../contexts/UserContext';
 import { getStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, getPendingLeaves, updateLeave } from '../../lib/api';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn } from './ToolPage';
 import { Search, Plus, CheckCircle, XCircle, Save, RefreshCw, X, FileDown } from 'lucide-react';
-import html2pdf from 'html2pdf.js';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function h() { const t = localStorage.getItem('eduflow_token'); return { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) }; }
@@ -442,44 +441,22 @@ export function AttendanceRecorder() {
 // 4. Certificate Generator
 const CERT_LABELS = { transfer: 'Transfer Certificate', bonafide: 'Bonafide Certificate', character: 'Character Certificate', sports: 'Sports Certificate', participation: 'Participation Certificate', migration: 'Migration Certificate' };
 
-function buildCertHtml(cert) {
-  const d = cert.content_data || {};
-  const title = CERT_LABELS[cert.cert_type] || cert.cert_type;
-  const bodies = {
-    bonafide: `This is to certify that <strong>${d.student_name}</strong> is a bonafide student of <strong>${d.issued_by}</strong>, currently studying in Class <strong>${d.class}</strong> during the academic year <strong>${d.academic_year}</strong>. This certificate is issued on request for official purposes.`,
-    transfer: `This is to certify that <strong>${d.student_name}</strong> was a student of <strong>${d.issued_by}</strong> in Class <strong>${d.class}</strong>. The student has been granted Transfer Certificate on <strong>${d.issued_date}</strong> for the academic year <strong>${d.academic_year}</strong>. The student's conduct and character were <strong>Good</strong> during the period of study.`,
-    character: `This is to certify that <strong>${d.student_name}</strong> of Class <strong>${d.class}</strong> has been a student of <strong>${d.issued_by}</strong> during the academic year <strong>${d.academic_year}</strong>. The student has maintained exemplary character and conduct throughout. We wish the student all success in future endeavours.`,
-    sports: `This is to certify that <strong>${d.student_name}</strong> of Class <strong>${d.class}</strong> has actively participated in sports activities at <strong>${d.issued_by}</strong> during the academic year <strong>${d.academic_year}</strong>. The student has shown commendable sportsmanship and dedication.`,
-    participation: `This is to certify that <strong>${d.student_name}</strong> of Class <strong>${d.class}</strong> has participated in the activities organized by <strong>${d.issued_by}</strong> during the academic year <strong>${d.academic_year}</strong>. The student has shown enthusiasm and active involvement.`,
-    migration: `This is to certify that <strong>${d.student_name}</strong>, a student of Class <strong>${d.class}</strong> at <strong>${d.issued_by}</strong>, is granted this Migration Certificate for the academic year <strong>${d.academic_year}</strong>. The student has cleared all dues and formalities.`,
-  };
-  const body = bodies[cert.cert_type] || bodies.bonafide;
-  return `
-    <div style="font-family:'Times New Roman',serif;width:700px;padding:48px;border:3px double #1a3a6e;box-sizing:border-box;background:#fff;">
-      <div style="text-align:center;border-bottom:2px solid #1a3a6e;padding-bottom:16px;margin-bottom:24px;">
-        <div style="font-size:28px;font-weight:700;color:#1a3a6e;letter-spacing:2px;">THE AARYANS SCHOOL</div>
-        <div style="font-size:13px;color:#555;margin-top:4px;">Affiliated to CBSE &middot; Lucknow, Uttar Pradesh</div>
-        <div style="font-size:22px;font-weight:700;color:#1a3a6e;margin-top:18px;text-transform:uppercase;letter-spacing:3px;">${title}</div>
-      </div>
-      <div style="text-align:right;margin-bottom:20px;font-size:12px;color:#555;">
-        <div><b>Serial No.:</b> ${cert.serial_number || 'N/A'}</div>
-        <div><b>Date:</b> ${d.issued_date || cert.issued_date}</div>
-      </div>
-      <div style="font-size:14px;line-height:2;color:#1a1a1a;text-align:justify;margin-bottom:48px;">${body}</div>
-      <table style="width:100%;font-size:13px;border-collapse:collapse;margin-top:48px;">
-        <tr>
-          <td style="width:50%;text-align:center;padding-top:40px;">
-            <div style="border-top:1px solid #333;padding-top:6px;display:inline-block;min-width:140px;">Class Teacher</div>
-          </td>
-          <td style="width:50%;text-align:center;padding-top:40px;">
-            <div style="border-top:1px solid #333;padding-top:6px;display:inline-block;min-width:140px;">Principal</div>
-          </td>
-        </tr>
-      </table>
-      <div style="text-align:center;margin-top:32px;font-size:10px;color:#888;border-top:1px solid #ddd;padding-top:8px;">
-        This is a computer-generated certificate &middot; ${d.issued_by} &middot; Academic Year ${d.academic_year}
-      </div>
-    </div>`;
+async function downloadBlobAsPdf(url, body, filename, onStart, onDone, onError) {
+  onStart();
+  try {
+    const res = await fetch(url, { method: 'POST', headers: h(), body: JSON.stringify(body) });
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  } catch (e) {
+    onError && onError(e);
+  } finally {
+    onDone();
+  }
 }
 
 export function CertificateGenerator() {
@@ -530,28 +507,26 @@ export function CertificateGenerator() {
   };
 
   const downloadPdf = (cert) => {
-    setDownloading(cert.id || cert.serial_number);
-    const html = buildCertHtml(cert);
-    // Wrapper keeps element in normal flow so html2canvas renders it fully,
-    // but hides it visually via overflow:hidden + zero height on wrapper.
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'position:absolute;left:0;top:0;width:0;height:0;overflow:hidden;z-index:-1;';
-    const container = document.createElement('div');
-    container.style.cssText = 'width:794px;background:#fff;';
-    container.innerHTML = html;
-    wrapper.appendChild(container);
-    document.body.appendChild(wrapper);
+    const key = cert.id || cert.serial_number;
+    const d = cert.content_data || {};
     const label = CERT_LABELS[cert.cert_type] || cert.cert_type;
-    const filename = `${label.replace(/\s+/g, '-')}-${cert.content_data?.student_name?.replace(/\s+/g, '-') || 'certificate'}.pdf`;
-    html2pdf().set({
-      margin: [10, 10, 10, 10], filename,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
-      jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' },
-    }).from(container).save().finally(() => {
-      document.body.removeChild(wrapper);
-      setDownloading(null);
-    });
+    const filename = `${label.replace(/\s+/g, '-')}-${(d.student_name || 'certificate').replace(/\s+/g, '-')}.pdf`;
+    downloadBlobAsPdf(
+      `${API}/image-gen/certificate`,
+      {
+        cert_type: cert.cert_type,
+        student_name: d.student_name || '',
+        class: d.class || '',
+        school_name: d.issued_by || '',
+        affiliation: 'Affiliated to CBSE · Lucknow, Uttar Pradesh',
+        issued_date: d.issued_date || cert.issued_date || '',
+        academic_year: d.academic_year || '',
+        serial_number: cert.serial_number || '',
+      },
+      filename,
+      () => setDownloading(key),
+      () => setDownloading(null),
+    );
   };
 
   return (
@@ -1688,6 +1663,7 @@ export function IdCardGenerator() {
   const [filterClass, setFilterClass] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [printing, setPrinting] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -1703,35 +1679,22 @@ export function IdCardGenerator() {
   };
 
   const printCards = () => {
-    const selected = students.filter(s => selectedIds.includes(s.id));
-    const html = `
-      <html><head><title>ID Cards</title>
-      <style>
-        body { font-family: Arial, sans-serif; margin: 0; }
-        .card { width: 85mm; height: 54mm; border: 2px solid #4f8ff7; border-radius: 6px; padding: 10px; margin: 8px; display: inline-block; vertical-align: top; box-sizing: border-box; }
-        .school { font-weight: bold; font-size: 10px; color: #4f8ff7; text-align: center; }
-        .name { font-size: 14px; font-weight: bold; margin: 6px 0 2px; }
-        .info { font-size: 10px; color: #666; }
-        @media print { @page { margin: 5mm; } }
-      </style></head>
-      <body>
-        ${selected.map(s => `
-          <div class="card">
-            <div class="school">THE AARYANS — CBSE, LUCKNOW</div>
-            <hr style="border:1px solid #4f8ff7;margin:4px 0"/>
-            <div class="name">${s.name}</div>
-            <div class="info">Class: ${s.class_info ? `${s.class_info.name}-${s.class_info.section}` : 'N/A'}</div>
-            <div class="info">Adm No: ${s.admission_number || 'N/A'}</div>
-            <div class="info">Roll: ${s.roll_number || 'N/A'}</div>
-            <div class="info">AY: 2025-26</div>
-          </div>
-        `).join('')}
-      </body></html>
-    `;
-    const win = window.open('', '_blank');
-    win.document.write(html);
-    win.document.close();
-    win.print();
+    const selected = students
+      .filter(s => selectedIds.includes(s.id))
+      .map(s => ({
+        name: s.name,
+        class: s.class_info ? `${s.class_info.name}-${s.class_info.section}` : 'N/A',
+        admission_number: s.admission_number || 'N/A',
+        roll_number: s.roll_number || 'N/A',
+      }));
+    const filename = `ID-Cards-${new Date().toISOString().slice(0, 10)}.pdf`;
+    downloadBlobAsPdf(
+      `${API}/image-gen/id-cards`,
+      { students: selected, school_name: 'The Aaryans School', academic_year: '2025-26' },
+      filename,
+      () => setPrinting(true),
+      () => setPrinting(false),
+    );
   };
 
   const filtered = filterClass ? students.filter(s => s.class_id === filterClass) : students;
@@ -1744,7 +1707,7 @@ export function IdCardGenerator() {
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
         </select>
         <ActionBtn label={selectedIds.length === filtered.length ? 'Deselect All' : 'Select All'} variant="secondary" onClick={toggleAll} />
-        <ActionBtn label={`Print ${selectedIds.length} ID Cards`} onClick={printCards} disabled={selectedIds.length === 0} />
+        <ActionBtn label={printing ? 'Generating PDF...' : `Download ${selectedIds.length} ID Cards PDF`} onClick={printCards} disabled={selectedIds.length === 0 || printing} />
       </div>
       <DataTable headers={['', 'Name', 'Class', 'Adm No.', 'Roll']}
         rows={filtered.map(s => [

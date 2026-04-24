@@ -8,6 +8,7 @@ import {
   ClipboardList, Brain, PenTool, BarChart, UserCheck, Award, Truck,
   Package, Printer, FilePlus, HelpCircle, Target, Compass, FileCheck,
   Edit2, X, ChevronDown, ChevronRight, MessageCircle, Settings, User, LogOut, Sun, Moon,
+  LifeBuoy,
 } from 'lucide-react';
 
 const TOOLS_BY_ROLE = {
@@ -30,6 +31,7 @@ const TOOLS_BY_ROLE = {
     { id: 'board-report', name: 'Board Report', subtitle: 'Trust meeting data', icon: FileText, color: '#737373' },
     { id: 'smart-fee-defaulter', name: 'Fee Defaulters', subtitle: 'Reminders via SMS', icon: Bell, color: '#f87171' },
     { id: 'attendance-alerts', name: 'Attendance Alerts', subtitle: 'SMS below threshold', icon: MessageSquare, color: '#a78bfa' },
+    { id: 'query-section', name: 'Query & Support', subtitle: 'Tickets & issues', icon: LifeBuoy, color: '#22d3ee' },
   ],
   admin: [
     { id: 'student-database', name: 'Student Database', subtitle: 'Manage & search', icon: Users, color: '#4f8ff7' },
@@ -50,6 +52,7 @@ const TOOLS_BY_ROLE = {
     { id: 'automated-report', name: 'Auto Reports', subtitle: 'Scheduled reports', icon: FileText, color: '#737373' },
     { id: 'custom-form-builder', name: 'Form Builder', subtitle: 'Dynamic forms', icon: FilePlus, color: '#737373' },
     { id: 'attendance-alerts', name: 'Attendance Alerts', subtitle: 'SMS below threshold', icon: MessageSquare, color: '#a78bfa' },
+    { id: 'query-section', name: 'Query & Support', subtitle: 'Tickets & issues', icon: LifeBuoy, color: '#22d3ee' },
   ],
   teacher: [
     { id: 'class-attendance-marker', name: 'Attendance', subtitle: 'Mark my class', icon: ClipboardList, color: '#fb923c' },
@@ -65,6 +68,7 @@ const TOOLS_BY_ROLE = {
     { id: 'ptm-notes', name: 'PTM Notes', subtitle: 'Parent meet notes', icon: MessageSquare, color: '#34d399' },
     { id: 'curriculum-tracker', name: 'Curriculum', subtitle: 'Progress tracking', icon: Target, color: '#4f8ff7' },
     { id: 'form-submissions', name: 'Forms', subtitle: 'Surveys & forms', icon: FileText, color: '#22d3ee' },
+    { id: 'query-section', name: 'Query & Support', subtitle: 'Tickets & issues', icon: LifeBuoy, color: '#22d3ee' },
   ],
   student: [
     { id: 'ai-tutor', name: 'AI Tutor', subtitle: 'Study help', icon: Brain, color: '#a78bfa' },
@@ -78,6 +82,7 @@ const TOOLS_BY_ROLE = {
     { id: 'fee-status-viewer', name: 'My Fees', subtitle: 'Payment status', icon: IndianRupee, color: '#4f8ff7' },
     { id: 'ptm-summary-viewer', name: 'PTM Summary', subtitle: 'Teacher notes', icon: MessageSquare, color: '#34d399' },
     { id: 'form-submissions', name: 'Forms', subtitle: 'Surveys & forms', icon: FileText, color: '#22d3ee' },
+    { id: 'query-section', name: 'Query & Support', subtitle: 'Tickets & issues', icon: LifeBuoy, color: '#22d3ee' },
   ],
 };
 
@@ -124,7 +129,7 @@ function ConvMenu({ conv, onClose, onRename, onPin, onStar, onDelete, isDark }) 
   );
 }
 
-export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeTool, activeConvId, convRefresh, sidebarOpen, setSidebarOpen, onOpenProfile, onOpenSettings }) {
+export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeTool, activeConvId, convRefresh, sidebarOpen, setSidebarOpen, onOpenProfile, onOpenSettings, isToolDashboardRole }) {
   const { currentUser, logout } = useUser();
   const { isDark, toggleTheme } = useTheme();
   const [conversations, setConversations] = useState([]);
@@ -133,11 +138,21 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   const [renameVal, setRenameVal] = useState('');
   const [toolsExpanded, setToolsExpanded] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [toolActivity, setToolActivity] = useState([]);
   const userMenuRef = useRef(null);
 
   const tools = TOOLS_BY_ROLE[currentUser.role] || [];
 
-  useEffect(() => { loadConversations(); }, [currentUser.id, convRefresh]);
+  useEffect(() => {
+    if (!isToolDashboardRole) loadConversations();
+  }, [currentUser.id, convRefresh, isToolDashboardRole]);
+
+  useEffect(() => {
+    if (!isToolDashboardRole) return;
+    const key = `eduflow_activity_${currentUser.id}`;
+    const items = JSON.parse(localStorage.getItem(key) || '[]');
+    setToolActivity(items.slice(0, 20));
+  }, [activeTool, currentUser.id, isToolDashboardRole]);
 
   // Listen for navigate events from chat (AI says "open fee collection" → switch tool panel)
   useEffect(() => {
@@ -210,113 +225,163 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
             </button>
           </div>
 
-          <button data-testid="new-chat-btn" onClick={onNewChat} style={{
-            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            padding: '10px', background: isDark ? '#252525' : '#f5f5f5',
-            border: `1px solid ${border}`, borderRadius: 10, color: tp,
-            fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all var(--transition-fast)',
-          }}
-            onMouseEnter={e => { e.currentTarget.style.background = isDark ? '#2e2e2e' : '#ebebeb'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = isDark ? '#252525' : '#f5f5f5'; }}>
-            <Plus size={15} strokeWidth={2.5} /> New Chat
-          </button>
+          {!isToolDashboardRole && (
+            <button data-testid="new-chat-btn" onClick={onNewChat} style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              padding: '10px', background: isDark ? '#252525' : '#f5f5f5',
+              border: `1px solid ${border}`, borderRadius: 10, color: tp,
+              fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all var(--transition-fast)',
+            }}
+              onMouseEnter={e => { e.currentTarget.style.background = isDark ? '#2e2e2e' : '#ebebeb'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = isDark ? '#252525' : '#f5f5f5'; }}>
+              <Plus size={15} strokeWidth={2.5} /> New Chat
+            </button>
+          )}
         </div>
 
         {/* Scrollable area */}
         <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '0 8px' }}>
-          {/* Chat History */}
-          {conversations.length > 0 && (
-            <div style={{ marginBottom: 4 }}>
+            {isToolDashboardRole ? (
+            /* Tool Activity History for admin/teacher */
+            <div style={{ paddingTop: 4 }}>
               <div style={{ padding: '8px 8px 6px', fontSize: 11, fontWeight: 600, color: muted, letterSpacing: '0.03em' }}>
-                Chats
+                RECENT ACTIVITY
               </div>
-              {conversations.slice(0, 20).map(conv => (
-                <div key={conv.id} style={{ position: 'relative' }}>
-                  {renamingId === conv.id ? (
-                    <div style={{ padding: '3px 4px' }}>
-                      <input autoFocus value={renameVal} onChange={e => setRenameVal(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') commitRename(conv.id); if (e.key === 'Escape') setRenamingId(null); }}
-                        onBlur={() => commitRename(conv.id)}
-                        style={{ width: '100%', background: isDark ? '#252525' : '#fafafa', border: `1px solid ${isDark ? '#4f8ff7' : '#4f8ff7'}`, borderRadius: 8, padding: '6px 10px', color: tp, fontSize: 12, outline: 'none' }}
-                      />
-                    </div>
-                  ) : (
-                    <button data-testid={`conv-btn-${conv.id}`}
-                      onClick={() => onSelectConv(conv.id)}
-                      onContextMenu={e => { e.preventDefault(); setMenuConvId(conv.id); }}
-                      style={{
-                        display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%',
-                        padding: '8px 10px', background: activeConvId === conv.id ? activeBg : 'transparent',
-                        border: 'none', borderRadius: 8, cursor: 'pointer',
-                        transition: 'all var(--transition-fast)', textAlign: 'left', gap: 2,
-                      }}
-                      onMouseEnter={e => { if (activeConvId !== conv.id) e.currentTarget.style.background = hover; }}
-                      onMouseLeave={e => { if (activeConvId !== conv.id) e.currentTarget.style.background = 'transparent'; }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, width: '100%' }}>
-                        <MessageCircle size={12} color={activeConvId === conv.id ? '#4f8ff7' : muted} style={{ flexShrink: 0 }} />
-                        {conv.is_pinned && <Pin size={9} color="#fbbf24" />}
-                        {conv.is_starred && <Star size={9} color="#fbbf24" />}
-                        <span style={{ fontSize: 13, fontWeight: 500, color: activeConvId === conv.id ? tp : secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                          {conv.title || 'New conversation'}
-                        </span>
-                      </div>
-                      <span style={{ fontSize: 11, color: muted, paddingLeft: 17 }}>{timeAgo(conv.updated_at)}</span>
-                    </button>
-                  )}
-                  {menuConvId === conv.id && (
-                    <ConvMenu conv={conv} onClose={() => setMenuConvId(null)} isDark={isDark}
-                      onRename={() => { setRenamingId(conv.id); setRenameVal(conv.title || ''); setMenuConvId(null); }}
-                      onPin={() => handlePin(conv)} onStar={() => handleStar(conv)}
-                      onDelete={() => handleDelete(conv.id)}
-                    />
-                  )}
+              {toolActivity.length === 0 ? (
+                <div style={{ padding: '20px 10px', textAlign: 'center', color: muted, fontSize: 12 }}>
+                  No tools opened yet
                 </div>
-              ))}
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {toolActivity.map((entry, i) => {
+                    const tool = tools.find(t => t.id === entry.id);
+                    if (!tool) return null;
+                    const Icon = tool.icon;
+                    const isActive = activeTool === entry.id;
+                    return (
+                      <button key={`${entry.id}-${i}`} onClick={() => onSelectTool(entry.id)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '7px 10px',
+                          background: isActive ? activeBg : 'transparent', border: 'none', borderRadius: 8,
+                          cursor: 'pointer', transition: 'all var(--transition-fast)', textAlign: 'left',
+                        }}
+                        onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = hover; }}
+                        onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}>
+                        <div style={{
+                          width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+                          background: isActive ? `${tool.color}18` : (isDark ? '#252525' : '#f5f5f5'),
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          transition: 'var(--transition-fast)',
+                        }}>
+                          <Icon size={14} color={isActive ? tool.color : muted} />
+                        </div>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: isActive ? tp : secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tool.name}</div>
+                          <div style={{ fontSize: 11, color: muted, marginTop: 1 }}>{timeAgo(entry.at)}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
+          ) : (
+            <>
+              {/* Chat History */}
+              {conversations.length > 0 && (
+                <div style={{ marginBottom: 4 }}>
+                  <div style={{ padding: '8px 8px 6px', fontSize: 11, fontWeight: 600, color: muted, letterSpacing: '0.03em' }}>
+                    Chats
+                  </div>
+                  {conversations.slice(0, 20).map(conv => (
+                    <div key={conv.id} style={{ position: 'relative' }}>
+                      {renamingId === conv.id ? (
+                        <div style={{ padding: '3px 4px' }}>
+                          <input autoFocus value={renameVal} onChange={e => setRenameVal(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') commitRename(conv.id); if (e.key === 'Escape') setRenamingId(null); }}
+                            onBlur={() => commitRename(conv.id)}
+                            style={{ width: '100%', background: isDark ? '#252525' : '#fafafa', border: `1px solid ${isDark ? '#4f8ff7' : '#4f8ff7'}`, borderRadius: 8, padding: '6px 10px', color: tp, fontSize: 12, outline: 'none' }}
+                          />
+                        </div>
+                      ) : (
+                        <button data-testid={`conv-btn-${conv.id}`}
+                          onClick={() => onSelectConv(conv.id)}
+                          onContextMenu={e => { e.preventDefault(); setMenuConvId(conv.id); }}
+                          style={{
+                            display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%',
+                            padding: '8px 10px', background: activeConvId === conv.id ? activeBg : 'transparent',
+                            border: 'none', borderRadius: 8, cursor: 'pointer',
+                            transition: 'all var(--transition-fast)', textAlign: 'left', gap: 2,
+                          }}
+                          onMouseEnter={e => { if (activeConvId !== conv.id) e.currentTarget.style.background = hover; }}
+                          onMouseLeave={e => { if (activeConvId !== conv.id) e.currentTarget.style.background = 'transparent'; }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, width: '100%' }}>
+                            <MessageCircle size={12} color={activeConvId === conv.id ? '#4f8ff7' : muted} style={{ flexShrink: 0 }} />
+                            {conv.is_pinned && <Pin size={9} color="#fbbf24" />}
+                            {conv.is_starred && <Star size={9} color="#fbbf24" />}
+                            <span style={{ fontSize: 13, fontWeight: 500, color: activeConvId === conv.id ? tp : secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                              {conv.title || 'New conversation'}
+                            </span>
+                          </div>
+                          <span style={{ fontSize: 11, color: muted, paddingLeft: 17 }}>{timeAgo(conv.updated_at)}</span>
+                        </button>
+                      )}
+                      {menuConvId === conv.id && (
+                        <ConvMenu conv={conv} onClose={() => setMenuConvId(null)} isDark={isDark}
+                          onRename={() => { setRenamingId(conv.id); setRenameVal(conv.title || ''); setMenuConvId(null); }}
+                          onPin={() => handlePin(conv)} onStar={() => handleStar(conv)}
+                          onDelete={() => handleDelete(conv.id)}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
 
-          {/* Tools Section */}
-          <div style={{ borderTop: conversations.length > 0 ? `1px solid ${border}` : 'none', marginTop: 4, paddingTop: 4 }}>
-            <button
-              onClick={() => setToolsExpanded(v => !v)}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '8px 8px', background: 'transparent', border: 'none', cursor: 'pointer', color: muted, borderRadius: 6, transition: 'var(--transition-fast)' }}
-              onMouseEnter={e => e.currentTarget.style.background = hover}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-            >
-              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.03em' }}>Tools ({tools.length})</span>
-              {toolsExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-            </button>
-            {toolsExpanded && (
-              <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {tools.map(tool => {
-                  const Icon = tool.icon;
-                  const isActive = activeTool === tool.id;
-                  return (
-                    <button key={tool.id} data-testid={`tool-btn-${tool.id}`} onClick={() => onSelectTool(tool.id)} title={tool.name}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '7px 10px',
-                        background: isActive ? activeBg : 'transparent', border: 'none', borderRadius: 8,
-                        cursor: 'pointer', transition: 'all var(--transition-fast)',
-                      }}
-                      onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = hover; }}
-                      onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}>
-                      <div style={{
-                        width: 28, height: 28, borderRadius: 7,
-                        background: isActive ? `${tool.color}18` : (isDark ? '#252525' : '#f5f5f5'),
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                        transition: 'var(--transition-fast)',
-                      }}>
-                        <Icon size={14} color={isActive ? tool.color : muted} />
-                      </div>
-                      <div style={{ textAlign: 'left', minWidth: 0, flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 500, color: isActive ? tp : secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tool.name}</div>
-                      </div>
-                    </button>
-                  );
-                })}
+              {/* Tools Section */}
+              <div style={{ borderTop: conversations.length > 0 ? `1px solid ${border}` : 'none', marginTop: 4, paddingTop: 4 }}>
+                <button
+                  onClick={() => setToolsExpanded(v => !v)}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '8px 8px', background: 'transparent', border: 'none', cursor: 'pointer', color: muted, borderRadius: 6, transition: 'var(--transition-fast)' }}
+                  onMouseEnter={e => e.currentTarget.style.background = hover}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.03em' }}>Tools ({tools.length})</span>
+                  {toolsExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                </button>
+                {toolsExpanded && (
+                  <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {tools.map(tool => {
+                      const Icon = tool.icon;
+                      const isActive = activeTool === tool.id;
+                      return (
+                        <button key={tool.id} data-testid={`tool-btn-${tool.id}`} onClick={() => onSelectTool(tool.id)} title={tool.name}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '7px 10px',
+                            background: isActive ? activeBg : 'transparent', border: 'none', borderRadius: 8,
+                            cursor: 'pointer', transition: 'all var(--transition-fast)',
+                          }}
+                          onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = hover; }}
+                          onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}>
+                          <div style={{
+                            width: 28, height: 28, borderRadius: 7,
+                            background: isActive ? `${tool.color}18` : (isDark ? '#252525' : '#f5f5f5'),
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                            transition: 'var(--transition-fast)',
+                          }}>
+                            <Icon size={14} color={isActive ? tool.color : muted} />
+                          </div>
+                          <div style={{ textAlign: 'left', minWidth: 0, flex: 1 }}>
+                            <div style={{ fontSize: 13, fontWeight: 500, color: isActive ? tp : secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tool.name}</div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
         </div>
 
         {/* Bottom user section — Claude-like */}

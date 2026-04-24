@@ -4,11 +4,15 @@ import { useTheme } from '../contexts/ThemeContext';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import ChatInterface from './ChatInterface';
+import ToolDashboard from './ToolDashboard';
+import FloatingAssistant from './FloatingAssistant';
 import { createConversation, getConversations } from '../lib/api';
 import ProfileModal from './ProfileModal';
 import SettingsModal from './SettingsModal';
 
 const loadTool = async (toolId) => {
+  if (toolId === 'query-section') return (await import('./tools/QuerySection')).QuerySection;
+
   const OWNERS = ['school-pulse','fee-collection','student-strength','attendance-overview','staff-attendance-tracker','financial-reports','announcement-broadcaster','admission-funnel','staff-leave-manager','staff-performance','ai-health-report','smart-alerts','expense-tracker','complaint-tracker','custom-report-builder','board-report','smart-fee-defaulter','attendance-alerts'];
   const ADMINS = ['student-database','fee-tracker','attendance-recorder','certificate-generator','circular-sender','enquiry-register','document-scanner','smart-fee-defaulter','admission-pipeline','parent-message','student-transfer','id-card-generator','timetable-builder','asset-tracker','transport-manager','automated-report','custom-form-builder','report-card-builder','student-performance-viewer','attendance-alerts'];
   const TEACHERS = ['class-attendance-marker','assignment-generator','question-paper-creator','leave-application','lesson-plan-generator','worksheet-creator','class-performance-analytics','substitution-viewer','ptm-notes','curriculum-tracker','form-submissions'];
@@ -38,6 +42,8 @@ function ToolView({ toolId }) {
   return <Comp />;
 }
 
+const TOOL_DASHBOARD_ROLES = ['admin', 'teacher'];
+
 export default function Layout() {
   const { currentUser } = useUser();
   const { isDark } = useTheme();
@@ -49,6 +55,8 @@ export default function Layout() {
   const [showSettings, setShowSettings] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
+  const isToolDashboardRole = TOOL_DASHBOARD_ROLES.includes(currentUser.role);
+
   const handleNewChat = async () => {
     setActiveTool(null);
     const res = await createConversation(currentUser);
@@ -59,7 +67,15 @@ export default function Layout() {
     }
   };
 
-  const handleSelectTool = (toolId) => setActiveTool(toolId);
+  const handleSelectTool = (toolId) => {
+    setActiveTool(toolId);
+    if (isToolDashboardRole) {
+      const key = `eduflow_activity_${currentUser.id}`;
+      const prev = JSON.parse(localStorage.getItem(key) || '[]').filter(a => a.id !== toolId);
+      prev.unshift({ id: toolId, at: new Date().toISOString() });
+      localStorage.setItem(key, JSON.stringify(prev.slice(0, 30)));
+    }
+  };
 
   const handleSelectConv = async (convId) => {
     setActiveTool(null);
@@ -122,6 +138,7 @@ export default function Layout() {
         setSidebarOpen={setSidebarOpen}
         onOpenProfile={() => setShowProfile(true)}
         onOpenSettings={() => setShowSettings(true)}
+        isToolDashboardRole={isToolDashboardRole}
       />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
@@ -136,6 +153,8 @@ export default function Layout() {
         <div style={{ flex: 1, overflow: 'hidden' }}>
           {activeTool ? (
             <ToolView toolId={activeTool} />
+          ) : isToolDashboardRole ? (
+            <ToolDashboard onSelectTool={handleSelectTool} />
           ) : (
             <ChatInterface
               activeConvId={activeConvId}
@@ -148,6 +167,7 @@ export default function Layout() {
 
       {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {isToolDashboardRole && <FloatingAssistant />}
     </div>
   );
 }

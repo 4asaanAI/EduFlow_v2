@@ -1,6 +1,8 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from dotenv import load_dotenv
 from pathlib import Path
 import os
@@ -28,6 +30,9 @@ from routes.upload import router as upload_router
 from routes.auth import router as auth_router
 from routes.sms import router as sms_router
 from routes.tokens import router as tokens_router
+from routes.queries import router as queries_router
+from routes.assistant import router as assistant_router
+from routes.image_gen import router as image_gen_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -54,6 +59,32 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
+
+
+def _add_cors(response: JSONResponse, origin: str | None) -> JSONResponse:
+    """Inject CORS headers onto exception responses that bypass middleware."""
+    if origin and origin in allowed_origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    response = JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+    )
+    return _add_cors(response, request.headers.get("origin"))
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    response = JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
+    )
+    return _add_cors(response, request.headers.get("origin"))
 
 
 # ─── Security headers middleware ─────────────────────────────────────────────
@@ -92,12 +123,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"success": False, "detail": "An internal error occurred"},
     )
-    # Add CORS headers manually
-    origin = request.headers.get("origin")
-    if origin and origin in allowed_origins:
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-    return response
+    return _add_cors(response, request.headers.get("origin"))
 
 
 # ─── Routers ────────────────────────────────────────────────────────────────
@@ -118,6 +144,9 @@ app.include_router(exports_router)
 app.include_router(upload_router)
 app.include_router(sms_router)
 app.include_router(tokens_router)
+app.include_router(queries_router)
+app.include_router(assistant_router)
+app.include_router(image_gen_router)
 
 
 @app.on_event("startup")
