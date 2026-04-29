@@ -3,10 +3,9 @@ Support Ticket / Query routes — accessible by all roles.
 Tickets are visible across all users.
 """
 import uuid
-import re
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
-from fastapi.responses import JSONResponse
+from fastapi.responses import Response
 from pathlib import Path
 
 from database import get_db
@@ -14,12 +13,9 @@ from middleware.auth import get_current_user
 
 router = APIRouter(prefix="/api/queries", tags=["queries"])
 
-UPLOAD_DIR = Path(__file__).parent.parent / "uploads"
-UPLOAD_DIR.mkdir(exist_ok=True)
-
-ALLOWED_EXTS = {".mp4", ".png", ".jpg", ".jpeg"}
+ALLOWED_EXTS = {".png", ".jpg", ".jpeg"}
 ALLOWED_PRIORITIES = {"low", "medium", "high", "critical"}
-MAX_FILE_MB = 20
+MAX_FILE_MB = 15  # MongoDB document limit is 16MB
 
 
 def get_user(req: Request):
@@ -42,7 +38,7 @@ async def list_queries(request: Request, status: str = None, priority: str = Non
         query["status"] = status
     if priority in ALLOWED_PRIORITIES:
         query["priority"] = priority
-    tickets = await db.queries.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
+    tickets = await db.queries.find(query, {"_id": 0, "attachment_data": 0}).sort("created_at", -1).to_list(200)
     return {"success": True, "data": tickets}
 
 
@@ -68,27 +64,24 @@ async def create_query(
     if priority not in ALLOWED_PRIORITIES:
         raise HTTPException(400, f"Priority must be one of: {', '.join(ALLOWED_PRIORITIES)}")
 
+    ticket_id = str(uuid.uuid4())
     attachment_url = None
     attachment_type = None
+    attachment_data = None
 
     if attachment and attachment.filename:
-        safe_name = Path(attachment.filename).name
-        ext = Path(safe_name).suffix.lower()
+        ext = Path(attachment.filename).suffix.lower()
         if ext not in ALLOWED_EXTS:
-            raise HTTPException(400, "Attachment must be mp4, png, jpg, or jpeg")
-        # Check file size
+            raise HTTPException(400, "Attachment must be png, jpg, or jpeg")
         contents = await attachment.read()
         if len(contents) > MAX_FILE_MB * 1024 * 1024:
             raise HTTPException(400, f"File too large. Max {MAX_FILE_MB}MB")
-        # Save file with unique name
-        unique_name = f"query_{uuid.uuid4().hex[:8]}{ext}"
-        file_path = UPLOAD_DIR / unique_name
-        file_path.write_bytes(contents)
-        attachment_url = f"/api/uploads/serve/{unique_name}"
         attachment_type = ext.lstrip(".")
+        attachment_data = contents
+        attachment_url = f"/api/queries/{ticket_id}/attachment"
 
     ticket = {
-        "id": str(uuid.uuid4()),
+        "id": ticket_id,
         "title": title,
         "description": description,
         "priority": priority,
@@ -105,7 +98,10 @@ async def create_query(
     }
 
     db = get_db()
-    await db.queries.insert_one({**ticket, "_id": ticket["id"]})
+    db_record = {**ticket, "_id": ticket["id"]}
+    if attachment_data:
+        db_record["attachment_data"] = attachment_data
+    await db.queries.insert_one(db_record)
     return {"success": True, "data": ticket}
 
 
@@ -164,3 +160,19 @@ async def delete_query(ticket_id: str, request: Request):
         raise HTTPException(403, "Only IT & Tech staff can delete tickets")
     await db.queries.delete_one({"id": ticket_id})
     return {"success": True}
+
+
+# ─── GET /api/queries/{id}/attachment ───────────────────────────────────────
+
+@router.get("/{ticket_id}/attachment")
+async def get_attachment(ticket_id: str, request: Request):
+    get_user(request)
+    db = get_db()
+    ticket = await db.queries.find_one({"id": ticket_id})
+    if not ticket:
+        raise HTTPException(404, "Ticket not found")
+    if not ticket.get("attachment_data"):
+        raise HTTPException(404, "No attachment")
+    ext = ticket.get("attachment_type", "jpg")
+    content_type = f"image/{ext}" if ext != "pdf" else "application/pdf"
+    return Response(content=bytes(ticket["attachment_data"]), media_type=content_type)
