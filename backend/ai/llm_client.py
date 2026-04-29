@@ -2,7 +2,7 @@ import os
 import uuid
 import asyncio
 import logging
-from openai import AzureOpenAI
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -12,13 +12,15 @@ class LLMClient:
         self.api_key = os.environ.get("AZURE_OPENAI_API_KEY", "")
         self.endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
         self.deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-5.3-chat")
-        self.api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
+        self.api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2026-03-03")
 
         if self.api_key and self.endpoint:
-            self._client = AzureOpenAI(
+            # Endpoint already includes /openai/v1 path (Azure AI Foundry style)
+            # Use standard OpenAI client with base_url to avoid doubled path
+            base_url = self.endpoint.rstrip("/")
+            self._client = OpenAI(
                 api_key=self.api_key,
-                azure_endpoint=self.endpoint,
-                api_version=self.api_version,
+                base_url=base_url,
             )
         else:
             self._client = None
@@ -34,7 +36,6 @@ class LLMClient:
         az_messages = [{"role": "system", "content": system_prompt}]
         for msg in messages:
             role = msg.get("role", "user")
-            # Azure OpenAI uses "assistant" not "model"
             if role == "model":
                 role = "assistant"
             az_messages.append({"role": role, "content": msg.get("content", "")})
