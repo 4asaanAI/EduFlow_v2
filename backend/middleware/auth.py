@@ -19,7 +19,13 @@ logger = logging.getLogger(__name__)
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
-JWT_SECRET = os.environ.get("JWT_SECRET", "eduflow-dev-secret-change-in-production")
+JWT_SECRET = os.environ.get("JWT_SECRET")
+if not JWT_SECRET:
+    if os.environ.get("ENVIRONMENT") == "production":
+        raise ValueError("JWT_SECRET environment variable is required in production")
+    JWT_SECRET = "eduflow-dev-secret-change-in-production"
+    logger.warning("⚠️ Using weak JWT_SECRET in development — change in production")
+
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_DAYS = 7
 

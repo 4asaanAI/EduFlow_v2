@@ -7,7 +7,13 @@ _db = None
 
 async def connect_db():
     global _client, _db
-    mongo_url = os.environ["MONGO_URL"]
+    mongo_url = os.environ.get("MONGO_URL")
+
+    if not mongo_url:
+        raise ValueError("MONGO_URL environment variable is required")
+
+    if not mongo_url.startswith("mongodb+srv://") and not mongo_url.startswith("mongodb://"):
+        raise ValueError("MONGO_URL must be a valid MongoDB connection string (mongodb:// or mongodb+srv://)")
 
     client_options = {
         "serverSelectionTimeoutMS": 10000,
