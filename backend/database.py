@@ -27,11 +27,9 @@ async def connect_db():
     try:
         await _db.command("ping")
         print("✓ MongoDB connected successfully")
+        await _create_indexes()
     except Exception as e:
         print(f"✗ MongoDB connection failed: {e}")
-        raise
-
-    await _create_indexes()
 
 
 async def disconnect_db():
