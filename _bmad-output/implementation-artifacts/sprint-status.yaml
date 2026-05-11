@@ -1,0 +1,72 @@
+# generated: 2026-05-12
+# last_updated: 2026-05-12
+# project: eduflow
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: _bmad-output/implementation-artifacts
+
+generated: "2026-05-12"
+last_updated: "2026-05-12"
+project: eduflow
+project_key: NOKEY
+tracking_system: file-system
+story_location: "_bmad-output/implementation-artifacts"
+
+development_status:
+  # ─────────────────────────────────────────────
+  # Phase 1 — Foundation & Infrastructure
+  # ─────────────────────────────────────────────
+  epic-1: backlog
+  1-1-s3-backed-file-storage-migration: backlog
+  1-2-auth-hardening-short-lived-tokens-session-invalidation: backlog
+  1-3-school-id-forward-compatibility-backfill: backlog
+  1-4-api-health-ready-endpoint-structured-logging: backlog
+  epic-1-retrospective: optional
+
+  # ─────────────────────────────────────────────
+  # Phase 2 — Core CRUD Completeness
+  # ─────────────────────────────────────────────
+  epic-2: backlog
+  2-5-student-profile-full-crud: backlog
+  2-6-staff-profile-full-crud: backlog
+  2-7-attendance-correction-with-audit-trail-manual-entry-fallback: backlog
+  2-8-fee-management-full-crud-idempotency: backlog
+  2-9-discount-policy-engine: backlog
+  2-10-operations-leave-requests-approvals-workflow: backlog
+  epic-2-retrospective: optional
+
+  # ─────────────────────────────────────────────
+  # Phase 3 — New Capabilities
+  # ─────────────────────────────────────────────
+  epic-3: backlog
+  3-11-maintenance-admin-profile-full-build: backlog
+  3-12-it-tech-admin-issue-tracker-namespace-isolation: backlog
+  3-13-incident-complaint-visitor-management: backlog
+  3-14-announcements: backlog
+  3-15-transport-management: backlog
+  3-16-in-app-notifications: backlog
+  3-17-timetable-management: backlog
+  epic-3-retrospective: optional
+
+  # ─────────────────────────────────────────────
+  # Phase 4 — AI & Safety Hardening
+  # ─────────────────────────────────────────────
+  epic-4: backlog
+  4-18-ai-dispatch-table-formal-implementation: backlog
+  4-19-fee-idempotency-confirmation-token-hardening: backlog
+  4-20-ai-graceful-degradation: backlog
+  epic-4-retrospective: optional
+
+  # ─────────────────────────────────────────────
+  # Phase 5 — Observability & Quality
+  # ─────────────────────────────────────────────
+  epic-5: backlog
+  5-21-authorization-matrix-test-suite: backlog
+  5-22-ai-tool-dispatch-tests: backlog
+  5-23-core-route-tests: backlog
+  5-24-scope-resolver-unit-tests: backlog
+  5-25-ux-states-loading-empty-error-on-all-tool-panels: backlog
+  5-26-theme-coherence-dark-light-on-all-panels: backlog
+  5-27-mobile-responsiveness-owner-principal-views: backlog
+  5-28-sse-real-time-staff-attendance-fee-summary: backlog
+  epic-5-retrospective: optional

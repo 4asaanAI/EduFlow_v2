@@ -1,0 +1,22 @@
+[run]
+source = backend
+omit =
+    backend/seed.py
+    backend/migrations/*
+    backend/uploads/*
+    */__pycache__/*
+    */tests/*
+
+[report]
+show_missing = true
+skip_covered = false
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if __name__ == .__main__.:
+    raise NotImplementedError
+    pass
+    \.\.\.$
+
+[html]
+directory = htmlcov

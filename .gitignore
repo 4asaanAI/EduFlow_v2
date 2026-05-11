@@ -18,6 +18,14 @@ node_modules/
 
 # Testing
 /coverage
+# Playwright
+playwright-report/
+test-results/
+tests/support/fixtures/.auth/
+# pytest / coverage
+htmlcov/
+.coverage
+.pytest_cache/
 
 # Next.js
 /.next/
