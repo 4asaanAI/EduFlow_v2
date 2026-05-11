@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ArrowUp, Slash, AtSign } from 'lucide-react';
 import { useUser } from '../contexts/UserContext';
+import { getAuthHeaders } from '../lib/authSession';
 
 const TOOLS_BY_ROLE = {
   owner: [
@@ -80,8 +81,7 @@ const TOOLS_BY_ROLE = {
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function getHeaders() {
-  const t = localStorage.getItem('eduflow_token');
-  return t ? { Authorization: `Bearer ${t}` } : {};
+  return getAuthHeaders(null);
 }
 
 export default function InputBar({ onSend, disabled, isDark = true }) {

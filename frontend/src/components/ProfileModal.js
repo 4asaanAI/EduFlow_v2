@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { X, Mail, Phone, Shield, Zap, BookOpen } from 'lucide-react';
+import { getAuthHeaders } from '../lib/authSession';
 
 const ROLE_COLORS = { owner: '#fb923c', admin: '#4f8ff7', teacher: '#34d399', student: '#a78bfa' };
 const ROLE_LABELS = { owner: 'Owner / Principal', admin: 'Admin Staff', teacher: 'Teacher', student: 'Student' };
@@ -23,7 +24,7 @@ export default function ProfileModal({ onClose }) {
   useEffect(() => {
     if (currentUser.role !== 'student') return;
     fetch(`${API}/students/me`, {
-      headers: { 'Content-Type': 'application/json', ...(localStorage.getItem('eduflow_token') ? { Authorization: `Bearer ${localStorage.getItem('eduflow_token')}` } : {}) }
+      headers: getAuthHeaders()
     }).then(r => r.json()).then(r => {
       if (r.success && r.data?.class_info) {
         const c = r.data.class_info;

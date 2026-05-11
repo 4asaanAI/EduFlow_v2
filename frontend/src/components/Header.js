@@ -2,12 +2,12 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { Search, Bell, ChevronLeft, Menu, X } from 'lucide-react';
+import { getAuthHeaders } from '../lib/authSession';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 function getH() {
-  const t = localStorage.getItem('eduflow_token');
-  return t ? { Authorization: `Bearer ${t}` } : {};
+  return getAuthHeaders(null);
 }
 
 function SearchPanel({ user, onClose, isDark }) {

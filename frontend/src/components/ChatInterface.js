@@ -6,14 +6,14 @@ import MessageRenderer from './MessageRenderer';
 import InputBar from './InputBar';
 import TokenBudgetBar from './TokenBudgetBar';
 import { executeTool } from '../lib/api';
+import { getAuthHeaders } from '../lib/authSession';
 import { Sparkles } from 'lucide-react';
 import ThinkingProcess from './ThinkingProcess';
 import ConfirmActionCard from './ConfirmActionCard';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function getHeaders() {
-  const t = localStorage.getItem('eduflow_token');
-  return { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) };
+  return getAuthHeaders();
 }
 
 async function executeAction(convId, action, params, label, user) {

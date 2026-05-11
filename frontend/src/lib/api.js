@@ -1,18 +1,18 @@
+import { clearAuthSession, getAccessToken, refreshAccessToken } from './authSession';
+
 const BACKEND = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND}/api`;
 
-const TOKEN_KEY = 'eduflow_token';
-
 /**
  * Build headers for API requests.
- * Uses JWT token from localStorage exclusively.
+ * Uses the in-memory JWT access token.
  */
 function getHeaders() {
   const headers = {
     'Content-Type': 'application/json',
   };
 
-  const token = localStorage.getItem(TOKEN_KEY);
+  const token = getAccessToken();
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -21,16 +21,26 @@ function getHeaders() {
 }
 
 /**
- * Wrapper around fetch that handles 401 responses by clearing auth and redirecting.
+ * Wrapper around fetch that refreshes once on 401 before redirecting.
  */
 async function apiFetch(url, options = {}) {
-  const res = await fetch(url, options);
+  let res = await fetch(url, { credentials: 'include', ...options });
 
   if (res.status === 401) {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem('eduflow_user');
+    try {
+      await refreshAccessToken(API);
+      const retryOptions = {
+        ...options,
+        headers: {
+          ...(options.headers || {}),
+          ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
+        },
+      };
+      res = await fetch(url, { credentials: 'include', ...retryOptions });
+      if (res.status !== 401) return res;
+    } catch {}
+    clearAuthSession();
     window.location.href = '/';
-    return res;
   }
 
   return res;
@@ -74,11 +84,11 @@ export function sendMessageStream(convId, text, user, onEvent) {
   return fetch(`${API}/chat/conversations/${convId}/messages`, {
     method: 'POST',
     headers,
+    credentials: 'include',
     body: JSON.stringify({ text }),
   }).then(async (res) => {
     if (res.status === 401) {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem('eduflow_user');
+      clearAuthSession();
       window.location.href = '/';
       return;
     }

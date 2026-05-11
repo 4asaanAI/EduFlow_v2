@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { ToolPage } from './ToolPage';
+import { getAuthHeaders } from '../../lib/authSession';
 import {
   Plus, X, Paperclip, ChevronDown, CheckCircle2, Circle,
   AlertCircle, AlertTriangle, Info, Loader2, Trash2, FileVideo, Image,
@@ -10,8 +11,7 @@ import {
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 function authHeaders() {
-  const t = localStorage.getItem('eduflow_token');
-  return t ? { Authorization: `Bearer ${t}` } : {};
+  return getAuthHeaders(null);
 }
 
 const PRIORITY_META = {

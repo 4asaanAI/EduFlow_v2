@@ -1,56 +1,37 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import {
+  clearAuthSession,
+  clearLegacyLongLivedTokens,
+  getAccessToken,
+  getStoredUser,
+  refreshAccessToken,
+  setAuthSession,
+} from '../lib/authSession';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
-
-const TOKEN_KEY = 'eduflow_token';
-const USER_KEY = 'eduflow_user';
-
-// ─── Token helpers ──────────────────────────────────────────────────────────
-
-function getStoredToken() {
-  try {
-    return localStorage.getItem(TOKEN_KEY) || null;
-  } catch {
-    return null;
-  }
-}
-
-function getStoredUser() {
-  try {
-    const raw = localStorage.getItem(USER_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-function storeAuth(token, user) {
-  localStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(USER_KEY, JSON.stringify(user));
-}
-
-function clearAuth() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
-}
 
 // ─── Authenticated fetch wrapper ────────────────────────────────────────────
 
 export async function authFetch(url, options = {}) {
-  const token = getStoredToken();
+  const token = getAccessToken();
   const headers = { ...options.headers };
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(url, { ...options, headers });
+  let res = await fetch(url, { credentials: 'include', ...options, headers });
 
   if (res.status === 401) {
-    clearAuth();
-    if (window.location.pathname !== '/login') {
-      window.location.href = '/login';
-    }
+    try {
+      await refreshAccessToken(API);
+      const retryHeaders = { ...headers };
+      if (getAccessToken()) retryHeaders.Authorization = `Bearer ${getAccessToken()}`;
+      res = await fetch(url, { credentials: 'include', ...options, headers: retryHeaders });
+      if (res.status !== 401) return res;
+    } catch {}
+    clearAuthSession();
+    if (window.location.pathname !== '/login') window.location.href = '/login';
   }
 
   return res;
@@ -62,39 +43,28 @@ const UserContext = createContext(null);
 
 export function UserProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(() => getStoredUser());
-  const [token, setToken] = useState(() => getStoredToken());
+  const [token, setToken] = useState(() => getAccessToken());
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // Validate token on app load
   useEffect(() => {
     async function validateToken() {
-      const storedToken = getStoredToken();
-      if (!storedToken) {
-        setLoading(false);
+      const clearedLegacy = clearLegacyLongLivedTokens();
+      if (clearedLegacy) {
+        setCurrentUser(null);
+        setToken(null);
         setIsAuthenticated(false);
+        setLoading(false);
         return;
       }
-
       try {
-        const res = await fetch(`${API}/auth/me`, {
-          headers: { Authorization: `Bearer ${storedToken}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setCurrentUser(data.user);
-          setToken(storedToken);
-          setIsAuthenticated(true);
-          localStorage.setItem(USER_KEY, JSON.stringify(data.user));
-        } else {
-          clearAuth();
-          setCurrentUser(null);
-          setToken(null);
-          setIsAuthenticated(false);
-        }
+        const data = await refreshAccessToken(API);
+        setCurrentUser(data.user);
+        setToken(data.access_token || data.token);
+        setIsAuthenticated(true);
       } catch {
-        // Network error — clear auth, require re-login
-        clearAuth();
+        clearAuthSession();
         setCurrentUser(null);
         setToken(null);
         setIsAuthenticated(false);
@@ -110,6 +80,7 @@ export function UserProvider({ children }) {
   const loginPassword = useCallback(async (username, password) => {
     const res = await fetch(`${API}/auth/login`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
@@ -123,8 +94,9 @@ export function UserProvider({ children }) {
 
     if (!res.ok) throw new Error(data.detail || 'Login failed');
 
-    storeAuth(data.token, data.user);
-    setToken(data.token);
+    const nextToken = data.access_token || data.token;
+    setAuthSession(nextToken, data.user);
+    setToken(nextToken);
     setCurrentUser(data.user);
     setIsAuthenticated(true);
     return data;
@@ -132,8 +104,11 @@ export function UserProvider({ children }) {
 
   // ─── Logout ───────────────────────────────────────────────────────────────
 
-  const logout = useCallback(() => {
-    clearAuth();
+  const logout = useCallback(async () => {
+    try {
+      await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' });
+    } catch {}
+    clearAuthSession();
     setCurrentUser(null);
     setToken(null);
     setIsAuthenticated(false);

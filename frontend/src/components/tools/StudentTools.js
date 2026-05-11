@@ -3,11 +3,12 @@
  */
 import React, { useState, useEffect } from 'react';
 import { useUser } from '../../contexts/UserContext';
+import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn } from './ToolPage';
 import { Brain, HelpCircle, Send } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
-function h() { const t = localStorage.getItem('eduflow_token'); return { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) }; }
+function h() { return getAuthHeaders(); }
 
 // 1. AI Tutor
 export function AiTutor() {

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { executeTool, updateLeave, getStaff } from '../../lib/api';
+import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, useToolData, LineChartWidget, BarChartWidget, PieChartWidget } from './ToolPage';
 import { Activity, CheckCircle, XCircle, AlertTriangle, Plus, RefreshCw, Save, TrendingUp, Users, FileText, Send, Download } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
-function h() { const t = localStorage.getItem('eduflow_token'); return { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) }; }
+function h() { return getAuthHeaders(); }
 
 // 1. School Pulse
 export function SchoolPulse() {

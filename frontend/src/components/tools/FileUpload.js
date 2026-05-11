@@ -4,6 +4,7 @@
 import React, { useState, useRef } from 'react';
 import { Upload, X, FileText, Image, Download } from 'lucide-react';
 import { useUser } from '../../contexts/UserContext';
+import { getAuthHeaders } from '../../lib/authSession';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -52,7 +53,8 @@ export default function FileUpload({ entityType = 'general', entityId = '', onUp
     try {
       const res = await fetch(`${API}/uploads`, {
         method: 'POST',
-        headers: localStorage.getItem('eduflow_token') ? { Authorization: `Bearer ${localStorage.getItem('eduflow_token')}` } : {},
+        credentials: 'include',
+        headers: getAuthHeaders(null),
         body: formData,
       }).then(r => r.json());
       if (res.success) {
@@ -72,7 +74,7 @@ export default function FileUpload({ entityType = 'general', entityId = '', onUp
   };
 
   const handleDelete = async (fileId) => {
-    await fetch(`${API}/uploads/${fileId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...(localStorage.getItem('eduflow_token') ? { Authorization: `Bearer ${localStorage.getItem('eduflow_token')}` } : {}) } });
+    await fetch(`${API}/uploads/${fileId}`, { method: 'DELETE', credentials: 'include', headers: getAuthHeaders() });
     setFiles(prev => prev.filter(f => f.id !== fileId));
   };
 

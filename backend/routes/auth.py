@@ -11,13 +11,21 @@ import re
 import logging
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel, validator
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 
 from database import get_db
 from middleware.auth import (
     create_jwt,
     get_current_user,
     verify_password,
+)
+from services.auth_tokens import (
+    clear_refresh_cookie,
+    consume_refresh_token,
+    get_refresh_cookie,
+    issue_refresh_token,
+    revoke_refresh_token,
+    set_refresh_cookie,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,8 +63,40 @@ class LoginRequest(BaseModel):
 
 # ─── POST /api/auth/login ───────────────────────────────────────────────────
 
+def _auth_user_filter(user_id: str) -> dict:
+    return {
+        "$or": [
+            {"user_info.id": user_id},
+            {"id": user_id},
+            {"user_id": user_id},
+        ]
+    }
+
+
+def _jwt_payload_from_auth(auth: dict) -> tuple[dict, dict]:
+    user_info = auth.get("user_info", {})
+    user_id = user_info.get("id") or auth.get("id") or auth.get("user_id") or str(auth.get("_id", ""))
+    role = user_info.get("role", auth.get("role", ""))
+    user_info = {**user_info, "id": user_id, "role": role}
+
+    jwt_payload = {
+        "user_id": user_id,
+        "role": role,
+        "name": user_info.get("name", ""),
+        "initials": user_info.get("initials", ""),
+    }
+    if user_info.get("sub_category"):
+        jwt_payload["sub_category"] = user_info["sub_category"]
+    if user_info.get("branch_id"):
+        jwt_payload["branch_id"] = user_info["branch_id"]
+    if auth.get("phone"):
+        jwt_payload["phone"] = auth["phone"]
+
+    return jwt_payload, user_info
+
+
 @router.post("/login")
-async def login(body: LoginRequest):
+async def login(body: LoginRequest, request: Request, response: Response):
     """
     Username + password login. All roles require credentials.
     Returns JWT token on success.
@@ -87,19 +127,16 @@ async def login(body: LoginRequest):
 
     # Find user by username (case-insensitive, safe — no regex injection)
     username_lower = username.lower()
-    auth = await db.auth_users.find_one(
-        {"username_lower": username_lower},
-        {"_id": 0},
-    )
+    auth = await db.auth_users.find_one({"username_lower": username_lower})
 
     if not auth:
         # Also try exact match for backward compatibility
-        auth = await db.auth_users.find_one(
-            {"username": username},
-            {"_id": 0},
-        )
+        auth = await db.auth_users.find_one({"username": username})
 
     if not auth:
+        await _record_failed_attempt(db, attempt_key)
+        raise HTTPException(401, "Invalid username or password")
+    if auth.get("is_active") is False or auth.get("user_info", {}).get("is_active") is False:
         await _record_failed_attempt(db, attempt_key)
         raise HTTPException(401, "Invalid username or password")
 
@@ -116,30 +153,57 @@ async def login(body: LoginRequest):
     # Successful login — clear attempts
     await db.login_attempts.delete_one({"key": attempt_key})
 
-    user_info = auth.get("user_info", {})
-
-    jwt_payload = {
-        "user_id": user_info.get("id", ""),
-        "role": user_info.get("role", auth.get("role", "")),
-        "name": user_info.get("name", ""),
-        "initials": user_info.get("initials", ""),
-    }
-    if user_info.get("sub_category"):
-        jwt_payload["sub_category"] = user_info["sub_category"]
-    if user_info.get("branch_id"):
-        jwt_payload["branch_id"] = user_info["branch_id"]
-    if auth.get("phone"):
-        jwt_payload["phone"] = auth["phone"]
+    jwt_payload, user_info = _jwt_payload_from_auth(auth)
 
     token = create_jwt(jwt_payload)
+    refresh_token = await issue_refresh_token(db, jwt_payload["user_id"], request)
+    set_refresh_cookie(response, refresh_token)
 
     logger.info(f"Login success: {username} (role={user_info.get('role', '?')})")
 
     return {
         "success": True,
+        "access_token": token,
         "token": token,
+        "token_type": "bearer",
+        "expires_in": 3600,
         "user": user_info,
     }
+
+
+@router.post("/refresh")
+async def refresh(request: Request, response: Response):
+    db = get_db()
+    raw_token = get_refresh_cookie(request)
+    record = await consume_refresh_token(db, raw_token)
+    user_id = record["user_id"]
+    auth = await db.auth_users.find_one(_auth_user_filter(user_id))
+    if not auth or auth.get("is_active") is False or auth.get("user_info", {}).get("is_active") is False:
+        clear_refresh_cookie(response)
+        raise HTTPException(401, "Refresh token revoked")
+
+    jwt_payload, user_info = _jwt_payload_from_auth(auth)
+    token = create_jwt(jwt_payload)
+    refresh_token = await issue_refresh_token(db, jwt_payload["user_id"], request)
+    set_refresh_cookie(response, refresh_token)
+    return {
+        "success": True,
+        "access_token": token,
+        "token": token,
+        "token_type": "bearer",
+        "expires_in": 3600,
+        "user": user_info,
+    }
+
+
+@router.post("/logout")
+async def logout(request: Request, response: Response):
+    db = get_db()
+    raw_token = request.cookies.get("eduflow_refresh_token")
+    if raw_token:
+        await revoke_refresh_token(db, raw_token)
+    clear_refresh_cookie(response)
+    return {"success": True}
 
 
 async def _record_failed_attempt(db, key: str):

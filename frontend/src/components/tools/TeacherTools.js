@@ -4,13 +4,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { getAllClasses, getStudents, getTodayAttendance, bulkMarkAttendance } from '../../lib/api';
+import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn } from './ToolPage';
 import { Plus, CheckCircle, Save, Bold, Underline, List } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 export { FormSubmissions } from './StudentTools';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
-function h() { const t = localStorage.getItem('eduflow_token'); return { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) }; }
+function h() { return getAuthHeaders(); }
 const btnStyle = (color) => ({ background: `${color}20`, border: `1px solid ${color}50`, borderRadius: 5, padding: '3px 8px', color, fontSize: 11, cursor: 'pointer', fontWeight: 600 });
 
 function markdownToHtml(text) {

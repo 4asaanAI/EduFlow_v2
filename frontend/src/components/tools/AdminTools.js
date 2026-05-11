@@ -4,11 +4,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { getStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, getPendingLeaves, updateLeave } from '../../lib/api';
+import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn } from './ToolPage';
 import { Search, Plus, CheckCircle, XCircle, Save, RefreshCw, X, FileDown } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
-function h() { const t = localStorage.getItem('eduflow_token'); return { 'Content-Type': 'application/json', ...(t ? { Authorization: `Bearer ${t}` } : {}) }; }
+function h() { return getAuthHeaders(); }
 
 // 1. Student Database Manager
 export function StudentDatabase() {
@@ -907,7 +908,8 @@ export function DocumentScanner() {
     try {
       const res = await fetch(`${API}/uploads`, {
         method: 'POST',
-        headers: localStorage.getItem('eduflow_token') ? { Authorization: `Bearer ${localStorage.getItem('eduflow_token')}` } : {},
+        credentials: 'include',
+        headers: getAuthHeaders(null),
         body: formData,
       }).then(r => r.json());
       if (res.success) {

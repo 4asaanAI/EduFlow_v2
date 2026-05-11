@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { MessageCircle, X, Send, Bot, ChevronDown, RotateCcw } from 'lucide-react';
+import { getAuthHeaders } from '../lib/authSession';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api/assistant';
 
 function getH() {
-  const t = localStorage.getItem('eduflow_token');
-  return t ? { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+  return getAuthHeaders();
 }
 
 function TypingDots({ isDark }) {

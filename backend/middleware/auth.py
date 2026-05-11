@@ -8,8 +8,6 @@ All route files import get_current_user from here instead of defining locally.
 import os
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
-from functools import wraps
 
 from fastapi import HTTPException, Request, Depends
 from jose import jwt, JWTError, ExpiredSignatureError
@@ -27,18 +25,18 @@ if not JWT_SECRET:
     logger.warning("⚠️ Using weak JWT_SECRET in development — change in production")
 
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRY_DAYS = 7
+JWT_EXPIRY_MINUTES = 60
 
 
 # ─── JWT helpers ─────────────────────────────────────────────────────────────
 
 def create_jwt(payload: dict) -> str:
     """
-    Create a JWT token with 7-day expiry.
+    Create a short-lived JWT access token.
     payload should include: user_id, role, name, and optionally sub_category, branch_id
     """
     to_encode = {**payload}
-    expire = datetime.now(timezone.utc) + timedelta(days=JWT_EXPIRY_DAYS)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRY_MINUTES)
     to_encode["exp"] = expire
     to_encode["iat"] = datetime.now(timezone.utc)
     token = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
