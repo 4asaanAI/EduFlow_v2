@@ -2,13 +2,18 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Any
 from datetime import datetime
 import uuid
+from tenant import get_school_id
 
 
 def gen_id():
     return str(uuid.uuid4())
 
 
-class AcademicYear(BaseModel):
+class SchoolScopedModel(BaseModel):
+    schoolId: str = Field(default_factory=get_school_id)
+
+
+class AcademicYear(SchoolScopedModel):
     id: str = Field(default_factory=gen_id)
     name: str
     start_date: str
@@ -16,7 +21,7 @@ class AcademicYear(BaseModel):
     is_current: bool = False
 
 
-class Class(BaseModel):
+class Class(SchoolScopedModel):
     id: str = Field(default_factory=gen_id)
     academic_year_id: str
     name: str
@@ -24,7 +29,7 @@ class Class(BaseModel):
     class_teacher_id: Optional[str] = None
 
 
-class Subject(BaseModel):
+class Subject(SchoolScopedModel):
     id: str = Field(default_factory=gen_id)
     class_id: str
     name: str
@@ -32,7 +37,7 @@ class Subject(BaseModel):
     max_marks: int = 100
 
 
-class Guardian(BaseModel):
+class Guardian(SchoolScopedModel):
     id: str = Field(default_factory=gen_id)
     student_id: str
     name: str
@@ -44,7 +49,7 @@ class Guardian(BaseModel):
     is_primary: bool = False
 
 
-class Student(BaseModel):
+class Student(SchoolScopedModel):
     id: str = Field(default_factory=gen_id)
     class_id: str
     user_id: Optional[str] = None
@@ -64,7 +69,7 @@ class Student(BaseModel):
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
-class Staff(BaseModel):
+class Staff(SchoolScopedModel):
     id: str = Field(default_factory=gen_id)
     user_id: str
     name: str
@@ -85,7 +90,7 @@ class Staff(BaseModel):
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
-class User(BaseModel):
+class User(SchoolScopedModel):
     id: str = Field(default_factory=gen_id)
     name: str
     role: str
@@ -95,7 +100,7 @@ class User(BaseModel):
     is_active: bool = True
 
 
-class FeeStructure(BaseModel):
+class FeeStructure(SchoolScopedModel):
     id: str = Field(default_factory=gen_id)
     academic_year_id: str
     class_name: str
@@ -106,7 +111,7 @@ class FeeStructure(BaseModel):
     is_optional: bool = False
 
 
-class FeeTransaction(BaseModel):
+class FeeTransaction(SchoolScopedModel):
     id: str = Field(default_factory=gen_id)
     student_id: str
     fee_structure_id: Optional[str] = None
@@ -121,7 +126,7 @@ class FeeTransaction(BaseModel):
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
-class StudentAttendance(BaseModel):
+class StudentAttendance(SchoolScopedModel):
     id: str = Field(default_factory=gen_id)
     student_id: str
     class_id: str
@@ -130,7 +135,7 @@ class StudentAttendance(BaseModel):
     marked_by: str
 
 
-class StaffAttendance(BaseModel):
+class StaffAttendance(SchoolScopedModel):
     id: str = Field(default_factory=gen_id)
     staff_id: str
     date: str
@@ -139,7 +144,7 @@ class StaffAttendance(BaseModel):
     check_out: Optional[str] = None
 
 
-class LeaveRequest(BaseModel):
+class LeaveRequest(SchoolScopedModel):
     id: str = Field(default_factory=gen_id)
     staff_id: str
     leave_type: str
@@ -153,7 +158,7 @@ class LeaveRequest(BaseModel):
     applied_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
-class Announcement(BaseModel):
+class Announcement(SchoolScopedModel):
     id: str = Field(default_factory=gen_id)
     title: str
     content: str
@@ -167,7 +172,7 @@ class Announcement(BaseModel):
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
-class Enquiry(BaseModel):
+class Enquiry(SchoolScopedModel):
     id: str = Field(default_factory=gen_id)
     student_name: str
     parent_name: str
@@ -180,7 +185,7 @@ class Enquiry(BaseModel):
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
-class Conversation(BaseModel):
+class Conversation(SchoolScopedModel):
     id: str = Field(default_factory=gen_id)
     user_id: str
     title: str = "New conversation"
@@ -191,7 +196,7 @@ class Conversation(BaseModel):
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
-class Message(BaseModel):
+class Message(SchoolScopedModel):
     id: str = Field(default_factory=gen_id)
     conversation_id: str
     role: str
@@ -206,18 +211,18 @@ class Message(BaseModel):
 
 
 # Request/Response models
-class MessageRequest(BaseModel):
+class MessageRequest(SchoolScopedModel):
     text: str
     conversation_id: Optional[str] = None
 
 
-class ConversationUpdate(BaseModel):
+class ConversationUpdate(SchoolScopedModel):
     title: Optional[str] = None
     is_pinned: Optional[bool] = None
     is_starred: Optional[bool] = None
 
 
-class StudentCreate(BaseModel):
+class StudentCreate(SchoolScopedModel):
     name: str
     class_id: str
     admission_number: Optional[str] = None
@@ -229,12 +234,12 @@ class StudentCreate(BaseModel):
     guardian_phone: Optional[str] = None
 
 
-class AttendanceBulkRecord(BaseModel):
+class AttendanceBulkRecord(SchoolScopedModel):
     student_id: str
     status: str  # present, absent, late, holiday
 
 
-class AttendanceBulkRequest(BaseModel):
+class AttendanceBulkRequest(SchoolScopedModel):
     class_id: str
     date: str
     records: List[AttendanceBulkRecord]

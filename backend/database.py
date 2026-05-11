@@ -1,8 +1,88 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+from tenant import add_school_id, get_school_id, scoped_filter
 
 _client = None
 _db = None
+
+
+SYSTEM_COLLECTIONS = {
+    "_migrations",
+    "auth_users",
+    "login_attempts",
+    "otps",
+    "refresh_tokens",
+}
+
+
+class ScopedCollection:
+    def __init__(self, collection, school_id: str):
+        self._collection = collection
+        self._school_id = school_id
+
+    def __getattr__(self, name):
+        return getattr(self._collection, name)
+
+    def find(self, filter=None, *args, **kwargs):
+        return self._collection.find(scoped_filter(filter, self._school_id), *args, **kwargs)
+
+    async def find_one(self, filter=None, *args, **kwargs):
+        return await self._collection.find_one(scoped_filter(filter, self._school_id), *args, **kwargs)
+
+    async def count_documents(self, filter, *args, **kwargs):
+        return await self._collection.count_documents(scoped_filter(filter, self._school_id), *args, **kwargs)
+
+    async def insert_one(self, document, *args, **kwargs):
+        return await self._collection.insert_one(add_school_id(document, self._school_id), *args, **kwargs)
+
+    async def insert_many(self, documents, *args, **kwargs):
+        return await self._collection.insert_many(
+            [add_school_id(doc, self._school_id) for doc in documents],
+            *args,
+            **kwargs,
+        )
+
+    async def update_one(self, filter, update, *args, **kwargs):
+        query = {**(filter or {}), "schoolId": self._school_id} if kwargs.get("upsert") else scoped_filter(filter, self._school_id)
+        if kwargs.get("upsert"):
+            update = {**update, "$setOnInsert": {**update.get("$setOnInsert", {}), "schoolId": self._school_id}}
+        return await self._collection.update_one(query, update, *args, **kwargs)
+
+    async def update_many(self, filter, update, *args, **kwargs):
+        return await self._collection.update_many(scoped_filter(filter, self._school_id), update, *args, **kwargs)
+
+    async def delete_one(self, filter, *args, **kwargs):
+        return await self._collection.delete_one(scoped_filter(filter, self._school_id), *args, **kwargs)
+
+    async def delete_many(self, filter, *args, **kwargs):
+        return await self._collection.delete_many(scoped_filter(filter, self._school_id), *args, **kwargs)
+
+    def aggregate(self, pipeline, *args, **kwargs):
+        if pipeline and pipeline[0].get("$match", {}).get("schoolId"):
+            scoped_pipeline = pipeline
+        else:
+            scoped_pipeline = [{"$match": scoped_filter({}, self._school_id)}, *(pipeline or [])]
+        return self._collection.aggregate(scoped_pipeline, *args, **kwargs)
+
+
+class ScopedDatabase:
+    def __init__(self, db, school_id: str):
+        self._db = db
+        self._school_id = school_id
+
+    def __getattr__(self, name):
+        collection = getattr(self._db, name)
+        if callable(collection) or name.startswith("_"):
+            return collection
+        if name in SYSTEM_COLLECTIONS:
+            return collection
+        return ScopedCollection(collection, self._school_id)
+
+    def __getitem__(self, name):
+        collection = self._db[name]
+        if name in SYSTEM_COLLECTIONS:
+            return collection
+        return ScopedCollection(collection, self._school_id)
 
 
 async def connect_db():
@@ -38,7 +118,7 @@ async def disconnect_db():
 
 
 def get_db():
-    return _db
+    return ScopedDatabase(_db, get_school_id())
 
 
 async def _create_indexes():
