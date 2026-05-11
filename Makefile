@@ -1,9 +1,11 @@
 # ─── EduFlow Makefile — Test Commands ────────────────────────────────────────
 # Usage: make <target>
 
+PYTHON ?= python3
+
 .PHONY: help test test-e2e test-e2e-headed test-e2e-debug test-backend \
         test-backend-unit test-backend-api test-backend-cov \
-        playwright-install playwright-report
+        playwright-install playwright-report package-backend
 
 help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -32,19 +34,19 @@ playwright-report: ## Open the last HTML test report
 # ─── Backend Tests (pytest) ──────────────────────────────────────────────────
 
 test-backend: ## Run all backend tests
-	cd backend && python -m pytest ../tests/backend -v
+	cd backend && $(PYTHON) -m pytest ../tests/backend -v
 
 test-backend-unit: ## Run only unit tests (no DB/network)
-	cd backend && python -m pytest ../tests/backend/unit -v -m unit
+	cd backend && $(PYTHON) -m pytest ../tests/backend/unit -v -m unit
 
 test-backend-api: ## Run API tests (requires running backend + seeded DB)
-	cd backend && python -m pytest ../tests/backend/api -v -m api
+	cd backend && $(PYTHON) -m pytest ../tests/backend/api -v -m api
 
 test-backend-integration: ## Run integration tests
-	cd backend && python -m pytest ../tests/backend/integration -v -m integration
+	cd backend && $(PYTHON) -m pytest ../tests/backend/integration -v -m integration
 
 test-backend-cov: ## Run backend tests with coverage report
-	cd backend && python -m pytest ../tests/backend \
+	cd backend && $(PYTHON) -m pytest ../tests/backend \
 		--cov=. \
 		--cov-report=html:../htmlcov \
 		--cov-report=term-missing \
@@ -53,3 +55,8 @@ test-backend-cov: ## Run backend tests with coverage report
 # ─── Combined ────────────────────────────────────────────────────────────────
 
 test: test-backend test-e2e ## Run all tests (backend + E2E)
+
+# ─── Deployment ─────────────────────────────────────────────────────────────
+
+package-backend: ## Build Elastic Beanstalk backend ZIP in deploy/
+	bash scripts/package_backend.sh

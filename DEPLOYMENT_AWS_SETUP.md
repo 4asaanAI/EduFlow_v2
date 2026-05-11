@@ -171,8 +171,8 @@ AZURE_OPENAI_DEPLOYMENT=gpt-5.3-chat
 GEMINI_API_KEY=<your-gemini-key>
 AWS_ACCESS_KEY_ID=<your-aws-key>
 AWS_SECRET_ACCESS_KEY=<your-aws-secret>
-AWS_REGION=us-east-1
-S3_BUCKET=eduflow-uploads-prod
+AWS_REGION=ap-south-1
+S3_BUCKET_NAME=eduflow-uploads-prod
 ```
 
 Set environment variables in EB:
@@ -189,8 +189,8 @@ eb setenv \
   AZURE_OPENAI_ENDPOINT="..." \
   AZURE_OPENAI_DEPLOYMENT="gpt-5.3-chat" \
   GEMINI_API_KEY="..." \
-  AWS_REGION="us-east-1" \
-  S3_BUCKET="eduflow-uploads-prod"
+  AWS_REGION="ap-south-1" \
+  S3_BUCKET_NAME="eduflow-uploads-prod"
 
 # Verify
 eb printenv
@@ -456,4 +456,3 @@ Actual costs will vary based on traffic and storage.
 3. **Monitor:** Set up CloudWatch alarms for errors and high CPU
 4. **Backup:** Configure MongoDB Atlas automated backups
 5. **CI/CD:** Set up GitHub Actions to auto-deploy on push
-

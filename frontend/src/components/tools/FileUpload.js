@@ -40,8 +40,8 @@ export default function FileUpload({ entityType = 'general', entityId = '', onUp
       setError(`File type .${ext} not allowed. Allowed: ${allowed.join(', ')}`);
       return;
     }
-    if (file.size > 50 * 1024 * 1024) {
-      setError('File too large (max 50MB)');
+    if (file.size > 10 * 1024 * 1024) {
+      setError('File too large (max 10MB)');
       return;
     }
     setUploading(true);
@@ -108,7 +108,7 @@ export default function FileUpload({ entityType = 'general', entityId = '', onUp
         style={{ border: `2px dashed ${dragging ? '#4f8ff7' : border}`, borderRadius: 10, padding: '24px 20px', textAlign: 'center', cursor: 'pointer', background: dragging ? 'rgba(59,130,246,0.05)' : bg, transition: 'all 0.15s' }}>
         <Upload size={24} color={dragging ? '#4f8ff7' : text} style={{ margin: '0 auto 8px' }} />
         <p style={{ fontSize: 13, color: text, marginBottom: 4 }}>{uploading ? 'Uploading...' : 'Drop files here or click to upload'}</p>
-        <p style={{ fontSize: 11, color: isDark ? '#525252' : '#a3a3a3' }}>Allowed: {allowed.join(', ')} · Max 50MB</p>
+        <p style={{ fontSize: 11, color: isDark ? '#525252' : '#a3a3a3' }}>Allowed: {allowed.join(', ')} · Max 10MB</p>
       </div>
       <input ref={inputRef} type="file" style={{ display: 'none' }} multiple accept={allowed.map(e => `.${e}`).join(',')}
         onChange={e => Array.from(e.target.files || []).forEach(uploadFile)} />

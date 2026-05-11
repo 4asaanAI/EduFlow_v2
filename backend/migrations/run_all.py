@@ -42,6 +42,7 @@ MIGRATIONS = [
     ("009_add_payroll", "Add salary_structures, salary_disbursements, expenses"),
     ("010_add_tokens", "Add token_usage, token_balance, token_recharges"),
     ("011_add_support_tickets", "Add support_tickets collection"),
+    ("012_migrate_uploads_to_s3", "Migrate legacy uploads to private S3 storage"),
 ]
 
 
