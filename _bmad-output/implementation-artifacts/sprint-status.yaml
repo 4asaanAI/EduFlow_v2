@@ -4,6 +4,7 @@
 # project_key: NOKEY
 # tracking_system: file-system
 # story_location: _bmad-output/implementation-artifacts
+# note: Updated after Stage 0 backlog repair — 5 stories added (29-33), Story 19 security fix applied
 
 generated: "2026-05-12"
 last_updated: "2026-05-12"
@@ -14,17 +15,19 @@ story_location: "_bmad-output/implementation-artifacts"
 
 development_status:
   # ─────────────────────────────────────────────
-  # Phase 1 — Foundation & Infrastructure
+  # Phase 1 — Foundation & Infrastructure (6 stories)
   # ─────────────────────────────────────────────
   epic-1: backlog
   1-1-s3-backed-file-storage-migration: backlog
   1-2-auth-hardening-short-lived-tokens-session-invalidation: backlog
   1-3-school-id-forward-compatibility-backfill: backlog
   1-4-api-health-ready-endpoint-structured-logging: backlog
+  1-29-password-reset-via-email-link: backlog
+  1-30-database-import-owner-trigger-validation-ui: backlog
   epic-1-retrospective: optional
 
   # ─────────────────────────────────────────────
-  # Phase 2 — Core CRUD Completeness
+  # Phase 2 — Core CRUD Completeness (7 stories)
   # ─────────────────────────────────────────────
   epic-2: backlog
   2-5-student-profile-full-crud: backlog
@@ -33,10 +36,11 @@ development_status:
   2-8-fee-management-full-crud-idempotency: backlog
   2-9-discount-policy-engine: backlog
   2-10-operations-leave-requests-approvals-workflow: backlog
+  2-31-fee-software-api-sync: backlog
   epic-2-retrospective: optional
 
   # ─────────────────────────────────────────────
-  # Phase 3 — New Capabilities
+  # Phase 3 — New Capabilities (9 stories)
   # ─────────────────────────────────────────────
   epic-3: backlog
   3-11-maintenance-admin-profile-full-build: backlog
@@ -46,10 +50,12 @@ development_status:
   3-15-transport-management: backlog
   3-16-in-app-notifications: backlog
   3-17-timetable-management: backlog
+  3-32-fee-receipt-pdf-summary-export: backlog
+  3-33-audit-log-ui: backlog
   epic-3-retrospective: optional
 
   # ─────────────────────────────────────────────
-  # Phase 4 — AI & Safety Hardening
+  # Phase 4 — AI & Safety Hardening (3 stories)
   # ─────────────────────────────────────────────
   epic-4: backlog
   4-18-ai-dispatch-table-formal-implementation: backlog
@@ -58,7 +64,7 @@ development_status:
   epic-4-retrospective: optional
 
   # ─────────────────────────────────────────────
-  # Phase 5 — Observability & Quality
+  # Phase 5 — Observability & Quality (8 stories)
   # ─────────────────────────────────────────────
   epic-5: backlog
   5-21-authorization-matrix-test-suite: backlog

@@ -4,21 +4,34 @@ project_name: 'EduFlow Enterprise Upgrade'
 user_name: 'Abhimanyu'
 date: '2026-05-12'
 status: 'ready-for-implementation'
+lastUpdated: '2026-05-12'
+changeLog:
+  - date: '2026-05-12'
+    changes:
+      - 'Stage 0 backlog repair: fixed Story 19 confirmation-token security bug (fail-closed, not idempotent)'
+      - 'Added Story 29: Password Reset via Email (Phase 1)'
+      - 'Added Story 30: Database Import — Owner UI (Phase 1)'
+      - 'Added Story 31: Fee Software API Sync (Phase 2)'
+      - 'Added Story 32: Fee Receipt PDF + Summary Export (Phase 3)'
+      - 'Added Story 33: Audit Log UI (Phase 3)'
+      - 'Resolved 9 story ambiguities across Stories 2, 4, 12, 17, 23, 28 and others'
+      - 'Added Pre-Implementation Blockers section'
 inputDocuments:
   - '_bmad-output/planning-artifacts/prd.md'
   - '_bmad-output/planning-artifacts/architecture.md'
   - '_bmad-output/project-context.md'
-totalStories: 28
+  - '_bmad-output/planning-artifacts/implementation-readiness-report-2026-05-12.md'
+totalStories: 33
 phases:
   - phase: 1
     name: 'Foundation & Infrastructure'
-    stories: [1, 2, 3, 4]
+    stories: [1, 2, 3, 4, 29, 30]
   - phase: 2
     name: 'Core CRUD Completeness'
-    stories: [5, 6, 7, 8, 9, 10]
+    stories: [5, 6, 7, 8, 9, 10, 31]
   - phase: 3
     name: 'New Capabilities'
-    stories: [11, 12, 13, 14, 15, 16, 17]
+    stories: [11, 12, 13, 14, 15, 16, 17, 32, 33]
   - phase: 4
     name: 'AI & Safety Hardening'
     stories: [18, 19, 20]
@@ -29,7 +42,7 @@ phases:
 
 # Implementation Stories — EduFlow Enterprise Upgrade
 
-**Total stories:** 28 across 5 phases
+**Total stories:** 33 across 5 phases
 **Sequence:** Complete each phase before starting the next — later phases depend on earlier ones.
 **PRD references:** Each story maps to the Functional Requirements (FR) from `prd.md`.
 
@@ -37,11 +50,24 @@ phases:
 
 ## Implementation Order Rationale
 
-1. **Foundation first** — S3 and auth gaps are preconditions for data integrity and security; fix before adding features
+1. **Foundation first** — S3, auth, password reset, and DB import are preconditions for data integrity and security
 2. **CRUD next** — Close the 40% → 100% CRUD gap before building new capability on top of incomplete foundations
-3. **New capability** — Maintenance profile, approvals, issue tracker, timetable, leave management, discount engine
+3. **New capability** — Maintenance profile, approvals, issue tracker, timetable, leave management, discount engine, PDF export, audit log UI
 4. **AI hardening** — Dispatch table, idempotency tokens, confirmation token security (depends on CRUD being solid)
 5. **Quality baseline** — Tests, observability, UX states, mobile fixes (can run in parallel with Phase 4)
+
+---
+
+## Pre-Implementation Blockers
+
+These decisions must be resolved before the specified phase begins. They do not require code — they require a decision or an external action.
+
+| ID | Decision Required | Owner | Needed Before | Status |
+|---|---|---|---|---|
+| B1 | Token store for confirmation tokens: MongoDB TTL index (default, already in stack) vs Redis | Abhimanyu | Phase 4 (Story 18) | **Defaulting to MongoDB TTL** — revisit if latency becomes an issue |
+| B2 | MongoDB Atlas replica-set tier: confirm M10+ (replica set) before go-live for HA | Abhimanyu | Go-live | **Pending** — confirm Atlas tier in dashboard |
+| B3 | Azure OpenAI India-region DPA: must be signed before any student PII (names, attendance, fees) is sent to the LLM | Abhimanyu | Before Phase 2 data load | **Pending** — contact Microsoft Azure support |
+| B4 | CloudFront SSE timeout: ALB idle timeout must be ≥ 300s; CloudFront origin response timeout must be ≥ 300s | Abhimanyu | Story 28 | **Pending** — document in deployment config and apply before Story 28 testing |
 
 ---
 
@@ -94,11 +120,13 @@ phases:
 - [ ] Refresh tokens are stored in `httpOnly`, `Secure`, `SameSite=Strict` cookies (not localStorage)
 - [ ] Access tokens remain in memory (not persisted in localStorage)
 - [ ] `JWT_SECRET` absent in production environment causes startup failure with a clear error message (removes the weak fallback)
+- [ ] **Migration:** On first load after deploy, if a legacy long-lived token is detected in localStorage (identified by its `exp` claim being > 1 hour from now on first parse), the frontend silently clears it and redirects to login — no silent upgrade of old tokens
 
 **Technical Notes:**
 - Store active refresh tokens in a `refresh_tokens` MongoDB collection with TTL index on `expires_at`
 - Deactivation: `is_active = false` on the user record + purge all matching `refresh_tokens` documents
 - Frontend: store access token in React state/context only (lost on page reload → triggers refresh flow)
+- Legacy token detection: check `localStorage.getItem('token')` on app mount; if present, clear it and redirect before making any API call
 
 ---
 
@@ -135,12 +163,67 @@ phases:
 - [ ] `GET /api/health/ready` returns a JSON object with per-component status: `{ db: "ok"|"error", ai: "ok"|"degraded", overall: "ready"|"degraded"|"down" }`
 - [ ] Endpoint performs an active liveness check on MongoDB (ping command) on each call
 - [ ] Endpoint performs an active reachability check on Azure OpenAI (lightweight call or endpoint probe) on each call — if AI is unreachable, `ai: "degraded"` but `overall` remains `"ready"` (AI degradation is not a platform outage)
+- [ ] **Biometric health check:** only included in the health response if the `BIOMETRIC_ENABLED` env var is `"true"`; if the env var is absent or `"false"`, the `biometric` field is omitted from the response (do not check or report on a system that is not configured)
 - [ ] All `logger.info/warning/error` calls output valid JSON with fields: `timestamp`, `level`, `service`, `method`, `path`, `status_code`, `duration_ms`, `request_id` — no PII fields (student names, phone numbers, fee amounts, addresses)
 - [ ] Logs are shipped to AWS CloudWatch (or equivalent queryable destination) in real time
 - [ ] At least one CloudWatch alarm fires when error rate on any route group exceeds a threshold (e.g. >10 errors/5min)
 - [ ] An alert fires when daily Azure OpenAI spend exceeds a configured threshold (`OPENAI_SPEND_ALERT_INR` env var)
 - [ ] A `X-Request-ID` header is accepted from the client and echoed in the response and all log entries for that request; if absent, a UUID is generated server-side
 - [ ] Log schema is validated in a CI step that rejects entries containing any of the following field names: `student_name`, `phone`, `address`, `fee_amount`, `biometric`
+
+---
+
+### Story 29: Password Reset via Email Link
+
+**Priority:** Critical — MVP gap
+**Effort:** Small-Medium
+**PRD:** FR79
+
+**As** any user,
+**I want** to reset my password via a time-limited email link,
+**so that** I can regain access without contacting the school administrator.
+
+**Acceptance Criteria:**
+- [ ] `POST /api/auth/forgot-password` accepts an `email` field; if the email matches a registered user, a reset token is generated and emailed; if it does not match, the response is identical (no email enumeration)
+- [ ] Reset tokens are UUID4, stored in `password_reset_tokens` collection with `expires_at` (15 minutes) and `used: false`; TTL index auto-deletes expired tokens
+- [ ] `POST /api/auth/reset-password` accepts `{ token, new_password }`; validates token is unused and not expired; sets `used: true` atomically before updating the password; invalidates all active refresh tokens for that user
+- [ ] Password must be ≥ 8 characters; validated server-side; error message returned on failure
+- [ ] Email is sent via a configured SMTP service (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` env vars, documented in `.env.example`)
+- [ ] Reset link in email points to `{FRONTEND_URL}/reset-password?token={token}`
+- [ ] Frontend `ForgotPassword.js` and `ResetPassword.js` pages render the request form, success state, and error states (expired token, invalid token, password too short)
+- [ ] Replay of a used reset token returns 400 (fail-closed — no idempotent replay)
+- [ ] Rate-limited: max 3 reset requests per email per hour (returns 429 on excess)
+
+**Technical Notes:**
+- Use `python-multipart` or `smtplib` for email sending; consider `fastapi-mail` for async email
+- If no SMTP is configured (`SMTP_HOST` absent), log the reset link to stdout in development mode only
+
+---
+
+### Story 30: Database Import — Owner Trigger + Validation UI
+
+**Priority:** Critical — MVP gap
+**Effort:** Medium
+**PRD:** FR58
+
+**As** the Owner (Abhimanyu),
+**I want** to trigger a bulk data import from a CSV/Excel file and see validation results before committing,
+**so that** the school database can be seeded or migrated without manual entry.
+
+**Acceptance Criteria:**
+- [ ] `POST /api/import/validate` accepts a multipart file upload (CSV or XLSX, ≤ 5MB); parses all rows and returns a validation report: `{ valid_count, error_count, errors: [{ row, field, message }] }` — does not write to the database
+- [ ] `POST /api/import/commit` accepts the same file after validation; writes only valid rows; skips and logs rows with errors; returns `{ imported_count, skipped_count, errors }`
+- [ ] Import is scoped to students only in Phase 1; staff import is a future extension
+- [ ] Required CSV columns: `name`, `class`, `section`, `parent_name`, `parent_phone`; optional: `date_of_birth`, `address`, `route_zone_id`
+- [ ] Duplicate detection: if a student with the same `name` + `class` + `section` already exists, the row is flagged as a duplicate (not an error); Owner is shown duplicates and can choose to skip or overwrite on commit
+- [ ] Import is Owner-only (403 for all other roles)
+- [ ] Import adds `schoolId`, `created_by`, `created_at` to every inserted record
+- [ ] Frontend `DataImport.js` tool panel renders: file upload, validation results table (row-by-row error list), duplicate summary, commit button (disabled until validation passes), and success/error states
+- [ ] Import operation is logged in the audit trail: `{ action: "bulk_import", imported_count, skipped_count, file_name, triggered_by, timestamp }`
+
+**Technical Notes:**
+- Use `openpyxl` for XLSX parsing and Python's `csv` module for CSV; both already available or easily added
+- Validation runs in memory — do not write any intermediate state to the DB during validate step
 
 ---
 
@@ -278,6 +361,29 @@ phases:
 
 ---
 
+### Story 31: Fee Software API Sync
+
+**Priority:** Critical — MVP gap
+**Effort:** Medium
+**PRD:** FR32
+
+**As** the Accountant,
+**I want** fee records to stay in sync with the external fee software via an API integration,
+**so that** EduFlow is the single source of truth without double-entry.
+
+**Acceptance Criteria:**
+- [ ] `POST /api/fees/sync/trigger` — Owner or Accountant triggers a manual sync; returns a `sync_job_id`
+- [ ] Sync fetches records from the external fee API (`FEE_API_BASE_URL`, `FEE_API_KEY` env vars) and compares them against EduFlow's `fees.transactions` collection
+- [ ] Conflicts (same student + period + fee head with different amounts) are surfaced as a `conflict` status in the sync result — they are NOT auto-resolved
+- [ ] `GET /api/fees/sync/:sync_job_id` returns: `{ status, synced_count, conflict_count, conflicts: [{ student_id, period, fee_head, ours, theirs }] }`
+- [ ] `POST /api/fees/sync/:sync_job_id/resolve-conflict` — Owner resolves each conflict by choosing `keep_ours` or `use_theirs`; resolution is logged in the audit trail
+- [ ] Sync is Owner-escalation gated: conflicts block completion until every conflict is resolved by Owner
+- [ ] `FEE_API_BASE_URL` and `FEE_API_KEY` are documented in `.env.example`; if absent, the sync endpoint returns 503 with a clear message
+- [ ] Sync result is recorded in the audit log regardless of outcome
+- [ ] Frontend `FeeSync.js` panel renders: trigger button, sync status, conflict list with resolution controls, and success/error states
+
+---
+
 ## Phase 3 — New Capabilities
 
 ### Story 11: Maintenance Admin Profile — Full Build
@@ -293,7 +399,7 @@ phases:
 **Acceptance Criteria:**
 - [ ] `maintenance` sub_category added to the `admin` role in `scope_resolver.py` and `require_role` usage
 - [ ] Maintenance Admin can only read and write `facility_request` type records — API returns 403 for any `tech_request` query
-- [ ] `POST /api/issues/facility` creates a facility request with: `description`, `location`, `logged_by`, `category`
+- [ ] `POST /api/issues/facility` creates a facility request with: `description`, `location`, `logged_by`, `category` (one of: `plumbing`, `electrical`, `civil`, `cleaning`, `security`, `other`)
 - [ ] `PATCH /api/issues/facility/:id` updates status (`open` → `in_progress` → `pending_owner_confirmation`) and adds a note; Maintenance Admin cannot set status to `closed`
 - [ ] `POST /api/issues/facility/:id/confirm-resolution` — Owner-only endpoint; sets status to `closed`; notifies Maintenance Admin
 - [ ] Owner sees all facility requests regardless of status via `GET /api/issues?type=facility`
@@ -318,7 +424,7 @@ phases:
 - [ ] IT/Tech Admin is denied access to `GET /api/issues/facility` (403); Maintenance Admin is denied access to `GET /api/issues/tech` (403)
 - [ ] IT/Tech Admin can update status and add notes to tech requests
 - [ ] Owner and Principal can view all open issues across both namespaces via `GET /api/issues?type=all` — returns merged list with `type` field
-- [ ] Category selector at intake (`tech` vs `facility`) routes to the correct collection; reassignment allowed before first action
+- [ ] **Reassignment:** Category (`tech` vs `facility`) can be changed only before the first status update beyond `open` (i.e., while the record is still in `open` status with no notes added); once a note has been added or status has advanced to `in_progress`, the category field is locked and returns 400 on any reassignment attempt
 - [ ] Frontend tool panel for IT/Tech Admin renders loading, empty, and error states
 
 ---
@@ -341,7 +447,7 @@ phases:
 - [ ] `GET /api/operations/incidents/:id` returns the full thread in reverse-chronological order with author and timestamp on each entry
 - [ ] `PATCH /api/operations/incidents/:id/assign` — Owner or Principal assigns a follow-up to a staff member with a `due_date`
 - [ ] `GET /api/operations/incidents?status=open` returns all open complaints, incidents across all types for Owner; Principal sees the same minus financial records
-- [ ] Full-text search across `description` and `involved_parties` fields
+- [ ] Full-text search via MongoDB `$text` index on `description` and `involved_parties` fields; search endpoint is `GET /api/operations/incidents?q={search_term}`
 - [ ] Frontend renders a thread view (scrollable, reverse-chronological), status badge, and assignment info; renders loading, empty, and error states
 
 ---
@@ -423,10 +529,59 @@ phases:
 
 **Acceptance Criteria:**
 - [ ] `POST /api/academics/timetable` creates a timetable entry: `class_id`, `period_number`, `day_of_week`, `subject_id`, `teacher_id`
-- [ ] `PUT /api/academics/timetable/import` accepts a bulk import payload (array of timetable entries); validates referential integrity before committing (class exists, teacher exists, no conflicting periods for the same teacher)
+- [ ] `PUT /api/academics/timetable/import` accepts a bulk import payload (array of timetable entries); validates referential integrity before committing (class exists, teacher exists, no conflicting periods for the same teacher); **behavior on duplicate entries (same class + period + day): replace the existing entry** (not append); the API response includes `{ replaced_count, created_count, skipped_count }` so the caller knows what happened
 - [ ] `GET /api/academics/timetable?teacher_id=X&date=Y` returns all periods for a teacher on a given day — the availability check endpoint used by the substitution workflow
 - [ ] `PATCH /api/academics/timetable/:id` edits a timetable entry; full audit trail
 - [ ] Timetable view in the frontend renders a weekly grid (class × period × day); renders loading, empty, and error states
+
+---
+
+### Story 32: Fee Receipt PDF + Summary Export
+
+**Priority:** Critical — MVP gap
+**Effort:** Medium
+**PRD:** FR84, FR85
+
+**As** an Accountant or Owner,
+**I want** to generate fee receipt PDFs and export attendance/fee summary reports,
+**so that** parents receive proper receipts and the school has exportable records.
+
+**Acceptance Criteria:**
+- [ ] `GET /api/fees/transactions/:id/receipt` generates and returns a PDF fee receipt with: school name, student name, class, fee head, amount paid, payment date, receipt number, and a watermark ("PAID")
+- [ ] Receipt PDF is generated server-side using a PDF library (`weasyprint` or `reportlab`); not client-rendered
+- [ ] `GET /api/fees/export?period=YYYY-MM&format=csv` exports all fee transactions for the period as CSV; columns: student_name, class, fee_head, amount, payment_date, receipt_number
+- [ ] `GET /api/attendance/export?class_id=X&month=YYYY-MM&format=csv` exports attendance summary per student for the month: present_days, absent_days, late_days, percentage
+- [ ] Exports are Owner and Accountant scoped (403 for other roles)
+- [ ] PDF generation completes within 5 seconds for a single receipt; CSV export completes within 10 seconds for up to 500 records
+- [ ] Frontend: download button on each fee transaction row triggers the receipt endpoint; a separate "Export" button in `FeeCollection.js` and `AttendanceRecorder.js` triggers the CSV exports
+- [ ] Receipt number format: `{SCHOOL_ID}-{YYYY}-{MM}-{sequential_number}` — sequential number is an auto-incrementing counter per school per month stored in MongoDB
+
+**Technical Notes:**
+- `SCHOOL_NAME` env var used in PDF header; documented in `.env.example`
+- Use `weasyprint` (HTML→PDF) for simpler template maintenance over `reportlab`
+
+---
+
+### Story 33: Audit Log UI
+
+**Priority:** Critical — MVP gap
+**Effort:** Medium
+**PRD:** FR89
+
+**As** an Owner or Principal (scoped),
+**I want** to view the audit log in the app,
+**so that** I can investigate who did what without needing database access.
+
+**Acceptance Criteria:**
+- [ ] `GET /api/audit-log` returns audit entries in reverse-chronological order with pagination (≤ 50/page)
+- [ ] Owner sees all entries across all collections; Principal sees all entries except financial (`fee_*`) and user-management (`users`, `refresh_tokens`) collections
+- [ ] Each entry displays: `timestamp`, `action`, `collection`, `record_id`, `changed_by` (name + role), `previous_value` (if applicable), `new_value` (if applicable)
+- [ ] Filterable by: `collection`, `changed_by`, `date_range` (all via query params)
+- [ ] Searchable by `record_id` or `changed_by` user ID
+- [ ] `GET /api/audit-log/:record_id` returns the complete history for a specific record across all collections
+- [ ] AI dispatch audit log entries (`ai_dispatch_audit_log` from Story 18) are included and filterable with `collection=ai_dispatch`
+- [ ] Frontend `AuditLog.js` tool panel renders: filter controls, paginated results table, expandable row for previous/new value diff; renders loading, empty, and error states
+- [ ] Accountant role has no access to audit log (403)
 
 ---
 
@@ -455,7 +610,7 @@ phases:
 
 ---
 
-### Story 19: Fee Idempotency + Confirmation Token Hardening
+### Story 19: Fee Idempotency + Confirmation Token Hardening ⚠️ SECURITY FIX APPLIED
 
 **Priority:** Critical
 **Effort:** Small
@@ -470,7 +625,9 @@ phases:
 - [ ] Idempotency keys are stored in MongoDB with a TTL index of 24 hours
 - [ ] Submitting the same `Idempotency-Key` within 24 hours returns the original response (HTTP 200) without re-executing the operation
 - [ ] Fee payment idempotency key format `{student_id}:{fee_period}:{fee_head}` is enforced at the API layer (Story 8 extends this)
-- [ ] Confirmation tokens (from Story 18) are covered by the same idempotency guarantee — replaying a `POST /api/chat/confirm` with an already-used token returns the original result, not a 400 error, so retries on network failure are safe
+- [ ] **Confirmation tokens (from Story 18) are explicitly excluded from the idempotency guarantee.** Replaying `POST /api/chat/confirm` with an already-used token returns **409 Conflict** (fail-closed). This is intentional: a confirmation token is a one-time safety gate, not an idempotent operation. Network-retry safety for the frontend is achieved by the frontend storing the first successful response in session state and displaying it on retry, not by replaying the token.
+
+**⚠️ Security Note:** The previous version of this story incorrectly stated that used confirmation tokens should return HTTP 200 (the original result). That behavior would allow token replay attacks and bypass the confirm-action safety gate. The correct behavior is fail-closed: 409 on replay, always.
 
 ---
 
@@ -530,8 +687,9 @@ phases:
 **Acceptance Criteria:**
 - [ ] `tests/test_ai_dispatch.py` covers all 9 write dispatches from Appendix A
 - [ ] For each dispatch, tests assert: (1) correct execution on clear instruction with confirmed token, (2) safe rejection on ambiguous or missing parameters, (3) the confirm-action step fires and the mutation is NOT executed without it
-- [ ] Tests verify that replaying an expired confirmation token returns an appropriate error without executing the mutation
-- [ ] Tests verify cross-session token replay is rejected
+- [ ] Tests verify that replaying an expired confirmation token returns 400 without executing the mutation
+- [ ] Tests verify that replaying an already-used confirmation token returns 409 without executing the mutation
+- [ ] Tests verify cross-session token replay is rejected with 401
 - [ ] LLM client is mocked — tests never call Azure OpenAI
 
 ---
@@ -548,8 +706,10 @@ phases:
 
 **Acceptance Criteria:**
 - [ ] `tests/test_routes.py` covers: auth, attendance, fee collection, student CRUD, staff CRUD
+- [ ] **Phase 3 route coverage:** `tests/test_routes_phase3.py` covers at minimum one happy-path and one 403 test for: facility requests, tech requests, incidents, announcements, transport roster, leave requests, approval requests, notifications, timetable import
 - [ ] For each route: 1 happy-path test (authenticated, correct role, valid payload) + 1 auth-failure test (no token → 401, wrong role → 403)
 - [ ] Fee idempotency test: two identical POST requests with the same `Idempotency-Key` → second returns original result, not a duplicate record
+- [ ] Confirmation token replay test: replaying a used token → 409 (not 200)
 - [ ] Attendance correction test: hard delete attempt returns 405
 
 ---
@@ -646,30 +806,33 @@ phases:
 - [ ] `GET /api/fees/stream` is a persistent SSE endpoint that emits an event when a fee payment is recorded; fee summary reflects the new payment within 30 seconds
 - [ ] Server sends a keepalive event every 30 seconds on all SSE channels
 - [ ] When a browser tab regains visibility, the client reconnects and fetches a fresh state snapshot before resuming the event stream
-- [ ] Multiple tabs for the same user receive the same events but do not process them twice (session deduplication via `session_id` header)
+- [ ] **SSE session deduplication:** the client sends a `session_id` header on each SSE connection (a UUID generated once per browser tab and stored in `sessionStorage`); the server tracks active connections by `session_id`; if two connections arrive with the same `session_id`, the server closes the older one before accepting the new one; events are dispatched per `session_id`, not per `user_id`, ensuring a user with two open tabs receives events on both tabs independently
 - [ ] If the upstream data source is unavailable, the SSE channel remains open and silent; the frontend shows "last updated X ago"
-- [ ] SSE route timeout configured to ≥ 300 seconds in CloudFront/ALB (deployment configuration documented and verified)
+- [ ] SSE route timeout configured to ≥ 300 seconds in CloudFront/ALB (deployment configuration documented and verified; see Blocker B4)
 
 ---
 
 ## Story Dependency Map
 
 ```
-Story 1 (S3)              → Story 5 (student photos), Story 6 (staff photos)
-Story 2 (Auth)            → All subsequent stories (auth is foundation)
-Story 3 (schoolId)        → Story 21 (auth matrix tests — tests need schoolId in data)
-Story 4 (health/logging)  → Story 20 (AI degradation), Story 28 (SSE)
+Story 1  (S3)              → Story 5 (student photos), Story 6 (staff photos), Story 30 (import stores photos)
+Story 2  (Auth)            → All subsequent stories (auth is foundation)
+Story 3  (schoolId)        → Story 21 (auth matrix tests — tests need schoolId in data)
+Story 4  (health/logging)  → Story 20 (AI degradation), Story 28 (SSE)
+Story 29 (Password Reset)  → Story 2 must be complete (shares refresh_tokens invalidation)
+Story 30 (DB Import)       → Story 1 (import may include photos stored in S3)
 
-Story 5 (Student CRUD)    → Story 7 (attendance), Story 8 (fees), Story 15 (transport)
-Story 6 (Staff CRUD)      → Story 7 (attendance), Story 10 (leave requests), Story 17 (timetable)
-Story 8 (Fee CRUD)        → Story 9 (discount engine)
-Story 10 (Leave/Approvals)→ Story 17 (timetable — leave affects availability)
-Story 16 (Notifications)  → Story 10 (approval notifications), Story 11 (maintenance notifications), Story 13 (incident notifications)
-Story 17 (Timetable)      → Story 18 (AI dispatch — substitution tool)
+Story 5  (Student CRUD)    → Story 7 (attendance), Story 8 (fees), Story 15 (transport)
+Story 6  (Staff CRUD)      → Story 7 (attendance), Story 10 (leave requests), Story 17 (timetable)
+Story 8  (Fee CRUD)        → Story 9 (discount engine), Story 31 (fee API sync), Story 32 (PDF receipt)
+Story 10 (Leave/Approvals) → Story 17 (timetable — leave affects availability)
+Story 16 (Notifications)   → Story 10 (approval notifications), Story 11 (maintenance notifications), Story 13 (incident notifications)
+Story 17 (Timetable)       → Story 18 (AI dispatch — substitution tool)
 
-Story 11 (Maintenance)    → Story 21 (auth matrix)
-Story 12 (IT/Tech)        → Story 21 (auth matrix)
-Story 18 (Dispatch table) → Story 22 (AI dispatch tests)
+Story 11 (Maintenance)     → Story 21 (auth matrix), Story 33 (audit log)
+Story 12 (IT/Tech)         → Story 21 (auth matrix), Story 33 (audit log)
+Story 18 (Dispatch table)  → Story 22 (AI dispatch tests), Story 33 (audit log — ai_dispatch entries)
+Story 18 (Dispatch table)  → Story 19 (confirmation token hardening builds on Story 18 token store)
 ```
 
 ---
@@ -678,12 +841,19 @@ Story 18 (Dispatch table) → Story 22 (AI dispatch tests)
 
 The following stories are **hard go-live gates** — the platform must not go live without them:
 
-- [ ] Story 1 — S3 file storage (data loss risk)
-- [ ] Story 2 — Auth hardening (security risk)
-- [ ] Story 4 — Health endpoint + logging (operator blind without it)
-- [ ] Story 8 — Fee CRUD + idempotency (financial data integrity)
+- [ ] Story 1  — S3 file storage (data loss risk)
+- [ ] Story 2  — Auth hardening (security risk)
+- [ ] Story 4  — Health endpoint + logging (operator blind without it)
+- [ ] Story 8  — Fee CRUD + idempotency (financial data integrity)
 - [ ] Story 11 — Maintenance admin profile (committed to client)
 - [ ] Story 18 — AI dispatch table formal implementation (safety architecture)
+- [ ] Story 19 — Idempotency + confirmation token hardening (Story 19 security fix applied — fail-closed)
 - [ ] Story 21 — Authorization matrix tests (RBAC verification)
-- [ ] Story 22 — AI dispatch tests (confirm-action gate verification)
+- [ ] Story 22 — AI dispatch tests (confirm-action gate verification, including 409 on used-token replay)
 - [ ] Story 27 — Mobile responsiveness (Aman and Adesh use mobile daily)
+- [ ] Story 29 — Password reset (users must be able to recover access without admin)
+- [ ] Story 32 — Fee receipt PDF (parents require receipts)
+- [ ] Story 33 — Audit log UI (Owner must be able to audit without DB access)
+- [ ] Blocker B2 — MongoDB Atlas M10+ replica set confirmed
+- [ ] Blocker B3 — Azure OpenAI India DPA signed
+- [ ] Blocker B4 — CloudFront SSE timeout ≥ 300s configured
