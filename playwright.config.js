@@ -71,15 +71,16 @@ const config = defineConfig({
       dependencies: ['setup'],
     },
 
-    // WebKit / Safari
-    {
-      name: 'webkit',
-      use: {
-        ...devices['Desktop Safari'],
-        storageState: 'tests/support/fixtures/.auth/admin.json',
-      },
-      dependencies: ['setup'],
-    },
+    // WebKit / Safari — disabled: not supported on macOS 13
+    // Re-enable on macOS 14+ with: npx playwright install webkit
+    // {
+    //   name: 'webkit',
+    //   use: {
+    //     ...devices['Desktop Safari'],
+    //     storageState: 'tests/support/fixtures/.auth/admin.json',
+    //   },
+    //   dependencies: ['setup'],
+    // },
   ],
 
   // ─── Dev server (optional local auto-start) ─────────────────────────────
