@@ -160,7 +160,7 @@ export default function ToolDashboard({ onSelectTool }) {
   const muted = isDark ? '#555' : '#a3a3a3';
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', background: bg, padding: '32px 32px 48px' }}>
+    <div style={{ flex: 1, height: '100%', overflowY: 'auto', background: bg, padding: '32px 32px 48px' }}>
 
       {/* Greeting */}
       <div style={{ marginBottom: 28 }}>
