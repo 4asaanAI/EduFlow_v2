@@ -196,6 +196,10 @@ html, body, #root {
 .prose-chat tbody tr:last-child td { border-bottom: none; }
 .prose-chat tbody tr:hover td { background: var(--bg-hover); }
 
+/* Sidebar conv-menu hover buttons */
+.conv-menu-btn { background: transparent; }
+.conv-menu-btn:hover { background: var(--bg-hover) !important; }
+
 /* Spinner */
 .spinner {
   width: 16px; height: 16px;

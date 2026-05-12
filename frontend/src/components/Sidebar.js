@@ -178,9 +178,8 @@ function ConvMenu({ conv, onClose, onRename, onPin, onStar, onDelete, isDark }) 
         { label: 'Delete', icon: Trash2, action: onDelete, danger: true },
       ].map(item => (
         <button key={item.label} onClick={() => { item.action(); onClose(); }}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 10px', background: 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', color: item.danger ? '#f87171' : 'var(--text-secondary)', fontSize: 12, fontWeight: 500, transition: 'var(--transition-fast)' }}
-          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          className="conv-menu-btn"
+          style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 10px', border: 'none', borderRadius: 7, cursor: 'pointer', color: item.danger ? '#f87171' : 'var(--text-secondary)', fontSize: 12, fontWeight: 500, transition: 'var(--transition-fast)' }}
         >
           <item.icon size={13} />{item.label}
         </button>

@@ -8,6 +8,7 @@ import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn } from './ToolPage';
 import { Plus, CheckCircle, Save, Bold, Underline, List } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
+import DOMPurify from 'dompurify';
 export { FormSubmissions } from './StudentTools';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
@@ -214,7 +215,7 @@ export function QuestionPaperCreator() {
   // When editor becomes visible, populate contenteditable with current content
   useEffect(() => {
     if (isEditing && editorRef.current) {
-      editorRef.current.innerHTML = pendingContentRef.current;
+      editorRef.current.innerHTML = DOMPurify.sanitize(pendingContentRef.current);
       // Move cursor to end
       const range = document.createRange();
       range.selectNodeContents(editorRef.current);
@@ -296,7 +297,7 @@ export function QuestionPaperCreator() {
     overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--tool-hex-ffffff);overflow:auto;display:flex;justify-content:center;';
     const inner = document.createElement('div');
     inner.style.cssText = 'width:794px;padding:40px 48px;font-family:Arial,sans-serif;font-size:13px;line-height:1.7;color:var(--tool-hex-111111);background:var(--tool-hex-ffffff);';
-    inner.innerHTML = liveContent;
+    inner.innerHTML = DOMPurify.sanitize(liveContent);
     overlay.appendChild(inner);
     document.body.appendChild(overlay);
     const opt = {

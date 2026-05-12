@@ -785,7 +785,7 @@ async def create_announcement(request: Request):
         "audience_classes": body.get("audience_classes", []),
         "audience_roles": target_roles,
         "target_roles": target_roles,
-        "channels": body.get("channels", ["push"]),
+        "channels": body.get("channels", []),
         "is_draft": body.get("is_draft", False),
         "sent_at": datetime.now().isoformat() if not body.get("is_draft", False) else None,
         "created_by": user["id"],

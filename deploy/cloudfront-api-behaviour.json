@@ -1,0 +1,15 @@
+{
+  "_comment": "Apply this behaviour to the CloudFront distribution that fronts the frontend. It routes /api/* to the backend ALB so SSE streams are not buffered or cached by CloudFront.",
+  "PathPattern": "/api/*",
+  "TargetOriginId": "eduflow-backend-alb",
+  "ViewerProtocolPolicy": "redirect-to-https",
+  "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+  "_cachePolicyNote": "4135ea2d... is the AWS-managed 'CachingDisabled' policy (no caching at all)",
+  "OriginRequestPolicyId": "b689b0a8-53d0-40ab-baf2-68738e2966ac",
+  "_originRequestPolicyNote": "AllViewerExceptHostHeader — forwards Authorization, Idempotency-Key, X-SSE-Session-ID, and all query strings to origin",
+  "AllowedMethods": ["GET", "HEAD", "OPTIONS", "PUT", "PATCH", "POST", "DELETE"],
+  "CachedMethods": ["GET", "HEAD"],
+  "Compress": false,
+  "SmoothStreaming": false,
+  "_idleTimeoutNote": "CloudFront itself has a hard 60-s read timeout per chunk for non-streaming origins. Route REACT_APP_BACKEND_URL directly to the ALB HTTPS endpoint (not through CloudFront) if SSE streams exceed 60 s between chunks. The ALB is configured to 300 s via .ebextensions/03_alb_sse_timeout.config."
+}

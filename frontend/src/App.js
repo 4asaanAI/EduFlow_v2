@@ -1,4 +1,5 @@
 import './App.css';
+import ErrorBoundary from './components/ErrorBoundary';
 import './theme.css';
 import { UserProvider, useUser } from './contexts/UserContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -34,12 +35,14 @@ function AppContent() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <UserProvider>
-        <ToastProvider>
-          <AppContent />
-        </ToastProvider>
-      </UserProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <UserProvider>
+          <ToastProvider>
+            <AppContent />
+          </ToastProvider>
+        </UserProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }

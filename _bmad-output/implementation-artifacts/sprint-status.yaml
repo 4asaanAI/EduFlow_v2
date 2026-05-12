@@ -36,7 +36,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-05-12"
-last_updated: "2026-05-12"
+last_updated: "2026-05-13"
 project: eduflow
 project_key: NOKEY
 tracking_system: file-system
@@ -153,9 +153,9 @@ development_status:
   epic-6: in-progress
   6-34-mongodb-atlas-m10-replica-set-confirmation: backlog
   6-35-azure-openai-india-region-dpa-signed: backlog
-  6-36-cloudfront-alb-sse-timeout-configuration: backlog
-  6-37-production-deployment-to-aws-elastic-beanstalk: backlog
-  6-38-staff-training-guided-onboarding-sessions: backlog
+  6-36-cloudfront-alb-sse-timeout-configuration: done
+  6-37-production-deployment-to-aws-elastic-beanstalk: done
+  6-38-staff-training-guided-onboarding-sessions: done
   epic-6-retrospective: optional
 
   # ─────────────────────────────────────────────
