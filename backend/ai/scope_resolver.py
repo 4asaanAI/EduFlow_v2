@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Deterministic scope resolver for EduFlow.
 
@@ -45,8 +47,6 @@ Usage
     if scope.can_see_personal_info(target_user):
         ...
 """
-
-from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field

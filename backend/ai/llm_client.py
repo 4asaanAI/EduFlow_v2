@@ -2,7 +2,11 @@ import os
 import uuid
 import asyncio
 import logging
-from openai import OpenAI
+
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +18,7 @@ class LLMClient:
         self.deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-5.3-chat")
         self.api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2026-03-03")
 
-        if self.api_key and self.endpoint:
+        if self.api_key and self.endpoint and OpenAI:
             # Endpoint already includes /openai/v1 path (Azure AI Foundry style)
             # Use standard OpenAI client with base_url to avoid doubled path
             base_url = self.endpoint.rstrip("/")
@@ -24,7 +28,7 @@ class LLMClient:
             )
         else:
             self._client = None
-            logger.warning("AZURE_OPENAI_API_KEY or AZURE_OPENAI_ENDPOINT not set")
+            logger.warning("Azure OpenAI client not configured")
 
     async def chat(self, system_prompt: str, messages: list, session_id: str = None) -> tuple:
         if not session_id:

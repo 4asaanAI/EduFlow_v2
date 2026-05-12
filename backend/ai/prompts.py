@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 EduFlow AI — System Prompt Builder
 School management AI assistant for Indian schools (CBSE/ICSE/UP Board/Bihar Board).

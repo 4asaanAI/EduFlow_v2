@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -8,12 +10,21 @@ from pathlib import Path
 import os
 import logging
 import time
-import json
+import uuid
+import httpx
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
-from database import connect_db, disconnect_db
+from database import connect_db, disconnect_db, get_raw_db
+from logging_config import (
+    configure_logging,
+    duration_ms_ctx,
+    method_ctx,
+    path_ctx,
+    request_id_ctx,
+    status_code_ctx,
+)
 from routes.chat import router as chat_router
 from routes.students import router as students_router
 from routes.staff import router as staff_router
@@ -34,10 +45,7 @@ from routes.queries import router as queries_router
 from routes.assistant import router as assistant_router
 from routes.image_gen import router as image_gen_router
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-)
+configure_logging()
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
@@ -107,10 +115,24 @@ async def security_headers(request: Request, call_next):
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start = time.time()
+    request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    request_id_token = request_id_ctx.set(request_id)
+    method_token = method_ctx.set(request.method)
+    path_token = path_ctx.set(request.url.path)
+    status_token = status_code_ctx.set(None)
+    duration_token = duration_ms_ctx.set(None)
     response = await call_next(request)
     duration = round((time.time() - start) * 1000, 1)
+    response.headers["X-Request-ID"] = request_id
+    status_code_ctx.set(response.status_code)
+    duration_ms_ctx.set(duration)
     if not request.url.path.startswith("/api/health"):
-        logger.info(f"{request.method} {request.url.path} → {response.status_code} ({duration}ms)")
+        logger.info("request completed")
+    request_id_ctx.reset(request_id_token)
+    method_ctx.reset(method_token)
+    path_ctx.reset(path_token)
+    status_code_ctx.reset(status_token)
+    duration_ms_ctx.reset(duration_token)
     return response
 
 
@@ -118,7 +140,7 @@ async def log_requests(request: Request, call_next):
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Unhandled error on {request.method} {request.url.path}: {str(exc)[:200]}")
+    logger.error("unhandled request error", exc_info=(type(exc), exc, exc.__traceback__))
     response = JSONResponse(
         status_code=500,
         content={"success": False, "detail": "An internal error occurred"},
@@ -152,7 +174,7 @@ app.include_router(image_gen_router)
 @app.on_event("startup")
 async def startup():
     await connect_db()
-    logger.info("EduFlow API started — MongoDB connected")
+    logger.info("EduFlow API started")
 
 
 @app.on_event("shutdown")
@@ -163,3 +185,60 @@ async def shutdown():
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "service": "EduFlow API"}
+
+
+async def _check_db() -> str:
+    try:
+        await get_raw_db().command("ping")
+        return "ok"
+    except Exception:
+        logger.warning("readiness db check failed", exc_info=True)
+        return "error"
+
+
+async def _check_ai() -> str:
+    endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
+    if not endpoint:
+        return "degraded"
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            response = await client.get(endpoint.rstrip("/"))
+        return "ok" if response.status_code < 500 else "degraded"
+    except Exception:
+        logger.warning("readiness ai check degraded", exc_info=True)
+        return "degraded"
+
+
+async def _check_biometric() -> str:
+    endpoint = os.environ.get("BIOMETRIC_HEALTH_URL")
+    if not endpoint:
+        return "degraded"
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            response = await client.get(endpoint)
+        return "ok" if response.status_code < 500 else "degraded"
+    except Exception:
+        logger.warning("readiness biometric check degraded", exc_info=True)
+        return "degraded"
+
+
+@app.get("/api/health/ready")
+async def health_ready():
+    db_status = await _check_db()
+    ai_status = await _check_ai()
+    response = {
+        "db": db_status,
+        "ai": ai_status,
+    }
+    if os.environ.get("BIOMETRIC_ENABLED", "").lower() == "true":
+        response["biometric"] = await _check_biometric()
+
+    if db_status == "error":
+        overall = "down"
+    elif any(value == "degraded" for value in response.values()):
+        overall = "degraded"
+    else:
+        overall = "ready"
+
+    response["overall"] = overall
+    return response

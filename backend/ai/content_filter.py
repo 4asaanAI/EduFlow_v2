@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 EduFlow Content Safety Filter
 ==============================

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Gemini-powered image generation for certificates and ID cards.
 Uses Imagen 3 for visual backgrounds, fpdf2 for PDF assembly.

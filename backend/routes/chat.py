@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Chat routes — conversation CRUD + SSE streaming message handler
 

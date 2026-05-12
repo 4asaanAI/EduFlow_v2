@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Auth routes — Password login and JWT token management.
 

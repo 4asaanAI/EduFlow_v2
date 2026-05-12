@@ -121,6 +121,10 @@ def get_db():
     return ScopedDatabase(_db, get_school_id())
 
 
+def get_raw_db():
+    return _db
+
+
 async def _create_indexes():
     db = _db
     await db.students.create_index("class_id")
