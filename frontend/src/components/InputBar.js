@@ -321,7 +321,7 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
         <div style={{
           background: inputBg,
           border: `1px solid ${disabled ? (isDark ? '#222' : '#eee') : inputBorder}`,
-          borderRadius: 16, display: 'flex', alignItems: 'flex-end',
+          borderRadius: 16, display: 'flex', alignItems: 'center',
           padding: '10px 12px', gap: 8,
           boxShadow: isDark ? '0 2px 12px rgba(0,0,0,0.3)' : '0 2px 12px rgba(0,0,0,0.06)',
           transition: 'border-color var(--transition-fast), box-shadow var(--transition-fast)',
