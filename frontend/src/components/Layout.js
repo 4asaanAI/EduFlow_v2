@@ -27,6 +27,7 @@ const loadTool = async (toolId) => {
   if (toolId === 'fee-collection') return (await import('./tools/FeeCollection')).default;
   if (toolId === 'fee-sync') return (await import('./tools/FeeSync')).default;
   if (toolId === 'student-database') return (await import('./tools/StudentDatabase')).default;
+  if (toolId === 'school-activities') return (await import('./tools/SchoolActivities')).default;
 
   const OWNERS = ['school-pulse','fee-collection','fee-sync','student-strength','data-import','attendance-overview','staff-tracker','staff-attendance-tracker','financial-reports','announcement-broadcaster','admission-funnel','staff-leave-manager','staff-performance','ai-health-report','smart-alerts','expense-tracker','complaint-tracker','custom-report-builder','board-report','smart-fee-defaulter','attendance-alerts'];
   const ADMINS = ['fee-tracker','certificate-generator','circular-sender','enquiry-register','document-scanner','smart-fee-defaulter','admission-pipeline','parent-message','student-transfer','id-card-generator','asset-tracker','transport-manager','automated-report','custom-form-builder','report-card-builder','student-performance-viewer','attendance-alerts'];

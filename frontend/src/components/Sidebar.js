@@ -8,7 +8,7 @@ import {
   ClipboardList, Brain, PenTool, BarChart, UserCheck, Award, Truck,
   Package, Printer, FilePlus, HelpCircle, Target, Compass, FileCheck,
   Edit2, X, ChevronDown, ChevronRight, MessageCircle, Settings, User, LogOut, Sun, Moon,
-  LifeBuoy, Database, RefreshCw, Wrench, Monitor, AlertTriangle, ScrollText,
+  LifeBuoy, Database, RefreshCw, Wrench, Monitor, AlertTriangle, ScrollText, Trophy,
 } from 'lucide-react';
 
 const TOOLS_BY_ROLE = {
@@ -37,6 +37,7 @@ const TOOLS_BY_ROLE = {
     { id: 'facility-requests', name: 'Facility Requests', subtitle: 'Maintenance queue', icon: Wrench, color: '#fb923c' },
     { id: 'tech-issues', name: 'Tech Issues', subtitle: 'IT request tracker', icon: Monitor, color: '#818cf8' },
     { id: 'incident-tracker', name: 'Incidents & Visitors', subtitle: 'Log & track', icon: AlertTriangle, color: '#f87171' },
+    { id: 'school-activities', name: 'School Activities', subtitle: 'Houses, sports, awards', icon: Trophy, color: '#f59e0b' },
     { id: 'audit-log', name: 'Audit Log', subtitle: 'Who did what', icon: ScrollText, color: '#737373' },
     { id: 'fee-receipts', name: 'Fee Receipts', subtitle: 'PDF & export', icon: FileText, color: '#34d399' },
     { id: 'query-section', name: 'Query & Support', subtitle: 'Tickets & issues', icon: LifeBuoy, color: '#22d3ee' },
@@ -62,6 +63,7 @@ const TOOLS_BY_ROLE = {
     { id: 'facility-requests', name: 'Facility Requests', subtitle: 'Maintenance queue', icon: Wrench, color: '#fb923c' },
     { id: 'tech-issues', name: 'Tech Issues', subtitle: 'IT request tracker', icon: Monitor, color: '#818cf8' },
     { id: 'incident-tracker', name: 'Incidents & Visitors', subtitle: 'Log & track', icon: AlertTriangle, color: '#f87171' },
+    { id: 'school-activities', name: 'School Activities', subtitle: 'Houses, sports, awards', icon: Trophy, color: '#f59e0b' },
     { id: 'audit-log', name: 'Audit Log', subtitle: 'Who did what', icon: ScrollText, color: '#737373' },
     { id: 'automated-report', name: 'Auto Reports', subtitle: 'Scheduled reports', icon: FileText, color: '#737373' },
     { id: 'custom-form-builder', name: 'Form Builder', subtitle: 'Dynamic forms', icon: FilePlus, color: '#737373' },
@@ -125,6 +127,7 @@ const ADMIN_SUBCATEGORY_TOOLS = {
     'complaint-tracker',
     'smart-alerts',
     'transport-manager',
+    'school-activities',
     'document-scanner',
     'audit-log',
     'custom-form-builder',

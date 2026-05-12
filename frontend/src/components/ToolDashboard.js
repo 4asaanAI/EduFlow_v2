@@ -6,7 +6,7 @@ import {
   CalendarDays, UserPlus, MessageSquare, BookOpen, ClipboardList,
   PenTool, BarChart, Award, Truck, Package, Printer, FilePlus,
   Target, FileCheck, LifeBuoy, Wrench, Monitor, AlertTriangle,
-  ScrollText, Shield,
+  ScrollText, Shield, Trophy,
 } from 'lucide-react';
 
 // ─── All tool definitions ──────────────────────────────────────────────────────
@@ -37,6 +37,7 @@ const T = {
   'audit-log':             { id: 'audit-log',             name: 'Audit Log',           subtitle: 'Who did what',          icon: ScrollText,    color: '#737373' },
   'fee-receipts':          { id: 'fee-receipts',          name: 'Fee Receipts',        subtitle: 'PDF & export',          icon: FileText,      color: '#34d399' },
   'principal-daily':       { id: 'principal-daily',       name: 'Principal Daily',     subtitle: 'Absences & subs',       icon: CalendarDays,  color: '#fbbf24' },
+  'school-activities':     { id: 'school-activities',     name: 'School Activities',   subtitle: 'Houses, sports, awards', icon: Trophy,         color: '#f59e0b' },
 
   // Teacher-only tools
   'class-attendance-marker':     { id: 'class-attendance-marker',     name: 'Attendance',           subtitle: 'Mark my class',        icon: ClipboardList, color: '#fb923c' },
@@ -62,8 +63,8 @@ const TOOL_SETS = {
     'circular-sender','enquiry-register','document-scanner','smart-fee-defaulter',
     'admission-pipeline','parent-message','student-transfer','id-card-generator',
     'principal-daily','timetable-builder','asset-tracker','transport-manager','incident-tracker',
-    'automated-report','custom-form-builder','attendance-alerts','query-section',
-    'audit-log',
+    'school-activities','automated-report','custom-form-builder','attendance-alerts',
+    'query-section','audit-log',
   ],
   admin_accountant: [
     'student-database','fee-tracker','smart-fee-defaulter','fee-receipts',
@@ -113,8 +114,8 @@ const OWNER_TOOLS = [
   'circular-sender','enquiry-register','smart-fee-defaulter','admission-pipeline',
   'parent-message','id-card-generator','timetable-builder','asset-tracker',
   'transport-manager','incident-tracker','facility-requests','tech-issues',
-  'fee-receipts','audit-log','automated-report','custom-form-builder',
-  'query-section',
+  'fee-receipts','school-activities','audit-log','automated-report',
+  'custom-form-builder','query-section',
 ];
 
 function getTools(user) {

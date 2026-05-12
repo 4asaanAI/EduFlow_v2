@@ -132,6 +132,13 @@ development_status:
   8c-06-frontend-student-detail-side-panel: done
 
   # ─────────────────────────────────────────────
+  # Sprint 8-D — School Activities & Houses
+  # ─────────────────────────────────────────────
+  8d-01-backend-activities-routes-houses-positions-teams: done
+  8d-02-frontend-school-activities-component: done
+  8d-03-sidebar-tooldashboard-layout-wiring: done
+
+  # ─────────────────────────────────────────────
   # Phase 6 — Deployment & Go-Live (5 stories)
   # ─────────────────────────────────────────────
   epic-6: in-progress
