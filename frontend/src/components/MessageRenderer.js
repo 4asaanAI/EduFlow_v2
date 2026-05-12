@@ -215,7 +215,7 @@ export default function MessageRenderer({ message, isStreaming, onActionButton }
   const markdownFn = parseMarkdownText(isDark);
 
   return (
-    <div data-testid="ai-message" style={{ display: 'flex', gap: 14, marginBottom: 24, alignItems: 'flex-start' }}>
+    <div data-testid="assistant-message" style={{ display: 'flex', gap: 14, marginBottom: 24, alignItems: 'flex-start' }}>
       <div style={{
         width: 28, height: 28, borderRadius: 8, flexShrink: 0,
         background: 'linear-gradient(135deg, rgba(79,143,247,0.12), rgba(167,139,250,0.12))',

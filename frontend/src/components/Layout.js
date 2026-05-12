@@ -122,7 +122,7 @@ export default function Layout() {
   const bg = isDark ? '#111111' : '#f5f5f5';
 
   return (
-    <div style={{ display: 'flex', height: '100vh', background: bg, overflow: 'hidden' }}>
+    <div data-testid="app-layout" style={{ display: 'flex', height: '100vh', background: bg, overflow: 'hidden' }}>
       {sidebarOpen && (
         <div onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 39, display: 'none', backdropFilter: 'blur(2px)' }} className="mobile-overlay" />
       )}

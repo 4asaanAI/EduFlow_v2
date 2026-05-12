@@ -11,7 +11,7 @@ const { defineConfig, devices } = require('@playwright/test');
 
 /** @type {import('@playwright/test').PlaywrightTestConfig} */
 const config = defineConfig({
-  testDir: './tests/e2e',
+  testDir: './tests',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -48,12 +48,13 @@ const config = defineConfig({
     // Setup project — authenticate once, reuse session
     {
       name: 'setup',
-      testMatch: /.*\.setup\.js/,
+      testMatch: /support\/fixtures\/auth\.setup\.js/,
     },
 
     // Chromium (primary)
     {
       name: 'chromium',
+      testMatch: /e2e\/.*\.spec\.js/,
       use: {
         ...devices['Desktop Chrome'],
         storageState: 'tests/support/fixtures/.auth/admin.json',
@@ -64,6 +65,7 @@ const config = defineConfig({
     // Firefox
     {
       name: 'firefox',
+      testMatch: /e2e\/.*\.spec\.js/,
       use: {
         ...devices['Desktop Firefox'],
         storageState: 'tests/support/fixtures/.auth/admin.json',
@@ -84,13 +86,20 @@ const config = defineConfig({
   ],
 
   // ─── Dev server (optional local auto-start) ─────────────────────────────
-  // Uncomment to auto-start the frontend when running locally.
-  // webServer: {
-  //   command: 'yarn --cwd frontend start',
-  //   url: 'http://localhost:3000',
-  //   reuseExistingServer: !process.env.CI,
-  //   timeout: 120_000,
-  // },
+  webServer: [
+    {
+      command: 'python3 tests/support/e2e_backend.py',
+      url: 'http://localhost:8000/api/auth/refresh',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      command: 'cd frontend && PORT=3000 BROWSER=none REACT_APP_BACKEND_URL=http://localhost:8000 npm start',
+      url: 'http://localhost:3000',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+  ],
 });
 
 module.exports = config;

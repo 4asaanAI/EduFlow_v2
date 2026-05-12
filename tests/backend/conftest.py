@@ -20,7 +20,8 @@ from typing import AsyncGenerator, Generator
 # ─── Override environment before importing app ─────────────────────────────
 # Set test environment variables before any app import
 os.environ.setdefault("ENVIRONMENT", "test")
-os.environ.setdefault("MONGODB_URL", "mongodb://localhost:27017/eduflow_test")
+os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017/eduflow_test")
+os.environ.setdefault("DB_NAME", "eduflow_test")
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-key-not-for-production")
 os.environ.setdefault("CORS_ORIGINS", "http://localhost:3000")
 
@@ -32,10 +33,155 @@ try:
     import sys
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
     from server import app
+    import server
+    import routes.auth as auth_routes
+    import routes.students as student_routes
+    from middleware.auth import hash_password
     APP_AVAILABLE = True
 except ImportError as e:
     APP_AVAILABLE = False
     _import_error = str(e)
+
+
+def _get_nested(doc, key):
+    value = doc
+    for part in key.split("."):
+        if not isinstance(value, dict):
+            return None
+        value = value.get(part)
+    return value
+
+
+def _matches(doc, query):
+    for key, expected in (query or {}).items():
+        if key == "$or":
+            if not any(_matches(doc, option) for option in expected):
+                return False
+            continue
+        actual = _get_nested(doc, key)
+        if isinstance(expected, dict):
+            for op, value in expected.items():
+                if op == "$in" and actual not in value:
+                    return False
+                if op == "$regex":
+                    import re
+                    flags = re.I if expected.get("$options") == "i" else 0
+                    if re.search(value, str(actual or ""), flags) is None:
+                        return False
+                if op == "$options":
+                    continue
+            continue
+        if actual != expected:
+            return False
+    return True
+
+
+class FakeCursor:
+    def __init__(self, docs):
+        self.docs = list(docs)
+
+    def sort(self, key, direction):
+        self.docs.sort(key=lambda doc: doc.get(key) or "", reverse=direction < 0)
+        return self
+
+    def skip(self, count):
+        self.docs = self.docs[count:]
+        return self
+
+    def limit(self, count):
+        self.docs = self.docs[:count]
+        return self
+
+    async def to_list(self, _limit):
+        return [{k: v for k, v in doc.items() if k != "_id"} for doc in self.docs]
+
+
+class FakeCollection:
+    def __init__(self, docs=None):
+        self.docs = docs or []
+
+    async def find_one(self, query=None, projection=None):
+        for doc in self.docs:
+            if _matches(doc, query or {}):
+                return {k: v for k, v in doc.items() if k != "_id"} if projection else doc
+        return None
+
+    def find(self, query=None, projection=None):
+        return FakeCursor([doc for doc in self.docs if _matches(doc, query or {})])
+
+    async def count_documents(self, query=None):
+        return sum(1 for doc in self.docs if _matches(doc, query or {}))
+
+    async def insert_one(self, doc):
+        self.docs.append(doc)
+        return type("Result", (), {"inserted_id": doc.get("_id")})()
+
+    async def update_one(self, query, update, upsert=False):
+        for doc in self.docs:
+            if _matches(doc, query):
+                doc.update(update.get("$set", {}))
+                doc.update({k: doc.get(k, 0) + v for k, v in update.get("$inc", {}).items()})
+                return type("Result", (), {"modified_count": 1})()
+        if upsert:
+            doc = {**query, **update.get("$setOnInsert", {}), **update.get("$set", {})}
+            for key, value in update.get("$inc", {}).items():
+                doc[key] = value
+            self.docs.append(doc)
+            return type("Result", (), {"modified_count": 1})()
+        return type("Result", (), {"modified_count": 0})()
+
+    async def update_many(self, query, update):
+        count = 0
+        for doc in self.docs:
+            if _matches(doc, query):
+                doc.update(update.get("$set", {}))
+                count += 1
+        return type("Result", (), {"modified_count": count})()
+
+    async def delete_one(self, query):
+        before = len(self.docs)
+        self.docs[:] = [doc for doc in self.docs if not _matches(doc, query)]
+        return type("Result", (), {"deleted_count": before - len(self.docs)})()
+
+
+class FakeDb:
+    def __init__(self):
+        self.auth_users = FakeCollection([
+            {
+                "id": "admin-1",
+                "username": "admin",
+                "username_lower": "admin",
+                "password_hash": hash_password("admin123"),
+                "is_active": True,
+                "user_info": {"id": "admin-1", "role": "owner", "name": "Admin User"},
+            }
+        ])
+        self.login_attempts = FakeCollection()
+        self.refresh_tokens = FakeCollection()
+        self.students = FakeCollection([
+            {"id": "student-1", "name": "Demo Student", "class_id": "class-1", "admission_number": "ADM1", "is_active": True}
+        ])
+        self.classes = FakeCollection([
+            {"id": "class-1", "name": "Class 5", "section": "A"},
+            {"id": "class-2", "name": "5", "section": "A"},
+        ])
+        self.guardians = FakeCollection()
+        self.staff = FakeCollection()
+
+
+if APP_AVAILABLE:
+    _fake_db = FakeDb()
+
+    async def _noop_connect():
+        return None
+
+    async def _noop_disconnect():
+        return None
+
+    server.connect_db = _noop_connect
+    server.disconnect_db = _noop_disconnect
+    auth_routes.get_db = lambda: _fake_db
+    student_routes.get_db = lambda: _fake_db
 
 
 # ─── Event loop (for async tests) ─────────────────────────────────────────
@@ -117,11 +263,10 @@ def student_data() -> dict:
     suffix = random.randint(1000, 9999)
     return {
         "name": f"Test Student {suffix}",
-        "class_name": "Class 5",
-        "section": "A",
+        "class_id": "class-1",
         "roll_number": f"ROLL{suffix}",
-        "parent_name": f"Parent {suffix}",
-        "parent_phone": f"9{suffix:09d}",
+        "guardian_name": f"Parent {suffix}",
+        "guardian_phone": f"9{suffix:09d}",
         "gender": "M",
     }
 

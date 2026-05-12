@@ -30,6 +30,10 @@ class ChatPage {
    */
   async sendMessage(message) {
     await this.messageInput.fill(message);
+    await this.page.waitForFunction(() => {
+      const button = document.querySelector('[data-testid="chat-send"]');
+      return button && !button.disabled;
+    });
     await this.sendButton.click();
   }
 
@@ -43,6 +47,7 @@ class ChatPage {
     // Wait for thinking indicator to appear then disappear
     await this.thinkingIndicator.waitFor({ state: 'visible', timeout: 5_000 }).catch(() => {});
     await this.thinkingIndicator.waitFor({ state: 'hidden', timeout });
+    await this.messageList.getByTestId('assistant-message').last().waitFor({ state: 'visible', timeout });
   }
 
   /**

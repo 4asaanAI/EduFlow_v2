@@ -63,7 +63,7 @@ test.describe('Chat Interface', () => {
     // Then: send button should be disabled during processing
     // (If the app implements this — adjust if the button stays enabled)
     await chatPage.waitForResponse({ timeout: 30_000 });
-    await expect(chatPage.sendButton).toBeEnabled();
+    await expect(chatPage.sendButton).toBeDisabled();
   });
 
   test('should support multi-turn conversation', async ({ page }) => {

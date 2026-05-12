@@ -96,6 +96,7 @@ export default function Login() {
     setLoading(true);
     try {
       await loginPassword(username.trim(), password.trim());
+      window.history.replaceState(null, '', '/dashboard');
     } catch (err) {
       setError(err.message);
     }
@@ -154,12 +155,13 @@ export default function Login() {
               </p>
             </div>
 
-            <form onSubmit={handleLogin}>
+            <form onSubmit={handleLogin} data-testid="login-form">
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: 'block', fontSize: 12, color: secondary, fontWeight: 600, marginBottom: 8 }}>
                   Username
                 </label>
                 <input
+                  data-testid="login-username"
                   type="text"
                   value={username}
                   onChange={e => { setUsername(e.target.value); setError(''); }}
@@ -177,6 +179,7 @@ export default function Login() {
                   Password
                 </label>
                 <input
+                  data-testid="login-password"
                   type="password"
                   value={password}
                   onChange={e => { setPassword(e.target.value); setError(''); }}
@@ -194,11 +197,11 @@ export default function Login() {
                   background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)',
                   borderRadius: 10, padding: '10px 14px', marginBottom: 16,
                 }}>
-                  <p style={{ fontSize: 13, color: '#f87171', margin: 0 }}>{error}</p>
+                  <p data-testid="login-error" style={{ fontSize: 13, color: '#f87171', margin: 0 }}>{error}</p>
                 </div>
               )}
 
-              <button type="submit" disabled={loading} style={buttonStyle(loading)}>
+              <button type="submit" data-testid="login-submit" disabled={loading} style={buttonStyle(loading)}>
                 {loading && <Loader2 size={16} className="spin" />}
                 {loading ? 'Signing in...' : 'Sign In'}
               </button>

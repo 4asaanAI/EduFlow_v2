@@ -24,6 +24,9 @@ function AppContent() {
 
   if (path === '/forgot-password') return <ForgotPassword />;
   if (path === '/reset-password') return <ResetPassword />;
+  if (!isAuthenticated && path !== '/login') {
+    window.history.replaceState(null, '', '/login');
+  }
 
   return isAuthenticated ? <Layout /> : <Login />;
 }

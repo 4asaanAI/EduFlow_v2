@@ -452,9 +452,9 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   const chatBg = isDark ? '#1a1a1a' : '#f5f5f5';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', background: chatBg }}>
+    <div data-testid="chat-interface" style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', background: chatBg }}>
       <div data-testid="messages-area" style={{ flex: 1, overflowY: 'auto', padding: '24px 0 200px' }}>
-        <div style={{ maxWidth: 760, margin: '0 auto', padding: '0 24px' }}>
+        <div data-testid="message-list" style={{ maxWidth: 760, margin: '0 auto', padding: '0 24px' }}>
           {isNewChat && (
             <div className="fade-in" style={{ textAlign: 'center', padding: '60px 0 40px' }}>
               <div style={{

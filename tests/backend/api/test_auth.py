@@ -106,9 +106,10 @@ class TestGetMe:
 
         assert response.status_code == 200
         data = response.json()
+        user = data.get("user", data)
         # Verify expected fields are present
-        assert "username" in data or "name" in data
-        assert "role" in data
+        assert "username" in user or "name" in user
+        assert "role" in user
 
     def test_get_me_without_token(self, client):
         """Without Authorization header, should return 401."""

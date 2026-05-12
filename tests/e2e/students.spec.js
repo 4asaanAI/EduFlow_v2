@@ -33,11 +33,12 @@ test.describe('Student Management', () => {
   test('should handle student search query via chat', async ({ page }) => {
     // Given: admin is on the dashboard
     // When: admin searches for a specific student
+    const apiResponsePromise = waitForApiResponse(page, '/api/chat/conversations', { method: 'POST' });
     await chatPage.sendMessage('Find students with pending fees');
 
     // Wait for API response (network-first pattern)
     const [apiResponse] = await Promise.all([
-      waitForApiResponse(page, '/api/chat', { method: 'POST' }),
+      apiResponsePromise,
       chatPage.waitForResponse({ timeout: 30_000 }),
     ]);
 

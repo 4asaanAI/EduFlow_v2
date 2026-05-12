@@ -273,7 +273,7 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
               maxHeight: 160, overflowY: 'auto',
             }}
           />
-          <button data-testid="send-btn" onClick={handleSend} disabled={disabled || !text.trim()}
+          <button data-testid="chat-send" onClick={handleSend} disabled={disabled || !text.trim()}
             style={{
               width: 32, height: 32, borderRadius: 10,
               background: disabled || !text.trim() ? (isDark ? '#333' : '#e5e5e5') : '#171717',
