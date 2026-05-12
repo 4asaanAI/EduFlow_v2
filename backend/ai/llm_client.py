@@ -58,7 +58,10 @@ class LLMClient:
             az_messages.append({"role": role, "content": msg.get("content", "")})
 
         def _call():
-            print(f"[AI] azure | session={session_id} | deployment={self.deployment} | messages={len(az_messages)}")
+            logger.debug(
+                "Azure LLM call | session=%s | deployment=%s | messages=%d",
+                session_id, self.deployment, len(az_messages),
+            )
             response = self._client.chat.completions.create(
                 model=self.deployment,
                 messages=az_messages,
@@ -69,16 +72,31 @@ class LLMClient:
                 tokens = (response.usage.prompt_tokens or 0) + (response.usage.completion_tokens or 0)
             except Exception:
                 tokens = max(1, len(text) // 4)
-            print(f"[AI] azure | done | tokens={tokens}")
+            logger.debug("Azure LLM done | session=%s | tokens=%d", session_id, tokens)
             return text, tokens
 
         try:
             return await asyncio.to_thread(_call)
         except Exception as e:
+            error_str = str(e).lower()
             error_name = e.__class__.__name__.lower()
+
+            # Azure content policy block (HTTP 400) — return a helpful canned message
+            # instead of "AI unavailable" so the user knows what happened
+            if "400" in str(e) or "content_filter" in error_str or "content management policy" in error_str or "badrequesterror" in error_name:
+                logger.warning(f"Azure content filter triggered: {e}")
+                return (
+                    "I wasn't able to process that specific phrasing due to content policy settings on the AI service. "
+                    "Could you try rephrasing your question? For example, instead of mentioning specific complaint categories, "
+                    "try asking about 'open issues', 'pending cases', or 'unresolved grievances'. "
+                    "All your school management tools in the sidebar are fully available.",
+                    0,
+                )
+
             if "timeout" in error_name or "connection" in error_name:
                 logger.warning(f"Azure OpenAI unavailable: {e}")
                 return ai_unavailable_result(error_name)
+
             logger.error(f"Azure OpenAI error: {e}")
             return ai_unavailable_result(error_name or "request_failed")
 

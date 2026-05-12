@@ -130,6 +130,13 @@ KEYWORD_TOOL_MAP = [
     (["transport", "bus route", "bus status"], "get_transport_status"),
     # Inventory
     (["inventory", "school items", "stock"], "get_inventory_status"),
+    # Parent complaints / incidents / grievances
+    (["parent complaint", "parent grievance", "open complaint", "open issue",
+      "pending grievance", "unresolved complaint", "visitor log",
+      "incident report", "complaint status"], "query_incidents"),
+    # Staff list (broader keywords)
+    (["staff directory", "all teachers", "teacher directory",
+      "show staff", "list staff"], "get_staff_list"),
 ]
 
 # ─── Navigate Map ─────────────────────────────────────────────────────────────

@@ -48,6 +48,7 @@ from routes.image_gen import router as image_gen_router
 from routes.import_data import router as import_router
 from routes.issues import router as issues_router
 from routes.audit import router as audit_router
+from routes.chat_upload import router as chat_upload_router
 from services.idempotency import (
     get_replay_response,
     record_key,
@@ -222,6 +223,7 @@ app.include_router(image_gen_router)
 app.include_router(import_router)
 app.include_router(issues_router)
 app.include_router(audit_router)
+app.include_router(chat_upload_router)
 
 
 @app.on_event("startup")

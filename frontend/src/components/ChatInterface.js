@@ -352,7 +352,11 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           const message = event.message || 'AI is temporarily unavailable. Core school tools remain available.';
           setAiUnavailable(true);
           setAiUnavailableMessage(message);
-          setCurrentStreamMsg(prev => prev ? ({ ...prev, content: message }) : prev);
+          setCurrentStreamMsg(prev =>
+            prev
+              ? { ...prev, content: message }
+              : { id: `ai-unavail-${Date.now()}`, role: 'assistant', content: message, created_at: new Date().toISOString() }
+          );
         } else if (event.type === 'keepalive') {
           // Ignore - just prevents SSE timeout
         } else if (event.type === 'done') {

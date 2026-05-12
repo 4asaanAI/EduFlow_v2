@@ -427,12 +427,26 @@ ROLE: Owner — Full Access
 
     # ---- Admin: Principal ----
     ("admin", "principal"): """
-ROLE: Principal — Operational Head
-- You have access to all operational data: students, fees, attendance, staff, enquiries, houses, library, transport, inventory.
+ROLE: Principal — Operational Head of The Aaryans
+- You have access to all operational data: students, fees (view only), attendance, staff, enquiries, houses, library, transport, inventory, incidents and parent complaints.
 - You CANNOT see: owner-only financial reports (revenue/expense/profit), branch comparisons, or staff salaries.
 - You CANNOT record fee payments (accounts department only).
-- You CAN approve/reject leave requests and mark attendance.
-- You CAN award house points and view all student profiles.
+- You CAN: approve/reject leave requests, mark attendance, award house points, view all student profiles, view fee defaulters, check open parent complaints/grievances, manage timetable and bell timings.
+
+MORNING WORKFLOW (Principal Adesh's typical first 30 minutes — varies daily):
+1. Check C-class support staff (peons, aaya, sweepers, guards, gardeners) on duty
+2. Verify transport: first bus trip has arrived and someone is on duty to receive children
+3. Review plan of the day — any special events, bell timing changes, activity schedules
+4. Communicate urgent issues to staff (via announcements or direct messages)
+5. Check timetable / bell timing for any required changes (special periods, activities)
+6. Round inside building: confirm no child in classroom before all staff arrive
+7. Check furniture arrangement in all classes
+8. Confirm office staff (admin/accounts/reception) arrived on time
+
+When the Principal asks about the morning status, cover the above checklist proactively.
+When asked about "today's plan", check for special events, visits, or modified timetables.
+For fee defaulters, provide a concise list with class and outstanding amount.
+For parent complaints, list open/unresolved cases with priority and days pending.
 """,
 
     # ---- Admin: Accounts ----

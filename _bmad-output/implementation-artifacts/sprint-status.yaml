@@ -107,7 +107,22 @@ development_status:
   epic-5-retrospective: optional
 
   # ─────────────────────────────────────────────
-  # Phase 6 — Deployment & Go-Live (5 stories) ← ACTIVE SPRINT
+  # Sprint 8-A — Critical Platform Fixes (BMAD Code Review)
+  # ─────────────────────────────────────────────
+  epic-8a: done
+  8a-01-fix-duplicate-staff-tracker-sidebar: done
+  8a-02-merge-student-strength-into-database: done
+  8a-03-expand-principal-tools-14-to-22: done
+  8a-04-fix-ai-silent-response-frontend: done
+  8a-05-fix-azure-content-filter-graceful-degradation: done
+  8a-06-remove-print-from-llm-client: done
+  8a-07-add-parent-complaint-keywords-ai: done
+  8a-08-principal-morning-workflow-system-prompt: done
+  8b-01-file-upload-ai-chat-backend: done
+  8b-02-file-upload-ai-chat-frontend-inputbar: done
+
+  # ─────────────────────────────────────────────
+  # Phase 6 — Deployment & Go-Live (5 stories)
   # ─────────────────────────────────────────────
   epic-6: in-progress
   6-34-mongodb-atlas-m10-replica-set-confirmation: backlog

@@ -166,6 +166,7 @@ function StudentModal({ classes, initialStudent, onClose, onSaved }) {
 
 export default function StudentDatabase() {
   const { currentUser } = useUser();
+  const [tab, setTab] = useState('database');
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -184,6 +185,20 @@ export default function StudentDatabase() {
   const canManage = ['owner', 'admin'].includes(currentUser.role);
   const canErase = currentUser.role === 'owner';
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / 20)), [total]);
+
+  const strengthByClass = useMemo(() => {
+    const map = {};
+    students.forEach(s => {
+      const key = s.class_info ? `${s.class_info.name}-${s.class_info.section}` : 'Unassigned';
+      if (!map[key]) map[key] = { boys: 0, girls: 0, other: 0, total: 0 };
+      const g = (s.gender || '').toLowerCase();
+      if (g === 'male' || g === 'boy' || g === 'm') map[key].boys++;
+      else if (g === 'female' || g === 'girl' || g === 'f') map[key].girls++;
+      else map[key].other++;
+      map[key].total++;
+    });
+    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [students]);
 
   const loadClasses = async () => {
     const res = await getAllClasses();
@@ -242,7 +257,7 @@ export default function StudentDatabase() {
 
   return (
     <div data-testid="student-database-tool" style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 650, color: 'var(--c-text)', margin: 0 }}>Student Database</h1>
           <div style={{ color: 'var(--c-faint)', fontSize: 12, marginTop: 3 }}>{total} records</div>
@@ -252,6 +267,71 @@ export default function StudentDatabase() {
           {canManage && <ActionButton onClick={() => setShowAdd(true)}><Plus size={13} />Add Student</ActionButton>}
         </div>
       </div>
+
+      <div style={{ display: 'flex', gap: 4, marginBottom: 18, borderBottom: '1px solid var(--c-border)', paddingBottom: 0 }}>
+        {[{ id: 'database', label: 'Database' }, { id: 'strength', label: 'Class Strength' }].map(t => (
+          <button
+            key={t.id}
+            data-testid={`tab-${t.id}`}
+            onClick={() => setTab(t.id)}
+            style={{
+              padding: '8px 16px',
+              fontSize: 13,
+              fontWeight: tab === t.id ? 650 : 500,
+              color: tab === t.id ? '#4f8ff7' : 'var(--c-muted)',
+              background: 'transparent',
+              border: 'none',
+              borderBottom: tab === t.id ? '2px solid #4f8ff7' : '2px solid transparent',
+              cursor: 'pointer',
+              marginBottom: -1,
+              transition: 'color 0.15s',
+            }}
+          >{t.label}</button>
+        ))}
+      </div>
+
+      {tab === 'strength' && (
+        <div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 24 }}>
+            {[
+              { label: 'Total Students', value: total, color: '#4f8ff7' },
+              { label: 'Classes', value: strengthByClass.length, color: '#34d399' },
+              { label: 'Boys', value: strengthByClass.reduce((a, [, v]) => a + v.boys, 0), color: '#60a5fa' },
+              { label: 'Girls', value: strengthByClass.reduce((a, [, v]) => a + v.girls, 0), color: '#f472b6' },
+            ].map(stat => (
+              <div key={stat.label} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 10, padding: '16px 18px' }}>
+                <div style={{ fontSize: 26, fontWeight: 700, color: stat.color }}>{stat.value}</div>
+                <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>{stat.label}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  {['Class', 'Boys', 'Girls', 'Other', 'Total'].map(h => (
+                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 750, color: 'var(--c-faint)', textTransform: 'uppercase', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {strengthByClass.map(([cls, counts], i) => (
+                  <tr key={cls} style={{ borderBottom: i < strengthByClass.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
+                    <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--c-text)', fontSize: 13 }}>{cls}</td>
+                    <td style={{ padding: '10px 14px', color: '#60a5fa', fontSize: 13 }}>{counts.boys}</td>
+                    <td style={{ padding: '10px 14px', color: '#f472b6', fontSize: 13 }}>{counts.girls}</td>
+                    <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 13 }}>{counts.other}</td>
+                    <td style={{ padding: '10px 14px', fontWeight: 700, color: 'var(--c-text)', fontSize: 13 }}>{counts.total}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {tab === 'database' && (<>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ position: 'relative', flex: '1 1 260px', maxWidth: 340 }}>
@@ -338,6 +418,7 @@ export default function StudentDatabase() {
           <ActionButton variant="secondary" onClick={() => setPage((current) => current + 1)} disabled={page >= totalPages}>Next</ActionButton>
         </div>
       )}
+      </>)}
 
       {showAdd && <StudentModal classes={classes} onClose={() => setShowAdd(false)} onSaved={loadData} />}
       {editing && <StudentModal classes={classes} initialStudent={editing} onClose={() => setEditing(null)} onSaved={loadData} />}

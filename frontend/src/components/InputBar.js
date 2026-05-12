@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowUp, Slash, AtSign } from 'lucide-react';
+import { ArrowUp, Slash, AtSign, Paperclip, X, Loader } from 'lucide-react';
 import { useUser } from '../contexts/UserContext';
 import { getAuthHeaders } from '../lib/authSession';
+import { uploadChatFile } from '../lib/api';
 
 const TOOLS_BY_ROLE = {
   owner: [
@@ -94,7 +95,11 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
   const [slashFiltered, setSlashFiltered] = useState([]);
   const [atResults, setAtResults] = useState([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
+  const [attachedFile, setAttachedFile] = useState(null);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadError, setUploadError] = useState('');
   const textareaRef = useRef(null);
+  const fileInputRef = useRef(null);
   const slashPosRef = useRef(-1);
   const atPosRef = useRef(-1);
 
@@ -189,11 +194,42 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
     }
   };
 
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadError('');
+    setUploadingFile(true);
+    try {
+      const res = await uploadChatFile(file);
+      if (res.success) {
+        setAttachedFile({ filename: res.filename, extractedText: res.extracted_text, sizeBytes: res.size_bytes });
+      } else {
+        setUploadError(res.detail || 'Upload failed');
+      }
+    } catch {
+      setUploadError('Upload failed. Please try again.');
+    }
+    setUploadingFile(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeAttachment = () => {
+    setAttachedFile(null);
+    setUploadError('');
+  };
+
   const handleSend = () => {
     const trimmed = text.trim();
-    if (!trimmed || disabled) return;
-    onSend(trimmed);
+    if ((!trimmed && !attachedFile) || disabled || uploadingFile) return;
+    let finalText = trimmed;
+    if (attachedFile) {
+      const fileContext = `[File attached: ${attachedFile.filename}]\n\n${attachedFile.extractedText}`;
+      finalText = trimmed ? `${trimmed}\n\n---\n${fileContext}` : fileContext;
+    }
+    onSend(finalText);
     setText('');
+    setAttachedFile(null);
+    setUploadError('');
     setShowSlash(false);
     setShowAt(false);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -253,16 +289,61 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
           </div>
         )}
 
+        {/* File attachment preview */}
+        {attachedFile && (
+          <div style={{
+            background: isDark ? 'rgba(79,143,247,0.08)' : 'rgba(79,143,247,0.05)',
+            border: `1px solid ${isDark ? 'rgba(79,143,247,0.25)' : 'rgba(79,143,247,0.2)'}`,
+            borderRadius: 10, padding: '8px 12px', marginBottom: 8,
+            display: 'flex', alignItems: 'center', gap: 10,
+          }}>
+            <Paperclip size={13} color="#4f8ff7" />
+            <span style={{ fontSize: 12, color: '#4f8ff7', fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {attachedFile.filename}
+            </span>
+            <span style={{ fontSize: 11, color: muted, flexShrink: 0 }}>
+              {Math.round(attachedFile.sizeBytes / 1024)} KB · {attachedFile.extractedText.length.toLocaleString()} chars extracted
+            </span>
+            <button onClick={removeAttachment} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: muted, display: 'flex' }}>
+              <X size={13} />
+            </button>
+          </div>
+        )}
+
+        {uploadError && (
+          <div style={{ fontSize: 11, color: '#f87171', marginBottom: 6 }}>{uploadError}</div>
+        )}
+
+        <input ref={fileInputRef} type="file" onChange={handleFileSelect} style={{ display: 'none' }} data-testid="file-input"
+          accept=".txt,.md,.html,.htm,.csv,.json,.xml,.pdf,.docx,.xlsx,.xls,.pptx,.png,.jpg,.jpeg,.heic,.webp,.gif,.zip,.py,.js,.ts,.sql,.log"
+        />
+
         <div style={{
           background: inputBg,
           border: `1px solid ${disabled ? (isDark ? '#222' : '#eee') : inputBorder}`,
           borderRadius: 16, display: 'flex', alignItems: 'flex-end',
-          padding: '12px 14px', gap: 10,
+          padding: '10px 12px', gap: 8,
           boxShadow: isDark ? '0 2px 12px rgba(0,0,0,0.3)' : '0 2px 12px rgba(0,0,0,0.06)',
           transition: 'border-color var(--transition-fast), box-shadow var(--transition-fast)',
-        }}
-          onFocus={() => {}}
-        >
+        }}>
+          {/* Attach file button */}
+          <button
+            data-testid="attach-file-btn"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={disabled || uploadingFile}
+            title="Attach a file (.pdf, .docx, .xlsx, .pptx, .txt, .png, .zip and more)"
+            style={{
+              width: 32, height: 32, borderRadius: 10, flexShrink: 0,
+              background: 'transparent', border: 'none',
+              cursor: disabled || uploadingFile ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: uploadingFile ? '#4f8ff7' : muted,
+              transition: 'color var(--transition-fast)',
+            }}
+          >
+            {uploadingFile ? <Loader size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Paperclip size={15} />}
+          </button>
+
           <textarea ref={textareaRef} data-testid="chat-input" value={text} onChange={handleChange} onKeyDown={handleKeyDown}
             placeholder={disabled ? 'EduFlow is thinking...' : 'Message EduFlow...'}
             disabled={disabled} rows={1}
@@ -273,18 +354,21 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
               maxHeight: 160, overflowY: 'auto',
             }}
           />
-          <button data-testid="chat-send" onClick={handleSend} disabled={disabled || !text.trim()}
+          <button data-testid="chat-send" onClick={handleSend}
+            disabled={disabled || uploadingFile || (!text.trim() && !attachedFile)}
             style={{
               width: 32, height: 32, borderRadius: 10,
-              background: disabled || !text.trim() ? (isDark ? '#333' : '#e5e5e5') : '#171717',
-              border: 'none', cursor: disabled || !text.trim() ? 'not-allowed' : 'pointer',
+              background: (disabled || uploadingFile || (!text.trim() && !attachedFile)) ? (isDark ? '#333' : '#e5e5e5') : '#171717',
+              border: 'none',
+              cursor: (disabled || uploadingFile || (!text.trim() && !attachedFile)) ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
               transition: 'all var(--transition-fast)',
             }}>
-            <ArrowUp size={15} color={disabled || !text.trim() ? '#666' : '#fff'} strokeWidth={2.5} />
+            <ArrowUp size={15} color={(disabled || !text.trim() && !attachedFile) ? '#666' : '#fff'} strokeWidth={2.5} />
           </button>
         </div>
         <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8, color: footerColor, fontSize: 11, fontWeight: 400 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Paperclip size={10} /> attach</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Slash size={10} /> tools</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><AtSign size={10} /> mention</span>
           <span>EduFlow AI can make mistakes</span>

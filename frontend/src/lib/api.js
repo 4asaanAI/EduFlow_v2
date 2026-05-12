@@ -454,3 +454,16 @@ export async function getSchoolSettings() {
   const res = await apiFetch(`${API}/settings/school`, { headers: getHeaders() });
   return res.json();
 }
+
+// --- Chat file upload ---
+export async function uploadChatFile(file) {
+  const form = new FormData();
+  form.append('file', file);
+  const token = getAccessToken();
+  const res = await fetch(`${API}/chat/upload`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  return res.json();
+}
