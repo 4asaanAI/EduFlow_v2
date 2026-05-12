@@ -210,8 +210,35 @@ export async function getFeeTransactions(user, params = {}) {
   return res.json();
 }
 
-export async function recordFeePayment(user, data) {
+export async function recordFeePayment(user, data, idempotencyKey) {
+  const headers = getHeaders();
+  if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
   const res = await apiFetch(`${API}/fees/transactions`, {
+    method: 'POST', headers, body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function correctFeeTransaction(transactionId, data) {
+  const res = await apiFetch(`${API}/fees/transactions/${transactionId}/correct`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function getFeeSummary(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  const res = await apiFetch(`${API}/fees/summary?${qs}`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function getStudentFeeStatus(studentId) {
+  const res = await apiFetch(`${API}/fees/status/${studentId}`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function createFeeContactLog(data) {
+  const res = await apiFetch(`${API}/fees/contact-log`, {
     method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
   });
   return res.json();

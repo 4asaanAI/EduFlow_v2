@@ -38,6 +38,7 @@ try:
     import routes.students as student_routes
     import routes.staff as staff_routes
     import routes.attendance as attendance_routes
+    import routes.fees as fees_routes
     from middleware.auth import hash_password
     APP_AVAILABLE = True
 except ImportError as e:
@@ -68,6 +69,14 @@ def _matches(doc, query):
         if isinstance(expected, dict):
             for op, value in expected.items():
                 if op == "$in" and actual not in value:
+                    return False
+                if op == "$gte" and actual < value:
+                    return False
+                if op == "$lte" and actual > value:
+                    return False
+                if op == "$gt" and actual <= value:
+                    return False
+                if op == "$lt" and actual >= value:
                     return False
                 if op == "$exists":
                     exists = actual is not None
@@ -199,6 +208,11 @@ class FakeDb:
         self.file_uploads = FakeCollection()
         self.student_attendance = FakeCollection()
         self.attendance_corrections = FakeCollection()
+        self.fee_transactions = FakeCollection()
+        self.fee_idempotency_keys = FakeCollection()
+        self.fee_transaction_corrections = FakeCollection()
+        self.fee_contact_logs = FakeCollection()
+        self.fee_structures = FakeCollection()
 
 
 if APP_AVAILABLE:
@@ -216,6 +230,7 @@ if APP_AVAILABLE:
     student_routes.get_db = lambda: _fake_db
     staff_routes.get_db = lambda: _fake_db
     attendance_routes.get_db = lambda: _fake_db
+    fees_routes.get_db = lambda: _fake_db
 
 
 # ─── Event loop (for async tests) ─────────────────────────────────────────
