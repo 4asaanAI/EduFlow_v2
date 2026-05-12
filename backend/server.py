@@ -44,6 +44,7 @@ from routes.tokens import router as tokens_router
 from routes.queries import router as queries_router
 from routes.assistant import router as assistant_router
 from routes.image_gen import router as image_gen_router
+from routes.import_data import router as import_router
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -169,6 +170,7 @@ app.include_router(tokens_router)
 app.include_router(queries_router)
 app.include_router(assistant_router)
 app.include_router(image_gen_router)
+app.include_router(import_router)
 
 
 @app.on_event("startup")

@@ -3,7 +3,7 @@ import { useUser } from '../../contexts/UserContext';
 import { executeTool, updateLeave, getStaff } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, useToolData, LineChartWidget, BarChartWidget, PieChartWidget } from './ToolPage';
-import { Activity, CheckCircle, XCircle, AlertTriangle, Plus, RefreshCw, Save, TrendingUp, Users, FileText, Send, Download } from 'lucide-react';
+import { Activity, CheckCircle, XCircle, AlertTriangle, Plus, RefreshCw, Save, TrendingUp, Users, FileText, Send, Download, Upload } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function h() { return getAuthHeaders(); }
@@ -343,6 +343,96 @@ export function StudentStrength() {
         ])}
         emptyMsg="No classes configured yet"
       />
+    </ToolPage>
+  );
+}
+
+// 3b. Data Import
+export function DataImport() {
+  const [file, setFile] = useState(null);
+  const [report, setReport] = useState(null);
+  const [result, setResult] = useState(null);
+  const [overwrite, setOverwrite] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const upload = async (mode) => {
+    if (!file) return;
+    setLoading(true);
+    setError('');
+    if (mode === 'validate') setResult(null);
+    const form = new FormData();
+    form.append('file', file);
+    if (mode === 'commit') form.append('overwrite_duplicates', overwrite ? 'true' : 'false');
+    try {
+      const res = await fetch(`${API}/import/${mode}`, {
+        method: 'POST',
+        headers: getAuthHeaders(null),
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || `Import ${mode} failed`);
+      if (mode === 'validate') setReport(data);
+      else setResult(data);
+    } catch (err) {
+      setError(err.message);
+    }
+    setLoading(false);
+  };
+
+  const canCommit = report && report.error_count === 0 && file;
+  const errors = report?.errors || result?.errors || [];
+  const duplicates = report?.duplicates || result?.duplicates || [];
+
+  return (
+    <ToolPage title="Data Import" subtitle="Validate and import student records">
+      <div style={{ maxWidth: 980 }}>
+        <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 14, padding: 18, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 1fr) auto auto', gap: 10, alignItems: 'center' }}>
+            <input
+              type="file"
+              accept=".csv,.xlsx"
+              onChange={e => { setFile(e.target.files?.[0] || null); setReport(null); setResult(null); setError(''); }}
+              style={{ color: '#a0a0a0', fontSize: 13 }}
+            />
+            <ActionBtn label={loading ? 'Validating...' : 'Validate'} icon={<Upload size={13} />} onClick={() => upload('validate')} disabled={!file || loading} />
+            <ActionBtn label={loading ? 'Importing...' : 'Commit Import'} variant="success" icon={<CheckCircle size={13} />} onClick={() => upload('commit')} disabled={!canCommit || loading} />
+          </div>
+          <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8, color: '#a0a0a0', fontSize: 12 }}>
+            <input id="overwrite-import-duplicates" type="checkbox" checked={overwrite} onChange={e => setOverwrite(e.target.checked)} />
+            <label htmlFor="overwrite-import-duplicates">Overwrite duplicate students during commit</label>
+          </div>
+          <div style={{ marginTop: 10, color: '#737373', fontSize: 12 }}>
+            Required columns: name, class, section, parent_name, parent_phone. Optional: date_of_birth, address, route_zone_id.
+          </div>
+          {error && <div style={{ marginTop: 12, color: '#f87171', fontSize: 13 }}>{error}</div>}
+          {result && <div style={{ marginTop: 12, color: '#34d399', fontSize: 13 }}>Imported {result.imported_count} rows. Skipped {result.skipped_count} rows.</div>}
+        </div>
+
+        {report && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
+            <StatCard value={report.valid_count || 0} label="VALID ROWS" color="#34d399" />
+            <StatCard value={report.error_count || 0} label="ERRORS" color="#f87171" />
+            <StatCard value={report.duplicate_count || 0} label="DUPLICATES" color="#fbbf24" />
+            <StatCard value={file?.name || '—'} label="FILE" color="#4f8ff7" />
+          </div>
+        )}
+
+        {duplicates.length > 0 && (
+          <DataTable
+            title="Duplicate Students"
+            headers={['Row', 'Student', 'Class', 'Status']}
+            rows={duplicates.map(d => [d.row, d.name, `${d.class} ${d.section}`, <Badge text={overwrite ? 'Overwrite on commit' : 'Skip on commit'} color={overwrite ? 'yellow' : 'gray'} />])}
+          />
+        )}
+
+        <DataTable
+          title="Validation Errors"
+          headers={['Row', 'Field', 'Message']}
+          rows={errors.map(e => [e.row, e.field, <span style={{ color: '#f87171' }}>{e.message}</span>])}
+          emptyMsg={report ? 'No validation errors' : 'Validate a CSV or XLSX file to see row-level results'}
+        />
+      </div>
     </ToolPage>
   );
 }
