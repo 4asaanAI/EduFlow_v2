@@ -143,7 +143,10 @@ function getSidebarTools(user) {
   if (user.role !== 'admin') return tools;
   const allowed = ADMIN_SUBCATEGORY_TOOLS[user.sub_category];
   if (!allowed) return tools;
-  return allowed.map(id => tools.find(tool => tool.id === id)).filter(Boolean);
+  // Principal needs access to some owner-level tools (staff tracker, leave manager, etc.)
+  const ownerTools = user.sub_category === 'principal' ? (TOOLS_BY_ROLE.owner || []) : [];
+  const allTools = [...new Map([...tools, ...ownerTools].filter(t => t?.id).map(t => [t.id, t])).values()];
+  return allowed.map(id => allTools.find(tool => tool.id === id)).filter(Boolean);
 }
 
 function timeAgo(iso) {

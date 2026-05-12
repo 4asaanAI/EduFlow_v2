@@ -559,6 +559,10 @@ def _build_confirm_display(tool_name: str, params: dict) -> str:
             f"Award {p.get('points', '?')} house points to "
             f"{p.get('house', '?')} for {p.get('reason', 'N/A')}"
         ),
+        "create_announcement": lambda p: (
+            f"Publish announcement '{p.get('title', '?')}' to "
+            f"{p.get('audience_type', 'all')} — \"{p.get('content', '')[:80]}{'...' if len(p.get('content','')) > 80 else ''}\""
+        ),
     }
     builder = displays.get(tool_name)
     if builder:

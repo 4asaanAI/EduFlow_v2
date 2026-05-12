@@ -204,6 +204,15 @@ TOOL_GET_ANNOUNCEMENTS = {
     "description": "Get school announcements and notices.",
     "params_schema": {"days": "optional int, default 7"},
 }
+TOOL_CREATE_ANNOUNCEMENT = {
+    "name": "create_announcement",
+    "description": "Publish a school announcement to all parents, students, and staff. Use confirm_action flow — always ask the user to confirm before publishing.",
+    "params_schema": {
+        "title": "required — short announcement title",
+        "content": "required — full announcement text",
+        "audience_type": "optional — 'all', 'parents', 'students', or 'staff' (default: 'all')",
+    },
+}
 
 # ---- Teacher-specific tools ----
 TOOL_GET_MY_CLASS_STUDENTS = {
@@ -252,6 +261,7 @@ _OWNER_TOOLS = [
     TOOL_RECORD_FEE_PAYMENT,
     TOOL_MARK_ATTENDANCE,
     TOOL_GET_BRANCH_COMPARISON,
+    TOOL_CREATE_ANNOUNCEMENT,
 ]
 
 _PRINCIPAL_TOOLS = [
@@ -284,6 +294,7 @@ _PRINCIPAL_TOOLS = [
     # NO record_fee_payment — accounts only
     TOOL_MARK_ATTENDANCE,
     # NO get_branch_comparison — owner only
+    TOOL_CREATE_ANNOUNCEMENT,
 ]
 
 _ACCOUNTS_TOOLS = [
@@ -660,10 +671,13 @@ TOOL CALLING FORMAT:
 When you need school data, output ONLY this JSON block on its own line — no preamble, no "Let me check...", no explanation before it:
 {"action": "tool_name", "params": {"key": "value"}, "reason": "Brief reason for this call"}
 
-WRITE ACTION FORMAT (for tools that modify data — fee payment, attendance marking, leave approval, house points):
+WRITE ACTION FORMAT (for tools that modify data — fee payment, attendance marking, leave approval, house points, announcements):
 Do NOT call the tool directly. Instead, output a confirmation block:
 {"confirm_action": true, "tool": "tool_name", "params": {"key": "value"}, "display": "Human-readable summary of what will happen"}
 Wait for the user to confirm before the action is executed.
+
+ANNOUNCEMENT PUBLISHING: When the user wants to publish/post an announcement, use the confirm_action format with tool "create_announcement". Do NOT use the navigate format for announcement publishing.
+{"confirm_action": true, "tool": "create_announcement", "params": {"title": "<short title>", "content": "<full announcement text>", "audience_type": "all"}, "display": "Publish announcement '<short title>' to all — <first 60 chars of content>"}
 
 NAVIGATION FORMAT (when user asks to open/show a panel or page):
 {"navigate": "panel_id"}

@@ -783,14 +783,16 @@ export default function StudentDatabase() {
                 </thead>
                 <tbody>
                   {students.map((student, index) => (
-                    <tr key={student.id} style={{ borderBottom: index < students.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
+                    <tr key={student.id} onClick={() => setDetailId(prev => prev === student.id ? null : student.id)} style={{ borderBottom: index < students.length - 1 ? '1px solid var(--c-border)' : 'none', cursor: 'pointer', transition: 'background 0.12s' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--c-deep)'}
+                      onMouseLeave={e => e.currentTarget.style.background = ''}>
                       <td style={{ padding: '10px 14px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <div style={{ width: 36, height: 36, borderRadius: 8, background: student.photo_url ? `url(${student.photo_url}) center/cover` : 'var(--c-input)', border: '1px solid var(--c-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--c-faint)', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
                             {!student.photo_url && student.name?.slice(0, 1)}
                           </div>
                           <div>
-                            <button onClick={() => setDetailId(student.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--c-text)', fontWeight: 600, fontSize: 13, textAlign: 'left' }}>
+                            <button onClick={e => { e.stopPropagation(); setDetailId(student.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--c-text)', fontWeight: 600, fontSize: 13, textAlign: 'left' }}>
                               {student.name}
                             </button>
                             <div style={{ color: 'var(--c-faint)', fontSize: 11, marginTop: 1 }}>Roll {student.roll_number || 'N/A'}</div>
@@ -808,7 +810,7 @@ export default function StudentDatabase() {
                       <td style={{ padding: '10px 14px' }}>
                         <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 5, background: student.is_active ? 'rgba(16,185,129,0.1)' : 'rgba(100,116,139,0.1)', color: student.is_active ? '#34d399' : 'var(--c-faint)' }}>{student.status || (student.is_active ? 'active' : 'inactive')}</span>
                       </td>
-                      <td style={{ padding: '10px 14px' }}>
+                      <td style={{ padding: '10px 14px' }} onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
                           <Btn variant="secondary" onClick={() => setDetailId(student.id)} title="View profile"><User size={12} /></Btn>
                           {canManage && <Btn variant="secondary" onClick={() => openEdit(student)} title="Edit student"><Edit3 size={12} /></Btn>}

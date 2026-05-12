@@ -1454,8 +1454,55 @@ async def tool_query_audit_log(params: dict, user: dict, scope: dict = None) -> 
     return _ok(items, 0, "Audit log ready.")
 
 
+_AUDIENCE_ROLE_MAP = {
+    "all": [],
+    "staff": ["admin", "teacher"],
+    "students": ["student"],
+    "parents": ["parent"],
+}
+
+async def tool_create_announcement(params: dict, user: dict, scope: dict = None) -> dict:
+    if not _can_owner_or_principal(user):
+        return {"success": False, "message": "Only Owner or Principal can publish announcements via AI."}
+    title = (params.get("title") or "").strip()
+    content = (params.get("content") or "").strip()
+    if not title or not content:
+        return {"success": False, "message": "title and content are required for an announcement."}
+    if len(title) > 200:
+        return {"success": False, "message": "title must be 200 characters or fewer."}
+    if len(content) > 5000:
+        return {"success": False, "message": "content must be 5000 characters or fewer."}
+    audience_type = params.get("audience_type", "all")
+    if audience_type not in _AUDIENCE_ROLE_MAP:
+        audience_type = "all"
+    audience_roles = _AUDIENCE_ROLE_MAP[audience_type]
+    db = get_db()
+    ann_id = str(uuid.uuid4())
+    created_by = user.get("id") or "unknown"
+    now = datetime.now().isoformat()
+    announcement = add_school_id({
+        "_id": ann_id,
+        "id": ann_id,
+        "title": title,
+        "content": content,
+        "audience_type": audience_type,
+        "audience_classes": [],
+        "audience_roles": audience_roles,
+        "target_roles": audience_roles,
+        "channels": ["push"],
+        "is_draft": False,
+        "sent_at": now,
+        "created_by": created_by,
+        "created_by_name": user.get("name", ""),
+        "created_at": now,
+    })
+    await db.announcements.insert_one(announcement)
+    await db.audit_logs.insert_one(_audit_doc("create_announcement", "announcements", ann_id, user, {"title": title, "audience_type": audience_type}))
+    return {"success": True, "data": {k: v for k, v in announcement.items() if k != "_id"}, "message": f"Announcement '{title}' published successfully to {audience_type}."}
+
+
 # =========================================================================
-#  COMBINED TOOL_REGISTRY — all 29 tools
+#  COMBINED TOOL_REGISTRY
 # =========================================================================
 
 TOOL_REGISTRY = {
@@ -1882,6 +1929,18 @@ TOOL_REGISTRY = {
         "params_schema": {
             "collection": {"type": "string", "description": "Optional collection filter"},
         },
+    },
+    "create_announcement": {
+        "fn": tool_create_announcement,
+        "roles": ["owner", "admin"],
+        "description": "Publish a school announcement to all parents, students, and staff.",
+        "params_schema": {
+            "title": {"type": "string", "description": "Announcement title"},
+            "content": {"type": "string", "description": "Full announcement message"},
+            "audience_type": {"type": "string", "description": "all, parents, students, staff — default: all"},
+        },
+        "requires_confirmation": True,
+        "dispatch_type": "write",
     },
 }
 

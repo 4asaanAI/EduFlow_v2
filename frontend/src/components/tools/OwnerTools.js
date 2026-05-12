@@ -544,11 +544,12 @@ export function AttendanceOverview() {
 }
 
 // 5. Staff Attendance Tracker
-export function StaffAttendanceTracker() {
+export function StaffAttendanceTracker({ title = 'Staff Tracker', subtitle = 'Attendance & leave management', defaultTab = 'attendance' }) {
   const { currentUser } = useUser();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('attendance');
+  const [activeTab, setActiveTab] = useState(defaultTab);
+  useEffect(() => { setActiveTab(defaultTab); }, [defaultTab]);
   useEffect(() => { load(); }, []);
   const load = async () => { setLoading(true); try { const r = await executeTool('get_staff_status', {}, currentUser); if (r.success) setData(r.data); } catch {} setLoading(false); };
   const staff = data?.staff_list || [];
@@ -556,7 +557,7 @@ export function StaffAttendanceTracker() {
   const statusColors = { present: 'var(--tool-hex-34d399)', absent: 'var(--tool-hex-f87171)', late: 'var(--tool-hex-fbbf24)', not_marked: 'var(--tool-hex-737373)', 'on-leave': 'var(--tool-hex-a78bfa)' };
 
   return (
-    <ToolPage title="Staff Tracker" subtitle="Attendance & leave management" onRefresh={load} loading={loading}>
+    <ToolPage title={title} subtitle={subtitle} onRefresh={load} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18, maxWidth: 700 }}>
         <StatCard value={data?.total_staff || 0} label="TOTAL STAFF" color="var(--tool-hex-e5e5e5)" />
         <StatCard value={data?.present_today || 0} label="PRESENT" color="var(--tool-hex-34d399)" />
@@ -798,12 +799,7 @@ export function AdmissionFunnel() {
 
 // 9. Staff Leave Manager
 export function StaffLeaveManager() {
-  const { currentUser } = useUser();
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => { load(); }, []);
-  const load = async () => { setLoading(true); try { const r = await executeTool('get_staff_status', {}, currentUser); if (r.success) setData(r.data); } catch {} setLoading(false); };
-  return <StaffAttendanceTracker />;
+  return <StaffAttendanceTracker title="Leave Manager" subtitle="Pending leave requests & approvals" defaultTab="leaves" />;
 }
 
 // 10. Staff Performance Overview
