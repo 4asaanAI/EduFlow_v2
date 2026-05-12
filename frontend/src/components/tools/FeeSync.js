@@ -67,12 +67,12 @@ export default function FeeSync() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={refresh} disabled={loading || !job} style={buttonStyle('var(--c-bg)', 'var(--c-text)')}><RefreshCw size={15} />Refresh</button>
-          <button onClick={trigger} disabled={loading} style={buttonStyle('#4f8ff7', '#fff')}>{loading ? 'Working...' : 'Trigger sync'}</button>
+          <button onClick={trigger} disabled={loading} style={buttonStyle('var(--tool-hex-4f8ff7)', 'var(--tool-hex-fff)')}>{loading ? 'Working...' : 'Trigger sync'}</button>
         </div>
       </div>
 
-      {error && <div role="alert" style={alertStyle('#f87171')}><AlertTriangle size={16} />{error}</div>}
-      {notice && <div style={alertStyle('#34d399')}><CheckCircle size={16} />{notice}</div>}
+      {error && <div role="alert" style={alertStyle('var(--tool-hex-f87171)')}><AlertTriangle size={16} />{error}</div>}
+      {notice && <div style={alertStyle('var(--tool-hex-34d399)')}><CheckCircle size={16} />{notice}</div>}
 
       <section style={panelStyle}>
         {!job ? (
@@ -99,7 +99,7 @@ export default function FeeSync() {
                 <div style={{ color: 'var(--c-faint)', fontSize: 12, marginTop: 4 }}>Ours: Rs {conflict.ours?.amount} | Theirs: Rs {conflict.theirs?.amount}</div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                   <button onClick={() => resolve(conflict.id, 'keep_ours')} disabled={loading || conflict.status === 'resolved'} style={buttonStyle('var(--c-bg)', 'var(--c-text)')}>Keep ours</button>
-                  <button onClick={() => resolve(conflict.id, 'use_theirs')} disabled={loading || conflict.status === 'resolved'} style={buttonStyle('#6366f1', '#fff')}>Use theirs</button>
+                  <button onClick={() => resolve(conflict.id, 'use_theirs')} disabled={loading || conflict.status === 'resolved'} style={buttonStyle('var(--tool-hex-6366f1)', 'var(--tool-hex-fff)')}>Use theirs</button>
                 </div>
               </div>
             ))}
@@ -113,4 +113,4 @@ export default function FeeSync() {
 const panelStyle = { background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 14 };
 const emptyStyle = { padding: 28, color: 'var(--c-faint)', textAlign: 'center', fontSize: 13 };
 const buttonStyle = (background, color) => ({ minHeight: 44, display: 'inline-flex', alignItems: 'center', gap: 8, background, color, border: '1px solid var(--c-border)', borderRadius: 8, padding: '10px 14px', fontWeight: 700, cursor: 'pointer' });
-const alertStyle = color => ({ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: 12, border: `1px solid ${color}55`, borderRadius: 8, background: `${color}12`, color, fontSize: 13 });
+const alertStyle = color => ({ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: 12, border: `1px solid color-mix(in srgb, ${color} 33%, transparent)`, borderRadius: 8, background: `color-mix(in srgb, ${color} 7%, transparent)`, color, fontSize: 13 });

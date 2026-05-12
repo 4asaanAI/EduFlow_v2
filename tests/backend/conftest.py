@@ -34,6 +34,7 @@ try:
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
     from server import app
     import server
+    import routes.chat as chat_routes
     import routes.auth as auth_routes
     import routes.students as student_routes
     import routes.staff as staff_routes
@@ -316,6 +317,9 @@ class FakeDb:
         self.token_balances = FakeCollection()
         self.token_usage = FakeCollection()
         self.token_purchases = FakeCollection()
+        self.confirm_tokens = FakeCollection()
+        self.ai_dispatch_audit_log = FakeCollection()
+        self.idempotency_keys = FakeCollection()
 
 
 if APP_AVAILABLE:
@@ -338,6 +342,8 @@ if APP_AVAILABLE:
     academics_routes.get_db = lambda: _fake_db
     issues_routes.get_db = lambda: _fake_db
     audit_routes.get_db = lambda: _fake_db
+    chat_routes.get_db = lambda: _fake_db
+    server.get_raw_db = lambda: _fake_db
 
 
 # ─── Event loop (for async tests) ─────────────────────────────────────────

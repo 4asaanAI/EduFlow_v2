@@ -12,17 +12,17 @@ const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function h() { return getAuthHeaders(); }
 
 const STATUS_COLORS = {
-  open: '#fb923c',
-  in_progress: '#facc15',
-  pending_owner_confirmation: '#818cf8',
-  closed: '#34d399',
+  open: 'var(--tool-hex-fb923c)',
+  in_progress: 'var(--tool-hex-facc15)',
+  pending_owner_confirmation: 'var(--tool-hex-818cf8)',
+  closed: 'var(--tool-hex-34d399)',
 };
 
 function StatusBadge({ status }) {
   return (
     <Badge
       label={status?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-      color={STATUS_COLORS[status] || '#888'}
+      color={STATUS_COLORS[status] || 'var(--tool-hex-888)'}
     />
   );
 }
@@ -32,10 +32,10 @@ function RequestCard({ item, onUpdate, onConfirm, role, subCategory, isDark }) {
   const [note, setNote] = useState('');
   const [newStatus, setNewStatus] = useState(item.status);
   const [saving, setSaving] = useState(false);
-  const bg = isDark ? '#1e1e1e' : '#fff';
-  const border = isDark ? '#2e2e2e' : '#e5e5e5';
-  const text = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#888' : '#737373';
+  const bg = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-fff)';
+  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
+  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
+  const muted = isDark ? 'var(--tool-hex-888)' : 'var(--tool-hex-737373)';
 
   const isOwner = role === 'owner';
   const isMaint = subCategory === 'maintenance';
@@ -63,7 +63,7 @@ function RequestCard({ item, onUpdate, onConfirm, role, subCategory, isDark }) {
           {item.location && <span style={{ fontSize: 11, color: muted, marginLeft: 8 }}>@ {item.location}</span>}
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <Badge label={item.category?.replace(/_/g, ' ')} color="#6366f1" />
+          <Badge label={item.category?.replace(/_/g, ' ')} color="var(--tool-hex-6366f1)" />
           <StatusBadge status={item.status} />
         </div>
       </div>
@@ -76,7 +76,7 @@ function RequestCard({ item, onUpdate, onConfirm, role, subCategory, isDark }) {
         <div style={{ marginBottom: 10 }}>
           {item.notes.slice(-2).map(n => (
             <div key={n.id} style={{ fontSize: 11, color: muted, padding: '4px 0', borderTop: `1px solid ${border}` }}>
-              <span style={{ fontWeight: 600, color: isDark ? '#bbb' : '#555' }}>{n.author_name}:</span> {n.content}
+              <span style={{ fontWeight: 600, color: isDark ? 'var(--tool-hex-bbb)' : 'var(--tool-hex-555)' }}>{n.author_name}:</span> {n.content}
               <span style={{ float: 'right' }}>{n.timestamp?.slice(0, 10)}</span>
             </div>
           ))}
@@ -92,7 +92,7 @@ function RequestCard({ item, onUpdate, onConfirm, role, subCategory, isDark }) {
               <select
                 value={newStatus}
                 onChange={e => setNewStatus(e.target.value)}
-                style={{ background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`, borderRadius: 7, padding: '6px 10px', color: text, fontSize: 12, marginBottom: 8, width: '100%' }}
+                style={{ background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 7, padding: '6px 10px', color: text, fontSize: 12, marginBottom: 8, width: '100%' }}
               >
                 {statusOptions.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
               </select>
@@ -101,7 +101,7 @@ function RequestCard({ item, onUpdate, onConfirm, role, subCategory, isDark }) {
                 onChange={e => setNote(e.target.value)}
                 placeholder="Add a note (optional)..."
                 rows={2}
-                style={{ width: '100%', background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`, borderRadius: 7, padding: '8px 10px', color: text, fontSize: 12, resize: 'vertical', boxSizing: 'border-box' }}
+                style={{ width: '100%', background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 7, padding: '8px 10px', color: text, fontSize: 12, resize: 'vertical', boxSizing: 'border-box' }}
               />
               <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                 <ActionBtn label={saving ? 'Saving...' : 'Save'} onClick={handleSave} disabled={saving} />
@@ -115,7 +115,7 @@ function RequestCard({ item, onUpdate, onConfirm, role, subCategory, isDark }) {
               label="Confirm Resolution"
               icon={<CheckCircle size={11} />}
               onClick={() => onConfirm(item.id)}
-              style={{ background: '#22c55e', color: '#fff' }}
+              style={{ background: 'var(--tool-hex-22c55e)', color: 'var(--tool-hex-fff)' }}
             />
           )}
         </div>
@@ -201,11 +201,11 @@ function IssuePanel({ type, title }) {
       loading={loading}
       actions={canCreate ? <ActionBtn label="New Request" icon={<Plus size={11} />} onClick={() => setShowForm(true)} /> : null}
     >
-      {error && <div style={{ color: '#f87171', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+      {error && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 13, marginBottom: 12 }}>{error}</div>}
 
       {showForm && (
-        <div style={{ background: isDark ? '#1e1e1e' : '#fff', border: `1px solid ${isDark ? '#2e2e2e' : '#e5e5e5'}`, borderRadius: 11, padding: 16, marginBottom: 16 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 600, color: isDark ? '#f5f5f5' : '#171717', marginBottom: 14 }}>New {type === 'facility' ? 'Facility' : 'Tech'} Request</h3>
+        <div style={{ background: isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-fff)', border: `1px solid ${isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)'}`, borderRadius: 11, padding: 16, marginBottom: 16 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)', marginBottom: 14 }}>New {type === 'facility' ? 'Facility' : 'Tech'} Request</h3>
           <form onSubmit={handleCreate}>
             <FormField label="Description" value={form.description} onChange={f('description')} placeholder="Describe the issue..." required />
             <FormField label="Location" value={form.location} onChange={f('location')} placeholder="Classroom, lab, office..." />
@@ -216,7 +216,7 @@ function IssuePanel({ type, title }) {
               onChange={f('category')}
               options={(type === 'facility' ? facilityCategories : techCategories).map(c => ({ value: c, label: c.replace(/_/g, ' ').replace(/\b\w/g, x => x.toUpperCase()) }))}
             />
-            {formError && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 8 }}>{formError}</div>}
+            {formError && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 8 }}>{formError}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
               <ActionBtn label={saving ? 'Submitting...' : 'Submit Request'} type="submit" disabled={saving} />
               <ActionBtn label="Cancel" variant="secondary" onClick={() => { setShowForm(false); setFormError(''); }} />
@@ -226,14 +226,14 @@ function IssuePanel({ type, title }) {
       )}
 
       {loading ? (
-        <div style={{ color: isDark ? '#666' : '#a3a3a3', fontSize: 13, textAlign: 'center', padding: 40 }}>Loading...</div>
+        <div style={{ color: isDark ? 'var(--tool-hex-666)' : 'var(--tool-hex-a3a3a3)', fontSize: 13, textAlign: 'center', padding: 40 }}>Loading...</div>
       ) : items.length === 0 ? (
-        <div style={{ color: isDark ? '#666' : '#a3a3a3', fontSize: 13, textAlign: 'center', padding: 40 }}>No requests yet. Submit one above.</div>
+        <div style={{ color: isDark ? 'var(--tool-hex-666)' : 'var(--tool-hex-a3a3a3)', fontSize: 13, textAlign: 'center', padding: 40 }}>No requests yet. Submit one above.</div>
       ) : (
         <>
           {open.length > 0 && (
             <>
-              <p style={{ fontSize: 11, fontWeight: 600, color: isDark ? '#666' : '#a3a3a3', marginBottom: 8, letterSpacing: '0.06em' }}>OPEN</p>
+              <p style={{ fontSize: 11, fontWeight: 600, color: isDark ? 'var(--tool-hex-666)' : 'var(--tool-hex-a3a3a3)', marginBottom: 8, letterSpacing: '0.06em' }}>OPEN</p>
               {open.map(item => (
                 <RequestCard
                   key={item.id}
@@ -249,7 +249,7 @@ function IssuePanel({ type, title }) {
           )}
           {closed.length > 0 && (
             <>
-              <p style={{ fontSize: 11, fontWeight: 600, color: isDark ? '#666' : '#a3a3a3', marginBottom: 8, marginTop: 16, letterSpacing: '0.06em' }}>RESOLVED</p>
+              <p style={{ fontSize: 11, fontWeight: 600, color: isDark ? 'var(--tool-hex-666)' : 'var(--tool-hex-a3a3a3)', marginBottom: 8, marginTop: 16, letterSpacing: '0.06em' }}>RESOLVED</p>
               {closed.slice(0, 5).map(item => (
                 <RequestCard
                   key={item.id}
@@ -298,8 +298,8 @@ export function AllIssuesView() {
 
   const filtered = filter === 'all' ? items : items.filter(i => i.issue_type === filter || i.status === filter);
 
-  const text = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#888' : '#737373';
+  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
+  const muted = isDark ? 'var(--tool-hex-888)' : 'var(--tool-hex-737373)';
 
   return (
     <ToolPage title="All Issues" subtitle={`${items.filter(i => i.status !== 'closed').length} open`} onRefresh={load} loading={loading}>
@@ -310,9 +310,9 @@ export function AllIssuesView() {
             onClick={() => setFilter(f)}
             style={{
               padding: '5px 12px', borderRadius: 7, fontSize: 12, cursor: 'pointer',
-              background: filter === f ? '#4f8ff7' : (isDark ? '#252525' : '#f5f5f5'),
-              color: filter === f ? '#fff' : text,
-              border: `1px solid ${filter === f ? '#4f8ff7' : (isDark ? '#333' : '#e5e5e5')}`,
+              background: filter === f ? 'var(--tool-hex-4f8ff7)' : (isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)'),
+              color: filter === f ? 'var(--tool-hex-fff)' : text,
+              border: `1px solid ${filter === f ? 'var(--tool-hex-4f8ff7)' : (isDark ? 'var(--tool-hex-333)' : 'var(--tool-hex-e5e5e5)')}`,
               fontWeight: 500,
             }}
           >
@@ -328,7 +328,7 @@ export function AllIssuesView() {
         <DataTable
           headers={['Type', 'Description', 'Category', 'Location', 'Status', 'Date']}
           rows={filtered.map(i => [
-            <Badge label={i.issue_type || i.type} color={i.issue_type === 'facility' ? '#fb923c' : '#818cf8'} />,
+            <Badge label={i.issue_type || i.type} color={i.issue_type === 'facility' ? 'var(--tool-hex-fb923c)' : 'var(--tool-hex-818cf8)'} />,
             <span style={{ color: text, fontSize: 12 }}>{i.description?.slice(0, 60)}{i.description?.length > 60 ? '…' : ''}</span>,
             i.category,
             i.location || '—',

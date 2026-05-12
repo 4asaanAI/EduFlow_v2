@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from dotenv import load_dotenv
@@ -48,6 +48,12 @@ from routes.image_gen import router as image_gen_router
 from routes.import_data import router as import_router
 from routes.issues import router as issues_router
 from routes.audit import router as audit_router
+from services.idempotency import (
+    get_replay_response,
+    record_key,
+    should_handle_idempotency,
+    store_response,
+)
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -69,7 +75,7 @@ app.add_middleware(
     allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "Idempotency-Key", "X-SSE-Session-ID"],
 )
 
 
@@ -112,6 +118,44 @@ async def security_headers(request: Request, call_next):
     if os.environ.get("ENVIRONMENT") == "production":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
+
+
+# ─── Generic Idempotency-Key middleware ─────────────────────────────────────
+
+@app.middleware("http")
+async def idempotency_keys(request: Request, call_next):
+    if not should_handle_idempotency(request):
+        return await call_next(request)
+
+    try:
+        db = get_raw_db()
+        key = record_key(request)
+        replay = await get_replay_response(db, key)
+        if replay:
+            return replay
+    except Exception:
+        logger.warning("idempotency lookup failed; request will execute normally", exc_info=True)
+        db = None
+        key = None
+
+    response = await call_next(request)
+    if not db or not key:
+        return response
+    if "text/event-stream" in response.headers.get("content-type", ""):
+        return response
+
+    body = b""
+    async for chunk in response.body_iterator:
+        body += chunk
+
+    await store_response(db, key=key, request=request, response=response, body=body)
+    return Response(
+        content=body,
+        status_code=response.status_code,
+        headers=dict(response.headers),
+        media_type=response.media_type,
+        background=response.background,
+    )
 
 
 # ─── Request logging middleware ──────────────────────────────────────────────

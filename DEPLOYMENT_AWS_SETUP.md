@@ -288,6 +288,26 @@ aws cloudfront create-distribution \
   }'
 ```
 
+### SSE Timeout Requirement
+
+EduFlow uses persistent Server-Sent Events for:
+
+- `GET /api/chat/conversations/{id}/messages`
+- `GET /api/attendance/stream`
+- `GET /api/fees/stream`
+
+For production, route these API paths to the backend ALB/Elastic Beanstalk origin and configure the backend load balancer idle timeout to at least 300 seconds. The backend sends SSE keepalive events every 30 seconds, so the connection should never remain idle during normal operation.
+
+Recommended ALB setting:
+
+```bash
+aws elbv2 modify-load-balancer-attributes \
+  --load-balancer-arn "$BACKEND_ALB_ARN" \
+  --attributes Key=idle_timeout.timeout_seconds,Value=300
+```
+
+CloudFront custom-origin timeout settings are not a substitute for the ALB idle timeout. Set CloudFront origin read/keepalive values to the maximum supported in the target AWS account, forward `Authorization`, `Idempotency-Key`, and `X-SSE-Session-ID`, and disable caching for `/api/*`. If the account cannot support a timeout profile compatible with persistent SSE, bypass CloudFront for API/SSE routes and point `REACT_APP_BACKEND_URL` directly at the HTTPS ALB/API domain.
+
 ---
 
 ## Step 7: Setup Domain & SSL

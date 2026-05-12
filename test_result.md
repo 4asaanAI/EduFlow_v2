@@ -102,7 +102,7 @@
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
 
-user_problem_statement: "Verify Phase 3 status, install ripgrep, and start BMAD Phase 4 & Phase 5 work in parallel."
+user_problem_statement: "Complete the remaining BMAD Phase 4 and Phase 5 stories one by one."
 backend:
   - task: "Phase 3 verification"
     implemented: true
@@ -148,6 +148,31 @@ backend:
       - working: true
         agent: "main"
         comment: "Added/ran scope resolver, confirmation token, chat confirm gate, and auth matrix tests. Result: 21 passed."
+      - working: true
+        agent: "main"
+        comment: "Expanded confirm-gate coverage for all current write dispatch tools and verified query dispatches do not require confirmation. Focused Phase 3-5 regression suite passed: 43 passed."
+  - task: "Phase 4 generic idempotency hardening"
+    implemented: true
+    working: true
+    file: "backend/services/idempotency.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Added generic Idempotency-Key middleware with MongoDB TTL index, replay response handling, and explicit confirmation-token exclusion. Fee route keeps its stricter existing idempotency behavior. Tests passed."
+  - task: "Phase 5 attendance and fee SSE streams"
+    implemented: true
+    working: true
+    file: "backend/services/sse.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Added shared SSE connection manager with per-session dedupe, 30s keepalive support, attendance stream, fee stream, and publish hooks on attendance/payment/sync mutations. Tests passed."
 frontend:
   - task: "AI unavailable chat state and confirm authorization headers"
     implemented: true
@@ -160,19 +185,41 @@ frontend:
       - working: true
         agent: "main"
         comment: "Chat displays AI unavailable banner and disables input. Confirm action card sends auth headers and session_id. Production build completed successfully with existing lint warnings."
+  - task: "Phase 5 domain SSE client and mobile reconnect"
+    implemented: true
+    working: true
+    file: "frontend/src/lib/api.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Added per-tab sessionStorage SSE session id, X-SSE-Session-ID header, reconnect on visibility regain, and fresh-state reload hooks in FeeCollection and StaffTracker. Production build passed."
+  - task: "Phase 5 theme and mobile tool panel hardening"
+    implemented: true
+    working: true
+    file: "frontend/src/index.css"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Moved tool panel hardcoded hex colors to CSS variables, fixed alpha/tint expressions with color-mix, and added mobile safeguards for tool panels. Grep for hardcoded tool colors returns zero; production build passed."
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 1
+  test_sequence: 2
   run_ui: false
 test_plan:
   current_focus:
-    - "Phase 4 AI dispatch safety and confirmation tokens"
-    - "Phase 4 AI graceful degradation"
-    - "Phase 5 backend quality coverage"
+    - "BMAD Phase 4/5 final review"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 agent_communication:
   - agent: "main"
     message: "BMAD Phase 4 and Phase 5 are started and marked in-progress, not done. Focused backend suites and frontend production build passed; UX/mobile/SSE Phase 5 stories remain backlog."
+  - agent: "main"
+    message: "Remaining Phase 4/5 code work is complete and verified locally. Backend regression suite passed 43 tests; frontend production build passed with pre-existing app-wide hook/source-map warnings. AWS SSE timeout verification remains an external deployment step documented in deployment guides."

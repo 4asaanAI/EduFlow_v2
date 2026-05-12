@@ -21,9 +21,9 @@ import { getAuthHeaders } from '../../lib/authSession';
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 const STATUS_OPTIONS = [
-  { value: 'present', label: 'Present', color: '#34d399' },
-  { value: 'absent', label: 'Absent', color: '#f87171' },
-  { value: 'late', label: 'Late', color: '#fbbf24' },
+  { value: 'present', label: 'Present', color: 'var(--tool-hex-34d399)' },
+  { value: 'absent', label: 'Absent', color: 'var(--tool-hex-f87171)' },
+  { value: 'late', label: 'Late', color: 'var(--tool-hex-fbbf24)' },
   { value: 'holiday', label: 'Holiday', color: 'var(--c-faint)' },
 ];
 
@@ -222,8 +222,8 @@ export default function AttendanceRecorder() {
         </div>
       </div>
 
-      {error && <div role="alert" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, padding: 12, border: '1px solid rgba(248,113,113,.35)', borderRadius: 8, color: '#f87171', background: 'rgba(248,113,113,.08)', fontSize: 13 }}><AlertCircle size={16} />{error}</div>}
-      {notice && <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, padding: 12, border: '1px solid rgba(52,211,153,.35)', borderRadius: 8, color: '#34d399', background: 'rgba(52,211,153,.08)', fontSize: 13 }}><CheckCircle size={16} />{notice}</div>}
+      {error && <div role="alert" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, padding: 12, border: '1px solid rgba(248,113,113,.35)', borderRadius: 8, color: 'var(--tool-hex-f87171)', background: 'rgba(248,113,113,.08)', fontSize: 13 }}><AlertCircle size={16} />{error}</div>}
+      {notice && <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, padding: 12, border: '1px solid rgba(52,211,153,.35)', borderRadius: 8, color: 'var(--tool-hex-34d399)', background: 'rgba(52,211,153,.08)', fontSize: 13 }}><CheckCircle size={16} />{notice}</div>}
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} data-testid="class-select"
@@ -233,8 +233,8 @@ export default function AttendanceRecorder() {
         <input type="date" value={date} onChange={e => setDate(e.target.value)} data-testid="date-picker"
           style={{ minHeight: 44, background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '9px 14px', color: 'var(--c-text)', fontSize: 13, outline: 'none' }}
         />
-        <button onClick={() => markAll('present')} data-testid="mark-all-present" style={quickButton('#34d399')}>All Present</button>
-        <button onClick={() => markAll('absent')} data-testid="mark-all-absent" style={quickButton('#f87171')}>All Absent</button>
+        <button onClick={() => markAll('present')} data-testid="mark-all-present" style={quickButton('var(--tool-hex-34d399)')}>All Present</button>
+        <button onClick={() => markAll('absent')} data-testid="mark-all-absent" style={quickButton('var(--tool-hex-f87171)')}>All Absent</button>
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -268,13 +268,13 @@ export default function AttendanceRecorder() {
                   <tr key={row.student_id} style={{ borderBottom: i < records.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
                     <td style={cellStyle('mono')}>{row.roll_number || '-'}</td>
                     <td style={cellStyle()}>{row.name}</td>
-                    <td style={cellStyle()}><span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 5, background: `${current.color}18`, color: current.color }}>{current.label}{dirty ? ' *' : ''}</span></td>
+                    <td style={cellStyle()}><span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 5, background: tint(current.color, 10), color: current.color }}>{current.label}{dirty ? ' *' : ''}</span></td>
                     <td style={cellStyle()}>
                       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                         {STATUS_OPTIONS.slice(0, 3).map(opt => (
                           <button key={opt.value} onClick={() => updateStatus(row.student_id, opt.value)}
                             data-testid={`mark-${row.student_id}-${opt.value}`}
-                            style={{ minWidth: 34, minHeight: 34, background: row.status === opt.value ? `${opt.color}20` : 'transparent', border: `1px solid ${row.status === opt.value ? opt.color + '60' : 'var(--c-border)'}`, borderRadius: 6, color: row.status === opt.value ? opt.color : 'var(--c-faint)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                            style={{ minWidth: 34, minHeight: 34, background: row.status === opt.value ? tint(opt.color, 13) : 'transparent', border: `1px solid ${row.status === opt.value ? tint(opt.color, 38) : 'var(--c-border)'}`, borderRadius: 6, color: row.status === opt.value ? opt.color : 'var(--c-faint)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
                             {opt.label[0]}
                           </button>
                         ))}
@@ -315,7 +315,7 @@ export default function AttendanceRecorder() {
               {STATUS_OPTIONS.slice(0, 3).map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
             </select>
             <textarea value={manual.reason} onChange={e => setManual(prev => ({ ...prev, reason: e.target.value }))} placeholder="Reason required" style={textareaStyle} />
-            <button onClick={saveManual} disabled={saving || !selectedClass} style={primaryButton('#6366f1')}>Save manual entry</button>
+            <button onClick={saveManual} disabled={saving || !selectedClass} style={primaryButton('var(--tool-hex-6366f1)')}>Save manual entry</button>
           </div>
         </section>
       </div>
@@ -336,7 +336,7 @@ export default function AttendanceRecorder() {
 
       {records.length > 0 && (
         <button data-testid="save-attendance-btn" onClick={saveBulk} disabled={saving}
-          style={primaryButton(saving ? '#1e3a5f' : '#4f8ff7')}>
+          style={primaryButton(saving ? 'var(--tool-hex-1e3a5f)' : 'var(--tool-hex-4f8ff7)')}>
           <Save size={15} />
           {saving ? 'Saving...' : 'Save Attendance'}
         </button>
@@ -355,8 +355,8 @@ const cellStyle = mode => ({
 
 const quickButton = color => ({
   minHeight: 44,
-  background: `${color}18`,
-  border: `1px solid ${color}55`,
+  background: tint(color, 10),
+  border: `1px solid ${tint(color, 33)}`,
   borderRadius: 8,
   padding: '9px 14px',
   color,
@@ -364,6 +364,8 @@ const quickButton = color => ({
   cursor: 'pointer',
   fontWeight: 700,
 });
+
+const tint = (color, amount) => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
 
 const panelStyle = {
   background: 'var(--c-bg)',
@@ -417,7 +419,7 @@ const primaryButton = background => ({
   border: 'none',
   borderRadius: 8,
   padding: '11px 20px',
-  color: '#fff',
+  color: 'var(--tool-hex-fff)',
   fontSize: 13,
   fontWeight: 700,
   cursor: 'pointer',
@@ -431,6 +433,6 @@ const iconButton = active => ({
   background: active ? 'rgba(79,143,247,.16)' : 'transparent',
   border: `1px solid ${active ? 'rgba(79,143,247,.45)' : 'var(--c-border)'}`,
   borderRadius: 7,
-  color: active ? '#4f8ff7' : 'var(--c-faint)',
+  color: active ? 'var(--tool-hex-4f8ff7)' : 'var(--c-faint)',
   cursor: 'pointer',
 });

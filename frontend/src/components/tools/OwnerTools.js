@@ -8,6 +8,7 @@ import { Activity, CheckCircle, XCircle, AlertTriangle, Plus, RefreshCw, Save, T
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function h() { return getAuthHeaders(); }
 function money(value) { return `Rs ${Number(value || 0).toLocaleString('en-IN')}`; }
+const tint = (color, amount) => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
 
 // 1. School Pulse
 export function SchoolPulse() {
@@ -42,15 +43,15 @@ export function SchoolPulse() {
     <ToolPage title="School Pulse" subtitle="Today's complete overview" onRefresh={load} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 1000 }}>
         <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(4, minmax(160px, 1fr))', gap: 12 }}>
-          <StatCard value={money(feeStats.total_collected || data?.fee_stats?.paid || 0)} label="FEE COLLECTED" color="#34d399" />
-          <StatCard value={money(feeStats.total_outstanding || data?.fee_stats?.overdue || 0)} label="FEE OVERDUE" color="#f87171" />
-          <StatCard value={feeStats.transactions ? `${Math.round((Number(feeStats.total_collected || 0) / Math.max(Number(feeStats.total_collected || 0) + Number(feeStats.total_outstanding || 0), 1)) * 100)}%` : '0%'} label="COLLECTION RATE" color="#4f8ff7" />
-          <StatCard value={openComplaints.length} label="UNRESOLVED PARENT COMPLAINTS" color={openComplaints.length ? '#fbbf24' : '#34d399'} />
+          <StatCard value={money(feeStats.total_collected || data?.fee_stats?.paid || 0)} label="FEE COLLECTED" color="var(--tool-hex-34d399)" />
+          <StatCard value={money(feeStats.total_outstanding || data?.fee_stats?.overdue || 0)} label="FEE OVERDUE" color="var(--tool-hex-f87171)" />
+          <StatCard value={feeStats.transactions ? `${Math.round((Number(feeStats.total_collected || 0) / Math.max(Number(feeStats.total_collected || 0) + Number(feeStats.total_outstanding || 0), 1)) * 100)}%` : '0%'} label="COLLECTION RATE" color="var(--tool-hex-4f8ff7)" />
+          <StatCard value={openComplaints.length} label="UNRESOLVED PARENT COMPLAINTS" color={openComplaints.length ? 'var(--tool-hex-fbbf24)' : 'var(--tool-hex-34d399)'} />
         </div>
         {openComplaints.length > 0 && (
-          <div style={{ gridColumn: '1 / -1', background: '#1e1e1e', border: '1px solid rgba(251,191,36,0.28)', borderRadius: 12, padding: 16 }}>
+          <div style={{ gridColumn: '1 / -1', background: 'var(--tool-hex-1e1e1e)', border: '1px solid rgba(251,191,36,0.28)', borderRadius: 12, padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 650, color: '#fbbf24', margin: 0 }}>Director Priority: Unresolved Parent Complaints</h3>
+              <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 650, color: 'var(--tool-hex-fbbf24)', margin: 0 }}>Director Priority: Unresolved Parent Complaints</h3>
               <ActionBtn label="Open Complaints" variant="secondary" onClick={() => window.dispatchEvent(new CustomEvent('open-tool', { detail: 'complaint-tracker' }))} />
             </div>
             <DataTable
@@ -61,14 +62,14 @@ export function SchoolPulse() {
           </div>
         )}
         {/* Quick Actions */}
-        <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 12, padding: 20 }}>
-          <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 600, color: '#e5e5e5', marginBottom: 14 }}>Quick Actions</h3>
+        <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: 20 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 600, color: 'var(--tool-hex-e5e5e5)', marginBottom: 14 }}>Quick Actions</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {[
-              { icon: Users, label: "Mark Today's Attendance", color: '#4f8ff7', action: () => window.dispatchEvent(new CustomEvent('open-tool', { detail: 'attendance-recorder' })) },
-              { icon: Send, label: 'Send Fee Reminders', color: '#34d399', action: async () => { alert('Fee reminders will be sent via WhatsApp (Phase 2)'); } },
-              { icon: AlertTriangle, label: 'View Active Alerts', color: '#f87171', action: () => window.dispatchEvent(new CustomEvent('open-tool', { detail: 'smart-alerts' })) },
-              { icon: FileText, label: 'Generate Daily Report', color: '#a78bfa', action: async () => {
+              { icon: Users, label: "Mark Today's Attendance", color: 'var(--tool-hex-4f8ff7)', action: () => window.dispatchEvent(new CustomEvent('open-tool', { detail: 'attendance-recorder' })) },
+              { icon: Send, label: 'Send Fee Reminders', color: 'var(--tool-hex-34d399)', action: async () => { alert('Fee reminders will be sent via WhatsApp (Phase 2)'); } },
+              { icon: AlertTriangle, label: 'View Active Alerts', color: 'var(--tool-hex-f87171)', action: () => window.dispatchEvent(new CustomEvent('open-tool', { detail: 'smart-alerts' })) },
+              { icon: FileText, label: 'Generate Daily Report', color: 'var(--tool-hex-a78bfa)', action: async () => {
                 try {
                   // Fetch all data in parallel
                   let pulseData = data;
@@ -224,48 +225,48 @@ export function SchoolPulse() {
                 } catch (err) { alert(`PDF generation failed: ${err.message}`); }
               }},
             ].map((a, i) => (
-              <button key={i} data-testid={`quick-action-${i}`} onClick={a.action} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, background: 'transparent', border: '1px solid #2e2e2e', borderRadius: 10, padding: '14px 8px', cursor: 'pointer', color: '#a3a3a3', fontSize: 11, fontWeight: 500, transition: 'all 0.15s' }}
-                onMouseEnter={e => { e.currentTarget.style.background = `${a.color}10`; e.currentTarget.style.borderColor = `${a.color}40`; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#2e2e2e'; }}>
+              <button key={i} data-testid={`quick-action-${i}`} onClick={a.action} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, background: 'transparent', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 10, padding: '14px 8px', cursor: 'pointer', color: 'var(--tool-hex-a3a3a3)', fontSize: 11, fontWeight: 500, transition: 'all 0.15s' }}
+                onMouseEnter={e => { e.currentTarget.style.background = tint(a.color, 6); e.currentTarget.style.borderColor = tint(a.color, 25); }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--tool-hex-2e2e2e)'; }}>
                 <a.icon size={18} color={a.color} />
                 <span style={{ textAlign: 'center', lineHeight: 1.3 }}>{a.label}</span>
               </button>
             ))}
           </div>
           <button data-testid="open-att-alerts-btn" onClick={() => window.dispatchEvent(new CustomEvent('open-tool', { detail: 'attendance-alerts' }))}
-            style={{ width: '100%', marginTop: 12, background: 'transparent', border: '1px solid #a78bfa', borderRadius: 8, padding: '10px', color: '#a78bfa', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            style={{ width: '100%', marginTop: 12, background: 'transparent', border: '1px solid var(--tool-hex-a78bfa)', borderRadius: 8, padding: '10px', color: 'var(--tool-hex-a78bfa)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
             Configure Attendance Alerts
           </button>
         </div>
 
         {/* Snapshot */}
-        <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 12, padding: 20 }}>
-          <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 600, color: '#e5e5e5', marginBottom: 14 }}>Today's Snapshot</h3>
+        <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: 20 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 600, color: 'var(--tool-hex-e5e5e5)', marginBottom: 14 }}>Today's Snapshot</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
-            <StatCard value={s.attendance_rate || '0%'} label="ATTENDANCE" color="#34d399" small />
-            <StatCard value={s.total_students || 0} label="ENROLLED" color="#e5e5e5" small />
-            <StatCard value={data?.fee_stats?.paid || '₹0'} label="FEES PAID" color="#4f8ff7" small />
-            <StatCard value={data?.fee_stats?.overdue || '₹0'} label="OVERDUE" color="#f87171" small />
+            <StatCard value={s.attendance_rate || '0%'} label="ATTENDANCE" color="var(--tool-hex-34d399)" small />
+            <StatCard value={s.total_students || 0} label="ENROLLED" color="var(--tool-hex-e5e5e5)" small />
+            <StatCard value={data?.fee_stats?.paid || '₹0'} label="FEES PAID" color="var(--tool-hex-4f8ff7)" small />
+            <StatCard value={data?.fee_stats?.overdue || '₹0'} label="OVERDUE" color="var(--tool-hex-f87171)" small />
           </div>
-          {(data?.staff_absent_today?.length || 0) > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 7, padding: '8px 12px', marginBottom: 6, fontSize: 12, color: '#fcd34d' }}><AlertTriangle size={12} />{data.staff_absent_today.length} teachers absent today</div>}
-          {(data?.chronic_absent_students?.length || 0) > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 7, padding: '8px 12px', marginBottom: 6, fontSize: 12, color: '#fca5a5' }}><AlertTriangle size={12} />{data.chronic_absent_students.length} students absent 3+ days</div>}
-          {data?.fee_stats?.paid && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 7, padding: '8px 12px', marginBottom: 6, fontSize: 12, color: '#6ee7b7' }}><CheckCircle size={12} />Fee collection: {data.fee_stats.paid} collected</div>}
-          {leaves.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 7, padding: '8px 12px', fontSize: 12, color: '#93c5fd' }}><Activity size={12} />{leaves.length} leave requests pending</div>}
+          {(data?.staff_absent_today?.length || 0) > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 7, padding: '8px 12px', marginBottom: 6, fontSize: 12, color: 'var(--tool-hex-fcd34d)' }}><AlertTriangle size={12} />{data.staff_absent_today.length} teachers absent today</div>}
+          {(data?.chronic_absent_students?.length || 0) > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 7, padding: '8px 12px', marginBottom: 6, fontSize: 12, color: 'var(--tool-hex-fca5a5)' }}><AlertTriangle size={12} />{data.chronic_absent_students.length} students absent 3+ days</div>}
+          {data?.fee_stats?.paid && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 7, padding: '8px 12px', marginBottom: 6, fontSize: 12, color: 'var(--tool-hex-6ee7b7)' }}><CheckCircle size={12} />Fee collection: {data.fee_stats.paid} collected</div>}
+          {leaves.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 7, padding: '8px 12px', fontSize: 12, color: 'var(--tool-hex-93c5fd)' }}><Activity size={12} />{leaves.length} leave requests pending</div>}
         </div>
       </div>
 
       {/* Pending Leaves quick actions */}
       {leaves.length > 0 && (
-        <div style={{ marginTop: 16, background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 11, overflow: 'hidden', maxWidth: 1000 }}>
-          <div style={{ padding: '10px 16px', borderBottom: '1px solid #2e2e2e' }}>
-            <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: 13, color: '#e5e5e5' }}>Pending Leave Requests</span>
+        <div style={{ marginTop: 16, background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11, overflow: 'hidden', maxWidth: 1000 }}>
+          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--tool-hex-2e2e2e)' }}>
+            <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: 13, color: 'var(--tool-hex-e5e5e5)' }}>Pending Leave Requests</span>
           </div>
           {leaves.map((lr, i) => (
-            <div key={lr.id || i} style={{ padding: '12px 16px', borderBottom: i < leaves.length - 1 ? '1px solid #242424' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div key={lr.id || i} style={{ padding: '12px 16px', borderBottom: i < leaves.length - 1 ? '1px solid var(--tool-hex-242424)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <span style={{ fontWeight: 600, color: '#e5e5e5', fontSize: 13 }}>{lr.staff_name}</span>
-                <span style={{ color: '#737373', fontSize: 11, marginLeft: 10 }}>{lr.leave_type} · {lr.start_date} – {lr.end_date}</span>
-                <div style={{ fontSize: 11, color: '#525252', marginTop: 2, fontStyle: 'italic' }}>{lr.reason}</div>
+                <span style={{ fontWeight: 600, color: 'var(--tool-hex-e5e5e5)', fontSize: 13 }}>{lr.staff_name}</span>
+                <span style={{ color: 'var(--tool-hex-737373)', fontSize: 11, marginLeft: 10 }}>{lr.leave_type} · {lr.start_date} – {lr.end_date}</span>
+                <div style={{ fontSize: 11, color: 'var(--tool-hex-525252)', marginTop: 2, fontStyle: 'italic' }}>{lr.reason}</div>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <ActionBtn label="Approve" variant="success" icon={<CheckCircle size={11} />} onClick={async () => { await updateLeave(lr.id, 'approved', currentUser); load(); }} />
@@ -295,16 +296,16 @@ export function FeeCollection() {
   return (
     <ToolPage title="Fee collection" subtitle="Revenue summary & defaulters" onRefresh={loadData} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18, maxWidth: 900 }}>
-        <StatCard value={stats.total_overdue || '₹0'} label="TOTAL OVERDUE" color="#f87171" />
-        <StatCard value={stats.students_with_dues || 0} label="STUDENTS WITH DUES" color="#fbbf24" />
-        <StatCard value={stats.overdue_60_days || 0} label="OVERDUE 60+ DAYS" color="#f87171" />
-        <StatCard value={stats.collection_rate || '0%'} label="COLLECTION RATE" color="#34d399" />
+        <StatCard value={stats.total_overdue || '₹0'} label="TOTAL OVERDUE" color="var(--tool-hex-f87171)" />
+        <StatCard value={stats.students_with_dues || 0} label="STUDENTS WITH DUES" color="var(--tool-hex-fbbf24)" />
+        <StatCard value={stats.overdue_60_days || 0} label="OVERDUE 60+ DAYS" color="var(--tool-hex-f87171)" />
+        <StatCard value={stats.collection_rate || '0%'} label="COLLECTION RATE" color="var(--tool-hex-34d399)" />
       </div>
       {chartData.length > 0 && (
-        <BarChartWidget data={chartData} xKey="name" bars={[{ key: 'amount', color: '#f87171', name: 'Overdue (₹)' }]} title="Top Defaulters — Amount Overdue" height={200} />
+        <BarChartWidget data={chartData} xKey="name" bars={[{ key: 'amount', color: 'var(--tool-hex-f87171)', name: 'Overdue (₹)' }]} title="Top Defaulters — Amount Overdue" height={200} />
       )}
       <DataTable title={`Fee Defaulters — Top ${defaulters.length}`} headers={['Student', 'Class', 'Amount Overdue', 'Days Overdue']}
-        rows={defaulters.map(d => [d.student_name, d.class, <span style={{ color: '#f87171', fontWeight: 600 }}>{d.amount_overdue_fmt}</span>, <span style={{ color: d.days_overdue > 60 ? '#f87171' : '#fbbf24' }}>{d.days_overdue} days</span>])}
+        rows={defaulters.map(d => [d.student_name, d.class, <span style={{ color: 'var(--tool-hex-f87171)', fontWeight: 600 }}>{d.amount_overdue_fmt}</span>, <span style={{ color: d.days_overdue > 60 ? 'var(--tool-hex-f87171)' : 'var(--tool-hex-fbbf24)' }}>{d.days_overdue} days</span>])}
         emptyMsg="No fee defaulters — great collection rate!"
       />
     </ToolPage>
@@ -360,17 +361,17 @@ export function StudentStrength() {
   return (
     <ToolPage title="Student Strength" subtitle="Class-wise enrollment overview" onRefresh={load} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 20, maxWidth: 600 }}>
-        <StatCard value={totalStudents} label="TOTAL STUDENTS" color="#4f8ff7" />
-        <StatCard value={totalClasses} label="TOTAL CLASSES" color="#34d399" />
-        <StatCard value={avgPerClass} label="AVG PER CLASS" color="#a78bfa" />
+        <StatCard value={totalStudents} label="TOTAL STUDENTS" color="var(--tool-hex-4f8ff7)" />
+        <StatCard value={totalClasses} label="TOTAL CLASSES" color="var(--tool-hex-34d399)" />
+        <StatCard value={avgPerClass} label="AVG PER CLASS" color="var(--tool-hex-a78bfa)" />
       </div>
       <DataTable title="Class-wise Strength" headers={['Class', 'Section', 'Students', 'Boys', 'Girls', 'Academic Year']}
         rows={(data?.classes || []).map(c => [
           c.name,
           c.section || '—',
-          <span style={{ fontWeight: 700, color: '#4f8ff7', fontSize: 14 }}>{c.student_count}</span>,
-          <span style={{ color: '#60a5fa' }}>{c.boys}</span>,
-          <span style={{ color: '#f9a8d4' }}>{c.girls}</span>,
+          <span style={{ fontWeight: 700, color: 'var(--tool-hex-4f8ff7)', fontSize: 14 }}>{c.student_count}</span>,
+          <span style={{ color: 'var(--tool-hex-60a5fa)' }}>{c.boys}</span>,
+          <span style={{ color: 'var(--tool-hex-f9a8d4)' }}>{c.girls}</span>,
           '2025-26',
         ])}
         emptyMsg="No classes configured yet"
@@ -419,34 +420,34 @@ export function DataImport() {
   return (
     <ToolPage title="Data Import" subtitle="Validate and import student records">
       <div style={{ maxWidth: 980 }}>
-        <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 14, padding: 18, marginBottom: 16 }}>
+        <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 14, padding: 18, marginBottom: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 1fr) auto auto', gap: 10, alignItems: 'center' }}>
             <input
               type="file"
               accept=".csv,.xlsx"
               onChange={e => { setFile(e.target.files?.[0] || null); setReport(null); setResult(null); setError(''); }}
-              style={{ color: '#a0a0a0', fontSize: 13 }}
+              style={{ color: 'var(--tool-hex-a0a0a0)', fontSize: 13 }}
             />
             <ActionBtn label={loading ? 'Validating...' : 'Validate'} icon={<Upload size={13} />} onClick={() => upload('validate')} disabled={!file || loading} />
             <ActionBtn label={loading ? 'Importing...' : 'Commit Import'} variant="success" icon={<CheckCircle size={13} />} onClick={() => upload('commit')} disabled={!canCommit || loading} />
           </div>
-          <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8, color: '#a0a0a0', fontSize: 12 }}>
+          <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8, color: 'var(--tool-hex-a0a0a0)', fontSize: 12 }}>
             <input id="overwrite-import-duplicates" type="checkbox" checked={overwrite} onChange={e => setOverwrite(e.target.checked)} />
             <label htmlFor="overwrite-import-duplicates">Overwrite duplicate students during commit</label>
           </div>
-          <div style={{ marginTop: 10, color: '#737373', fontSize: 12 }}>
+          <div style={{ marginTop: 10, color: 'var(--tool-hex-737373)', fontSize: 12 }}>
             Required columns: name, class, section, parent_name, parent_phone. Optional: date_of_birth, address, route_zone_id.
           </div>
-          {error && <div style={{ marginTop: 12, color: '#f87171', fontSize: 13 }}>{error}</div>}
-          {result && <div style={{ marginTop: 12, color: '#34d399', fontSize: 13 }}>Imported {result.imported_count} rows. Skipped {result.skipped_count} rows.</div>}
+          {error && <div style={{ marginTop: 12, color: 'var(--tool-hex-f87171)', fontSize: 13 }}>{error}</div>}
+          {result && <div style={{ marginTop: 12, color: 'var(--tool-hex-34d399)', fontSize: 13 }}>Imported {result.imported_count} rows. Skipped {result.skipped_count} rows.</div>}
         </div>
 
         {report && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
-            <StatCard value={report.valid_count || 0} label="VALID ROWS" color="#34d399" />
-            <StatCard value={report.error_count || 0} label="ERRORS" color="#f87171" />
-            <StatCard value={report.duplicate_count || 0} label="DUPLICATES" color="#fbbf24" />
-            <StatCard value={file?.name || '—'} label="FILE" color="#4f8ff7" />
+            <StatCard value={report.valid_count || 0} label="VALID ROWS" color="var(--tool-hex-34d399)" />
+            <StatCard value={report.error_count || 0} label="ERRORS" color="var(--tool-hex-f87171)" />
+            <StatCard value={report.duplicate_count || 0} label="DUPLICATES" color="var(--tool-hex-fbbf24)" />
+            <StatCard value={file?.name || '—'} label="FILE" color="var(--tool-hex-4f8ff7)" />
           </div>
         )}
 
@@ -461,7 +462,7 @@ export function DataImport() {
         <DataTable
           title="Validation Errors"
           headers={['Row', 'Field', 'Message']}
-          rows={errors.map(e => [e.row, e.field, <span style={{ color: '#f87171' }}>{e.message}</span>])}
+          rows={errors.map(e => [e.row, e.field, <span style={{ color: 'var(--tool-hex-f87171)' }}>{e.message}</span>])}
           emptyMsg={report ? 'No validation errors' : 'Validate a CSV or XLSX file to see row-level results'}
         />
       </div>
@@ -507,32 +508,32 @@ export function AttendanceOverview() {
             `${cls.name}${cls.section ? ' ' + cls.section : ''}`,
             stat.present,
             stat.total,
-            <span style={{ color: parseFloat(stat.rate) >= 85 ? '#34d399' : '#f87171', fontWeight: 600 }}>{stat.rate}</span>,
+            <span style={{ color: parseFloat(stat.rate) >= 85 ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-f87171)', fontWeight: 600 }}>{stat.rate}</span>,
           ];
         }
         return [
           `${cls.name}${cls.section ? ' ' + cls.section : ''}`,
-          <span style={{ color: '#737373' }}>—</span>,
-          <span style={{ color: '#737373' }}>—</span>,
-          <span style={{ color: '#737373', fontSize: 11 }}>Not marked</span>,
+          <span style={{ color: 'var(--tool-hex-737373)' }}>—</span>,
+          <span style={{ color: 'var(--tool-hex-737373)' }}>—</span>,
+          <span style={{ color: 'var(--tool-hex-737373)', fontSize: 11 }}>Not marked</span>,
         ];
       })
     : (data?.class_stats_today || []).map(c => [
         c.class,
         c.present,
         c.total,
-        <span style={{ color: parseFloat(c.rate) >= 85 ? '#34d399' : '#f87171', fontWeight: 600 }}>{c.rate}</span>,
+        <span style={{ color: parseFloat(c.rate) >= 85 ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-f87171)', fontWeight: 600 }}>{c.rate}</span>,
       ]);
 
   return (
     <ToolPage title="Attendance Overview" subtitle="Trends and class-wise analysis" onRefresh={load} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16, maxWidth: 500 }}>
-        <StatCard value={data?.avg_attendance_rate || '0%'} label="AVG RATE (30 DAYS)" color="#34d399" />
-        <StatCard value={data?.total_records || 0} label="TOTAL RECORDS" color="#4f8ff7" />
-        <StatCard value="Last 30 days" label="PERIOD" color="#a78bfa" />
+        <StatCard value={data?.avg_attendance_rate || '0%'} label="AVG RATE (30 DAYS)" color="var(--tool-hex-34d399)" />
+        <StatCard value={data?.total_records || 0} label="TOTAL RECORDS" color="var(--tool-hex-4f8ff7)" />
+        <StatCard value="Last 30 days" label="PERIOD" color="var(--tool-hex-a78bfa)" />
       </div>
       {chartData.length > 0 && (
-        <LineChartWidget data={chartData} xKey="date" lines={[{ key: 'rate', color: '#34d399', name: 'Attendance %' }, { key: 'absent', color: '#f87171', name: 'Absent' }]} title="30-Day Attendance Trend" height={200} />
+        <LineChartWidget data={chartData} xKey="date" lines={[{ key: 'rate', color: 'var(--tool-hex-34d399)', name: 'Attendance %' }, { key: 'absent', color: 'var(--tool-hex-f87171)', name: 'Absent' }]} title="30-Day Attendance Trend" height={200} />
       )}
       <DataTable title="Class-wise Today" headers={['Class', 'Present', 'Total', 'Rate']}
         rows={allClassRows}
@@ -552,19 +553,19 @@ export function StaffAttendanceTracker() {
   const load = async () => { setLoading(true); try { const r = await executeTool('get_staff_status', {}, currentUser); if (r.success) setData(r.data); } catch {} setLoading(false); };
   const staff = data?.staff_list || [];
   const leaves = data?.pending_leaves || [];
-  const statusColors = { present: '#34d399', absent: '#f87171', late: '#fbbf24', not_marked: '#737373', 'on-leave': '#a78bfa' };
+  const statusColors = { present: 'var(--tool-hex-34d399)', absent: 'var(--tool-hex-f87171)', late: 'var(--tool-hex-fbbf24)', not_marked: 'var(--tool-hex-737373)', 'on-leave': 'var(--tool-hex-a78bfa)' };
 
   return (
     <ToolPage title="Staff Tracker" subtitle="Attendance & leave management" onRefresh={load} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18, maxWidth: 700 }}>
-        <StatCard value={data?.total_staff || 0} label="TOTAL STAFF" color="#e5e5e5" />
-        <StatCard value={data?.present_today || 0} label="PRESENT" color="#34d399" />
-        <StatCard value={data?.absent_today || 0} label="ABSENT" color="#f87171" />
-        <StatCard value={leaves.length} label="PENDING LEAVES" color="#fbbf24" />
+        <StatCard value={data?.total_staff || 0} label="TOTAL STAFF" color="var(--tool-hex-e5e5e5)" />
+        <StatCard value={data?.present_today || 0} label="PRESENT" color="var(--tool-hex-34d399)" />
+        <StatCard value={data?.absent_today || 0} label="ABSENT" color="var(--tool-hex-f87171)" />
+        <StatCard value={leaves.length} label="PENDING LEAVES" color="var(--tool-hex-fbbf24)" />
       </div>
-      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #2e2e2e', marginBottom: 14 }}>
+      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--tool-hex-2e2e2e)', marginBottom: 14 }}>
         {['attendance', 'leaves'].map(t => (
-          <button key={t} onClick={() => setActiveTab(t)} data-testid={`tab-${t}`} style={{ background: 'none', border: 'none', padding: '8px 14px', borderBottom: activeTab === t ? '2px solid #4f8ff7' : '2px solid transparent', color: activeTab === t ? '#fff' : '#737373', fontSize: 13, fontWeight: 500, cursor: 'pointer', marginBottom: -1 }}>
+          <button key={t} onClick={() => setActiveTab(t)} data-testid={`tab-${t}`} style={{ background: 'none', border: 'none', padding: '8px 14px', borderBottom: activeTab === t ? '2px solid var(--tool-hex-4f8ff7)' : '2px solid transparent', color: activeTab === t ? 'var(--tool-hex-fff)' : 'var(--tool-hex-737373)', fontSize: 13, fontWeight: 500, cursor: 'pointer', marginBottom: -1 }}>
             {t === 'attendance' ? "Today's Attendance" : `Pending Leaves (${leaves.length})`}
           </button>
         ))}
@@ -576,9 +577,9 @@ export function StaffAttendanceTracker() {
       )}
       {activeTab === 'leaves' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {leaves.length === 0 ? <div style={{ padding: 24, textAlign: 'center', color: '#737373', fontSize: 13, background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 11 }}>No pending leave requests</div> : leaves.map((lr, i) => (
-            <div key={lr.id || i} style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div><div style={{ fontWeight: 600, color: '#e5e5e5', fontSize: 13 }}>{lr.staff_name}</div><div style={{ color: '#737373', fontSize: 11 }}>{lr.leave_type} · {lr.start_date} – {lr.end_date}</div><div style={{ color: '#a3a3a3', fontSize: 11, marginTop: 3, fontStyle: 'italic' }}>{lr.reason}</div></div>
+          {leaves.length === 0 ? <div style={{ padding: 24, textAlign: 'center', color: 'var(--tool-hex-737373)', fontSize: 13, background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11 }}>No pending leave requests</div> : leaves.map((lr, i) => (
+            <div key={lr.id || i} style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div><div style={{ fontWeight: 600, color: 'var(--tool-hex-e5e5e5)', fontSize: 13 }}>{lr.staff_name}</div><div style={{ color: 'var(--tool-hex-737373)', fontSize: 11 }}>{lr.leave_type} · {lr.start_date} – {lr.end_date}</div><div style={{ color: 'var(--tool-hex-a3a3a3)', fontSize: 11, marginTop: 3, fontStyle: 'italic' }}>{lr.reason}</div></div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <ActionBtn label="Approve" variant="success" icon={<CheckCircle size={11} />} onClick={async () => { await updateLeave(lr.id, 'approved', currentUser); load(); }} />
                 <ActionBtn label="Reject" variant="danger" icon={<XCircle size={11} />} onClick={async () => { await updateLeave(lr.id, 'rejected', currentUser); load(); }} />
@@ -617,16 +618,16 @@ export function FinancialReports() {
   return (
     <ToolPage title="Financial Reports" subtitle="Revenue, expenses & analysis" onRefresh={load} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 18, maxWidth: 700 }}>
-        <StatCard value={data?.total_collected || '₹0'} label="TOTAL COLLECTED" color="#34d399" />
-        <StatCard value={fmtExp || '₹0'} label="TOTAL EXPENSES" color="#f87171" />
-        <StatCard value={data?.collection_rate || '0%'} label="COLLECTION RATE" color="#4f8ff7" />
+        <StatCard value={data?.total_collected || '₹0'} label="TOTAL COLLECTED" color="var(--tool-hex-34d399)" />
+        <StatCard value={fmtExp || '₹0'} label="TOTAL EXPENSES" color="var(--tool-hex-f87171)" />
+        <StatCard value={data?.collection_rate || '0%'} label="COLLECTION RATE" color="var(--tool-hex-4f8ff7)" />
       </div>
       <DataTable title="Revenue by Fee Type" headers={['Fee Type', 'Expected', 'Collected']}
-        rows={(data?.by_fee_type || []).map(r => [r.fee_type, r.expected, <span style={{ color: '#34d399' }}>{r.collected}</span>])}
+        rows={(data?.by_fee_type || []).map(r => [r.fee_type, r.expected, <span style={{ color: 'var(--tool-hex-34d399)' }}>{r.collected}</span>])}
         emptyMsg="No fee data available"
       />
       <DataTable title="Recent Expenses" headers={['Date', 'Category', 'Description', 'Amount']}
-        rows={expenses.slice(0, 10).map(e => [e.date, e.category, e.description, <span style={{ color: '#f87171' }}>₹{(e.amount || 0).toLocaleString('en-IN')}</span>])}
+        rows={expenses.slice(0, 10).map(e => [e.date, e.category, e.description, <span style={{ color: 'var(--tool-hex-f87171)' }}>₹{(e.amount || 0).toLocaleString('en-IN')}</span>])}
         emptyMsg="No expenses recorded"
       />
     </ToolPage>
@@ -704,8 +705,8 @@ export function AnnouncementBroadcaster() {
         <ActionBtn label="New Announcement" onClick={() => setShowForm(true)} icon={<Plus size={11} />} />
       )}>
       {showForm && (
-        <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 11, padding: 20, marginBottom: 18 }}>
-          <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#e5e5e5', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>New Announcement</h3>
+        <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11, padding: 20, marginBottom: 18 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>New Announcement</h3>
           <form onSubmit={handleSubmit}>
             <FormField label="Title" value={form.title} onChange={f('title')} placeholder="Announcement title" required />
             <FormField label="Message" type="textarea" value={form.content} onChange={f('content')} placeholder="Write your announcement..." required />
@@ -715,11 +716,11 @@ export function AnnouncementBroadcaster() {
             {/* Role selector */}
             {form.audience_type === 'role' && (
               <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 12, color: '#737373', marginBottom: 8, fontWeight: 600 }}>Select Roles *</label>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--tool-hex-737373)', marginBottom: 8, fontWeight: 600 }}>Select Roles *</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {ROLES.map(role => (
-                    <label key={role} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: form.audience_roles.includes(role) ? 'rgba(79,143,247,0.15)' : '#252525', border: `1px solid ${form.audience_roles.includes(role) ? '#4f8ff7' : '#333'}`, borderRadius: 8, cursor: 'pointer', fontSize: 12, color: form.audience_roles.includes(role) ? '#4f8ff7' : '#a0a0a0', textTransform: 'capitalize' }}>
-                      <input type="checkbox" checked={form.audience_roles.includes(role)} onChange={() => toggleRole(role)} style={{ accentColor: '#4f8ff7' }} />
+                    <label key={role} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: form.audience_roles.includes(role) ? 'rgba(79,143,247,0.15)' : 'var(--tool-hex-252525)', border: `1px solid ${form.audience_roles.includes(role) ? 'var(--tool-hex-4f8ff7)' : 'var(--tool-hex-333)'}`, borderRadius: 8, cursor: 'pointer', fontSize: 12, color: form.audience_roles.includes(role) ? 'var(--tool-hex-4f8ff7)' : 'var(--tool-hex-a0a0a0)', textTransform: 'capitalize' }}>
+                      <input type="checkbox" checked={form.audience_roles.includes(role)} onChange={() => toggleRole(role)} style={{ accentColor: 'var(--tool-hex-4f8ff7)' }} />
                       {role}
                     </label>
                   ))}
@@ -730,18 +731,18 @@ export function AnnouncementBroadcaster() {
             {/* Class selector */}
             {form.audience_type === 'class' && (
               <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 12, color: '#737373', marginBottom: 8, fontWeight: 600 }}>Select Classes *</label>
+                <label style={{ display: 'block', fontSize: 12, color: 'var(--tool-hex-737373)', marginBottom: 8, fontWeight: 600 }}>Select Classes *</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, maxHeight: 160, overflowY: 'auto' }}>
                   {classes.map(cls => {
                     const key = cls.name + (cls.section ? ' ' + cls.section : '');
                     return (
-                      <label key={cls.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: form.audience_classes.includes(key) ? 'rgba(79,143,247,0.15)' : '#252525', border: `1px solid ${form.audience_classes.includes(key) ? '#4f8ff7' : '#333'}`, borderRadius: 8, cursor: 'pointer', fontSize: 12, color: form.audience_classes.includes(key) ? '#4f8ff7' : '#a0a0a0' }}>
-                        <input type="checkbox" checked={form.audience_classes.includes(key)} onChange={() => toggleClass(key)} style={{ accentColor: '#4f8ff7' }} />
+                      <label key={cls.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: form.audience_classes.includes(key) ? 'rgba(79,143,247,0.15)' : 'var(--tool-hex-252525)', border: `1px solid ${form.audience_classes.includes(key) ? 'var(--tool-hex-4f8ff7)' : 'var(--tool-hex-333)'}`, borderRadius: 8, cursor: 'pointer', fontSize: 12, color: form.audience_classes.includes(key) ? 'var(--tool-hex-4f8ff7)' : 'var(--tool-hex-a0a0a0)' }}>
+                        <input type="checkbox" checked={form.audience_classes.includes(key)} onChange={() => toggleClass(key)} style={{ accentColor: 'var(--tool-hex-4f8ff7)' }} />
                         {key}
                       </label>
                     );
                   })}
-                  {classes.length === 0 && <span style={{ color: '#737373', fontSize: 12 }}>No classes configured</span>}
+                  {classes.length === 0 && <span style={{ color: 'var(--tool-hex-737373)', fontSize: 12 }}>No classes configured</span>}
                 </div>
               </div>
             )}
@@ -774,16 +775,16 @@ export function AdmissionFunnel() {
   return (
     <ToolPage title="Admission Funnel" subtitle="Enquiries & conversion pipeline" onRefresh={load} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18, maxWidth: 800 }}>
-        <StatCard value={data?.total || 0} label="TOTAL ENQUIRIES" color="#4f8ff7" />
-        <StatCard value={funnel.enrolled || 0} label="ENROLLED" color="#34d399" />
-        <StatCard value={funnel.new || 0} label="NEW TODAY" color="#fbbf24" />
-        <StatCard value={funnel.lost || 0} label="LOST" color="#f87171" />
+        <StatCard value={data?.total || 0} label="TOTAL ENQUIRIES" color="var(--tool-hex-4f8ff7)" />
+        <StatCard value={funnel.enrolled || 0} label="ENROLLED" color="var(--tool-hex-34d399)" />
+        <StatCard value={funnel.new || 0} label="NEW TODAY" color="var(--tool-hex-fbbf24)" />
+        <StatCard value={funnel.lost || 0} label="LOST" color="var(--tool-hex-f87171)" />
       </div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18 }}>
         {stages.map(s => (
-          <div key={s} style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 8, padding: '8px 12px', textAlign: 'center', minWidth: 80 }}>
-            <div style={{ fontSize: 18, fontWeight: 700, color: '#e5e5e5', fontFamily: 'Inter, sans-serif' }}>{funnel[s] || 0}</div>
-            <div style={{ fontSize: 9, color: '#737373', textTransform: 'capitalize', fontWeight: 600 }}>{s.replace('_', ' ')}</div>
+          <div key={s} style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 8, padding: '8px 12px', textAlign: 'center', minWidth: 80 }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--tool-hex-e5e5e5)', fontFamily: 'Inter, sans-serif' }}>{funnel[s] || 0}</div>
+            <div style={{ fontSize: 9, color: 'var(--tool-hex-737373)', textTransform: 'capitalize', fontWeight: 600 }}>{s.replace('_', ' ')}</div>
           </div>
         ))}
       </div>
@@ -849,21 +850,21 @@ export function StaffPerformance() {
 
   const getRateColor = (s) => {
     const st = staffStats[s.id];
-    if (!st || st.total === 0) return '#737373';
+    if (!st || st.total === 0) return 'var(--tool-hex-737373)';
     const rate = Math.round((st.present / st.total) * 100);
-    return rate >= 90 ? '#34d399' : rate >= 75 ? '#fbbf24' : '#f87171';
+    return rate >= 90 ? 'var(--tool-hex-34d399)' : rate >= 75 ? 'var(--tool-hex-fbbf24)' : 'var(--tool-hex-f87171)';
   };
 
   return (
     <ToolPage title="Staff Performance" subtitle="Individual staff stats & attendance analytics" onRefresh={load} loading={loading}>
       {/* Summary Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 20, maxWidth: 800 }}>
-        <StatCard value={staff.length} label="TOTAL STAFF" color="#e5e5e5" />
-        <StatCard value={staff.filter(s => s.staff_type === 'teacher').length} label="TEACHERS" color="#4f8ff7" />
-        <StatCard value={staff.filter(s => s.staff_type !== 'teacher').length} label="NON-TEACHING" color="#a78bfa" />
+        <StatCard value={staff.length} label="TOTAL STAFF" color="var(--tool-hex-e5e5e5)" />
+        <StatCard value={staff.filter(s => s.staff_type === 'teacher').length} label="TEACHERS" color="var(--tool-hex-4f8ff7)" />
+        <StatCard value={staff.filter(s => s.staff_type !== 'teacher').length} label="NON-TEACHING" color="var(--tool-hex-a78bfa)" />
         <StatCard
           value={staff.length > 0 ? `${Math.round(staff.filter(s => { const st = staffStats[s.id]; return st && st.total > 0 && (st.present / st.total) * 100 >= 90; }).length / staff.length * 100)}%` : '—'}
-          label="ABOVE 90% ATT." color="#34d399" />
+          label="ABOVE 90% ATT." color="var(--tool-hex-34d399)" />
       </div>
 
       {/* Per-staff detail table */}
@@ -871,14 +872,14 @@ export function StaffPerformance() {
         rows={staff.map(s => {
           const st = staffStats[s.id];
           return [
-            <span style={{ fontWeight: 600, color: '#e5e5e5', cursor: 'pointer' }} onClick={() => setSelectedStaff(selectedStaff?.id === s.id ? null : s)}>{s.name}</span>,
+            <span style={{ fontWeight: 600, color: 'var(--tool-hex-e5e5e5)', cursor: 'pointer' }} onClick={() => setSelectedStaff(selectedStaff?.id === s.id ? null : s)}>{s.name}</span>,
             <Badge text={s.staff_type || 'staff'} color={s.staff_type === 'teacher' ? 'blue' : 'purple'} />,
             s.department || '—',
             s.employee_id || '—',
             s.join_date || '—',
-            <span style={{ color: '#34d399', fontWeight: 600 }}>{st?.present ?? '—'}</span>,
-            <span style={{ color: '#f87171', fontWeight: 600 }}>{st?.absent ?? '—'}</span>,
-            <span style={{ color: '#fbbf24', fontWeight: 600 }}>{st?.late ?? '—'}</span>,
+            <span style={{ color: 'var(--tool-hex-34d399)', fontWeight: 600 }}>{st?.present ?? '—'}</span>,
+            <span style={{ color: 'var(--tool-hex-f87171)', fontWeight: 600 }}>{st?.absent ?? '—'}</span>,
+            <span style={{ color: 'var(--tool-hex-fbbf24)', fontWeight: 600 }}>{st?.late ?? '—'}</span>,
             <span style={{ color: getRateColor(s), fontWeight: 700 }}>{getRate(s)}</span>,
           ];
         })}
@@ -887,33 +888,33 @@ export function StaffPerformance() {
 
       {/* Expanded staff detail panel */}
       {selectedStaff && (
-        <div style={{ background: '#1e1e1e', border: '1px solid #4f8ff7', borderRadius: 12, padding: 20, marginTop: 4, marginBottom: 16 }}>
+        <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-4f8ff7)', borderRadius: 12, padding: 20, marginTop: 4, marginBottom: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
             <div>
-              <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#e5e5e5', fontSize: 15, fontWeight: 700, marginBottom: 4 }}>{selectedStaff.name}</h3>
-              <span style={{ fontSize: 12, color: '#737373' }}>{selectedStaff.staff_type} · {selectedStaff.department || 'N/A'} · Emp #{selectedStaff.employee_id || 'N/A'}</span>
+              <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 15, fontWeight: 700, marginBottom: 4 }}>{selectedStaff.name}</h3>
+              <span style={{ fontSize: 12, color: 'var(--tool-hex-737373)' }}>{selectedStaff.staff_type} · {selectedStaff.department || 'N/A'} · Emp #{selectedStaff.employee_id || 'N/A'}</span>
             </div>
-            <button onClick={() => setSelectedStaff(null)} style={{ background: 'none', border: 'none', color: '#737373', cursor: 'pointer', fontSize: 18 }}>×</button>
+            <button onClick={() => setSelectedStaff(null)} style={{ background: 'none', border: 'none', color: 'var(--tool-hex-737373)', cursor: 'pointer', fontSize: 18 }}>×</button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
-            <StatCard value={selectedStaff.email || '—'} label="EMAIL" color="#4f8ff7" small />
-            <StatCard value={selectedStaff.phone || '—'} label="PHONE" color="#a78bfa" small />
-            <StatCard value={selectedStaff.join_date || '—'} label="JOIN DATE" color="#34d399" small />
+            <StatCard value={selectedStaff.email || '—'} label="EMAIL" color="var(--tool-hex-4f8ff7)" small />
+            <StatCard value={selectedStaff.phone || '—'} label="PHONE" color="var(--tool-hex-a78bfa)" small />
+            <StatCard value={selectedStaff.join_date || '—'} label="JOIN DATE" color="var(--tool-hex-34d399)" small />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-            <StatCard value={staffStats[selectedStaff.id]?.present ?? '—'} label="DAYS PRESENT" color="#34d399" small />
-            <StatCard value={staffStats[selectedStaff.id]?.absent ?? '—'} label="DAYS ABSENT" color="#f87171" small />
-            <StatCard value={staffStats[selectedStaff.id]?.late ?? '—'} label="LATE ARRIVALS" color="#fbbf24" small />
+            <StatCard value={staffStats[selectedStaff.id]?.present ?? '—'} label="DAYS PRESENT" color="var(--tool-hex-34d399)" small />
+            <StatCard value={staffStats[selectedStaff.id]?.absent ?? '—'} label="DAYS ABSENT" color="var(--tool-hex-f87171)" small />
+            <StatCard value={staffStats[selectedStaff.id]?.late ?? '—'} label="LATE ARRIVALS" color="var(--tool-hex-fbbf24)" small />
             <StatCard value={getRate(selectedStaff)} label="ATTENDANCE RATE" color={getRateColor(selectedStaff)} small />
           </div>
           {selectedStaff.subjects?.length > 0 && (
-            <div style={{ marginTop: 12, fontSize: 12, color: '#a0a0a0' }}>
-              <b style={{ color: '#e5e5e5' }}>Subjects: </b>{selectedStaff.subjects.join(', ')}
+            <div style={{ marginTop: 12, fontSize: 12, color: 'var(--tool-hex-a0a0a0)' }}>
+              <b style={{ color: 'var(--tool-hex-e5e5e5)' }}>Subjects: </b>{selectedStaff.subjects.join(', ')}
             </div>
           )}
           {selectedStaff.qualification && (
-            <div style={{ marginTop: 6, fontSize: 12, color: '#a0a0a0' }}>
-              <b style={{ color: '#e5e5e5' }}>Qualification: </b>{selectedStaff.qualification}
+            <div style={{ marginTop: 6, fontSize: 12, color: 'var(--tool-hex-a0a0a0)' }}>
+              <b style={{ color: 'var(--tool-hex-e5e5e5)' }}>Qualification: </b>{selectedStaff.qualification}
             </div>
           )}
         </div>
@@ -944,24 +945,24 @@ export function AiHealthReport() {
       {!report ? (
         <div style={{ textAlign: 'center', padding: '40px 0' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🏥</div>
-          <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#e5e5e5', fontSize: 16, marginBottom: 8 }}>AI School Health Report</h3>
-          <p style={{ color: '#737373', fontSize: 12, marginBottom: 20 }}>Generate a comprehensive AI-powered analysis of your school's current health status</p>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 16, marginBottom: 8 }}>AI School Health Report</h3>
+          <p style={{ color: 'var(--tool-hex-737373)', fontSize: 12, marginBottom: 20 }}>Generate a comprehensive AI-powered analysis of your school's current health status</p>
           <ActionBtn label={loading ? 'Generating...' : 'Generate Report'} onClick={generate} disabled={loading} />
         </div>
       ) : (
         <div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 18 }}>
-            <StatCard value={`${report.score}/100`} label="HEALTH SCORE" color="#34d399" />
-            <StatCard value={report.generated} label="GENERATED" color="#4f8ff7" />
-            <StatCard value={report.alerts.length} label="ACTION ITEMS" color="#f87171" />
+            <StatCard value={`${report.score}/100`} label="HEALTH SCORE" color="var(--tool-hex-34d399)" />
+            <StatCard value={report.generated} label="GENERATED" color="var(--tool-hex-4f8ff7)" />
+            <StatCard value={report.alerts.length} label="ACTION ITEMS" color="var(--tool-hex-f87171)" />
           </div>
-          <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 11, padding: 20, marginBottom: 14 }}>
-            <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#34d399', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Highlights</h3>
-            {report.highlights.map((h, i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 13, color: '#a3a3a3' }}><CheckCircle size={12} color="#34d399" />{h}</div>)}
+          <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11, padding: 20, marginBottom: 14 }}>
+            <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-34d399)', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Highlights</h3>
+            {report.highlights.map((h, i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 13, color: 'var(--tool-hex-a3a3a3)' }}><CheckCircle size={12} color="var(--tool-hex-34d399)" />{h}</div>)}
           </div>
-          <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 11, padding: 20 }}>
-            <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#f87171', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Action Items</h3>
-            {report.alerts.map((a, i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 13, color: '#a3a3a3' }}><AlertTriangle size={12} color="#f87171" />{a}</div>)}
+          <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11, padding: 20 }}>
+            <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-f87171)', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Action Items</h3>
+            {report.alerts.map((a, i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 13, color: 'var(--tool-hex-a3a3a3)' }}><AlertTriangle size={12} color="var(--tool-hex-f87171)" />{a}</div>)}
           </div>
         </div>
       )}
@@ -981,15 +982,15 @@ export function SmartAlerts() {
   return (
     <ToolPage title="Smart Alerts" subtitle="Active exceptions & flags" onRefresh={load} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 18, maxWidth: 500 }}>
-        <StatCard value={data?.total_alerts || 0} label="TOTAL ALERTS" color="#fbbf24" />
-        <StatCard value={data?.critical_count || 0} label="CRITICAL" color="#f87171" />
+        <StatCard value={data?.total_alerts || 0} label="TOTAL ALERTS" color="var(--tool-hex-fbbf24)" />
+        <StatCard value={data?.critical_count || 0} label="CRITICAL" color="var(--tool-hex-f87171)" />
       </div>
-      {alerts.length === 0 ? <div style={{ padding: 32, textAlign: 'center', color: '#737373', background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 11, fontSize: 13 }}>No active alerts — all good!</div> : (
+      {alerts.length === 0 ? <div style={{ padding: 32, textAlign: 'center', color: 'var(--tool-hex-737373)', background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11, fontSize: 13 }}>No active alerts — all good!</div> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {alerts.map((a, i) => (
-            <div key={i} style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div key={i} style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
               <Badge text={a.category} color={colors[a.type] || 'blue'} />
-              <span style={{ fontSize: 13, color: '#e5e5e5', flex: 1 }}>{a.text}</span>
+              <span style={{ fontSize: 13, color: 'var(--tool-hex-e5e5e5)', flex: 1 }}>{a.text}</span>
               <Badge text={a.priority} color={a.priority === 'high' ? 'red' : a.priority === 'medium' ? 'yellow' : 'gray'} />
             </div>
           ))}
@@ -1030,7 +1031,7 @@ export function ExpenseTracker() {
     <ToolPage title="Expense Tracker" subtitle="Track & manage school expenses" onRefresh={load} loading={loading}
       actions={<ActionBtn label="Add Expense" onClick={() => setShowForm(true)} icon={<Plus size={11} />} />}>
       {showForm && (
-        <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 11, padding: 20, marginBottom: 16 }}>
+        <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
           <form onSubmit={handleAdd}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Category" type="select" value={form.category} onChange={f('category')} options={['utilities', 'maintenance', 'salary', 'events', 'stationery', 'transport', 'other'].map(v => ({ value: v, label: v }))} required />
@@ -1044,11 +1045,11 @@ export function ExpenseTracker() {
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16, maxWidth: 400 }}>
-        <StatCard value={`₹${(total / 1000).toFixed(1)}K`} label="TOTAL EXPENSES" color="#f87171" />
-        <StatCard value={expenses.length} label="RECORDS" color="#e5e5e5" />
+        <StatCard value={`₹${(total / 1000).toFixed(1)}K`} label="TOTAL EXPENSES" color="var(--tool-hex-f87171)" />
+        <StatCard value={expenses.length} label="RECORDS" color="var(--tool-hex-e5e5e5)" />
       </div>
       <DataTable headers={['Date', 'Category', 'Description', 'Vendor', 'Amount']}
-        rows={expenses.map(e => [e.date, e.category, e.description, e.vendor || 'N/A', <span style={{ color: '#f87171' }}>₹{(e.amount || 0).toLocaleString('en-IN')}</span>])}
+        rows={expenses.map(e => [e.date, e.category, e.description, e.vendor || 'N/A', <span style={{ color: 'var(--tool-hex-f87171)' }}>₹{(e.amount || 0).toLocaleString('en-IN')}</span>])}
       />
     </ToolPage>
   );
@@ -1065,9 +1066,9 @@ export function ComplaintTracker() {
   return (
     <ToolPage title="Complaint & Grievance Tracker" subtitle="Manage and resolve complaints" onRefresh={load} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16, maxWidth: 500 }}>
-        <StatCard value={complaints.filter(c => c.status === 'open').length} label="OPEN" color="#f87171" />
-        <StatCard value={complaints.filter(c => c.status === 'resolved').length} label="RESOLVED" color="#34d399" />
-        <StatCard value={complaints.length} label="TOTAL" color="#e5e5e5" />
+        <StatCard value={complaints.filter(c => c.status === 'open').length} label="OPEN" color="var(--tool-hex-f87171)" />
+        <StatCard value={complaints.filter(c => c.status === 'resolved').length} label="RESOLVED" color="var(--tool-hex-34d399)" />
+        <StatCard value={complaints.length} label="TOTAL" color="var(--tool-hex-e5e5e5)" />
       </div>
       <DataTable headers={['Subject', 'Category', 'Priority', 'Status', 'Date']}
         rows={complaints.map(c => [c.subject, c.category, <Badge text={c.priority} color={c.priority === 'urgent' ? 'red' : c.priority === 'high' ? 'yellow' : 'gray'} />, <Badge text={c.status} color={statusColors[c.status] || 'gray'} />, c.created_at?.slice(0, 10)])}
@@ -1261,13 +1262,13 @@ export function CustomReportBuilder() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 960 }}>
         {/* Source selector */}
         <div>
-          <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#e5e5e5', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Select Data Sources</h3>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Select Data Sources</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {dataSources.map(src => (
-              <label key={src.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: selectedSources.includes(src.id) ? 'rgba(59,130,246,0.1)' : '#1e1e1e', border: `1px solid ${selectedSources.includes(src.id) ? '#4f8ff7' : '#2e2e2e'}`, borderRadius: 8, cursor: 'pointer' }}>
-                <input type="checkbox" checked={selectedSources.includes(src.id)} onChange={() => toggle(src.id)} style={{ accentColor: '#4f8ff7' }} />
+              <label key={src.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: selectedSources.includes(src.id) ? 'rgba(59,130,246,0.1)' : 'var(--tool-hex-1e1e1e)', border: `1px solid ${selectedSources.includes(src.id) ? 'var(--tool-hex-4f8ff7)' : 'var(--tool-hex-2e2e2e)'}`, borderRadius: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={selectedSources.includes(src.id)} onChange={() => toggle(src.id)} style={{ accentColor: 'var(--tool-hex-4f8ff7)' }} />
                 <span style={{ fontSize: 16 }}>{src.icon}</span>
-                <span style={{ fontSize: 13, color: '#e5e5e5' }}>{src.label}</span>
+                <span style={{ fontSize: 13, color: 'var(--tool-hex-e5e5e5)' }}>{src.label}</span>
               </label>
             ))}
           </div>
@@ -1275,7 +1276,7 @@ export function CustomReportBuilder() {
 
         {/* Right panel: date range + actions + downloads */}
         <div>
-          <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#e5e5e5', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Date Range (Optional)</h3>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Date Range (Optional)</h3>
           <FormField label="From Date" type="date" value={dateRange.start} onChange={v => setDateRange(p => ({ ...p, start: v }))} />
           <FormField label="To Date" type="date" value={dateRange.end} onChange={v => setDateRange(p => ({ ...p, end: v }))} />
 
@@ -1297,14 +1298,14 @@ export function CustomReportBuilder() {
 
           {report && (
             <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 11, color: '#34d399', marginBottom: 10 }}>CSV files ready — click to download:</div>
+              <div style={{ fontSize: 11, color: 'var(--tool-hex-34d399)', marginBottom: 10 }}>CSV files ready — click to download:</div>
               {report.links.map((link, i) => (
                 <a key={i} href={link.url} download target="_blank" rel="noreferrer"
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 7, color: '#34d399', fontSize: 12, marginBottom: 6, textDecoration: 'none' }}>
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 7, color: 'var(--tool-hex-34d399)', fontSize: 12, marginBottom: 6, textDecoration: 'none' }}>
                   <Download size={12} /> {link.label} (CSV)
                 </a>
               ))}
-              <div style={{ marginTop: 8, fontSize: 11, color: '#737373' }}>
+              <div style={{ marginTop: 8, fontSize: 11, color: 'var(--tool-hex-737373)' }}>
                 Or click "Generate PDF Report" for a formatted PDF summary.
               </div>
             </div>
@@ -1469,56 +1470,56 @@ export function BoardReport() {
       {!data ? (
         <div style={{ textAlign: 'center', padding: '40px 0' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
-          <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#e5e5e5', fontSize: 16, marginBottom: 8 }}>Board Meeting Report</h3>
-          <p style={{ color: '#737373', fontSize: 12, marginBottom: 20 }}>Fetches all school metrics — students, fees, attendance, staff, alerts, and defaulters</p>
-          {error && <div style={{ color: '#fbbf24', fontSize: 12, marginBottom: 12 }}>{error}</div>}
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 16, marginBottom: 8 }}>Board Meeting Report</h3>
+          <p style={{ color: 'var(--tool-hex-737373)', fontSize: 12, marginBottom: 20 }}>Fetches all school metrics — students, fees, attendance, staff, alerts, and defaulters</p>
+          {error && <div style={{ color: 'var(--tool-hex-fbbf24)', fontSize: 12, marginBottom: 12 }}>{error}</div>}
           <ActionBtn label={loading ? 'Generating...' : 'Generate Full Report'} onClick={generate} disabled={loading} />
         </div>
       ) : (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-            <span style={{ color: '#737373', fontSize: 12 }}>Generated: {data.generated}</span>
+            <span style={{ color: 'var(--tool-hex-737373)', fontSize: 12 }}>Generated: {data.generated}</span>
             <div style={{ display: 'flex', gap: 8 }}>
               <ActionBtn label={pdfLoading ? 'Exporting...' : 'Download PDF'} onClick={downloadPDF} disabled={pdfLoading} icon={<Download size={11} />} />
               <ActionBtn label={loading ? 'Refreshing...' : 'Re-generate'} variant="secondary" onClick={generate} disabled={loading} />
             </div>
           </div>
-          {error && <div style={{ color: '#fbbf24', fontSize: 12, marginBottom: 12, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 8, padding: '8px 12px' }}>{error}</div>}
+          {error && <div style={{ color: 'var(--tool-hex-fbbf24)', fontSize: 12, marginBottom: 12, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 8, padding: '8px 12px' }}>{error}</div>}
 
           {/* Section 1 — School Overview */}
-          <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 12, padding: 18, marginBottom: 14 }}>
-            <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#e5e5e5', fontSize: 13, fontWeight: 700, marginBottom: 12 }}>School Overview</h3>
+          <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: 18, marginBottom: 14 }}>
+            <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 13, fontWeight: 700, marginBottom: 12 }}>School Overview</h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-              <StatCard value={s.total_students || 0} label="ENROLLED STUDENTS" color="#4f8ff7" small />
-              <StatCard value={s.total_staff || 0} label="TOTAL STAFF" color="#e5e5e5" small />
-              <StatCard value={s.attendance_rate || 'N/A'} label="TODAY'S ATT." color="#34d399" small />
-              <StatCard value={data.attendance?.avg_attendance_rate || 'N/A'} label="AVG ATT. (30d)" color="#a78bfa" small />
+              <StatCard value={s.total_students || 0} label="ENROLLED STUDENTS" color="var(--tool-hex-4f8ff7)" small />
+              <StatCard value={s.total_staff || 0} label="TOTAL STAFF" color="var(--tool-hex-e5e5e5)" small />
+              <StatCard value={s.attendance_rate || 'N/A'} label="TODAY'S ATT." color="var(--tool-hex-34d399)" small />
+              <StatCard value={data.attendance?.avg_attendance_rate || 'N/A'} label="AVG ATT. (30d)" color="var(--tool-hex-a78bfa)" small />
             </div>
           </div>
 
           {/* Section 2 — Fee & Finance */}
-          <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 12, padding: 18, marginBottom: 14 }}>
-            <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#e5e5e5', fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Fee & Finance</h3>
+          <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: 18, marginBottom: 14 }}>
+            <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Fee & Finance</h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
-              <StatCard value={fee.total_collected || '₹0'} label="TOTAL COLLECTED" color="#34d399" small />
-              <StatCard value={fee.total_overdue || '₹0'} label="TOTAL OVERDUE" color="#f87171" small />
-              <StatCard value={fee.collection_rate || 'N/A'} label="COLLECTION RATE" color="#4f8ff7" small />
+              <StatCard value={fee.total_collected || '₹0'} label="TOTAL COLLECTED" color="var(--tool-hex-34d399)" small />
+              <StatCard value={fee.total_overdue || '₹0'} label="TOTAL OVERDUE" color="var(--tool-hex-f87171)" small />
+              <StatCard value={fee.collection_rate || 'N/A'} label="COLLECTION RATE" color="var(--tool-hex-4f8ff7)" small />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-              <StatCard value={fee.students_with_dues || 0} label="STUDENTS WITH DUES" color="#fbbf24" small />
-              <StatCard value={fee.overdue_60_days || 0} label="OVERDUE 60+ DAYS" color="#f87171" small />
-              <StatCard value={data.totalExp >= 100000 ? `₹${(data.totalExp / 100000).toFixed(1)}L` : `₹${(data.totalExp || 0).toLocaleString('en-IN')}`} label="TOTAL EXPENSES" color="#f87171" small />
+              <StatCard value={fee.students_with_dues || 0} label="STUDENTS WITH DUES" color="var(--tool-hex-fbbf24)" small />
+              <StatCard value={fee.overdue_60_days || 0} label="OVERDUE 60+ DAYS" color="var(--tool-hex-f87171)" small />
+              <StatCard value={data.totalExp >= 100000 ? `₹${(data.totalExp / 100000).toFixed(1)}L` : `₹${(data.totalExp || 0).toLocaleString('en-IN')}`} label="TOTAL EXPENSES" color="var(--tool-hex-f87171)" small />
             </div>
           </div>
 
           {/* Section 3 — Staff */}
-          <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 12, padding: 18, marginBottom: 14 }}>
-            <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#e5e5e5', fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Staff Summary</h3>
+          <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: 18, marginBottom: 14 }}>
+            <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Staff Summary</h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-              <StatCard value={(data.staff || []).filter(st => st.staff_type === 'teacher').length} label="TEACHERS" color="#4f8ff7" small />
-              <StatCard value={(data.staff || []).filter(st => st.staff_type !== 'teacher').length} label="NON-TEACHING" color="#a78bfa" small />
-              <StatCard value={(data.pulse?.staff_absent_today || []).length} label="ABSENT TODAY" color="#f87171" small />
-              <StatCard value={(data.pulse?.pending_leave_requests || []).length} label="PENDING LEAVES" color="#fbbf24" small />
+              <StatCard value={(data.staff || []).filter(st => st.staff_type === 'teacher').length} label="TEACHERS" color="var(--tool-hex-4f8ff7)" small />
+              <StatCard value={(data.staff || []).filter(st => st.staff_type !== 'teacher').length} label="NON-TEACHING" color="var(--tool-hex-a78bfa)" small />
+              <StatCard value={(data.pulse?.staff_absent_today || []).length} label="ABSENT TODAY" color="var(--tool-hex-f87171)" small />
+              <StatCard value={(data.pulse?.pending_leave_requests || []).length} label="PENDING LEAVES" color="var(--tool-hex-fbbf24)" small />
             </div>
           </div>
 
@@ -1529,19 +1530,19 @@ export function BoardReport() {
                 c.class,
                 c.present,
                 c.total,
-                <span style={{ color: parseFloat(c.rate) >= 85 ? '#34d399' : '#f87171', fontWeight: 600 }}>{c.rate}</span>,
+                <span style={{ color: parseFloat(c.rate) >= 85 ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-f87171)', fontWeight: 600 }}>{c.rate}</span>,
               ])}
             />
           )}
 
           {/* Section 5 — Alerts */}
           {(data.alerts?.alerts || []).length > 0 && (
-            <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 11, padding: 16, marginBottom: 14 }}>
-              <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#f87171', fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Active Alerts ({data.alerts.total_alerts})</h3>
+            <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11, padding: 16, marginBottom: 14 }}>
+              <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-f87171)', fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Active Alerts ({data.alerts.total_alerts})</h3>
               {data.alerts.alerts.map((a, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                   <Badge text={a.priority} color={a.priority === 'high' ? 'red' : a.priority === 'medium' ? 'yellow' : 'gray'} />
-                  <span style={{ fontSize: 12, color: '#a3a3a3' }}>{a.text}</span>
+                  <span style={{ fontSize: 12, color: 'var(--tool-hex-a3a3a3)' }}>{a.text}</span>
                 </div>
               ))}
             </div>
@@ -1553,8 +1554,8 @@ export function BoardReport() {
               rows={(data.fee.defaulters || []).slice(0, 8).map(d => [
                 d.student_name,
                 d.class,
-                <span style={{ color: '#f87171', fontWeight: 600 }}>{d.amount_overdue_fmt}</span>,
-                <span style={{ color: d.days_overdue > 60 ? '#f87171' : '#fbbf24' }}>{d.days_overdue} days</span>,
+                <span style={{ color: 'var(--tool-hex-f87171)', fontWeight: 600 }}>{d.amount_overdue_fmt}</span>,
+                <span style={{ color: d.days_overdue > 60 ? 'var(--tool-hex-f87171)' : 'var(--tool-hex-fbbf24)' }}>{d.days_overdue} days</span>,
               ])}
             />
           )}
@@ -1594,7 +1595,7 @@ export function YearEndTransition() {
       <div style={{ maxWidth: 520 }}>
         {!result ? (
           <>
-            <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 10, padding: '12px 16px', marginBottom: 20, fontSize: 12, color: '#fcd34d' }}>
+            <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 10, padding: '12px 16px', marginBottom: 20, fontSize: 12, color: 'var(--tool-hex-fcd34d)' }}>
               ⚠️ This will archive the current academic year (2025-26) and create a new one. All existing students and data are preserved.
             </div>
             <FormField label="New Academic Year Name" value={newYear} onChange={setNewYear} placeholder="e.g. 2026-27" required />
@@ -1603,7 +1604,7 @@ export function YearEndTransition() {
               <FormField label="End Date" type="date" value={endDate} onChange={setEndDate} />
             </div>
             {confirmed && (
-              <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#fca5a5' }}>
+              <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: 'var(--tool-hex-fca5a5)' }}>
                 Are you absolutely sure? Click again to confirm. This cannot be undone.
               </div>
             )}
@@ -1613,11 +1614,11 @@ export function YearEndTransition() {
         ) : (
           <div style={{ textAlign: 'center', padding: '24px 0' }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>🎓</div>
-            <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#34d399', fontSize: 16, marginBottom: 8 }}>Year Transition Complete!</h3>
-            <p style={{ color: '#a3a3a3', fontSize: 13, marginBottom: 16 }}>{result.message}</p>
-            <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 8, padding: '12px 16px', textAlign: 'left' }}>
-              <div style={{ fontSize: 12, color: '#e5e5e5' }}><b>New Year:</b> {result.new_year?.name}</div>
-              <div style={{ fontSize: 12, color: '#e5e5e5', marginTop: 4 }}><b>Students Carried Forward:</b> {result.students_carried_forward}</div>
+            <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-34d399)', fontSize: 16, marginBottom: 8 }}>Year Transition Complete!</h3>
+            <p style={{ color: 'var(--tool-hex-a3a3a3)', fontSize: 13, marginBottom: 16 }}>{result.message}</p>
+            <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 8, padding: '12px 16px', textAlign: 'left' }}>
+              <div style={{ fontSize: 12, color: 'var(--tool-hex-e5e5e5)' }}><b>New Year:</b> {result.new_year?.name}</div>
+              <div style={{ fontSize: 12, color: 'var(--tool-hex-e5e5e5)', marginTop: 4 }}><b>Students Carried Forward:</b> {result.students_carried_forward}</div>
             </div>
           </div>
         )}
@@ -1743,7 +1744,7 @@ export function AttendanceAlerts() {
   return (
     <ToolPage title="Attendance Alerts" subtitle="Find students below threshold & send SMS to parents">
       {!twilioConfigured && (
-        <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#fbbf24' }}>
+        <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: 'var(--tool-hex-fbbf24)' }}>
           Warning: Twilio not configured. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER to .env to enable SMS.
         </div>
       )}
@@ -1754,11 +1755,11 @@ export function AttendanceAlerts() {
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div>
             <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
-              Attendance Threshold: <span style={{ color: '#f87171', fontWeight: 700 }}>{threshold}%</span>
+              Attendance Threshold: <span style={{ color: 'var(--tool-hex-f87171)', fontWeight: 700 }}>{threshold}%</span>
             </label>
             <input type="range" min={50} max={95} step={5} value={threshold}
               onChange={e => setThreshold(Number(e.target.value))}
-              style={{ width: 180, accentColor: '#f87171' }} />
+              style={{ width: 180, accentColor: 'var(--tool-hex-f87171)' }} />
           </div>
           <div>
             <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
@@ -1770,7 +1771,7 @@ export function AttendanceAlerts() {
             </select>
           </div>
           <button onClick={fetchStudents} disabled={loading}
-            style={{ padding: '8px 18px', borderRadius: 6, background: '#f87171', border: '1px solid #f87171', color: '#fff', fontSize: 12, cursor: loading ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: loading ? 0.7 : 1 }}>
+            style={{ padding: '8px 18px', borderRadius: 6, background: 'var(--tool-hex-f87171)', border: '1px solid var(--tool-hex-f87171)', color: 'var(--tool-hex-fff)', fontSize: 12, cursor: loading ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: loading ? 0.7 : 1 }}>
             {loading ? 'Loading...' : 'Find Students'}
           </button>
         </div>
@@ -1779,16 +1780,16 @@ export function AttendanceAlerts() {
       {fetched && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16, maxWidth: 500 }}>
-            <StatCard value={students.length} label="BELOW THRESHOLD" color="#f87171" />
-            <StatCard value={`${threshold}%`} label="THRESHOLD" color="#fbbf24" />
-            <StatCard value={`${days}d`} label="PERIOD" color="#a78bfa" />
+            <StatCard value={students.length} label="BELOW THRESHOLD" color="var(--tool-hex-f87171)" />
+            <StatCard value={`${threshold}%`} label="THRESHOLD" color="var(--tool-hex-fbbf24)" />
+            <StatCard value={`${days}d`} label="PERIOD" color="var(--tool-hex-a78bfa)" />
           </div>
 
           {/* View Tabs */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 14, borderBottom: '1px solid var(--c-border)', paddingBottom: 12 }}>
             {['students', 'bulk', 'logs'].map(v => (
               <button key={v} onClick={() => { setViewMode(v); if (v === 'logs') loadLogs(); }}
-                style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === v ? '1px solid #a78bfa' : '1px solid var(--c-border)', background: viewMode === v ? 'rgba(167,139,250,0.1)' : 'var(--c-bg)', color: viewMode === v ? '#a78bfa' : 'var(--c-muted)', fontSize: 12, cursor: 'pointer', textTransform: 'capitalize' }}>
+                style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === v ? '1px solid var(--tool-hex-a78bfa)' : '1px solid var(--c-border)', background: viewMode === v ? 'rgba(167,139,250,0.1)' : 'var(--c-bg)', color: viewMode === v ? 'var(--tool-hex-a78bfa)' : 'var(--c-muted)', fontSize: 12, cursor: 'pointer', textTransform: 'capitalize' }}>
                 {v === 'students' ? 'Students' : v === 'bulk' ? 'Bulk SMS' : 'SMS Logs'}
               </button>
             ))}
@@ -1797,7 +1798,7 @@ export function AttendanceAlerts() {
           {viewMode === 'students' && (
             <>
               {selectedStudent && (
-                <div style={{ background: 'var(--c-bg)', border: '1px solid #a78bfa', borderRadius: 11, padding: 18, marginBottom: 16 }}>
+                <div style={{ background: 'var(--c-bg)', border: '1px solid var(--tool-hex-a78bfa)', borderRadius: 11, padding: 18, marginBottom: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                     <h4 style={{ color: 'var(--c-text)', fontSize: 13, fontWeight: 600 }}>Send SMS — {selectedStudent.student_name}</h4>
                     <button onClick={() => { setSelectedStudent(null); setSmsResult(null); }} style={{ background: 'transparent', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 16 }}>x</button>
@@ -1819,12 +1820,12 @@ export function AttendanceAlerts() {
                       <div style={{ padding: '8px 12px', borderRadius: 6, marginBottom: 10, fontSize: 12,
                         background: smsResult.success ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
                         border: `1px solid ${smsResult.success ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
-                        color: smsResult.success ? '#34d399' : '#f87171' }}>
+                        color: smsResult.success ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-f87171)' }}>
                         {smsResult.success ? `SMS ${smsResult.status === 'not_configured' ? 'logged (Twilio not configured)' : 'sent successfully!'}` : `Error: ${smsResult.error}`}
                       </div>
                     )}
                     <button type="submit" disabled={sending}
-                      style={{ padding: '8px 16px', borderRadius: 6, background: '#a78bfa', border: '1px solid #a78bfa', color: '#fff', fontSize: 12, cursor: sending ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: sending ? 0.6 : 1 }}>
+                      style={{ padding: '8px 16px', borderRadius: 6, background: 'var(--tool-hex-a78bfa)', border: '1px solid var(--tool-hex-a78bfa)', color: 'var(--tool-hex-fff)', fontSize: 12, cursor: sending ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: sending ? 0.6 : 1 }}>
                       {sending ? 'Sending...' : 'Send SMS'}
                     </button>
                   </form>
@@ -1835,11 +1836,11 @@ export function AttendanceAlerts() {
                 rows={students.map(s => [
                   s.student_name,
                   s.class,
-                  <span style={{ color: s.attendance_rate < 60 ? '#f87171' : '#fbbf24', fontWeight: 600 }}>{s.attendance_rate}%</span>,
+                  <span style={{ color: s.attendance_rate < 60 ? 'var(--tool-hex-f87171)' : 'var(--tool-hex-fbbf24)', fontWeight: 600 }}>{s.attendance_rate}%</span>,
                   `${s.present_days}/${s.total_days}`,
                   s.phone || <span style={{ color: 'var(--c-faint)' }}>N/A</span>,
                   <button onClick={() => openSmsForm(s)}
-                    style={{ background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: 5, padding: '4px 10px', color: '#a78bfa', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>
+                    style={{ background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: 5, padding: '4px 10px', color: 'var(--tool-hex-a78bfa)', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>
                     SMS Parent
                   </button>
                 ])}
@@ -1875,14 +1876,14 @@ export function AttendanceAlerts() {
                 {bulkResult && (
                   <div style={{ padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 12, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', color: 'var(--c-text)' }}>
                     {bulkResult.error ? (
-                      <span style={{ color: '#f87171' }}>Error: {bulkResult.error}</span>
+                      <span style={{ color: 'var(--tool-hex-f87171)' }}>Error: {bulkResult.error}</span>
                     ) : (
-                      <>Sent: <strong style={{ color: '#34d399' }}>{bulkResult.sent}</strong> &nbsp; Failed: <strong style={{ color: '#f87171' }}>{bulkResult.failed}</strong></>
+                      <>Sent: <strong style={{ color: 'var(--tool-hex-34d399)' }}>{bulkResult.sent}</strong> &nbsp; Failed: <strong style={{ color: 'var(--tool-hex-f87171)' }}>{bulkResult.failed}</strong></>
                     )}
                   </div>
                 )}
                 <button onClick={handleSendBulk} disabled={bulkSending || students.length === 0}
-                  style={{ padding: '9px 18px', borderRadius: 6, background: '#a78bfa', border: '1px solid #a78bfa', color: '#fff', fontSize: 12, cursor: bulkSending ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: bulkSending ? 0.6 : 1 }}>
+                  style={{ padding: '9px 18px', borderRadius: 6, background: 'var(--tool-hex-a78bfa)', border: '1px solid var(--tool-hex-a78bfa)', color: 'var(--tool-hex-fff)', fontSize: 12, cursor: bulkSending ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: bulkSending ? 0.6 : 1 }}>
                   {bulkSending ? 'Sending...' : `Send to ${selectedRows.length > 0 ? selectedRows.length : students.length} Parents`}
                 </button>
               </div>

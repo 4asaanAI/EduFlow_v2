@@ -7,7 +7,9 @@ from models.schemas import FeeTransaction
 from middleware.auth import get_current_user
 from datetime import datetime, timedelta
 from tenant import get_school_id, scoped_filter
+from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, publish
 from pymongo import ReturnDocument
+import asyncio
 import uuid
 import os
 import io
@@ -64,6 +66,32 @@ async def _student_map(db, txns):
     classes = await db.classes.find(_fee_query({"id": {"$in": c_ids}}), {"_id": 0, "id": 1, "name": 1, "section": 1}).to_list(len(c_ids)) if c_ids else []
     c_map = {c["id"]: c for c in classes}
     return s_map, c_map
+
+
+async def _fee_summary_payload(db, fee_period: str | None = None) -> dict:
+    query = _fee_query({"fee_period": fee_period}) if fee_period else _fee_query()
+    txns = await db.fee_transactions.find(query, {"_id": 0}).to_list(2000)
+    total_collected = sum(float(t.get("amount", 0)) for t in txns if t.get("status") == "paid")
+    outstanding_txns = [t for t in txns if t.get("status") in ("pending", "overdue", "unpaid")]
+    total_outstanding = sum(float(t.get("amount", 0)) for t in outstanding_txns)
+    defaulters = len(set(t.get("student_id") for t in outstanding_txns if t.get("student_id")))
+    return {
+        "total_collected": total_collected,
+        "total_outstanding": total_outstanding,
+        "defaulters": defaulters,
+        "transactions": len(txns),
+        "period": fee_period,
+        "generated_at": datetime.now().isoformat(),
+    }
+
+
+async def _publish_fee_update(db, event_type: str, payload: dict | None = None, fee_period: str | None = None):
+    await publish("fees", {
+        "type": event_type,
+        "data": payload or {},
+        "summary": await _fee_summary_payload(db, fee_period),
+        "last_updated": datetime.now().isoformat(),
+    })
 
 
 @router.get("/structures")
@@ -204,7 +232,9 @@ async def record_payment(request: Request):
         "expires_at": (now + timedelta(hours=24)).isoformat(),
     })
     await _audit(db, action="create", entity_id=txn.id, user=user, changes={"created": {k: v for k, v in doc.items() if k != "_id"}})
-    return {"success": True, "data": {k: v for k, v in doc.items() if k != "_id"}}
+    data = {k: v for k, v in doc.items() if k != "_id"}
+    await _publish_fee_update(db, "fee_payment_recorded", data, fee_period)
+    return {"success": True, "data": data}
 
 
 @router.patch("/transactions/{transaction_id}/correct")
@@ -239,6 +269,7 @@ async def correct_fee_transaction(transaction_id: str, request: Request):
     await db.fee_transactions.update_one(_fee_query({"id": transaction_id}), {"$set": {**changes, "corrected": True, "updated_at": correction["corrected_at"]}})
     await _audit(db, action="correct", entity_id=transaction_id, user=user, changes=changes, reason=reason)
     updated = await db.fee_transactions.find_one(_fee_query({"id": transaction_id}), {"_id": 0})
+    await _publish_fee_update(db, "fee_transaction_corrected", updated, updated.get("fee_period") if updated else None)
     return {"success": True, "data": updated, "correction": {k: v for k, v in correction.items() if k != "_id"}}
 
 
@@ -277,20 +308,45 @@ async def get_fee_summary(request: Request, fee_period: str = None):
     if user["role"] not in ["owner", "admin"]:
         raise HTTPException(403, "Forbidden")
 
-    query = _fee_query({"fee_period": fee_period}) if fee_period else _fee_query()
-    txns = await db.fee_transactions.find(query, {"_id": 0}).to_list(2000)
-    total_collected = sum(float(t.get("amount", 0)) for t in txns if t.get("status") == "paid")
-    outstanding_txns = [t for t in txns if t.get("status") in ("pending", "overdue", "unpaid")]
-    total_outstanding = sum(float(t.get("amount", 0)) for t in outstanding_txns)
-    defaulters = len(set(t.get("student_id") for t in outstanding_txns if t.get("student_id")))
-    return {"success": True, "data": {
-        "total_collected": total_collected,
-        "total_outstanding": total_outstanding,
-        "defaulters": defaulters,
-        "transactions": len(txns),
-        "period": fee_period,
-        "generated_at": datetime.now().isoformat(),
-    }}
+    return {"success": True, "data": await _fee_summary_payload(db, fee_period)}
+
+
+@router.get("/stream")
+async def fee_stream(request: Request):
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["owner", "admin"]:
+        raise HTTPException(403, "Forbidden")
+
+    session_id = request.headers.get("X-SSE-Session-ID") or request.query_params.get("session_id") or str(uuid.uuid4())
+    keepalive = int(request.query_params.get("keepalive", KEEPALIVE_SECONDS))
+    once = request.query_params.get("once", "").lower() == "true"
+    queue = await sse_connect("fees", session_id)
+
+    async def event_generator():
+        try:
+            yield encode_sse({
+                "type": "snapshot",
+                "channel": "fees",
+                "summary": await _fee_summary_payload(db),
+                "last_updated": datetime.now().isoformat(),
+            })
+            if once:
+                return
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=keepalive)
+                except asyncio.TimeoutError:
+                    yield encode_sse({"type": "keepalive", "channel": "fees"})
+                    continue
+                if event.get("type") == "close":
+                    yield encode_sse(event)
+                    break
+                yield encode_sse(event)
+        finally:
+            await sse_disconnect("fees", session_id, queue)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @router.get("/status/{student_id}")
@@ -577,6 +633,8 @@ async def trigger_fee_sync(request: Request):
     }
     await db.fee_sync_jobs.update_one(_fee_query({"id": job_id}), {"$set": update})
     await _audit(db, action="fee_sync_completed", entity_id=job_id, user=user, changes=update)
+    if synced:
+        await _publish_fee_update(db, "fee_sync_completed", {"sync_job_id": job_id, **update})
     return {"success": True, "data": {"sync_job_id": job_id, **update}}
 
 
@@ -627,6 +685,8 @@ async def resolve_fee_sync_conflict(sync_job_id: str, request: Request):
     await db.fee_sync_jobs.update_one(_fee_query({"id": sync_job_id}), {"$set": update})
     await _audit(db, action="fee_sync_conflict_resolved", entity_id=sync_job_id, user=user, changes={"conflict_id": conflict_id, "decision": decision})
     updated = await db.fee_sync_jobs.find_one(_fee_query({"id": sync_job_id}), {"_id": 0})
+    if decision == "use_theirs":
+        await _publish_fee_update(db, "fee_sync_conflict_resolved", {"sync_job_id": sync_job_id, "conflict_id": conflict_id})
     return {"success": True, "data": updated}
 
 

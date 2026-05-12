@@ -30,12 +30,12 @@ export default function TimetableBuilder() {
 
   const canEdit = currentUser.role === 'owner' || currentUser.role === 'admin';
 
-  const bg = isDark ? '#1a1a1a' : '#f5f5f5';
-  const card = isDark ? '#1e1e1e' : '#fff';
-  const border = isDark ? '#2e2e2e' : '#e5e5e5';
-  const text = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#888' : '#737373';
-  const accent = '#4f8ff7';
+  const bg = isDark ? 'var(--tool-hex-1a1a1a)' : 'var(--tool-hex-f5f5f5)';
+  const card = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-fff)';
+  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
+  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
+  const muted = isDark ? 'var(--tool-hex-888)' : 'var(--tool-hex-737373)';
+  const accent = 'var(--tool-hex-4f8ff7)';
 
   useEffect(() => {
     Promise.all([
@@ -128,7 +128,7 @@ export default function TimetableBuilder() {
 
   return (
     <ToolPage title="Timetable" subtitle={selectedClass ? `Viewing ${classes.find(c => c.id === selectedClass)?.name || ''}-${classes.find(c => c.id === selectedClass)?.section || ''}` : 'Select a class'} onRefresh={() => loadTimetable(selectedClass)} loading={loading}>
-      {error && <div style={{ color: '#f87171', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+      {error && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 13, marginBottom: 12 }}>{error}</div>}
 
       {/* Class selector */}
       <div style={{ marginBottom: 20 }}>
@@ -153,9 +153,9 @@ export default function TimetableBuilder() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr>
-                  <th style={{ padding: '8px 12px', textAlign: 'left', color: muted, fontWeight: 600, fontSize: 11, width: 90, background: isDark ? '#161616' : '#f9f9f9', border: `1px solid ${border}` }}>Period</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left', color: muted, fontWeight: 600, fontSize: 11, width: 90, background: isDark ? 'var(--tool-hex-161616)' : 'var(--tool-hex-f9f9f9)', border: `1px solid ${border}` }}>Period</th>
                   {DAYS.map(day => (
-                    <th key={day} style={{ padding: '8px 12px', textAlign: 'center', color: muted, fontWeight: 600, fontSize: 11, background: isDark ? '#161616' : '#f9f9f9', border: `1px solid ${border}` }}>
+                    <th key={day} style={{ padding: '8px 12px', textAlign: 'center', color: muted, fontWeight: 600, fontSize: 11, background: isDark ? 'var(--tool-hex-161616)' : 'var(--tool-hex-f9f9f9)', border: `1px solid ${border}` }}>
                       {day.slice(0, 3)}
                     </th>
                   ))}
@@ -164,7 +164,7 @@ export default function TimetableBuilder() {
               <tbody>
                 {PERIODS.map(period => (
                   <tr key={period}>
-                    <td style={{ padding: '8px 12px', color: muted, fontWeight: 500, background: isDark ? '#161616' : '#f9f9f9', border: `1px solid ${border}`, fontSize: 11 }}>P{period}</td>
+                    <td style={{ padding: '8px 12px', color: muted, fontWeight: 500, background: isDark ? 'var(--tool-hex-161616)' : 'var(--tool-hex-f9f9f9)', border: `1px solid ${border}`, fontSize: 11 }}>P{period}</td>
                     {DAYS.map((day, dayIdx) => {
                       const slot = getSlot(dayIdx, period);
                       return (
@@ -173,11 +173,11 @@ export default function TimetableBuilder() {
                           onClick={() => openEdit(dayIdx, period)}
                           style={{
                             padding: '6px 8px', border: `1px solid ${border}`, cursor: canEdit ? 'pointer' : 'default',
-                            background: slot ? (isDark ? '#1e2433' : '#eff6ff') : card,
+                            background: slot ? (isDark ? 'var(--tool-hex-1e2433)' : 'var(--tool-hex-eff6ff)') : card,
                             verticalAlign: 'top', minWidth: 90,
                             transition: 'background 0.12s',
                           }}
-                          onMouseEnter={e => canEdit && !slot && (e.currentTarget.style.background = isDark ? '#222' : '#f9f9f9')}
+                          onMouseEnter={e => canEdit && !slot && (e.currentTarget.style.background = isDark ? 'var(--tool-hex-222)' : 'var(--tool-hex-f9f9f9)')}
                           onMouseLeave={e => canEdit && !slot && (e.currentTarget.style.background = card)}
                         >
                           {slot ? (
@@ -190,7 +190,7 @@ export default function TimetableBuilder() {
                               {canEdit && (
                                 <button
                                   onClick={e => { e.stopPropagation(); deleteSlot(slot.id); }}
-                                  style={{ marginTop: 4, background: 'none', border: 'none', cursor: 'pointer', color: '#f87171', padding: 0 }}
+                                  style={{ marginTop: 4, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tool-hex-f87171)', padding: 0 }}
                                   title="Remove slot"
                                 >
                                   <Trash2 size={10} />
@@ -198,7 +198,7 @@ export default function TimetableBuilder() {
                               )}
                             </div>
                           ) : (
-                            canEdit ? <div style={{ color: isDark ? '#333' : '#d4d4d4', fontSize: 11, textAlign: 'center' }}>+</div> : null
+                            canEdit ? <div style={{ color: isDark ? 'var(--tool-hex-333)' : 'var(--tool-hex-d4d4d4)', fontSize: 11, textAlign: 'center' }}>+</div> : null
                           )}
                         </td>
                       );

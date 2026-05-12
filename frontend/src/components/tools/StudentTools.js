@@ -57,7 +57,7 @@ export function AiTutor() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--c-app)' }}>
       <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--c-border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <Brain size={18} color="#a78bfa" />
+        <Brain size={18} color="var(--tool-hex-a78bfa)" />
         <div>
           <h1 style={{ fontFamily: 'Inter, sans-serif', fontSize: 16, fontWeight: 600, color: 'var(--c-text)' }}>AI Tutor</h1>
           <p style={{ fontSize: 11, color: 'var(--c-faint)' }}>NCERT/CBSE curriculum • Assignment Helper</p>
@@ -71,7 +71,7 @@ export function AiTutor() {
           <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 14 }}>
             {msg.role === 'ai' && (
               <div style={{ width: 28, height: 28, borderRadius: 7, background: 'rgba(139,92,246,0.2)', border: '1px solid rgba(139,92,246,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginRight: 10 }}>
-                <Brain size={13} color="#a78bfa" />
+                <Brain size={13} color="var(--tool-hex-a78bfa)" />
               </div>
             )}
             <div style={{ maxWidth: '80%', background: msg.role === 'user' ? 'var(--c-input)' : 'transparent', border: msg.role === 'user' ? '1px solid var(--c-border)' : 'none', borderRadius: msg.role === 'user' ? '14px 14px 4px 14px' : 0, padding: msg.role === 'user' ? '10px 14px' : '0', color: 'var(--c-text)', fontSize: 13, lineHeight: 1.6 }}>
@@ -81,7 +81,7 @@ export function AiTutor() {
         ))}
         {loading && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 28, height: 28, borderRadius: 7, background: 'rgba(139,92,246,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Brain size={13} color="#a78bfa" /></div>
+            <div style={{ width: 28, height: 28, borderRadius: 7, background: 'rgba(139,92,246,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Brain size={13} color="var(--tool-hex-a78bfa)" /></div>
             <div style={{ display: 'flex', gap: 3 }}>
               <div className="typing-dot" /><div className="typing-dot" /><div className="typing-dot" />
             </div>
@@ -91,11 +91,11 @@ export function AiTutor() {
       <div style={{ padding: '12px 24px', borderTop: '1px solid var(--c-border)' }}>
         <div style={{ display: 'flex', gap: 8, background: 'var(--c-input)', border: '1px solid var(--c-border)', borderRadius: 12, padding: '8px 12px' }}>
           <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }} placeholder="Ask me anything about your syllabus..." disabled={loading} style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--c-text)', fontSize: 13 }} />
-          <button onClick={sendMessage} disabled={loading || !input.trim()} style={{ background: input.trim() ? '#a78bfa' : 'var(--c-border)', border: 'none', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-            <Send size={13} color="#fff" />
+          <button onClick={sendMessage} disabled={loading || !input.trim()} style={{ background: input.trim() ? 'var(--tool-hex-a78bfa)' : 'var(--c-border)', border: 'none', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+            <Send size={13} color="var(--tool-hex-fff)" />
           </button>
         </div>
-        <p style={{ fontSize: 9, color: '#374151', textAlign: 'center', marginTop: 6 }}>AI tutor will guide with hints only for assignment questions. NCERT curriculum.</p>
+        <p style={{ fontSize: 9, color: 'var(--tool-hex-374151)', textAlign: 'center', marginTop: 6 }}>AI tutor will guide with hints only for assignment questions. NCERT curriculum.</p>
       </div>
     </div>
   );
@@ -144,7 +144,7 @@ export function DoubtSolver() {
         </div>
         {response && (
           <div style={{ background: 'var(--c-bg)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 11, padding: 20 }}>
-            <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#a78bfa', fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Answer</h3>
+            <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-a78bfa)', fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Answer</h3>
             <p style={{ color: 'var(--c-muted)', fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{response}</p>
           </div>
         )}
@@ -167,7 +167,7 @@ export function HomeworkViewer() {
     return (
       <ToolPage title={a.title} subtitle={a.subject_name} loading={false}>
         <div style={{ marginBottom: 16 }}>
-          <button onClick={() => setSelectedAssignment(null)} style={{ background: 'none', border: 'none', color: '#4f8ff7', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: 0 }}>← Back to assignments</button>
+          <button onClick={() => setSelectedAssignment(null)} style={{ background: 'none', border: 'none', color: 'var(--tool-hex-4f8ff7)', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: 0 }}>← Back to assignments</button>
         </div>
         <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 20 }}>
@@ -200,9 +200,9 @@ export function HomeworkViewer() {
   return (
     <ToolPage title="Homework & Assignments" subtitle="View your pending assignments" loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16, maxWidth: 500 }}>
-        <StatCard value={assignments.length} label="TOTAL" color="#4f8ff7" />
-        <StatCard value={assignments.filter(a => a.due_date && a.due_date < today).length} label="OVERDUE" color="#f87171" />
-        <StatCard value={assignments.filter(a => !a.due_date || a.due_date >= today).length} label="UPCOMING" color="#34d399" />
+        <StatCard value={assignments.length} label="TOTAL" color="var(--tool-hex-4f8ff7)" />
+        <StatCard value={assignments.filter(a => a.due_date && a.due_date < today).length} label="OVERDUE" color="var(--tool-hex-f87171)" />
+        <StatCard value={assignments.filter(a => !a.due_date || a.due_date >= today).length} label="UPCOMING" color="var(--tool-hex-34d399)" />
       </div>
       <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -247,13 +247,13 @@ export function AttendanceSelfCheck() {
   return (
     <ToolPage title="My Attendance" subtitle="View your attendance record" loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16, maxWidth: 600 }}>
-        <StatCard value={data?.attendance_rate || '0%'} label="MY ATTENDANCE" color={parseFloat(data?.attendance_rate) >= 75 ? '#34d399' : '#f87171'} />
-        <StatCard value={data?.present || 0} label="PRESENT DAYS" color="#34d399" />
-        <StatCard value={data?.absent || 0} label="ABSENT DAYS" color="#f87171" />
+        <StatCard value={data?.attendance_rate || '0%'} label="MY ATTENDANCE" color={parseFloat(data?.attendance_rate) >= 75 ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-f87171)'} />
+        <StatCard value={data?.present || 0} label="PRESENT DAYS" color="var(--tool-hex-34d399)" />
+        <StatCard value={data?.absent || 0} label="ABSENT DAYS" color="var(--tool-hex-f87171)" />
         <StatCard value={data?.total_days || 0} label="TOTAL DAYS" color="var(--c-text)" />
       </div>
       {parseFloat(data?.attendance_rate) < 75 && (
-        <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 12, color: '#fca5a5' }}>
+        <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 12, color: 'var(--tool-hex-fca5a5)' }}>
           ⚠️ Your attendance is below 75%. You may not be eligible to appear in exams. Please contact your class teacher.
         </div>
       )}
@@ -274,7 +274,7 @@ export function ResultViewer() {
   return (
     <ToolPage title="My Results" subtitle="View your exam marks & grades" loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16, maxWidth: 400 }}>
-        <StatCard value={data?.total_exams || 0} label="EXAMS" color="#4f8ff7" />
+        <StatCard value={data?.total_exams || 0} label="EXAMS" color="var(--tool-hex-4f8ff7)" />
         <StatCard value={data?.student_name || currentUser.name} label="STUDENT" color="var(--c-text)" />
       </div>
       <DataTable headers={['Exam', 'Subject', 'Marks', 'Grade']}
@@ -472,7 +472,7 @@ Generate exactly 5 questions in this format.`;
             fontFamily: 'Inter, sans-serif',
             fontSize: 24,
             fontWeight: 700,
-            color: score.pct >= 80 ? '#34d399' : '#fbbf24'
+            color: score.pct >= 80 ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-fbbf24)'
           }}>
             {score.correct}/{score.total}
           </div>
@@ -522,7 +522,7 @@ Generate exactly 5 questions in this format.`;
                 />
                 <span style={{
                   fontSize: 12,
-                  color: score && k === q.correct ? '#34d399' : 'var(--c-muted)'
+                  color: score && k === q.correct ? 'var(--tool-hex-34d399)' : 'var(--c-muted)'
                 }}>
                   {k}) {v}
                 </span>
@@ -655,8 +655,8 @@ export function FeeStatusViewer() {
   return (
     <ToolPage title="My Fee Status" subtitle="View your payment history" loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16, maxWidth: 400 }}>
-        <StatCard value={data?.total_paid || '₹0'} label="TOTAL PAID" color="#34d399" />
-        <StatCard value={data?.total_pending || '₹0'} label="PENDING" color="#f87171" />
+        <StatCard value={data?.total_paid || '₹0'} label="TOTAL PAID" color="var(--tool-hex-34d399)" />
+        <StatCard value={data?.total_pending || '₹0'} label="PENDING" color="var(--tool-hex-f87171)" />
       </div>
       <DataTable headers={['Fee Type', 'Amount', 'Due Date', 'Status']}
         rows={(data?.transactions || []).map(t => [t.fee_type, t.amount, t.due_date || 'N/A', <Badge text={t.status} color={{ paid: 'green', pending: 'yellow', overdue: 'red' }[t.status] || 'gray'} />])}
@@ -777,7 +777,7 @@ export function FormSubmissions() {
                 <p style={{ color: 'var(--c-faint)', fontSize: 11, marginBottom: 10 }}>{form.fields?.length || 0} fields</p>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 10, color: 'var(--c-muted)', textTransform: 'capitalize' }}>{form.audience}</span>
-                  <span style={{ color: '#4f8ff7', fontSize: 11, fontWeight: 500 }}>Fill →</span>
+                  <span style={{ color: 'var(--tool-hex-4f8ff7)', fontSize: 11, fontWeight: 500 }}>Fill →</span>
                 </div>
               </div>
             ))}
@@ -791,7 +791,7 @@ export function FormSubmissions() {
           {submitted ? (
             <div style={{ textAlign: 'center', padding: '60px 20px' }}>
               <div style={{ fontSize: 36, marginBottom: 12 }}>✓</div>
-              <p style={{ color: '#34d399', fontSize: 14, fontWeight: 500, marginBottom: 8 }}>Form Submitted Successfully!</p>
+              <p style={{ color: 'var(--tool-hex-34d399)', fontSize: 14, fontWeight: 500, marginBottom: 8 }}>Form Submitted Successfully!</p>
               <p style={{ color: 'var(--c-faint)', fontSize: 12 }}>Your response has been recorded.</p>
             </div>
           ) : (
@@ -800,7 +800,7 @@ export function FormSubmissions() {
                 <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 16 }}>{selectedForm.title}</h3>
                 {selectedForm.fields?.map((field, i) => (
                   <div key={i} style={{ marginBottom: 16 }}>
-                    <label style={{ fontSize: 12, color: '#d4d4d4', fontWeight: 500, display: 'block', marginBottom: 6 }}>
+                    <label style={{ fontSize: 12, color: 'var(--tool-hex-d4d4d4)', fontWeight: 500, display: 'block', marginBottom: 6 }}>
                       {field.label}
                     </label>
                     {field.type === 'text' && (
@@ -836,7 +836,7 @@ export function FormSubmissions() {
                     )}
                   </div>
                 ))}
-                {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{error}</div>}
+                {error && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 12 }}>{error}</div>}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <ActionBtn label="Submit Form" type="submit" icon={<Send size={11} />} />
                   <ActionBtn label="Cancel" variant="secondary" onClick={() => { setSelectedForm(null); setAnswers({}); }} />

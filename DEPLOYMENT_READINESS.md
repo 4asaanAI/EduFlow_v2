@@ -331,6 +331,8 @@ CloudFront / Route53
 └── SSL certificates
 ```
 
+**SSE route requirement:** `GET /api/chat/conversations/{id}/messages`, `GET /api/attendance/stream`, and `GET /api/fees/stream` must terminate on a path with a backend idle timeout of at least 300 seconds. Configure the backend ALB with `idle_timeout.timeout_seconds=300`, forward `Authorization`, `Idempotency-Key`, and `X-SSE-Session-ID`, and disable caching on `/api/*`. If CloudFront cannot preserve long-lived API streams in the deployment account, route `REACT_APP_BACKEND_URL` to the HTTPS ALB/API domain instead of the frontend CloudFront distribution.
+
 **Pros:** Separate scaling, independent deployments  
 **Cons:** More complex setup
 

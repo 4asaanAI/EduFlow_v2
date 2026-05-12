@@ -15,13 +15,13 @@ function authHeaders() {
 }
 
 const PRIORITY_META = {
-  low:      { label: 'Low',      color: '#34d399', bg: 'rgba(52,211,153,0.1)',  icon: Info },
-  medium:   { label: 'Medium',   color: '#fbbf24', bg: 'rgba(251,191,36,0.1)',  icon: AlertCircle },
-  high:     { label: 'High',     color: '#fb923c', bg: 'rgba(251,146,60,0.1)',  icon: AlertTriangle },
-  critical: { label: 'Critical', color: '#f87171', bg: 'rgba(248,113,113,0.1)', icon: AlertCircle },
+  low:      { label: 'Low',      color: 'var(--tool-hex-34d399)', bg: 'rgba(52,211,153,0.1)',  icon: Info },
+  medium:   { label: 'Medium',   color: 'var(--tool-hex-fbbf24)', bg: 'rgba(251,191,36,0.1)',  icon: AlertCircle },
+  high:     { label: 'High',     color: 'var(--tool-hex-fb923c)', bg: 'rgba(251,146,60,0.1)',  icon: AlertTriangle },
+  critical: { label: 'Critical', color: 'var(--tool-hex-f87171)', bg: 'rgba(248,113,113,0.1)', icon: AlertCircle },
 };
 
-const ROLE_COLORS = { owner: '#fb923c', admin: '#4f8ff7', teacher: '#34d399', student: '#a78bfa' };
+const ROLE_COLORS = { owner: 'var(--tool-hex-fb923c)', admin: 'var(--tool-hex-4f8ff7)', teacher: 'var(--tool-hex-34d399)', student: 'var(--tool-hex-a78bfa)' };
 
 function PriorityBadge({ priority }) {
   const meta = PRIORITY_META[priority] || PRIORITY_META.low;
@@ -40,8 +40,8 @@ function PriorityBadge({ priority }) {
 
 function AttachmentPreview({ url, type, isDark }) {
   if (!url) return null;
-  const border = isDark ? '#2e2e2e' : '#e5e5e5';
-  const bg = isDark ? '#252525' : '#fafafa';
+  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
+  const bg = isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-fafafa)';
   const isVideo = type === 'mp4';
   const isImage = ['png', 'jpg', 'jpeg'].includes(type);
   const fullUrl = process.env.REACT_APP_BACKEND_URL + url;
@@ -61,10 +61,10 @@ function AttachmentPreview({ url, type, isDark }) {
       <a href={fullUrl} target="_blank" rel="noopener noreferrer" style={{
         display: 'inline-flex', alignItems: 'center', gap: 6,
         background: bg, border: `1px solid ${border}`, borderRadius: 8,
-        padding: '6px 10px', textDecoration: 'none', color: isDark ? '#a0a0a0' : '#525252',
+        padding: '6px 10px', textDecoration: 'none', color: isDark ? 'var(--tool-hex-a0a0a0)' : 'var(--tool-hex-525252)',
         fontSize: 12,
       }}>
-        <FileVideo size={14} color="#a78bfa" /> View Recording
+        <FileVideo size={14} color="var(--tool-hex-a78bfa)" /> View Recording
       </a>
     );
   }
@@ -76,19 +76,19 @@ function isItTech(user) {
 }
 
 function TicketCard({ ticket, currentUser, isDark, onResolve, onUnresolve, onDelete }) {
-  const border = isDark ? '#2e2e2e' : '#e5e5e5';
-  const card = isDark ? '#1e1e1e' : '#ffffff';
-  const text = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#666' : '#a3a3a3';
-  const secondary = isDark ? '#a0a0a0' : '#525252';
+  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
+  const card = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-ffffff)';
+  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
+  const muted = isDark ? 'var(--tool-hex-666)' : 'var(--tool-hex-a3a3a3)';
+  const secondary = isDark ? 'var(--tool-hex-a0a0a0)' : 'var(--tool-hex-525252)';
   const resolved = ticket.status === 'resolved';
-  const roleColor = ROLE_COLORS[ticket.created_by_role] || '#737373';
+  const roleColor = ROLE_COLORS[ticket.created_by_role] || 'var(--tool-hex-737373)';
   const canDelete = isItTech(currentUser);
   const canResolve = isItTech(currentUser);
 
   return (
     <div style={{
-      background: card, border: `1px solid ${resolved ? (isDark ? '#1a3a2a' : '#d1fae5') : border}`,
+      background: card, border: `1px solid ${resolved ? (isDark ? 'var(--tool-hex-1a3a2a)' : 'var(--tool-hex-d1fae5)') : border}`,
       borderRadius: 14, padding: '18px 20px', transition: 'border-color 0.2s ease',
       opacity: resolved ? 0.8 : 1,
     }}>
@@ -100,7 +100,7 @@ function TicketCard({ ticket, currentUser, isDark, onResolve, onUnresolve, onDel
             {resolved && (
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: 4,
-                background: 'rgba(52,211,153,0.1)', color: '#34d399',
+                background: 'rgba(52,211,153,0.1)', color: 'var(--tool-hex-34d399)',
                 fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6,
               }}>
                 <CheckCircle2 size={10} /> Resolved
@@ -126,8 +126,8 @@ function TicketCard({ ticket, currentUser, isDark, onResolve, onUnresolve, onDel
                 display: 'flex', alignItems: 'center', gap: 5,
                 padding: '6px 12px', borderRadius: 8, border: 'none', cursor: 'pointer',
                 fontSize: 12, fontWeight: 600,
-                background: resolved ? (isDark ? '#1a3a2a' : '#dcfce7') : (isDark ? '#1a2e1a' : '#f0fdf4'),
-                color: '#34d399', transition: 'all 0.15s ease',
+                background: resolved ? (isDark ? 'var(--tool-hex-1a3a2a)' : 'var(--tool-hex-dcfce7)') : (isDark ? 'var(--tool-hex-1a2e1a)' : 'var(--tool-hex-f0fdf4)'),
+                color: 'var(--tool-hex-34d399)', transition: 'all 0.15s ease',
               }}
               onMouseEnter={e => e.currentTarget.style.opacity = '0.75'}
               onMouseLeave={e => e.currentTarget.style.opacity = '1'}
@@ -145,7 +145,7 @@ function TicketCard({ ticket, currentUser, isDark, onResolve, onUnresolve, onDel
                 width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer',
                 background: 'transparent', color: muted, transition: 'all 0.15s ease',
               }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(248,113,113,0.1)'; e.currentTarget.style.color = '#f87171'; }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(248,113,113,0.1)'; e.currentTarget.style.color = 'var(--tool-hex-f87171)'; }}
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = muted; }}
             >
               <Trash2 size={13} />
@@ -172,19 +172,19 @@ function TicketCard({ ticket, currentUser, isDark, onResolve, onUnresolve, onDel
           <span style={{
             width: 18, height: 18, borderRadius: '50%', background: roleColor,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 9, fontWeight: 700, color: '#fff', flexShrink: 0,
+            fontSize: 9, fontWeight: 700, color: 'var(--tool-hex-fff)', flexShrink: 0,
           }}>
             {(ticket.created_by_name || '?')[0].toUpperCase()}
           </span>
           <span style={{ fontSize: 12, color: muted }}>
             {ticket.created_by_name}
-            <span style={{ margin: '0 4px', color: isDark ? '#333' : '#d5d5d5' }}>·</span>
+            <span style={{ margin: '0 4px', color: isDark ? 'var(--tool-hex-333)' : 'var(--tool-hex-d5d5d5)' }}>·</span>
             <span style={{ color: roleColor, textTransform: 'capitalize' }}>{ticket.created_by_role}</span>
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {resolved && ticket.resolved_by_name && (
-            <span style={{ fontSize: 11, color: '#34d399' }}>
+            <span style={{ fontSize: 11, color: 'var(--tool-hex-34d399)' }}>
               ✓ by {ticket.resolved_by_name}
             </span>
           )}
@@ -211,12 +211,12 @@ export function QuerySection() {
   const [formError, setFormError] = useState('');
   const fileRef = useRef(null);
 
-  const border = isDark ? '#2e2e2e' : '#e5e5e5';
-  const card = isDark ? '#1e1e1e' : '#ffffff';
-  const text = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#666' : '#a3a3a3';
-  const secondary = isDark ? '#a0a0a0' : '#525252';
-  const inputBg = isDark ? '#252525' : '#fafafa';
+  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
+  const card = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-ffffff)';
+  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
+  const muted = isDark ? 'var(--tool-hex-666)' : 'var(--tool-hex-a3a3a3)';
+  const secondary = isDark ? 'var(--tool-hex-a0a0a0)' : 'var(--tool-hex-525252)';
+  const inputBg = isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-fafafa)';
 
   const load = async () => {
     setLoading(true);
@@ -341,8 +341,8 @@ export function QuerySection() {
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '8px 14px', borderRadius: 10, border: 'none', cursor: 'pointer',
-            background: showForm ? (isDark ? '#252525' : '#f5f5f5') : (isDark ? '#f5f5f5' : '#171717'),
-            color: showForm ? muted : (isDark ? '#171717' : '#fff'),
+            background: showForm ? (isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)') : (isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)'),
+            color: showForm ? muted : (isDark ? 'var(--tool-hex-171717)' : 'var(--tool-hex-fff)'),
             fontSize: 13, fontWeight: 600, transition: 'all 0.15s ease',
           }}
         >
@@ -355,9 +355,9 @@ export function QuerySection() {
       {/* Stats row */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
         {[
-          { label: 'Total', value: tickets.length, color: '#4f8ff7' },
-          { label: 'Open', value: open, color: '#fb923c' },
-          { label: 'Resolved', value: resolved, color: '#34d399' },
+          { label: 'Total', value: tickets.length, color: 'var(--tool-hex-4f8ff7)' },
+          { label: 'Open', value: open, color: 'var(--tool-hex-fb923c)' },
+          { label: 'Resolved', value: resolved, color: 'var(--tool-hex-34d399)' },
         ].map(s => (
           <div key={s.label} style={{
             flex: '1 1 100px', background: card, border: `1px solid ${border}`,
@@ -450,7 +450,7 @@ export function QuerySection() {
                 >
                   {file ? (
                     <>
-                      {file.type.startsWith('image') ? <Image size={14} color="#4f8ff7" /> : <FileVideo size={14} color="#a78bfa" />}
+                      {file.type.startsWith('image') ? <Image size={14} color="var(--tool-hex-4f8ff7)" /> : <FileVideo size={14} color="var(--tool-hex-a78bfa)" />}
                       <span style={{ fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
                       <button type="button" onClick={e => { e.stopPropagation(); setFile(null); fileRef.current.value = ''; }}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: muted, display: 'flex', padding: 0 }}>
@@ -465,13 +465,13 @@ export function QuerySection() {
                   )}
                 </div>
                 <input ref={fileRef} type="file" accept=".mp4,.png,.jpg,.jpeg" onChange={handleFileChange} style={{ display: 'none' }} />
-                {fileError && <p style={{ fontSize: 11, color: '#f87171', margin: '4px 0 0' }}>{fileError}</p>}
+                {fileError && <p style={{ fontSize: 11, color: 'var(--tool-hex-f87171)', margin: '4px 0 0' }}>{fileError}</p>}
               </div>
             </div>
 
             {formError && (
               <div style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', borderRadius: 8, padding: '8px 12px', marginBottom: 14 }}>
-                <p style={{ fontSize: 12, color: '#f87171', margin: 0 }}>{formError}</p>
+                <p style={{ fontSize: 12, color: 'var(--tool-hex-f87171)', margin: 0 }}>{formError}</p>
               </div>
             )}
 
@@ -483,7 +483,7 @@ export function QuerySection() {
               <button type="submit" disabled={submitting}
                 style={{
                   padding: '9px 20px', borderRadius: 10, border: 'none', cursor: submitting ? 'not-allowed' : 'pointer',
-                  background: isDark ? '#f5f5f5' : '#171717', color: isDark ? '#171717' : '#fff',
+                  background: isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)', color: isDark ? 'var(--tool-hex-171717)' : 'var(--tool-hex-fff)',
                   fontSize: 13, fontWeight: 600, opacity: submitting ? 0.7 : 1,
                   display: 'flex', alignItems: 'center', gap: 6,
                 }}>
@@ -504,9 +504,9 @@ export function QuerySection() {
         ].map(f => (
           <button key={f.key} onClick={() => setFilter(f.key)}
             style={{
-              padding: '6px 14px', borderRadius: 8, border: `1px solid ${filter === f.key ? (isDark ? '#4f8ff7' : '#4f8ff7') : border}`,
+              padding: '6px 14px', borderRadius: 8, border: `1px solid ${filter === f.key ? (isDark ? 'var(--tool-hex-4f8ff7)' : 'var(--tool-hex-4f8ff7)') : border}`,
               background: filter === f.key ? (isDark ? 'rgba(79,143,247,0.15)' : 'rgba(79,143,247,0.08)') : 'transparent',
-              color: filter === f.key ? '#4f8ff7' : secondary, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              color: filter === f.key ? 'var(--tool-hex-4f8ff7)' : secondary, fontSize: 12, fontWeight: 600, cursor: 'pointer',
               transition: 'all 0.15s ease',
             }}>
             {f.label}
@@ -522,7 +522,7 @@ export function QuerySection() {
         </div>
       ) : visibleTickets.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '48px 20px' }}>
-          <div style={{ width: 48, height: 48, borderRadius: 14, background: isDark ? '#1e1e1e' : '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+          <div style={{ width: 48, height: 48, borderRadius: 14, background: isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-f5f5f5)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
             <AlertCircle size={22} color={muted} />
           </div>
           <p style={{ fontSize: 14, fontWeight: 600, color: text, margin: '0 0 4px' }}>No tickets yet</p>

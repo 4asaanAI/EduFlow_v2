@@ -157,3 +157,7 @@ async def _create_indexes():
     await db.password_reset_tokens.create_index("user_id")
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.password_reset_requests.create_index([("email", 1), ("created_at", 1)])
+    await db.confirm_tokens.create_index("token", unique=True)
+    await db.confirm_tokens.create_index("expires_at", expireAfterSeconds=0)
+    await db.idempotency_keys.create_index("key", unique=True)
+    await db.idempotency_keys.create_index("expires_at", expireAfterSeconds=0)

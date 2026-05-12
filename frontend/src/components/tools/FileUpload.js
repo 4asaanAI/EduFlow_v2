@@ -17,8 +17,8 @@ const ALLOWED_BY_ROLE = {
 
 function getFileIcon(name) {
   const ext = name?.split('.').pop()?.toLowerCase();
-  if (['png', 'jpg', 'jpeg', 'heic'].includes(ext)) return <Image size={14} color="#34d399" />;
-  return <FileText size={14} color="#4f8ff7" />;
+  if (['png', 'jpg', 'jpeg', 'heic'].includes(ext)) return <Image size={14} color="var(--tool-hex-34d399)" />;
+  return <FileText size={14} color="var(--tool-hex-4f8ff7)" />;
 }
 
 export default function FileUpload({ entityType = 'general', entityId = '', onUploaded, isDark = true, compact = false }) {
@@ -30,9 +30,9 @@ export default function FileUpload({ entityType = 'general', entityId = '', onUp
   const inputRef = useRef(null);
 
   const allowed = ALLOWED_BY_ROLE[currentUser.role] || [];
-  const bg = isDark ? '#1e1e1e' : '#f5f5f5';
-  const border = isDark ? '#2e2e2e' : '#e5e5e5';
-  const text = isDark ? '#a3a3a3' : '#737373';
+  const bg = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-f5f5f5)';
+  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
+  const text = isDark ? 'var(--tool-hex-a3a3a3)' : 'var(--tool-hex-737373)';
 
   const uploadFile = async (file) => {
     setError('');
@@ -82,18 +82,18 @@ export default function FileUpload({ entityType = 'general', entityId = '', onUp
     return (
       <div>
         <button onClick={() => inputRef.current?.click()} disabled={uploading}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, background: isDark ? '#1e1e1e' : '#fafafa', border: `1px solid ${border}`, borderRadius: 7, padding: '6px 12px', color: text, fontSize: 12, cursor: 'pointer' }}>
+          style={{ display: 'flex', alignItems: 'center', gap: 6, background: isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-fafafa)', border: `1px solid ${border}`, borderRadius: 7, padding: '6px 12px', color: text, fontSize: 12, cursor: 'pointer' }}>
           <Upload size={12} />
           {uploading ? 'Uploading...' : 'Attach File'}
         </button>
         <input ref={inputRef} type="file" style={{ display: 'none' }} accept={allowed.map(e => `.${e}`).join(',')} onChange={e => e.target.files?.[0] && uploadFile(e.target.files[0])} />
-        {error && <p style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>{error}</p>}
+        {error && <p style={{ fontSize: 11, color: 'var(--tool-hex-f87171)', marginTop: 4 }}>{error}</p>}
         {files.map(f => (
           <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
             {getFileIcon(f.file_name)}
-            <a href={`${process.env.REACT_APP_BACKEND_URL}${f.file_url}`} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: '#4f8ff7', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.file_name}</a>
+            <a href={`${process.env.REACT_APP_BACKEND_URL}${f.file_url}`} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--tool-hex-4f8ff7)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.file_name}</a>
             <span style={{ fontSize: 10, color: text }}>{f.file_size_kb}KB</span>
-            <button onClick={() => handleDelete(f.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f87171' }}><X size={10} /></button>
+            <button onClick={() => handleDelete(f.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tool-hex-f87171)' }}><X size={10} /></button>
           </div>
         ))}
       </div>
@@ -107,23 +107,23 @@ export default function FileUpload({ entityType = 'general', entityId = '', onUp
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
         onClick={() => inputRef.current?.click()}
-        style={{ border: `2px dashed ${dragging ? '#4f8ff7' : border}`, borderRadius: 10, padding: '24px 20px', textAlign: 'center', cursor: 'pointer', background: dragging ? 'rgba(59,130,246,0.05)' : bg, transition: 'all 0.15s' }}>
-        <Upload size={24} color={dragging ? '#4f8ff7' : text} style={{ margin: '0 auto 8px' }} />
+        style={{ border: `2px dashed ${dragging ? 'var(--tool-hex-4f8ff7)' : border}`, borderRadius: 10, padding: '24px 20px', textAlign: 'center', cursor: 'pointer', background: dragging ? 'rgba(59,130,246,0.05)' : bg, transition: 'all 0.15s' }}>
+        <Upload size={24} color={dragging ? 'var(--tool-hex-4f8ff7)' : text} style={{ margin: '0 auto 8px' }} />
         <p style={{ fontSize: 13, color: text, marginBottom: 4 }}>{uploading ? 'Uploading...' : 'Drop files here or click to upload'}</p>
-        <p style={{ fontSize: 11, color: isDark ? '#525252' : '#a3a3a3' }}>Allowed: {allowed.join(', ')} · Max 10MB</p>
+        <p style={{ fontSize: 11, color: isDark ? 'var(--tool-hex-525252)' : 'var(--tool-hex-a3a3a3)' }}>Allowed: {allowed.join(', ')} · Max 10MB</p>
       </div>
       <input ref={inputRef} type="file" style={{ display: 'none' }} multiple accept={allowed.map(e => `.${e}`).join(',')}
         onChange={e => Array.from(e.target.files || []).forEach(uploadFile)} />
-      {error && <p style={{ fontSize: 11, color: '#f87171', marginTop: 8 }}>{error}</p>}
+      {error && <p style={{ fontSize: 11, color: 'var(--tool-hex-f87171)', marginTop: 8 }}>{error}</p>}
       {files.length > 0 && (
         <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
           {files.map(f => (
             <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: bg, border: `1px solid ${border}`, borderRadius: 8 }}>
               {getFileIcon(f.file_name)}
-              <span style={{ flex: 1, fontSize: 12, color: isDark ? '#e5e5e5' : '#171717', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.file_name}</span>
+              <span style={{ flex: 1, fontSize: 12, color: isDark ? 'var(--tool-hex-e5e5e5)' : 'var(--tool-hex-171717)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.file_name}</span>
               <span style={{ fontSize: 10, color: text }}>{f.file_size_kb}KB</span>
-              <a href={`${process.env.REACT_APP_BACKEND_URL}${f.file_url}`} target="_blank" rel="noreferrer" style={{ color: '#4f8ff7' }}><Download size={12} /></a>
-              <button onClick={() => handleDelete(f.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f87171' }}><X size={12} /></button>
+              <a href={`${process.env.REACT_APP_BACKEND_URL}${f.file_url}`} target="_blank" rel="noreferrer" style={{ color: 'var(--tool-hex-4f8ff7)' }}><Download size={12} /></a>
+              <button onClick={() => handleDelete(f.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tool-hex-f87171)' }}><X size={12} /></button>
             </div>
           ))}
         </div>

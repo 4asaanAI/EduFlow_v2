@@ -12,7 +12,8 @@ export { FormSubmissions } from './StudentTools';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function h() { return getAuthHeaders(); }
-const btnStyle = (color) => ({ background: `${color}20`, border: `1px solid ${color}50`, borderRadius: 5, padding: '3px 8px', color, fontSize: 11, cursor: 'pointer', fontWeight: 600 });
+const tint = (color, amount) => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
+const btnStyle = (color) => ({ background: tint(color, 13), border: `1px solid ${tint(color, 31)}`, borderRadius: 5, padding: '3px 8px', color, fontSize: 11, cursor: 'pointer', fontWeight: 600 });
 
 function markdownToHtml(text) {
   let html = (text == null ? '' : String(text));
@@ -62,7 +63,7 @@ export function ClassAttendanceMarker() {
       </div>
       {records.length > 0 && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-          {[['Present', records.filter(r => r.status === 'present').length, '#34d399'], ['Absent', records.filter(r => r.status === 'absent').length, '#f87171'], ['Total', records.length, 'var(--c-text)']].map(([l, v, c]) => (
+          {[['Present', records.filter(r => r.status === 'present').length, 'var(--tool-hex-34d399)'], ['Absent', records.filter(r => r.status === 'absent').length, 'var(--tool-hex-f87171)'], ['Total', records.length, 'var(--c-text)']].map(([l, v, c]) => (
             <StatCard key={l} value={v} label={l} color={c} small />
           ))}
         </div>
@@ -73,15 +74,15 @@ export function ClassAttendanceMarker() {
           s.name,
           <Badge text={s.status} color={{ present: 'green', absent: 'red', late: 'yellow', holiday: 'gray', not_marked: 'gray' }[s.status] || 'gray'} />,
           <div style={{ display: 'flex', gap: 3 }}>
-            {[['P', 'present', '#34d399'], ['A', 'absent', '#f87171'], ['L', 'late', '#fbbf24']].map(([lbl, val, col]) => (
+            {[['P', 'present', 'var(--tool-hex-34d399)'], ['A', 'absent', 'var(--tool-hex-f87171)'], ['L', 'late', 'var(--tool-hex-fbbf24)']].map(([lbl, val, col]) => (
               <button key={lbl} onClick={() => setRecords(prev => prev.map(st => st.student_id === s.student_id ? { ...st, status: val } : st))}
-                style={{ background: s.status === val ? `${col}20` : 'transparent', border: `1px solid ${s.status === val ? col + '50' : 'var(--c-border)'}`, borderRadius: 4, padding: '3px 7px', color: s.status === val ? col : 'var(--c-faint)', fontSize: 10, cursor: 'pointer', fontWeight: 700 }}>{lbl}</button>
+                style={{ background: s.status === val ? tint(col, 13) : 'transparent', border: `1px solid ${s.status === val ? tint(col, 31) : 'var(--c-border)'}`, borderRadius: 4, padding: '3px 7px', color: s.status === val ? col : 'var(--c-faint)', fontSize: 10, cursor: 'pointer', fontWeight: 700 }}>{lbl}</button>
             ))}
           </div>
         ])}
         emptyMsg={loading ? 'Loading...' : 'No students found'}
       />
-      {records.length > 0 && <button onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 7, background: saved ? '#34d399' : '#4f8ff7', border: 'none', borderRadius: 8, padding: '10px 20px', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 12 }}>
+      {records.length > 0 && <button onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 7, background: saved ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-4f8ff7)', border: 'none', borderRadius: 8, padding: '10px 20px', color: 'var(--tool-hex-fff)', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 12 }}>
         {saved ? <CheckCircle size={14} /> : <Save size={14} />}{saved ? 'Saved!' : saving ? 'Saving...' : 'Save Attendance'}
       </button>}
     </ToolPage>
@@ -156,7 +157,7 @@ export function AssignmentGenerator() {
               <FormField label="Due Date" type="date" value={form.due_date} onChange={f('due_date')} />
             </div>
             <FormField label="Description / Instructions" type="textarea" value={form.description} onChange={f('description')} placeholder="Assignment instructions..." />
-            {error && <p style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{error}</p>}
+            {error && <p style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 12 }}>{error}</p>}
             <div style={{ display: 'flex', gap: 8 }}>
               <ActionBtn label={saving ? 'Saving...' : editingId ? 'Update' : 'Create'} type="submit" disabled={saving} />
               <ActionBtn label="Cancel" variant="secondary" onClick={() => setShowForm(false)} />
@@ -179,8 +180,8 @@ export function AssignmentGenerator() {
                   <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{a.due_date || 'N/A'}</td>
                   <td style={{ padding: '10px 14px' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => openEdit(a)} style={btnStyle('#4f8ff7')}>Edit</button>
-                      <button onClick={() => handleDelete(a.id)} style={btnStyle('#f87171')}>Delete</button>
+                      <button onClick={() => openEdit(a)} style={btnStyle('var(--tool-hex-4f8ff7)')}>Edit</button>
+                      <button onClick={() => handleDelete(a.id)} style={btnStyle('var(--tool-hex-f87171)')}>Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -292,9 +293,9 @@ export function QuestionPaperCreator() {
     const liveContent = editorRef.current?.innerHTML || editedContent;
     // Create a visible overlay — html2canvas cannot capture off-screen/fixed elements
     const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#ffffff;overflow:auto;display:flex;justify-content:center;';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--tool-hex-ffffff);overflow:auto;display:flex;justify-content:center;';
     const inner = document.createElement('div');
-    inner.style.cssText = 'width:794px;padding:40px 48px;font-family:Arial,sans-serif;font-size:13px;line-height:1.7;color:#111111;background:#ffffff;';
+    inner.style.cssText = 'width:794px;padding:40px 48px;font-family:Arial,sans-serif;font-size:13px;line-height:1.7;color:var(--tool-hex-111111);background:var(--tool-hex-ffffff);';
     inner.innerHTML = liveContent;
     overlay.appendChild(inner);
     document.body.appendChild(overlay);
@@ -302,7 +303,7 @@ export function QuestionPaperCreator() {
       margin: [12, 12, 12, 12],
       filename: `${(generatedPaper?.title || 'question-paper').replace(/\s+/g, '-')}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
+      html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: 'white' },
       jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' },
     };
     html2pdf().set(opt).from(inner).save().finally(() => document.body.removeChild(overlay));
@@ -334,7 +335,7 @@ export function QuestionPaperCreator() {
   <title>${generatedPaper?.title || 'Question Paper'}</title>
   <style>
     body { font-family: Arial, sans-serif; max-width: 900px; margin: 20px auto; line-height: 1.6; }
-    h1, h2, h3 { color: #1a1a1a; margin-top: 20px; }
+    h1, h2, h3 { color: var(--tool-hex-1a1a1a); margin-top: 20px; }
     p { margin: 8px 0; }
     strong { font-weight: bold; }
     u { text-decoration: underline; }
@@ -386,8 +387,8 @@ export function QuestionPaperCreator() {
         <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <ActionBtn label="← Back to List" onClick={() => { setGeneratedPaper(null); setIsEditing(false); setSaveFeedback(''); }} />
           <ActionBtn label={saveFeedback === 'saving' ? 'Saving...' : 'Save Changes'} onClick={saveEditedPaper} variant="success" disabled={saveFeedback === 'saving'} />
-          {saveFeedback === 'saved' && <span style={{ fontSize: 11, color: '#34d399', fontWeight: 600 }}>Saved!</span>}
-          {saveFeedback === 'error' && <span style={{ fontSize: 11, color: '#f87171', fontWeight: 600 }}>Save failed</span>}
+          {saveFeedback === 'saved' && <span style={{ fontSize: 11, color: 'var(--tool-hex-34d399)', fontWeight: 600 }}>Saved!</span>}
+          {saveFeedback === 'error' && <span style={{ fontSize: 11, color: 'var(--tool-hex-f87171)', fontWeight: 600 }}>Save failed</span>}
           <ActionBtn label="Download PDF" onClick={downloadPdf} />
           <ActionBtn label="Download Word" onClick={downloadWord} />
           <ActionBtn label="Download HTML" onClick={downloadHtml} />
@@ -415,7 +416,7 @@ export function QuestionPaperCreator() {
             contentEditable
             suppressContentEditableWarning
             onInput={() => setEditedContent(editorRef.current?.innerHTML || '')}
-            style={{ minHeight: 480, padding: 20, background: '#fff', color: '#1a1a1a', fontSize: 13, lineHeight: 1.7, outline: 'none', overflowY: 'auto' }}
+            style={{ minHeight: 480, padding: 20, background: 'var(--tool-hex-fff)', color: 'var(--tool-hex-1a1a1a)', fontSize: 13, lineHeight: 1.7, outline: 'none', overflowY: 'auto' }}
           />
         </div>
       </ToolPage>
@@ -435,7 +436,7 @@ export function QuestionPaperCreator() {
             <div style={{ marginBottom: 12 }}>
               <label style={{ fontSize: 10, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 8 }}>DIFFICULTY MIX</label>
               <div style={{ display: 'flex', gap: 10 }}>
-                {[['Easy', 'easy', '#34d399'], ['Medium', 'medium', '#fbbf24'], ['Hard', 'hard', '#f87171']].map(([l, k, c]) => (
+                {[['Easy', 'easy', 'var(--tool-hex-34d399)'], ['Medium', 'medium', 'var(--tool-hex-fbbf24)'], ['Hard', 'hard', 'var(--tool-hex-f87171)']].map(([l, k, c]) => (
                   <div key={k} style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: 11, color: c, fontWeight: 700, marginBottom: 4 }}>{form[k]}%</div>
                     <input type="range" min={0} max={100} value={form[k]} onChange={e => f(k)(+e.target.value)} style={{ width: 80, accentColor: c }} />
@@ -444,7 +445,7 @@ export function QuestionPaperCreator() {
                 ))}
               </div>
             </div>
-            {error && <p style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{error}</p>}
+            {error && <p style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 12 }}>{error}</p>}
             <div style={{ display: 'flex', gap: 8 }}>
               <ActionBtn label={generating ? 'Generating...' : 'Generate with AI'} type="submit" disabled={generating} />
               <ActionBtn label="Cancel" variant="secondary" onClick={() => setShowForm(false)} disabled={generating} />
@@ -478,8 +479,8 @@ export function QuestionPaperCreator() {
                         setGeneratedPaper(full);
                         setEditedContent(html);
                         setIsEditing(true);
-                      }} style={btnStyle('#4f8ff7')}>Edit</button>
-                      <button onClick={async () => { if (!window.confirm('Delete this question paper?')) return; await fetch(`${API}/academics/question-papers/${p.id}`, { method: 'DELETE', headers: h(currentUser) }); const r = await fetch(`${API}/academics/question-papers`, { headers: h(currentUser) }).then(r => r.json()); if (r.success) setPapers(r.data || []); }} style={btnStyle('#f87171')}>Delete</button>
+                      }} style={btnStyle('var(--tool-hex-4f8ff7)')}>Edit</button>
+                      <button onClick={async () => { if (!window.confirm('Delete this question paper?')) return; await fetch(`${API}/academics/question-papers/${p.id}`, { method: 'DELETE', headers: h(currentUser) }); const r = await fetch(`${API}/academics/question-papers`, { headers: h(currentUser) }).then(r => r.json()); if (r.success) setPapers(r.data || []); }} style={btnStyle('var(--tool-hex-f87171)')}>Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -558,8 +559,8 @@ export function LeaveApplication() {
           </div>
           <FormField label="Reason" type="textarea" value={form.reason} onChange={f('reason')} placeholder="Reason for leave..." required />
           <ActionBtn label={submitted ? 'Submitted!' : submitting ? 'Submitting...' : 'Submit Application'} disabled={submitting} type="submit" />
-          {submitted && <p style={{ color: '#34d399', fontSize: 12, marginTop: 8 }}>Leave application submitted successfully!</p>}
-          {error && <p style={{ color: '#f87171', fontSize: 12, marginTop: 8 }}>{error}</p>}
+          {submitted && <p style={{ color: 'var(--tool-hex-34d399)', fontSize: 12, marginTop: 8 }}>Leave application submitted successfully!</p>}
+          {error && <p style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginTop: 8 }}>{error}</p>}
         </form>
       </div>
       <DataTable title="My Leave History" headers={['Type', 'Start Date', 'End Date', 'Status', 'Reason']}
@@ -663,8 +664,8 @@ export function LessonPlanGenerator() {
                     <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{p.created_at?.slice(0, 10) || 'N/A'}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={() => openEdit(p)} style={btnStyle('#4f8ff7')}>Edit</button>
-                        <button onClick={() => handleDelete(p.id)} style={btnStyle('#f87171')}>Delete</button>
+                        <button onClick={() => openEdit(p)} style={btnStyle('var(--tool-hex-4f8ff7)')}>Edit</button>
+                        <button onClick={() => handleDelete(p.id)} style={btnStyle('var(--tool-hex-f87171)')}>Delete</button>
                       </div>
                     </td>
                   </tr>
@@ -756,8 +757,8 @@ export function WorksheetCreator() {
                   <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{w.created_at?.slice(0, 10)}</td>
                   <td style={{ padding: '10px 14px' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => openEdit(w)} style={btnStyle('#4f8ff7')}>Edit</button>
-                      <button onClick={() => handleDelete(w.id)} style={btnStyle('#f87171')}>Delete</button>
+                      <button onClick={() => openEdit(w)} style={btnStyle('var(--tool-hex-4f8ff7)')}>Edit</button>
+                      <button onClick={() => handleDelete(w.id)} style={btnStyle('var(--tool-hex-f87171)')}>Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -847,10 +848,10 @@ export function ClassPerformanceAnalytics() {
       ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18 }}>
-            <StatCard value={students.length} label="STUDENTS" color="#4f8ff7" />
-            <StatCard value={results.length} label="RESULT ENTRIES" color="#a78bfa" />
-            <StatCard value={results.length ? `${avgMarks}/100` : 'N/A'} label="AVG MARKS" color="#34d399" />
-            <StatCard value={results.filter(r => r.marks_obtained >= 80).length} label="ABOVE 80%" color="#fbbf24" />
+            <StatCard value={students.length} label="STUDENTS" color="var(--tool-hex-4f8ff7)" />
+            <StatCard value={results.length} label="RESULT ENTRIES" color="var(--tool-hex-a78bfa)" />
+            <StatCard value={results.length ? `${avgMarks}/100` : 'N/A'} label="AVG MARKS" color="var(--tool-hex-34d399)" />
+            <StatCard value={results.filter(r => r.marks_obtained >= 80).length} label="ABOVE 80%" color="var(--tool-hex-fbbf24)" />
           </div>
           {results.length > 0 ? (
             <DataTable headers={['Student', 'Subject', 'Marks', 'Grade']}
@@ -958,8 +959,8 @@ export function PtmNotes() {
                   <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{n.created_at?.slice(0, 10)}</td>
                   <td style={{ padding: '10px 14px' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => openEdit(n)} style={btnStyle('#4f8ff7')}>Edit</button>
-                      <button onClick={() => handleDelete(n.id)} style={btnStyle('#f87171')}>Delete</button>
+                      <button onClick={() => openEdit(n)} style={btnStyle('var(--tool-hex-4f8ff7)')}>Edit</button>
+                      <button onClick={() => handleDelete(n.id)} style={btnStyle('var(--tool-hex-f87171)')}>Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -1056,8 +1057,8 @@ export function CurriculumTracker() {
                     <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{p.updated_at?.slice(0, 10)}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={() => openEdit(p)} style={btnStyle('#4f8ff7')}>Edit</button>
-                        <button onClick={() => handleDelete(p.id)} style={btnStyle('#f87171')}>Delete</button>
+                        <button onClick={() => openEdit(p)} style={btnStyle('var(--tool-hex-4f8ff7)')}>Edit</button>
+                        <button onClick={() => handleDelete(p.id)} style={btnStyle('var(--tool-hex-f87171)')}>Delete</button>
                       </div>
                     </td>
                   </tr>

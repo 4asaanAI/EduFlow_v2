@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { createStaff, deactivateStaff, getPendingLeaves, getStaff, updateLeave, updateStaff } from '../../lib/api';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { createStaff, deactivateStaff, getPendingLeaves, getStaff, subscribeSSE, updateLeave, updateStaff } from '../../lib/api';
 import { CheckCircle, Edit3, Plus, RefreshCw, X, XCircle } from 'lucide-react';
 import { useUser } from '../../contexts/UserContext';
 
@@ -30,6 +30,14 @@ const inputStyle = {
   outline: 'none',
 };
 
+function lastUpdatedLabel(value) {
+  if (!value) return 'Waiting for attendance stream';
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
+  if (seconds < 5) return 'Attendance updated just now';
+  if (seconds < 60) return `Attendance updated ${seconds}s ago`;
+  return `Attendance updated ${Math.floor(seconds / 60)}m ago`;
+}
+
 function ActionButton({ children, onClick, disabled, variant = 'primary', type = 'button' }) {
   const secondary = variant === 'secondary';
   const danger = variant === 'danger';
@@ -44,11 +52,11 @@ function ActionButton({ children, onClick, disabled, variant = 'primary', type =
         alignItems: 'center',
         justifyContent: 'center',
         gap: 7,
-        background: danger ? '#7f1d1d' : secondary ? 'var(--c-bg)' : '#4f8ff7',
+        background: danger ? 'var(--tool-hex-7f1d1d)' : secondary ? 'var(--c-bg)' : 'var(--tool-hex-4f8ff7)',
         border: secondary ? '1px solid var(--c-border)' : 'none',
         borderRadius: 8,
         padding: '8px 13px',
-        color: danger || !secondary ? '#fff' : 'var(--c-muted)',
+        color: danger || !secondary ? 'var(--tool-hex-fff)' : 'var(--c-muted)',
         fontSize: 12,
         fontWeight: 650,
         cursor: disabled ? 'not-allowed' : 'pointer',
@@ -152,7 +160,7 @@ function StaffModal({ initialStaff, canEditLeaveBalances, onClose, onSaved }) {
               </label>
             ))}
           </div>
-          {error && <div style={{ color: '#f87171', fontSize: 12, marginTop: 12 }}>{error}</div>}
+          {error && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginTop: 12 }}>{error}</div>}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
             <ActionButton variant="secondary" onClick={onClose}>Cancel</ActionButton>
             <ActionButton type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save Staff'}</ActionButton>
@@ -175,10 +183,13 @@ export default function StaffTracker() {
   const [total, setTotal] = useState(0);
   const [editing, setEditing] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [attendanceStreamUpdatedAt, setAttendanceStreamUpdatedAt] = useState(null);
+  const [, setClockTick] = useState(0);
   const canEditLeaveBalances = currentUser.role === 'owner' || currentUser.sub_category === 'principal';
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / 20)), [total]);
+  const attendanceLiveLabel = lastUpdatedLabel(attendanceStreamUpdatedAt);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
@@ -197,9 +208,21 @@ export default function StaffTracker() {
       setError(err.message || 'Unable to load staff profiles');
     }
     setLoading(false);
-  };
+  }, [page, sort]);
 
-  useEffect(() => { loadData(); }, [page, sort]);
+  useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    const interval = setInterval(() => setClockTick(t => t + 1), 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => subscribeSSE('/attendance/stream', (event) => {
+    if (event.type === 'snapshot' || event.type === 'staff_attendance_updated') {
+      setAttendanceStreamUpdatedAt(event.last_updated || event.updated_at || new Date().toISOString());
+      if (event.type !== 'snapshot') loadData();
+    }
+  }, { onReconnect: loadData }), [loadData]);
 
   const handleLeave = async (leaveId, status) => {
     const reason = window.prompt(`Reason for ${status} decision`);
@@ -234,6 +257,7 @@ export default function StaffTracker() {
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 650, color: 'var(--c-text)', margin: 0 }}>Staff Tracker</h1>
           <div style={{ color: 'var(--c-faint)', fontSize: 12, marginTop: 3 }}>{total} staff profiles</div>
+          <div style={{ color: 'var(--c-muted)', fontSize: 11, marginTop: 3 }}>{attendanceLiveLabel}</div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <ActionButton variant="secondary" onClick={loadData}><RefreshCw size={13} />Refresh</ActionButton>
@@ -246,11 +270,11 @@ export default function StaffTracker() {
           ['profiles', 'Profiles'],
           ['leaves', `Pending Leaves (${pendingLeaves.length})`],
         ].map(([id, label]) => (
-          <button key={id} onClick={() => setActiveTab(id)} style={{ background: 'none', border: 'none', borderBottom: activeTab === id ? '2px solid #4f8ff7' : '2px solid transparent', color: activeTab === id ? 'var(--c-text)' : 'var(--c-faint)', padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>{label}</button>
+          <button key={id} onClick={() => setActiveTab(id)} style={{ background: 'none', border: 'none', borderBottom: activeTab === id ? '2px solid var(--tool-hex-4f8ff7)' : '2px solid transparent', color: activeTab === id ? 'var(--c-text)' : 'var(--c-faint)', padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>{label}</button>
         ))}
       </div>
 
-      {error && <div style={{ color: '#f87171', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.18)', borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 12 }}>{error}</div>}
+      {error && <div style={{ color: 'var(--tool-hex-f87171)', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.18)', borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 12 }}>{error}</div>}
 
       {activeTab === 'profiles' && (
         <>

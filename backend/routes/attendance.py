@@ -7,6 +7,8 @@ from models.schemas import AttendanceBulkRequest, StudentAttendance, StaffAttend
 from middleware.auth import get_current_user
 from datetime import date, datetime
 from tenant import get_school_id, scoped_filter
+from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, publish
+import asyncio
 import csv
 import io
 import os
@@ -248,12 +250,57 @@ async def mark_staff_attendance(request: Request):
             check_out=rec.get("check_out"),
         )
         await db.staff_attendance.update_one(
-            {"staff_id": rec["staff_id"], "date": today},
-            {"$set": {**att.dict(), "_id": att.id}},
+            _attendance_query({"staff_id": rec["staff_id"], "date": today}),
+            {"$set": {**_serialize(att), "_id": att.id, "schoolId": get_school_id()}},
             upsert=True,
         )
 
+    await publish("attendance", {
+        "type": "staff_attendance_updated",
+        "date": today,
+        "records": records,
+        "updated_at": datetime.now().isoformat(),
+    })
     return {"success": True}
+
+
+@router.get("/stream")
+async def attendance_stream(request: Request):
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["owner", "admin"]:
+        raise HTTPException(403, "Forbidden")
+
+    session_id = request.headers.get("X-SSE-Session-ID") or request.query_params.get("session_id") or str(uuid.uuid4())
+    keepalive = int(request.query_params.get("keepalive", KEEPALIVE_SECONDS))
+    once = request.query_params.get("once", "").lower() == "true"
+    queue = await sse_connect("attendance", session_id)
+
+    async def event_generator():
+        try:
+            latest = await db.staff_attendance.find(_attendance_query(), {"_id": 0}).sort("date", -1).to_list(200)
+            yield encode_sse({
+                "type": "snapshot",
+                "channel": "attendance",
+                "data": latest,
+                "last_updated": datetime.now().isoformat(),
+            })
+            if once:
+                return
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=keepalive)
+                except asyncio.TimeoutError:
+                    yield encode_sse({"type": "keepalive", "channel": "attendance"})
+                    continue
+                if event.get("type") == "close":
+                    yield encode_sse(event)
+                    break
+                yield encode_sse(event)
+        finally:
+            await sse_disconnect("attendance", session_id, queue)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @router.get("/low-attendance")

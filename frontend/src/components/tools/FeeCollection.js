@@ -40,6 +40,7 @@ import {
   getFeeTransactions,
   getStudents,
   recordFeePayment,
+  subscribeSSE,
 } from '../../lib/api';
 
 const today = new Date().toISOString().slice(0, 10);
@@ -51,6 +52,14 @@ const initialDiscountApply = { student_id: '', discount_type_id: '', original_am
 
 function money(value) {
   return `Rs ${Number(value || 0).toLocaleString('en-IN')}`;
+}
+
+function lastUpdatedLabel(value) {
+  if (!value) return 'Waiting for live updates';
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
+  if (seconds < 5) return 'Updated just now';
+  if (seconds < 60) return `Updated ${seconds}s ago`;
+  return `Updated ${Math.floor(seconds / 60)}m ago`;
 }
 
 export default function FeeCollection() {
@@ -70,6 +79,9 @@ export default function FeeCollection() {
   const [discountBreakdown, setDiscountBreakdown] = useState(null);
   const [discountTypeForm, setDiscountTypeForm] = useState(initialDiscountType);
   const [discountApply, setDiscountApply] = useState(initialDiscountApply);
+  const [feeStreamUpdatedAt, setFeeStreamUpdatedAt] = useState(null);
+  const [, setClockTick] = useState(0);
+  const liveUpdateLabel = lastUpdatedLabel(feeStreamUpdatedAt || summary?.generated_at);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -99,6 +111,19 @@ export default function FeeCollection() {
   }, [payment.fee_period, overdueDays]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    const interval = setInterval(() => setClockTick(t => t + 1), 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => subscribeSSE('/fees/stream', (event) => {
+    if (event.type === 'snapshot' || event.type === 'fee_payment_recorded' || event.type === 'fee_transaction_corrected' || event.type === 'fee_sync_completed' || event.type === 'fee_sync_conflict_resolved') {
+      if (event.summary) setSummary(event.summary);
+      setFeeStreamUpdatedAt(event.last_updated || new Date().toISOString());
+      if (event.type !== 'snapshot') loadData();
+    }
+  }, { onReconnect: loadData }), [loadData]);
 
   const selectedTxn = useMemo(() => transactions.find(t => t.id === correction.transaction_id), [transactions, correction.transaction_id]);
   const overdue = contact.overdue || [];
@@ -225,6 +250,7 @@ export default function FeeCollection() {
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 650, margin: 0, color: 'var(--c-text)' }}>Fee collection</h1>
           <p style={{ margin: '6px 0 0', color: 'var(--c-faint)', fontSize: 12 }}>Payments, corrections, defaulters, and contact recovery</p>
+          <p style={{ margin: '4px 0 0', color: 'var(--c-muted)', fontSize: 11 }}>{liveUpdateLabel}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => exportFeeCSV('')} title="Export all fees as CSV" style={iconButton}>
@@ -236,15 +262,15 @@ export default function FeeCollection() {
         </div>
       </div>
 
-      {error && <div role="alert" style={alertStyle('#f87171')}><AlertTriangle size={16} />{error}</div>}
-      {notice && <div style={alertStyle('#34d399')}><CheckCircle size={16} />{notice}</div>}
+      {error && <div role="alert" style={alertStyle('var(--tool-hex-f87171)')}><AlertTriangle size={16} />{error}</div>}
+      {notice && <div style={alertStyle('var(--tool-hex-34d399)')}><CheckCircle size={16} />{notice}</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 18 }}>
         {[
-          ['Collected', money(summary?.total_collected), '#34d399'],
-          ['Outstanding', money(summary?.total_outstanding), '#f87171'],
-          ['Defaulters', summary?.defaulters || 0, '#fbbf24'],
-          ['Discounts', money(discountSummary?.total_discount_value), '#a78bfa'],
+          ['Collected', money(summary?.total_collected), 'var(--tool-hex-34d399)'],
+          ['Outstanding', money(summary?.total_outstanding), 'var(--tool-hex-f87171)'],
+          ['Defaulters', summary?.defaulters || 0, 'var(--tool-hex-fbbf24)'],
+          ['Discounts', money(discountSummary?.total_discount_value), 'var(--tool-hex-a78bfa)'],
         ].map(([label, value, color]) => (
           <div key={label} style={panelStyle}>
             <div style={{ color, fontSize: 20, fontWeight: 750 }}>{value}</div>
@@ -274,7 +300,7 @@ export default function FeeCollection() {
             </select>
           </div>
           <input value={payment.transaction_ref} onChange={e => setPayment(prev => ({ ...prev, transaction_ref: e.target.value }))} placeholder="Transaction reference" style={inputStyle} />
-          <button onClick={savePayment} disabled={saving} style={primaryButton('#4f8ff7')}>Save payment</button>
+          <button onClick={savePayment} disabled={saving} style={primaryButton('var(--tool-hex-4f8ff7)')}>Save payment</button>
         </section>
 
         <section style={panelStyle}>
@@ -294,7 +320,7 @@ export default function FeeCollection() {
             </select>
           </div>
           <textarea value={correction.reason} onChange={e => setCorrection(prev => ({ ...prev, reason: e.target.value }))} placeholder="Reason required" style={textareaStyle} />
-          <button onClick={saveCorrection} disabled={saving} style={primaryButton('#6366f1')}>Save correction</button>
+          <button onClick={saveCorrection} disabled={saving} style={primaryButton('var(--tool-hex-6366f1)')}>Save correction</button>
         </section>
 
         <section style={panelStyle}>
@@ -316,7 +342,7 @@ export default function FeeCollection() {
           </div>
           <input value={contact.outcome} onChange={e => setContact(prev => ({ ...prev, outcome: e.target.value }))} placeholder="Outcome" style={inputStyle} />
           <textarea value={contact.notes} onChange={e => setContact(prev => ({ ...prev, notes: e.target.value }))} placeholder="Notes" style={textareaStyle} />
-          <button onClick={saveContact} disabled={saving} style={primaryButton('#10b981')}>Log contact</button>
+          <button onClick={saveContact} disabled={saving} style={primaryButton('var(--tool-hex-10b981)')}>Log contact</button>
         </section>
       </div>
 
@@ -336,7 +362,7 @@ export default function FeeCollection() {
             <option value="per-term">Per-term</option>
           </select>
           <textarea value={discountTypeForm.reason_note} onChange={e => setDiscountTypeForm(prev => ({ ...prev, reason_note: e.target.value }))} placeholder="Reason note" style={textareaStyle} />
-          <button onClick={saveDiscountType} disabled={saving} style={primaryButton('#a78bfa')}>Save discount type</button>
+          <button onClick={saveDiscountType} disabled={saving} style={primaryButton('var(--tool-hex-a78bfa)')}>Save discount type</button>
         </section>
 
         <section style={panelStyle}>
@@ -357,7 +383,7 @@ export default function FeeCollection() {
             <input value={discountApply.effective_from} onChange={e => setDiscountApply(prev => ({ ...prev, effective_from: e.target.value }))} type="date" style={inputStyle} />
           </div>
           <input value={discountApply.note} onChange={e => setDiscountApply(prev => ({ ...prev, note: e.target.value }))} placeholder="Approval note" style={inputStyle} />
-          <button onClick={applyDiscount} disabled={saving} style={primaryButton('#8b5cf6')}>Apply discount</button>
+          <button onClick={applyDiscount} disabled={saving} style={primaryButton('var(--tool-hex-8b5cf6)')}>Apply discount</button>
         </section>
 
         <section style={panelStyle}>
@@ -373,7 +399,7 @@ export default function FeeCollection() {
                   <strong>-{money(item.discount_amount)}</strong>
                 </div>
               ))}
-              <div style={{ ...lineItem, borderTop: '1px solid var(--c-border)', paddingTop: 10, color: '#34d399' }}>
+              <div style={{ ...lineItem, borderTop: '1px solid var(--c-border)', paddingTop: 10, color: 'var(--tool-hex-34d399)' }}>
                 <span>Payable</span><strong>{money(discountBreakdown.payable_amount)}</strong>
               </div>
             </div>
@@ -399,12 +425,12 @@ export default function FeeCollection() {
                   <td style={tdStyle}>{txn.student_name || txn.student_id}</td>
                   <td style={tdStyle}>{txn.class_name || 'N/A'}</td>
                   <td style={tdStyle}>{txn.fee_head || txn.fee_type}</td>
-                  <td style={{ ...tdStyle, color: '#f87171', fontWeight: 700 }}>{money(txn.amount)}</td>
+                  <td style={{ ...tdStyle, color: 'var(--tool-hex-f87171)', fontWeight: 700 }}>{money(txn.amount)}</td>
                   <td style={tdStyle}>{txn.due_date || '-'}</td>
                   <td style={tdStyle}>{txn.status}</td>
                   <td style={tdStyle}>
                     {txn.status === 'paid' && (
-                      <button onClick={() => downloadReceipt(txn.id)} title="Download PDF receipt" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4f8ff7', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+                      <button onClick={() => downloadReceipt(txn.id)} title="Download PDF receipt" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tool-hex-4f8ff7)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
                         <FileDown size={13} /> PDF
                       </button>
                     )}
@@ -424,9 +450,9 @@ const panelTitle = { display: 'flex', alignItems: 'center', gap: 8, margin: '0 0
 const inputStyle = { minHeight: 40, width: '100%', boxSizing: 'border-box', background: 'var(--c-deep)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 10px', color: 'var(--c-text)', fontSize: 13, outline: 'none', marginBottom: 8 };
 const textareaStyle = { ...inputStyle, minHeight: 76, resize: 'vertical' };
 const twoCol = { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 };
-const primaryButton = background => ({ minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, background, border: 'none', borderRadius: 8, padding: '11px 18px', color: '#fff', fontSize: 13, fontWeight: 750, cursor: 'pointer' });
+const primaryButton = background => ({ minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, background, border: 'none', borderRadius: 8, padding: '11px 18px', color: 'var(--tool-hex-fff)', fontSize: 13, fontWeight: 750, cursor: 'pointer' });
 const iconButton = { minHeight: 44, minWidth: 44, display: 'grid', placeItems: 'center', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, color: 'var(--c-text)', cursor: 'pointer' };
-const alertStyle = color => ({ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: 12, border: `1px solid ${color}55`, borderRadius: 8, background: `${color}12`, color, fontSize: 13 });
+const alertStyle = color => ({ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: 12, border: `1px solid color-mix(in srgb, ${color} 33%, transparent)`, borderRadius: 8, background: `color-mix(in srgb, ${color} 7%, transparent)`, color, fontSize: 13 });
 const thStyle = { padding: '10px 12px', textAlign: 'left', color: 'var(--c-faint)', fontSize: 10, textTransform: 'uppercase', background: 'var(--c-deep)' };
 const tdStyle = { padding: '10px 12px', color: 'var(--c-text)', fontSize: 13 };
 const emptyStyle = { padding: 30, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13 };

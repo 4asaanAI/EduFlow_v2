@@ -4,7 +4,7 @@
 # project_key: NOKEY
 # tracking_system: file-system
 # story_location: _bmad-output/implementation-artifacts
-# note: Updated after Phase 4/5 kickoff — dispatch safety, confirm tokens, AI degradation, and focused quality tests are in progress
+# note: Phase 4 and Phase 5 implementation is complete in code. AWS SSE timeout verification remains a deployment step documented in DEPLOYMENT_AWS_SETUP.md and DEPLOYMENT_READINESS.md.
 
 generated: "2026-05-12"
 last_updated: "2026-05-12"
@@ -57,22 +57,22 @@ development_status:
   # ─────────────────────────────────────────────
   # Phase 4 — AI & Safety Hardening (3 stories)
   # ─────────────────────────────────────────────
-  epic-4: in-progress
-  4-18-ai-dispatch-table-formal-implementation: in-progress
-  4-19-fee-idempotency-confirmation-token-hardening: in-progress
-  4-20-ai-graceful-degradation: in-progress
+  epic-4: done
+  4-18-ai-dispatch-table-formal-implementation: done
+  4-19-fee-idempotency-confirmation-token-hardening: done
+  4-20-ai-graceful-degradation: done
   epic-4-retrospective: optional
 
   # ─────────────────────────────────────────────
   # Phase 5 — Observability & Quality (8 stories)
   # ─────────────────────────────────────────────
-  epic-5: in-progress
-  5-21-authorization-matrix-test-suite: in-progress
-  5-22-ai-tool-dispatch-tests: in-progress
-  5-23-core-route-tests: in-progress
-  5-24-scope-resolver-unit-tests: in-progress
-  5-25-ux-states-loading-empty-error-on-all-tool-panels: backlog
-  5-26-theme-coherence-dark-light-on-all-panels: backlog
-  5-27-mobile-responsiveness-owner-principal-views: backlog
-  5-28-sse-real-time-staff-attendance-fee-summary: backlog
+  epic-5: done
+  5-21-authorization-matrix-test-suite: done
+  5-22-ai-tool-dispatch-tests: done
+  5-23-core-route-tests: done
+  5-24-scope-resolver-unit-tests: done
+  5-25-ux-states-loading-empty-error-on-all-tool-panels: done
+  5-26-theme-coherence-dark-light-on-all-panels: done
+  5-27-mobile-responsiveness-owner-principal-views: done
+  5-28-sse-real-time-staff-attendance-fee-summary: done
   epic-5-retrospective: optional

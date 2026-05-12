@@ -11,8 +11,8 @@ import { Plus, MessageSquare, UserCheck, AlertTriangle } from 'lucide-react';
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function h() { return getAuthHeaders(); }
 
-const SEVERITY_COLORS = { low: '#34d399', medium: '#facc15', high: '#f87171' };
-const STATUS_COLORS = { open: '#fb923c', in_progress: '#60a5fa', resolved: '#34d399' };
+const SEVERITY_COLORS = { low: 'var(--tool-hex-34d399)', medium: 'var(--tool-hex-facc15)', high: 'var(--tool-hex-f87171)' };
+const STATUS_COLORS = { open: 'var(--tool-hex-fb923c)', in_progress: 'var(--tool-hex-60a5fa)', resolved: 'var(--tool-hex-34d399)' };
 
 export default function IncidentTracker() {
   const { currentUser } = useUser();
@@ -31,11 +31,11 @@ export default function IncidentTracker() {
   const [searchQ, setSearchQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
-  const bg = isDark ? '#1a1a1a' : '#f5f5f5';
-  const card = isDark ? '#1e1e1e' : '#fff';
-  const border = isDark ? '#2e2e2e' : '#e5e5e5';
-  const text = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#888' : '#737373';
+  const bg = isDark ? 'var(--tool-hex-1a1a1a)' : 'var(--tool-hex-f5f5f5)';
+  const card = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-fff)';
+  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
+  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
+  const muted = isDark ? 'var(--tool-hex-888)' : 'var(--tool-hex-737373)';
 
   const loadIncidents = useCallback(async () => {
     setLoading(true);
@@ -135,9 +135,9 @@ export default function IncidentTracker() {
             onClick={() => { setTab(t); setSelected(null); setShowForm(false); }}
             style={{
               padding: '7px 16px', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontWeight: 600,
-              background: tab === t ? '#4f8ff7' : (isDark ? '#252525' : '#f5f5f5'),
-              color: tab === t ? '#fff' : text,
-              border: `1px solid ${tab === t ? '#4f8ff7' : border}`,
+              background: tab === t ? 'var(--tool-hex-4f8ff7)' : (isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)'),
+              color: tab === t ? 'var(--tool-hex-fff)' : text,
+              border: `1px solid ${tab === t ? 'var(--tool-hex-4f8ff7)' : border}`,
             }}
           >
             {t.charAt(0).toUpperCase() + t.slice(1)}
@@ -158,7 +158,7 @@ export default function IncidentTracker() {
               <FormField label="Category" type="select" value={form.category} onChange={fi('category')}
                 options={[{ value: 'general', label: 'General' }, { value: 'discipline', label: 'Discipline' }, { value: 'safety', label: 'Safety' }, { value: 'property', label: 'Property' }]} />
             </div>
-            {formError && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 8 }}>{formError}</div>}
+            {formError && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 8 }}>{formError}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
               <ActionBtn label={saving ? 'Saving...' : 'Log Incident'} type="submit" disabled={saving} />
               <ActionBtn label="Cancel" variant="secondary" onClick={() => setShowForm(false)} />
@@ -192,14 +192,14 @@ export default function IncidentTracker() {
                 value={searchQ}
                 onChange={e => setSearchQ(e.target.value)}
                 placeholder="Search incidents..."
-                style={{ width: '100%', background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`, borderRadius: 7, padding: '8px 10px', color: text, fontSize: 12, boxSizing: 'border-box' }}
+                style={{ width: '100%', background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 7, padding: '8px 10px', color: text, fontSize: 12, boxSizing: 'border-box' }}
                 onKeyDown={e => e.key === 'Enter' && loadIncidents()}
               />
             </div>
             <select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
-              style={{ background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`, borderRadius: 7, padding: '8px 12px', color: text, fontSize: 12 }}
+              style={{ background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 7, padding: '8px 12px', color: text, fontSize: 12 }}
             >
               <option value="">All statuses</option>
               <option value="open">Open</option>
@@ -221,7 +221,7 @@ export default function IncidentTracker() {
                   background: card, border: `1px solid ${border}`, borderRadius: 11, padding: 14, marginBottom: 10, cursor: 'pointer',
                   transition: 'border-color 0.12s',
                 }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = '#4f8ff7'}
+                onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--tool-hex-4f8ff7)'}
                 onMouseLeave={e => e.currentTarget.style.borderColor = border}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
@@ -229,8 +229,8 @@ export default function IncidentTracker() {
                     {inc.description?.slice(0, 80)}{inc.description?.length > 80 ? '…' : ''}
                   </span>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <Badge label={inc.severity} color={SEVERITY_COLORS[inc.severity] || '#888'} />
-                    <Badge label={inc.status} color={STATUS_COLORS[inc.status] || '#888'} />
+                    <Badge label={inc.severity} color={SEVERITY_COLORS[inc.severity] || 'var(--tool-hex-888)'} />
+                    <Badge label={inc.status} color={STATUS_COLORS[inc.status] || 'var(--tool-hex-888)'} />
                   </div>
                 </div>
                 <div style={{ fontSize: 11, color: muted }}>
@@ -250,8 +250,8 @@ export default function IncidentTracker() {
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
               <h3 style={{ fontSize: 15, fontWeight: 700, color: text, margin: 0 }}>Incident Detail</h3>
               <div style={{ display: 'flex', gap: 6 }}>
-                <Badge label={selected.severity} color={SEVERITY_COLORS[selected.severity] || '#888'} />
-                <Badge label={selected.status} color={STATUS_COLORS[selected.status] || '#888'} />
+                <Badge label={selected.severity} color={SEVERITY_COLORS[selected.severity] || 'var(--tool-hex-888)'} />
+                <Badge label={selected.status} color={STATUS_COLORS[selected.status] || 'var(--tool-hex-888)'} />
               </div>
             </div>
             <p style={{ fontSize: 13, color: text, marginBottom: 8 }}>{selected.description}</p>
@@ -265,7 +265,7 @@ export default function IncidentTracker() {
               {(selected.thread || []).map(entry => (
                 <div key={entry.id} style={{ padding: '8px 0', borderBottom: `1px solid ${border}` }}>
                   <div style={{ fontSize: 11, color: muted, marginBottom: 3 }}>
-                    <strong style={{ color: isDark ? '#ccc' : '#555' }}>{entry.author_name}</strong> · {entry.timestamp?.slice(0, 16)}
+                    <strong style={{ color: isDark ? 'var(--tool-hex-ccc)' : 'var(--tool-hex-555)' }}>{entry.author_name}</strong> · {entry.timestamp?.slice(0, 16)}
                   </div>
                   <div style={{ fontSize: 12, color: text }}>{entry.content}</div>
                 </div>
@@ -276,7 +276,7 @@ export default function IncidentTracker() {
                   onChange={e => setThreadMsg(e.target.value)}
                   placeholder="Add a follow-up..."
                   rows={2}
-                  style={{ flex: 1, background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`, borderRadius: 7, padding: '8px 10px', color: text, fontSize: 12, resize: 'none' }}
+                  style={{ flex: 1, background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 7, padding: '8px 10px', color: text, fontSize: 12, resize: 'none' }}
                 />
                 <ActionBtn label="Post" onClick={addThread} disabled={!threadMsg.trim()} />
               </div>

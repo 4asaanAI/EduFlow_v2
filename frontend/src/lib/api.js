@@ -115,6 +115,76 @@ export function sendMessageStream(convId, text, user, onEvent) {
   });
 }
 
+export function getBrowserSseSessionId() {
+  const key = 'eduflow-sse-session-id';
+  let sessionId = sessionStorage.getItem(key);
+  if (!sessionId) {
+    sessionId = (crypto?.randomUUID?.() || `tab-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    sessionStorage.setItem(key, sessionId);
+  }
+  return sessionId;
+}
+
+export function subscribeSSE(path, onEvent, { onReconnect } = {}) {
+  let stopped = false;
+  let controller = null;
+  const sessionId = getBrowserSseSessionId();
+
+  const open = async () => {
+    if (stopped) return;
+    controller = new AbortController();
+    try {
+      const res = await fetch(`${API}${path}`, {
+        method: 'GET',
+        headers: {
+          ...getHeaders(),
+          'X-SSE-Session-ID': sessionId,
+        },
+        credentials: 'include',
+        signal: controller.signal,
+      });
+      if (!res.ok || !res.body) return;
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (!stopped) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop();
+        for (const part of parts) {
+          if (!part.startsWith('data: ')) continue;
+          try {
+            onEvent(JSON.parse(part.slice(6)));
+          } catch {}
+        }
+      }
+    } catch (err) {
+      if (!stopped && err.name !== 'AbortError') {
+        setTimeout(open, 3000);
+      }
+    }
+  };
+
+  const handleVisibility = () => {
+    if (document.visibilityState !== 'visible' || stopped) return;
+    if (controller) controller.abort();
+    if (onReconnect) onReconnect();
+    open();
+  };
+
+  document.addEventListener('visibilitychange', handleVisibility);
+  open();
+
+  return () => {
+    stopped = true;
+    document.removeEventListener('visibilitychange', handleVisibility);
+    if (controller) controller.abort();
+  };
+}
+
 // --- Students ---
 export async function getStudents(user, params = {}) {
   const qs = new URLSearchParams(params).toString();

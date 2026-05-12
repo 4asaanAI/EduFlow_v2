@@ -48,11 +48,11 @@ function ActionButton({ children, onClick, disabled, variant = 'primary', type =
         alignItems: 'center',
         justifyContent: 'center',
         gap: 7,
-        background: danger ? '#7f1d1d' : secondary ? 'var(--c-bg)' : '#4f8ff7',
+        background: danger ? 'var(--tool-hex-7f1d1d)' : secondary ? 'var(--c-bg)' : 'var(--tool-hex-4f8ff7)',
         border: secondary ? '1px solid var(--c-border)' : 'none',
         borderRadius: 8,
         padding: '8px 13px',
-        color: danger || !secondary ? '#fff' : 'var(--c-muted)',
+        color: danger || !secondary ? 'var(--tool-hex-fff)' : 'var(--c-muted)',
         fontSize: 12,
         fontWeight: 600,
         cursor: disabled ? 'not-allowed' : 'pointer',
@@ -153,7 +153,7 @@ function StudentModal({ classes, initialStudent, onClose, onSaved }) {
               </>
             )}
           </div>
-          {error && <div style={{ color: '#f87171', fontSize: 12, marginTop: 12 }}>{error}</div>}
+          {error && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginTop: 12 }}>{error}</div>}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
             <ActionButton variant="secondary" onClick={onClose}>Cancel</ActionButton>
             <ActionButton type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save Student'}</ActionButton>
@@ -275,7 +275,7 @@ export default function StudentDatabase() {
         )}
       </div>
 
-      {error && <div style={{ color: '#f87171', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.18)', borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 12 }}>{error}</div>}
+      {error && <div style={{ color: 'var(--tool-hex-f87171)', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.18)', borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 12 }}>{error}</div>}
 
       <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, overflowX: 'auto' }}>
         {loading ? (
@@ -309,7 +309,7 @@ export default function StudentDatabase() {
                   <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12, fontFamily: 'JetBrains Mono, monospace' }}>{student.admission_number || 'N/A'}</td>
                   <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12, textTransform: 'capitalize' }}>{student.gender || 'N/A'}</td>
                   <td style={{ padding: '10px 14px' }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', borderRadius: 5, background: student.is_active ? 'rgba(16,185,129,0.1)' : 'rgba(100,116,139,0.1)', color: student.is_active ? '#34d399' : 'var(--c-faint)' }}>{student.status || (student.is_active ? 'active' : 'inactive')}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', borderRadius: 5, background: student.is_active ? 'rgba(16,185,129,0.1)' : 'rgba(100,116,139,0.1)', color: student.is_active ? 'var(--tool-hex-34d399)' : 'var(--c-faint)' }}>{student.status || (student.is_active ? 'active' : 'inactive')}</span>
                   </td>
                   <td style={{ padding: '10px 14px' }}>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>

@@ -10,28 +10,29 @@ import { ChevronDown, ChevronRight, Search, Filter } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function h() { return getAuthHeaders(); }
+const tint = (color, amount) => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
 
 const ACTION_COLORS = {
-  create: '#34d399',
-  update: '#facc15',
-  delete: '#f87171',
-  correct: '#818cf8',
-  submit: '#60a5fa',
-  approve: '#34d399',
-  reject: '#f87171',
+  create: 'var(--tool-hex-34d399)',
+  update: 'var(--tool-hex-facc15)',
+  delete: 'var(--tool-hex-f87171)',
+  correct: 'var(--tool-hex-818cf8)',
+  submit: 'var(--tool-hex-60a5fa)',
+  approve: 'var(--tool-hex-34d399)',
+  reject: 'var(--tool-hex-f87171)',
 };
 
 function getActionColor(action = '') {
   const key = Object.keys(ACTION_COLORS).find(k => action.includes(k));
-  return ACTION_COLORS[key] || '#888';
+  return ACTION_COLORS[key] || 'var(--tool-hex-888)';
 }
 
 function AuditRow({ entry, isDark }) {
   const [expanded, setExpanded] = useState(false);
-  const text = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#888' : '#737373';
-  const border = isDark ? '#2e2e2e' : '#e5e5e5';
-  const card = isDark ? '#1e1e1e' : '#fff';
+  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
+  const muted = isDark ? 'var(--tool-hex-888)' : 'var(--tool-hex-737373)';
+  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
+  const card = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-fff)';
   const actionColor = getActionColor(entry.action);
 
   const hasDiff = entry.changes && (entry.changes.previous || entry.changes.new || Object.keys(entry.changes).length > 0);
@@ -51,7 +52,7 @@ function AuditRow({ entry, isDark }) {
         <span style={{ width: 140, flexShrink: 0, fontSize: 11, color: muted }}>{entry.created_at?.slice(0, 16).replace('T', ' ')}</span>
         <span style={{
           minWidth: 90, flexShrink: 0, padding: '2px 8px', borderRadius: 5, fontSize: 11, fontWeight: 600,
-          background: `${actionColor}18`, color: actionColor, textAlign: 'center',
+          background: tint(actionColor, 10), color: actionColor, textAlign: 'center',
         }}>
           {entry.action?.replace(/_/g, ' ').slice(0, 18)}
         </span>
@@ -65,16 +66,16 @@ function AuditRow({ entry, isDark }) {
       </div>
 
       {expanded && hasDiff && (
-        <div style={{ marginLeft: 30, marginBottom: 10, background: isDark ? '#161616' : '#f9f9f9', borderRadius: 8, padding: 12, fontSize: 11 }}>
+        <div style={{ marginLeft: 30, marginBottom: 10, background: isDark ? 'var(--tool-hex-161616)' : 'var(--tool-hex-f9f9f9)', borderRadius: 8, padding: 12, fontSize: 11 }}>
           {entry.changes.previous !== undefined && (
             <div style={{ marginBottom: 6 }}>
-              <span style={{ color: '#f87171', fontWeight: 600 }}>Before: </span>
+              <span style={{ color: 'var(--tool-hex-f87171)', fontWeight: 600 }}>Before: </span>
               <code style={{ color: muted }}>{JSON.stringify(entry.changes.previous, null, 2)}</code>
             </div>
           )}
           {entry.changes.new !== undefined && (
             <div>
-              <span style={{ color: '#34d399', fontWeight: 600 }}>After: </span>
+              <span style={{ color: 'var(--tool-hex-34d399)', fontWeight: 600 }}>After: </span>
               <code style={{ color: muted }}>{JSON.stringify(entry.changes.new, null, 2)}</code>
             </div>
           )}
@@ -100,10 +101,10 @@ export default function AuditLog() {
   const [showFilters, setShowFilters] = useState(false);
 
   const LIMIT = 50;
-  const text = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#888' : '#737373';
-  const card = isDark ? '#1e1e1e' : '#fff';
-  const border = isDark ? '#2e2e2e' : '#e5e5e5';
+  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
+  const muted = isDark ? 'var(--tool-hex-888)' : 'var(--tool-hex-737373)';
+  const card = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-fff)';
+  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
 
   const load = useCallback(async (pg = 1) => {
     setLoading(true);
@@ -140,9 +141,9 @@ export default function AuditLog() {
           onClick={() => setShowFilters(p => !p)}
           style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
-            background: showFilters ? '#4f8ff7' : (isDark ? '#252525' : '#fff'),
-            border: `1px solid ${showFilters ? '#4f8ff7' : border}`,
-            borderRadius: 9, color: showFilters ? '#fff' : text, fontSize: 12, cursor: 'pointer',
+            background: showFilters ? 'var(--tool-hex-4f8ff7)' : (isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-fff)'),
+            border: `1px solid ${showFilters ? 'var(--tool-hex-4f8ff7)' : border}`,
+            borderRadius: 9, color: showFilters ? 'var(--tool-hex-fff)' : text, fontSize: 12, cursor: 'pointer',
           }}
         >
           <Filter size={13} />
@@ -150,7 +151,7 @@ export default function AuditLog() {
         </button>
       }
     >
-      {error && <div style={{ color: '#f87171', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+      {error && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 13, marginBottom: 12 }}>{error}</div>}
 
       {showFilters && (
         <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 11, padding: 16, marginBottom: 16, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
@@ -160,7 +161,7 @@ export default function AuditLog() {
               value={filters.collection}
               onChange={e => f('collection')(e.target.value)}
               placeholder="e.g. students, fees..."
-              style={{ width: '100%', background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px', color: text, fontSize: 12, boxSizing: 'border-box' }}
+              style={{ width: '100%', background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px', color: text, fontSize: 12, boxSizing: 'border-box' }}
             />
           </div>
           <div>
@@ -169,7 +170,7 @@ export default function AuditLog() {
               type="date"
               value={filters.date_from}
               onChange={e => f('date_from')(e.target.value)}
-              style={{ width: '100%', background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px', color: text, fontSize: 12, boxSizing: 'border-box' }}
+              style={{ width: '100%', background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px', color: text, fontSize: 12, boxSizing: 'border-box' }}
             />
           </div>
           <div>
@@ -178,7 +179,7 @@ export default function AuditLog() {
               type="date"
               value={filters.date_to}
               onChange={e => f('date_to')(e.target.value)}
-              style={{ width: '100%', background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px', color: text, fontSize: 12, boxSizing: 'border-box' }}
+              style={{ width: '100%', background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px', color: text, fontSize: 12, boxSizing: 'border-box' }}
             />
           </div>
           <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8 }}>
@@ -188,7 +189,7 @@ export default function AuditLog() {
                 value={filters.q}
                 onChange={e => f('q')(e.target.value)}
                 placeholder="Search by user or record ID..."
-                style={{ width: '100%', background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px 7px 28px', color: text, fontSize: 12, boxSizing: 'border-box' }}
+                style={{ width: '100%', background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px 7px 28px', color: text, fontSize: 12, boxSizing: 'border-box' }}
               />
             </div>
             <ActionBtn label="Search" onClick={() => load(1)} />

@@ -76,11 +76,11 @@ export default function PrincipalDailyOps() {
         </label>
       )}
     >
-      {error && <div style={{ color: '#f87171', marginBottom: 14 }}>{error}</div>}
+      {error && <div style={{ color: 'var(--tool-hex-f87171)', marginBottom: 14 }}>{error}</div>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(160px, 1fr))', gap: 12, marginBottom: 16, maxWidth: 780 }}>
-        <StatCard value={meta.absent_teacher_count || 0} label="ABSENT TEACHERS" color="#f87171" />
-        <StatCard value={items.length} label="AFFECTED PERIODS" color="#fbbf24" />
-        <StatCard value={meta.uncovered_period_count || 0} label="NEEDS SUBSTITUTE" color="#4f8ff7" />
+        <StatCard value={meta.absent_teacher_count || 0} label="ABSENT TEACHERS" color="var(--tool-hex-f87171)" />
+        <StatCard value={items.length} label="AFFECTED PERIODS" color="var(--tool-hex-fbbf24)" />
+        <StatCard value={meta.uncovered_period_count || 0} label="NEEDS SUBSTITUTE" color="var(--tool-hex-4f8ff7)" />
       </div>
       <DataTable
         title="Substitution Plan"
@@ -88,7 +88,7 @@ export default function PrincipalDailyOps() {
         rows={rows}
         emptyMsg="No absent-teacher timetable conflicts for this date"
       />
-      <button onClick={load} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none', color: '#4f8ff7', cursor: 'pointer', fontSize: 12 }}>
+      <button onClick={load} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none', color: 'var(--tool-hex-4f8ff7)', cursor: 'pointer', fontSize: 12 }}>
         <RefreshCw size={13} /> Refresh coverage
       </button>
     </ToolPage>

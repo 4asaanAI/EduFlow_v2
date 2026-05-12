@@ -11,6 +11,7 @@ import FullStudentDatabase from './StudentDatabase';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function h() { return getAuthHeaders(); }
+const tint = (color, amount) => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
 
 // 1. Student Database Manager
 export function StudentDatabase() {
@@ -81,7 +82,7 @@ export function StudentDatabase() {
               <FormField label="Guardian Phone" type="tel" value={form.guardian_phone} onChange={f('guardian_phone')} placeholder="10-digit mobile" />
             </div>
             <FormField label="Gender" type="select" value={form.gender} onChange={f('gender')} options={[{ value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }, { value: 'other', label: 'Other' }]} />
-            {addError && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 8 }}>{addError}</div>}
+            {addError && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 8 }}>{addError}</div>}
             <div style={{ display: 'flex', gap: 8 }}><ActionBtn label={saving ? 'Saving...' : 'Add Student'} type="submit" disabled={saving} /><ActionBtn label="Cancel" variant="secondary" onClick={() => { setShowAdd(false); setAddError(''); }} /></div>
           </form>
         </div>
@@ -238,7 +239,7 @@ export function FeeTracker() {
                   ]}
                   disabled={!form.class_id || loadingStudents} required />
                 {form.class_id && !loadingStudents && allStudents.length === 0 && (
-                  <div style={{ fontSize: 11, color: '#fbbf24', marginTop: 4 }}>
+                  <div style={{ fontSize: 11, color: 'var(--tool-hex-fbbf24)', marginTop: 4 }}>
                     ⚠️ No students in this class. Add students in Student Database first.
                   </div>
                 )}
@@ -251,9 +252,9 @@ export function FeeTracker() {
                 <FormField label="Due Date" type="date" value={form.due_date} onChange={f('due_date')} />
               )}
             </div>
-            {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12, marginTop: 8 }}>{error}</div>}
+            {error && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 12, marginTop: 8 }}>{error}</div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button type="submit" disabled={saving} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #4f8ff7', background: '#4f8ff7', color: '#fff', fontSize: 12, cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: saving ? 0.6 : 1 }}>
+              <button type="submit" disabled={saving} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--tool-hex-4f8ff7)', background: 'var(--tool-hex-4f8ff7)', color: 'var(--tool-hex-fff)', fontSize: 12, cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: saving ? 0.6 : 1 }}>
                 {saving ? 'Recording...' : 'Record'}
               </button>
               <button type="button" onClick={() => { setShowForm(false); setError(''); }} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-text)', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>
@@ -266,15 +267,15 @@ export function FeeTracker() {
 
       {/* Summary stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
-        <StatCard value={`₹${totalPaid.toLocaleString('en-IN')}`} label="COLLECTED" color="#34d399" />
-        <StatCard value={`₹${totalPending.toLocaleString('en-IN')}`} label="PENDING" color="#f87171" />
-        <StatCard value={txns.length} label="TRANSACTIONS" color="#4f8ff7" />
+        <StatCard value={`₹${totalPaid.toLocaleString('en-IN')}`} label="COLLECTED" color="var(--tool-hex-34d399)" />
+        <StatCard value={`₹${totalPending.toLocaleString('en-IN')}`} label="PENDING" color="var(--tool-hex-f87171)" />
+        <StatCard value={txns.length} label="TRANSACTIONS" color="var(--tool-hex-4f8ff7)" />
       </div>
 
       {/* View toggle */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
         {['transactions', 'classwise'].map(v => (
-          <button key={v} onClick={() => setView(v)} style={{ background: view === v ? '#4f8ff7' : 'var(--c-bg)', border: `1px solid ${view === v ? '#4f8ff7' : 'var(--c-border)'}`, borderRadius: 6, padding: '5px 14px', color: view === v ? '#fff' : 'var(--c-muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>
+          <button key={v} onClick={() => setView(v)} style={{ background: view === v ? 'var(--tool-hex-4f8ff7)' : 'var(--c-bg)', border: `1px solid ${view === v ? 'var(--tool-hex-4f8ff7)' : 'var(--c-border)'}`, borderRadius: 6, padding: '5px 14px', color: view === v ? 'var(--tool-hex-fff)' : 'var(--c-muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>
             {v === 'classwise' ? 'Class-wise' : 'Transactions'}
           </button>
         ))}
@@ -282,7 +283,7 @@ export function FeeTracker() {
           <>
             <div style={{ width: 1, height: 20, background: 'var(--c-border)', margin: '0 4px' }} />
             {['', 'paid', 'pending', 'overdue'].map(s => (
-              <button key={s} onClick={() => setStatusFilter(s)} style={{ background: statusFilter === s ? '#6366F1' : 'var(--c-bg)', border: `1px solid ${statusFilter === s ? '#6366F1' : 'var(--c-border)'}`, borderRadius: 6, padding: '5px 12px', color: statusFilter === s ? '#fff' : 'var(--c-muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+              <button key={s} onClick={() => setStatusFilter(s)} style={{ background: statusFilter === s ? 'var(--tool-hex-6366f1)' : 'var(--c-bg)', border: `1px solid ${statusFilter === s ? 'var(--tool-hex-6366f1)' : 'var(--c-border)'}`, borderRadius: 6, padding: '5px 12px', color: statusFilter === s ? 'var(--tool-hex-fff)' : 'var(--c-muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                 {s || 'All'}
               </button>
             ))}
@@ -323,13 +324,13 @@ export function FeeTracker() {
                 <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No data available</td></tr>
               ) : classSummary.map((cls, i) => {
                 const pct = cls.total > 0 ? Math.round((cls.paid / cls.total) * 100) : 0;
-                const barColor = pct >= 75 ? '#34d399' : pct >= 40 ? '#fbbf24' : '#f87171';
+                const barColor = pct >= 75 ? 'var(--tool-hex-34d399)' : pct >= 40 ? 'var(--tool-hex-fbbf24)' : 'var(--tool-hex-f87171)';
                 return (
-                  <tr key={cls.class_id} style={{ borderBottom: i < classSummary.length - 1 ? '1px solid #242424' : 'none' }}>
+                  <tr key={cls.class_id} style={{ borderBottom: i < classSummary.length - 1 ? '1px solid var(--tool-hex-242424)' : 'none' }}>
                     <td style={{ padding: '10px 14px', fontSize: 13, color: 'var(--c-text)', fontWeight: 600 }}>{cls.class_name}</td>
                     <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{cls.total_students}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#34d399', fontWeight: 600 }}>₹{(cls.paid || 0).toLocaleString('en-IN')}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: '#f87171' }}>₹{(cls.pending || 0).toLocaleString('en-IN')}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--tool-hex-34d399)', fontWeight: 600 }}>₹{(cls.paid || 0).toLocaleString('en-IN')}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--tool-hex-f87171)' }}>₹{(cls.pending || 0).toLocaleString('en-IN')}</td>
                     <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-text)' }}>₹{(cls.total || 0).toLocaleString('en-IN')}</td>
                     <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{cls.transactions}</td>
                     <td style={{ padding: '10px 14px', minWidth: 120 }}>
@@ -397,7 +398,7 @@ export function AttendanceRecorder() {
       </div>
       {records.length > 0 && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
-          {[{ label: 'Present', val: presentCount, color: '#34d399' }, { label: 'Absent', val: records.filter(r => r.status === 'absent').length, color: '#f87171' }, { label: 'Late', val: records.filter(r => r.status === 'late').length, color: '#fbbf24' }, { label: 'Total', val: records.length, color: 'var(--c-text)' }].map(s => (
+          {[{ label: 'Present', val: presentCount, color: 'var(--tool-hex-34d399)' }, { label: 'Absent', val: records.filter(r => r.status === 'absent').length, color: 'var(--tool-hex-f87171)' }, { label: 'Late', val: records.filter(r => r.status === 'late').length, color: 'var(--tool-hex-fbbf24)' }, { label: 'Total', val: records.length, color: 'var(--c-text)' }].map(s => (
             <StatCard key={s.label} value={s.val} label={s.label} color={s.color} small />
           ))}
         </div>
@@ -410,20 +411,20 @@ export function AttendanceRecorder() {
             </tr></thead>
             <tbody>
               {records.map((s, i) => {
-                const statusOpt = { present: { color: '#34d399' }, absent: { color: '#f87171' }, late: { color: '#fbbf24' }, holiday: { color: 'var(--c-faint)' } };
+                const statusOpt = { present: { color: 'var(--tool-hex-34d399)' }, absent: { color: 'var(--tool-hex-f87171)' }, late: { color: 'var(--tool-hex-fbbf24)' }, holiday: { color: 'var(--c-faint)' } };
                 const sc = statusOpt[s.status] || { color: 'var(--c-faint)' };
                 return (
-                  <tr key={s.student_id || i} style={{ borderBottom: i < records.length - 1 ? '1px solid #242424' : 'none' }}>
+                  <tr key={s.student_id || i} style={{ borderBottom: i < records.length - 1 ? '1px solid var(--tool-hex-242424)' : 'none' }}>
                     <td style={{ padding: '8px 14px', fontSize: 11, color: 'var(--c-faint)', fontFamily: 'JetBrains Mono, monospace' }}>{s.roll_number || '-'}</td>
                     <td style={{ padding: '8px 14px', fontSize: 13, color: 'var(--c-text)', fontWeight: 500 }}>{s.name}</td>
-                    <td style={{ padding: '8px 14px' }}><span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: `${sc.color}15`, color: sc.color }}>{s.status}</span></td>
+                    <td style={{ padding: '8px 14px' }}><span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: tint(sc.color, 8), color: sc.color }}>{s.status}</span></td>
                     <td style={{ padding: '8px 14px' }}>
                       <div style={{ display: 'flex', gap: 3 }}>
                         {['P', 'A', 'L'].map((lbl, li) => {
                           const vals = ['present', 'absent', 'late'];
-                          const c = [{ color: '#34d399' }, { color: '#f87171' }, { color: '#fbbf24' }][li];
+                          const c = [{ color: 'var(--tool-hex-34d399)' }, { color: 'var(--tool-hex-f87171)' }, { color: 'var(--tool-hex-fbbf24)' }][li];
                           return <button key={lbl} onClick={() => setRecords(prev => prev.map(st => st.student_id === s.student_id ? { ...st, status: vals[li] } : st))}
-                            style={{ background: s.status === vals[li] ? `${c.color}20` : 'transparent', border: `1px solid ${s.status === vals[li] ? c.color + '50' : 'var(--c-border)'}`, borderRadius: 4, padding: '3px 7px', color: s.status === vals[li] ? c.color : 'var(--c-faint)', fontSize: 10, cursor: 'pointer', fontWeight: 700 }}>{lbl}</button>;
+                            style={{ background: s.status === vals[li] ? tint(c.color, 13) : 'transparent', border: `1px solid ${s.status === vals[li] ? tint(c.color, 31) : 'var(--c-border)'}`, borderRadius: 4, padding: '3px 7px', color: s.status === vals[li] ? c.color : 'var(--c-faint)', fontSize: 10, cursor: 'pointer', fontWeight: 700 }}>{lbl}</button>;
                         })}
                       </div>
                     </td>
@@ -434,7 +435,7 @@ export function AttendanceRecorder() {
           </table>
         )}
       </div>
-      {records.length > 0 && <button data-testid="save-attendance-btn" onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 7, background: saved ? '#34d399' : saving ? '#1e3a5f' : '#4f8ff7', border: 'none', borderRadius: 8, padding: '10px 20px', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+      {records.length > 0 && <button data-testid="save-attendance-btn" onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 7, background: saved ? 'var(--tool-hex-34d399)' : saving ? 'var(--tool-hex-1e3a5f)' : 'var(--tool-hex-4f8ff7)', border: 'none', borderRadius: 8, padding: '10px 20px', color: 'var(--tool-hex-fff)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
         {saved ? <CheckCircle size={14} /> : <Save size={14} />}
         {saved ? 'Saved!' : saving ? 'Saving...' : 'Save Attendance'}
       </button>}
@@ -548,8 +549,8 @@ export function CertificateGenerator() {
           </div>
 
           {generated && (
-            <div style={{ background: 'var(--c-bg)', border: '1px solid #34d39930', borderRadius: 11, padding: 16 }}>
-              <div style={{ fontSize: 11, color: '#34d399', fontWeight: 700, marginBottom: 10 }}>Certificate Generated!</div>
+            <div style={{ background: 'var(--c-bg)', border: '1px solid var(--tool-hex-34d39930)', borderRadius: 11, padding: 16 }}>
+              <div style={{ fontSize: 11, color: 'var(--tool-hex-34d399)', fontWeight: 700, marginBottom: 10 }}>Certificate Generated!</div>
               <div style={{ fontSize: 12, color: 'var(--c-muted)', lineHeight: 1.8 }}>
                 <div><b style={{ color: 'var(--c-text)' }}>Type:</b> {CERT_LABELS[generated.cert_type]}</div>
                 <div><b style={{ color: 'var(--c-text)' }}>Serial:</b> <span style={{ fontFamily: 'monospace' }}>{generated.serial_number}</span></div>
@@ -582,14 +583,14 @@ export function CertificateGenerator() {
               </thead>
               <tbody>
                 {certs.map((c, i) => (
-                  <tr key={c.id || i} style={{ borderBottom: i < certs.length - 1 ? '1px solid #242424' : 'none' }}>
+                  <tr key={c.id || i} style={{ borderBottom: i < certs.length - 1 ? '1px solid var(--tool-hex-242424)' : 'none' }}>
                     <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--c-text)' }}>{c.student_name || c.content_data?.student_name || 'N/A'}</td>
                     <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{CERT_LABELS[c.cert_type] || c.cert_type}</td>
                     <td style={{ padding: '9px 14px', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: 'var(--c-muted)' }}>{c.serial_number}</td>
                     <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{c.issued_date}</td>
                     <td style={{ padding: '9px 14px' }}>
                       <button onClick={() => downloadPdf(c)} disabled={downloading === (c.id || c.serial_number)}
-                        style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '4px 9px', color: '#93c5fd', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '4px 9px', color: 'var(--tool-hex-93c5fd)', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
                         <FileDown size={11} />
                         {downloading === (c.id || c.serial_number) ? '...' : 'PDF'}
                       </button>
@@ -669,8 +670,8 @@ export function CircularSender() {
   const chipStyle = (active) => ({
     display: 'inline-flex', alignItems: 'center', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
     background: active ? 'rgba(59,130,246,0.2)' : 'var(--c-deep)',
-    border: `1px solid ${active ? '#4f8ff7' : 'var(--c-border)'}`,
-    color: active ? '#93c5fd' : 'var(--c-faint)',
+    border: `1px solid ${active ? 'var(--tool-hex-4f8ff7)' : 'var(--c-border)'}`,
+    color: active ? 'var(--tool-hex-93c5fd)' : 'var(--c-faint)',
     userSelect: 'none',
   });
 
@@ -721,7 +722,7 @@ export function CircularSender() {
               </div>
             )}
 
-            {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 10 }}>{error}</div>}
+            {error && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 10 }}>{error}</div>}
             <ActionBtn
               type="submit"
               label={sending ? 'Sending...' : sent ? '✓ Sent!' : 'Send Circular'}
@@ -748,7 +749,7 @@ export function CircularSender() {
               </thead>
               <tbody>
                 {announcements.map((a, i) => (
-                  <tr key={a.id || i} style={{ borderBottom: i < announcements.length - 1 ? '1px solid #242424' : 'none' }}>
+                  <tr key={a.id || i} style={{ borderBottom: i < announcements.length - 1 ? '1px solid var(--tool-hex-242424)' : 'none' }}>
                     <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--c-text)', fontWeight: 500 }}>{a.title}</td>
                     <td style={{ padding: '9px 14px', fontSize: 11, color: 'var(--c-muted)' }}>{audienceLabel(a)}</td>
                     <td style={{ padding: '9px 14px', fontSize: 11, color: 'var(--c-faint)' }}>{a.created_at?.slice(0, 10)}</td>
@@ -827,9 +828,9 @@ export function EnquiryRegister() {
                 { value: 'ad', label: 'Advertisement' }
               ]} />
             </div>
-            {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 8, marginTop: 8 }}>{error}</div>}
+            {error && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 8, marginTop: 8 }}>{error}</div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button type="submit" style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #4f8ff7', background: '#4f8ff7', color: '#fff', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Add Enquiry</button>
+              <button type="submit" style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--tool-hex-4f8ff7)', background: 'var(--tool-hex-4f8ff7)', color: 'var(--tool-hex-fff)', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Add Enquiry</button>
               <button type="button" onClick={() => { setShowForm(false); setError(''); }} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-text)', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Cancel</button>
             </div>
           </form>
@@ -845,7 +846,7 @@ export function EnquiryRegister() {
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {stages.map(s => (
               <button key={s} onClick={() => updateStatus(selectedEnquiry.id, s)} disabled={selectedEnquiry.status === s}
-                style={{ padding: '6px 10px', borderRadius: 6, border: `1px solid ${selectedEnquiry.status === s ? 'var(--c-faint)' : '#4f8ff7'}`, background: selectedEnquiry.status === s ? 'var(--c-deep)' : '#4f8ff7', color: selectedEnquiry.status === s ? 'var(--c-faint)' : '#fff', fontSize: 11, cursor: selectedEnquiry.status === s ? 'default' : 'pointer', fontWeight: 500, opacity: selectedEnquiry.status === s ? 0.5 : 1 }}>
+                style={{ padding: '6px 10px', borderRadius: 6, border: `1px solid ${selectedEnquiry.status === s ? 'var(--c-faint)' : 'var(--tool-hex-4f8ff7)'}`, background: selectedEnquiry.status === s ? 'var(--c-deep)' : 'var(--tool-hex-4f8ff7)', color: selectedEnquiry.status === s ? 'var(--c-faint)' : 'var(--tool-hex-fff)', fontSize: 11, cursor: selectedEnquiry.status === s ? 'default' : 'pointer', fontWeight: 500, opacity: selectedEnquiry.status === s ? 0.5 : 1 }}>
                 {stageLabels[s]}
               </button>
             ))}
@@ -862,7 +863,7 @@ export function EnquiryRegister() {
           <Badge text={stageLabels[e.status] || e.status} color={statusColors[e.status] || 'blue'} />,
           e.source?.replace('_', ' '),
           e.created_at?.slice(0, 10),
-          <button onClick={() => setSelectedEnquiry(e)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: '#4f8ff7', fontSize: 10, cursor: 'pointer', fontWeight: 500 }}>Move Stage</button>
+          <button onClick={() => setSelectedEnquiry(e)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: 'var(--tool-hex-4f8ff7)', fontSize: 10, cursor: 'pointer', fontWeight: 500 }}>Move Stage</button>
         ])}
         emptyMsg="No enquiries yet"
       />
@@ -968,7 +969,7 @@ export function DocumentScanner() {
           <ActionBtn label={uploading ? 'Uploading...' : 'Choose & Upload File'} onClick={() => { if (!studentId) { setResult({ error: 'Please select a student first' }); return; } inputRef.current?.click(); }} disabled={uploading} />
 
           {result && (
-            <div style={{ marginTop: 12, padding: 12, background: result.error ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)', border: `1px solid ${result.error ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)'}`, borderRadius: 8, fontSize: 12, color: result.error ? '#f87171' : '#34d399' }}>
+            <div style={{ marginTop: 12, padding: 12, background: result.error ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)', border: `1px solid ${result.error ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)'}`, borderRadius: 8, fontSize: 12, color: result.error ? 'var(--tool-hex-f87171)' : 'var(--tool-hex-34d399)' }}>
               {result.error ? result.error : `✓ Uploaded: ${result.file_name}`}
             </div>
           )}
@@ -1123,23 +1124,23 @@ export function SmartFeeDefaulter() {
 
       {/* Config Warning */}
       {!twilioConfigured && (
-        <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#fbbf24' }}>
+        <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: 'var(--tool-hex-fbbf24)' }}>
           ⚠️ Twilio not configured. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER to your .env file to enable SMS sending.
         </div>
       )}
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16, maxWidth: 600 }}>
-        <StatCard value={data?.stats?.total_overdue || '₹0'} label="TOTAL OVERDUE" color="#f87171" />
-        <StatCard value={data?.stats?.students_with_dues || 0} label="STUDENTS" color="#fbbf24" />
-        <StatCard value={data?.stats?.collection_rate || '0%'} label="COLLECTION RATE" color="#34d399" />
+        <StatCard value={data?.stats?.total_overdue || '₹0'} label="TOTAL OVERDUE" color="var(--tool-hex-f87171)" />
+        <StatCard value={data?.stats?.students_with_dues || 0} label="STUDENTS" color="var(--tool-hex-fbbf24)" />
+        <StatCard value={data?.stats?.collection_rate || '0%'} label="COLLECTION RATE" color="var(--tool-hex-34d399)" />
       </div>
 
       {/* View Tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, borderBottom: '1px solid var(--c-border)', paddingBottom: 12 }}>
         {['defaulters', 'bulk', 'logs'].map(v => (
           <button key={v} onClick={() => { setViewMode(v); if (v === 'logs') loadLogs(); }}
-            style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === v ? '1px solid #4f8ff7' : '1px solid var(--c-border)', background: viewMode === v ? 'rgba(59,130,246,0.1)' : 'var(--c-bg)', color: viewMode === v ? '#4f8ff7' : 'var(--c-muted)', fontSize: 12, cursor: 'pointer', textTransform: 'capitalize' }}>
+            style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === v ? '1px solid var(--tool-hex-4f8ff7)' : '1px solid var(--c-border)', background: viewMode === v ? 'rgba(59,130,246,0.1)' : 'var(--c-bg)', color: viewMode === v ? 'var(--tool-hex-4f8ff7)' : 'var(--c-muted)', fontSize: 12, cursor: 'pointer', textTransform: 'capitalize' }}>
             {v === 'defaulters' ? 'Defaulters' : v === 'bulk' ? 'Bulk Reminder' : 'SMS Logs'}
           </button>
         ))}
@@ -1150,7 +1151,7 @@ export function SmartFeeDefaulter() {
         <>
           {/* Single SMS Panel */}
           {selectedDefaulter && (
-            <div style={{ background: 'var(--c-bg)', border: '1px solid #4f8ff7', borderRadius: 11, padding: 18, marginBottom: 16 }}>
+            <div style={{ background: 'var(--c-bg)', border: '1px solid var(--tool-hex-4f8ff7)', borderRadius: 11, padding: 18, marginBottom: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <h4 style={{ color: 'var(--c-text)', fontSize: 13, fontWeight: 600 }}>Send SMS — {selectedDefaulter.student_name}</h4>
                 <button onClick={() => { setSelectedDefaulter(null); setSmsResult(null); }} style={{ background: 'transparent', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 16 }}>✕</button>
@@ -1172,12 +1173,12 @@ export function SmartFeeDefaulter() {
                   <div style={{ padding: '8px 12px', borderRadius: 6, marginBottom: 10, fontSize: 12,
                     background: smsResult.success ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
                     border: `1px solid ${smsResult.success ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
-                    color: smsResult.success ? '#34d399' : '#f87171' }}>
+                    color: smsResult.success ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-f87171)' }}>
                     {smsResult.success ? `✓ SMS ${smsResult.status === 'not_configured' ? 'logged (Twilio not configured)' : 'sent successfully!'}` : `✗ ${smsResult.error}`}
                   </div>
                 )}
                 <button type="submit" disabled={sending}
-                  style={{ padding: '8px 16px', borderRadius: 6, background: '#4f8ff7', border: '1px solid #4f8ff7', color: '#fff', fontSize: 12, cursor: sending ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: sending ? 0.6 : 1 }}>
+                  style={{ padding: '8px 16px', borderRadius: 6, background: 'var(--tool-hex-4f8ff7)', border: '1px solid var(--tool-hex-4f8ff7)', color: 'var(--tool-hex-fff)', fontSize: 12, cursor: sending ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: sending ? 0.6 : 1 }}>
                   {sending ? 'Sending...' : '📱 Send SMS'}
                 </button>
               </form>
@@ -1188,10 +1189,10 @@ export function SmartFeeDefaulter() {
             rows={defaulters.map(d => [
               d.student_name,
               d.class,
-              <span style={{ color: '#f87171', fontWeight: 600 }}>{d.amount_overdue_fmt}</span>,
-              <span style={{ color: d.days_overdue > 30 ? '#f87171' : '#fbbf24' }}>{d.days_overdue} days</span>,
+              <span style={{ color: 'var(--tool-hex-f87171)', fontWeight: 600 }}>{d.amount_overdue_fmt}</span>,
+              <span style={{ color: d.days_overdue > 30 ? 'var(--tool-hex-f87171)' : 'var(--tool-hex-fbbf24)' }}>{d.days_overdue} days</span>,
               <button onClick={() => openSmsForm(d)}
-                style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '4px 10px', color: '#4f8ff7', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>
+                style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '4px 10px', color: 'var(--tool-hex-4f8ff7)', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>
                 📱 Remind
               </button>
             ])}
@@ -1228,14 +1229,14 @@ export function SmartFeeDefaulter() {
             {bulkResult && (
               <div style={{ padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 12, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', color: 'var(--c-text)' }}>
                 {bulkResult.error ? (
-                  <span style={{ color: '#f87171' }}>✗ {bulkResult.error}</span>
+                  <span style={{ color: 'var(--tool-hex-f87171)' }}>✗ {bulkResult.error}</span>
                 ) : (
-                  <>✓ Sent: <strong style={{ color: '#34d399' }}>{bulkResult.sent}</strong> &nbsp; Failed: <strong style={{ color: '#f87171' }}>{bulkResult.failed}</strong></>
+                  <>✓ Sent: <strong style={{ color: 'var(--tool-hex-34d399)' }}>{bulkResult.sent}</strong> &nbsp; Failed: <strong style={{ color: 'var(--tool-hex-f87171)' }}>{bulkResult.failed}</strong></>
                 )}
               </div>
             )}
             <button onClick={handleSendBulk} disabled={bulkSending || defaulters.length === 0}
-              style={{ padding: '9px 18px', borderRadius: 6, background: '#4f8ff7', border: '1px solid #4f8ff7', color: '#fff', fontSize: 12, cursor: bulkSending ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: bulkSending ? 0.6 : 1 }}>
+              style={{ padding: '9px 18px', borderRadius: 6, background: 'var(--tool-hex-4f8ff7)', border: '1px solid var(--tool-hex-4f8ff7)', color: 'var(--tool-hex-fff)', fontSize: 12, cursor: bulkSending ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: bulkSending ? 0.6 : 1 }}>
               {bulkSending ? 'Sending...' : `📱 Send to ${selectedRows.length > 0 ? selectedRows.length : defaulters.length} Students`}
             </button>
           </div>
@@ -1270,7 +1271,7 @@ function AdmissionFunnelAdmin() {
     <ToolPage title="Admission Pipeline" subtitle="Track conversion funnel" loading={loading}>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18 }}>
         {stages.map(s => <div key={s} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '8px 12px', textAlign: 'center', minWidth: 85 }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: s === 'enrolled' ? '#34d399' : s === 'lost' ? '#f87171' : 'var(--c-text)', fontFamily: 'Inter, sans-serif' }}>{counts[s] || 0}</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: s === 'enrolled' ? 'var(--tool-hex-34d399)' : s === 'lost' ? 'var(--tool-hex-f87171)' : 'var(--c-text)', fontFamily: 'Inter, sans-serif' }}>{counts[s] || 0}</div>
           <div style={{ fontSize: 9, color: 'var(--c-faint)', textTransform: 'capitalize', fontWeight: 600 }}>{s.replace('_', ' ')}</div>
         </div>)}
       </div>
@@ -1377,7 +1378,7 @@ export function ParentMessage() {
                 2. Select Students ({selectedStudents.size} selected)
               </label>
               {studentsInClass.length > 0 && (
-                <button onClick={toggleAllInClass} style={{ fontSize: 10, fontWeight: 700, color: '#4f8ff7', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                <button onClick={toggleAllInClass} style={{ fontSize: 10, fontWeight: 700, color: 'var(--tool-hex-4f8ff7)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                   {allInClassSelected ? 'Deselect All' : 'Select All'}
                 </button>
               )}
@@ -1387,7 +1388,7 @@ export function ParentMessage() {
                 <div style={{ padding: 20, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No students found</div>
               ) : studentsInClass.map((s, i) => (
                 <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: i < studentsInClass.length - 1 ? '1px solid var(--c-border)' : 'none', cursor: 'pointer', background: selectedStudents.has(s.id) ? 'rgba(59,130,246,0.06)' : 'transparent' }}>
-                  <input type="checkbox" checked={selectedStudents.has(s.id)} onChange={() => toggleStudent(s.id)} style={{ accentColor: '#4f8ff7' }} />
+                  <input type="checkbox" checked={selectedStudents.has(s.id)} onChange={() => toggleStudent(s.id)} style={{ accentColor: 'var(--tool-hex-4f8ff7)' }} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text)' }}>{s.name}</div>
                     <div style={{ fontSize: 10, color: 'var(--c-faint)' }}>Roll {s.roll_number || 'N/A'} · {classes.find(c => c.id === s.class_id) ? `${classes.find(c => c.id === s.class_id).name}-${classes.find(c => c.id === s.class_id).section}` : ''}</div>
@@ -1407,7 +1408,7 @@ export function ParentMessage() {
             <div style={{ fontSize: 10, color: 'var(--c-faint)', marginTop: 4 }}>{message.length}/160 characters{message.length > 160 ? ' (will be split into multiple SMS)' : ''}</div>
           </div>
 
-          <div style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 11, color: '#4f8ff7' }}>
+          <div style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 11, color: 'var(--tool-hex-4f8ff7)' }}>
             SMS sent via Twilio to guardian/parent phone numbers on record.
           </div>
 
@@ -1420,12 +1421,12 @@ export function ParentMessage() {
           {result && (
             <div style={{ marginTop: 12, background: result.error ? 'rgba(239,68,68,0.06)' : 'rgba(16,185,129,0.06)', border: `1px solid ${result.error ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)'}`, borderRadius: 8, padding: '12px 14px', fontSize: 12 }}>
               {result.error ? (
-                <span style={{ color: '#f87171' }}>{result.error}</span>
+                <span style={{ color: 'var(--tool-hex-f87171)' }}>{result.error}</span>
               ) : (
                 <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                  {result.sent > 0 && <span style={{ color: '#34d399' }}>✓ {result.sent} sent</span>}
-                  {result.failed > 0 && <span style={{ color: '#f87171' }}>✗ {result.failed} failed</span>}
-                  {result.no_phone > 0 && <span style={{ color: '#fbbf24' }}>⚠ {result.no_phone} no phone</span>}
+                  {result.sent > 0 && <span style={{ color: 'var(--tool-hex-34d399)' }}>✓ {result.sent} sent</span>}
+                  {result.failed > 0 && <span style={{ color: 'var(--tool-hex-f87171)' }}>✗ {result.failed} failed</span>}
+                  {result.no_phone > 0 && <span style={{ color: 'var(--tool-hex-fbbf24)' }}>⚠ {result.no_phone} no phone</span>}
                   {result.not_configured > 0 && <span style={{ color: 'var(--c-faint)' }}>Twilio not configured — {result.not_configured} logged</span>}
                 </div>
               )}
@@ -1536,14 +1537,14 @@ export function StudentTransfer() {
   const reset = () => { setDone(null); setSelectedStudent(null); setReason(''); setDestinationClass(''); setDestinationSchool(''); setSearch(''); setError(''); };
 
   const inpStyle = { flex: 1, background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' };
-  const chipStyle = (active) => ({ padding: '5px 14px', borderRadius: 6, border: `1px solid ${active ? '#6366F1' : 'var(--c-border)'}`, background: active ? 'rgba(99,102,241,0.15)' : 'var(--c-bg)', color: active ? '#A5B4FC' : 'var(--c-muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer' });
+  const chipStyle = (active) => ({ padding: '5px 14px', borderRadius: 6, border: `1px solid ${active ? 'var(--tool-hex-6366f1)' : 'var(--c-border)'}`, background: active ? 'rgba(99,102,241,0.15)' : 'var(--c-bg)', color: active ? 'var(--tool-hex-a5b4fc)' : 'var(--c-muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer' });
 
   if (done) {
     return (
       <ToolPage title="Student Transfer / Withdrawal" subtitle="Process student transfers and generate TC">
-        <div style={{ maxWidth: 520, padding: 32, textAlign: 'center', background: 'var(--c-bg)', border: '1px solid #34d39930', borderRadius: 12 }}>
+        <div style={{ maxWidth: 520, padding: 32, textAlign: 'center', background: 'var(--c-bg)', border: '1px solid var(--tool-hex-34d39930)', borderRadius: 12 }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>✅</div>
-          <h3 style={{ fontFamily: 'Inter, sans-serif', color: '#34d399', fontSize: 16, marginBottom: 8 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-34d399)', fontSize: 16, marginBottom: 8 }}>
             {done.type === 'class_change' ? 'Class Changed' : done.type === 'transfer' ? 'Transfer Processed' : 'Withdrawal Processed'}
           </h3>
           <p style={{ color: 'var(--c-muted)', fontSize: 13, lineHeight: 1.6 }}>{done.msg}</p>
@@ -1574,7 +1575,7 @@ export function StudentTransfer() {
               <p style={{ fontSize: 12, color: 'var(--c-faint)', padding: '8px 0' }}>No students found</p>
             ) : filteredStudents.map(s => (
               <div key={s.id} onClick={() => { setSelectedStudent(s); setError(''); }}
-                style={{ padding: '10px 14px', background: selectedStudent?.id === s.id ? 'rgba(99,102,241,0.12)' : 'var(--c-bg)', border: `1px solid ${selectedStudent?.id === s.id ? '#6366F1' : 'var(--c-border)'}`, borderRadius: 8, cursor: 'pointer' }}>
+                style={{ padding: '10px 14px', background: selectedStudent?.id === s.id ? 'rgba(99,102,241,0.12)' : 'var(--c-bg)', border: `1px solid ${selectedStudent?.id === s.id ? 'var(--tool-hex-6366f1)' : 'var(--c-border)'}`, borderRadius: 8, cursor: 'pointer' }}>
                 <div style={{ fontWeight: 600, color: 'var(--c-text)', fontSize: 13 }}>{s.name}</div>
                 <div style={{ fontSize: 11, color: 'var(--c-faint)', marginTop: 2 }}>
                   {s.class_info ? `${s.class_info.name}-${s.class_info.section}` : 'N/A'} · {s.admission_number || 'No Adm. No.'}
@@ -1640,12 +1641,12 @@ export function StudentTransfer() {
               </div>
 
               {transferType !== 'class_change' && (
-                <div style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#fca5a5' }}>
+                <div style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: 'var(--tool-hex-fca5a5)' }}>
                   This will deactivate the student and auto-generate a Transfer Certificate.
                 </div>
               )}
 
-              {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 10 }}>{error}</div>}
+              {error && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 10 }}>{error}</div>}
 
               <ActionBtn
                 label={processing ? 'Processing...' : transferType === 'class_change' ? 'Move to New Class' : `Process ${transferType === 'transfer' ? 'Transfer' : 'Withdrawal'} & Generate TC`}
@@ -1869,9 +1870,9 @@ export function TimetableBuilder() {
               <FormField label="End Time" type="time" value={form.end_time} onChange={f('end_time')} required />
               <FormField label="Room (Optional)" value={form.room} onChange={f('room')} placeholder="e.g. Room 12" />
             </div>
-            {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{error}</div>}
+            {error && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 12 }}>{error}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
-              <button type="submit" disabled={saving} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #4f8ff7', background: '#4f8ff7', color: '#fff', fontSize: 12, cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: saving ? 0.6 : 1 }}>
+              <button type="submit" disabled={saving} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--tool-hex-4f8ff7)', background: 'var(--tool-hex-4f8ff7)', color: 'var(--tool-hex-fff)', fontSize: 12, cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: saving ? 0.6 : 1 }}>
                 {saving ? 'Saving...' : editingSlot ? 'Update' : 'Add'}
               </button>
               <button type="button" onClick={() => { setShowForm(false); setEditingSlot(null); setError(''); }} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-text)', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Cancel</button>
@@ -1889,8 +1890,8 @@ export function TimetableBuilder() {
           `${s.start_time} – ${s.end_time}`,
           s.room || 'N/A',
           <div style={{ display: 'flex', gap: 4 }}>
-            <button onClick={() => handleEdit(s)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: '#4f8ff7', fontSize: 10, cursor: 'pointer' }}>Edit</button>
-            <button onClick={() => handleDelete(s.id)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 5, padding: '3px 8px', color: '#f87171', fontSize: 10, cursor: 'pointer' }}>Delete</button>
+            <button onClick={() => handleEdit(s)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: 'var(--tool-hex-4f8ff7)', fontSize: 10, cursor: 'pointer' }}>Edit</button>
+            <button onClick={() => handleDelete(s.id)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 5, padding: '3px 8px', color: 'var(--tool-hex-f87171)', fontSize: 10, cursor: 'pointer' }}>Delete</button>
           </div>
         ])}
         emptyMsg={selectedClass ? "No periods added yet" : "Select a class to view timetable"}
@@ -1982,9 +1983,9 @@ export function AssetTracker() {
                 { value: 'damaged', label: 'Damaged' }
               ]} />
             </div>
-            {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12, marginTop: 8 }}>{error}</div>}
+            {error && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 12, marginTop: 8 }}>{error}</div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-              <button type="submit" disabled={saving} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #4f8ff7', background: '#4f8ff7', color: '#fff', fontSize: 12, cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: saving ? 0.6 : 1 }}>
+              <button type="submit" disabled={saving} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--tool-hex-4f8ff7)', background: 'var(--tool-hex-4f8ff7)', color: 'var(--tool-hex-fff)', fontSize: 12, cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: saving ? 0.6 : 1 }}>
                 {saving ? 'Adding...' : 'Add Asset'}
               </button>
               <button type="button" onClick={() => { setShowForm(false); setError(''); }} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-text)', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Cancel</button>
@@ -2102,8 +2103,8 @@ export function TransportManager() {
       actions={viewMode === 'routes' && <ActionBtn label="Add Route" onClick={() => { setShowForm(true); setEditingId(null); setForm({ route_name: '', start_point: '', end_point: '', driver_name: '', driver_phone: '', vehicle_no: '', capacity: '', fare: '' }); }} icon={<Plus size={11} />} />}>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, borderBottom: '1px solid var(--c-border)', paddingBottom: 12 }}>
-        <button onClick={() => { setViewMode('routes'); setSelectedRoute(null); }} style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === 'routes' ? '1px solid #4f8ff7' : '1px solid var(--c-border)', background: viewMode === 'routes' ? 'rgba(59,130,246,0.1)' : 'var(--c-bg)', color: viewMode === 'routes' ? '#4f8ff7' : 'var(--c-muted)', fontSize: 12, cursor: 'pointer' }}>Routes</button>
-        <button onClick={() => { setViewMode('assignments'); setSelectedRoute(null); }} style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === 'assignments' ? '1px solid #34d399' : '1px solid var(--c-border)', background: viewMode === 'assignments' ? 'rgba(16,185,129,0.1)' : 'var(--c-bg)', color: viewMode === 'assignments' ? '#34d399' : 'var(--c-muted)', fontSize: 12, cursor: 'pointer' }}>Student Assignments</button>
+        <button onClick={() => { setViewMode('routes'); setSelectedRoute(null); }} style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === 'routes' ? '1px solid var(--tool-hex-4f8ff7)' : '1px solid var(--c-border)', background: viewMode === 'routes' ? 'rgba(59,130,246,0.1)' : 'var(--c-bg)', color: viewMode === 'routes' ? 'var(--tool-hex-4f8ff7)' : 'var(--c-muted)', fontSize: 12, cursor: 'pointer' }}>Routes</button>
+        <button onClick={() => { setViewMode('assignments'); setSelectedRoute(null); }} style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === 'assignments' ? '1px solid var(--tool-hex-34d399)' : '1px solid var(--c-border)', background: viewMode === 'assignments' ? 'rgba(16,185,129,0.1)' : 'var(--c-bg)', color: viewMode === 'assignments' ? 'var(--tool-hex-34d399)' : 'var(--c-muted)', fontSize: 12, cursor: 'pointer' }}>Student Assignments</button>
       </div>
 
       {showForm && (
@@ -2136,7 +2137,7 @@ export function TransportManager() {
               <FormField label="Route" type="select" value={assignForm.bus_route} onChange={fa('bus_route')} options={routes.map(r => ({ value: r.id, label: r.route_name }))} required />
               <FormField label="Student" type="select" value={assignForm.student_id} onChange={fa('student_id')} options={students.map(s => ({ value: s.id, label: s.name }))} required />
             </div>
-            {assignError && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 8 }}>{assignError}</div>}
+            {assignError && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 8 }}>{assignError}</div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
               <ActionBtn label="Assign" type="submit" />
               <ActionBtn label="Cancel" variant="secondary" onClick={() => { setShowAssign(false); setAssignError(''); }} />
@@ -2157,8 +2158,8 @@ export function TransportManager() {
               r.fare ? `₹${r.fare}` : 'N/A',
               <Badge text={r.is_active ? 'Active' : 'Inactive'} color={r.is_active ? 'green' : 'gray'} />,
               <div style={{ display: 'flex', gap: 4 }}>
-                <button onClick={() => handleEdit(r)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: '#4f8ff7', fontSize: 10, cursor: 'pointer' }}>Edit</button>
-                <button onClick={() => handleDelete(r.id)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 5, padding: '3px 8px', color: '#f87171', fontSize: 10, cursor: 'pointer' }}>Delete</button>
+                <button onClick={() => handleEdit(r)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: 'var(--tool-hex-4f8ff7)', fontSize: 10, cursor: 'pointer' }}>Edit</button>
+                <button onClick={() => handleDelete(r.id)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 5, padding: '3px 8px', color: 'var(--tool-hex-f87171)', fontSize: 10, cursor: 'pointer' }}>Delete</button>
               </div>
             ])}
             emptyMsg="No transport routes configured"
@@ -2176,7 +2177,7 @@ export function TransportManager() {
               <h4 style={{ color: 'var(--c-muted)', fontSize: 11, fontWeight: 600, marginBottom: 10, textTransform: 'uppercase' }}>Routes</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {routes.map(r => (
-                  <button key={r.id} onClick={() => setSelectedRoute(r)} style={{ padding: '8px 10px', borderRadius: 6, border: selectedRoute?.id === r.id ? '1px solid #4f8ff7' : '1px solid var(--c-border)', background: selectedRoute?.id === r.id ? 'rgba(59,130,246,0.1)' : 'var(--c-app)', color: 'var(--c-text)', fontSize: 12, textAlign: 'left', cursor: 'pointer' }}>
+                  <button key={r.id} onClick={() => setSelectedRoute(r)} style={{ padding: '8px 10px', borderRadius: 6, border: selectedRoute?.id === r.id ? '1px solid var(--tool-hex-4f8ff7)' : '1px solid var(--c-border)', background: selectedRoute?.id === r.id ? 'rgba(59,130,246,0.1)' : 'var(--c-app)', color: 'var(--c-text)', fontSize: 12, textAlign: 'left', cursor: 'pointer' }}>
                     {r.route_name} <span style={{ color: 'var(--c-faint)', fontSize: 10 }}>({students.filter(s => s.bus_route === r.id).length})</span>
                   </button>
                 ))}
@@ -2217,7 +2218,7 @@ export function AutomatedReport() {
       <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16, maxWidth: 600 }}>
         <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Scheduled Reports</h3>
         {schedules.map((s, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #242424' }}>
+          <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--tool-hex-242424)' }}>
             <div>
               <div style={{ fontSize: 13, color: 'var(--c-text)', fontWeight: 500 }}>{s.name}</div>
               <div style={{ fontSize: 11, color: 'var(--c-faint)' }}>{s.frequency} · {s.day} at {s.time}</div>
@@ -2352,14 +2353,14 @@ export function CustomFormBuilder() {
                     {(field.type === 'select' || field.type === 'radio') && (
                       <input value={field.options} onChange={e => updateField(i, 'options', e.target.value)} placeholder="Option 1, Option 2" style={{ flex: 1.5, background: 'var(--c-deep)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '6px 10px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }} />
                     )}
-                    <button onClick={() => removeField(i)} style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: '#f87171', fontSize: 11, cursor: 'pointer' }}>Remove</button>
+                    <button onClick={() => removeField(i)} style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: 'var(--tool-hex-f87171)', fontSize: 11, cursor: 'pointer' }}>Remove</button>
                   </div>
                 ))}
               </div>
-              {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{error}</div>}
+              {error && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 12 }}>{error}</div>}
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={addField} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-text)', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>+ Add Field</button>
-                <button onClick={save} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #4f8ff7', background: '#4f8ff7', color: '#fff', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Create Form</button>
+                <button onClick={save} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--tool-hex-4f8ff7)', background: 'var(--tool-hex-4f8ff7)', color: 'var(--tool-hex-fff)', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Create Form</button>
                 <button onClick={() => { setShowCreate(false); setError(''); }} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-text)', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>Cancel</button>
               </div>
             </div>
@@ -2369,11 +2370,11 @@ export function CustomFormBuilder() {
               f.title,
               <span style={{ textTransform: 'capitalize', fontSize: 11 }}>{f.audience}</span>,
               f.fields?.length || 0,
-              <button onClick={() => handleViewResponses(f)} style={{ color: '#4f8ff7', fontSize: 11, background: 'transparent', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>View</button>,
+              <button onClick={() => handleViewResponses(f)} style={{ color: 'var(--tool-hex-4f8ff7)', fontSize: 11, background: 'transparent', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>View</button>,
               f.created_at?.slice(0, 10),
               <div style={{ display: 'flex', gap: 4 }}>
-                <button onClick={() => handleViewResponses(f)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: '#4f8ff7', fontSize: 10, cursor: 'pointer' }}>Responses</button>
-                <button onClick={() => handleDelete(f.id)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 5, padding: '3px 8px', color: '#f87171', fontSize: 10, cursor: 'pointer' }}>Delete</button>
+                <button onClick={() => handleViewResponses(f)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: 'var(--tool-hex-4f8ff7)', fontSize: 10, cursor: 'pointer' }}>Responses</button>
+                <button onClick={() => handleDelete(f.id)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 5, padding: '3px 8px', color: 'var(--tool-hex-f87171)', fontSize: 10, cursor: 'pointer' }}>Delete</button>
               </div>
             ])}
             emptyMsg="No forms created yet"
@@ -2411,7 +2412,7 @@ export function CustomFormBuilder() {
                       <td style={{ padding: '8px', color: 'var(--c-text)' }}>{resp.submitted_by_name}</td>
                       <td style={{ padding: '8px', color: 'var(--c-text)', textTransform: 'capitalize' }}>{resp.submitted_by_role}</td>
                       {selectedForm.fields?.slice(0, 3).map(f => (
-                        <td key={f.label} style={{ padding: '8px', color: '#d4d4d4', fontSize: 11 }}>{String(resp.answers?.[f.label] || 'N/A').slice(0, 30)}</td>
+                        <td key={f.label} style={{ padding: '8px', color: 'var(--tool-hex-d4d4d4)', fontSize: 11 }}>{String(resp.answers?.[f.label] || 'N/A').slice(0, 30)}</td>
                       ))}
                       <td style={{ padding: '8px', color: 'var(--c-faint)', fontSize: 10 }}>{resp.submitted_at?.slice(0, 10)}</td>
                     </tr>
@@ -2499,10 +2500,10 @@ export function StudentPerformanceViewer() {
   return (
     <ToolPage title="Student Performance" subtitle="Marks, grades & attendance analytics" loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18, maxWidth: 700 }}>
-        <StatCard value={students.length} label="STUDENTS" color="#4f8ff7" />
-        <StatCard value={results.length} label="EXAM ENTRIES" color="#a78bfa" />
-        <StatCard value={studentStats.filter(s => s.avg && s.avg >= 80).length} label="ABOVE 80%" color="#34d399" />
-        <StatCard value={studentStats.filter(s => s.avg && s.avg < 60).length} label="BELOW 60%" color="#f87171" />
+        <StatCard value={students.length} label="STUDENTS" color="var(--tool-hex-4f8ff7)" />
+        <StatCard value={results.length} label="EXAM ENTRIES" color="var(--tool-hex-a78bfa)" />
+        <StatCard value={studentStats.filter(s => s.avg && s.avg >= 80).length} label="ABOVE 80%" color="var(--tool-hex-34d399)" />
+        <StatCard value={studentStats.filter(s => s.avg && s.avg < 60).length} label="BELOW 60%" color="var(--tool-hex-f87171)" />
       </div>
 
       {selectedStudent ? (
@@ -2513,7 +2514,7 @@ export function StudentPerformanceViewer() {
           </div>
           {studentAtt && (
             <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
-              {[['Attendance', studentAtt.rate, '#34d399'], ['Present', studentAtt.present, '#34d399'], ['Absent', studentAtt.absent, '#f87171'], ['Total Days', studentAtt.total, 'var(--c-text)']].map(([l, v, c]) => (
+              {[['Attendance', studentAtt.rate, 'var(--tool-hex-34d399)'], ['Present', studentAtt.present, 'var(--tool-hex-34d399)'], ['Absent', studentAtt.absent, 'var(--tool-hex-f87171)'], ['Total Days', studentAtt.total, 'var(--c-text)']].map(([l, v, c]) => (
                 <StatCard key={l} value={v} label={l} color={c} small />
               ))}
             </div>
@@ -2529,9 +2530,9 @@ export function StudentPerformanceViewer() {
             s.name,
             s.class_info ? `${s.class_info.name}-${s.class_info.section}` : 'N/A',
             s.exams,
-            s.avg !== null ? <span style={{ color: s.avg >= 80 ? '#34d399' : s.avg >= 60 ? '#fbbf24' : '#f87171', fontWeight: 600 }}>{s.avg}%</span> : 'No data',
+            s.avg !== null ? <span style={{ color: s.avg >= 80 ? 'var(--tool-hex-34d399)' : s.avg >= 60 ? 'var(--tool-hex-fbbf24)' : 'var(--tool-hex-f87171)', fontWeight: 600 }}>{s.avg}%</span> : 'No data',
             s.grade !== 'N/A' ? <Badge text={s.grade} color={gradeColor[s.grade[0]] || 'gray'} /> : <span style={{ color: 'var(--c-faint)' }}>N/A</span>,
-            <button onClick={() => viewStudent(s)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: '#93c5fd', fontSize: 10, cursor: 'pointer' }}>View</button>
+            <button onClick={() => viewStudent(s)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: 'var(--tool-hex-93c5fd)', fontSize: 10, cursor: 'pointer' }}>View</button>
           ])}
           emptyMsg="No students found"
         />
