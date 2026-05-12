@@ -408,6 +408,85 @@ async def delete_timetable_slot(slot_id: str, request: Request):
     return {"success": True}
 
 
+@router.put("/timetable/import")
+async def bulk_import_timetable(request: Request):
+    """Bulk import timetable entries — duplicates (same class+period+day) are replaced."""
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["admin", "owner"]:
+        raise HTTPException(403, "Forbidden")
+    body = await request.json()
+    entries = body if isinstance(body, list) else body.get("entries", [])
+    if not entries:
+        raise HTTPException(400, "entries array is required")
+    created = replaced = skipped = 0
+    for entry in entries:
+        class_id = entry.get("class_id")
+        day = entry.get("day_of_week")
+        period = entry.get("period_number")
+        if not class_id or day is None or period is None:
+            skipped += 1
+            continue
+        # Referential integrity: class must exist
+        cls = await db.classes.find_one({"id": class_id})
+        if not cls:
+            skipped += 1
+            continue
+        # Teacher must exist if provided
+        teacher_id = entry.get("teacher_id")
+        if teacher_id:
+            teacher = await db.staff.find_one({"id": teacher_id})
+            if not teacher:
+                skipped += 1
+                continue
+        slot = {
+            "id": str(uuid.uuid4()),
+            "class_id": class_id,
+            "subject_id": entry.get("subject_id", ""),
+            "teacher_id": teacher_id or "",
+            "day_of_week": day,
+            "period_number": period,
+            "start_time": entry.get("start_time", ""),
+            "end_time": entry.get("end_time", ""),
+            "room": entry.get("room", ""),
+            "updated_at": datetime.now().isoformat(),
+        }
+        existing = await db.timetable_slots.find_one({"class_id": class_id, "day_of_week": day, "period_number": period})
+        if existing:
+            await db.timetable_slots.update_one(
+                {"class_id": class_id, "day_of_week": day, "period_number": period},
+                {"$set": slot}
+            )
+            replaced += 1
+        else:
+            await db.timetable_slots.insert_one({**slot, "_id": slot["id"]})
+            created += 1
+    return {"success": True, "data": {"created_count": created, "replaced_count": replaced, "skipped_count": skipped}}
+
+
+@router.get("/timetable/availability")
+async def teacher_availability(request: Request, teacher_id: str = None, date: str = None, day_of_week: int = None):
+    """Check which periods a teacher is free on a given day."""
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["admin", "owner", "teacher"]:
+        raise HTTPException(403, "Forbidden")
+    query = {}
+    if teacher_id:
+        query["teacher_id"] = teacher_id
+    if day_of_week is not None:
+        query["day_of_week"] = day_of_week
+    elif date:
+        from datetime import datetime as dt
+        try:
+            d = dt.fromisoformat(date)
+            query["day_of_week"] = d.weekday()  # 0=Monday
+        except ValueError:
+            raise HTTPException(400, "Invalid date format; use YYYY-MM-DD")
+    slots = await db.timetable_slots.find(query, {"_id": 0}).to_list(50)
+    return {"success": True, "data": slots}
+
+
 # --- PTM Notes ---
 @router.get("/ptm-notes")
 async def list_ptm_notes(request: Request, student_id: str = None):

@@ -1,9 +1,9 @@
-"""Routes: certificates, expenses, complaints, visitors, assets, transport, announcements"""
+"""Routes: certificates, expenses, complaints, visitors, assets, transport, announcements, incidents"""
 from fastapi import APIRouter, Request, HTTPException
 from database import get_db
 from middleware.auth import get_current_user
 from datetime import datetime
-from tenant import get_school_id, scoped_filter
+from tenant import get_school_id, scoped_filter, add_school_id
 import uuid
 
 router = APIRouter(prefix="/api/ops", tags=["operations"])
@@ -330,6 +330,134 @@ async def update_complaint(complaint_id: str, request: Request):
     return {"success": True}
 
 
+# ─── Story 13: Incident Management (enhanced) ─────────────────────────────────
+
+@router.get("/incidents")
+async def list_incidents(request: Request, status: str = None, q: str = None, page: int = 1, limit: int = 20):
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["owner", "admin"]:
+        raise HTTPException(403, "Forbidden")
+    query = {}
+    if status:
+        query["status"] = status
+    if q:
+        query["$or"] = [
+            {"description": {"$regex": q, "$options": "i"}},
+            {"involved_parties": {"$regex": q, "$options": "i"}},
+        ]
+    is_principal = user.get("role") == "admin" and user.get("sub_category") == "principal"
+    if is_principal:
+        query["category"] = {"$ne": "financial"}
+    limit = min(max(limit, 1), 50)
+    skip = max(page - 1, 0) * limit
+    total = await db.incidents.count_documents(scoped_filter(query, get_school_id()))
+    items = await db.incidents.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
+
+
+@router.post("/incidents")
+async def create_incident(request: Request):
+    db = get_db()
+    user = get_user(request)
+    is_receptionist = user.get("role") == "admin" and user.get("sub_category") == "receptionist"
+    if user["role"] not in ["owner", "admin"] and not is_receptionist:
+        raise HTTPException(403, "Forbidden")
+    body = await request.json()
+    if not body.get("description"):
+        raise HTTPException(400, "description is required")
+    severity = body.get("severity", "low")
+    if severity not in ("low", "medium", "high"):
+        raise HTTPException(400, "severity must be low, medium, or high")
+    incident = add_school_id({
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "description": body["description"],
+        "severity": severity,
+        "involved_parties": body.get("involved_parties", ""),
+        "category": body.get("category", "general"),
+        "status": "open",
+        "thread": [],
+        "logged_by": user["id"],
+        "logged_by_name": user.get("name", ""),
+        "assigned_to": None,
+        "due_date": None,
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat(),
+    })
+    await db.incidents.insert_one(incident)
+    # High-severity: notify Owner and Principal
+    if severity == "high":
+        owners_principals = await db.users.find(
+            {"role": {"$in": ["owner", "admin"]}, "is_active": {"$ne": False}}, {"_id": 0, "id": 1, "sub_category": 1, "role": 1}
+        ).to_list(20)
+        for up in owners_principals:
+            if up.get("role") == "owner" or up.get("sub_category") == "principal":
+                await _notify(db, user_id=up["id"], notification_type="high_severity_incident",
+                              message=f"High-severity incident reported: {body['description'][:80]}",
+                              source_id=incident["id"], source_type="incident")
+    await db.audit_logs.insert_one(_audit_doc("incident_create", "incidents", incident["id"], user, {"severity": severity, "description": body["description"][:100]}))
+    return {"success": True, "data": {k: v for k, v in incident.items() if k != "_id"}}
+
+
+@router.get("/incidents/{incident_id}")
+async def get_incident(incident_id: str, request: Request):
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["owner", "admin"]:
+        raise HTTPException(403, "Forbidden")
+    incident = await db.incidents.find_one(scoped_filter({"id": incident_id}, get_school_id()), {"_id": 0})
+    if not incident:
+        raise HTTPException(404, "Incident not found")
+    thread = sorted(incident.get("thread", []), key=lambda x: x.get("timestamp", ""), reverse=True)
+    incident["thread"] = thread
+    return {"success": True, "data": incident}
+
+
+@router.post("/incidents/{incident_id}/thread")
+async def add_incident_thread(incident_id: str, request: Request):
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["owner", "admin"]:
+        raise HTTPException(403, "Forbidden")
+    body = await request.json()
+    if not body.get("content"):
+        raise HTTPException(400, "content is required")
+    entry = {
+        "id": str(uuid.uuid4()),
+        "author_id": user["id"],
+        "author_name": user.get("name", ""),
+        "author_role": user.get("role", ""),
+        "content": body["content"],
+        "timestamp": datetime.now().isoformat(),
+    }
+    result = await db.incidents.update_one(
+        scoped_filter({"id": incident_id}, get_school_id()),
+        {"$push": {"thread": entry}, "$set": {"updated_at": datetime.now().isoformat()}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(404, "Incident not found")
+    return {"success": True, "data": entry}
+
+
+@router.patch("/incidents/{incident_id}/assign")
+async def assign_incident(incident_id: str, request: Request):
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["owner", "admin"]:
+        raise HTTPException(403, "Forbidden")
+    body = await request.json()
+    updates = {"updated_at": datetime.now().isoformat()}
+    if body.get("assigned_to"):
+        updates["assigned_to"] = body["assigned_to"]
+    if body.get("due_date"):
+        updates["due_date"] = body["due_date"]
+    if body.get("status"):
+        updates["status"] = body["status"]
+    await db.incidents.update_one(scoped_filter({"id": incident_id}, get_school_id()), {"$set": updates})
+    return {"success": True}
+
+
 # --- Visitors ---
 @router.get("/visitors")
 async def list_visitors(request: Request):
@@ -416,7 +544,14 @@ async def update_asset(asset_id: str, request: Request):
 @router.get("/transport")
 async def list_transport(request: Request):
     db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["owner", "admin"]:
+        raise HTTPException(403, "Forbidden")
     routes = await db.transport_routes.find({}, {"_id": 0}).to_list(50)
+    # Enrich with student count per zone
+    for route in routes:
+        count = await db.students.count_documents({"route_zone_id": route.get("id"), "is_active": {"$ne": False}})
+        route["student_count"] = count
     return {"success": True, "data": routes}
 
 
@@ -429,19 +564,89 @@ async def create_route(request: Request):
     body = await request.json()
     route = {
         "id": str(uuid.uuid4()),
-        "route_name": body.get("route_name"),
+        "route_name": body.get("route_name") or body.get("name"),
         "start_point": body.get("start_point", ""),
         "end_point": body.get("end_point", ""),
         "stops": body.get("stops", []),
         "driver_name": body.get("driver_name", ""),
         "driver_phone": body.get("driver_phone", ""),
-        "vehicle_no": body.get("vehicle_no", ""),
+        "vehicle_no": body.get("vehicle_no") or body.get("vehicle_id", ""),
         "capacity": body.get("capacity", ""),
-        "fare": body.get("fare", ""),
+        "fare": body.get("fare", 0),
         "is_active": True,
+        "created_at": datetime.now().isoformat(),
     }
     await db.transport_routes.insert_one({**route, "_id": route["id"]})
     return {"success": True, "data": route}
+
+
+@router.get("/transport/roster")
+async def get_transport_roster(request: Request, zone_id: str = None):
+    """Owner/Principal: full roster. Transport Head: zone-specific."""
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["owner", "admin"]:
+        raise HTTPException(403, "Forbidden")
+    query = {"is_active": {"$ne": False}}
+    if zone_id:
+        query["route_zone_id"] = zone_id
+    students = await db.students.find(query, {"_id": 0, "name": 1, "class_name": 1, "guardian_phone": 1, "route_zone_id": 1}).to_list(500)
+    zones = await db.transport_routes.find({}, {"_id": 0, "id": 1, "route_name": 1}).to_list(50)
+    zone_map = {z["id"]: z["route_name"] for z in zones}
+    for s in students:
+        s["zone_name"] = zone_map.get(s.get("route_zone_id", ""), "Not Assigned")
+    return {"success": True, "data": students, "meta": {"total": len(students)}}
+
+
+@router.post("/transport/vehicles")
+async def create_vehicle(request: Request):
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["admin", "owner"]:
+        raise HTTPException(403, "Forbidden")
+    body = await request.json()
+    vehicle = {
+        "id": str(uuid.uuid4()),
+        "vehicle_number": body.get("vehicle_number", ""),
+        "vehicle_type": body.get("vehicle_type", "bus"),
+        "capacity": int(body.get("capacity", 0)),
+        "driver_name": body.get("driver_name", ""),
+        "driver_phone": body.get("driver_phone", ""),
+        "is_active": True,
+        "created_at": datetime.now().isoformat(),
+    }
+    await db.vehicles.insert_one({**vehicle, "_id": vehicle["id"]})
+    return {"success": True, "data": vehicle}
+
+
+@router.get("/transport/vehicles")
+async def list_vehicles(request: Request):
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["owner", "admin"]:
+        raise HTTPException(403, "Forbidden")
+    vehicles = await db.vehicles.find({}, {"_id": 0}).to_list(50)
+    return {"success": True, "data": vehicles}
+
+
+@router.post("/transport/zones")
+async def create_zone(request: Request):
+    """Alias: zones map to transport routes with zone semantics."""
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["admin", "owner"]:
+        raise HTTPException(403, "Forbidden")
+    body = await request.json()
+    zone = {
+        "id": str(uuid.uuid4()),
+        "route_name": body.get("name") or body.get("route_name", ""),
+        "description": body.get("description", ""),
+        "fare": body.get("fare", 0),
+        "is_active": True,
+        "created_at": datetime.now().isoformat(),
+    }
+    await db.transport_routes.insert_one({**zone, "_id": zone["id"]})
+    return {"success": True, "data": zone}
 
 
 @router.patch("/transport/{route_id}")
@@ -533,10 +738,26 @@ async def delete_visitor(visitor_id: str, request: Request):
 
 # --- Announcements ---
 @router.get("/announcements")
-async def list_announcements(request: Request):
+async def list_announcements(request: Request, page: int = 1, limit: int = 20):
+    """Story 14: returns announcements targeted at the calling user's role."""
     db = get_db()
-    announcements = await db.announcements.find({"is_draft": False}, {"_id": 0}).sort("created_at", -1).to_list(30)
-    return {"success": True, "data": announcements}
+    user = get_user(request)
+    role = user.get("role", "")
+    limit = min(max(limit, 1), 50)
+    skip = max(page - 1, 0) * limit
+    # Show announcements where audience_roles is empty/missing (meaning "all") or includes this role
+    query = {
+        "is_draft": {"$ne": True},
+        "$or": [
+            {"audience_roles": {"$in": [role, "all"]}},
+            {"audience_roles": {"$exists": False}},
+            {"audience_roles": []},
+            {"audience_type": "all"},
+        ]
+    }
+    total = await db.announcements.count_documents(query)
+    announcements = await db.announcements.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    return {"success": True, "data": announcements, "meta": {"page": page, "limit": limit, "total": total}}
 
 
 @router.post("/announcements")
@@ -546,17 +767,20 @@ async def create_announcement(request: Request):
     if user["role"] not in ["admin", "owner"]:
         raise HTTPException(403, "Forbidden")
     body = await request.json()
+    target_roles = body.get("target_roles") or body.get("audience_roles", [])
     announcement = {
         "id": str(uuid.uuid4()),
         "title": body.get("title"),
         "content": body.get("content"),
         "audience_type": body.get("audience_type", "all"),
         "audience_classes": body.get("audience_classes", []),
-        "audience_roles": body.get("audience_roles", []),
+        "audience_roles": target_roles,
+        "target_roles": target_roles,
         "channels": body.get("channels", ["push"]),
         "is_draft": body.get("is_draft", False),
         "sent_at": datetime.now().isoformat() if not body.get("is_draft", False) else None,
         "created_by": user["id"],
+        "created_by_name": user.get("name", ""),
         "created_at": datetime.now().isoformat(),
     }
     await db.announcements.insert_one({**announcement, "_id": announcement["id"]})

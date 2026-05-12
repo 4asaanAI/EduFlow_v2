@@ -40,6 +40,7 @@ TODAY = date.today().strftime("%Y-%m-%d")
 DEMO_CREDENTIALS = {
     "owner": {"username": "owner", "password": "owner@123"},
     "admin": {"username": "admin", "password": "admin@123"},
+    "maintenance": {"username": "maintenance", "password": "maintenance@123"},
     "teacher": {"username": "Rajesh Kumar", "password": "teacher@123"},
     "student": {"username": "ADM20250001", "password": "student@123"},
 }
@@ -95,6 +96,7 @@ async def seed():
     admin_transport_id = "user-admin-003"
     admin_reception_id = "user-admin-004"
     admin_it_id = "user-admin-005"
+    admin_maintenance_id = "user-admin-006"
     teacher_ids = [f"user-teacher-{i:03}" for i in range(1, 8)]  # 7 teachers
     student_user_ids = [f"user-student-{i:03}" for i in range(1, 16)]
 
@@ -105,6 +107,7 @@ async def seed():
         {"id": admin_transport_id, "name": "Suresh Yadav", "role": "admin", "phone": "9876543213", "email": "suresh@theararyans.edu.in", "preferred_language": "en", "is_active": True},
         {"id": admin_reception_id, "name": "Kavita Singh", "role": "admin", "phone": "9876543214", "email": "kavita@theararyans.edu.in", "preferred_language": "en", "is_active": True},
         {"id": admin_it_id, "name": "Rahul Tech", "role": "admin", "phone": "9876543215", "email": "rahul.tech@theararyans.edu.in", "preferred_language": "en", "is_active": True},
+        {"id": admin_maintenance_id, "name": "Arvind Maintenance", "role": "admin", "phone": "9876543216", "email": "maintenance@theararyans.edu.in", "preferred_language": "en", "is_active": True},
         {"id": "user-student-001", "name": "Rahul Singh", "role": "student", "phone": "9876543220", "preferred_language": "en", "is_active": True},
     ]
     teacher_names = ["Rajesh Kumar", "Sunita Devi", "Manoj Tiwari", "Deepa Verma", "Ankit Sharma", "Vikash Singh", "Nisha Verma"]
@@ -175,6 +178,16 @@ async def seed():
         "role": "admin",
         "phone": "9876543215",
         "user_info": {"id": admin_it_id, "name": "Rahul Tech", "role": "admin", "sub_category": "it_tech", "initials": "RT"},
+    })
+    # Admin auth — Maintenance (facility requests only)
+    await db.auth_users.insert_one({
+        "id": gid(),
+        "username": "maintenance",
+        "username_lower": "maintenance",
+        "password_hash": hash_pw("maintenance@123"),
+        "role": "admin",
+        "phone": "9876543216",
+        "user_info": {"id": admin_maintenance_id, "name": "Arvind Maintenance", "role": "admin", "sub_category": "maintenance", "initials": "AM"},
     })
 
     # Classes
@@ -250,6 +263,8 @@ async def seed():
         # Support staff
         {"id": "staff-014", "user_id": admin_it_id,          "name": "Rahul Tech",   "staff_type": "admin",
          "sub_category": "it_tech",      "designation": "IT & Tech", "employee_id": "EMP014", "salary": 26000},
+        {"id": "staff-015", "user_id": admin_maintenance_id, "name": "Arvind Maintenance", "staff_type": "admin",
+         "sub_category": "maintenance",  "designation": "Maintenance", "employee_id": "EMP015", "salary": 24000},
         {"id": "staff-008", "user_id": gid(),              "name": "Ramesh Yadav", "staff_type": "peon",
          "sub_category": "support_staff","employee_id": "EMP008", "salary": 18000},
     ]

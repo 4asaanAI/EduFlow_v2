@@ -4,21 +4,31 @@ import { useTheme } from '../contexts/ThemeContext';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import ChatInterface from './ChatInterface';
-import ToolDashboard from './ToolDashboard';
 import FloatingAssistant from './FloatingAssistant';
 import { createConversation, getConversations } from '../lib/api';
 import ProfileModal from './ProfileModal';
 import SettingsModal from './SettingsModal';
 
 const loadTool = async (toolId) => {
+  // Phase 3 dedicated tool panels — loaded directly
+  if (toolId === 'facility-requests') return (await import('./tools/MaintenanceTools')).MaintenanceFacilityTracker;
+  if (toolId === 'tech-issues') return (await import('./tools/MaintenanceTools')).ITTechIssueTracker;
+  if (toolId === 'all-issues') return (await import('./tools/MaintenanceTools')).AllIssuesView;
+  if (toolId === 'incident-tracker') return (await import('./tools/IncidentTracker')).default;
+  if (toolId === 'timetable-builder') return (await import('./tools/TimetableBuilder')).default;
+  if (toolId === 'audit-log') return (await import('./tools/AuditLog')).default;
+  if (toolId === 'fee-receipts') return (await import('./tools/FeeCollection')).default;
+
+  // Existing dedicated tools
   if (toolId === 'query-section') return (await import('./tools/QuerySection')).QuerySection;
   if (toolId === 'staff-tracker') return (await import('./tools/StaffTracker')).default;
   if (toolId === 'attendance-recorder') return (await import('./tools/AttendanceRecorder')).default;
   if (toolId === 'fee-collection') return (await import('./tools/FeeCollection')).default;
   if (toolId === 'fee-sync') return (await import('./tools/FeeSync')).default;
+  if (toolId === 'student-database') return (await import('./tools/StudentDatabase')).default;
 
-  const OWNERS = ['school-pulse','fee-collection','fee-sync','student-strength','student-database','data-import','attendance-overview','staff-tracker','staff-attendance-tracker','financial-reports','announcement-broadcaster','admission-funnel','staff-leave-manager','staff-performance','ai-health-report','smart-alerts','expense-tracker','complaint-tracker','custom-report-builder','board-report','smart-fee-defaulter','attendance-alerts'];
-  const ADMINS = ['student-database','fee-tracker','attendance-recorder','certificate-generator','circular-sender','enquiry-register','document-scanner','smart-fee-defaulter','admission-pipeline','parent-message','student-transfer','id-card-generator','timetable-builder','asset-tracker','transport-manager','automated-report','custom-form-builder','report-card-builder','student-performance-viewer','attendance-alerts'];
+  const OWNERS = ['school-pulse','fee-collection','fee-sync','student-strength','data-import','attendance-overview','staff-tracker','staff-attendance-tracker','financial-reports','announcement-broadcaster','admission-funnel','staff-leave-manager','staff-performance','ai-health-report','smart-alerts','expense-tracker','complaint-tracker','custom-report-builder','board-report','smart-fee-defaulter','attendance-alerts'];
+  const ADMINS = ['fee-tracker','certificate-generator','circular-sender','enquiry-register','document-scanner','smart-fee-defaulter','admission-pipeline','parent-message','student-transfer','id-card-generator','asset-tracker','transport-manager','automated-report','custom-form-builder','report-card-builder','student-performance-viewer','attendance-alerts'];
   const TEACHERS = ['class-attendance-marker','assignment-generator','question-paper-creator','leave-application','lesson-plan-generator','worksheet-creator','class-performance-analytics','substitution-viewer','ptm-notes','curriculum-tracker','form-submissions'];
   const STUDENTS = ['ai-tutor','doubt-solver','homework-viewer','attendance-self-check','result-viewer','practice-test','study-planner','career-guidance','fee-status-viewer','ptm-summary-viewer','form-submissions'];
 
@@ -46,7 +56,7 @@ function ToolView({ toolId }) {
   return <Comp />;
 }
 
-const TOOL_DASHBOARD_ROLES = ['admin', 'teacher'];
+const TOOL_DASHBOARD_ROLES = ['admin', 'teacher', 'owner'];
 
 export default function Layout() {
   const { currentUser } = useUser();
@@ -142,7 +152,7 @@ export default function Layout() {
         setSidebarOpen={setSidebarOpen}
         onOpenProfile={() => setShowProfile(true)}
         onOpenSettings={() => setShowSettings(true)}
-        isToolDashboardRole={isToolDashboardRole}
+        isToolDashboardRole={false}
       />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
@@ -157,8 +167,6 @@ export default function Layout() {
         <div style={{ flex: 1, overflow: 'hidden' }}>
           {activeTool ? (
             <ToolView toolId={activeTool} />
-          ) : isToolDashboardRole ? (
-            <ToolDashboard onSelectTool={handleSelectTool} />
           ) : (
             <ChatInterface
               activeConvId={activeConvId}

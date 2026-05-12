@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Request, HTTPException
+from fastapi.responses import StreamingResponse, Response
 from database import get_db
 from models.schemas import FeeTransaction
 from middleware.auth import get_current_user
 from datetime import datetime, timedelta
 from tenant import get_school_id, scoped_filter
+from pymongo import ReturnDocument
 import uuid
 import os
+import io
+import csv
 import httpx
 
 router = APIRouter(prefix="/api/fees", tags=["fees"])
@@ -624,3 +628,147 @@ async def resolve_fee_sync_conflict(sync_job_id: str, request: Request):
     await _audit(db, action="fee_sync_conflict_resolved", entity_id=sync_job_id, user=user, changes={"conflict_id": conflict_id, "decision": decision})
     updated = await db.fee_sync_jobs.find_one(_fee_query({"id": sync_job_id}), {"_id": 0})
     return {"success": True, "data": updated}
+
+
+# ─── Story 32: Fee Receipt PDF ────────────────────────────────────────────────
+
+async def _next_receipt_number(db, school_id: str) -> str:
+    now = datetime.now()
+    period = now.strftime("%Y-%m")
+    counter_key = f"{school_id}-{period}"
+    result = await db.receipt_counters.find_one_and_update(
+        {"key": counter_key},
+        {"$inc": {"seq": 1}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    seq = result.get("seq", 1) if result else 1
+    return f"{school_id.upper()}-{period}-{seq:04d}"
+
+
+@router.get("/transactions/{transaction_id}/receipt")
+async def get_fee_receipt(transaction_id: str, request: Request):
+    db = get_db()
+    user = get_user(request)
+    if user.get("role") not in ("owner", "admin"):
+        raise HTTPException(403, "Only Owner or Accountant can generate receipts")
+    txn = await db.fee_transactions.find_one(_fee_query({"id": transaction_id}), {"_id": 0})
+    if not txn:
+        raise HTTPException(404, "Transaction not found")
+    student = await db.students.find_one({"id": txn.get("student_id")}, {"_id": 0})
+    school_name = os.environ.get("SCHOOL_NAME", "The Aaryans")
+    school_id = get_school_id()
+
+    # Assign receipt number if not already assigned
+    receipt_number = txn.get("receipt_number")
+    if not receipt_number:
+        receipt_number = await _next_receipt_number(db, school_id)
+        await db.fee_transactions.update_one({"id": transaction_id}, {"$set": {"receipt_number": receipt_number}})
+
+    try:
+        from fpdf import FPDF
+    except ImportError:
+        raise HTTPException(500, "PDF library not available")
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_margins(20, 20, 20)
+
+    # Header
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_text_color(30, 60, 120)
+    pdf.cell(0, 10, school_name, ln=True, align="C")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(80, 80, 80)
+    pdf.cell(0, 6, "Fee Payment Receipt", ln=True, align="C")
+    pdf.ln(4)
+
+    # Divider
+    pdf.set_draw_color(180, 180, 200)
+    pdf.line(20, pdf.get_y(), 190, pdf.get_y())
+    pdf.ln(6)
+
+    # Receipt number + date
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_text_color(0, 0, 0)
+    pdf.cell(95, 7, f"Receipt No: {receipt_number}", ln=False)
+    paid_date = txn.get("paid_date") or txn.get("updated_at", "")[:10]
+    pdf.cell(95, 7, f"Date: {paid_date}", ln=True, align="R")
+    pdf.ln(4)
+
+    # Student details table
+    def row(label, value):
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_fill_color(240, 242, 255)
+        pdf.cell(60, 8, label, border=1, fill=True)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.cell(110, 8, str(value or ""), border=1, ln=True)
+
+    student_name = student["name"] if student else txn.get("student_name", "N/A")
+    student_class = student.get("class_name", "") if student else ""
+    row("Student Name", student_name)
+    row("Class", student_class)
+    row("Fee Head", txn.get("fee_type", txn.get("fee_head", "")))
+    row("Amount Paid", f"Rs. {txn.get('amount', 0):,.2f}")
+    row("Payment Mode", txn.get("payment_mode", "Cash").title())
+    row("Payment Date", paid_date)
+    row("Status", txn.get("status", "paid").upper())
+    pdf.ln(8)
+
+    # PAID watermark
+    pdf.set_font("Helvetica", "B", 40)
+    pdf.set_text_color(200, 230, 200)
+    pdf.cell(0, 20, "PAID", ln=True, align="C")
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(4)
+
+    # Footer
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.set_text_color(120, 120, 120)
+    pdf.cell(0, 6, "This is a computer-generated receipt. No signature required.", ln=True, align="C")
+
+    pdf_bytes = pdf.output(dest="S")
+    if isinstance(pdf_bytes, str):
+        pdf_bytes = pdf_bytes.encode("latin-1")
+    return Response(
+        content=bytes(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=receipt-{receipt_number}.pdf"},
+    )
+
+
+@router.get("/export")
+async def export_fee_transactions(request: Request, period: str = None, format: str = "csv"):
+    db = get_db()
+    user = get_user(request)
+    if user.get("role") not in ("owner", "admin"):
+        raise HTTPException(403, "Only Owner or Accountant can export fee data")
+    query = _fee_query({})
+    if period:
+        query["$and"] = query.get("$and", []) + [{"$or": [
+            {"fee_period": period},
+            {"paid_date": {"$regex": f"^{period}"}},
+        ]}]
+    txns = await db.fee_transactions.find(query, {"_id": 0}).sort("paid_date", -1).to_list(500)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["student_name", "class", "fee_head", "amount", "payment_date", "receipt_number", "payment_mode", "status"])
+    for t in txns:
+        student = await db.students.find_one({"id": t.get("student_id")}, {"_id": 0, "name": 1, "class_name": 1})
+        writer.writerow([
+            student["name"] if student else "",
+            student.get("class_name", "") if student else "",
+            t.get("fee_type", t.get("fee_head", "")),
+            t.get("amount", ""),
+            t.get("paid_date", ""),
+            t.get("receipt_number", ""),
+            t.get("payment_mode", ""),
+            t.get("status", ""),
+        ])
+    output.seek(0)
+    fname = f"fees_{period or 'all'}_{datetime.now().strftime('%Y%m%d')}.csv"
+    return StreamingResponse(
+        iter([output.read()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={fname}"},
+    )

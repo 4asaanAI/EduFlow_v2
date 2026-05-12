@@ -5,7 +5,8 @@ import {
   IndianRupee, Users, BarChart2, Bell, FileText, Megaphone,
   CalendarDays, UserPlus, MessageSquare, BookOpen, ClipboardList,
   PenTool, BarChart, Award, Truck, Package, Printer, FilePlus,
-  Target, FileCheck, LifeBuoy,
+  Target, FileCheck, LifeBuoy, Wrench, Monitor, AlertTriangle,
+  ScrollText, Shield,
 } from 'lucide-react';
 
 // ─── All tool definitions ──────────────────────────────────────────────────────
@@ -29,6 +30,12 @@ const T = {
   'custom-form-builder':   { id: 'custom-form-builder',   name: 'Form Builder',        subtitle: 'Dynamic forms',         icon: FilePlus,      color: '#737373' },
   'attendance-alerts':     { id: 'attendance-alerts',     name: 'Attendance Alerts',   subtitle: 'SMS below threshold',   icon: MessageSquare, color: '#a78bfa' },
   'query-section':         { id: 'query-section',         name: 'Query & Support',     subtitle: 'Tickets & issues',      icon: LifeBuoy,      color: '#22d3ee' },
+  // Phase 3 — new tool panels
+  'facility-requests':     { id: 'facility-requests',     name: 'Facility Requests',   subtitle: 'Maintenance queue',     icon: Wrench,        color: '#fb923c' },
+  'tech-issues':           { id: 'tech-issues',           name: 'Tech Issues',         subtitle: 'IT request tracker',    icon: Monitor,       color: '#818cf8' },
+  'incident-tracker':      { id: 'incident-tracker',      name: 'Incidents & Visitors',subtitle: 'Log & track',           icon: AlertTriangle, color: '#f87171' },
+  'audit-log':             { id: 'audit-log',             name: 'Audit Log',           subtitle: 'Who did what',          icon: ScrollText,    color: '#737373' },
+  'fee-receipts':          { id: 'fee-receipts',          name: 'Fee Receipts',        subtitle: 'PDF & export',          icon: FileText,      color: '#34d399' },
 
   // Teacher-only tools
   'class-attendance-marker':     { id: 'class-attendance-marker',     name: 'Attendance',           subtitle: 'Mark my class',        icon: ClipboardList, color: '#fb923c' },
@@ -53,21 +60,27 @@ const TOOL_SETS = {
     'student-database','fee-tracker','attendance-recorder','certificate-generator',
     'circular-sender','enquiry-register','document-scanner','smart-fee-defaulter',
     'admission-pipeline','parent-message','student-transfer','id-card-generator',
-    'timetable-builder','asset-tracker','transport-manager','automated-report',
-    'custom-form-builder','attendance-alerts','query-section',
+    'timetable-builder','asset-tracker','transport-manager','incident-tracker',
+    'automated-report','custom-form-builder','attendance-alerts','query-section',
+    'audit-log',
   ],
   admin_accountant: [
-    'student-database','fee-tracker','smart-fee-defaulter','custom-form-builder','query-section',
+    'student-database','fee-tracker','smart-fee-defaulter','fee-receipts',
+    'custom-form-builder','query-section',
   ],
   admin_transport_head: [
     'student-database','transport-manager','asset-tracker','custom-form-builder','query-section',
   ],
   admin_receptionist: [
     'student-database','enquiry-register','admission-pipeline','parent-message',
-    'student-transfer','id-card-generator','asset-tracker','custom-form-builder','query-section',
+    'student-transfer','id-card-generator','asset-tracker','incident-tracker',
+    'custom-form-builder','query-section',
   ],
   admin_it_tech: [
-    'query-section','custom-form-builder',
+    'tech-issues','query-section','custom-form-builder',
+  ],
+  admin_maintenance: [
+    'facility-requests','query-section',
   ],
 
   // Teacher (unchanged)
@@ -86,6 +99,7 @@ const SUB_ROLE_LABELS = {
   transport_head: 'Transport Head',
   receptionist:   'Receptionist',
   it_tech:        'IT & Tech',
+  maintenance:    'Maintenance',
   hod:            'HOD',
   coordinator:    'Coordinator',
   class_teacher:  'Class Teacher',
@@ -93,12 +107,24 @@ const SUB_ROLE_LABELS = {
   kg_incharge:    'KG In-charge',
 };
 
+const OWNER_TOOLS = [
+  'student-database','fee-tracker','attendance-recorder','certificate-generator',
+  'circular-sender','enquiry-register','smart-fee-defaulter','admission-pipeline',
+  'parent-message','id-card-generator','timetable-builder','asset-tracker',
+  'transport-manager','incident-tracker','facility-requests','tech-issues',
+  'fee-receipts','audit-log','automated-report','custom-form-builder',
+  'query-section',
+];
+
 function getTools(user) {
+  if (user.role === 'owner') {
+    return OWNER_TOOLS.map(id => T[id]).filter(Boolean);
+  }
   if (user.role === 'admin') {
     const key = `admin_${user.sub_category || 'principal'}`;
-    return (TOOL_SETS[key] || TOOL_SETS.admin_principal).map(id => T[id]);
+    return (TOOL_SETS[key] || TOOL_SETS.admin_principal).map(id => T[id]).filter(Boolean);
   }
-  return (TOOL_SETS[user.role] || []).map(id => T[id]);
+  return (TOOL_SETS[user.role] || []).map(id => T[id]).filter(Boolean);
 }
 
 function greeting() {

@@ -1,5 +1,33 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle, Edit3, Percent, Phone, RefreshCw, Save } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Edit3, Percent, Phone, RefreshCw, Save, FileDown } from 'lucide-react';
+import { getAuthHeaders } from '../../lib/authSession';
+
+const API = process.env.REACT_APP_BACKEND_URL + '/api';
+
+async function downloadReceipt(transactionId) {
+  const res = await fetch(`${API}/fees/transactions/${transactionId}/receipt`, { headers: getAuthHeaders() });
+  if (!res.ok) { alert('Receipt generation failed'); return; }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `receipt-${transactionId.slice(0, 8)}.pdf`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function exportFeeCSV(period) {
+  const params = period ? `?period=${period}` : '';
+  const res = await fetch(`${API}/fees/export${params}`, { headers: getAuthHeaders() });
+  if (!res.ok) { alert('Export failed'); return; }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `fees-export.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 import {
   applyFeeDiscount,
   correctFeeTransaction,
@@ -198,9 +226,14 @@ export default function FeeCollection() {
           <h1 style={{ fontSize: 22, fontWeight: 650, margin: 0, color: 'var(--c-text)' }}>Fee collection</h1>
           <p style={{ margin: '6px 0 0', color: 'var(--c-faint)', fontSize: 12 }}>Payments, corrections, defaulters, and contact recovery</p>
         </div>
-        <button onClick={loadData} disabled={loading} title="Refresh fee data" style={iconButton}>
-          <RefreshCw size={16} />
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => exportFeeCSV('')} title="Export all fees as CSV" style={iconButton}>
+            <FileDown size={16} />
+          </button>
+          <button onClick={loadData} disabled={loading} title="Refresh fee data" style={iconButton}>
+            <RefreshCw size={16} />
+          </button>
+        </div>
       </div>
 
       {error && <div role="alert" style={alertStyle('#f87171')}><AlertTriangle size={16} />{error}</div>}
@@ -359,7 +392,7 @@ export default function FeeCollection() {
           <div style={emptyStyle}>No overdue records at this threshold.</div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr>{['Student', 'Class', 'Head', 'Amount', 'Due', 'Status'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+            <thead><tr>{['Student', 'Class', 'Head', 'Amount', 'Due', 'Status', 'Receipt'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
             <tbody>
               {overdue.map((txn, index) => (
                 <tr key={txn.id} style={{ borderTop: index ? '1px solid var(--c-border)' : 'none' }}>
@@ -369,6 +402,13 @@ export default function FeeCollection() {
                   <td style={{ ...tdStyle, color: '#f87171', fontWeight: 700 }}>{money(txn.amount)}</td>
                   <td style={tdStyle}>{txn.due_date || '-'}</td>
                   <td style={tdStyle}>{txn.status}</td>
+                  <td style={tdStyle}>
+                    {txn.status === 'paid' && (
+                      <button onClick={() => downloadReceipt(txn.id)} title="Download PDF receipt" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4f8ff7', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+                        <FileDown size={13} /> PDF
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

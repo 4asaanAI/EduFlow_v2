@@ -8,7 +8,7 @@ import {
   ClipboardList, Brain, PenTool, BarChart, UserCheck, Award, Truck,
   Package, Printer, FilePlus, HelpCircle, Target, Compass, FileCheck,
   Edit2, X, ChevronDown, ChevronRight, MessageCircle, Settings, User, LogOut, Sun, Moon,
-  LifeBuoy, Database, RefreshCw,
+  LifeBuoy, Database, RefreshCw, Wrench, Monitor, AlertTriangle, ScrollText,
 } from 'lucide-react';
 
 const TOOLS_BY_ROLE = {
@@ -35,11 +35,17 @@ const TOOLS_BY_ROLE = {
     { id: 'board-report', name: 'Board Report', subtitle: 'Trust meeting data', icon: FileText, color: '#737373' },
     { id: 'smart-fee-defaulter', name: 'Fee Defaulters', subtitle: 'Reminders via SMS', icon: Bell, color: '#f87171' },
     { id: 'attendance-alerts', name: 'Attendance Alerts', subtitle: 'SMS below threshold', icon: MessageSquare, color: '#a78bfa' },
+    { id: 'facility-requests', name: 'Facility Requests', subtitle: 'Maintenance queue', icon: Wrench, color: '#fb923c' },
+    { id: 'tech-issues', name: 'Tech Issues', subtitle: 'IT request tracker', icon: Monitor, color: '#818cf8' },
+    { id: 'incident-tracker', name: 'Incidents & Visitors', subtitle: 'Log & track', icon: AlertTriangle, color: '#f87171' },
+    { id: 'audit-log', name: 'Audit Log', subtitle: 'Who did what', icon: ScrollText, color: '#737373' },
+    { id: 'fee-receipts', name: 'Fee Receipts', subtitle: 'PDF & export', icon: FileText, color: '#34d399' },
     { id: 'query-section', name: 'Query & Support', subtitle: 'Tickets & issues', icon: LifeBuoy, color: '#22d3ee' },
   ],
   admin: [
     { id: 'student-database', name: 'Student Database', subtitle: 'Manage & search', icon: Users, color: '#4f8ff7' },
     { id: 'fee-tracker', name: 'Fee Tracker', subtitle: 'Reminders & dues', icon: IndianRupee, color: '#34d399' },
+    { id: 'fee-receipts', name: 'Fee Receipts', subtitle: 'PDF & export', icon: FileText, color: '#34d399' },
     { id: 'attendance-recorder', name: 'Attendance', subtitle: 'Mark & track', icon: ClipboardList, color: '#fb923c' },
     { id: 'certificate-generator', name: 'Certificates', subtitle: 'TC, Bonafide, etc.', icon: Award, color: '#fbbf24' },
     { id: 'circular-sender', name: 'Circulars', subtitle: 'Notices & messages', icon: Megaphone, color: '#22d3ee' },
@@ -53,6 +59,10 @@ const TOOLS_BY_ROLE = {
     { id: 'timetable-builder', name: 'Timetable', subtitle: 'Build & manage', icon: CalendarDays, color: '#f472b6' },
     { id: 'asset-tracker', name: 'Asset Tracker', subtitle: 'Inventory & items', icon: Package, color: '#22d3ee' },
     { id: 'transport-manager', name: 'Transport', subtitle: 'Routes & buses', icon: Truck, color: '#fb923c' },
+    { id: 'facility-requests', name: 'Facility Requests', subtitle: 'Maintenance queue', icon: Wrench, color: '#fb923c' },
+    { id: 'tech-issues', name: 'Tech Issues', subtitle: 'IT request tracker', icon: Monitor, color: '#818cf8' },
+    { id: 'incident-tracker', name: 'Incidents & Visitors', subtitle: 'Log & track', icon: AlertTriangle, color: '#f87171' },
+    { id: 'audit-log', name: 'Audit Log', subtitle: 'Who did what', icon: ScrollText, color: '#737373' },
     { id: 'automated-report', name: 'Auto Reports', subtitle: 'Scheduled reports', icon: FileText, color: '#737373' },
     { id: 'custom-form-builder', name: 'Form Builder', subtitle: 'Dynamic forms', icon: FilePlus, color: '#737373' },
     { id: 'attendance-alerts', name: 'Attendance Alerts', subtitle: 'SMS below threshold', icon: MessageSquare, color: '#a78bfa' },
@@ -92,6 +102,22 @@ const TOOLS_BY_ROLE = {
 
 const ROLE_COLORS = { owner: '#fb923c', admin: '#4f8ff7', teacher: '#34d399', student: '#a78bfa' };
 const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', teacher: 'Teacher', student: 'Student' };
+
+const ADMIN_SUBCATEGORY_TOOLS = {
+  accountant: ['student-database', 'fee-tracker', 'smart-fee-defaulter', 'fee-receipts', 'custom-form-builder', 'query-section'],
+  transport_head: ['student-database', 'transport-manager', 'asset-tracker', 'custom-form-builder', 'query-section'],
+  receptionist: ['student-database', 'enquiry-register', 'admission-pipeline', 'parent-message', 'student-transfer', 'id-card-generator', 'asset-tracker', 'incident-tracker', 'custom-form-builder', 'query-section'],
+  it_tech: ['tech-issues', 'query-section', 'custom-form-builder'],
+  maintenance: ['facility-requests', 'query-section'],
+};
+
+function getSidebarTools(user) {
+  const tools = TOOLS_BY_ROLE[user.role] || [];
+  if (user.role !== 'admin') return tools;
+  const allowed = ADMIN_SUBCATEGORY_TOOLS[user.sub_category];
+  if (!allowed) return tools;
+  return allowed.map(id => tools.find(tool => tool.id === id)).filter(Boolean);
+}
 
 function timeAgo(iso) {
   if (!iso) return '';
@@ -145,7 +171,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   const [toolActivity, setToolActivity] = useState([]);
   const userMenuRef = useRef(null);
 
-  const tools = TOOLS_BY_ROLE[currentUser.role] || [];
+  const tools = getSidebarTools(currentUser);
 
   useEffect(() => {
     if (!isToolDashboardRole) loadConversations();
