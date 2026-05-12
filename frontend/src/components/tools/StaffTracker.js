@@ -202,7 +202,13 @@ export default function StaffTracker() {
   useEffect(() => { loadData(); }, [page, sort]);
 
   const handleLeave = async (leaveId, status) => {
-    await updateLeave(leaveId, status);
+    const reason = window.prompt(`Reason for ${status} decision`);
+    if (!reason || !reason.trim()) {
+      setError('Leave decision reason is required');
+      return;
+    }
+    const res = await updateLeave(leaveId, status, reason.trim());
+    if (!res.success) setError(res.detail || 'Unable to update leave request');
     loadData();
   };
 
@@ -307,7 +313,7 @@ export default function StaffTracker() {
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                 <div>
                   <div style={{ fontWeight: 650, color: 'var(--c-text)', fontSize: 14 }}>{leave.staff?.name || leave.staff_name || 'Staff member'}</div>
-                  <div style={{ color: 'var(--c-faint)', fontSize: 12, marginTop: 2 }}>{leave.leave_type} · {leave.start_date} to {leave.end_date}</div>
+                  <div style={{ color: 'var(--c-faint)', fontSize: 12, marginTop: 2 }}>{leave.leave_type} - {leave.start_date || leave.date_range?.start} to {leave.end_date || leave.date_range?.end}</div>
                   <div style={{ color: 'var(--c-muted)', fontSize: 12, marginTop: 4 }}>{leave.reason}</div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>

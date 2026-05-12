@@ -35,9 +35,9 @@ development_status:
   2-7-attendance-correction-with-audit-trail-manual-entry-fallback: done
   2-8-fee-management-full-crud-idempotency: done
   2-9-discount-policy-engine: done
-  2-10-operations-leave-requests-approvals-workflow: backlog
-  2-31-fee-software-api-sync: backlog
-  epic-2-retrospective: optional
+  2-10-operations-leave-requests-approvals-workflow: done
+  2-31-fee-software-api-sync: done
+  epic-2-retrospective: done
 
   # ─────────────────────────────────────────────
   # Phase 3 — New Capabilities (9 stories)

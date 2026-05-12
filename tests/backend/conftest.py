@@ -39,6 +39,7 @@ try:
     import routes.staff as staff_routes
     import routes.attendance as attendance_routes
     import routes.fees as fees_routes
+    import routes.operations as operations_routes
     from middleware.auth import hash_password
     APP_AVAILABLE = True
 except ImportError as e:
@@ -204,6 +205,9 @@ class FakeDb:
         self.guardians = FakeCollection()
         self.staff = FakeCollection()
         self.leave_requests = FakeCollection()
+        self.staff_availability = FakeCollection()
+        self.approval_requests = FakeCollection()
+        self.notifications = FakeCollection()
         self.audit_logs = FakeCollection()
         self.file_uploads = FakeCollection()
         self.student_attendance = FakeCollection()
@@ -215,6 +219,7 @@ class FakeDb:
         self.fee_structures = FakeCollection()
         self.fee_discount_types = FakeCollection()
         self.fee_discounts = FakeCollection()
+        self.fee_sync_jobs = FakeCollection()
 
 
 if APP_AVAILABLE:
@@ -233,6 +238,7 @@ if APP_AVAILABLE:
     staff_routes.get_db = lambda: _fake_db
     attendance_routes.get_db = lambda: _fake_db
     fees_routes.get_db = lambda: _fake_db
+    operations_routes.get_db = lambda: _fake_db
 
 
 # ─── Event loop (for async tests) ─────────────────────────────────────────

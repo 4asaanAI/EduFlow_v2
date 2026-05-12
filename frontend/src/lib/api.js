@@ -281,6 +281,23 @@ export async function getDiscountSummary() {
   return res.json();
 }
 
+export async function triggerFeeSync() {
+  const res = await apiFetch(`${API}/fees/sync/trigger`, { method: 'POST', headers: getHeaders() });
+  return res.json();
+}
+
+export async function getFeeSyncJob(syncJobId) {
+  const res = await apiFetch(`${API}/fees/sync/${syncJobId}`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function resolveFeeSyncConflict(syncJobId, data) {
+  const res = await apiFetch(`${API}/fees/sync/${syncJobId}/resolve-conflict`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
 // --- Tools ---
 export async function executeTool(toolId, params) {
   const res = await apiFetch(`${API}/tools/${toolId}/execute`, {
@@ -322,9 +339,42 @@ export async function getPendingLeaves() {
   return res.json();
 }
 
-export async function updateLeave(leaveId, status) {
-  const res = await apiFetch(`${API}/staff/leaves/${leaveId}`, {
-    method: 'PATCH', headers: getHeaders(), body: JSON.stringify({ status }),
+export async function updateLeave(leaveId, status, reason = 'Reviewed in staff tracker') {
+  const res = await apiFetch(`${API}/operations/leave-requests/${leaveId}/decide`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify({ status, reason }),
+  });
+  return res.json();
+}
+
+export async function createLeaveRequest(data) {
+  const res = await apiFetch(`${API}/operations/leave-requests`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function getOperationLeaveRequests(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  const res = await apiFetch(`${API}/operations/leave-requests?${qs}`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function createApprovalRequest(data) {
+  const res = await apiFetch(`${API}/operations/approval-requests`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function getApprovalRequests(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  const res = await apiFetch(`${API}/operations/approval-requests?${qs}`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function decideApprovalRequest(approvalId, data) {
+  const res = await apiFetch(`${API}/operations/approval-requests/${approvalId}/decide`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(data),
   });
   return res.json();
 }

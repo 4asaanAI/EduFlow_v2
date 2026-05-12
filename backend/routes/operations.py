@@ -3,13 +3,211 @@ from fastapi import APIRouter, Request, HTTPException
 from database import get_db
 from middleware.auth import get_current_user
 from datetime import datetime
+from tenant import get_school_id, scoped_filter
 import uuid
 
 router = APIRouter(prefix="/api/ops", tags=["operations"])
+workflow_router = APIRouter(prefix="/api/operations", tags=["operations-workflow"])
 
 
 def get_user(req: Request):
     return get_current_user(req)
+
+
+def _can_decide(user: dict) -> bool:
+    return user.get("role") == "owner" or (user.get("role") == "admin" and user.get("sub_category", "principal") == "principal")
+
+
+def _audit_doc(action: str, entity_type: str, entity_id: str, user: dict, changes: dict, reason: str = None):
+    return {
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "schoolId": get_school_id(),
+        "entity_type": entity_type,
+        "entity_id": entity_id,
+        "action": action,
+        "changed_by": user.get("id"),
+        "changed_by_role": user.get("role"),
+        "changes": changes,
+        "reason": reason,
+        "created_at": datetime.now().isoformat(),
+    }
+
+
+async def _notify(db, *, user_id: str, notification_type: str, message: str, source_id: str, source_type: str):
+    await db.notifications.insert_one({
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "schoolId": get_school_id(),
+        "user_id": user_id,
+        "type": notification_type,
+        "message": message,
+        "source_record_id": source_id,
+        "source_record_type": source_type,
+        "read": False,
+        "created_at": datetime.now().isoformat(),
+    })
+
+
+@workflow_router.post("/leave-requests")
+async def create_leave_request(request: Request):
+    db = get_db()
+    user = get_user(request)
+    body = await request.json()
+    if body.get("user_id") and body.get("user_id") != user["id"]:
+        raise HTTPException(403, "Cannot submit leave on behalf of another user")
+    if not body.get("date_range") or not body.get("leave_type") or not body.get("reason"):
+        raise HTTPException(400, "date_range, leave_type, and reason are required")
+    staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})
+    if not staff:
+        raise HTTPException(404, "Staff profile not found")
+    leave = {
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "schoolId": get_school_id(),
+        "staff_id": staff["id"],
+        "user_id": user["id"],
+        "date_range": body["date_range"],
+        "start_date": body["date_range"].get("start"),
+        "end_date": body["date_range"].get("end"),
+        "leave_type": body["leave_type"],
+        "reason": body["reason"],
+        "status": "pending",
+        "applied_at": datetime.now().isoformat(),
+    }
+    await db.leave_requests.insert_one(leave)
+    await db.audit_logs.insert_one(_audit_doc("leave_submit", "leave_request", leave["id"], user, {"created": {k: v for k, v in leave.items() if k != "_id"}}))
+    return {"success": True, "data": {k: v for k, v in leave.items() if k != "_id"}}
+
+
+@workflow_router.get("/leave-requests")
+async def list_leave_requests(request: Request, status: str = None, page: int = 1, limit: int = 20):
+    db = get_db()
+    user = get_user(request)
+    query = {"status": status} if status else {}
+    if not _can_decide(user):
+        query["user_id"] = user["id"]
+    limit = min(max(limit, 1), 20)
+    skip = max(page - 1, 0) * limit
+    total = await db.leave_requests.count_documents(scoped_filter(query, get_school_id()))
+    items = await db.leave_requests.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("applied_at", -1).skip(skip).limit(limit).to_list(limit)
+    return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
+
+
+@workflow_router.patch("/leave-requests/{leave_id}/decide")
+async def decide_leave_request(leave_id: str, request: Request):
+    db = get_db()
+    user = get_user(request)
+    if not _can_decide(user):
+        raise HTTPException(403, "Only Owner or Principal can decide leave requests")
+    body = await request.json()
+    if body.get("status") not in ("approved", "rejected") or not body.get("reason"):
+        raise HTTPException(400, "status approved/rejected and reason are required")
+    leave = await db.leave_requests.find_one(scoped_filter({"id": leave_id}, get_school_id()), {"_id": 0})
+    if not leave:
+        raise HTTPException(404, "Leave request not found")
+    update = {
+        "status": body["status"],
+        "decision_reason": body["reason"],
+        "decided_by": user["id"],
+        "decided_at": datetime.now().isoformat(),
+    }
+    await db.leave_requests.update_one(scoped_filter({"id": leave_id}, get_school_id()), {"$set": update})
+    if body["status"] == "approved":
+        await db.staff_availability.update_one(
+            scoped_filter({"staff_id": leave["staff_id"], "leave_request_id": leave_id}, get_school_id()),
+            {"$set": {
+                "staff_id": leave["staff_id"],
+                "leave_request_id": leave_id,
+                "status": "on_leave",
+                "date_range": leave.get("date_range"),
+                "schoolId": get_school_id(),
+                "updated_at": datetime.now().isoformat(),
+            }},
+            upsert=True,
+        )
+    await db.audit_logs.insert_one(_audit_doc("leave_decide", "leave_request", leave_id, user, update, body["reason"]))
+    await _notify(db, user_id=leave["user_id"], notification_type="leave_decision", message=f"Leave request {body['status']}", source_id=leave_id, source_type="leave_request")
+    updated = await db.leave_requests.find_one(scoped_filter({"id": leave_id}, get_school_id()), {"_id": 0})
+    return {"success": True, "data": updated}
+
+
+@workflow_router.post("/approval-requests")
+async def create_approval_request(request: Request):
+    db = get_db()
+    user = get_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(403, "Only Admin users can submit approval requests")
+    body = await request.json()
+    required = {"title", "description", "estimated_impact", "note", "routing"}
+    if any(not body.get(field) for field in required):
+        raise HTTPException(400, "title, description, estimated_impact, note, and routing are required")
+    if body["routing"] not in ("owner_only", "owner_and_principal"):
+        raise HTTPException(400, "routing must be owner_only or owner_and_principal")
+    record = {
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "schoolId": get_school_id(),
+        "title": body["title"],
+        "description": body["description"],
+        "estimated_impact": body["estimated_impact"],
+        "note": body["note"],
+        "routing": body["routing"],
+        "status": "pending",
+        "submitted_by": user["id"],
+        "submitted_at": datetime.now().isoformat(),
+        "unread_for": ["owner"] + (["principal"] if body["routing"] == "owner_and_principal" else []),
+    }
+    await db.approval_requests.insert_one(record)
+    await db.audit_logs.insert_one(_audit_doc("approval_submit", "approval_request", record["id"], user, {"created": {k: v for k, v in record.items() if k != "_id"}}))
+    await _notify(db, user_id="owner", notification_type="approval_submitted", message=record["title"], source_id=record["id"], source_type="approval_request")
+    if body["routing"] == "owner_and_principal":
+        await _notify(db, user_id="principal", notification_type="approval_submitted", message=record["title"], source_id=record["id"], source_type="approval_request")
+    return {"success": True, "data": {k: v for k, v in record.items() if k != "_id"}}
+
+
+@workflow_router.get("/approval-requests")
+async def list_approval_requests(request: Request, status: str = None):
+    db = get_db()
+    user = get_user(request)
+    query = {"status": status} if status else {}
+    if user.get("role") == "owner":
+        pass
+    elif user.get("role") == "admin" and user.get("sub_category", "principal") == "principal":
+        query["routing"] = "owner_and_principal"
+    else:
+        query["submitted_by"] = user["id"]
+    items = await db.approval_requests.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("submitted_at", -1).to_list(100)
+    role_key = "owner" if user.get("role") == "owner" else "principal"
+    unread = sum(1 for item in items if role_key in item.get("unread_for", []))
+    return {"success": True, "data": items, "meta": {"unread_count": unread}}
+
+
+@workflow_router.patch("/approval-requests/{approval_id}/decide")
+async def decide_approval_request(approval_id: str, request: Request):
+    db = get_db()
+    user = get_user(request)
+    body = await request.json()
+    if body.get("status") not in ("approved", "rejected") or not body.get("reason"):
+        raise HTTPException(400, "status approved/rejected and reason are required")
+    approval = await db.approval_requests.find_one(scoped_filter({"id": approval_id}, get_school_id()), {"_id": 0})
+    if not approval:
+        raise HTTPException(404, "Approval request not found")
+    principal = user.get("role") == "admin" and user.get("sub_category", "principal") == "principal"
+    if user.get("role") != "owner" and not (principal and approval.get("routing") == "owner_and_principal"):
+        raise HTTPException(403, "Not authorized to decide this approval request")
+    update = {
+        "status": body["status"],
+        "decision_reason": body["reason"],
+        "decided_by": user["id"],
+        "decided_at": datetime.now().isoformat(),
+        "unread_for": [],
+    }
+    await db.approval_requests.update_one(scoped_filter({"id": approval_id}, get_school_id()), {"$set": update})
+    await db.audit_logs.insert_one(_audit_doc("approval_decide", "approval_request", approval_id, user, update, body["reason"]))
+    await _notify(db, user_id=approval["submitted_by"], notification_type="approval_decision", message=f"{approval['title']} {body['status']}", source_id=approval_id, source_type="approval_request")
+    updated = await db.approval_requests.find_one(scoped_filter({"id": approval_id}, get_school_id()), {"_id": 0})
+    return {"success": True, "data": updated}
 
 
 # --- Certificates ---

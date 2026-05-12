@@ -7,6 +7,8 @@ from middleware.auth import get_current_user
 from datetime import datetime, timedelta
 from tenant import get_school_id, scoped_filter
 import uuid
+import os
+import httpx
 
 router = APIRouter(prefix="/api/fees", tags=["fees"])
 
@@ -470,3 +472,155 @@ async def get_discount_summary(request: Request):
         "total_discount_value": total_discount,
         "discount_types": by_type,
     }}
+
+
+def _fee_sync_config():
+    base_url = os.environ.get("FEE_API_BASE_URL")
+    api_key = os.environ.get("FEE_API_KEY")
+    if not base_url or not api_key:
+        raise HTTPException(503, "FEE_API_BASE_URL and FEE_API_KEY must be configured before fee sync")
+    return base_url.rstrip("/"), api_key
+
+
+async def _fetch_external_fee_records():
+    base_url, api_key = _fee_sync_config()
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.get(f"{base_url}/fees", headers={"Authorization": f"Bearer {api_key}"})
+        response.raise_for_status()
+        payload = response.json()
+        return payload.get("data", payload if isinstance(payload, list) else [])
+
+
+def _external_key(record: dict):
+    return record.get("student_id"), record.get("fee_period") or record.get("period"), record.get("fee_head") or record.get("fee_type")
+
+
+@router.post("/sync/trigger")
+async def trigger_fee_sync(request: Request):
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["owner", "admin"]:
+        raise HTTPException(403, "Forbidden")
+    job_id = str(uuid.uuid4())
+    job = {
+        "_id": job_id,
+        "id": job_id,
+        "schoolId": get_school_id(),
+        "status": "running",
+        "synced_count": 0,
+        "conflict_count": 0,
+        "conflicts": [],
+        "triggered_by": user["id"],
+        "created_at": datetime.now().isoformat(),
+    }
+    await db.fee_sync_jobs.insert_one(job)
+    try:
+        records = await _fetch_external_fee_records()
+    except HTTPException as exc:
+        await db.fee_sync_jobs.update_one(_fee_query({"id": job_id}), {"$set": {"status": "failed", "error": exc.detail, "completed_at": datetime.now().isoformat()}})
+        await _audit(db, action="fee_sync_failed", entity_id=job_id, user=user, changes={"error": exc.detail})
+        raise
+    except Exception as exc:
+        message = f"Fee sync failed: {exc}"
+        await db.fee_sync_jobs.update_one(_fee_query({"id": job_id}), {"$set": {"status": "failed", "error": message, "completed_at": datetime.now().isoformat()}})
+        await _audit(db, action="fee_sync_failed", entity_id=job_id, user=user, changes={"error": message})
+        return {"success": True, "data": {"sync_job_id": job_id, "status": "failed", "error": message}}
+
+    conflicts = []
+    synced = 0
+    for record in records:
+        student_id, period, fee_head = _external_key(record)
+        if not student_id or not period or not fee_head:
+            continue
+        existing = await db.fee_transactions.find_one(_fee_query({"student_id": student_id, "fee_period": period, "fee_head": fee_head}), {"_id": 0})
+        amount = float(record.get("amount", 0))
+        if existing and float(existing.get("amount", 0)) != amount:
+            conflicts.append({
+                "id": str(uuid.uuid4()),
+                "student_id": student_id,
+                "period": period,
+                "fee_head": fee_head,
+                "ours": existing,
+                "theirs": record,
+                "status": "conflict",
+            })
+            continue
+        if not existing:
+            txn_id = str(uuid.uuid4())
+            await db.fee_transactions.insert_one({
+                "_id": txn_id,
+                "id": txn_id,
+                "schoolId": get_school_id(),
+                "student_id": student_id,
+                "fee_period": period,
+                "fee_head": fee_head,
+                "fee_type": fee_head,
+                "amount": amount,
+                "status": record.get("status", "pending"),
+                "due_date": record.get("due_date"),
+                "created_at": datetime.now().isoformat(),
+                "source": "fee_api_sync",
+            })
+            synced += 1
+
+    status = "conflict" if conflicts else "completed"
+    update = {
+        "status": status,
+        "synced_count": synced,
+        "conflict_count": len(conflicts),
+        "conflicts": conflicts,
+        "completed_at": datetime.now().isoformat(),
+    }
+    await db.fee_sync_jobs.update_one(_fee_query({"id": job_id}), {"$set": update})
+    await _audit(db, action="fee_sync_completed", entity_id=job_id, user=user, changes=update)
+    return {"success": True, "data": {"sync_job_id": job_id, **update}}
+
+
+@router.get("/sync/{sync_job_id}")
+async def get_fee_sync_job(sync_job_id: str, request: Request):
+    user = get_user(request)
+    if user["role"] not in ["owner", "admin"]:
+        raise HTTPException(403, "Forbidden")
+    job = await get_db().fee_sync_jobs.find_one(_fee_query({"id": sync_job_id}), {"_id": 0})
+    if not job:
+        raise HTTPException(404, "Sync job not found")
+    return {"success": True, "data": job}
+
+
+@router.post("/sync/{sync_job_id}/resolve-conflict")
+async def resolve_fee_sync_conflict(sync_job_id: str, request: Request):
+    db = get_db()
+    user = get_user(request)
+    if user["role"] != "owner":
+        raise HTTPException(403, "Only Owner can resolve fee sync conflicts")
+    body = await request.json()
+    conflict_id = body.get("conflict_id")
+    decision = body.get("decision")
+    if not conflict_id or decision not in ("keep_ours", "use_theirs"):
+        raise HTTPException(400, "conflict_id and decision keep_ours/use_theirs are required")
+    job = await db.fee_sync_jobs.find_one(_fee_query({"id": sync_job_id}), {"_id": 0})
+    if not job:
+        raise HTTPException(404, "Sync job not found")
+    conflicts = job.get("conflicts", [])
+    target = next((item for item in conflicts if item.get("id") == conflict_id), None)
+    if not target:
+        raise HTTPException(404, "Conflict not found")
+    if decision == "use_theirs":
+        theirs = target["theirs"]
+        await db.fee_transactions.update_one(
+            _fee_query({"student_id": target["student_id"], "fee_period": target["period"], "fee_head": target["fee_head"]}),
+            {"$set": {"amount": float(theirs.get("amount", 0)), "status": theirs.get("status", "pending"), "due_date": theirs.get("due_date"), "updated_at": datetime.now().isoformat(), "source": "fee_api_sync"}},
+            upsert=True,
+        )
+    for conflict in conflicts:
+        if conflict.get("id") == conflict_id:
+            conflict["status"] = "resolved"
+            conflict["resolution"] = decision
+            conflict["resolved_by"] = user["id"]
+            conflict["resolved_at"] = datetime.now().isoformat()
+    unresolved = [item for item in conflicts if item.get("status") == "conflict"]
+    update = {"conflicts": conflicts, "conflict_count": len(unresolved), "status": "completed" if not unresolved else "conflict"}
+    await db.fee_sync_jobs.update_one(_fee_query({"id": sync_job_id}), {"$set": update})
+    await _audit(db, action="fee_sync_conflict_resolved", entity_id=sync_job_id, user=user, changes={"conflict_id": conflict_id, "decision": decision})
+    updated = await db.fee_sync_jobs.find_one(_fee_query({"id": sync_job_id}), {"_id": 0})
+    return {"success": True, "data": updated}
