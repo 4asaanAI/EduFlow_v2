@@ -171,8 +171,9 @@ export async function getAllClasses() {
 }
 
 // --- Attendance ---
-export async function getTodayAttendance(classId) {
-  const res = await apiFetch(`${API}/attendance/student/today/${classId}`, { headers: getHeaders() });
+export async function getTodayAttendance(classId, date) {
+  const qs = date ? `?date=${encodeURIComponent(date)}` : '';
+  const res = await apiFetch(`${API}/attendance/student/today/${classId}${qs}`, { headers: getHeaders() });
   return res.json();
 }
 
@@ -180,6 +181,25 @@ export async function bulkMarkAttendance(payload) {
   const res = await apiFetch(`${API}/attendance/student/bulk`, {
     method: 'POST', headers: getHeaders(), body: JSON.stringify(payload),
   });
+  return res.json();
+}
+
+export async function createManualAttendance(payload) {
+  const res = await apiFetch(`${API}/attendance`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
+export async function correctAttendance(attendanceId, payload) {
+  const res = await apiFetch(`${API}/attendance/${attendanceId}/correct`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
+export async function getAttendanceHistory(attendanceId) {
+  const res = await apiFetch(`${API}/attendance/${attendanceId}/history`, { headers: getHeaders() });
   return res.json();
 }
 

@@ -32,7 +32,7 @@ development_status:
   epic-2: backlog
   2-5-student-profile-full-crud: done
   2-6-staff-profile-full-crud: done
-  2-7-attendance-correction-with-audit-trail-manual-entry-fallback: backlog
+  2-7-attendance-correction-with-audit-trail-manual-entry-fallback: done
   2-8-fee-management-full-crud-idempotency: backlog
   2-9-discount-policy-engine: backlog
   2-10-operations-leave-requests-approvals-workflow: backlog
