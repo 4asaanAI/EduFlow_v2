@@ -54,6 +54,10 @@ def _get_nested(doc, key):
 
 def _matches(doc, query):
     for key, expected in (query or {}).items():
+        if key == "$and":
+            if not all(_matches(doc, option) for option in expected):
+                return False
+            continue
         if key == "$or":
             if not any(_matches(doc, option) for option in expected):
                 return False
@@ -63,6 +67,10 @@ def _matches(doc, query):
             for op, value in expected.items():
                 if op == "$in" and actual not in value:
                     return False
+                if op == "$exists":
+                    exists = actual is not None
+                    if exists is not bool(value):
+                        return False
                 if op == "$regex":
                     import re
                     flags = re.I if expected.get("$options") == "i" else 0
@@ -143,6 +151,11 @@ class FakeCollection:
         self.docs[:] = [doc for doc in self.docs if not _matches(doc, query)]
         return type("Result", (), {"deleted_count": before - len(self.docs)})()
 
+    async def delete_many(self, query):
+        before = len(self.docs)
+        self.docs[:] = [doc for doc in self.docs if not _matches(doc, query)]
+        return type("Result", (), {"deleted_count": before - len(self.docs)})()
+
 
 class FakeDb:
     def __init__(self):
@@ -159,14 +172,29 @@ class FakeDb:
         self.login_attempts = FakeCollection()
         self.refresh_tokens = FakeCollection()
         self.students = FakeCollection([
-            {"id": "student-1", "name": "Demo Student", "class_id": "class-1", "admission_number": "ADM1", "is_active": True}
+            {
+                "id": "student-1",
+                "schoolId": "aaryans-joya",
+                "name": "Demo Student",
+                "class_id": "class-1",
+                "admission_number": "ADM1",
+                "is_active": True,
+                "status": "active",
+                "created_at": "2026-01-01T00:00:00",
+            }
+        ])
+        self.academic_years = FakeCollection([
+            {"id": "year-1", "schoolId": "aaryans-joya", "name": "2026-27", "is_current": True}
         ])
         self.classes = FakeCollection([
-            {"id": "class-1", "name": "Class 5", "section": "A"},
-            {"id": "class-2", "name": "5", "section": "A"},
+            {"id": "class-1", "schoolId": "aaryans-joya", "academic_year_id": "year-1", "name": "Class 5", "section": "A"},
+            {"id": "class-2", "schoolId": "aaryans-joya", "academic_year_id": "year-1", "name": "5", "section": "A"},
         ])
         self.guardians = FakeCollection()
         self.staff = FakeCollection()
+        self.audit_logs = FakeCollection()
+        self.file_uploads = FakeCollection()
+        self.student_attendance = FakeCollection()
 
 
 if APP_AVAILABLE:
@@ -206,6 +234,13 @@ def client() -> Generator:
         pytest.skip(f"App not importable: {_import_error}")
     with TestClient(app, raise_server_exceptions=True) as c:
         yield c
+
+
+@pytest.fixture
+def fake_db():
+    if not APP_AVAILABLE:
+        pytest.skip(f"App not importable: {_import_error}")
+    return _fake_db
 
 
 @pytest_asyncio.fixture(scope="session")

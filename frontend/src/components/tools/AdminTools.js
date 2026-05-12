@@ -7,12 +7,15 @@ import { getStudents, createStudent, getAllClasses, getTodayAttendance, bulkMark
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn } from './ToolPage';
 import { Search, Plus, CheckCircle, XCircle, Save, RefreshCw, X, FileDown } from 'lucide-react';
+import FullStudentDatabase from './StudentDatabase';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function h() { return getAuthHeaders(); }
 
 // 1. Student Database Manager
 export function StudentDatabase() {
+  return <FullStudentDatabase />;
+
   const { currentUser } = useUser();
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);

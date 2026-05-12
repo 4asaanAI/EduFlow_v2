@@ -129,6 +129,42 @@ export async function createStudent(user, data) {
   return res.json();
 }
 
+export async function updateStudent(studentId, data) {
+  const res = await apiFetch(`${API}/students/${studentId}`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function deactivateStudent(studentId) {
+  const res = await apiFetch(`${API}/students/${studentId}`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
+  return res.json();
+}
+
+export async function eraseStudent(studentId, reason) {
+  const body = new FormData();
+  body.append('reason', reason);
+  const headers = getHeaders();
+  delete headers['Content-Type'];
+  const res = await apiFetch(`${API}/students/${studentId}/erase`, {
+    method: 'POST', headers, body,
+  });
+  return res.json();
+}
+
+export async function uploadStudentPhoto(studentId, file) {
+  const body = new FormData();
+  body.append('file', file);
+  const headers = getHeaders();
+  delete headers['Content-Type'];
+  const res = await apiFetch(`${API}/students/${studentId}/photo`, {
+    method: 'POST', headers, body,
+  });
+  return res.json();
+}
+
 export async function getAllClasses() {
   const res = await apiFetch(`${API}/settings/classes`, { headers: getHeaders() });
   return res.json();
