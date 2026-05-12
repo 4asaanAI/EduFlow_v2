@@ -19,6 +19,7 @@ const TOOLS_BY_ROLE = {
     { id: 'student-database', name: 'Student Database', subtitle: 'Manage & search', icon: Users, color: '#4f8ff7' },
     { id: 'data-import', name: 'Data Import', subtitle: 'Validate & seed students', icon: Database, color: '#22d3ee' },
     { id: 'attendance-overview', name: 'Attendance Overview', subtitle: 'Trends & patterns', icon: ClipboardList, color: '#a78bfa' },
+    { id: 'staff-tracker', name: 'Staff Tracker', subtitle: 'Profiles & roles', icon: UserCheck, color: '#4f8ff7' },
     { id: 'staff-attendance-tracker', name: 'Staff Tracker', subtitle: 'Attendance & leaves', icon: UserCheck, color: '#22d3ee' },
     { id: 'financial-reports', name: 'Financial Reports', subtitle: 'Revenue & expenses', icon: FileText, color: '#22d3ee' },
     { id: 'announcement-broadcaster', name: 'Announcements', subtitle: 'Broadcast messages', icon: Megaphone, color: '#fbbf24' },

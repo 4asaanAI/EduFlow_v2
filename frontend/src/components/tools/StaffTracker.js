@@ -1,158 +1,327 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { createStaff, deactivateStaff, getPendingLeaves, getStaff, updateLeave, updateStaff } from '../../lib/api';
+import { CheckCircle, Edit3, Plus, RefreshCw, X, XCircle } from 'lucide-react';
 import { useUser } from '../../contexts/UserContext';
-import { executeTool } from '../../lib/api';
-import { updateLeave } from '../../lib/api';
-import { Users, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
 
-const STATUS_COLOR = {
-  present: '#34d399',
-  absent: '#f87171',
-  late: '#fbbf24',
-  on_leave: '#a78bfa',
-  not_marked: 'var(--c-faint)',
+const blankForm = {
+  name: '',
+  staff_type: 'teacher',
+  employee_id: '',
+  phone: '',
+  email: '',
+  department: '',
+  qualification: '',
+  specialization: '',
+  role: 'teacher',
+  sub_category: '',
+  casual_leave_balance: 12,
+  medical_leave_balance: 10,
+  earned_leave_balance: 15,
 };
+
+const inputStyle = {
+  width: '100%',
+  background: 'var(--c-bg)',
+  border: '1px solid var(--c-border)',
+  borderRadius: 8,
+  padding: '9px 12px',
+  color: 'var(--c-text)',
+  fontSize: 13,
+  outline: 'none',
+};
+
+function ActionButton({ children, onClick, disabled, variant = 'primary', type = 'button' }) {
+  const secondary = variant === 'secondary';
+  const danger = variant === 'danger';
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        minHeight: 38,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 7,
+        background: danger ? '#7f1d1d' : secondary ? 'var(--c-bg)' : '#4f8ff7',
+        border: secondary ? '1px solid var(--c-border)' : 'none',
+        borderRadius: 8,
+        padding: '8px 13px',
+        color: danger || !secondary ? '#fff' : 'var(--c-muted)',
+        fontSize: 12,
+        fontWeight: 650,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.65 : 1,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function StaffModal({ initialStaff, canEditLeaveBalances, onClose, onSaved }) {
+  const editing = Boolean(initialStaff);
+  const [form, setForm] = useState(() => initialStaff ? { ...blankForm, ...initialStaff } : blankForm);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const setField = (key) => (event) => {
+    setForm((current) => ({ ...current, [key]: event.target.value }));
+    setError('');
+  };
+
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!form.name || !form.staff_type) {
+      setError('Name and staff type are required');
+      return;
+    }
+    setSaving(true);
+    const payload = {
+      ...form,
+      casual_leave_balance: Number(form.casual_leave_balance || 0),
+      medical_leave_balance: Number(form.medical_leave_balance || 0),
+      earned_leave_balance: Number(form.earned_leave_balance || 0),
+    };
+    try {
+      const res = editing ? await updateStaff(initialStaff.id, payload) : await createStaff(payload);
+      if (res.success) {
+        onSaved(res.data);
+        onClose();
+      } else {
+        setError(res.detail || 'Unable to save staff profile');
+      }
+    } catch (err) {
+      setError(err.message || 'Network error');
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 220, padding: 16 }}>
+      <div style={{ background: 'var(--c-input)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 24, width: 620, maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+          <h3 style={{ margin: 0, color: 'var(--c-text)', fontSize: 16 }}>{editing ? 'Edit Staff Profile' : 'Add Staff Profile'}</h3>
+          <button aria-label="Close" onClick={onClose} style={{ width: 36, height: 36, border: 0, background: 'transparent', color: 'var(--c-faint)', cursor: 'pointer' }}><X size={18} /></button>
+        </div>
+        <form onSubmit={submit}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+            <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Name
+              <input value={form.name} onChange={setField('name')} style={{ ...inputStyle, marginTop: 5 }} />
+            </label>
+            <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Staff Type
+              <select value={form.staff_type} onChange={setField('staff_type')} style={{ ...inputStyle, marginTop: 5 }}>
+                <option value="teacher">Teacher</option>
+                <option value="admin">Admin</option>
+                <option value="support">Support</option>
+                <option value="transport">Transport</option>
+              </select>
+            </label>
+            <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Role
+              <select value={form.role} onChange={setField('role')} style={{ ...inputStyle, marginTop: 5 }}>
+                <option value="teacher">Teacher</option>
+                <option value="admin">Admin</option>
+                <option value="owner">Owner</option>
+              </select>
+            </label>
+            <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Sub Category
+              <input value={form.sub_category || ''} onChange={setField('sub_category')} placeholder="principal, accountant, class_teacher" style={{ ...inputStyle, marginTop: 5 }} />
+            </label>
+            <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Employee ID
+              <input value={form.employee_id || ''} onChange={setField('employee_id')} style={{ ...inputStyle, marginTop: 5 }} />
+            </label>
+            <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Department
+              <input value={form.department || ''} onChange={setField('department')} style={{ ...inputStyle, marginTop: 5 }} />
+            </label>
+            <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Phone
+              <input value={form.phone || ''} onChange={setField('phone')} style={{ ...inputStyle, marginTop: 5 }} />
+            </label>
+            <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Email
+              <input value={form.email || ''} onChange={setField('email')} style={{ ...inputStyle, marginTop: 5 }} />
+            </label>
+            <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Qualification
+              <input value={form.qualification || ''} onChange={setField('qualification')} style={{ ...inputStyle, marginTop: 5 }} />
+            </label>
+            <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Specialization
+              <input value={form.specialization || ''} onChange={setField('specialization')} style={{ ...inputStyle, marginTop: 5 }} />
+            </label>
+            {canEditLeaveBalances && ['casual_leave_balance', 'medical_leave_balance', 'earned_leave_balance'].map((field) => (
+              <label key={field} style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>{field.replaceAll('_', ' ')}
+                <input type="number" min="0" value={form[field]} onChange={setField(field)} style={{ ...inputStyle, marginTop: 5 }} />
+              </label>
+            ))}
+          </div>
+          {error && <div style={{ color: '#f87171', fontSize: 12, marginTop: 12 }}>{error}</div>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+            <ActionButton variant="secondary" onClick={onClose}>Cancel</ActionButton>
+            <ActionButton type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save Staff'}</ActionButton>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
 export default function StaffTracker() {
   const { currentUser } = useUser();
-  const [data, setData] = useState(null);
+  const [staff, setStaff] = useState([]);
+  const [pendingLeaves, setPendingLeaves] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('attendance');
-
-  useEffect(() => { loadData(); }, []);
+  const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState('profiles');
+  const [sort, setSort] = useState('name');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [editing, setEditing] = useState(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const canEditLeaveBalances = currentUser.role === 'owner' || currentUser.sub_category === 'principal';
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(total / 20)), [total]);
 
   const loadData = async () => {
     setLoading(true);
+    setError('');
     try {
-      const res = await executeTool('get_staff_status', {}, currentUser);
-      if (res.success) setData(res.data);
-    } catch {}
+      const [staffRes, leavesRes] = await Promise.all([
+        getStaff({ page, sort }),
+        getPendingLeaves().catch(() => ({ data: [] })),
+      ]);
+      if (staffRes.success) {
+        setStaff(staffRes.data || []);
+        setTotal(staffRes.meta?.total || 0);
+      } else {
+        setError(staffRes.detail || 'Unable to load staff profiles');
+      }
+      if (leavesRes.success) setPendingLeaves(leavesRes.data || []);
+    } catch (err) {
+      setError(err.message || 'Unable to load staff profiles');
+    }
     setLoading(false);
   };
 
+  useEffect(() => { loadData(); }, [page, sort]);
+
   const handleLeave = async (leaveId, status) => {
-    try {
-      await updateLeave(leaveId, status, currentUser);
-      loadData();
-    } catch {}
+    await updateLeave(leaveId, status);
+    loadData();
+  };
+
+  const deactivate = async (profile) => {
+    if (!window.confirm(`Deactivate ${profile.name}? Their login sessions will be revoked.`)) return;
+    const res = await deactivateStaff(profile.id);
+    if (res.success) loadData();
+    else setError(res.detail || 'Unable to deactivate staff profile');
   };
 
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--c-faint)' }}>
         <RefreshCw size={20} style={{ animation: 'spin 0.8s linear infinite' }} />
-        <span style={{ marginLeft: 10 }}>Loading Staff Data...</span>
+        <span style={{ marginLeft: 10 }}>Loading staff records...</span>
       </div>
     );
   }
 
-  const staffList = data?.staff_list || [];
-  const pendingLeaves = data?.pending_leaves || [];
-
   return (
     <div data-testid="staff-tracker-tool" style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <h1 style={{ fontFamily: 'Inter, sans-serif', fontSize: 22, fontWeight: 600, color: 'var(--c-text)' }}>Staff tracker</h1>
-        <button onClick={loadData} data-testid="refresh-staff-btn" style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '7px 14px', color: 'var(--c-muted)', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <RefreshCw size={12} />Refresh
-        </button>
-      </div>
-
-      {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24, maxWidth: 800 }}>
-        {[
-          { value: data?.total_staff || 0, label: 'TOTAL STAFF', color: 'var(--c-text)' },
-          { value: data?.present_today || 0, label: 'PRESENT TODAY', color: '#34d399' },
-          { value: data?.absent_today || 0, label: 'ABSENT', color: '#f87171' },
-          { value: pendingLeaves.length, label: 'PENDING LEAVES', color: '#fbbf24' },
-        ].map((s, i) => (
-          <div key={i} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 10, padding: '14px 16px' }}>
-            <div style={{ fontSize: 22, fontWeight: 700, color: s.color, fontFamily: 'Inter, sans-serif' }}>{s.value}</div>
-            <div style={{ fontSize: 9, color: 'var(--c-faint)', marginTop: 4, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600 }}>{s.label}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid var(--c-border)', paddingBottom: 0 }}>
-        {['attendance', 'leaves'].map(tab => (
-          <button key={tab} onClick={() => setActiveTab(tab)} data-testid={`tab-${tab}`} style={{
-            background: 'none', border: 'none', padding: '8px 16px',
-            borderBottom: activeTab === tab ? '2px solid #4f8ff7' : '2px solid transparent',
-            color: activeTab === tab ? '#fff' : 'var(--c-faint)',
-            fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s', marginBottom: -1,
-          }}>
-            {tab === 'attendance' ? 'Today\'s Attendance' : `Pending Leaves (${pendingLeaves.length})`}
-          </button>
-        ))}
-      </div>
-
-      {activeTab === 'attendance' && (
-        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 12, overflow: 'hidden', maxWidth: 800 }}>
-          {staffList.length === 0 ? (
-            <div style={{ padding: 24, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13 }}>No staff records found</div>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  {['Name', 'Type', 'Status'].map(h => (
-                    <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.06em', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {staffList.map((s, i) => (
-                  <tr key={s.id || i} style={{ borderBottom: i < staffList.length - 1 ? '1px solid #242424' : 'none' }}>
-                    <td style={{ padding: '10px 16px', fontSize: 13, color: 'var(--c-text)', fontWeight: 500 }}>{s.name}</td>
-                    <td style={{ padding: '10px 16px', fontSize: 12, color: 'var(--c-muted)' }}>{s.staff_type}</td>
-                    <td style={{ padding: '10px 16px' }}>
-                      <span style={{
-                        fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 5,
-                        color: STATUS_COLOR[s.status] || 'var(--c-faint)',
-                        background: `${STATUS_COLOR[s.status] || 'var(--c-faint)'}15`,
-                        textTransform: 'capitalize',
-                      }}>{s.status.replace('_', ' ')}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 650, color: 'var(--c-text)', margin: 0 }}>Staff Tracker</h1>
+          <div style={{ color: 'var(--c-faint)', fontSize: 12, marginTop: 3 }}>{total} staff profiles</div>
         </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <ActionButton variant="secondary" onClick={loadData}><RefreshCw size={13} />Refresh</ActionButton>
+          <ActionButton onClick={() => setShowAdd(true)}><Plus size={13} />Add Staff</ActionButton>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid var(--c-border)' }}>
+        {[
+          ['profiles', 'Profiles'],
+          ['leaves', `Pending Leaves (${pendingLeaves.length})`],
+        ].map(([id, label]) => (
+          <button key={id} onClick={() => setActiveTab(id)} style={{ background: 'none', border: 'none', borderBottom: activeTab === id ? '2px solid #4f8ff7' : '2px solid transparent', color: activeTab === id ? 'var(--c-text)' : 'var(--c-faint)', padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>{label}</button>
+        ))}
+      </div>
+
+      {error && <div style={{ color: '#f87171', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.18)', borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 12 }}>{error}</div>}
+
+      {activeTab === 'profiles' && (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+            <select value={sort} onChange={(event) => { setSort(event.target.value); setPage(1); }} style={{ ...inputStyle, width: 180 }}>
+              <option value="name">Sort by name</option>
+              <option value="staff_type">Sort by type</option>
+              <option value="department">Sort by department</option>
+              <option value="created_at">Newest first</option>
+            </select>
+          </div>
+          <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, overflowX: 'auto' }}>
+            {staff.length === 0 ? (
+              <div style={{ padding: 30, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13 }}>No staff records found</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
+                <thead>
+                  <tr>
+                    {['Name', 'Type', 'Role', 'Department', 'Leave Balance', 'Actions'].map((header) => (
+                      <th key={header} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 750, color: 'var(--c-faint)', textTransform: 'uppercase', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{header}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {staff.map((profile, index) => (
+                    <tr key={profile.id} style={{ borderBottom: index < staff.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
+                      <td style={{ padding: '10px 14px', color: 'var(--c-text)', fontSize: 13, fontWeight: 650 }}>{profile.name}<div style={{ color: 'var(--c-faint)', fontSize: 11 }}>{profile.employee_id || 'No employee ID'}</div></td>
+                      <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12 }}>{profile.staff_type}</td>
+                      <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12 }}>{profile.role || 'teacher'}{profile.sub_category ? ` / ${profile.sub_category}` : ''}</td>
+                      <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12 }}>{profile.department || 'N/A'}</td>
+                      <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12 }}>CL {profile.casual_leave_balance ?? 0} · ML {profile.medical_leave_balance ?? 0} · EL {profile.earned_leave_balance ?? 0}</td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          <ActionButton variant="secondary" onClick={() => setEditing(profile)}><Edit3 size={13} /></ActionButton>
+                          {profile.is_active !== false && <ActionButton variant="danger" onClick={() => deactivate(profile)}>Deactivate</ActionButton>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          {total > 20 && (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 14 }}>
+              <ActionButton variant="secondary" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1}>Prev</ActionButton>
+              <span style={{ color: 'var(--c-faint)', fontSize: 12, alignSelf: 'center' }}>Page {page} of {totalPages}</span>
+              <ActionButton variant="secondary" onClick={() => setPage((current) => current + 1)} disabled={page >= totalPages}>Next</ActionButton>
+            </div>
+          )}
+        </>
       )}
 
       {activeTab === 'leaves' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 800 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 840 }}>
           {pendingLeaves.length === 0 ? (
-            <div style={{ padding: 24, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13, background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 12 }}>
-              No pending leave requests ✓
-            </div>
-          ) : (
-            pendingLeaves.map((lr, i) => (
-              <div key={lr.id || i} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 10, padding: '14px 18px' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                  <div>
-                    <div style={{ fontWeight: 600, color: 'var(--c-text)', fontSize: 14 }}>{lr.staff_name}</div>
-                    <div style={{ color: 'var(--c-faint)', fontSize: 12, marginTop: 2 }}>
-                      {lr.leave_type} · {lr.start_date} to {lr.end_date}
-                    </div>
-                    <div style={{ color: 'var(--c-muted)', fontSize: 12, marginTop: 4, fontStyle: 'italic' }}>{lr.reason}</div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                    <button data-testid={`approve-leave-${lr.id}`} onClick={() => handleLeave(lr.id, 'approved')} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 7, padding: '6px 12px', color: '#34d399', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>
-                      <CheckCircle size={12} />Approve
-                    </button>
-                    <button data-testid={`reject-leave-${lr.id}`} onClick={() => handleLeave(lr.id, 'rejected')} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 7, padding: '6px 12px', color: '#f87171', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>
-                      <XCircle size={12} />Reject
-                    </button>
-                  </div>
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13, background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8 }}>No pending leave requests</div>
+          ) : pendingLeaves.map((leave) => (
+            <div key={leave.id} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <div>
+                  <div style={{ fontWeight: 650, color: 'var(--c-text)', fontSize: 14 }}>{leave.staff?.name || leave.staff_name || 'Staff member'}</div>
+                  <div style={{ color: 'var(--c-faint)', fontSize: 12, marginTop: 2 }}>{leave.leave_type} · {leave.start_date} to {leave.end_date}</div>
+                  <div style={{ color: 'var(--c-muted)', fontSize: 12, marginTop: 4 }}>{leave.reason}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <ActionButton variant="secondary" onClick={() => handleLeave(leave.id, 'approved')}><CheckCircle size={13} />Approve</ActionButton>
+                  <ActionButton variant="danger" onClick={() => handleLeave(leave.id, 'rejected')}><XCircle size={13} />Reject</ActionButton>
                 </div>
               </div>
-            ))
-          )}
+            </div>
+          ))}
         </div>
       )}
+
+      {showAdd && <StaffModal canEditLeaveBalances={canEditLeaveBalances} onClose={() => setShowAdd(false)} onSaved={loadData} />}
+      {editing && <StaffModal initialStaff={editing} canEditLeaveBalances={canEditLeaveBalances} onClose={() => setEditing(null)} onSaved={loadData} />}
     </div>
   );
 }

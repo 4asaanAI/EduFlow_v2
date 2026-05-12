@@ -36,6 +36,7 @@ try:
     import server
     import routes.auth as auth_routes
     import routes.students as student_routes
+    import routes.staff as staff_routes
     from middleware.auth import hash_password
     APP_AVAILABLE = True
 except ImportError as e:
@@ -192,6 +193,7 @@ class FakeDb:
         ])
         self.guardians = FakeCollection()
         self.staff = FakeCollection()
+        self.leave_requests = FakeCollection()
         self.audit_logs = FakeCollection()
         self.file_uploads = FakeCollection()
         self.student_attendance = FakeCollection()
@@ -210,6 +212,7 @@ if APP_AVAILABLE:
     server.disconnect_db = _noop_disconnect
     auth_routes.get_db = lambda: _fake_db
     student_routes.get_db = lambda: _fake_db
+    staff_routes.get_db = lambda: _fake_db
 
 
 # ─── Event loop (for async tests) ─────────────────────────────────────────

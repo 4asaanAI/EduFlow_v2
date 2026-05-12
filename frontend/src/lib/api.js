@@ -206,8 +206,30 @@ export async function executeTool(toolId, params) {
 }
 
 // --- Staff ---
-export async function getStaff() {
-  const res = await apiFetch(`${API}/staff/`, { headers: getHeaders() });
+export async function getStaff(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  const res = await apiFetch(`${API}/staff/?${qs}`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function createStaff(data) {
+  const res = await apiFetch(`${API}/staff/`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function updateStaff(staffId, data) {
+  const res = await apiFetch(`${API}/staff/${staffId}`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function deactivateStaff(staffId) {
+  const res = await apiFetch(`${API}/staff/${staffId}`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
   return res.json();
 }
 

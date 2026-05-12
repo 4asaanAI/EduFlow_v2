@@ -12,8 +12,9 @@ import SettingsModal from './SettingsModal';
 
 const loadTool = async (toolId) => {
   if (toolId === 'query-section') return (await import('./tools/QuerySection')).QuerySection;
+  if (toolId === 'staff-tracker') return (await import('./tools/StaffTracker')).default;
 
-  const OWNERS = ['school-pulse','fee-collection','student-strength','student-database','data-import','attendance-overview','staff-attendance-tracker','financial-reports','announcement-broadcaster','admission-funnel','staff-leave-manager','staff-performance','ai-health-report','smart-alerts','expense-tracker','complaint-tracker','custom-report-builder','board-report','smart-fee-defaulter','attendance-alerts'];
+  const OWNERS = ['school-pulse','fee-collection','student-strength','student-database','data-import','attendance-overview','staff-tracker','staff-attendance-tracker','financial-reports','announcement-broadcaster','admission-funnel','staff-leave-manager','staff-performance','ai-health-report','smart-alerts','expense-tracker','complaint-tracker','custom-report-builder','board-report','smart-fee-defaulter','attendance-alerts'];
   const ADMINS = ['student-database','fee-tracker','attendance-recorder','certificate-generator','circular-sender','enquiry-register','document-scanner','smart-fee-defaulter','admission-pipeline','parent-message','student-transfer','id-card-generator','timetable-builder','asset-tracker','transport-manager','automated-report','custom-form-builder','report-card-builder','student-performance-viewer','attendance-alerts'];
   const TEACHERS = ['class-attendance-marker','assignment-generator','question-paper-creator','leave-application','lesson-plan-generator','worksheet-creator','class-performance-analytics','substitution-viewer','ptm-notes','curriculum-tracker','form-submissions'];
   const STUDENTS = ['ai-tutor','doubt-solver','homework-viewer','attendance-self-check','result-viewer','practice-test','study-planner','career-guidance','fee-status-viewer','ptm-summary-viewer','form-submissions'];
