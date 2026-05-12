@@ -8,6 +8,7 @@ lastUpdated: '2026-05-12'
 changeLog:
   - date: '2026-05-12'
     changes:
+      - 'Sprint re-plan: added Phase 6 (Deployment & Go-Live, Stories 34-38) and Phase 7 (Growth Features, Stories 39-48)'
       - 'Stage 0 backlog repair: fixed Story 19 confirmation-token security bug (fail-closed, not idempotent)'
       - 'Added Story 29: Password Reset via Email (Phase 1)'
       - 'Added Story 30: Database Import — Owner UI (Phase 1)'
@@ -21,7 +22,7 @@ inputDocuments:
   - '_bmad-output/planning-artifacts/architecture.md'
   - '_bmad-output/project-context.md'
   - '_bmad-output/planning-artifacts/implementation-readiness-report-2026-05-12.md'
-totalStories: 33
+totalStories: 48
 phases:
   - phase: 1
     name: 'Foundation & Infrastructure'
@@ -38,6 +39,12 @@ phases:
   - phase: 5
     name: 'Observability & Quality'
     stories: [21, 22, 23, 24, 25, 26, 27, 28]
+  - phase: 6
+    name: 'Deployment & Go-Live'
+    stories: [34, 35, 36, 37, 38]
+  - phase: 7
+    name: 'Growth Features (Post-Pilot, Pre-School #2)'
+    stories: [39, 40, 41, 42, 43, 44, 45, 46, 47, 48]
 ---
 
 # Implementation Stories — EduFlow Enterprise Upgrade
@@ -857,3 +864,316 @@ The following stories are **hard go-live gates** — the platform must not go li
 - [ ] Blocker B2 — MongoDB Atlas M10+ replica set confirmed
 - [ ] Blocker B3 — Azure OpenAI India DPA signed
 - [ ] Blocker B4 — CloudFront SSE timeout ≥ 300s configured
+
+---
+
+## Phase 6 — Deployment & Go-Live
+
+### Story 34: MongoDB Atlas M10+ Replica Set Confirmation
+
+**Priority:** Critical — go-live blocker (Blocker B2)
+**Effort:** Small (non-code — infra decision + action)
+**PRD:** Technical Constraints — HA, Reliability NFR
+
+**As** the operator (Abhimanyu),
+**I want** to confirm the MongoDB Atlas cluster is on M10+ with replica-set enabled,
+**so that** the platform has high availability and replica-set features (oplog, transactions) before go-live.
+
+**Acceptance Criteria:**
+- [ ] Atlas dashboard confirms cluster tier is M10 or above
+- [ ] Cluster topology shows replica set (PRIMARY + 2 SECONDARY nodes)
+- [ ] Connection string in `.env.production` uses `?replicaSet=` parameter
+- [ ] A manual failover test is run in staging — primary node failed over and app reconnected within 30 seconds
+- [ ] Confirmation screenshot or export saved to `docs/infra/atlas-m10-confirmed.png`
+
+---
+
+### Story 35: Azure OpenAI India-Region DPA Signed
+
+**Priority:** Critical — go-live blocker (Blocker B3)
+**Effort:** Small (non-code — legal/admin action)
+**PRD:** Compliance, DPDP Act 2023
+
+**As** the operator (Abhimanyu),
+**I want** the Azure OpenAI India-region Data Processing Agreement signed and on record,
+**so that** student PII (names, attendance, fees) can legally flow through the LLM.
+
+**Acceptance Criteria:**
+- [ ] Azure OpenAI resource is confirmed to be in `centralindia` or `southindia` region
+- [ ] Microsoft Azure DPA for India-region data processing is signed and a copy stored at `docs/legal/azure-openai-dpa.pdf`
+- [ ] Azure OpenAI endpoint in `.env.production` points to an India-region resource
+- [ ] Legal confirmation email or signed agreement reference number logged in `docs/legal/compliance-log.md`
+
+---
+
+### Story 36: CloudFront + ALB SSE Timeout Configuration
+
+**Priority:** Critical — go-live blocker (Blocker B4)
+**Effort:** Small (infra config)
+**PRD:** NFR Real-Time Communication, Story 28 dependency
+
+**As** the operator (Abhimanyu),
+**I want** CloudFront origin response timeout and ALB idle timeout both set to ≥ 300 seconds,
+**so that** SSE connections for real-time attendance and fee updates are not prematurely closed.
+
+**Acceptance Criteria:**
+- [ ] ALB idle timeout updated to 305 seconds (AWS console → Load Balancers → Attributes)
+- [ ] CloudFront origin response timeout updated to 300 seconds (Distribution → Origins → Edit)
+- [ ] SSE smoke-test: `GET /api/attendance/stream` stays open for > 5 minutes without a `502` or connection drop
+- [ ] Configuration values documented in `DEPLOYMENT_AWS_SETUP.md` with the exact AWS console paths and values applied
+- [ ] Keepalive events confirmed arriving at the client every ~30 seconds during the smoke test
+
+---
+
+### Story 37: Production Deployment to AWS Elastic Beanstalk
+
+**Priority:** Critical — go-live action
+**Effort:** Medium (infra + config)
+**PRD:** FR66–FR68, go-live constraint
+
+**As** the operator (Abhimanyu),
+**I want** EduFlow fully deployed and running on AWS Elastic Beanstalk in production,
+**so that** The Aaryans staff can access the platform on their devices.
+
+**Acceptance Criteria:**
+- [ ] `Procfile` present with `web: uvicorn backend.server:app --host 0.0.0.0 --port 8000`
+- [ ] All environment variables from `.env.example` (including all Phase 1–5 additions) are set in EB environment configuration — no placeholder values in production
+- [ ] Frontend build is deployed to S3 + CloudFront with correct `REACT_APP_API_URL` pointing to the EB environment
+- [ ] `GET /api/health/ready` returns `{ db: "ok", ai: "ok"|"degraded", overall: "ready" }` from the production URL
+- [ ] All HTTPS redirects work (HTTP → HTTPS, no mixed-content warnings)
+- [ ] S3 bucket for uploads is confirmed non-public; pre-signed URL flow tested end-to-end in production
+- [ ] At least one CloudWatch alarm is active (error rate threshold)
+- [ ] Smoke-test checklist in `DEPLOYMENT_READINESS.md` completed and all items checked
+
+---
+
+### Story 38: Staff Training & Guided Onboarding Sessions
+
+**Priority:** Critical — go-live prerequisite (PRD Risk Mitigation)
+**Effort:** Small (non-code — operator action)
+**PRD:** Risk Mitigation — "User onboarding gap"
+
+**As** the operator (Abhimanyu),
+**I want** to run a guided first session with each Phase 1 role before go-live,
+**so that** staff know how to use the platform from day one and adoption risk is mitigated.
+
+**Acceptance Criteria:**
+- [ ] Guided session completed with: Owner (Aman), Principal (Adesh), at least one Accountant, at least one Receptionist, Transport Head, IT/Tech Admin, Maintenance Admin
+- [ ] Each role's primary workflows demonstrated: login, their main tool panel, using the AI chat
+- [ ] Any UX friction points discovered during sessions are logged in `docs/training/onboarding-feedback.md` and triaged before go-live
+- [ ] Each participant confirms they can log in independently after the session
+- [ ] Session completion log stored at `docs/training/onboarding-sessions.md` (date, role, outcome)
+
+---
+
+## Phase 7 — Growth Features (Post-Pilot, Pre-School #2)
+
+*Triggered after 4 consecutive clean weeks on The Aaryans pilot. Required before pitching school #2.*
+
+### Story 39: Teacher + Student Login Activation
+
+**Priority:** High (Phase 2 trigger)
+**Effort:** Medium
+**PRD:** Phase 2 Growth — "Teacher + Student logins activated"
+
+**As** a Teacher or Student,
+**I want** to log in to EduFlow and access my permitted data,
+**so that** the platform serves all school roles, not just admin.
+
+**Acceptance Criteria:**
+- [ ] `scope_resolver.py` RBAC entries for `teacher` and `student` roles are activated (currently deferred)
+- [ ] Teacher sees: own class roster, own attendance records, own timetable — no admin data
+- [ ] Student sees: own academic record, own fee status, own timetable — read-only + AI query within own scope
+- [ ] Teacher login flow tested with a real teacher account end-to-end
+- [ ] Student login flow tested (parental consent collection mechanism confirmed or stubbed pending DPDP parental consent implementation)
+- [ ] Authorization matrix tests extended to cover Teacher and Student roles across all sensitive endpoints
+- [ ] DPDP parental consent: if student is < 18, a consent record must exist before student login is permitted (or explicit decision taken to defer consent collection to a separate story)
+
+---
+
+### Story 40: WhatsApp / Twilio Integration — Fee Reminders + Attendance Alerts
+
+**Priority:** High (Phase 2 trigger)
+**Effort:** Medium
+**PRD:** Phase 2 Growth — "WhatsApp/Twilio integration"
+
+**As** a parent,
+**I want** to receive WhatsApp/SMS alerts for fee reminders and attendance,
+**so that** I'm informed without needing to log in to the platform.
+
+**Acceptance Criteria:**
+- [ ] Twilio (or WhatsApp Business API) credentials configured via env vars (`TWILIO_SID`, `TWILIO_TOKEN`, `TWILIO_FROM_NUMBER`); documented in `.env.example`
+- [ ] `POST /api/notifications/send-whatsapp` (internal) dispatches a WhatsApp/SMS message to a parent's stored phone number
+- [ ] Fee overdue trigger: students with fees overdue ≥ 7 days automatically generate a fee reminder message to parent (daily batch job)
+- [ ] Attendance trigger: if a student is absent, parent receives an alert by end of school day
+- [ ] Messages include: student name, school name, relevant detail, and a contact number for queries — no PII beyond what is necessary
+- [ ] Opt-out: parent phone numbers marked `whatsapp_opt_out: true` are skipped — opt-out endpoint `POST /api/parent/opt-out` is available
+- [ ] All messages sent are logged in `whatsapp_dispatch_log` collection with `recipient_phone_hash` (not plain), `message_type`, `sent_at`, `status`
+- [ ] If Twilio is unreachable, alerts queue for retry up to 24 hours; no exceptions surface to end users
+
+---
+
+### Story 41: Advanced Reporting — Recharts Dashboard
+
+**Priority:** Medium (Phase 2 trigger)
+**Effort:** Medium
+**PRD:** Phase 2 Growth — "Advanced reporting (Recharts)"
+
+**As** an Owner or Principal,
+**I want** visual attendance trend charts and fee collection bar charts,
+**so that** I can spot patterns without exporting raw data.
+
+**Acceptance Criteria:**
+- [ ] `GET /api/reports/attendance-trends?months=3` returns monthly attendance percentages per class
+- [ ] `GET /api/reports/fee-collection-summary?months=6` returns monthly fee collected vs outstanding per month
+- [ ] Owner dashboard includes a Recharts bar chart for fee collection (last 6 months) and a line chart for overall attendance trend (last 3 months)
+- [ ] Principal dashboard includes the attendance trend chart only (no financial charts per RBAC)
+- [ ] Charts are mobile-responsive at 375px (touch tooltips work)
+- [ ] Chart data refreshes on page load; no real-time requirement for reporting views
+- [ ] Empty state shown when insufficient data (< 1 month of records)
+
+---
+
+### Story 42: Token Recharge + Subscription Billing
+
+**Priority:** High (first revenue event)
+**Effort:** Large
+**PRD:** Phase 2 Growth — "Token recharge + subscription billing"
+
+**As** the Owner (Aman),
+**I want** to recharge AI token quota and pay a monthly subscription,
+**so that** EduFlow converts from pilot to a paying product.
+
+**Acceptance Criteria:**
+- [ ] Subscription plan defined: monthly fee in INR, token quota per month per plan tier
+- [ ] `POST /api/billing/recharge` — Owner purchases token top-up; integrates with Razorpay (or Stripe India) payment gateway
+- [ ] Payment confirmation webhook updates `token_balance` in the school's config document atomically
+- [ ] `GET /api/billing/usage` returns: current token balance, tokens used this month, billing cycle dates, current plan
+- [ ] Monthly subscription auto-renew: Razorpay recurring payment created on first paid subscription
+- [ ] Payment failure: subscription downgraded to read-only AI (queries only, no writes) with a clear in-app banner
+- [ ] Invoices generated as PDFs and emailed to the Owner on each successful payment
+- [ ] Billing data is Owner-only — no other role can view billing information
+- [ ] All payment events logged in `billing_audit_log` with payment reference, amount, timestamp — no card data stored in EduFlow
+
+---
+
+### Story 43: Platform Health Dashboard (Operator View)
+
+**Priority:** Medium
+**Effort:** Medium
+**PRD:** Phase 2 Growth — "Platform health dashboard (operator view)"
+
+**As** the operator (Abhimanyu / Layaa AI),
+**I want** an internal operator health dashboard,
+**so that** I can monitor all live schools without needing to query CloudWatch directly.
+
+**Acceptance Criteria:**
+- [ ] `GET /api/internal/health-summary` (operator-auth-only, not school-scoped) returns: per-school status, DB latency, AI latency, active SSE connections, error rate in last 5 minutes
+- [ ] Operator dashboard page `OperatorHealth.js` (internal route, not visible to school users) renders the health summary with auto-refresh every 60 seconds
+- [ ] Alerts section shows any CloudWatch alarms currently in ALARM state
+- [ ] AI spend tracker: daily and monthly Azure OpenAI spend vs configured threshold
+- [ ] Operator authentication uses a separate admin token (not school user JWT) — scoped to `layaa_ai_internal` role
+- [ ] Dashboard accessible only from allowlisted IP range (Layaa AI office IPs) or via VPN
+
+---
+
+### Story 44: School Onboarding Flow
+
+**Priority:** Critical (pre-school #2)
+**Effort:** Large
+**PRD:** Phase 2 Growth — "School onboarding flow"
+
+**As** the operator (Abhimanyu),
+**I want** a self-service school onboarding flow,
+**so that** school #2 can be set up without manual database intervention.
+
+**Acceptance Criteria:**
+- [ ] `POST /api/operator/schools` creates a new school: `school_name`, `school_id` (slug), `owner_email`, `plan_tier`
+- [ ] School creation: initialises all required MongoDB collections with `schoolId` scope, creates the Owner account, sends a welcome email with login credentials
+- [ ] Onboarding checklist endpoint `GET /api/schools/:school_id/onboarding-status` returns per-step completion: profile created, first staff added, first class configured, first student imported, first fee record created
+- [ ] Frontend `SchoolOnboarding.js` (operator-only) renders the onboarding wizard: school details → owner account → initial config (SMTP, fee software, S3 bucket assignment)
+- [ ] Each new school gets an isolated S3 prefix (`uploads/{school_id}/`) — no cross-school file access
+- [ ] Operator can deactivate a school (`PATCH /api/operator/schools/:id/deactivate`) — all API calls from that school return 402 with a billing message
+- [ ] Onboarding completion triggers a Slack/email notification to operator team
+
+---
+
+### Story 45: Multi-Tenancy — Schema-Per-Tenant Enforcement
+
+**Priority:** Critical (pre-school #2)
+**Effort:** Large
+**PRD:** Phase 2 Growth — "Multi-tenancy (schema-per-tenant)"; Phase 1 groundwork: `schoolId` field on all records
+
+**As** the system,
+**I want** all data queries to be hard-scoped to the requesting school's `schoolId`,
+**so that** school #2's data is fully isolated from The Aaryans and no cross-tenant data leak is possible.
+
+**Acceptance Criteria:**
+- [ ] `scope_resolver.py` updated: every MongoDB query generated by the scope resolver includes a `schoolId` filter — no query can be issued without `schoolId` binding
+- [ ] A middleware layer (`school_context_middleware.py`) extracts `schoolId` from the JWT and injects it into the request context; all route handlers read `schoolId` from context, never from user input
+- [ ] Integration test: authenticated as a user of school A, attempt to read any record belonging to school B → 403 or empty result (never school B's data)
+- [ ] MongoDB Atlas: confirm no shared collections exist across schools — each school's data is addressable only by its `schoolId`
+- [ ] Authorization matrix tests extended: all existing tests now run twice — once for school A credentials, once for school B credentials — asserting full isolation
+- [ ] Performance: adding `schoolId` filter does not degrade any query by > 10% (index on `schoolId` confirmed for all high-traffic collections)
+
+---
+
+### Story 46: Google Maps Transport Optimisation
+
+**Priority:** Low (when Aman requests)
+**Effort:** Large
+**PRD:** Phase 2 Growth — "Google Maps transport optimisation"
+
+**As** a Transport Head or Owner,
+**I want** students automatically grouped into route-optimised zones,
+**so that** vehicle costs are minimised and route planning is data-driven.
+
+**Acceptance Criteria:**
+- [ ] `GOOGLE_MAPS_API_KEY` env var added and documented in `.env.example`
+- [ ] `POST /api/transport/optimise-routes` — accepts a list of student IDs with stored coordinates; calls Google Maps Distance Matrix API; returns optimised zone assignments (cluster of nearby students per vehicle)
+- [ ] Student coordinates collected via `PATCH /api/students/:id` with a `coordinates: { lat, lng }` field — backend-only, never displayed in the frontend
+- [ ] Optimisation result rendered as a zone summary table: zone name, student count, estimated vehicle load, coverage area description
+- [ ] Map view (Google Maps embed) showing zone boundaries and student cluster markers — Owner and Transport Head only
+- [ ] Coordinates field exists and is nullable — Phase 1 groundwork already laid; this story adds collection UI and optimisation logic
+- [ ] Route optimisation is a manual trigger (not automated); results are suggestions, not auto-applied
+
+---
+
+### Story 47: Announcement Moderation + Approval Gate
+
+**Priority:** High (required when teachers + students are live)
+**Effort:** Small-Medium
+**PRD:** Phase 2 Growth — "Announcement moderation / approval gate"
+
+**As** a Principal,
+**I want** to review and approve Receptionist-authored announcements before they reach teachers and students,
+**so that** inappropriate or incorrect announcements are not broadcast school-wide.
+
+**Acceptance Criteria:**
+- [ ] `POST /api/operations/announcements` — when `target_roles` includes `teacher` or `student`, announcement is created with `status: pending_approval` instead of `active`
+- [ ] `GET /api/operations/announcements/pending` — Principal sees all pending announcements
+- [ ] `PATCH /api/operations/announcements/:id/approve` — Principal approves; status changes to `active`; announcement becomes visible to target roles
+- [ ] `PATCH /api/operations/announcements/:id/reject` — Principal rejects with a mandatory `reason`; Receptionist receives an in-app notification with the reason
+- [ ] Announcements targeting only `admin` roles (not teachers/students) bypass the approval gate — published immediately as in Phase 1
+- [ ] Approval decision logged in the audit trail
+
+---
+
+### Story 48: AI Write Rate Limiting
+
+**Priority:** High (Phase 1 known gap — fast-tracked if compromise detected)
+**Effort:** Small-Medium
+**PRD:** Phase 2 Growth — "AI write rate limiting"; Phase 1 known risk
+
+**As** the system,
+**I want** to enforce per-session rate limits on AI-executed mutations,
+**so that** a compromised or misconfigured session cannot mass-mutate school data via AI.
+
+**Acceptance Criteria:**
+- [ ] A rate-limit config is defined per role in `ai_rate_limits.yaml`: max write dispatches per session per hour (e.g., Owner: 50, Principal: 30, Accountant: 20)
+- [ ] `POST /api/chat/confirm` enforces the rate limit before executing the action — returns 429 with a `Retry-After` header when the limit is reached
+- [ ] Rate limit counters are stored in MongoDB with a TTL of 1 hour (reset every hour, not rolling window)
+- [ ] Rate limit events are logged in `ai_dispatch_audit_log` with `rate_limit_hit: true`
+- [ ] Frontend `ChatInterface.js` handles 429 response: displays "Too many AI actions — please wait X minutes" and disables the confirm button until `Retry-After` elapses
+- [ ] Owner can view per-session AI action counts in the operator health dashboard (Story 43)
+- [ ] Config override: operator can temporarily raise a school's rate limit via `PATCH /api/operator/schools/:id/ai-rate-limit` (internal endpoint)
