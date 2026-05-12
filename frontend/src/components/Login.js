@@ -202,6 +202,9 @@ export default function Login() {
                 {loading && <Loader2 size={16} className="spin" />}
                 {loading ? 'Signing in...' : 'Sign In'}
               </button>
+              <button type="button" onClick={() => { window.location.href = '/forgot-password'; }} style={{ width: '100%', marginTop: 12, padding: 8, border: 0, background: 'transparent', color: secondary, cursor: 'pointer', fontSize: 13 }}>
+                Forgot password?
+              </button>
             </form>
           </div>
         </div>

@@ -11,6 +11,8 @@ Endpoints:
 
 import re
 import logging
+import uuid
+import os
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel, validator
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -19,8 +21,10 @@ from database import get_db
 from middleware.auth import (
     create_jwt,
     get_current_user,
+    hash_password,
     verify_password,
 )
+from services.email_service import send_password_reset_email
 from services.auth_tokens import (
     clear_refresh_cookie,
     consume_refresh_token,
@@ -28,6 +32,7 @@ from services.auth_tokens import (
     issue_refresh_token,
     revoke_refresh_token,
     set_refresh_cookie,
+    revoke_user_refresh_tokens,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,6 +42,9 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 # Maximum login attempts before temporary lockout
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
+PASSWORD_RESET_TTL_MINUTES = 15
+PASSWORD_RESET_RATE_LIMIT = 3
+PASSWORD_RESET_RATE_WINDOW_HOURS = 1
 
 
 # ─── Request models ──────────────────────────────────────────────────────────
@@ -62,6 +70,29 @@ class LoginRequest(BaseModel):
             raise ValueError("Password must be 4-128 characters")
         return v
 
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+    @validator("email")
+    def validate_email(cls, v):
+        v = v.strip().lower()
+        if not v or "@" not in v or len(v) > 254:
+            raise ValueError("Valid email is required")
+        return v
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+    @validator("new_password")
+    def validate_new_password(cls, v):
+        if len(v or "") < 8:
+            raise ValueError("Password must be at least 8 characters")
+        if len(v) > 128:
+            raise ValueError("Password must be 8-128 characters")
+        return v
 
 # ─── POST /api/auth/login ───────────────────────────────────────────────────
 
@@ -220,6 +251,74 @@ async def _record_failed_attempt(db, key: str):
         },
         upsert=True,
     )
+
+
+@router.post("/forgot-password")
+async def forgot_password(body: ForgotPasswordRequest):
+    db = get_db()
+    email = body.email
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(hours=PASSWORD_RESET_RATE_WINDOW_HOURS)
+    recent_count = await db.password_reset_requests.count_documents(
+        {"email": email, "created_at": {"$gte": window_start}}
+    )
+    if recent_count >= PASSWORD_RESET_RATE_LIMIT:
+        raise HTTPException(429, "Too many password reset requests. Try again later.")
+
+    await db.password_reset_requests.insert_one({"email": email, "created_at": now})
+
+    auth = await db.auth_users.find_one({"email": email})
+    if not auth:
+        auth = await db.auth_users.find_one({"user_info.email": email})
+
+    if auth:
+        token = str(uuid.uuid4())
+        jwt_payload, user_info = _jwt_payload_from_auth(auth)
+        expires_at = now + timedelta(minutes=PASSWORD_RESET_TTL_MINUTES)
+        await db.password_reset_tokens.insert_one(
+            {
+                "token": token,
+                "user_id": jwt_payload["user_id"],
+                "email": email,
+                "expires_at": expires_at,
+                "used": False,
+                "created_at": now,
+            }
+        )
+        frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+        reset_link = f"{frontend_url}/reset-password?token={token}"
+        try:
+            send_password_reset_email(email, reset_link)
+        except Exception:
+            logger.error("password reset email failed", exc_info=True)
+
+    return {"success": True, "message": "If that email exists, a reset link has been sent."}
+
+
+@router.post("/reset-password")
+async def reset_password(body: ResetPasswordRequest):
+    db = get_db()
+    now = datetime.now(timezone.utc)
+    result = await db.password_reset_tokens.update_one(
+        {
+            "token": body.token,
+            "used": False,
+            "expires_at": {"$gt": now},
+        },
+        {"$set": {"used": True, "used_at": now}},
+    )
+    if result.modified_count != 1:
+        raise HTTPException(400, "Invalid or expired reset token")
+
+    reset_doc = await db.password_reset_tokens.find_one({"token": body.token})
+    if not reset_doc:
+        raise HTTPException(400, "Invalid or expired reset token")
+
+    user_id = reset_doc["user_id"]
+    password_hash = hash_password(body.new_password)
+    await db.auth_users.update_one(_auth_user_filter(user_id), {"$set": {"password_hash": password_hash}})
+    await revoke_user_refresh_tokens(db, user_id, reason="password_reset")
+    return {"success": True}
 
 
 # ─── GET /api/auth/me ─────────────────────────────────────────────────────────

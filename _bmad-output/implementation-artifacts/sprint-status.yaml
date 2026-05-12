@@ -22,7 +22,7 @@ development_status:
   1-2-auth-hardening-short-lived-tokens-session-invalidation: done
   1-3-school-id-forward-compatibility-backfill: done
   1-4-api-health-ready-endpoint-structured-logging: done
-  1-29-password-reset-via-email-link: backlog
+  1-29-password-reset-via-email-link: done
   1-30-database-import-owner-trigger-validation-ui: backlog
   epic-1-retrospective: optional
 

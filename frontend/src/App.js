@@ -4,9 +4,12 @@ import { UserProvider, useUser } from './contexts/UserContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import Layout from './components/Layout';
 import Login from './components/Login';
+import ForgotPassword from './components/ForgotPassword';
+import ResetPassword from './components/ResetPassword';
 
 function AppContent() {
   const { isAuthenticated, loading } = useUser();
+  const path = window.location.pathname;
 
   if (loading) {
     return (
@@ -18,6 +21,9 @@ function AppContent() {
       </div>
     );
   }
+
+  if (path === '/forgot-password') return <ForgotPassword />;
+  if (path === '/reset-password') return <ResetPassword />;
 
   return isAuthenticated ? <Layout /> : <Login />;
 }
