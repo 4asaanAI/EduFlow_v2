@@ -235,6 +235,29 @@ export async function uploadStudentPhoto(studentId, file) {
   return res.json();
 }
 
+export async function getStudent(studentId) {
+  const res = await apiFetch(`${API}/students/${studentId}`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function upsertGuardians(studentId, guardiansArray) {
+  const res = await apiFetch(`${API}/students/${studentId}/guardians`, {
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify(guardiansArray),
+  });
+  return res.json();
+}
+
+export async function uploadGuardianPhoto(studentId, guardianId, file) {
+  const body = new FormData();
+  body.append('file', file);
+  const headers = getHeaders();
+  delete headers['Content-Type'];
+  const res = await apiFetch(`${API}/students/${studentId}/guardians/${guardianId}/photo`, {
+    method: 'POST', headers, body,
+  });
+  return res.json();
+}
+
 export async function getAllClasses() {
   const res = await apiFetch(`${API}/settings/classes`, { headers: getHeaders() });
   return res.json();

@@ -46,6 +46,9 @@ class Guardian(SchoolScopedModel):
     alt_phone: Optional[str] = None
     whatsapp_phone: Optional[str] = None
     email: Optional[str] = None
+    occupation: Optional[str] = None
+    photo_url: Optional[str] = None
+    annual_income: Optional[float] = None
     is_primary: bool = False
 
 
@@ -59,12 +62,18 @@ class Student(SchoolScopedModel):
     dob: Optional[str] = None
     gender: Optional[str] = None
     blood_group: Optional[str] = None
+    height_cm: Optional[float] = None
+    weight_kg: Optional[float] = None
+    medical_notes: Optional[str] = None
+    emergency_contact: Optional[str] = None
+    house: Optional[str] = None
     photo_url: Optional[str] = None
     admission_date: str = Field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d"))
     status: str = "active"
     is_active: bool = True
     uses_transport: bool = False
     bus_route: Optional[str] = None
+    route_zone_id: Optional[str] = None
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
@@ -229,9 +238,20 @@ class StudentCreate(SchoolScopedModel):
     roll_number: Optional[str] = None
     dob: Optional[str] = None
     gender: Optional[str] = None
+    blood_group: Optional[str] = None
+    height_cm: Optional[float] = None
+    weight_kg: Optional[float] = None
+    medical_notes: Optional[str] = None
     phone: Optional[str] = None
     guardian_name: Optional[str] = None
     guardian_phone: Optional[str] = None
+    father_name: Optional[str] = None
+    father_phone: Optional[str] = None
+    father_occupation: Optional[str] = None
+    mother_name: Optional[str] = None
+    mother_phone: Optional[str] = None
+    mother_occupation: Optional[str] = None
+    annual_income: Optional[float] = None
 
 
 class AttendanceBulkRecord(SchoolScopedModel):

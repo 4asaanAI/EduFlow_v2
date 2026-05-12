@@ -37,11 +37,21 @@ UPDATABLE_FIELDS = {
     "dob",
     "gender",
     "blood_group",
+    "height_cm",
+    "weight_kg",
+    "medical_notes",
+    "emergency_contact",
+    "house",
     "photo_url",
     "uses_transport",
     "bus_route",
     "route_zone_id",
     "status",
+}
+
+GUARDIAN_UPDATABLE_FIELDS = {
+    "name", "phone", "alt_phone", "whatsapp_phone",
+    "email", "occupation", "annual_income", "is_primary",
 }
 PHOTO_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "heic"}
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
@@ -187,21 +197,48 @@ async def create_student(body: StudentCreate, request: Request):
         roll_number=body.roll_number,
         dob=body.dob,
         gender=body.gender,
+        blood_group=body.blood_group,
+        height_cm=body.height_cm,
+        weight_kg=body.weight_kg,
+        medical_notes=body.medical_notes,
     )
     student_doc = _serialize(student)
     await db.students.insert_one({**student_doc, "_id": student.id})
 
-    if body.guardian_name and body.guardian_phone:
-        guardian = Guardian(
+    guardians_to_create = []
+    if body.father_name and body.father_phone:
+        guardians_to_create.append(Guardian(
+            student_id=student.id,
+            name=body.father_name,
+            relation="Father",
+            phone=body.father_phone,
+            whatsapp_phone=body.father_phone,
+            occupation=body.father_occupation,
+            annual_income=body.annual_income,
+            is_primary=True,
+        ))
+    if body.mother_name and body.mother_phone:
+        guardians_to_create.append(Guardian(
+            student_id=student.id,
+            name=body.mother_name,
+            relation="Mother",
+            phone=body.mother_phone,
+            whatsapp_phone=body.mother_phone,
+            occupation=body.mother_occupation,
+            is_primary=not body.father_name,
+        ))
+    if not guardians_to_create and body.guardian_name and body.guardian_phone:
+        guardians_to_create.append(Guardian(
             student_id=student.id,
             name=body.guardian_name,
             relation="Parent",
             phone=body.guardian_phone,
             whatsapp_phone=body.guardian_phone,
             is_primary=True,
-        )
-        guardian_doc = _serialize(guardian)
-        await db.guardians.insert_one({**guardian_doc, "_id": guardian.id})
+        ))
+    for g in guardians_to_create:
+        g_doc = _serialize(g)
+        await db.guardians.insert_one({**g_doc, "_id": g.id})
 
     await _audit(db, action="create", student_id=student.id, user=user, changes={"created": student_doc})
     return {"success": True, "data": student_doc}
@@ -365,6 +402,142 @@ async def upload_student_photo(student_id: str, request: Request, file: UploadFi
         raise
 
     return {"success": True, "data": {"photo_url": record["file_url"], "upload_id": file_id, "preview_url": create_presigned_get_url(stored.key)}}
+
+
+@router.get("/{student_id}/guardians")
+async def list_guardians(student_id: str, request: Request):
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in READ_ROLES and user["role"] != "student":
+        raise HTTPException(403, "Forbidden")
+    student = await db.students.find_one(_student_query({"id": student_id}), {"_id": 0})
+    if not student:
+        raise HTTPException(404, "Student not found")
+    guardians = await db.guardians.find(
+        scoped_filter({"student_id": student_id}, get_school_id()), {"_id": 0}
+    ).to_list(10)
+    return {"success": True, "data": guardians}
+
+
+@router.put("/{student_id}/guardians")
+async def upsert_guardians(student_id: str, request: Request):
+    """Replace all guardians for a student. Body: list of guardian objects."""
+    db = get_db()
+    user = get_user(request)
+    if not _role_can_manage(user):
+        raise HTTPException(403, "Forbidden")
+    student = await db.students.find_one(_student_query({"id": student_id}), {"_id": 0})
+    if not student:
+        raise HTTPException(404, "Student not found")
+
+    body = await request.json()
+    if not isinstance(body, list):
+        raise HTTPException(400, "Body must be a list of guardian objects")
+
+    existing = await db.guardians.find(
+        scoped_filter({"student_id": student_id}, get_school_id()), {"_id": 0}
+    ).to_list(10)
+    existing_by_relation = {g["relation"].lower(): g for g in existing}
+
+    saved = []
+    for item in body:
+        relation = (item.get("relation") or "Parent").strip()
+        name = (item.get("name") or "").strip()
+        phone = (item.get("phone") or "").strip()
+        if not name or not phone:
+            continue
+        existing_g = existing_by_relation.get(relation.lower())
+        update_doc = {
+            "name": name,
+            "phone": phone,
+            "whatsapp_phone": item.get("whatsapp_phone") or phone,
+            "alt_phone": item.get("alt_phone"),
+            "email": item.get("email"),
+            "occupation": item.get("occupation"),
+            "annual_income": item.get("annual_income"),
+            "is_primary": item.get("is_primary", False),
+            "updated_at": datetime.now().isoformat(),
+        }
+        if existing_g:
+            await db.guardians.update_one(
+                scoped_filter({"id": existing_g["id"]}, get_school_id()),
+                {"$set": update_doc},
+            )
+            saved.append({**existing_g, **update_doc})
+        else:
+            new_g = Guardian(
+                student_id=student_id,
+                name=name,
+                relation=relation,
+                phone=phone,
+                whatsapp_phone=item.get("whatsapp_phone") or phone,
+                alt_phone=item.get("alt_phone"),
+                email=item.get("email"),
+                occupation=item.get("occupation"),
+                annual_income=item.get("annual_income"),
+                is_primary=item.get("is_primary", False),
+            )
+            g_doc = _serialize(new_g)
+            await db.guardians.insert_one({**g_doc, "_id": new_g.id})
+            saved.append(g_doc)
+
+    await _audit(db, action="guardians_update", student_id=student_id, user=user, changes={"count": len(saved)})
+    return {"success": True, "data": saved}
+
+
+@router.post("/{student_id}/guardians/{guardian_id}/photo")
+async def upload_guardian_photo(student_id: str, guardian_id: str, request: Request, file: UploadFile = File(...)):
+    db = get_db()
+    user = get_user(request)
+    if not _role_can_manage(user):
+        raise HTTPException(403, "Forbidden")
+
+    guardian = await db.guardians.find_one(
+        scoped_filter({"id": guardian_id, "student_id": student_id}, get_school_id()), {"_id": 0}
+    )
+    if not guardian:
+        raise HTTPException(404, "Guardian not found")
+
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if ext not in PHOTO_EXTENSIONS:
+        raise HTTPException(400, "Photo must be jpg, jpeg, png, webp, or heic")
+    content = await file.read()
+    if len(content) > MAX_PHOTO_BYTES:
+        raise HTTPException(400, "Photo exceeds 5MB limit")
+
+    file_id = str(uuid.uuid4())
+    safe_filename = f"{file_id}.{ext}"
+    content_type = infer_content_type(file.filename, file.content_type)
+    stored = upload_bytes(
+        content=content,
+        key=build_upload_key(file_id, file.filename),
+        content_type=content_type,
+        original_filename=file.filename,
+    )
+    photo_url = f"/api/uploads/serve/{safe_filename}"
+    record = {
+        "_id": file_id,
+        "id": file_id,
+        "schoolId": get_school_id(),
+        "uploaded_by": user["id"],
+        "file_url": photo_url,
+        "file_name": file.filename,
+        "safe_filename": safe_filename,
+        "file_type": content_type,
+        "file_size_bytes": len(content),
+        "linked_table": "guardians",
+        "linked_id": guardian_id,
+        "created_at": datetime.now().isoformat(),
+        "storage": "s3",
+        "s3_bucket": stored.bucket,
+        "s3_key": stored.key,
+    }
+    await db.file_uploads.insert_one(record)
+    await db.guardians.update_one(
+        scoped_filter({"id": guardian_id}, get_school_id()),
+        {"$set": {"photo_url": photo_url}},
+    )
+    return {"success": True, "data": {"photo_url": photo_url}}
 
 
 @router.post("/{student_id}/erase")

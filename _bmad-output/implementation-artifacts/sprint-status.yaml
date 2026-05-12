@@ -122,6 +122,16 @@ development_status:
   8b-02-file-upload-ai-chat-frontend-inputbar: done
 
   # ─────────────────────────────────────────────
+  # Sprint 8-C — Student Profile Enhancement
+  # ─────────────────────────────────────────────
+  8c-01-student-model-extended-fields: done
+  8c-02-guardian-model-extended-fields: done
+  8c-03-student-create-father-mother-guardians: done
+  8c-04-guardian-upsert-photo-endpoints: done
+  8c-05-frontend-tabbed-student-profile-modal: done
+  8c-06-frontend-student-detail-side-panel: done
+
+  # ─────────────────────────────────────────────
   # Phase 6 — Deployment & Go-Live (5 stories)
   # ─────────────────────────────────────────────
   epic-6: in-progress
