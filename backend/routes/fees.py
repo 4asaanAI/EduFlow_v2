@@ -309,3 +309,164 @@ async def get_student_fee_status(student_id: str, request: Request):
 @router.delete("/transactions/{transaction_id}")
 async def delete_fee_transaction(transaction_id: str, request: Request):
     raise HTTPException(405, "Fee transactions cannot be hard deleted")
+
+
+@router.post("/discount-types")
+async def create_discount_type(request: Request):
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["owner", "admin"]:
+        raise HTTPException(403, "Forbidden")
+    body = await request.json()
+    required = {"name", "value", "value_type", "recurrence", "reason_note"}
+    if any(body.get(field) in (None, "") for field in required):
+        raise HTTPException(400, "name, value, value_type, recurrence, and reason_note are required")
+    if body["value_type"] not in ("flat", "percentage"):
+        raise HTTPException(400, "value_type must be flat or percentage")
+    doc = {
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "schoolId": get_school_id(),
+        "name": body["name"],
+        "value": float(body["value"]),
+        "value_type": body["value_type"],
+        "recurrence": body["recurrence"],
+        "reason_note": body["reason_note"],
+        "is_active": True,
+        "created_by": user["id"],
+        "created_at": datetime.now().isoformat(),
+    }
+    await db.fee_discount_types.insert_one(doc)
+    await _audit(db, action="discount_type_create", entity_id=doc["id"], user=user, changes={"created": {k: v for k, v in doc.items() if k != "_id"}})
+    return {"success": True, "data": {k: v for k, v in doc.items() if k != "_id"}}
+
+
+@router.get("/discount-types")
+async def get_discount_types(request: Request, include_inactive: bool = False):
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["owner", "admin"]:
+        raise HTTPException(403, "Forbidden")
+    query = _fee_query() if include_inactive else _fee_query({"is_active": True})
+    items = await db.fee_discount_types.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return {"success": True, "data": items}
+
+
+@router.patch("/discount-types/{discount_type_id}")
+async def update_discount_type(discount_type_id: str, request: Request):
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["owner", "admin"]:
+        raise HTTPException(403, "Forbidden")
+    body = await request.json()
+    allowed = {"name", "is_active", "reason_note"}
+    changes = {k: v for k, v in body.items() if k in allowed}
+    if not changes:
+        raise HTTPException(400, "No editable fields supplied")
+    existing = await db.fee_discount_types.find_one(_fee_query({"id": discount_type_id}), {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Discount type not found")
+    await db.fee_discount_types.update_one(_fee_query({"id": discount_type_id}), {"$set": {**changes, "updated_at": datetime.now().isoformat()}})
+    await _audit(db, action="discount_type_update", entity_id=discount_type_id, user=user, changes=changes, reason=body.get("reason_note"))
+    updated = await db.fee_discount_types.find_one(_fee_query({"id": discount_type_id}), {"_id": 0})
+    return {"success": True, "data": updated}
+
+
+@router.post("/discounts/apply")
+async def apply_discount(request: Request):
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["owner", "admin"]:
+        raise HTTPException(403, "Forbidden")
+    body = await request.json()
+    required = {"student_id", "discount_type_id", "original_amount", "effective_from"}
+    if any(body.get(field) in (None, "") for field in required):
+        raise HTTPException(400, "student_id, discount_type_id, original_amount, and effective_from are required")
+    dtype = await db.fee_discount_types.find_one(_fee_query({"id": body["discount_type_id"], "is_active": True}), {"_id": 0})
+    if not dtype:
+        raise HTTPException(404, "Active discount type not found")
+    application = {
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "schoolId": get_school_id(),
+        "student_id": body["student_id"],
+        "discount_type_id": dtype["id"],
+        "original_amount": float(body["original_amount"]),
+        "effective_from": body["effective_from"],
+        "applied_by": user["id"],
+        "applied_at": datetime.now().isoformat(),
+        "note": body.get("note"),
+    }
+    await db.fee_discounts.insert_one(application)
+    await _audit(db, action="discount_apply", entity_id=application["id"], user=user, changes={"applied": {k: v for k, v in application.items() if k != "_id"}}, reason=body.get("note"))
+    return {"success": True, "data": {k: v for k, v in application.items() if k != "_id"}}
+
+
+async def _discount_breakdown(db, student_id: str):
+    applications = await db.fee_discounts.find(_fee_query({"student_id": student_id}), {"_id": 0}).sort("applied_at", 1).to_list(200)
+    type_ids = [item["discount_type_id"] for item in applications]
+    types = await db.fee_discount_types.find(_fee_query({"id": {"$in": type_ids}}), {"_id": 0}).to_list(len(type_ids)) if type_ids else []
+    type_map = {item["id"]: item for item in types}
+    original_amount = applications[0]["original_amount"] if applications else 0
+    lines = []
+    total_discount = 0
+    for app in applications:
+        dtype = type_map.get(app["discount_type_id"], {})
+        base = float(app.get("original_amount", original_amount) or original_amount)
+        value = float(dtype.get("value", 0))
+        amount = min(base, base * value / 100) if dtype.get("value_type") == "percentage" else min(base, value)
+        total_discount += amount
+        lines.append({
+            "application_id": app["id"],
+            "label": dtype.get("name", "Discount"),
+            "value": value,
+            "value_type": dtype.get("value_type"),
+            "discount_amount": amount,
+            "effective_from": app.get("effective_from"),
+            "applied_by": app.get("applied_by"),
+        })
+    payable = max(float(original_amount) - total_discount, 0)
+    return {
+        "student_id": student_id,
+        "original_amount": original_amount,
+        "discounts": lines,
+        "total_discount": total_discount,
+        "payable_amount": payable,
+    }
+
+
+@router.get("/discounts/{student_id}")
+async def get_student_discounts(student_id: str, request: Request):
+    user = get_user(request)
+    if user["role"] not in ["owner", "admin", "teacher", "parent", "student"]:
+        raise HTTPException(403, "Forbidden")
+    return {"success": True, "data": await _discount_breakdown(get_db(), student_id)}
+
+
+@router.get("/discount-summary")
+async def get_discount_summary(request: Request):
+    db = get_db()
+    user = get_user(request)
+    if user["role"] != "owner":
+        raise HTTPException(403, "Only Owner can view discount impact summary")
+    applications = await db.fee_discounts.find(_fee_query(), {"_id": 0}).to_list(2000)
+    type_ids = [item["discount_type_id"] for item in applications]
+    types = await db.fee_discount_types.find(_fee_query({"id": {"$in": type_ids}}), {"_id": 0}).to_list(len(type_ids)) if type_ids else []
+    type_map = {item["id"]: item for item in types}
+    expected = sum(float(item.get("original_amount", 0)) for item in applications)
+    total_discount = 0
+    by_type = {}
+    for app in applications:
+        dtype = type_map.get(app["discount_type_id"], {})
+        base = float(app.get("original_amount", 0))
+        value = float(dtype.get("value", 0))
+        amount = min(base, base * value / 100) if dtype.get("value_type") == "percentage" else min(base, value)
+        total_discount += amount
+        bucket = by_type.setdefault(dtype.get("name", "Discount"), {"count": 0, "discount_value": 0})
+        bucket["count"] += 1
+        bucket["discount_value"] += amount
+    return {"success": True, "data": {
+        "total_expected_revenue": expected,
+        "total_discount_value": total_discount,
+        "discount_types": by_type,
+    }}

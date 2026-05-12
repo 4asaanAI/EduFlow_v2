@@ -213,6 +213,8 @@ class FakeDb:
         self.fee_transaction_corrections = FakeCollection()
         self.fee_contact_logs = FakeCollection()
         self.fee_structures = FakeCollection()
+        self.fee_discount_types = FakeCollection()
+        self.fee_discounts = FakeCollection()
 
 
 if APP_AVAILABLE:

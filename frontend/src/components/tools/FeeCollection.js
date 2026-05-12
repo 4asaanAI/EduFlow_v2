@@ -1,8 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle, Edit3, Phone, RefreshCw, Save } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Edit3, Percent, Phone, RefreshCw, Save } from 'lucide-react';
 import {
+  applyFeeDiscount,
   correctFeeTransaction,
   createFeeContactLog,
+  createDiscountType,
+  getDiscountSummary,
+  getDiscountTypes,
+  getFeeDiscounts,
   getFeeSummary,
   getFeeTransactions,
   getStudents,
@@ -13,6 +18,8 @@ const today = new Date().toISOString().slice(0, 10);
 const initialPayment = { student_id: '', fee_period: '', fee_head: 'tuition', amount: '', payment_mode: 'upi', status: 'paid', due_date: today, transaction_ref: '' };
 const initialCorrection = { transaction_id: '', amount: '', status: '', reason: '' };
 const initialContact = { fee_transaction_id: '', student_id: '', contact_type: 'call', outcome: '', notes: '', date: today };
+const initialDiscountType = { name: '', value: '', value_type: 'percentage', recurrence: 'per-term', reason_note: '' };
+const initialDiscountApply = { student_id: '', discount_type_id: '', original_amount: '', effective_from: today, note: '' };
 
 function money(value) {
   return `Rs ${Number(value || 0).toLocaleString('en-IN')}`;
@@ -30,16 +37,23 @@ export default function FeeCollection() {
   const [payment, setPayment] = useState(initialPayment);
   const [correction, setCorrection] = useState(initialCorrection);
   const [contact, setContact] = useState(initialContact);
+  const [discountTypes, setDiscountTypes] = useState([]);
+  const [discountSummary, setDiscountSummary] = useState(null);
+  const [discountBreakdown, setDiscountBreakdown] = useState(null);
+  const [discountTypeForm, setDiscountTypeForm] = useState(initialDiscountType);
+  const [discountApply, setDiscountApply] = useState(initialDiscountApply);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const [summaryRes, txnRes, overdueRes, studentRes] = await Promise.all([
+      const [summaryRes, txnRes, overdueRes, studentRes, discountTypesRes, discountSummaryRes] = await Promise.all([
         getFeeSummary(payment.fee_period ? { fee_period: payment.fee_period } : {}),
         getFeeTransactions(null, {}),
         getFeeTransactions(null, { overdue_days: overdueDays }),
         getStudents(null, { limit: 200 }),
+        getDiscountTypes(),
+        getDiscountSummary(),
       ]);
       if (!summaryRes.success) throw new Error(summaryRes.detail || 'Unable to load fee summary');
       if (!txnRes.success) throw new Error(txnRes.detail || 'Unable to load fee transactions');
@@ -47,6 +61,8 @@ export default function FeeCollection() {
       setTransactions(txnRes.data || []);
       setStudents(studentRes.data || []);
       setContact(prev => ({ ...prev, overdue: overdueRes.data || [] }));
+      setDiscountTypes(discountTypesRes.data || []);
+      if (discountSummaryRes.success) setDiscountSummary(discountSummaryRes.data);
     } catch (err) {
       setError(err.message || 'Unable to load fee data. Check whether the last payment was partially written before retrying.');
     } finally {
@@ -123,6 +139,58 @@ export default function FeeCollection() {
     }
   }
 
+  async function saveDiscountType() {
+    setSaving(true);
+    setError('');
+    setNotice('');
+    try {
+      if (!discountTypeForm.name || !discountTypeForm.value || !discountTypeForm.reason_note) {
+        throw new Error('Discount type requires name, value, and reason note.');
+      }
+      const res = await createDiscountType({ ...discountTypeForm, value: Number(discountTypeForm.value) });
+      if (!res.success) throw new Error(res.detail || 'Discount type could not be saved');
+      setDiscountTypeForm(initialDiscountType);
+      setNotice('Discount type saved.');
+      await loadData();
+    } catch (err) {
+      setError(err.message || 'Discount type could not be saved.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function applyDiscount() {
+    setSaving(true);
+    setError('');
+    setNotice('');
+    try {
+      if (!discountApply.student_id || !discountApply.discount_type_id || !discountApply.original_amount) {
+        throw new Error('Discount application requires student, discount type, and original amount.');
+      }
+      const res = await applyFeeDiscount({ ...discountApply, original_amount: Number(discountApply.original_amount) });
+      if (!res.success) throw new Error(res.detail || 'Discount could not be applied');
+      setDiscountApply(initialDiscountApply);
+      setNotice('Discount applied.');
+      await loadData();
+      await loadDiscountBreakdown(res.data.student_id);
+    } catch (err) {
+      setError(err.message || 'Discount could not be applied.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function loadDiscountBreakdown(studentId) {
+    setError('');
+    try {
+      const res = await getFeeDiscounts(studentId);
+      if (!res.success) throw new Error(res.detail || 'Discount breakdown could not be loaded');
+      setDiscountBreakdown(res.data);
+    } catch (err) {
+      setError(err.message || 'Discount breakdown could not be loaded.');
+    }
+  }
+
   return (
     <div data-testid="fee-collection-tool" style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
@@ -143,7 +211,7 @@ export default function FeeCollection() {
           ['Collected', money(summary?.total_collected), '#34d399'],
           ['Outstanding', money(summary?.total_outstanding), '#f87171'],
           ['Defaulters', summary?.defaulters || 0, '#fbbf24'],
-          ['Transactions', summary?.transactions || 0, '#4f8ff7'],
+          ['Discounts', money(discountSummary?.total_discount_value), '#a78bfa'],
         ].map(([label, value, color]) => (
           <div key={label} style={panelStyle}>
             <div style={{ color, fontSize: 20, fontWeight: 750 }}>{value}</div>
@@ -219,6 +287,67 @@ export default function FeeCollection() {
         </section>
       </div>
 
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: 14, marginBottom: 18 }}>
+        <section style={panelStyle}>
+          <h2 style={panelTitle}><Percent size={16} />Discount type</h2>
+          <input value={discountTypeForm.name} onChange={e => setDiscountTypeForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Discount name" style={inputStyle} />
+          <div style={twoCol}>
+            <input value={discountTypeForm.value} onChange={e => setDiscountTypeForm(prev => ({ ...prev, value: e.target.value }))} placeholder="Value" type="number" style={inputStyle} />
+            <select value={discountTypeForm.value_type} onChange={e => setDiscountTypeForm(prev => ({ ...prev, value_type: e.target.value }))} style={inputStyle}>
+              <option value="percentage">Percentage</option>
+              <option value="flat">Flat</option>
+            </select>
+          </div>
+          <select value={discountTypeForm.recurrence} onChange={e => setDiscountTypeForm(prev => ({ ...prev, recurrence: e.target.value }))} style={inputStyle}>
+            <option value="one-time">One-time</option>
+            <option value="per-term">Per-term</option>
+          </select>
+          <textarea value={discountTypeForm.reason_note} onChange={e => setDiscountTypeForm(prev => ({ ...prev, reason_note: e.target.value }))} placeholder="Reason note" style={textareaStyle} />
+          <button onClick={saveDiscountType} disabled={saving} style={primaryButton('#a78bfa')}>Save discount type</button>
+        </section>
+
+        <section style={panelStyle}>
+          <h2 style={panelTitle}>Apply discount</h2>
+          <select value={discountApply.student_id} onChange={e => {
+            setDiscountApply(prev => ({ ...prev, student_id: e.target.value }));
+            if (e.target.value) loadDiscountBreakdown(e.target.value);
+          }} style={inputStyle}>
+            <option value="">Select student</option>
+            {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <select value={discountApply.discount_type_id} onChange={e => setDiscountApply(prev => ({ ...prev, discount_type_id: e.target.value }))} style={inputStyle}>
+            <option value="">Select discount type</option>
+            {discountTypes.map(d => <option key={d.id} value={d.id}>{d.name} - {d.value_type === 'percentage' ? `${d.value}%` : money(d.value)}</option>)}
+          </select>
+          <div style={twoCol}>
+            <input value={discountApply.original_amount} onChange={e => setDiscountApply(prev => ({ ...prev, original_amount: e.target.value }))} placeholder="Original amount" type="number" style={inputStyle} />
+            <input value={discountApply.effective_from} onChange={e => setDiscountApply(prev => ({ ...prev, effective_from: e.target.value }))} type="date" style={inputStyle} />
+          </div>
+          <input value={discountApply.note} onChange={e => setDiscountApply(prev => ({ ...prev, note: e.target.value }))} placeholder="Approval note" style={inputStyle} />
+          <button onClick={applyDiscount} disabled={saving} style={primaryButton('#8b5cf6')}>Apply discount</button>
+        </section>
+
+        <section style={panelStyle}>
+          <h2 style={panelTitle}>Discount breakdown</h2>
+          {!discountBreakdown ? (
+            <div style={emptyStyle}>Select a student to view payable calculation.</div>
+          ) : (
+            <div>
+              <div style={lineItem}><span>Original</span><strong>{money(discountBreakdown.original_amount)}</strong></div>
+              {(discountBreakdown.discounts || []).map(item => (
+                <div key={item.application_id} style={lineItem}>
+                  <span>{item.label} ({item.value_type === 'percentage' ? `${item.value}%` : money(item.value)})</span>
+                  <strong>-{money(item.discount_amount)}</strong>
+                </div>
+              ))}
+              <div style={{ ...lineItem, borderTop: '1px solid var(--c-border)', paddingTop: 10, color: '#34d399' }}>
+                <span>Payable</span><strong>{money(discountBreakdown.payable_amount)}</strong>
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
+
       <div style={panelStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
           <h2 style={panelTitle}>Overdue records</h2>
@@ -261,3 +390,4 @@ const alertStyle = color => ({ display: 'flex', alignItems: 'center', gap: 8, ma
 const thStyle = { padding: '10px 12px', textAlign: 'left', color: 'var(--c-faint)', fontSize: 10, textTransform: 'uppercase', background: 'var(--c-deep)' };
 const tdStyle = { padding: '10px 12px', color: 'var(--c-text)', fontSize: 13 };
 const emptyStyle = { padding: 30, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13 };
+const lineItem = { display: 'flex', justifyContent: 'space-between', gap: 12, padding: '7px 0', color: 'var(--c-text)', fontSize: 13 };

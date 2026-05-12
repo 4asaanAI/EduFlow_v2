@@ -244,6 +244,43 @@ export async function createFeeContactLog(data) {
   return res.json();
 }
 
+export async function getDiscountTypes(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  const res = await apiFetch(`${API}/fees/discount-types?${qs}`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function createDiscountType(data) {
+  const res = await apiFetch(`${API}/fees/discount-types`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function updateDiscountType(discountTypeId, data) {
+  const res = await apiFetch(`${API}/fees/discount-types/${discountTypeId}`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function applyFeeDiscount(data) {
+  const res = await apiFetch(`${API}/fees/discounts/apply`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function getFeeDiscounts(studentId) {
+  const res = await apiFetch(`${API}/fees/discounts/${studentId}`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function getDiscountSummary() {
+  const res = await apiFetch(`${API}/fees/discount-summary`, { headers: getHeaders() });
+  return res.json();
+}
+
 // --- Tools ---
 export async function executeTool(toolId, params) {
   const res = await apiFetch(`${API}/tools/${toolId}/execute`, {
