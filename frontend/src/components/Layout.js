@@ -15,6 +15,11 @@ const loadTool = async (toolId) => {
   if (toolId === 'facility-requests') return (await import('./tools/MaintenanceTools')).MaintenanceFacilityTracker;
   if (toolId === 'tech-issues') return (await import('./tools/MaintenanceTools')).ITTechIssueTracker;
   if (toolId === 'all-issues') return (await import('./tools/MaintenanceTools')).AllIssuesView;
+  if (toolId === 'maintenance-dashboard') return (await import('./tools/MaintenanceTools')).MaintenanceDashboard;
+  if (toolId === 'maintenance-work-orders') return (await import('./tools/MaintenanceTools')).MaintenanceWorkOrders;
+  if (toolId === 'maintenance-schedule') return (await import('./tools/MaintenanceTools')).MaintenanceSchedule;
+  if (toolId === 'vendor-log') return (await import('./tools/MaintenanceTools')).VendorLog;
+  if (toolId === 'raise-maintenance') return (await import('./tools/MaintenanceTools')).RaiseMaintenanceRequest;
   if (toolId === 'incident-tracker') return (await import('./tools/IncidentTracker')).default;
   if (toolId === 'timetable-builder') return (await import('./tools/TimetableBuilder')).default;
   if (toolId === 'audit-log') return (await import('./tools/AuditLog')).default;

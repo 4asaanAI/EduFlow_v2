@@ -1,20 +1,25 @@
 /**
- * Story 11 + 12: Maintenance Admin & IT/Tech Admin issue tracker panels
+ * Story 11 + 12 + Maintenance Module: Maintenance Admin & IT/Tech Admin issue tracker panels,
+ * plus MaintenanceDashboard, MaintenanceWorkOrders, MaintenanceSchedule, VendorLog,
+ * and RaiseMaintenanceRequest components.
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, Badge, ActionBtn, FormField, DataTable } from './ToolPage';
-import { Plus, RefreshCw, MessageSquare, CheckCircle } from 'lucide-react';
+import { Plus, RefreshCw, MessageSquare, CheckCircle, Calendar, Users, Wrench, AlertTriangle, ClipboardList, Camera, X as XIcon } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function h() { return getAuthHeaders(); }
 
 const STATUS_COLORS = {
   open: 'var(--tool-hex-fb923c)',
+  accepted: 'var(--tool-hex-fbbf24)',
   in_progress: 'var(--tool-hex-facc15)',
-  pending_owner_confirmation: 'var(--tool-hex-818cf8)',
+  pending_parts: 'var(--tool-hex-818cf8)',
+  pending_owner_confirmation: 'var(--tool-hex-a78bfa)',
+  done: 'var(--tool-hex-34d399)',
   closed: 'var(--tool-hex-34d399)',
 };
 
@@ -275,6 +280,637 @@ export function MaintenanceFacilityTracker() {
 
 export function ITTechIssueTracker() {
   return <IssuePanel type="tech" title="Tech Issue Tracker" />;
+}
+
+// ─── PRIORITY helpers ────────────────────────────────────────────────────────
+const PRIORITY_COLORS = {
+  urgent: 'var(--tool-hex-f87171)',
+  high: 'var(--tool-hex-fb923c)',
+  medium: 'var(--tool-hex-facc15)',
+  low: 'var(--tool-hex-34d399)',
+};
+function PriorityBadge({ priority }) {
+  return <Badge label={priority || 'medium'} color={PRIORITY_COLORS[priority] || 'var(--tool-hex-888)'} />;
+}
+
+// ─── Photo Uploader (up to 3 photos, uploads to S3 via /api/uploads) ─────────
+function PhotoUploader({ photos, onChange, isDark }) {
+  const [uploading, setUploading] = useState(false);
+  const border = isDark ? 'var(--tool-hex-333)' : 'var(--tool-hex-e5e5e5)';
+  const muted = isDark ? 'var(--tool-hex-888)' : 'var(--tool-hex-737373)';
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || photos.length >= 3) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('entity_type', 'maintenance_request');
+      const res = await fetch(`${API}/uploads`, { method: 'POST', headers: h(), body: fd });
+      const data = await res.json();
+      if (data.success) onChange([...photos, data.data.file_url]);
+    } catch {}
+    setUploading(false);
+    e.target.value = '';
+  };
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <label style={{ fontSize: 10, color: muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 8 }}>Photos (up to 3)</label>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {photos.map((url, i) => (
+          <div key={i} style={{ position: 'relative', width: 72, height: 72 }}>
+            <img src={url} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, border: `1px solid ${border}` }} />
+            <button type="button" onClick={() => onChange(photos.filter((_, j) => j !== i))}
+              style={{ position: 'absolute', top: -6, right: -6, background: 'var(--tool-hex-f87171)', border: 'none', borderRadius: '50%', width: 18, height: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+              <XIcon size={10} color="#fff" />
+            </button>
+          </div>
+        ))}
+        {photos.length < 3 && (
+          <label style={{ width: 72, height: 72, border: `2px dashed ${border}`, borderRadius: 8, cursor: uploading ? 'wait' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+            <Camera size={18} color={muted} />
+            <span style={{ fontSize: 9, color: muted }}>{uploading ? 'Uploading...' : 'Add photo'}</span>
+            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} disabled={uploading} />
+          </label>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Maintenance Dashboard ────────────────────────────────────────────────────
+export function MaintenanceDashboard() {
+  const { isDark } = useTheme();
+  const [stats, setStats] = useState({ open: 0, in_progress: 0, pending: 0, closed: 0, urgent: 0 });
+  const [recentItems, setRecentItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API}/issues/facility?limit=50`, { headers: h() });
+      const data = await res.json();
+      if (data.success) {
+        const items = data.data || [];
+        setRecentItems(items.slice(0, 5));
+        setStats({
+          open: items.filter(i => i.status === 'open').length,
+          in_progress: items.filter(i => i.status === 'in_progress').length,
+          pending: items.filter(i => i.status === 'pending_owner_confirmation').length,
+          closed: items.filter(i => i.status === 'closed').length,
+          urgent: items.filter(i => i.priority === 'urgent').length,
+        });
+      }
+    } catch {}
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const bg = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-fff)';
+  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
+  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
+  const muted = isDark ? 'var(--tool-hex-888)' : 'var(--tool-hex-737373)';
+
+  const statCards = [
+    { label: 'Open', value: stats.open, color: 'var(--tool-hex-fb923c)', Icon: AlertTriangle },
+    { label: 'In Progress', value: stats.in_progress, color: 'var(--tool-hex-facc15)', Icon: Wrench },
+    { label: 'Pending Confirm', value: stats.pending, color: 'var(--tool-hex-818cf8)', Icon: ClipboardList },
+    { label: 'Urgent', value: stats.urgent, color: 'var(--tool-hex-f87171)', Icon: AlertTriangle },
+    { label: 'Resolved', value: stats.closed, color: 'var(--tool-hex-34d399)', Icon: CheckCircle },
+  ];
+
+  return (
+    <ToolPage title="Maintenance Dashboard" subtitle="Overview of all facility requests" onRefresh={load} loading={loading}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 20 }}>
+        {statCards.map(({ label, value, color, Icon }) => (
+          <div key={label} style={{ background: bg, border: `1px solid ${border}`, borderRadius: 11, padding: 16, textAlign: 'center' }}>
+            <Icon size={20} color={color} style={{ marginBottom: 8 }} />
+            <div style={{ fontSize: 24, fontWeight: 700, color }}>{value}</div>
+            <div style={{ fontSize: 11, color: muted, marginTop: 4 }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {recentItems.length > 0 && (
+        <>
+          <p style={{ fontSize: 11, fontWeight: 600, color: muted, letterSpacing: '0.06em', marginBottom: 10 }}>RECENT REQUESTS</p>
+          {recentItems.map(item => (
+            <div key={item.id} style={{ background: bg, border: `1px solid ${border}`, borderRadius: 10, padding: 12, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <span style={{ fontSize: 13, fontWeight: 600, color: text }}>{item.description?.slice(0, 55)}{item.description?.length > 55 ? '…' : ''}</span>
+                <div style={{ fontSize: 11, color: muted, marginTop: 2 }}>{item.category} · {item.location || 'No location'} · {item.created_at?.slice(0, 10)}</div>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <PriorityBadge priority={item.priority} />
+                <StatusBadge status={item.status} />
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+    </ToolPage>
+  );
+}
+
+// ─── Maintenance Work Orders (alias with priority/photo support) ──────────────
+export function MaintenanceWorkOrders() {
+  const { currentUser } = useUser();
+  const { isDark } = useTheme();
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [filterPriority, setFilterPriority] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [form, setForm] = useState({ description: '', location: '', category: 'plumbing', priority: 'medium' });
+  const [formPhotos, setFormPhotos] = useState([]);
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const f = k => v => setForm(p => ({ ...p, [k]: v }));
+
+  const facilityCategories = ['plumbing', 'electrical', 'civil', 'cleaning', 'security', 'carpentry', 'painting', 'pest_control', 'hvac', 'fire_safety', 'landscaping', 'other'];
+  const priorities = ['low', 'medium', 'high', 'urgent'];
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const params = new URLSearchParams({ limit: '100' });
+      if (filterPriority !== 'all') params.set('priority', filterPriority);
+      if (filterStatus !== 'all') params.set('status', filterStatus);
+      const res = await fetch(`${API}/issues/facility?${params}`, { headers: h() });
+      const data = await res.json();
+      if (data.success) setItems(data.data || []);
+      else setError(data.detail || 'Failed to load');
+    } catch { setError('Network error'); }
+    setLoading(false);
+  }, [filterPriority, filterStatus]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    if (!form.description) { setFormError('Description is required'); return; }
+    setSaving(true);
+    setFormError('');
+    try {
+      const res = await fetch(`${API}/issues/facility`, {
+        method: 'POST',
+        headers: { ...h(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, photos: formPhotos }),
+      });
+      const data = await res.json();
+      if (data.success) { setShowForm(false); setForm({ description: '', location: '', category: 'plumbing', priority: 'medium' }); setFormPhotos([]); load(); }
+      else setFormError(data.detail || 'Failed to create');
+    } catch { setFormError('Network error'); }
+    setSaving(false);
+  };
+
+  const handleUpdate = async (id, updates) => {
+    await fetch(`${API}/issues/facility/${id}`, {
+      method: 'PATCH',
+      headers: { ...h(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    load();
+  };
+
+  const handleConfirm = async (id) => {
+    await fetch(`${API}/issues/facility/${id}/confirm-resolution`, { method: 'POST', headers: h() });
+    load();
+  };
+
+  const bg = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-fff)';
+  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
+  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
+
+  const open = items.filter(i => i.status !== 'closed');
+  const closed = items.filter(i => i.status === 'closed');
+
+  return (
+    <ToolPage
+      title="Maintenance Work Orders"
+      subtitle={`${open.length} open · ${closed.length} resolved`}
+      onRefresh={load}
+      loading={loading}
+      actions={<ActionBtn label="New Request" icon={<Plus size={11} />} onClick={() => setShowForm(true)} />}
+    >
+      {error && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+        {['all', 'urgent', 'high', 'medium', 'low'].map(p => (
+          <button key={p} onClick={() => setFilterPriority(p)} style={{ padding: '4px 10px', borderRadius: 7, fontSize: 11, cursor: 'pointer', fontWeight: 500, border: `1px solid ${filterPriority === p ? 'var(--tool-hex-4f8ff7)' : (isDark ? 'var(--tool-hex-333)' : 'var(--tool-hex-e5e5e5)')}`, background: filterPriority === p ? 'var(--tool-hex-4f8ff7)' : (isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)'), color: filterPriority === p ? 'var(--tool-hex-fff)' : text }}>
+            {p.charAt(0).toUpperCase() + p.slice(1)}
+          </button>
+        ))}
+        <span style={{ color: isDark ? 'var(--tool-hex-555)' : 'var(--tool-hex-ccc)', margin: '0 4px' }}>|</span>
+        {['all', 'open', 'in_progress', 'pending_owner_confirmation', 'closed'].map(s => (
+          <button key={s} onClick={() => setFilterStatus(s)} style={{ padding: '4px 10px', borderRadius: 7, fontSize: 11, cursor: 'pointer', fontWeight: 500, border: `1px solid ${filterStatus === s ? 'var(--tool-hex-6366f1)' : (isDark ? 'var(--tool-hex-333)' : 'var(--tool-hex-e5e5e5)')}`, background: filterStatus === s ? 'var(--tool-hex-6366f1)' : (isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)'), color: filterStatus === s ? 'var(--tool-hex-fff)' : text }}>
+            {s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+          </button>
+        ))}
+      </div>
+
+      {showForm && (
+        <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 11, padding: 16, marginBottom: 16 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: text, marginBottom: 14 }}>New Work Order</h3>
+          <form onSubmit={handleCreate}>
+            <FormField label="Description" value={form.description} onChange={f('description')} placeholder="Describe the issue..." required />
+            <FormField label="Location" value={form.location} onChange={f('location')} placeholder="Classroom, lab, office..." />
+            <FormField label="Category" type="select" value={form.category} onChange={f('category')}
+              options={facilityCategories.map(c => ({ value: c, label: c.replace(/_/g, ' ').replace(/\b\w/g, x => x.toUpperCase()) }))} />
+            <FormField label="Priority" type="select" value={form.priority} onChange={f('priority')}
+              options={priorities.map(p => ({ value: p, label: p.replace(/\b\w/g, x => x.toUpperCase()) }))} />
+            <PhotoUploader photos={formPhotos} onChange={setFormPhotos} isDark={isDark} />
+            {formError && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 8 }}>{formError}</div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <ActionBtn label={saving ? 'Submitting...' : 'Submit'} type="submit" disabled={saving} />
+              <ActionBtn label="Cancel" variant="secondary" onClick={() => { setShowForm(false); setFormError(''); }} />
+            </div>
+          </form>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ color: isDark ? 'var(--tool-hex-666)' : 'var(--tool-hex-a3a3a3)', fontSize: 13, textAlign: 'center', padding: 40 }}>Loading...</div>
+      ) : items.length === 0 ? (
+        <div style={{ color: isDark ? 'var(--tool-hex-666)' : 'var(--tool-hex-a3a3a3)', fontSize: 13, textAlign: 'center', padding: 40 }}>No work orders found.</div>
+      ) : (
+        <>
+          {open.length > 0 && (
+            <>
+              <p style={{ fontSize: 11, fontWeight: 600, color: isDark ? 'var(--tool-hex-666)' : 'var(--tool-hex-a3a3a3)', marginBottom: 8, letterSpacing: '0.06em' }}>OPEN ({open.length})</p>
+              {open.map(item => (
+                <RequestCard key={item.id} item={item} onUpdate={(id, upd) => handleUpdate(id, upd)} onConfirm={handleConfirm}
+                  role={currentUser.role} subCategory={currentUser.sub_category} isDark={isDark} />
+              ))}
+            </>
+          )}
+          {closed.length > 0 && (
+            <>
+              <p style={{ fontSize: 11, fontWeight: 600, color: isDark ? 'var(--tool-hex-666)' : 'var(--tool-hex-a3a3a3)', marginBottom: 8, marginTop: 16, letterSpacing: '0.06em' }}>RESOLVED</p>
+              {closed.slice(0, 10).map(item => (
+                <RequestCard key={item.id} item={item} onUpdate={(id, upd) => handleUpdate(id, upd)} onConfirm={handleConfirm}
+                  role={currentUser.role} subCategory={currentUser.sub_category} isDark={isDark} />
+              ))}
+            </>
+          )}
+        </>
+      )}
+    </ToolPage>
+  );
+}
+
+// ─── Maintenance Schedule ─────────────────────────────────────────────────────
+const RECURRENCE_OPTIONS = ['one_time', 'weekly', 'monthly', 'quarterly', 'annual'];
+const SCHEDULE_STATUS_OPTIONS = ['scheduled', 'in_progress', 'done', 'skipped'];
+
+export function MaintenanceSchedule() {
+  const { isDark } = useTheme();
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ title: '', description: '', scheduled_date: '', recurrence: 'one_time', category: 'other', assigned_to: '' });
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const f = k => v => setForm(p => ({ ...p, [k]: v }));
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API}/issues/maintenance/schedule?limit=50`, { headers: h() });
+      const data = await res.json();
+      if (data.success) setEntries(data.data || []);
+    } catch {}
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    if (!form.title || !form.scheduled_date) { setFormError('Title and date are required'); return; }
+    setSaving(true);
+    setFormError('');
+    try {
+      const res = await fetch(`${API}/issues/maintenance/schedule`, {
+        method: 'POST',
+        headers: { ...h(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (data.success) { setShowForm(false); setForm({ title: '', description: '', scheduled_date: '', recurrence: 'one_time', category: 'other', assigned_to: '' }); load(); }
+      else setFormError(data.detail || 'Failed to create');
+    } catch { setFormError('Network error'); }
+    setSaving(false);
+  };
+
+  const handleStatusChange = async (id, status) => {
+    await fetch(`${API}/issues/maintenance/schedule/${id}`, {
+      method: 'PATCH',
+      headers: { ...h(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    load();
+  };
+
+  const bg = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-fff)';
+  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
+  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
+  const muted = isDark ? 'var(--tool-hex-888)' : 'var(--tool-hex-737373)';
+
+  return (
+    <ToolPage title="Maintenance Schedule" subtitle="Preventive maintenance calendar" onRefresh={load} loading={loading}
+      actions={<ActionBtn label="Add Entry" icon={<Plus size={11} />} onClick={() => setShowForm(true)} />}>
+
+      {showForm && (
+        <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 11, padding: 16, marginBottom: 16 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: text, marginBottom: 14 }}>New Schedule Entry</h3>
+          <form onSubmit={handleCreate}>
+            <FormField label="Title" value={form.title} onChange={f('title')} placeholder="Annual generator service..." required />
+            <FormField label="Description" value={form.description} onChange={f('description')} placeholder="Details..." />
+            <FormField label="Date" type="date" value={form.scheduled_date} onChange={f('scheduled_date')} required />
+            <FormField label="Recurrence" type="select" value={form.recurrence} onChange={f('recurrence')}
+              options={RECURRENCE_OPTIONS.map(r => ({ value: r, label: r.replace(/_/g, ' ').replace(/\b\w/g, x => x.toUpperCase()) }))} />
+            <FormField label="Category" type="select" value={form.category} onChange={f('category')}
+              options={['plumbing', 'electrical', 'civil', 'cleaning', 'security', 'hvac', 'fire_safety', 'other'].map(c => ({ value: c, label: c.replace(/_/g, ' ').replace(/\b\w/g, x => x.toUpperCase()) }))} />
+            <FormField label="Assigned To" value={form.assigned_to} onChange={f('assigned_to')} placeholder="Staff name or vendor..." />
+            {formError && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 8 }}>{formError}</div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <ActionBtn label={saving ? 'Saving...' : 'Save'} type="submit" disabled={saving} />
+              <ActionBtn label="Cancel" variant="secondary" onClick={() => { setShowForm(false); setFormError(''); }} />
+            </div>
+          </form>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ color: muted, textAlign: 'center', padding: 40 }}>Loading...</div>
+      ) : entries.length === 0 ? (
+        <div style={{ color: muted, textAlign: 'center', padding: 40 }}>No schedule entries yet.</div>
+      ) : (
+        <DataTable
+          headers={['Title', 'Date', 'Recurrence', 'Category', 'Assigned To', 'Status', 'Action']}
+          rows={entries.map(e => [
+            <span style={{ color: text, fontSize: 12, fontWeight: 600 }}>{e.title}</span>,
+            <span style={{ color: muted, fontSize: 11 }}>{e.scheduled_date}</span>,
+            <Badge label={e.recurrence?.replace(/_/g, ' ')} color="var(--tool-hex-818cf8)" />,
+            <span style={{ color: muted, fontSize: 11 }}>{e.category}</span>,
+            <span style={{ color: muted, fontSize: 11 }}>{e.assigned_to || '—'}</span>,
+            <Badge label={e.status} color={e.status === 'done' ? 'var(--tool-hex-34d399)' : e.status === 'skipped' ? 'var(--tool-hex-888)' : 'var(--tool-hex-facc15)'} />,
+            <select value={e.status} onChange={ev => handleStatusChange(e.id, ev.target.value)}
+              style={{ background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 6, padding: '3px 8px', color: text, fontSize: 11, cursor: 'pointer' }}>
+              {SCHEDULE_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>,
+          ])}
+        />
+      )}
+    </ToolPage>
+  );
+}
+
+// ─── Vendor Log ───────────────────────────────────────────────────────────────
+export function VendorLog() {
+  const { isDark } = useTheme();
+  const [vendors, setVendors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ name: '', category: 'general', contact_person: '', phone: '', email: '', address: '', gst_number: '' });
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const f = k => v => setForm(p => ({ ...p, [k]: v }));
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API}/issues/maintenance/vendors?limit=100`, { headers: h() });
+      const data = await res.json();
+      if (data.success) setVendors(data.data || []);
+    } catch {}
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    if (!form.name) { setFormError('Vendor name is required'); return; }
+    setSaving(true);
+    setFormError('');
+    try {
+      const res = await fetch(`${API}/issues/maintenance/vendors`, {
+        method: 'POST',
+        headers: { ...h(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (data.success) { setShowForm(false); setForm({ name: '', category: 'general', contact_person: '', phone: '', email: '', address: '', gst_number: '' }); load(); }
+      else setFormError(data.detail || 'Failed to add vendor');
+    } catch { setFormError('Network error'); }
+    setSaving(false);
+  };
+
+  const toggleActive = async (vendor) => {
+    await fetch(`${API}/issues/maintenance/vendors/${vendor.id}`, {
+      method: 'PATCH',
+      headers: { ...h(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: !vendor.is_active }),
+    });
+    load();
+  };
+
+  const bg = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-fff)';
+  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
+  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
+  const muted = isDark ? 'var(--tool-hex-888)' : 'var(--tool-hex-737373)';
+
+  return (
+    <ToolPage title="Vendor Log" subtitle={`${vendors.filter(v => v.is_active).length} active vendors`} onRefresh={load} loading={loading}
+      actions={<ActionBtn label="Add Vendor" icon={<Plus size={11} />} onClick={() => setShowForm(true)} />}>
+
+      {showForm && (
+        <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 11, padding: 16, marginBottom: 16 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: text, marginBottom: 14 }}>New Vendor</h3>
+          <form onSubmit={handleCreate}>
+            <FormField label="Vendor Name" value={form.name} onChange={f('name')} placeholder="ABC Plumbing Services..." required />
+            <FormField label="Category" type="select" value={form.category} onChange={f('category')}
+              options={['general', 'plumbing', 'electrical', 'civil', 'cleaning', 'security', 'hvac', 'it', 'landscaping', 'other'].map(c => ({ value: c, label: c.replace(/\b\w/g, x => x.toUpperCase()) }))} />
+            <FormField label="Contact Person" value={form.contact_person} onChange={f('contact_person')} placeholder="Name..." />
+            <FormField label="Phone" value={form.phone} onChange={f('phone')} placeholder="98XXXXXXXX" />
+            <FormField label="Email" value={form.email} onChange={f('email')} placeholder="vendor@email.com" />
+            <FormField label="Address" value={form.address} onChange={f('address')} placeholder="Full address..." />
+            <FormField label="GST Number" value={form.gst_number} onChange={f('gst_number')} placeholder="27XXXXX..." />
+            {formError && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 8 }}>{formError}</div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <ActionBtn label={saving ? 'Saving...' : 'Add Vendor'} type="submit" disabled={saving} />
+              <ActionBtn label="Cancel" variant="secondary" onClick={() => { setShowForm(false); setFormError(''); }} />
+            </div>
+          </form>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ color: muted, textAlign: 'center', padding: 40 }}>Loading...</div>
+      ) : vendors.length === 0 ? (
+        <div style={{ color: muted, textAlign: 'center', padding: 40 }}>No vendors added yet.</div>
+      ) : (
+        <DataTable
+          headers={['Name', 'Category', 'Contact', 'Phone', 'GST', 'Status', 'Action']}
+          rows={vendors.map(v => [
+            <span style={{ color: text, fontSize: 12, fontWeight: 600 }}>{v.name}</span>,
+            <Badge label={v.category} color="var(--tool-hex-6366f1)" />,
+            <span style={{ color: muted, fontSize: 11 }}>{v.contact_person || '—'}</span>,
+            <span style={{ color: muted, fontSize: 11 }}>{v.phone || '—'}</span>,
+            <span style={{ color: muted, fontSize: 11 }}>{v.gst_number || '—'}</span>,
+            <Badge label={v.is_active ? 'Active' : 'Inactive'} color={v.is_active ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-888)'} />,
+            <ActionBtn label={v.is_active ? 'Deactivate' : 'Activate'} variant="secondary" onClick={() => toggleActive(v)} />,
+          ])}
+        />
+      )}
+    </ToolPage>
+  );
+}
+
+// ─── Raise Maintenance Request (teachers / non-maintenance staff) ─────────────
+export function RaiseMaintenanceRequest() {
+  const { currentUser } = useUser();
+  const { isDark } = useTheme();
+  const [myRequests, setMyRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ description: '', location: '', category: 'other', priority: 'medium' });
+  const [formPhotos, setFormPhotos] = useState([]);
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [success, setSuccess] = useState('');
+  const f = k => v => setForm(p => ({ ...p, [k]: v }));
+
+  const facilityCategories = ['plumbing', 'electrical', 'civil', 'cleaning', 'security', 'carpentry', 'painting', 'pest_control', 'hvac', 'fire_safety', 'landscaping', 'other'];
+  const priorities = ['low', 'medium', 'high', 'urgent'];
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API}/issues/facility?limit=20`, { headers: h() });
+      const data = await res.json();
+      if (data.success) setMyRequests(data.data || []);
+    } catch {}
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    if (!form.description) { setFormError('Please describe the issue'); return; }
+    setSaving(true);
+    setFormError('');
+    setSuccess('');
+    try {
+      const res = await fetch(`${API}/issues/facility`, {
+        method: 'POST',
+        headers: { ...h(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, photos: formPhotos }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowForm(false);
+        setForm({ description: '', location: '', category: 'other', priority: 'medium' });
+        setFormPhotos([]);
+        setSuccess('Request submitted! The maintenance team has been notified.');
+        load();
+        setTimeout(() => setSuccess(''), 5000);
+      } else setFormError(data.detail || 'Failed to submit');
+    } catch { setFormError('Network error'); }
+    setSaving(false);
+  };
+
+  const bg = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-fff)';
+  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
+  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
+  const muted = isDark ? 'var(--tool-hex-888)' : 'var(--tool-hex-737373)';
+
+  const open = myRequests.filter(i => i.status !== 'closed');
+  const closed = myRequests.filter(i => i.status === 'closed');
+
+  return (
+    <ToolPage
+      title="Raise Maintenance Request"
+      subtitle={`${open.length} open · ${closed.length} resolved`}
+      onRefresh={load}
+      loading={loading}
+      actions={<ActionBtn label="New Request" icon={<Plus size={11} />} onClick={() => setShowForm(true)} />}
+    >
+      {success && (
+        <div style={{ background: 'var(--tool-hex-22c55e)18', border: '1px solid var(--tool-hex-22c55e)', borderRadius: 9, padding: '10px 14px', marginBottom: 14, color: 'var(--tool-hex-22c55e)', fontSize: 13 }}>
+          {success}
+        </div>
+      )}
+
+      {showForm && (
+        <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 11, padding: 16, marginBottom: 16 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: text, marginBottom: 14 }}>Report an Issue</h3>
+          <form onSubmit={handleCreate}>
+            <FormField label="What's the issue?" value={form.description} onChange={f('description')} placeholder="e.g. Leaking tap in Classroom 5A..." required />
+            <FormField label="Location" value={form.location} onChange={f('location')} placeholder="Room number, floor, wing..." />
+            <FormField label="Category" type="select" value={form.category} onChange={f('category')}
+              options={facilityCategories.map(c => ({ value: c, label: c.replace(/_/g, ' ').replace(/\b\w/g, x => x.toUpperCase()) }))} />
+            <FormField label="How urgent is it?" type="select" value={form.priority} onChange={f('priority')}
+              options={priorities.map(p => ({ value: p, label: p.replace(/\b\w/g, x => x.toUpperCase()) }))} />
+            <PhotoUploader photos={formPhotos} onChange={setFormPhotos} isDark={isDark} />
+            {formError && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 8 }}>{formError}</div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <ActionBtn label={saving ? 'Submitting...' : 'Submit Request'} type="submit" disabled={saving} />
+              <ActionBtn label="Cancel" variant="secondary" onClick={() => { setShowForm(false); setFormError(''); }} />
+            </div>
+          </form>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ color: muted, textAlign: 'center', padding: 40 }}>Loading...</div>
+      ) : myRequests.length === 0 ? (
+        <div style={{ color: muted, textAlign: 'center', padding: 40 }}>No requests yet. Use the button above to report an issue.</div>
+      ) : (
+        <>
+          {open.length > 0 && (
+            <>
+              <p style={{ fontSize: 11, fontWeight: 600, color: muted, marginBottom: 8, letterSpacing: '0.06em' }}>MY OPEN REQUESTS</p>
+              {open.map(item => (
+                <div key={item.id} style={{ background: bg, border: `1px solid ${border}`, borderRadius: 10, padding: 12, marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: text, flex: 1 }}>{item.description}</span>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <PriorityBadge priority={item.priority} />
+                      <StatusBadge status={item.status} />
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, color: muted }}>{item.category} · {item.location || 'No location'} · Submitted {item.created_at?.slice(0, 10)}</div>
+                </div>
+              ))}
+            </>
+          )}
+          {closed.length > 0 && (
+            <>
+              <p style={{ fontSize: 11, fontWeight: 600, color: muted, marginBottom: 8, marginTop: 16, letterSpacing: '0.06em' }}>RESOLVED</p>
+              {closed.slice(0, 5).map(item => (
+                <div key={item.id} style={{ background: bg, border: `1px solid ${border}`, borderRadius: 10, padding: 12, marginBottom: 8, opacity: 0.7 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: 13, color: text }}>{item.description}</span>
+                    <StatusBadge status={item.status} />
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </>
+      )}
+    </ToolPage>
+  );
 }
 
 export function AllIssuesView() {
