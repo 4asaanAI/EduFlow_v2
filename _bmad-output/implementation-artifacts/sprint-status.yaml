@@ -139,6 +139,15 @@ development_status:
   8d-03-sidebar-tooldashboard-layout-wiring: done
 
   # ─────────────────────────────────────────────
+  # Sprint 8-E — UI Overhaul
+  # ─────────────────────────────────────────────
+  8e-01-micro-animation-css-keyframes: done
+  8e-02-command-palette-cmd-k: done
+  8e-03-toast-notification-system: done
+  8e-04-tooldashboard-recent-tools-quick-nav: done
+  8e-05-header-search-shortcut-updated: done
+
+  # ─────────────────────────────────────────────
   # Phase 6 — Deployment & Go-Live (5 stories)
   # ─────────────────────────────────────────────
   epic-6: in-progress

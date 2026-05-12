@@ -2,6 +2,7 @@ import './App.css';
 import './theme.css';
 import { UserProvider, useUser } from './contexts/UserContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { ToastProvider } from './components/Toast';
 import Layout from './components/Layout';
 import Login from './components/Login';
 import ForgotPassword from './components/ForgotPassword';
@@ -35,7 +36,9 @@ export default function App() {
   return (
     <ThemeProvider>
       <UserProvider>
-        <AppContent />
+        <ToastProvider>
+          <AppContent />
+        </ToastProvider>
       </UserProvider>
     </ThemeProvider>
   );

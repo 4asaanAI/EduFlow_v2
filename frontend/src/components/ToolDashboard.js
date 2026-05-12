@@ -177,6 +177,15 @@ export default function ToolDashboard({ onSelectTool }) {
 
   const tools = getTools(currentUser);
 
+  const recentIds = React.useMemo(() => {
+    const key = `eduflow_activity_${currentUser.id}`;
+    const raw = JSON.parse(localStorage.getItem(key) || '[]');
+    const seen = new Set();
+    return raw.map(a => a.id).filter(id => { if (seen.has(id)) return false; seen.add(id); return true; }).slice(0, 4);
+  }, [currentUser.id]);
+
+  const recentTools = recentIds.map(id => T[id]).filter(Boolean);
+
   const subLabel = SUB_ROLE_LABELS[currentUser.sub_category] || null;
   const roleLabel = currentUser.role === 'admin'
     ? (subLabel ? `Admin · ${subLabel}` : 'Admin')
@@ -186,12 +195,13 @@ export default function ToolDashboard({ onSelectTool }) {
   const bg   = isDark ? '#141414' : '#f5f5f5';
   const text = isDark ? '#f5f5f5' : '#171717';
   const muted = isDark ? '#555' : '#a3a3a3';
+  const subtle = isDark ? '#2e2e2e' : '#e5e5e5';
 
   return (
     <div style={{ flex: 1, height: '100%', overflowY: 'auto', background: bg, padding: '32px 32px 48px' }}>
 
       {/* Greeting */}
-      <div style={{ marginBottom: 28 }}>
+      <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 26, fontWeight: 700, color: text, margin: '0 0 4px', letterSpacing: '-0.03em' }}>
           {greeting()}, {currentUser.name?.split(' ')[0]}
         </h1>
@@ -200,8 +210,8 @@ export default function ToolDashboard({ onSelectTool }) {
         </p>
       </div>
 
-      {/* Role badge */}
-      <div style={{ marginBottom: 28 }}>
+      {/* Role badge + ⌘K hint */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28, flexWrap: 'wrap', gap: 10 }}>
         <span style={{
           display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px',
           borderRadius: 8, background: `${roleColor}12`, color: roleColor,
@@ -210,15 +220,49 @@ export default function ToolDashboard({ onSelectTool }) {
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: roleColor, display: 'inline-block' }} />
           {roleLabel} · {tools.length} tools
         </span>
+        <button
+          onClick={() => { const e = new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }); document.dispatchEvent(e); }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: isDark ? '#1e1e1e' : '#ffffff', border: `1px solid ${subtle}`,
+            borderRadius: 8, padding: '5px 12px', cursor: 'pointer', color: muted, fontSize: 12,
+          }}>
+          <span>Quick navigate</span>
+          <kbd style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: isDark ? '#2e2e2e' : '#f0f0f0', border: `1px solid ${subtle}`, fontFamily: 'inherit' }}>
+            {navigator.platform?.includes('Mac') ? '⌘K' : 'Ctrl+K'}
+          </kbd>
+        </button>
       </div>
+
+      {/* Recent tools */}
+      {recentTools.length > 0 && (
+        <>
+          <p style={{ fontSize: 11, fontWeight: 600, color: muted, margin: '0 0 10px', letterSpacing: '0.06em' }}>RECENT</p>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 28, flexWrap: 'wrap' }}>
+            {recentTools.map(tool => {
+              const Icon = tool.icon;
+              return (
+                <button key={tool.id} onClick={() => onSelectTool(tool.id)} style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  background: isDark ? '#1e1e1e' : '#ffffff', border: `1px solid ${subtle}`,
+                  borderRadius: 8, padding: '7px 12px', cursor: 'pointer', color: text, fontSize: 12, fontWeight: 500,
+                }}>
+                  <Icon size={13} color={tool.color} />
+                  {tool.name}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {/* Section label */}
       <p style={{ fontSize: 11, fontWeight: 600, color: muted, margin: '0 0 12px', letterSpacing: '0.06em' }}>
-        TOOLS
+        ALL TOOLS
       </p>
 
       {/* 4-col grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
         {tools.map(tool => (
           <ToolCard key={tool.id} tool={tool} onClick={onSelectTool} isDark={isDark} />
         ))}

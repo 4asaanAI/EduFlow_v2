@@ -8,6 +8,7 @@ import FloatingAssistant from './FloatingAssistant';
 import { createConversation, getConversations } from '../lib/api';
 import ProfileModal from './ProfileModal';
 import SettingsModal from './SettingsModal';
+import CommandPalette from './CommandPalette';
 
 const loadTool = async (toolId) => {
   // Phase 3 dedicated tool panels — loaded directly
@@ -69,6 +70,7 @@ export default function Layout() {
   const [convRefresh, setConvRefresh] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showCmdPalette, setShowCmdPalette] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const isToolDashboardRole = TOOL_DASHBOARD_ROLES.includes(currentUser.role);
@@ -112,6 +114,17 @@ export default function Layout() {
     const handler = (e) => { if (e.detail) { setActiveTool(e.detail); } };
     window.addEventListener('open-tool', handler);
     return () => window.removeEventListener('open-tool', handler);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowCmdPalette(v => !v);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   useEffect(() => {
@@ -181,6 +194,7 @@ export default function Layout() {
 
       {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showCmdPalette && <CommandPalette onSelectTool={handleSelectTool} onClose={() => setShowCmdPalette(false)} />}
       {isToolDashboardRole && <FloatingAssistant />}
     </div>
   );

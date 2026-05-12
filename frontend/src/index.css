@@ -219,6 +219,38 @@ html, body, #root {
   outline-offset: 2px;
 }
 
+/* Micro-animations */
+@keyframes save-flash {
+  0%   { box-shadow: 0 0 0 0 rgba(79,143,247,0.6); }
+  50%  { box-shadow: 0 0 0 8px rgba(79,143,247,0); }
+  100% { box-shadow: 0 0 0 0 rgba(79,143,247,0); }
+}
+@keyframes success-pop {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.12); }
+  70%  { transform: scale(0.95); }
+  100% { transform: scale(1); }
+}
+@keyframes slide-panel-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes cmd-palette-in {
+  from { transform: translateY(-8px) scale(0.98); opacity: 0; }
+  to   { transform: translateY(0)    scale(1);    opacity: 1; }
+}
+.save-flash    { animation: save-flash 0.5s ease; }
+.success-pop   { animation: success-pop 0.35s cubic-bezier(0.34,1.56,0.64,1); }
+.slide-panel   { animation: slide-panel-in 0.2s cubic-bezier(0.4,0,0.2,1); }
+.cmd-palette   { animation: cmd-palette-in 0.18s cubic-bezier(0.4,0,0.2,1); }
+
+/* Toast notification */
+@keyframes toast-in {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.toast { animation: toast-in 0.2s cubic-bezier(0.4,0,0.2,1); }
+
 /* Responsive */
 @media (max-width: 768px) {
   .mobile-menu-btn { display: flex !important; }

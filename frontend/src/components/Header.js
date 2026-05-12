@@ -189,9 +189,9 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
     return () => window.removeEventListener('resize', checkScreen);
   }, []);
 
-  // Keyboard shortcut for search
+  // ⌘K is handled by Layout (opens CommandPalette); ⌘/ opens database search here
   useEffect(() => {
-    const h = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setShowSearch(true); } };
+    const h = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === '/') { e.preventDefault(); setShowSearch(true); } };
     document.addEventListener('keydown', h);
     return () => document.removeEventListener('keydown', h);
   }, []);
@@ -251,10 +251,12 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
             onMouseEnter={e => e.currentTarget.style.borderColor = isDark ? '#444' : '#ccc'}
             onMouseLeave={e => e.currentTarget.style.borderColor = border}>
             <Search size={14} />
-            <span style={{ flex: 1, textAlign: 'left' }}>Search...</span>
-            <kbd style={{ fontSize: 11, color: muted, background: isDark ? '#333' : '#e5e5e5', padding: '1px 6px', borderRadius: 4, fontFamily: 'Inter, sans-serif', fontWeight: 500 }}>
-              {navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}K
-            </kbd>
+            <span style={{ flex: 1, textAlign: 'left' }}>Search students, staff\u2026</span>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <kbd style={{ fontSize: 10, color: muted, background: isDark ? '#333' : '#e5e5e5', padding: '1px 5px', borderRadius: 4, fontFamily: 'Inter, sans-serif' }}>
+                {navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}/
+              </kbd>
+            </div>
           </button>
         </div>
 
