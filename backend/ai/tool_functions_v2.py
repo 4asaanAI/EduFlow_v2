@@ -2,10 +2,14 @@
 Tool functions v2 — extends the original 14 tools with 15 new scope-aware tools.
 Imports all originals from tool_functions and exposes a combined TOOL_REGISTRY (29 tools).
 """
+from __future__ import annotations
+
 from datetime import datetime, date, timedelta
 from database import get_db
 import time, re
+import uuid
 import logging
+from tenant import add_school_id, get_school_id, scoped_filter
 
 # ----- Re-export all 14 original tools and their registry -----
 from ai.tool_functions import (
@@ -35,16 +39,38 @@ logger = logging.getLogger(__name__)
 
 def _apply_branch_filter(query: dict, scope: dict) -> dict:
     """If scope carries a branch_id, inject it into the Mongo query."""
-    if scope and scope.get("branch_id"):
-        query["branch_id"] = scope["branch_id"]
+    branch_id = None
+    if scope:
+        branch_id = scope.get("branch_id") if isinstance(scope, dict) else getattr(scope, "branch_id", None)
+    if branch_id:
+        query["branch_id"] = branch_id
     return query
 
 
 def _apply_class_filter(query: dict, scope: dict, field: str = "class_id") -> dict:
     """Restrict query to the classes the user is allowed to see."""
-    if scope and scope.get("class_ids") is not None:
-        query[field] = {"$in": scope["class_ids"]}
+    class_ids = _scope_class_ids(scope)
+    if class_ids is not None:
+        query[field] = {"$in": class_ids}
     return query
+
+
+def _scope_class_ids(scope) -> list | None:
+    if not scope:
+        return None
+    return scope.get("class_ids") if isinstance(scope, dict) else getattr(scope, "class_ids", None)
+
+
+def _scope_student_id(scope) -> str | None:
+    if not scope:
+        return None
+    return scope.get("student_id") if isinstance(scope, dict) else getattr(scope, "student_id", None)
+
+
+def _scope_bool(scope, key: str, default: bool = False) -> bool:
+    if not scope:
+        return default
+    return bool(scope.get(key, default)) if isinstance(scope, dict) else bool(getattr(scope, key, default))
 
 
 def _empty_result(message: str, query_time_ms: float = 0) -> dict:
@@ -79,7 +105,7 @@ async def tool_get_student_database(params: dict, user: dict, scope: dict = None
     _apply_branch_filter(query, scope)
 
     # Scope-based class restriction for teachers
-    if scope and scope.get("class_ids") is not None:
+    if _scope_class_ids(scope) is not None:
         _apply_class_filter(query, scope)
 
     # Optional filters from params
@@ -103,8 +129,8 @@ async def tool_get_student_database(params: dict, user: dict, scope: dict = None
         cls = await db.classes.find_one({"name": {"$regex": re.escape(params["class_name"]), "$options": "i"}})
         if cls:
             # Only apply if scope allows this class
-            if scope and scope.get("class_ids") is not None:
-                if cls["id"] in scope["class_ids"]:
+            if _scope_class_ids(scope) is not None:
+                if cls["id"] in _scope_class_ids(scope):
                     query["class_id"] = cls["id"]
                 else:
                     return _empty_result(
@@ -185,8 +211,8 @@ async def tool_get_class_wise_attendance(params: dict, user: dict, scope: dict =
 
     class_query: dict = {}
     _apply_branch_filter(class_query, scope)
-    if scope and scope.get("class_ids") is not None:
-        class_query["id"] = {"$in": scope["class_ids"]}
+    if _scope_class_ids(scope) is not None:
+        class_query["id"] = {"$in": _scope_class_ids(scope)}
 
     classes = await db.classes.find(class_query).to_list(50)
 
@@ -373,8 +399,8 @@ async def tool_get_fee_defaulters(params: dict, user: dict, scope: dict = None) 
         if not student:
             continue
         # Scope filter: if teacher, only show students in their classes
-        if scope and scope.get("class_ids") is not None:
-            if student.get("class_id") not in scope["class_ids"]:
+        if _scope_class_ids(scope) is not None:
+            if student.get("class_id") not in _scope_class_ids(scope):
                 continue
 
         cls = await db.classes.find_one({"id": student.get("class_id")})
@@ -430,13 +456,13 @@ async def tool_get_student_profile(params: dict, user: dict, scope: dict = None)
         return _empty_result("Student not found. Please check the name or ID and try again.", elapsed)
 
     # Scope check: self_only means student can only view their own profile
-    if scope and scope.get("student_id") and scope["student_id"] != student["id"]:
+    if _scope_student_id(scope) and _scope_student_id(scope) != student["id"]:
         elapsed = (time.time() - t0) * 1000
         return _empty_result("You do not have permission to view this student's profile.", elapsed)
 
     # Scope check: teacher can only see students in their classes
-    if scope and scope.get("class_ids") is not None:
-        if student.get("class_id") not in scope["class_ids"]:
+    if _scope_class_ids(scope) is not None:
+        if student.get("class_id") not in _scope_class_ids(scope):
             elapsed = (time.time() - t0) * 1000
             return _empty_result("This student is not in your assigned classes.", elapsed)
 
@@ -465,7 +491,7 @@ async def tool_get_student_profile(params: dict, user: dict, scope: dict = None)
 
     # Fee status
     fee_status = {}
-    if scope is None or scope.get("can_see_fees", False):
+    if scope is None or _scope_bool(scope, "can_see_fees", False):
         fee_txns = await db.fee_transactions.find({"student_id": student["id"]}).to_list(100)
         total_paid = sum(t.get("amount", 0) for t in fee_txns if t.get("status") == "paid")
         total_pending = sum(t.get("amount", 0) for t in fee_txns if t.get("status") in ("pending", "overdue"))
@@ -532,11 +558,11 @@ async def tool_get_my_class_students(params: dict, user: dict, scope: dict = Non
     t0 = time.time()
     db = get_db()
 
-    if not scope or not scope.get("class_ids"):
+    if not _scope_class_ids(scope):
         elapsed = (time.time() - t0) * 1000
         return _empty_result("No classes assigned to your account.", elapsed)
 
-    class_ids = scope["class_ids"]
+    class_ids = _scope_class_ids(scope)
     students = await db.students.find({
         "class_id": {"$in": class_ids},
         "is_active": True,
@@ -583,15 +609,15 @@ async def tool_get_today_class_attendance(params: dict, user: dict, scope: dict 
             class_id = cls["id"]
 
     # If teacher scope and no class_id provided, use first assigned class
-    if not class_id and scope and scope.get("class_ids"):
-        class_id = scope["class_ids"][0]
+    if not class_id and _scope_class_ids(scope):
+        class_id = _scope_class_ids(scope)[0]
 
     if not class_id:
         elapsed = (time.time() - t0) * 1000
         return _empty_result("Please specify a class name or ID.", elapsed)
 
     # Scope check
-    if scope and scope.get("class_ids") is not None and class_id not in scope["class_ids"]:
+    if _scope_class_ids(scope) is not None and class_id not in _scope_class_ids(scope):
         elapsed = (time.time() - t0) * 1000
         return _empty_result("You do not have access to this class.", elapsed)
 
@@ -741,7 +767,7 @@ async def tool_award_house_points(params: dict, user: dict, scope: dict = None) 
     db = get_db()
 
     # Validate write permission
-    if scope and not scope.get("can_write", False):
+    if scope and not _scope_bool(scope, "can_write", True):
         elapsed = (time.time() - t0) * 1000
         return {
             "success": False,
@@ -889,10 +915,10 @@ async def tool_get_library_status(params: dict, user: dict, scope: dict = None) 
     # Role-specific detail
     detail = []
 
-    if scope and scope.get("student_id"):
+    if _scope_student_id(scope):
         # Student: show own issued books
         my_issues = await db.library_issues.find({
-            "student_id": scope["student_id"],
+            "student_id": _scope_student_id(scope),
             "status": {"$in": ["issued", "overdue"]},
         }).to_list(50)
         for iss in my_issues:
@@ -905,10 +931,10 @@ async def tool_get_library_status(params: dict, user: dict, scope: dict = None) 
                 "status": "overdue" if iss.get("due_date", "9999") < today_str else "issued",
             })
 
-    elif scope and scope.get("class_ids") is not None:
+    elif _scope_class_ids(scope) is not None:
         # Teacher: overdue books for students in their classes
         students_in_class = await db.students.find({
-            "class_id": {"$in": scope["class_ids"]},
+            "class_id": {"$in": _scope_class_ids(scope)},
             "is_active": True,
         }).to_list(500)
         student_ids = [s["id"] for s in students_in_class]
@@ -958,6 +984,474 @@ async def tool_get_library_status(params: dict, user: dict, scope: dict = None) 
         "detail": detail,
     }]
     return _ok(data, elapsed)
+
+
+# =========================================================================
+#  Appendix A dispatch tools
+# =========================================================================
+
+def _is_principal(user: dict) -> bool:
+    return user.get("role") == "admin" and user.get("sub_category") == "principal"
+
+
+def _is_accountant(user: dict) -> bool:
+    return user.get("role") == "admin" and user.get("sub_category") == "accountant"
+
+
+def _is_maintenance(user: dict) -> bool:
+    return user.get("role") == "admin" and user.get("sub_category") == "maintenance"
+
+
+def _can_owner_or_principal(user: dict) -> bool:
+    return user.get("role") == "owner" or _is_principal(user)
+
+
+def _audit_doc(action: str, entity_type: str, entity_id: str, user: dict, changes: dict, reason: str | None = None):
+    return add_school_id({
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "entity_type": entity_type,
+        "collection": entity_type,
+        "entity_id": entity_id,
+        "action": action,
+        "changed_by": user.get("id"),
+        "changed_by_name": user.get("name", ""),
+        "changed_by_role": user.get("role"),
+        "changes": changes,
+        "reason": reason,
+        "created_at": datetime.now().isoformat(),
+    })
+
+
+async def _notify(db, *, user_id: str, notification_type: str, message: str, source_id: str, source_type: str):
+    if not user_id:
+        return
+    await db.notifications.insert_one(add_school_id({
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "type": notification_type,
+        "message": message,
+        "source_record_id": source_id,
+        "source_record_type": source_type,
+        "read": False,
+        "created_at": datetime.now().isoformat(),
+    }))
+
+
+async def _find_mutable_record(db, record_id: str, *, include_tech: bool = True):
+    candidates = [
+        ("incidents", db.incidents, {"id": record_id}),
+        ("complaints", db.complaints, {"id": record_id}),
+        ("facility_requests", db.facility_requests, {"id": record_id}),
+    ]
+    if include_tech:
+        candidates.append(("tech_requests", db.tech_requests, {"id": record_id}))
+    for collection, handle, query in candidates:
+        doc = await handle.find_one(scoped_filter(query, get_school_id()), {"_id": 0})
+        if doc:
+            return collection, handle, doc
+    return None, None, None
+
+
+async def _append_record_note(handle, record_id: str, existing: dict, user: dict, content: str, field: str):
+    entry = {
+        "id": str(uuid.uuid4()),
+        "author_id": user.get("id"),
+        "author_name": user.get("name", ""),
+        "author_role": user.get("role", ""),
+        "content": content,
+        "timestamp": datetime.now().isoformat(),
+    }
+    current = list(existing.get(field) or [])
+    current.append(entry)
+    await handle.update_one(
+        scoped_filter({"id": record_id}, get_school_id()),
+        {"$set": {field: current, "updated_at": datetime.now().isoformat()}},
+    )
+    return entry
+
+
+async def tool_assign_followup(params: dict, user: dict, scope: dict = None) -> dict:
+    if not _can_owner_or_principal(user):
+        return {"success": False, "message": "Only Owner or Principal can assign follow-up actions."}
+    required = ("record_id", "assignee_staff_id", "due_date", "note")
+    if any(not params.get(field) for field in required):
+        return {"success": False, "message": "record_id, assignee_staff_id, due_date, and note are required."}
+    db = get_db()
+    collection, handle, existing = await _find_mutable_record(db, params["record_id"])
+    if not existing:
+        return _empty_result("Record not found for follow-up assignment.")
+    staff = await db.staff.find_one(scoped_filter({"id": params["assignee_staff_id"]}, get_school_id()), {"_id": 0})
+    updates = {"assigned_to": params["assignee_staff_id"], "due_date": params["due_date"], "updated_at": datetime.now().isoformat()}
+    await handle.update_one(scoped_filter({"id": params["record_id"]}, get_school_id()), {"$set": updates})
+    field = "thread" if collection in ("incidents", "complaints") else "notes"
+    await _append_record_note(handle, params["record_id"], existing, user, params["note"], field)
+    await db.audit_logs.insert_one(_audit_doc("assign_followup", collection, params["record_id"], user, updates, params["note"]))
+    await _notify(db, user_id=(staff or {}).get("user_id"), notification_type="followup_assigned", message=params["note"], source_id=params["record_id"], source_type=collection)
+    return {"success": True, "data": {"record_id": params["record_id"], **updates}, "message": "Follow-up assigned."}
+
+
+async def tool_update_incident_status(params: dict, user: dict, scope: dict = None) -> dict:
+    required = ("record_id", "new_status", "note")
+    if any(not params.get(field) for field in required):
+        return {"success": False, "message": "record_id, new_status, and note are required."}
+    db = get_db()
+    collection, handle, existing = await _find_mutable_record(db, params["record_id"])
+    if not existing:
+        return _empty_result("Incident, complaint, or request not found.")
+    if not _can_owner_or_principal(user) and not (_is_maintenance(user) and collection == "facility_requests"):
+        return {"success": False, "message": "Only Owner, Principal, or Maintenance Admin for facility requests can update status."}
+    if _is_maintenance(user) and params["new_status"] == "closed":
+        return {"success": False, "message": "Maintenance Admin cannot close a facility request directly."}
+    updates = {"status": params["new_status"], "updated_at": datetime.now().isoformat()}
+    await handle.update_one(scoped_filter({"id": params["record_id"]}, get_school_id()), {"$set": updates})
+    field = "thread" if collection in ("incidents", "complaints") else "notes"
+    await _append_record_note(handle, params["record_id"], existing, user, params["note"], field)
+    await db.audit_logs.insert_one(_audit_doc("update_incident_status", collection, params["record_id"], user, {"previous_status": existing.get("status"), **updates}, params["note"]))
+    return {"success": True, "data": {"record_id": params["record_id"], **updates}, "message": "Status updated."}
+
+
+async def tool_add_thread_entry(params: dict, user: dict, scope: dict = None) -> dict:
+    if not _can_owner_or_principal(user):
+        return {"success": False, "message": "Only Owner or Principal can add thread entries."}
+    if not params.get("record_id") or not params.get("content"):
+        return {"success": False, "message": "record_id and content are required."}
+    db = get_db()
+    collection, handle, existing = await _find_mutable_record(db, params["record_id"])
+    if not existing:
+        return _empty_result("Record not found for thread entry.")
+    field = "thread" if collection in ("incidents", "complaints") else "notes"
+    entry = await _append_record_note(handle, params["record_id"], existing, user, params["content"], field)
+    await db.audit_logs.insert_one(_audit_doc("add_thread_entry", collection, params["record_id"], user, {"entry": entry}))
+    return {"success": True, "data": entry, "message": "Thread entry added."}
+
+
+async def tool_initiate_substitution(params: dict, user: dict, scope: dict = None) -> dict:
+    if not _is_principal(user):
+        return {"success": False, "message": "Only Principal can initiate substitutions."}
+    required = ("absent_staff_id", "substitute_staff_id", "class_id", "period_id")
+    if any(not params.get(field) for field in required):
+        return {"success": False, "message": "absent_staff_id, substitute_staff_id, class_id, and period_id are required."}
+    db = get_db()
+    slot = await db.timetable_slots.find_one({"id": params["period_id"]}, {"_id": 0})
+    record = add_school_id({
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "date": params.get("date", date.today().isoformat()),
+        "absent_teacher_id": params["absent_staff_id"],
+        "substitute_teacher_id": params["substitute_staff_id"],
+        "class_id": params["class_id"],
+        "subject_id": (slot or {}).get("subject_id", params.get("subject_id")),
+        "period_id": params["period_id"],
+        "period_number": (slot or {}).get("period_number"),
+        "created_by": user.get("id"),
+        "created_at": datetime.now().isoformat(),
+    })
+    await db.substitutions.insert_one(record)
+    await db.audit_logs.insert_one(_audit_doc("initiate_substitution", "substitutions", record["id"], user, {"created": {k: v for k, v in record.items() if k != "_id"}}))
+    substitute = await db.staff.find_one(scoped_filter({"id": params["substitute_staff_id"]}, get_school_id()), {"_id": 0})
+    await _notify(db, user_id=(substitute or {}).get("user_id"), notification_type="substitution_assigned", message="You have been assigned as a substitute teacher.", source_id=record["id"], source_type="substitution")
+    return {"success": True, "data": {k: v for k, v in record.items() if k != "_id"}, "message": "Substitution initiated."}
+
+
+async def tool_correct_attendance(params: dict, user: dict, scope: dict = None) -> dict:
+    if user.get("role") != "owner" and not _is_principal(user):
+        return {"success": False, "message": "Only Owner or Principal can correct attendance through AI dispatch."}
+    required = ("record_id", "correction_type", "reason")
+    if any(not params.get(field) for field in required):
+        return {"success": False, "message": "record_id, correction_type, and reason are required."}
+    db = get_db()
+    original = await db.student_attendance.find_one(scoped_filter({"id": params["record_id"]}, get_school_id()), {"_id": 0})
+    if not original:
+        return _empty_result("Attendance record not found.")
+    new_status = params.get("status") or params["correction_type"]
+    correction = add_school_id({
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "attendance_id": params["record_id"],
+        "original_record": original,
+        "previous_status": original.get("status"),
+        "new_status": new_status,
+        "correction_type": params["correction_type"],
+        "reason": params["reason"],
+        "corrected_by": user.get("id"),
+        "corrected_at": datetime.now().isoformat(),
+    })
+    await db.attendance_corrections.insert_one(correction)
+    await db.student_attendance.update_one(scoped_filter({"id": params["record_id"]}, get_school_id()), {"$set": {"status": new_status, "corrected": True, "updated_at": correction["corrected_at"]}})
+    await db.audit_logs.insert_one(_audit_doc("correct_attendance", "student_attendance", params["record_id"], user, {"status": {"previous": original.get("status"), "new": new_status}}, params["reason"]))
+    return {"success": True, "data": {k: v for k, v in correction.items() if k != "_id"}, "message": "Attendance correction applied."}
+
+
+async def tool_log_contact_event(params: dict, user: dict, scope: dict = None) -> dict:
+    if not _is_accountant(user):
+        return {"success": False, "message": "Only Accountant can log fee contact events through AI dispatch."}
+    required = ("student_id", "contact_type", "outcome", "note")
+    if any(not params.get(field) for field in required):
+        return {"success": False, "message": "student_id, contact_type, outcome, and note are required."}
+    db = get_db()
+    txn = None
+    if params.get("fee_transaction_id"):
+        txn = await db.fee_transactions.find_one(scoped_filter({"id": params["fee_transaction_id"]}, get_school_id()), {"_id": 0})
+    if not txn:
+        txns = await db.fee_transactions.find(scoped_filter({"student_id": params["student_id"]}, get_school_id()), {"_id": 0}).sort("created_at", -1).to_list(1)
+        txn = txns[0] if txns else None
+    if not txn:
+        return _empty_result("No fee transaction found for this student.")
+    record = add_school_id({
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "student_id": params["student_id"],
+        "fee_transaction_id": txn["id"],
+        "date": params.get("date", date.today().isoformat()),
+        "contact_type": params["contact_type"],
+        "outcome": params["outcome"],
+        "notes": params["note"],
+        "created_by": user.get("id"),
+        "created_at": datetime.now().isoformat(),
+    })
+    await db.fee_contact_logs.insert_one(record)
+    await db.audit_logs.insert_one(_audit_doc("log_contact_event", "fee_transactions", txn["id"], user, {"contact": {k: v for k, v in record.items() if k != "_id"}}))
+    return {"success": True, "data": {k: v for k, v in record.items() if k != "_id"}, "message": "Contact event logged."}
+
+
+async def tool_apply_discount(params: dict, user: dict, scope: dict = None) -> dict:
+    if not _is_accountant(user):
+        return {"success": False, "message": "Only Accountant can apply discounts through AI dispatch."}
+    required = ("student_id", "discount_type_id", "effective_from")
+    if any(not params.get(field) for field in required):
+        return {"success": False, "message": "student_id, discount_type_id, and effective_from are required."}
+    db = get_db()
+    dtype = await db.fee_discount_types.find_one(scoped_filter({"id": params["discount_type_id"], "is_active": True}, get_school_id()), {"_id": 0})
+    if not dtype:
+        return _empty_result("Active discount type not found.")
+    original_amount = params.get("original_amount")
+    if original_amount in (None, ""):
+        txns = await db.fee_transactions.find(scoped_filter({"student_id": params["student_id"]}, get_school_id()), {"_id": 0}).to_list(200)
+        original_amount = sum(float(txn.get("amount", 0)) for txn in txns if txn.get("status") in ("pending", "overdue", "unpaid"))
+    application = add_school_id({
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "student_id": params["student_id"],
+        "discount_type_id": dtype["id"],
+        "original_amount": float(original_amount or 0),
+        "effective_from": params["effective_from"],
+        "applied_by": user.get("id"),
+        "applied_at": datetime.now().isoformat(),
+        "note": params.get("note"),
+    })
+    await db.fee_discounts.insert_one(application)
+    await db.audit_logs.insert_one(_audit_doc("apply_discount", "fee_discounts", application["id"], user, {"applied": {k: v for k, v in application.items() if k != "_id"}}, params.get("note")))
+    return {"success": True, "data": {k: v for k, v in application.items() if k != "_id"}, "message": "Discount applied."}
+
+
+async def tool_decide_approval_request(params: dict, user: dict, scope: dict = None) -> dict:
+    required = ("request_id", "decision", "reason")
+    if any(not params.get(field) for field in required):
+        return {"success": False, "message": "request_id, decision, and reason are required."}
+    decision_map = {"approve": "approved", "approved": "approved", "reject": "rejected", "rejected": "rejected"}
+    status = decision_map.get(str(params["decision"]).lower())
+    if not status:
+        return {"success": False, "message": "decision must be approve or reject."}
+    db = get_db()
+    approval = await db.approval_requests.find_one(scoped_filter({"id": params["request_id"]}, get_school_id()), {"_id": 0})
+    if not approval:
+        return _empty_result("Approval request not found.")
+    if user.get("role") != "owner" and not (_is_principal(user) and approval.get("routing") in ("owner_and_principal", "academic")):
+        return {"success": False, "message": "Not authorized to decide this approval request."}
+    update = {"status": status, "decision_reason": params["reason"], "decided_by": user.get("id"), "decided_at": datetime.now().isoformat(), "unread_for": []}
+    await db.approval_requests.update_one(scoped_filter({"id": params["request_id"]}, get_school_id()), {"$set": update})
+    await db.audit_logs.insert_one(_audit_doc("decide_approval_request", "approval_requests", params["request_id"], user, update, params["reason"]))
+    await _notify(db, user_id=approval.get("submitted_by"), notification_type="approval_decision", message=f"{approval.get('title', 'Approval request')} {status}", source_id=params["request_id"], source_type="approval_request")
+    return {"success": True, "data": {"request_id": params["request_id"], **update}, "message": f"Approval request {status}."}
+
+
+async def tool_confirm_resolution(params: dict, user: dict, scope: dict = None) -> dict:
+    if user.get("role") != "owner":
+        return {"success": False, "message": "Only Owner can confirm facility resolution."}
+    if not params.get("request_id") or not params.get("confirmation_note"):
+        return {"success": False, "message": "request_id and confirmation_note are required."}
+    db = get_db()
+    existing = await db.facility_requests.find_one(scoped_filter({"id": params["request_id"]}, get_school_id()), {"_id": 0})
+    if not existing:
+        return _empty_result("Facility request not found.")
+    if existing.get("status") != "pending_owner_confirmation":
+        return {"success": False, "message": "Request must be pending Owner confirmation before it can be closed."}
+    update = {"status": "closed", "resolved_by": user.get("id"), "resolved_at": datetime.now().isoformat(), "updated_at": datetime.now().isoformat()}
+    await db.facility_requests.update_one(scoped_filter({"id": params["request_id"]}, get_school_id()), {"$set": update})
+    await _append_record_note(db.facility_requests, params["request_id"], existing, user, params["confirmation_note"], "notes")
+    await db.audit_logs.insert_one(_audit_doc("confirm_resolution", "facility_requests", params["request_id"], user, update, params["confirmation_note"]))
+    await _notify(db, user_id=existing.get("logged_by"), notification_type="facility_resolved", message="Facility request resolved and closed by Owner.", source_id=params["request_id"], source_type="facility_request")
+    return {"success": True, "data": {"request_id": params["request_id"], **update}, "message": "Resolution confirmed."}
+
+
+async def tool_record_fee_payment(params: dict, user: dict, scope: dict = None) -> dict:
+    if user.get("role") != "owner" and not _is_accountant(user):
+        return {"success": False, "message": "Only Owner or Accountant can record fee payments through AI dispatch."}
+    required = ("student_id", "amount", "fee_head", "mode")
+    if any(params.get(field) in (None, "") for field in required):
+        return {"success": False, "message": "student_id, amount, fee_head, and mode are required."}
+    db = get_db()
+    txn_id = str(uuid.uuid4())
+    receipt_number = f"RCP{datetime.now().strftime('%Y%m%d')}{uuid.uuid4().hex[:6].upper()}"
+    txn = add_school_id({
+        "_id": txn_id,
+        "id": txn_id,
+        "student_id": params["student_id"],
+        "fee_period": params.get("fee_period", date.today().strftime("%Y-%m")),
+        "fee_head": params["fee_head"],
+        "fee_type": params.get("fee_type", params["fee_head"]),
+        "amount": float(params["amount"]),
+        "payment_mode": params["mode"],
+        "receipt_number": receipt_number,
+        "status": "paid",
+        "paid_date": params.get("paid_date", date.today().isoformat()),
+        "recorded_by": user.get("id"),
+        "note": params.get("receipt_note"),
+        "created_at": datetime.now().isoformat(),
+    })
+    await db.fee_transactions.insert_one(txn)
+    await db.audit_logs.insert_one(_audit_doc("record_fee_payment", "fee_transactions", txn_id, user, {"created": {k: v for k, v in txn.items() if k != "_id"}}))
+    return {"success": True, "data": {k: v for k, v in txn.items() if k != "_id"}, "message": "Fee payment recorded."}
+
+
+async def tool_mark_attendance(params: dict, user: dict, scope: dict = None) -> dict:
+    if user.get("role") not in ("owner", "admin", "teacher"):
+        return {"success": False, "message": "Only Owner, Admin, or Teacher can mark attendance."}
+    if not params.get("class_id") and not params.get("class_name"):
+        return {"success": False, "message": "class_id or class_name is required."}
+    if not params.get("attendance"):
+        return {"success": False, "message": "attendance list is required."}
+    db = get_db()
+    class_id = params.get("class_id")
+    if not class_id and params.get("class_name"):
+        cls = await db.classes.find_one({"name": {"$regex": re.escape(params["class_name"]), "$options": "i"}}, {"_id": 0})
+        class_id = (cls or {}).get("id")
+    if not class_id:
+        return _empty_result("Class not found.")
+    target_date = params.get("date", date.today().isoformat())
+    saved = []
+    for item in params["attendance"]:
+        att_id = str(uuid.uuid4())
+        doc = add_school_id({
+            "_id": att_id,
+            "id": att_id,
+            "student_id": item["student_id"],
+            "class_id": class_id,
+            "date": target_date,
+            "status": item["status"],
+            "marked_by": user.get("id"),
+            "source": "ai_dispatch",
+            "created_at": datetime.now().isoformat(),
+        })
+        await db.student_attendance.update_one(
+            scoped_filter({"student_id": item["student_id"], "class_id": class_id, "date": target_date}, get_school_id()),
+            {"$set": doc},
+            upsert=True,
+        )
+        saved.append({"student_id": item["student_id"], "status": item["status"]})
+    await db.audit_logs.insert_one(_audit_doc("mark_attendance", "student_attendance", class_id, user, {"date": target_date, "records": saved}))
+    return {"success": True, "data": saved, "message": "Attendance marked."}
+
+
+async def tool_query_dashboard_summary(params: dict, user: dict, scope: dict = None) -> dict:
+    if user.get("role") != "owner":
+        return {"success": False, "message": "Only Owner can query dashboard summary."}
+    db = get_db()
+    today = date.today().isoformat()
+    data = [{
+        "open_incidents": await db.incidents.count_documents(scoped_filter({"status": {"$ne": "closed"}}, get_school_id())),
+        "pending_approvals": await db.approval_requests.count_documents(scoped_filter({"status": "pending"}, get_school_id())),
+        "staff_absent_today": await db.staff_attendance.count_documents({"date": today, "status": "absent"}),
+        "fee_outstanding_transactions": await db.fee_transactions.count_documents(scoped_filter({"status": {"$in": ["pending", "overdue", "unpaid"]}}, get_school_id())),
+    }]
+    return _ok(data, 0, "Dashboard summary ready.")
+
+
+async def tool_query_attendance_status(params: dict, user: dict, scope: dict = None) -> dict:
+    if not _can_owner_or_principal(user):
+        return {"success": False, "message": "Only Owner or Principal can query staff attendance status."}
+    db = get_db()
+    target_date = params.get("date", date.today().isoformat())
+    records = await db.staff_attendance.find({"date": target_date}, {"_id": 0}).to_list(500)
+    return _ok(records, 0, "Staff attendance status ready.")
+
+
+async def tool_query_fee_status(params: dict, user: dict, scope: dict = None) -> dict:
+    if user.get("role") != "owner" and not _is_accountant(user) and not _is_principal(user):
+        return {"success": False, "message": "Only Owner, Accountant, or Principal can query fee status."}
+    db = get_db()
+    query = scoped_filter({}, get_school_id())
+    if params.get("student_id"):
+        query["student_id"] = params["student_id"]
+    if params.get("status"):
+        query["status"] = params["status"]
+    txns = await db.fee_transactions.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return _ok(txns, 0, "Fee status ready.")
+
+
+async def tool_query_incidents(params: dict, user: dict, scope: dict = None) -> dict:
+    if not _can_owner_or_principal(user):
+        return {"success": False, "message": "Only Owner or Principal can query incidents."}
+    db = get_db()
+    query = {}
+    if params.get("status"):
+        query["status"] = params["status"]
+    incidents = await db.incidents.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("created_at", -1).to_list(100)
+    complaints = await db.complaints.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
+    visitors = await db.visitor_log.find({}, {"_id": 0}).sort("time_in", -1).to_list(100)
+    return _ok([{"incidents": incidents, "complaints": complaints, "visitors": visitors}], 0, "Incident data ready.")
+
+
+async def tool_query_staff_availability(params: dict, user: dict, scope: dict = None) -> dict:
+    if not _is_principal(user):
+        return {"success": False, "message": "Only Principal can query staff availability."}
+    db = get_db()
+    staff = await db.staff.find(scoped_filter({"is_active": {"$ne": False}, "staff_type": "teacher"}, get_school_id()), {"_id": 0}).to_list(500)
+    return _ok(staff, 0, "Staff availability ready.")
+
+
+async def tool_query_maintenance_requests(params: dict, user: dict, scope: dict = None) -> dict:
+    if user.get("role") != "owner" and not _is_maintenance(user):
+        return {"success": False, "message": "Only Owner or Maintenance Admin can query maintenance requests."}
+    db = get_db()
+    query = {}
+    if params.get("status"):
+        query["status"] = params["status"]
+    if _is_maintenance(user):
+        query["logged_by"] = user.get("id")
+    items = await db.facility_requests.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("created_at", -1).to_list(100)
+    return _ok(items, 0, "Maintenance requests ready.")
+
+
+async def tool_query_student_record(params: dict, user: dict, scope: dict = None) -> dict:
+    if not params.get("student_id"):
+        return {"success": False, "message": "student_id is required."}
+    allowed = user.get("role") == "owner" or _is_principal(user) or _is_accountant(user) or (user.get("role") == "admin" and user.get("sub_category") == "transport_head")
+    if not allowed:
+        return {"success": False, "message": "Not authorized to query student records."}
+    db = get_db()
+    student = await db.students.find_one(scoped_filter({"id": params["student_id"]}, get_school_id()), {"_id": 0})
+    if not student:
+        return _empty_result("Student not found.")
+    data = {"student": student}
+    if _is_accountant(user) or user.get("role") == "owner" or _is_principal(user):
+        data["fees"] = await db.fee_transactions.find(scoped_filter({"student_id": params["student_id"]}, get_school_id()), {"_id": 0}).to_list(100)
+    if user.get("role") == "owner" or _is_principal(user) or user.get("sub_category") == "transport_head":
+        data["transport"] = {"route_zone_id": student.get("route_zone_id")}
+    return _ok([data], 0, "Student record ready.")
+
+
+async def tool_query_audit_log(params: dict, user: dict, scope: dict = None) -> dict:
+    db = get_db()
+    query = scoped_filter({}, get_school_id())
+    if params.get("collection"):
+        query["collection"] = params["collection"]
+    if user.get("role") != "owner":
+        query["changed_by"] = user.get("id")
+    items = await db.audit_logs.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return _ok(items, 0, "Audit log ready.")
 
 
 # =========================================================================
@@ -1033,6 +1527,8 @@ TOOL_REGISTRY = {
         "fn": tool_approve_leave,
         "roles": ["owner", "admin"],
         "description": "Approve or reject a staff leave request.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
         "params_schema": {
             "leave_id": {"type": "string", "description": "Leave request ID (required)"},
             "action": {"type": "string", "description": "approve or reject"},
@@ -1167,6 +1663,8 @@ TOOL_REGISTRY = {
         "fn": tool_award_house_points,
         "roles": ["owner", "admin", "teacher"],
         "description": "Award house points to a student. Write operation.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
         "params_schema": {
             "student_name": {"type": "string", "description": "Student name (required)"},
             "points": {"type": "integer", "description": "Points to award (required)"},
@@ -1186,4 +1684,208 @@ TOOL_REGISTRY = {
         "description": "Library overview: total books, issued, overdue. Role-specific detail.",
         "params_schema": {},
     },
+
+    # ---- Appendix A formal dispatch table ----
+    "assign_followup": {
+        "fn": tool_assign_followup,
+        "roles": ["owner", "admin"],
+        "description": "Assign a follow-up action on a complaint or incident to a named staff member.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "record_id": {"type": "string", "description": "Complaint, incident, or request ID"},
+            "assignee_staff_id": {"type": "string", "description": "Staff ID to assign"},
+            "due_date": {"type": "string", "description": "Due date YYYY-MM-DD"},
+            "note": {"type": "string", "description": "Follow-up note"},
+        },
+    },
+    "update_incident_status": {
+        "fn": tool_update_incident_status,
+        "roles": ["owner", "admin"],
+        "description": "Update status of a complaint, incident, or maintenance request.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "record_id": {"type": "string", "description": "Complaint, incident, or request ID"},
+            "new_status": {"type": "string", "description": "New status"},
+            "note": {"type": "string", "description": "Status-change note"},
+        },
+    },
+    "add_thread_entry": {
+        "fn": tool_add_thread_entry,
+        "roles": ["owner", "admin"],
+        "description": "Add a follow-up entry to an existing complaint or incident thread.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "record_id": {"type": "string", "description": "Complaint, incident, or request ID"},
+            "content": {"type": "string", "description": "Thread entry content"},
+        },
+    },
+    "initiate_substitution": {
+        "fn": tool_initiate_substitution,
+        "roles": ["admin"],
+        "description": "Approve a substitution assignment for an absent teacher.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "absent_staff_id": {"type": "string", "description": "Absent teacher staff ID"},
+            "substitute_staff_id": {"type": "string", "description": "Substitute teacher staff ID"},
+            "class_id": {"type": "string", "description": "Class ID"},
+            "period_id": {"type": "string", "description": "Timetable period/slot ID"},
+        },
+    },
+    "correct_attendance": {
+        "fn": tool_correct_attendance,
+        "roles": ["owner", "admin"],
+        "description": "Apply a correction to an existing attendance record with a mandatory reason.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "record_id": {"type": "string", "description": "Attendance record ID"},
+            "correction_type": {"type": "string", "description": "Correction or new attendance status"},
+            "reason": {"type": "string", "description": "Mandatory correction reason"},
+        },
+    },
+    "log_contact_event": {
+        "fn": tool_log_contact_event,
+        "roles": ["admin"],
+        "description": "Log a contact event against a student's fee record.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "student_id": {"type": "string", "description": "Student ID"},
+            "contact_type": {"type": "string", "description": "call, message, visit, or other"},
+            "outcome": {"type": "string", "description": "Contact outcome"},
+            "note": {"type": "string", "description": "Contact note"},
+        },
+    },
+    "apply_discount": {
+        "fn": tool_apply_discount,
+        "roles": ["admin"],
+        "description": "Apply a configured discount type to a student's fee profile.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "student_id": {"type": "string", "description": "Student ID"},
+            "discount_type_id": {"type": "string", "description": "Configured discount type ID"},
+            "effective_from": {"type": "string", "description": "Effective date YYYY-MM-DD"},
+        },
+    },
+    "decide_approval_request": {
+        "fn": tool_decide_approval_request,
+        "roles": ["owner", "admin"],
+        "description": "Approve or reject a pending approval request with a mandatory reason.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "request_id": {"type": "string", "description": "Approval request ID"},
+            "decision": {"type": "string", "description": "approve or reject"},
+            "reason": {"type": "string", "description": "Mandatory decision reason"},
+        },
+    },
+    "confirm_resolution": {
+        "fn": tool_confirm_resolution,
+        "roles": ["owner"],
+        "description": "Owner confirms a facility request marked complete by Maintenance Admin.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "request_id": {"type": "string", "description": "Facility request ID"},
+            "confirmation_note": {"type": "string", "description": "Owner confirmation note"},
+        },
+    },
+    "record_fee_payment": {
+        "fn": tool_record_fee_payment,
+        "roles": ["owner", "admin"],
+        "description": "Record a fee payment for a student.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "student_id": {"type": "string", "description": "Student ID"},
+            "amount": {"type": "number", "description": "Payment amount"},
+            "fee_head": {"type": "string", "description": "Fee head"},
+            "mode": {"type": "string", "description": "cash, upi, cheque, or bank_transfer"},
+        },
+    },
+    "mark_attendance": {
+        "fn": tool_mark_attendance,
+        "roles": ["owner", "admin", "teacher"],
+        "description": "Mark attendance for a class or student list.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "class_id": {"type": "string", "description": "Class ID"},
+            "date": {"type": "string", "description": "Attendance date YYYY-MM-DD"},
+            "attendance": {"type": "array", "description": "List of {student_id, status}"},
+        },
+    },
+    "query_dashboard_summary": {
+        "fn": tool_query_dashboard_summary,
+        "roles": ["owner"],
+        "description": "Composite summary of open incidents, pending approvals, attendance, and fee status.",
+        "params_schema": {},
+    },
+    "query_attendance_status": {
+        "fn": tool_query_attendance_status,
+        "roles": ["owner", "admin"],
+        "description": "Current staff attendance status from biometric feed.",
+        "params_schema": {
+            "date": {"type": "string", "description": "Optional date YYYY-MM-DD"},
+        },
+    },
+    "query_fee_status": {
+        "fn": tool_query_fee_status,
+        "roles": ["owner", "admin"],
+        "description": "Fee status, defaulters, and overdue list for a student or cohort.",
+        "params_schema": {
+            "student_id": {"type": "string", "description": "Optional student ID"},
+            "status": {"type": "string", "description": "Optional fee status"},
+        },
+    },
+    "query_incidents": {
+        "fn": tool_query_incidents,
+        "roles": ["owner", "admin"],
+        "description": "Open complaints, incidents, or visitor logs by status/date/person.",
+        "params_schema": {
+            "status": {"type": "string", "description": "Optional status"},
+        },
+    },
+    "query_staff_availability": {
+        "fn": tool_query_staff_availability,
+        "roles": ["admin"],
+        "description": "Available staff for a given period, filtered against timetable.",
+        "params_schema": {
+            "period_id": {"type": "string", "description": "Optional period ID"},
+        },
+    },
+    "query_maintenance_requests": {
+        "fn": tool_query_maintenance_requests,
+        "roles": ["owner", "admin"],
+        "description": "Open facility requests by status, date, or location.",
+        "params_schema": {
+            "status": {"type": "string", "description": "Optional status"},
+        },
+    },
+    "query_student_record": {
+        "fn": tool_query_student_record,
+        "roles": ["owner", "admin"],
+        "description": "Student profile, fee profile, and transport assignment.",
+        "params_schema": {
+            "student_id": {"type": "string", "description": "Student ID"},
+        },
+    },
+    "query_audit_log": {
+        "fn": tool_query_audit_log,
+        "roles": ["owner", "admin", "teacher", "student"],
+        "description": "Scoped audit log entries per role.",
+        "params_schema": {
+            "collection": {"type": "string", "description": "Optional collection filter"},
+        },
+    },
+}
+
+WRITE_TOOL_NAMES = {
+    name for name, tool in TOOL_REGISTRY.items()
+    if tool.get("requires_confirmation") or tool.get("dispatch_type") == "write"
 }

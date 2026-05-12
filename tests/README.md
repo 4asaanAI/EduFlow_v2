@@ -240,7 +240,12 @@ tests/backend/conftest.py
 |---|---|---|---|
 | `unit` | `tests/backend/unit/` | No | Fast (< 1s) |
 | `integration` | `tests/backend/integration/` | App only | Medium |
-| `api` | `tests/backend/api/` | Yes (seeded) | Slower |
+| `api` | `tests/backend/api/` | In-memory fake DB by default | Slower |
+
+**Phase 5 backend coverage notes:**
+
+- API tests run through FastAPI `TestClient` with `tests/backend/conftest.py` replacing route database access with an in-memory fake database. They should not require a live MongoDB.
+- The current backend has chat SSE streaming and export streaming responses. Attendance and fees do not currently expose dedicated `text/event-stream` routes, so domain SSE coverage should be added when those endpoints exist.
 
 ---
 

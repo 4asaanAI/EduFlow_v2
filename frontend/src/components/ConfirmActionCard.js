@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { getAuthHeaders } from '../lib/authSession';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -53,8 +54,14 @@ export default function ConfirmActionCard({ action, conversationId, onComplete }
     try {
       const res = await fetch(`${API}/chat/conversations/${conversationId}/confirm`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action_id: action.action_id, decision: button.action, tool: action.tool, params: action.params }),
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action_id: action.action_id,
+          decision: button.action,
+          tool: action.tool,
+          params: action.params,
+          session_id: conversationId,
+        }),
       });
 
       if (!res.ok) {
@@ -74,7 +81,7 @@ export default function ConfirmActionCard({ action, conversationId, onComplete }
       setStatus('error');
       setClickedAction(null);
     }
-  }, [status, conversationId, action.action_id, onComplete]);
+  }, [status, conversationId, action.action_id, action.tool, action.params, onComplete]);
 
   const handleRetry = useCallback(() => {
     setStatus('pending');

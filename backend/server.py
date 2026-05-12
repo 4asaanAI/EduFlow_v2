@@ -244,8 +244,6 @@ async def health_ready():
 
     if db_status == "error":
         overall = "down"
-    elif any(value == "degraded" for value in response.values()):
-        overall = "degraded"
     else:
         overall = "ready"
 

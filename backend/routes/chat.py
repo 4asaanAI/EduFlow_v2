@@ -22,18 +22,19 @@ import uuid
 import logging
 from datetime import datetime, date, timedelta
 from typing import Optional
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from database import get_db
 from models.schemas import Conversation, Message, ConversationUpdate
 from ai.llm_client import llm_client
 from ai.prompts import build_system_prompt
 from ai.context_builder import build_school_context, detect_language
-from ai.tool_functions_v2 import TOOL_REGISTRY
+from ai.tool_functions_v2 import TOOL_REGISTRY, WRITE_TOOL_NAMES
 from ai.scope_resolver import resolve_scope
 from ai.content_filter import filter_response, check_input_safety
 from middleware.auth import get_current_user
 from services.token_service import check_and_reserve_tokens, record_usage
+from services.confirm_tokens import issue_confirm_token, consume_confirm_token, audit_ai_dispatch
 
 logger = logging.getLogger(__name__)
 
@@ -51,12 +52,7 @@ THINKING_DELAY_MIN = 0.15  # 150ms
 THINKING_DELAY_MAX = 0.30  # 300ms
 
 # Tools that require user confirmation before execution
-WRITE_ACTION_TOOLS = {
-    "record_fee_payment",
-    "mark_attendance",
-    "approve_leave",
-    "award_house_points",
-}
+WRITE_ACTION_TOOLS = set(WRITE_TOOL_NAMES)
 
 # ─── Keyword → Tool Map ──────────────────────────────────────────────────────
 
@@ -566,6 +562,39 @@ def _build_confirm_display(tool_name: str, params: dict) -> str:
     return f"Execute {tool_name} with parameters: {json.dumps(params, ensure_ascii=False)}"
 
 
+async def _build_confirm_event(tool_name: str, params: dict, user: dict, session_id: str, db) -> dict:
+    """Create the server-side confirmation token and SSE payload for a write tool."""
+    public_params = {k: v for k, v in params.items() if not k.startswith("_")}
+    token = await issue_confirm_token(
+        action=tool_name,
+        params=public_params,
+        user_id=user["id"],
+        session_id=session_id,
+        db=db,
+    )
+    return {
+        "type": "confirm_action",
+        "action_id": token,
+        "token": token,
+        "tool": tool_name,
+        "params": public_params,
+        "display": _build_confirm_display(tool_name, params),
+        "expires_in_seconds": 5 * 60,
+        "buttons": [
+            {"label": "Confirm", "action": "confirm"},
+            {"label": "Cancel", "action": "cancel"},
+        ],
+    }
+
+
+def _is_ai_unavailable(result) -> bool:
+    return isinstance(result, dict) and result.get("type") == "ai_unavailable"
+
+
+def _ai_unavailable_event(result: dict) -> str:
+    return f"data: {json.dumps({'type': 'ai_unavailable', 'message': result.get('message', 'AI is temporarily unavailable.')})}\n\n"
+
+
 # ─── Thinking delay helper ────────────────────────────────────────────────────
 
 async def _thinking_delay():
@@ -576,7 +605,7 @@ async def _thinking_delay():
 
 # ─── SSE Generator (main pipeline) ───────────────────────────────────────────
 
-async def _generate_chat_sse(conv_id: str, user_text: str, user: dict):
+async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_id: str = None):
     """
     SSE generator for chat streaming.
 
@@ -597,6 +626,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict):
       14. Done event
     """
     db = get_db()
+    session_id = session_id or conv_id
     total_tokens_used = 0
 
     # ── Phase 0: Token budget check ──────────────────────────────────────
@@ -772,18 +802,12 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict):
                 yield thinking_event("tool_start", f"Preparing {tool_name}...", tool=tool_name)
                 await _thinking_delay()
 
-                action_id = str(uuid.uuid4())
-                confirm_event = {
-                    "type": "confirm_action",
-                    "action_id": action_id,
-                    "tool": tool_name,
-                    "params": {k: v for k, v in resolved_params.items() if not k.startswith("_")},
-                    "display": _build_confirm_display(tool_name, resolved_params),
-                    "buttons": [
-                        {"label": "Confirm", "action": "confirm"},
-                        {"label": "Cancel", "action": "cancel"},
-                    ],
-                }
+                try:
+                    confirm_event = await _build_confirm_event(tool_name, resolved_params, user, session_id, db)
+                except HTTPException as exc:
+                    yield f"data: {json.dumps({'type': 'error', 'phase': 'confirm_token', 'message': exc.detail})}\n\n"
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    return
                 yield f"data: {json.dumps(confirm_event)}\n\n"
 
                 # Send a brief explanation
@@ -896,6 +920,18 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict):
             except asyncio.TimeoutError:
                 yield keepalive_event()
 
+        if _is_ai_unavailable(llm_response):
+            yield _ai_unavailable_event(llm_response)
+            ai_msg = Message(
+                conversation_id=conv_id,
+                role="assistant",
+                content=llm_response.get("message", "AI is temporarily unavailable."),
+                language_detected=lang,
+            )
+            await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
+            yield f"data: {json.dumps({'type': 'done', 'message_id': ai_msg.id, 'tokens_used': total_tokens_used})}\n\n"
+            return
+
         # BUG FIX #1: Safe token counting
         total_tokens_used += safe_token_count(llm_tokens, llm_response)
 
@@ -950,18 +986,12 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict):
 
             # ── Write action confirmation ─────────────────────────────
             if tool_name in WRITE_ACTION_TOOLS:
-                action_id = str(uuid.uuid4())
-                confirm_event = {
-                    "type": "confirm_action",
-                    "action_id": action_id,
-                    "tool": tool_name,
-                    "params": {k: v for k, v in resolved_params.items() if not k.startswith("_")},
-                    "display": _build_confirm_display(tool_name, resolved_params),
-                    "buttons": [
-                        {"label": "Confirm", "action": "confirm"},
-                        {"label": "Cancel", "action": "cancel"},
-                    ],
-                }
+                try:
+                    confirm_event = await _build_confirm_event(tool_name, resolved_params, user, session_id, db)
+                except HTTPException as exc:
+                    yield f"data: {json.dumps({'type': 'error', 'phase': 'confirm_token', 'message': exc.detail})}\n\n"
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    return
                 yield f"data: {json.dumps(confirm_event)}\n\n"
 
                 confirm_text = "I need your confirmation before proceeding. Please review the action above."
@@ -1056,6 +1086,19 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict):
                     await asyncio.wait_for(llm_task_done.wait(), timeout=KEEPALIVE_INTERVAL)
                 except asyncio.TimeoutError:
                     yield keepalive_event()
+
+            if _is_ai_unavailable(llm_response):
+                yield _ai_unavailable_event(llm_response)
+                ai_msg = Message(
+                    conversation_id=conv_id,
+                    role="assistant",
+                    content=llm_response.get("message", "AI is temporarily unavailable."),
+                    tool_calls=all_tool_calls if all_tool_calls else None,
+                    language_detected=lang,
+                )
+                await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
+                yield f"data: {json.dumps({'type': 'done', 'message_id': ai_msg.id, 'tokens_used': total_tokens_used})}\n\n"
+                return
 
             total_tokens_used += safe_token_count(llm_tokens, llm_response)
 
@@ -1176,9 +1219,10 @@ async def send_message(conv_id: str, request: Request):
     user_text = body.get("text", "").strip()
     if not user_text:
         return {"success": False, "error": "Empty message"}
+    session_id = body.get("session_id") or request.headers.get("x-session-id") or conv_id
 
     return StreamingResponse(
-        _generate_chat_sse(conv_id, user_text, user),
+        _generate_chat_sse(conv_id, user_text, user, session_id=session_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -1205,6 +1249,11 @@ async def execute_action(conv_id: str, request: Request):
         return {"success": False, "error": f"Unknown action: {action}"}
     if user["role"] not in tool_def["roles"]:
         return {"success": False, "error": "Not allowed for your role"}
+    if action in WRITE_ACTION_TOOLS:
+        raise HTTPException(
+            status_code=400,
+            detail="Write actions must be confirmed through /api/chat/confirm",
+        )
 
     try:
         # Resolve scope for the action
@@ -1246,25 +1295,111 @@ async def execute_action(conv_id: str, request: Request):
 
 # ─── Confirm action endpoint ─────────────────────────────────────────────────
 
+async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, db, conv_id: str = None):
+    token_doc = await consume_confirm_token(
+        token=token,
+        user_id=user["id"],
+        session_id=session_id,
+        db=db,
+    )
+    tool_name = token_doc.get("action")
+    params = token_doc.get("params") or {}
+
+    tool_def = TOOL_REGISTRY.get(tool_name)
+    if not tool_def:
+        raise HTTPException(status_code=400, detail=f"Unknown tool: {tool_name}")
+    if tool_name not in WRITE_ACTION_TOOLS:
+        raise HTTPException(status_code=400, detail="Confirmation token is not for a write action")
+    if user["role"] not in tool_def["roles"]:
+        raise HTTPException(status_code=403, detail="Not allowed for your role")
+
+    try:
+        scope = await resolve_scope(user, db)
+        if _tool_accepts_scope(tool_def):
+            result = await tool_def["fn"](params, user, scope)
+        else:
+            result = await tool_def["fn"](params, user)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Confirm action execution error ({tool_name}): {exc}")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    await audit_ai_dispatch(
+        tool_name=tool_name,
+        params=params,
+        user_id=user["id"],
+        session_id=session_id,
+        confirmed_at=token_doc.get("confirmed_at"),
+        result=result if isinstance(result, dict) else None,
+        db=db,
+    )
+
+    msg_content = (
+        result.get("message", f"Action '{tool_name}' completed successfully.")
+        if isinstance(result, dict)
+        else f"Action '{tool_name}' completed successfully."
+    )
+    message_id = None
+    if conv_id:
+        ai_msg = Message(
+            conversation_id=conv_id,
+            role="assistant",
+            content=msg_content,
+            tool_calls=[{"tool": tool_name, "params": params, "result": result, "token": token}],
+            language_detected="en",
+        )
+        await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
+        await db.conversations.update_one(
+            {"id": conv_id},
+            {"$set": {"updated_at": datetime.now().isoformat()}},
+        )
+        message_id = ai_msg.id
+
+    return {
+        "success": True,
+        "data": {
+            "message": msg_content,
+            "result": result,
+            "message_id": message_id,
+            "tool": tool_name,
+        },
+    }
+
+
+@router.post("/confirm")
+async def confirm_token_action(request: Request):
+    """Execute a server-issued AI confirmation token."""
+    db = get_db()
+    user = get_current_user(request)
+    body = await request.json()
+    decision = body.get("decision", "")
+    confirmed = body.get("confirmed", False) or decision == "confirm"
+
+    if not confirmed:
+        return {"success": True, "data": {"message": "Action cancelled.", "cancelled": True}}
+
+    token = body.get("token") or body.get("action_id")
+    session_id = body.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id is required")
+
+    return await _execute_confirmed_dispatch(token, session_id, user, db, body.get("conversation_id"))
+
+
 @router.post("/conversations/{conv_id}/confirm")
 async def confirm_action(conv_id: str, request: Request):
     """
-    Handle user's response to a confirm_action event.
-    Body: {"action_id": "...", "tool": "...", "params": {...}, "confirmed": true/false}
+    Compatibility endpoint for confirm_action events.
+    Body: {"token": "...", "session_id": "...", "confirmed": true/false}
     """
     db = get_db()
     user = get_current_user(request)
     body = await request.json()
-
-    action_id = body.get("action_id", "")
-    tool_name = body.get("tool", "")
-    params = body.get("params", {})
-    # Support both "confirmed: true" and "decision: confirm" from frontend
     decision = body.get("decision", "")
-    confirmed = body.get("confirmed", False) or (decision == "confirm")
+    confirmed = body.get("confirmed", False) or decision == "confirm"
 
     if not confirmed:
-        # User cancelled
         cancel_msg = "Action cancelled. Let me know if you need anything else."
         ai_msg = Message(
             conversation_id=conv_id,
@@ -1278,43 +1413,6 @@ async def confirm_action(conv_id: str, request: Request):
             "data": {"message": cancel_msg, "message_id": ai_msg.id, "cancelled": True},
         }
 
-    tool_def = TOOL_REGISTRY.get(tool_name)
-    if not tool_def:
-        return {"success": False, "error": f"Unknown tool: {tool_name}"}
-    if user["role"] not in tool_def["roles"]:
-        return {"success": False, "error": "Not allowed for your role"}
-
-    try:
-        scope = await resolve_scope(user, db)
-
-        if _tool_accepts_scope(tool_def):
-            result = await tool_def["fn"](params, user, scope)
-        else:
-            result = await tool_def["fn"](params, user)
-
-        msg_content = result.get("message", f"Action '{tool_name}' completed successfully.")
-
-        ai_msg = Message(
-            conversation_id=conv_id,
-            role="assistant",
-            content=msg_content,
-            tool_calls=[{"tool": tool_name, "params": params, "result": result, "action_id": action_id}],
-            language_detected="en",
-        )
-        await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
-        await db.conversations.update_one(
-            {"id": conv_id},
-            {"$set": {"updated_at": datetime.now().isoformat()}},
-        )
-
-        return {
-            "success": True,
-            "data": {
-                "message": msg_content,
-                "result": result,
-                "message_id": ai_msg.id,
-            },
-        }
-    except Exception as e:
-        logger.error(f"Confirm action error ({tool_name}): {e}")
-        return {"success": False, "error": str(e)}
+    token = body.get("token") or body.get("action_id")
+    session_id = body.get("session_id") or conv_id
+    return await _execute_confirmed_dispatch(token, session_id, user, db, conv_id)

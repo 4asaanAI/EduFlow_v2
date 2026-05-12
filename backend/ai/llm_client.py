@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import os
 import uuid
 import asyncio
 import logging
+from typing import Any
 
 try:
     from openai import OpenAI
@@ -9,6 +12,16 @@ except ImportError:
     OpenAI = None
 
 logger = logging.getLogger(__name__)
+
+
+def ai_unavailable_result(reason: str) -> dict[str, Any]:
+    return {
+        "type": "ai_unavailable",
+        "degraded": True,
+        "message": "AI is temporarily unavailable. Core school tools remain available.",
+        "reason": reason,
+        "tokens": 0,
+    }
 
 
 class LLMClient:
@@ -35,7 +48,7 @@ class LLMClient:
             session_id = f"sess-{uuid.uuid4()}"
 
         if not self._client:
-            return "Azure OpenAI not configured. Please set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT.", 0
+            return ai_unavailable_result("not_configured")
 
         az_messages = [{"role": "system", "content": system_prompt}]
         for msg in messages:
@@ -62,8 +75,12 @@ class LLMClient:
         try:
             return await asyncio.to_thread(_call)
         except Exception as e:
+            error_name = e.__class__.__name__.lower()
+            if "timeout" in error_name or "connection" in error_name:
+                logger.warning(f"Azure OpenAI unavailable: {e}")
+                return ai_unavailable_result(error_name)
             logger.error(f"Azure OpenAI error: {e}")
-            return f"Error: {str(e)}", 0
+            return ai_unavailable_result(error_name or "request_failed")
 
 
 llm_client = LLMClient()

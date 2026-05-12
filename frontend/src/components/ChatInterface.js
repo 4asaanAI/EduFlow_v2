@@ -133,6 +133,8 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   const [messages, setMessages] = useState([]);
   const [streaming, setStreaming] = useState(false);
   const [currentStreamMsg, setCurrentStreamMsg] = useState(null);
+  const [aiUnavailable, setAiUnavailable] = useState(false);
+  const [aiUnavailableMessage, setAiUnavailableMessage] = useState('');
   const messagesEndRef = useRef(null);
 
   const justCreatedRef = useRef(false);
@@ -261,7 +263,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   };
 
   const handleSend = async (text) => {
-    if (!text.trim() || streaming) return;
+    if (!text.trim() || streaming || aiUnavailable) return;
 
     let cid = convId;
 
@@ -284,6 +286,8 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     setThinkingCollapsed(false);
     setThinkingStartTime(null);
     setConfirmAction(null);
+    setAiUnavailable(false);
+    setAiUnavailableMessage('');
     thinkingStartTimeRef.current = null;
     thinkingCollapsedRef.current = false;
     thinkingStepsRef.current = [];
@@ -344,6 +348,11 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           setTokenExhausted(true);
           setTokenCanRecharge(!!event.can_recharge);
           fetchTokenUsage();
+        } else if (event.type === 'ai_unavailable') {
+          const message = event.message || 'AI is temporarily unavailable. Core school tools remain available.';
+          setAiUnavailable(true);
+          setAiUnavailableMessage(message);
+          setCurrentStreamMsg(prev => prev ? ({ ...prev, content: message }) : prev);
         } else if (event.type === 'keepalive') {
           // Ignore - just prevents SSE timeout
         } else if (event.type === 'done') {
@@ -455,6 +464,21 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     <div data-testid="chat-interface" style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', background: chatBg }}>
       <div data-testid="messages-area" style={{ flex: 1, overflowY: 'auto', padding: '24px 0 200px' }}>
         <div data-testid="message-list" style={{ maxWidth: 760, margin: '0 auto', padding: '0 24px' }}>
+          {aiUnavailable && (
+            <div data-testid="ai-unavailable-banner" style={{
+              border: '1px solid var(--border)',
+              background: 'var(--bg-card)',
+              color: 'var(--text-primary)',
+              borderRadius: 8,
+              padding: '12px 14px',
+              marginBottom: 16,
+              fontSize: 13,
+              lineHeight: 1.45,
+            }}>
+              {aiUnavailableMessage || 'AI is temporarily unavailable. Core school tools remain available.'}
+            </div>
+          )}
+
           {isNewChat && (
             <div className="fade-in" style={{ textAlign: 'center', padding: '60px 0 40px' }}>
               <div style={{
@@ -563,7 +587,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           <div ref={messagesEndRef} />
         </div>
       </div>
-      <InputBar onSend={handleSend} disabled={streaming || tokenExhausted} isDark={isDark} />
+      <InputBar onSend={handleSend} disabled={streaming || tokenExhausted || aiUnavailable} isDark={isDark} />
       <div style={{
         position: 'absolute', bottom: 0, left: 0, right: 0,
         padding: '0 24px 4px', zIndex: 39, pointerEvents: 'auto',

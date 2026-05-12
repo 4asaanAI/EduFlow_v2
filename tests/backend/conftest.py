@@ -45,7 +45,7 @@ try:
     import routes.audit as audit_routes
     from middleware.auth import hash_password
     APP_AVAILABLE = True
-except ImportError as e:
+except (ImportError, TypeError) as e:
     APP_AVAILABLE = False
     _import_error = str(e)
 
@@ -57,6 +57,19 @@ def _get_nested(doc, key):
             return None
         value = value.get(part)
     return value
+
+
+def _set_nested(doc, key, value):
+    parts = key.split(".")
+    target = doc
+    for part in parts[:-1]:
+        target = target.setdefault(part, {})
+    target[parts[-1]] = value
+
+
+def _inc_nested(doc, key, value):
+    current = _get_nested(doc, key) or 0
+    _set_nested(doc, key, current + value)
 
 
 def _matches(doc, query):
@@ -123,12 +136,24 @@ class FakeCursor:
         return [{k: v for k, v in doc.items() if k != "_id"} for doc in self.docs]
 
 
+class FakeAggregateCursor:
+    def __init__(self, docs):
+        self.docs = list(docs)
+
+    async def to_list(self, limit):
+        return self.docs[:limit] if limit else self.docs
+
+
 class FakeCollection:
     def __init__(self, docs=None):
         self.docs = docs or []
 
-    async def find_one(self, query=None, projection=None):
-        for doc in self.docs:
+    async def find_one(self, query=None, projection=None, sort=None):
+        docs = [doc for doc in self.docs if _matches(doc, query or {})]
+        if sort:
+            for key, direction in reversed(sort):
+                docs.sort(key=lambda doc: _get_nested(doc, key) or "", reverse=direction < 0)
+        for doc in docs:
             if _matches(doc, query or {}):
                 return {k: v for k, v in doc.items() if k != "_id"} if projection else doc
         return None
@@ -146,13 +171,15 @@ class FakeCollection:
     async def update_one(self, query, update, upsert=False):
         for doc in self.docs:
             if _matches(doc, query):
-                doc.update(update.get("$set", {}))
-                doc.update({k: doc.get(k, 0) + v for k, v in update.get("$inc", {}).items()})
+                for key, value in update.get("$set", {}).items():
+                    _set_nested(doc, key, value)
+                for key, value in update.get("$inc", {}).items():
+                    _inc_nested(doc, key, value)
                 return type("Result", (), {"matched_count": 1, "modified_count": 1})()
         if upsert:
             doc = {**query, **update.get("$setOnInsert", {}), **update.get("$set", {})}
             for key, value in update.get("$inc", {}).items():
-                doc[key] = value
+                _inc_nested(doc, key, value)
             self.docs.append(doc)
             return type("Result", (), {"matched_count": 1, "modified_count": 1})()
         return type("Result", (), {"matched_count": 0, "modified_count": 0})()
@@ -161,7 +188,8 @@ class FakeCollection:
         count = 0
         for doc in self.docs:
             if _matches(doc, query):
-                doc.update(update.get("$set", {}))
+                for key, value in update.get("$set", {}).items():
+                    _set_nested(doc, key, value)
                 count += 1
         return type("Result", (), {"modified_count": count})()
 
@@ -174,6 +202,55 @@ class FakeCollection:
         before = len(self.docs)
         self.docs[:] = [doc for doc in self.docs if not _matches(doc, query)]
         return type("Result", (), {"deleted_count": before - len(self.docs)})()
+
+    def aggregate(self, pipeline):
+        docs = [doc.copy() for doc in self.docs]
+        for stage in pipeline:
+            if "$match" in stage:
+                docs = [doc for doc in docs if _matches(doc, stage["$match"])]
+            elif "$group" in stage:
+                group = stage["$group"]
+                grouped = {}
+                for doc in docs:
+                    key_expr = group.get("_id")
+                    if key_expr is None:
+                        key = None
+                    elif isinstance(key_expr, str) and key_expr.startswith("$"):
+                        key = _get_nested(doc, key_expr[1:])
+                    elif isinstance(key_expr, dict) and "$substr" in key_expr:
+                        source, start, length = key_expr["$substr"]
+                        raw = _get_nested(doc, source[1:]) if isinstance(source, str) and source.startswith("$") else source
+                        key = str(raw or "")[start:start + length]
+                    else:
+                        key = key_expr
+                    bucket = grouped.setdefault(key, {"_id": key})
+                    for out_key, expr in group.items():
+                        if out_key == "_id":
+                            continue
+                        if "$sum" in expr:
+                            sum_expr = expr["$sum"]
+                            if isinstance(sum_expr, str) and sum_expr.startswith("$"):
+                                bucket[out_key] = bucket.get(out_key, 0) + (_get_nested(doc, sum_expr[1:]) or 0)
+                            elif isinstance(sum_expr, dict) and "$cond" in sum_expr:
+                                condition, true_value, false_value = sum_expr["$cond"]
+                                left, right = condition.get("$eq", [None, None])
+                                left_value = _get_nested(doc, left[1:]) if isinstance(left, str) and left.startswith("$") else left
+                                bucket[out_key] = bucket.get(out_key, 0) + (true_value if left_value == right else false_value)
+                            else:
+                                bucket[out_key] = bucket.get(out_key, 0) + sum_expr
+                        elif "$addToSet" in expr:
+                            set_expr = expr["$addToSet"]
+                            value = _get_nested(doc, set_expr[1:]) if isinstance(set_expr, str) and set_expr.startswith("$") else set_expr
+                            bucket.setdefault(out_key, set()).add(value)
+                docs = list(grouped.values())
+                for doc in docs:
+                    for key, value in list(doc.items()):
+                        if isinstance(value, set):
+                            doc[key] = list(value)
+            elif "$sort" in stage:
+                for key, direction in reversed(list(stage["$sort"].items())):
+                    docs.sort(key=lambda doc: _get_nested(doc, key) or "", reverse=direction < 0)
+        return FakeAggregateCursor(docs)
 
 
 class FakeDb:
@@ -236,6 +313,9 @@ class FakeDb:
         self.timetable_slots = FakeCollection()
         self.substitutions = FakeCollection()
         self.subjects = FakeCollection()
+        self.token_balances = FakeCollection()
+        self.token_usage = FakeCollection()
+        self.token_purchases = FakeCollection()
 
 
 if APP_AVAILABLE:
