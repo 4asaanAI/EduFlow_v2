@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   CheckCircle,
+  Download,
   History,
   RefreshCw,
   Save,
@@ -15,6 +16,9 @@ import {
   getAttendanceHistory,
   getTodayAttendance,
 } from '../../lib/api';
+import { getAuthHeaders } from '../../lib/authSession';
+
+const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 const STATUS_OPTIONS = [
   { value: 'present', label: 'Present', color: '#34d399' },
@@ -175,6 +179,25 @@ export default function AttendanceRecorder() {
     }
   }
 
+  async function exportAttendanceCSV() {
+    if (!selectedClass || !date) return;
+    setError('');
+    try {
+      const month = date.slice(0, 7);
+      const res = await fetch(`${API}/attendance/export?class_id=${selectedClass}&month=${month}&format=csv`, { headers: getAuthHeaders() });
+      if (!res.ok) throw new Error('Attendance export failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `attendance-${selectedClassLabel || selectedClass}-${month}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.message || 'Attendance export failed');
+    }
+  }
+
   const counts = STATUS_OPTIONS.reduce((acc, opt) => {
     acc[opt.value] = records.filter(row => row.status === opt.value).length;
     return acc;
@@ -187,10 +210,16 @@ export default function AttendanceRecorder() {
           <h1 style={{ fontFamily: 'Inter, sans-serif', fontSize: 22, fontWeight: 650, color: 'var(--c-text)', margin: 0 }}>Attendance recorder</h1>
           <p style={{ margin: '6px 0 0', color: 'var(--c-faint)', fontSize: 12 }}>{selectedClassLabel || 'Select a class'} - {date}</p>
         </div>
-        <button onClick={loadAttendance} disabled={!selectedClass || loading} title="Refresh attendance"
-          style={{ minHeight: 44, minWidth: 44, display: 'grid', placeItems: 'center', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, color: 'var(--c-text)', cursor: 'pointer' }}>
-          <RefreshCw size={16} />
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={exportAttendanceCSV} disabled={!selectedClass} title="Export month attendance as CSV"
+            style={{ minHeight: 44, minWidth: 44, display: 'grid', placeItems: 'center', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, color: 'var(--c-text)', cursor: 'pointer' }}>
+            <Download size={16} />
+          </button>
+          <button onClick={loadAttendance} disabled={!selectedClass || loading} title="Refresh attendance"
+            style={{ minHeight: 44, minWidth: 44, display: 'grid', placeItems: 'center', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, color: 'var(--c-text)', cursor: 'pointer' }}>
+            <RefreshCw size={16} />
+          </button>
+        </div>
       </div>
 
       {error && <div role="alert" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, padding: 12, border: '1px solid rgba(248,113,113,.35)', borderRadius: 8, color: '#f87171', background: 'rgba(248,113,113,.08)', fontSize: 13 }}><AlertCircle size={16} />{error}</div>}

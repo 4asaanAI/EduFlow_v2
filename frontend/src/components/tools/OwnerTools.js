@@ -7,27 +7,59 @@ import { Activity, CheckCircle, XCircle, AlertTriangle, Plus, RefreshCw, Save, T
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function h() { return getAuthHeaders(); }
+function money(value) { return `Rs ${Number(value || 0).toLocaleString('en-IN')}`; }
 
 // 1. School Pulse
 export function SchoolPulse() {
   const { currentUser } = useUser();
   const [data, setData] = useState(null);
+  const [feeSummary, setFeeSummary] = useState(null);
+  const [openComplaints, setOpenComplaints] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => { load(); }, []);
 
   const load = async () => {
     setLoading(true);
-    try { const r = await executeTool('get_school_pulse', {}, currentUser); if (r.success) setData(r.data); } catch {}
+    try {
+      const [pulseRes, feeRes, complaintsRes] = await Promise.all([
+        executeTool('get_school_pulse', {}, currentUser),
+        fetch(`${API}/fees/summary`, { headers: h() }).then(r => r.json()),
+        fetch(`${API}/ops/complaints`, { headers: h() }).then(r => r.json()),
+      ]);
+      if (pulseRes.success) setData(pulseRes.data);
+      if (feeRes.success) setFeeSummary(feeRes.data);
+      if (complaintsRes.success) setOpenComplaints((complaintsRes.data || []).filter(c => !['resolved', 'closed'].includes(c.status)));
+    } catch {}
     setLoading(false);
   };
 
   const s = data?.summary || {};
   const leaves = data?.pending_leave_requests || [];
+  const feeStats = feeSummary || {};
 
   return (
     <ToolPage title="School Pulse" subtitle="Today's complete overview" onRefresh={load} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 1000 }}>
+        <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(4, minmax(160px, 1fr))', gap: 12 }}>
+          <StatCard value={money(feeStats.total_collected || data?.fee_stats?.paid || 0)} label="FEE COLLECTED" color="#34d399" />
+          <StatCard value={money(feeStats.total_outstanding || data?.fee_stats?.overdue || 0)} label="FEE OVERDUE" color="#f87171" />
+          <StatCard value={feeStats.transactions ? `${Math.round((Number(feeStats.total_collected || 0) / Math.max(Number(feeStats.total_collected || 0) + Number(feeStats.total_outstanding || 0), 1)) * 100)}%` : '0%'} label="COLLECTION RATE" color="#4f8ff7" />
+          <StatCard value={openComplaints.length} label="UNRESOLVED PARENT COMPLAINTS" color={openComplaints.length ? '#fbbf24' : '#34d399'} />
+        </div>
+        {openComplaints.length > 0 && (
+          <div style={{ gridColumn: '1 / -1', background: '#1e1e1e', border: '1px solid rgba(251,191,36,0.28)', borderRadius: 12, padding: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 650, color: '#fbbf24', margin: 0 }}>Director Priority: Unresolved Parent Complaints</h3>
+              <ActionBtn label="Open Complaints" variant="secondary" onClick={() => window.dispatchEvent(new CustomEvent('open-tool', { detail: 'complaint-tracker' }))} />
+            </div>
+            <DataTable
+              headers={['Subject', 'Category', 'Priority', 'Status', 'Opened']}
+              rows={openComplaints.slice(0, 5).map(c => [c.subject, c.category, <Badge text={c.priority} color={c.priority === 'urgent' || c.priority === 'high' ? 'red' : 'yellow'} />, <Badge text={c.status} color="yellow" />, c.created_at?.slice(0, 10)])}
+              emptyMsg="No unresolved parent complaints"
+            />
+          </div>
+        )}
         {/* Quick Actions */}
         <div style={{ background: '#1e1e1e', border: '1px solid #2e2e2e', borderRadius: 12, padding: 20 }}>
           <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 600, color: '#e5e5e5', marginBottom: 14 }}>Quick Actions</h3>

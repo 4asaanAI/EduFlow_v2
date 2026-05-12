@@ -8,6 +8,7 @@ import uuid
 
 router = APIRouter(prefix="/api/ops", tags=["operations"])
 workflow_router = APIRouter(prefix="/api/operations", tags=["operations-workflow"])
+transport_router = APIRouter(prefix="/api/transport", tags=["transport"])
 
 
 def get_user(req: Request):
@@ -542,6 +543,7 @@ async def update_asset(asset_id: str, request: Request):
 
 # --- Transport ---
 @router.get("/transport")
+@transport_router.get("")
 async def list_transport(request: Request):
     db = get_db()
     user = get_user(request)
@@ -556,6 +558,7 @@ async def list_transport(request: Request):
 
 
 @router.post("/transport")
+@transport_router.post("")
 async def create_route(request: Request):
     db = get_db()
     user = get_user(request)
@@ -581,6 +584,7 @@ async def create_route(request: Request):
 
 
 @router.get("/transport/roster")
+@transport_router.get("/roster")
 async def get_transport_roster(request: Request, zone_id: str = None):
     """Owner/Principal: full roster. Transport Head: zone-specific."""
     db = get_db()
@@ -599,6 +603,7 @@ async def get_transport_roster(request: Request, zone_id: str = None):
 
 
 @router.post("/transport/vehicles")
+@transport_router.post("/vehicles")
 async def create_vehicle(request: Request):
     db = get_db()
     user = get_user(request)
@@ -620,6 +625,7 @@ async def create_vehicle(request: Request):
 
 
 @router.get("/transport/vehicles")
+@transport_router.get("/vehicles")
 async def list_vehicles(request: Request):
     db = get_db()
     user = get_user(request)
@@ -630,6 +636,7 @@ async def list_vehicles(request: Request):
 
 
 @router.post("/transport/zones")
+@transport_router.post("/zones")
 async def create_zone(request: Request):
     """Alias: zones map to transport routes with zone semantics."""
     db = get_db()
@@ -650,6 +657,7 @@ async def create_zone(request: Request):
 
 
 @router.patch("/transport/{route_id}")
+@transport_router.patch("/{route_id}")
 async def update_route(route_id: str, request: Request):
     db = get_db()
     user = get_user(request)
@@ -662,6 +670,7 @@ async def update_route(route_id: str, request: Request):
 
 
 @router.delete("/transport/{route_id}")
+@transport_router.delete("/{route_id}")
 async def delete_route(route_id: str, request: Request):
     db = get_db()
     user = get_user(request)

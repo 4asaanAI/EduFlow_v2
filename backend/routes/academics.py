@@ -3,6 +3,7 @@ from fastapi import APIRouter, Request, HTTPException
 from database import get_db
 from middleware.auth import get_current_user
 from datetime import datetime
+from tenant import get_school_id
 import uuid
 
 router = APIRouter(prefix="/api/academics", tags=["academics"])
@@ -618,10 +619,121 @@ async def delete_worksheet(ws_id: str, request: Request):
 
 
 @router.get("/substitutions")
-async def list_substitutions(request: Request):
+async def list_substitutions(request: Request, date: str = None, teacher_id: str = None):
     db = get_db()
-    # Return empty for now — substitutions are managed manually
-    return {"success": True, "data": []}
+    user = get_user(request)
+    target_date = date or datetime.now().strftime("%Y-%m-%d")
+    try:
+        day_of_week = datetime.fromisoformat(target_date).weekday()
+    except ValueError:
+        raise HTTPException(400, "Invalid date format; use YYYY-MM-DD")
+
+    if user["role"] == "teacher":
+        staff = await db.staff.find_one({"user_id": user["id"]}, {"_id": 0})
+        if not staff:
+            return {"success": True, "data": []}
+        teacher_id = staff["id"]
+
+    if teacher_id:
+        assigned = await db.substitutions.find(
+            {"substitute_teacher_id": teacher_id, "date": target_date},
+            {"_id": 0},
+        ).sort("period_number", 1).to_list(50)
+        return {"success": True, "data": assigned}
+
+    if user["role"] not in ["owner", "admin"]:
+        raise HTTPException(403, "Forbidden")
+
+    absent_records = await db.staff_attendance.find(
+        {"date": target_date, "status": {"$in": ["absent", "leave", "on_leave"]}},
+        {"_id": 0},
+    ).to_list(100)
+    absent_staff_ids = [r.get("staff_id") for r in absent_records if r.get("staff_id")]
+    absent_staff = await db.staff.find({"id": {"$in": absent_staff_ids}}, {"_id": 0}).to_list(len(absent_staff_ids)) if absent_staff_ids else []
+    absent_by_id = {s["id"]: s for s in absent_staff}
+    existing_subs = await db.substitutions.find({"date": target_date}, {"_id": 0}).to_list(200)
+    sub_by_slot = {(s.get("absent_teacher_id"), s.get("period_number"), s.get("class_id")): s for s in existing_subs}
+    busy_teacher_periods = {(s.get("substitute_teacher_id"), s.get("period_number")) for s in existing_subs if s.get("substitute_teacher_id")}
+
+    slots = await db.timetable_slots.find(
+        {"teacher_id": {"$in": absent_staff_ids}, "day_of_week": day_of_week},
+        {"_id": 0},
+    ).sort("period_number", 1).to_list(200)
+    all_teachers = await db.staff.find(
+        {"staff_type": "teacher", "is_active": {"$ne": False}, "id": {"$nin": absent_staff_ids}},
+        {"_id": 0, "id": 1, "name": 1, "subject": 1},
+    ).to_list(300)
+
+    result = []
+    for slot in slots:
+        period = slot.get("period_number")
+        busy = await db.timetable_slots.find(
+            {"day_of_week": day_of_week, "period_number": period, "teacher_id": {"$ne": ""}},
+            {"_id": 0, "teacher_id": 1},
+        ).to_list(300)
+        busy_ids = {b.get("teacher_id") for b in busy} | {tid for tid, p in busy_teacher_periods if p == period}
+        candidates = [t for t in all_teachers if t["id"] not in busy_ids][:5]
+        cls = await db.classes.find_one({"id": slot.get("class_id")}, {"_id": 0})
+        subj = await db.subjects.find_one({"id": slot.get("subject_id")}, {"_id": 0})
+        existing = sub_by_slot.get((slot.get("teacher_id"), period, slot.get("class_id")))
+        result.append({
+            "date": target_date,
+            "day_of_week": day_of_week,
+            "absent_teacher_id": slot.get("teacher_id"),
+            "absent_teacher_name": absent_by_id.get(slot.get("teacher_id"), {}).get("name", slot.get("teacher_id")),
+            "period_number": period,
+            "class_id": slot.get("class_id"),
+            "class_name": f"{cls.get('name', '')}-{cls.get('section', '')}" if cls else slot.get("class_id"),
+            "subject_id": slot.get("subject_id"),
+            "subject_name": subj.get("name") if subj else slot.get("subject_id", ""),
+            "room": slot.get("room", ""),
+            "assigned_substitute": existing,
+            "candidate_substitutes": candidates,
+        })
+    return {"success": True, "data": result, "meta": {"date": target_date, "absent_teacher_count": len(absent_staff_ids), "uncovered_period_count": len([r for r in result if not r.get("assigned_substitute")])}}
+
+
+@router.post("/substitutions")
+async def create_substitution(request: Request):
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in ["owner", "admin"]:
+        raise HTTPException(403, "Forbidden")
+    body = await request.json()
+    required = ["date", "absent_teacher_id", "substitute_teacher_id", "class_id", "period_number"]
+    if any(not body.get(field) for field in required):
+        raise HTTPException(400, "date, absent_teacher_id, substitute_teacher_id, class_id, and period_number are required")
+    substitution = {
+        "id": str(uuid.uuid4()),
+        "date": body["date"],
+        "absent_teacher_id": body["absent_teacher_id"],
+        "substitute_teacher_id": body["substitute_teacher_id"],
+        "class_id": body["class_id"],
+        "subject_id": body.get("subject_id", ""),
+        "period_number": body["period_number"],
+        "status": "assigned",
+        "created_by": user["id"],
+        "created_at": datetime.now().isoformat(),
+    }
+    await db.substitutions.update_one(
+        {"date": substitution["date"], "absent_teacher_id": substitution["absent_teacher_id"], "class_id": substitution["class_id"], "period_number": substitution["period_number"]},
+        {"$set": {**substitution, "_id": substitution["id"]}},
+        upsert=True,
+    )
+    await db.audit_logs.insert_one({
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "schoolId": get_school_id(),
+        "entity_type": "substitution",
+        "entity_id": substitution["id"],
+        "collection": "substitutions",
+        "action": "assign",
+        "changed_by": user.get("id"),
+        "changed_by_role": user.get("role"),
+        "changes": {"created": substitution},
+        "created_at": datetime.now().isoformat(),
+    })
+    return {"success": True, "data": substitution}
 
 
 # --- Curriculum Progress ---

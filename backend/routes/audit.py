@@ -69,6 +69,7 @@ async def list_audit_log(
     return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
 
 
+@router.get("/{record_id}")
 @router.get("/record/{record_id}")
 async def get_record_history(record_id: str, request: Request):
     db = get_db()

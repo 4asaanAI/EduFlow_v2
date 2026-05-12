@@ -40,6 +40,9 @@ try:
     import routes.attendance as attendance_routes
     import routes.fees as fees_routes
     import routes.operations as operations_routes
+    import routes.academics as academics_routes
+    import routes.issues as issues_routes
+    import routes.audit as audit_routes
     from middleware.auth import hash_password
     APP_AVAILABLE = True
 except ImportError as e:
@@ -70,6 +73,10 @@ def _matches(doc, query):
         if isinstance(expected, dict):
             for op, value in expected.items():
                 if op == "$in" and actual not in value:
+                    return False
+                if op == "$nin" and actual in value:
+                    return False
+                if op == "$ne" and actual == value:
                     return False
                 if op == "$gte" and actual < value:
                     return False
@@ -141,14 +148,14 @@ class FakeCollection:
             if _matches(doc, query):
                 doc.update(update.get("$set", {}))
                 doc.update({k: doc.get(k, 0) + v for k, v in update.get("$inc", {}).items()})
-                return type("Result", (), {"modified_count": 1})()
+                return type("Result", (), {"matched_count": 1, "modified_count": 1})()
         if upsert:
             doc = {**query, **update.get("$setOnInsert", {}), **update.get("$set", {})}
             for key, value in update.get("$inc", {}).items():
                 doc[key] = value
             self.docs.append(doc)
-            return type("Result", (), {"modified_count": 1})()
-        return type("Result", (), {"modified_count": 0})()
+            return type("Result", (), {"matched_count": 1, "modified_count": 1})()
+        return type("Result", (), {"matched_count": 0, "modified_count": 0})()
 
     async def update_many(self, query, update):
         count = 0
@@ -211,6 +218,7 @@ class FakeDb:
         self.audit_logs = FakeCollection()
         self.file_uploads = FakeCollection()
         self.student_attendance = FakeCollection()
+        self.staff_attendance = FakeCollection()
         self.attendance_corrections = FakeCollection()
         self.fee_transactions = FakeCollection()
         self.fee_idempotency_keys = FakeCollection()
@@ -220,6 +228,14 @@ class FakeDb:
         self.fee_discount_types = FakeCollection()
         self.fee_discounts = FakeCollection()
         self.fee_sync_jobs = FakeCollection()
+        self.facility_requests = FakeCollection()
+        self.tech_requests = FakeCollection()
+        self.complaints = FakeCollection()
+        self.transport_routes = FakeCollection()
+        self.vehicles = FakeCollection()
+        self.timetable_slots = FakeCollection()
+        self.substitutions = FakeCollection()
+        self.subjects = FakeCollection()
 
 
 if APP_AVAILABLE:
@@ -239,6 +255,9 @@ if APP_AVAILABLE:
     attendance_routes.get_db = lambda: _fake_db
     fees_routes.get_db = lambda: _fake_db
     operations_routes.get_db = lambda: _fake_db
+    academics_routes.get_db = lambda: _fake_db
+    issues_routes.get_db = lambda: _fake_db
+    audit_routes.get_db = lambda: _fake_db
 
 
 # ─── Event loop (for async tests) ─────────────────────────────────────────

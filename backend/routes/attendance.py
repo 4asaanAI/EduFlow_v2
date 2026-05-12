@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Request, HTTPException
+from fastapi.responses import StreamingResponse
 from database import get_db
 from models.schemas import AttendanceBulkRequest, StudentAttendance, StaffAttendance
 from middleware.auth import get_current_user
 from datetime import date, datetime
 from tenant import get_school_id, scoped_filter
+import csv
+import io
 import os
 import uuid
 
@@ -303,6 +306,58 @@ async def get_low_attendance_students(request: Request, threshold: float = 75.0,
 
     results.sort(key=lambda x: x["attendance_rate"])
     return {"success": True, "data": results, "meta": {"threshold": threshold, "days": days, "count": len(results)}}
+
+
+@router.get("/export")
+async def export_attendance_summary(request: Request, class_id: str, month: str, format: str = "csv"):
+    db = get_db()
+    user = get_user(request)
+    if user.get("role") not in ("owner", "admin"):
+        raise HTTPException(403, "Only Owner or Accountant can export attendance data")
+    if format != "csv":
+        raise HTTPException(400, "Only csv export is supported")
+    if not class_id or not month:
+        raise HTTPException(400, "class_id and month=YYYY-MM are required")
+
+    students = await db.students.find(
+        scoped_filter({"class_id": class_id, "is_active": {"$ne": False}}, get_school_id()),
+        {"_id": 0, "id": 1, "name": 1, "admission_number": 1, "roll_number": 1},
+    ).sort("roll_number", 1).to_list(500)
+    student_ids = [s["id"] for s in students]
+    records = await db.student_attendance.find(
+        scoped_filter({"class_id": class_id, "student_id": {"$in": student_ids}, "date": {"$regex": f"^{month}"}}, get_school_id()),
+        {"_id": 0},
+    ).to_list(5000)
+    by_student = {}
+    for rec in records:
+        by_student.setdefault(rec.get("student_id"), []).append(rec)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["student_name", "admission_number", "roll_number", "present_days", "absent_days", "late_days", "percentage"])
+    for student in students:
+        rows = by_student.get(student["id"], [])
+        present = sum(1 for r in rows if r.get("status") == "present")
+        absent = sum(1 for r in rows if r.get("status") == "absent")
+        late = sum(1 for r in rows if r.get("status") == "late")
+        total = present + absent + late
+        percentage = round((present + (late * 0.5)) / total * 100, 1) if total else 0
+        writer.writerow([
+            student.get("name", ""),
+            student.get("admission_number", ""),
+            student.get("roll_number", ""),
+            present,
+            absent,
+            late,
+            percentage,
+        ])
+    output.seek(0)
+    filename = f"attendance_{class_id}_{month}.csv"
+    return StreamingResponse(
+        iter([output.read()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @router.get("/staff")

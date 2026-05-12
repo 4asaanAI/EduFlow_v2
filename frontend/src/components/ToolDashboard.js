@@ -36,6 +36,7 @@ const T = {
   'incident-tracker':      { id: 'incident-tracker',      name: 'Incidents & Visitors',subtitle: 'Log & track',           icon: AlertTriangle, color: '#f87171' },
   'audit-log':             { id: 'audit-log',             name: 'Audit Log',           subtitle: 'Who did what',          icon: ScrollText,    color: '#737373' },
   'fee-receipts':          { id: 'fee-receipts',          name: 'Fee Receipts',        subtitle: 'PDF & export',          icon: FileText,      color: '#34d399' },
+  'principal-daily':       { id: 'principal-daily',       name: 'Principal Daily',     subtitle: 'Absences & subs',       icon: CalendarDays,  color: '#fbbf24' },
 
   // Teacher-only tools
   'class-attendance-marker':     { id: 'class-attendance-marker',     name: 'Attendance',           subtitle: 'Mark my class',        icon: ClipboardList, color: '#fb923c' },
@@ -60,7 +61,7 @@ const TOOL_SETS = {
     'student-database','fee-tracker','attendance-recorder','certificate-generator',
     'circular-sender','enquiry-register','document-scanner','smart-fee-defaulter',
     'admission-pipeline','parent-message','student-transfer','id-card-generator',
-    'timetable-builder','asset-tracker','transport-manager','incident-tracker',
+    'principal-daily','timetable-builder','asset-tracker','transport-manager','incident-tracker',
     'automated-report','custom-form-builder','attendance-alerts','query-section',
     'audit-log',
   ],

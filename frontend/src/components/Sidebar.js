@@ -47,6 +47,7 @@ const TOOLS_BY_ROLE = {
     { id: 'fee-tracker', name: 'Fee Tracker', subtitle: 'Reminders & dues', icon: IndianRupee, color: '#34d399' },
     { id: 'fee-receipts', name: 'Fee Receipts', subtitle: 'PDF & export', icon: FileText, color: '#34d399' },
     { id: 'attendance-recorder', name: 'Attendance', subtitle: 'Mark & track', icon: ClipboardList, color: '#fb923c' },
+    { id: 'principal-daily', name: 'Principal Daily', subtitle: 'Absences & substitutes', icon: CalendarDays, color: '#fbbf24' },
     { id: 'certificate-generator', name: 'Certificates', subtitle: 'TC, Bonafide, etc.', icon: Award, color: '#fbbf24' },
     { id: 'circular-sender', name: 'Circulars', subtitle: 'Notices & messages', icon: Megaphone, color: '#22d3ee' },
     { id: 'enquiry-register', name: 'Enquiry Register', subtitle: 'Admission leads', icon: UserPlus, color: '#a78bfa' },
@@ -106,6 +107,7 @@ const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', teacher: 'Teacher', studen
 const ADMIN_SUBCATEGORY_TOOLS = {
   accountant: ['student-database', 'fee-tracker', 'smart-fee-defaulter', 'fee-receipts', 'custom-form-builder', 'query-section'],
   transport_head: ['student-database', 'transport-manager', 'asset-tracker', 'custom-form-builder', 'query-section'],
+  principal: ['student-database', 'attendance-recorder', 'principal-daily', 'certificate-generator', 'circular-sender', 'enquiry-register', 'document-scanner', 'admission-pipeline', 'parent-message', 'timetable-builder', 'incident-tracker', 'audit-log', 'custom-form-builder', 'query-section'],
   receptionist: ['student-database', 'enquiry-register', 'admission-pipeline', 'parent-message', 'student-transfer', 'id-card-generator', 'asset-tracker', 'incident-tracker', 'custom-form-builder', 'query-section'],
   it_tech: ['tech-issues', 'query-section', 'custom-form-builder'],
   maintenance: ['facility-requests', 'query-section'],

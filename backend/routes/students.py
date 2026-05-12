@@ -71,6 +71,10 @@ def _role_can_manage(user: dict) -> bool:
     return user.get("role") in ADMIN_ROLES
 
 
+def _is_transport_head(user: dict) -> bool:
+    return user.get("role") == "admin" and user.get("sub_category") == "transport_head"
+
+
 async def _get_current_academic_year(db) -> dict | None:
     return await db.academic_years.find_one(scoped_filter({"is_current": True}, get_school_id()), {"_id": 0})
 
@@ -254,6 +258,11 @@ async def update_student(student_id: str, request: Request):
     update = {k: v for k, v in body.items() if k in UPDATABLE_FIELDS}
     if not update:
         raise HTTPException(400, "No updatable fields provided")
+    if _is_transport_head(user):
+        allowed_transport_fields = {"route_zone_id", "uses_transport", "bus_route"}
+        blocked = set(update) - allowed_transport_fields
+        if blocked:
+            raise HTTPException(403, "Transport Head can only update transport assignment fields")
     if "class_id" in update:
         await _validate_class(db, update["class_id"])
     if "admission_number" in update and update["admission_number"] != existing.get("admission_number"):
