@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Issue tracker — facility requests (Maintenance Admin) and tech requests (IT/Tech Admin)"""
 from fastapi import APIRouter, Request, HTTPException
 from database import get_db
@@ -53,6 +55,8 @@ def _audit(action, entity_type, entity_id, user, changes):
 
 
 async def _notify(db, *, user_id: str, notification_type: str, message: str, source_id: str, source_type: str):
+    if not user_id:
+        return
     await db.notifications.insert_one(add_school_id({
         "_id": str(uuid.uuid4()),
         "id": str(uuid.uuid4()),
@@ -64,6 +68,13 @@ async def _notify(db, *, user_id: str, notification_type: str, message: str, sou
         "read": False,
         "created_at": datetime.now().isoformat(),
     }))
+
+
+async def _notification_targets(db, query: dict, projection: dict, limit: int = 30) -> list[dict]:
+    users = getattr(db, "users", None)
+    if users is None:
+        return []
+    return await users.find(query, projection).to_list(limit)
 
 
 # ─── Facility Requests (Maintenance Admin) ────────────────────────────────────
@@ -109,10 +120,10 @@ async def create_facility_request(request: Request):
 
     msg = f"New maintenance request [{priority.upper()}]: {req_doc['description'][:80]} @ {req_doc['location']} — raised by {user.get('name', 'Staff')}."
     # Notify maintenance admins, owners, and principals (flat users collection schema)
-    notify_targets = await db.users.find(
+    notify_targets = await _notification_targets(db,
         {"role": {"$in": ["owner", "admin"]}, "is_active": {"$ne": False}},
-        {"_id": 0, "id": 1, "role": 1, "sub_category": 1}
-    ).to_list(30)
+        {"_id": 0, "id": 1, "role": 1, "sub_category": 1},
+    )
     for target in notify_targets:
         uid = target.get("id")
         if not uid or uid == user["id"]:
