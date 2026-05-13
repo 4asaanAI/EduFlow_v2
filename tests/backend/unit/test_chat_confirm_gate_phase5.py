@@ -92,6 +92,25 @@ def test_missing_required_params_for_write_actions():
     assert missing == ["student_id", "fee_head"]
 
 
+def test_missing_required_params_cover_all_confirmed_write_actions():
+    assert chat.WRITE_ACTION_TOOLS.issubset(set(chat.WRITE_TOOL_REQUIRED_PARAMS))
+
+
+def test_award_house_points_requires_student_not_house():
+    missing = chat._missing_required_params(
+        "award_house_points",
+        {"student_name": "Demo Student", "points": 5},
+    )
+
+    assert missing == []
+
+
+def test_appendix_write_tools_do_not_confirm_empty_params():
+    missing = chat._missing_required_params("assign_followup", {})
+
+    assert missing == ["record_id", "assignee_staff_id", "due_date", "note"]
+
+
 def test_safe_tool_result_redacts_sensitive_chat_fields():
     result = chat._safe_tool_result_for_chat(
         {
