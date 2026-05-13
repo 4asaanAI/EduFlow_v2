@@ -165,9 +165,12 @@ function AlertsList({ items, isDark }) {
 }
 
 function ActionButtons({ buttons, onActionButton, isDark }) {
+  const safeButtons = (buttons || []).filter(btn => btn && btn.label && btn.action);
+  if (safeButtons.length === 0) return null;
+
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
-      {buttons.map((btn, i) => (
+      {safeButtons.map((btn, i) => (
         <button key={i} data-testid={`action-btn-${btn.action || i}`}
           onClick={() => onActionButton && onActionButton(btn.action, btn.params || {}, btn.label)}
           style={{
@@ -181,6 +184,76 @@ function ActionButtons({ buttons, onActionButton, isDark }) {
         >{btn.label}</button>
       ))}
     </div>
+  );
+}
+
+function getToolCount(call) {
+  const result = call?.result;
+  if (!result || typeof result !== 'object') return null;
+  if (result.meta && typeof result.meta.count === 'number') return result.meta.count;
+  if (Array.isArray(result.data)) return result.data.length;
+  if (typeof result.total === 'number') return result.total;
+  if (typeof result.count === 'number') return result.count;
+  return null;
+}
+
+function ToolTraceSummary({ calls, isDark }) {
+  const validCalls = (calls || []).filter(call => call?.tool);
+  if (validCalls.length === 0) return null;
+
+  const border = isDark ? '#2e2e2e' : '#e5e5e5';
+  const muted = isDark ? '#737373' : '#a3a3a3';
+  const text = isDark ? '#d4d4d4' : '#525252';
+
+  return (
+    <details style={{
+      marginTop: 12,
+      border: `1px solid ${border}`,
+      borderRadius: 10,
+      background: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)',
+      overflow: 'hidden',
+    }}>
+      <summary style={{
+        listStyle: 'none',
+        cursor: 'pointer',
+        padding: '8px 11px',
+        fontSize: 11,
+        fontWeight: 600,
+        color: muted,
+        userSelect: 'none',
+      }}>
+        Data used · {validCalls.length} tool{validCalls.length === 1 ? '' : 's'}
+      </summary>
+      <div style={{ borderTop: `1px solid ${border}`, padding: '8px 11px', display: 'grid', gap: 6 }}>
+        {validCalls.map((call, i) => {
+          const count = getToolCount(call);
+          return (
+            <div key={`${call.tool}-${i}`} style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+              minWidth: 0,
+            }}>
+              <code style={{
+                minWidth: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                color: '#4f8ff7',
+                fontSize: 11,
+                fontFamily: 'JetBrains Mono, monospace',
+              }}>
+                {call.tool}
+              </code>
+              <span style={{ color: text, fontSize: 11, flexShrink: 0 }}>
+                {count == null ? 'completed' : `${count} record${count === 1 ? '' : 's'}`}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </details>
   );
 }
 
@@ -235,6 +308,7 @@ export default function MessageRenderer({ message, isStreaming, onActionButton }
           return null;
         })}
         {actionButtons?.length > 0 && <ActionButtons buttons={actionButtons} onActionButton={onActionButton} isDark={isDark} />}
+        <ToolTraceSummary calls={message.tool_calls || message.toolCalls} isDark={isDark} />
       </div>
     </div>
   );

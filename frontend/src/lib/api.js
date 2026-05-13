@@ -78,19 +78,28 @@ export async function getMessages(convId) {
   return res.json();
 }
 
-export function sendMessageStream(convId, text, user, onEvent) {
+export function sendMessageStream(convId, text, user, onEvent, sessionId = null) {
   const headers = getHeaders();
+  const chatSessionId = sessionId || getBrowserSseSessionId();
 
   return fetch(`${API}/chat/conversations/${convId}/messages`, {
     method: 'POST',
-    headers,
+    headers: {
+      ...headers,
+      'X-SSE-Session-ID': chatSessionId,
+    },
     credentials: 'include',
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, session_id: chatSessionId }),
   }).then(async (res) => {
     if (res.status === 401) {
       clearAuthSession();
       window.location.href = '/';
       return;
+    }
+
+    if (!res.ok || !res.body) {
+      const message = await res.text().catch(() => '');
+      throw new Error(message || `Chat request failed (${res.status})`);
     }
 
     const reader = res.body.getReader();

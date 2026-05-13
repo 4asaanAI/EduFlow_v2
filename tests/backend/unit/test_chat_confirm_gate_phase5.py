@@ -48,7 +48,7 @@ def test_confirm_display_summarizes_fee_payment_without_raw_json():
             "amount": 2500,
             "student_id": "student-1",
             "_resolved_student": "Demo Student",
-            "payment_mode": "upi",
+            "mode": "upi",
         },
     )
 
@@ -59,3 +59,53 @@ def test_confirm_display_falls_back_for_unknown_tool():
     display = chat._build_confirm_display("custom_write_tool", {"x": 1})
 
     assert display == 'Execute custom_write_tool with parameters: {"x": 1}'
+
+
+def test_parse_confirm_action_tool_call_from_model_json():
+    parsed = chat._parse_tool_call(
+        '```json\n{"confirm_action": true, "tool": "create_announcement", '
+        '"params": {"title": "Holiday", "content": "School closed tomorrow"}, '
+        '"display": "Publish announcement"}\n```'
+    )
+
+    assert parsed == {
+        "action": "create_announcement",
+        "params": {"title": "Holiday", "content": "School closed tomorrow"},
+        "reason": "Publish announcement",
+        "confirm_requested": True,
+    }
+
+
+def test_strip_tool_json_removes_confirm_action_blocks():
+    text = (
+        "I will do this.\n"
+        '{"confirm_action": true, "tool": "approve_leave", '
+        '"params": {"leave_id": "L1", "action": "approve"}}'
+    )
+
+    assert chat._strip_tool_json_from_text(text) == "I will do this."
+
+
+def test_missing_required_params_for_write_actions():
+    missing = chat._missing_required_params("record_fee_payment", {"amount": 2500, "mode": "upi"})
+
+    assert missing == ["student_id", "fee_head"]
+
+
+def test_safe_tool_result_redacts_sensitive_chat_fields():
+    result = chat._safe_tool_result_for_chat(
+        {
+            "data": [
+                {
+                    "name": "Demo Student",
+                    "guardian_phone": "9876543210",
+                    "address": "123 Main Road",
+                    "date_of_birth": "2012-01-01",
+                }
+            ]
+        }
+    )
+
+    assert result["data"][0]["guardian_phone"] == "98XX-XXX-210"
+    assert result["data"][0]["address"] == "[restricted in chat]"
+    assert result["data"][0]["date_of_birth"] == "[restricted in chat]"

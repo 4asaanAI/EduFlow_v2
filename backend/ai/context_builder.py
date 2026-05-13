@@ -447,7 +447,7 @@ async def build_school_context(role: str, user_id: str) -> dict:
     if role == "teacher":
         if sub_category == "class_teacher":
             return await _build_class_teacher_context(db, today, user_id)
-        if sub_category == "HOD":
+        if str(sub_category).lower() == "hod":
             return await _build_hod_context(db, today, user_id)
         if sub_category == "coordinator":
             return await _build_coordinator_context(db, today, user_id)

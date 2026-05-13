@@ -21,7 +21,7 @@ import time
 import uuid
 import logging
 from datetime import datetime, date, timedelta
-from typing import Optional
+from typing import Any, Optional
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from database import get_db
@@ -53,6 +53,30 @@ THINKING_DELAY_MAX = 0.30  # 300ms
 
 # Tools that require user confirmation before execution
 WRITE_ACTION_TOOLS = set(WRITE_TOOL_NAMES)
+
+WRITE_TOOL_REQUIRED_PARAMS = {
+    "record_fee_payment": ("student_id", "amount", "fee_head", "mode"),
+    "mark_attendance": ("class_id", "attendance"),
+    "approve_leave": ("leave_id", "action"),
+    "award_house_points": ("house_name", "points", "reason"),
+    "create_announcement": ("title", "content"),
+}
+
+WRITE_TOOL_PARAM_LABELS = {
+    "student_id": "student",
+    "amount": "amount",
+    "fee_head": "fee head",
+    "mode": "payment mode",
+    "class_id": "class",
+    "attendance": "attendance list",
+    "leave_id": "leave request",
+    "action": "approve or reject",
+    "house_name": "house",
+    "points": "points",
+    "reason": "reason",
+    "title": "announcement title",
+    "content": "announcement content",
+}
 
 # ─── Keyword → Tool Map ──────────────────────────────────────────────────────
 
@@ -270,56 +294,129 @@ def _extract_rich_content(text: str):
 
 # ─── Tool call JSON parser (BUG FIX #3: strip markdown fences) ───────────────
 
-def _parse_tool_call(text: str) -> Optional[dict]:
+def _json_candidates(text: str) -> list[str]:
     """
-    Check if LLM response contains a tool call JSON.
+    Return balanced JSON object/array candidates from model text.
 
-    Handles:
-      - Raw JSON: {"action": "tool_name", "params": {...}, "reason": "..."}
-      - Wrapped in markdown code blocks: ```json ... ```
-      - Wrapped in plain code blocks: ``` ... ```
+    The model is instructed to output JSON only for tools, but in practice it
+    may wrap JSON in fences or include prose. This scanner handles nested
+    braces without relying on brittle regexes.
     """
-    # BUG FIX #3: Strip markdown code block fences before parsing
     cleaned = text.strip()
-
-    # Remove ```json ... ``` wrappers
     fence_pattern = r"```(?:json)?\s*\n?(.*?)\n?\s*```"
-    fence_match = re.search(fence_pattern, cleaned, re.DOTALL)
-    if fence_match:
-        cleaned = fence_match.group(1).strip()
+    fenced = re.findall(fence_pattern, cleaned, re.DOTALL)
+    scan_text = "\n".join(fenced) if fenced else cleaned
 
-    # Try to parse the cleaned text as a full JSON object with "action"
-    try:
-        data = json.loads(cleaned)
-        if isinstance(data, dict) and "action" in data:
-            return data
-    except (json.JSONDecodeError, ValueError):
-        pass
+    candidates: list[str] = []
+    starts = {"{": "}", "[": "]"}
+    for idx, ch in enumerate(scan_text):
+        if ch not in starts:
+            continue
+        expected_stack = [starts[ch]]
+        in_string = False
+        escape = False
+        for pos in range(idx + 1, len(scan_text)):
+            cur = scan_text[pos]
+            if escape:
+                escape = False
+                continue
+            if cur == "\\":
+                escape = True
+                continue
+            if cur == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if cur in starts:
+                expected_stack.append(starts[cur])
+            elif expected_stack and cur == expected_stack[-1]:
+                expected_stack.pop()
+                if not expected_stack:
+                    candidates.append(scan_text[idx:pos + 1])
+                    break
+    return candidates
 
-    # Fall back: search for {"action": ...} pattern anywhere in the text
-    # Use a more robust approach that handles nested braces
-    pattern = r'\{[^{}]*"action"\s*:\s*"([^"]+)"[^{}]*(?:\{[^{}]*\}[^{}]*)?\}'
-    match = re.search(pattern, cleaned, re.DOTALL)
-    if match:
-        try:
-            data = json.loads(match.group(0))
-            if "action" in data:
-                return data
-        except (json.JSONDecodeError, ValueError):
-            pass
 
-    # Final fallback: simpler pattern without nested braces
-    simple_pattern = r'\{[^{}]*"action"\s*:\s*"([^"]+)"[^{}]*\}'
-    match = re.search(simple_pattern, cleaned, re.DOTALL)
-    if match:
-        try:
-            data = json.loads(match.group(0))
-            if "action" in data:
-                return data
-        except (json.JSONDecodeError, ValueError):
-            pass
+def _normalize_tool_call(data: Any) -> Optional[dict]:
+    """Normalize supported model tool JSON shapes to {action, params, reason}."""
+    if not isinstance(data, dict):
+        return None
+
+    if "action" in data:
+        action = data.get("action")
+        params = data.get("params") or {}
+        if isinstance(action, str) and isinstance(params, dict):
+            return {
+                "action": action,
+                "params": params,
+                "reason": data.get("reason", ""),
+                "confirm_requested": False,
+            }
+
+    if data.get("confirm_action") is True and isinstance(data.get("tool"), str):
+        params = data.get("params") or {}
+        if isinstance(params, dict):
+            return {
+                "action": data["tool"],
+                "params": params,
+                "reason": data.get("display") or data.get("reason", ""),
+                "confirm_requested": True,
+            }
 
     return None
+
+
+def _parse_tool_calls(text: str) -> list[dict]:
+    """
+    Parse one or more model tool calls.
+
+    Handles:
+      - Raw JSON object: {"action": "tool_name", "params": {...}}
+      - Confirmation JSON: {"confirm_action": true, "tool": "...", "params": {...}}
+      - JSON arrays of either shape
+      - Markdown-fenced JSON
+      - JSON embedded in prose
+    """
+    parsed_calls: list[dict] = []
+    for candidate in _json_candidates(text):
+        try:
+            data = json.loads(candidate)
+        except (json.JSONDecodeError, ValueError):
+            continue
+
+        if isinstance(data, list):
+            for item in data:
+                normalized = _normalize_tool_call(item)
+                if normalized:
+                    parsed_calls.append(normalized)
+        else:
+            normalized = _normalize_tool_call(data)
+            if normalized:
+                parsed_calls.append(normalized)
+
+    return parsed_calls
+
+
+def _parse_tool_call(text: str) -> Optional[dict]:
+    """Return the first model tool call, preserving the legacy helper contract."""
+    calls = _parse_tool_calls(text)
+    return calls[0] if calls else None
+
+
+def _strip_tool_json_from_text(text: str) -> str:
+    """Remove residual tool/navigation JSON from a natural-language response."""
+    cleaned = text
+    for candidate in _json_candidates(text):
+        try:
+            data = json.loads(candidate)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        is_tool_array = isinstance(data, list) and any(_normalize_tool_call(item) for item in data)
+        if _normalize_tool_call(data) or is_tool_array or (isinstance(data, dict) and "navigate" in data):
+            cleaned = cleaned.replace(candidate, "")
+    cleaned = re.sub(r"```(?:json)?\s*```", "", cleaned)
+    return cleaned.strip()
 
 
 # ─── Keyword detection ────────────────────────────────────────────────────────
@@ -468,6 +565,71 @@ def _extract_empty_message(result: dict) -> Optional[str]:
     return None
 
 
+def _mask_phone(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    digits = re.sub(r"\D", "", value)
+    if len(digits) < 4:
+        return "XX"
+    return f"{digits[:2]}XX-XXX-{digits[-3:]}"
+
+
+def _safe_tool_result_for_chat(value: Any) -> Any:
+    """
+    Redact high-risk personal fields before storing tool traces or sending
+    tool output back into the model for final narration.
+    """
+    if isinstance(value, list):
+        return [_safe_tool_result_for_chat(item) for item in value]
+
+    if not isinstance(value, dict):
+        return value
+
+    safe: dict[str, Any] = {}
+    restricted_exact = {
+        "address",
+        "home_address",
+        "date_of_birth",
+        "dob",
+        "aadhaar",
+        "aadhaar_number",
+        "password",
+        "medical_record",
+        "medical_records",
+    }
+    for key, raw in value.items():
+        key_lower = str(key).lower()
+        if key_lower in restricted_exact:
+            safe[key] = "[restricted in chat]"
+        elif "phone" in key_lower or "contact" in key_lower:
+            if isinstance(raw, str):
+                safe[key] = _mask_phone(raw)
+            elif isinstance(raw, (dict, list)):
+                safe[key] = _safe_tool_result_for_chat(raw)
+            else:
+                safe[key] = "[restricted in chat]"
+        else:
+            safe[key] = _safe_tool_result_for_chat(raw)
+    return safe
+
+
+def _missing_required_params(tool_name: str, params: dict) -> list[str]:
+    required = WRITE_TOOL_REQUIRED_PARAMS.get(tool_name, ())
+    missing: list[str] = []
+    for key in required:
+        val = params.get(key)
+        if val is None or val == "" or val == []:
+            missing.append(key)
+    return missing
+
+
+def _missing_param_message(tool_name: str, missing: list[str]) -> str:
+    labels = [WRITE_TOOL_PARAM_LABELS.get(key, key.replace("_", " ")) for key in missing]
+    joined = ", ".join(labels)
+    tool_label = tool_name.replace("_", " ")
+    return f"I can prepare that {tool_label}, but I still need: {joined}."
+
+
 # ─── Parameter resolution ────────────────────────────────────────────────────
 
 async def _resolve_params(params: dict, db) -> dict:
@@ -511,6 +673,19 @@ async def _resolve_params(params: dict, db) -> dict:
             resolved["student_id"] = student["id"]
             resolved["_resolved_student"] = student["name"]
 
+    if "search_term" in resolved and "student_id" not in resolved:
+        search_term = resolved["search_term"]
+        student = await db.students.find_one({
+            "$or": [
+                {"name": {"$regex": re.escape(search_term), "$options": "i"}},
+                {"admission_number": {"$regex": re.escape(search_term), "$options": "i"}},
+            ],
+            "is_active": True,
+        })
+        if student:
+            resolved["student_id"] = student["id"]
+            resolved["_resolved_student"] = student.get("name", student["id"])
+
     # Resolve "days" or date descriptors → date range
     if "days" in resolved:
         try:
@@ -544,7 +719,7 @@ def _build_confirm_display(tool_name: str, params: dict) -> str:
         "record_fee_payment": lambda p: (
             f"Record fee payment of {p.get('amount', '?')} "
             f"for student {p.get('_resolved_student', p.get('student_id', '?'))} "
-            f"via {p.get('payment_mode', 'N/A')}"
+            f"via {p.get('payment_mode', p.get('mode', 'N/A'))}"
         ),
         "mark_attendance": lambda p: (
             f"Mark attendance for class "
@@ -557,7 +732,7 @@ def _build_confirm_display(tool_name: str, params: dict) -> str:
         ),
         "award_house_points": lambda p: (
             f"Award {p.get('points', '?')} house points to "
-            f"{p.get('house', '?')} for {p.get('reason', 'N/A')}"
+            f"{p.get('house_name', p.get('house', '?'))} for {p.get('reason', 'N/A')}"
         ),
         "create_announcement": lambda p: (
             f"Publish announcement '{p.get('title', '?')}' to "
@@ -806,9 +981,46 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         else:
             # ── Check if this is a write action requiring confirmation ──
             if tool_name in WRITE_ACTION_TOOLS:
-                # We need params - try to extract from user text via LLM
+                # Keyword detection identified the write intent, but params still
+                # need model extraction so the confirmation card is meaningful.
                 params = {}
+                try:
+                    extraction_prompt = (
+                        f"Extract parameters for the EduFlow tool '{tool_name}' from this user message. "
+                        f"Output ONLY JSON in this shape: "
+                        f'{{"action":"{tool_name}","params":{{}},"reason":"parameter extraction"}}. '
+                        f"User message: {user_text}"
+                    )
+                    extraction_result = await llm_client.chat(
+                        system_prompt,
+                        [{"role": "user", "content": extraction_prompt}],
+                        f"{conv_id}-extract-{uuid.uuid4()}",
+                    )
+                    extraction_text = extraction_result[0] if isinstance(extraction_result, tuple) else extraction_result
+                    extracted_call = _parse_tool_call(extraction_text if isinstance(extraction_text, str) else "")
+                    if extracted_call and extracted_call.get("action") == tool_name:
+                        params = extracted_call.get("params", {}) or {}
+                except Exception as e:
+                    logger.warning(f"Write parameter extraction failed for {tool_name}: {e}")
                 resolved_params = await _resolve_params(params, db)
+                missing = _missing_required_params(tool_name, resolved_params)
+
+                if missing:
+                    prompt_text = _missing_param_message(tool_name, missing)
+                    yield thinking_event("composing", "Writing your answer...")
+                    await _thinking_delay()
+                    for i in range(0, len(prompt_text), 4):
+                        yield f"data: {json.dumps({'type': 'text_delta', 'delta': prompt_text[i:i + 4]})}\n\n"
+                        await asyncio.sleep(0.008)
+                    ai_msg = Message(
+                        conversation_id=conv_id,
+                        role="assistant",
+                        content=prompt_text,
+                        language_detected=lang,
+                    )
+                    await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
+                    yield f"data: {json.dumps({'type': 'done', 'message_id': ai_msg.id, 'tokens_used': total_tokens_used})}\n\n"
+                    return
 
                 yield thinking_event("tool_start", f"Preparing {tool_name}...", tool=tool_name)
                 await _thinking_delay()
@@ -862,8 +1074,9 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                         break
 
             try:
-                tool_result = await tool_def["fn"]({}, user, scope) if _tool_accepts_scope(tool_def) else await tool_def["fn"]({}, user)
-                result_count = _extract_result_count(tool_result)
+                raw_tool_result = await tool_def["fn"]({}, user, scope) if _tool_accepts_scope(tool_def) else await tool_def["fn"]({}, user)
+                result_count = _extract_result_count(raw_tool_result)
+                tool_result = _safe_tool_result_for_chat(raw_tool_result)
                 count_msg = f"Found {result_count} records" if result_count is not None else "Data retrieved"
 
                 yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'done'})}\n\n"
@@ -997,6 +1210,25 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
 
             # ── Write action confirmation ─────────────────────────────
             if tool_name in WRITE_ACTION_TOOLS:
+                missing = _missing_required_params(tool_name, resolved_params)
+                if missing:
+                    prompt_text = _missing_param_message(tool_name, missing)
+                    yield thinking_event("composing", "Writing your answer...")
+                    await _thinking_delay()
+                    for i in range(0, len(prompt_text), 4):
+                        yield f"data: {json.dumps({'type': 'text_delta', 'delta': prompt_text[i:i + 4]})}\n\n"
+                        await asyncio.sleep(0.008)
+                    ai_msg = Message(
+                        conversation_id=conv_id,
+                        role="assistant",
+                        content=prompt_text,
+                        tool_calls=all_tool_calls if all_tool_calls else None,
+                        language_detected=lang,
+                    )
+                    await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
+                    yield f"data: {json.dumps({'type': 'done', 'message_id': ai_msg.id, 'tokens_used': total_tokens_used})}\n\n"
+                    return
+
                 try:
                     confirm_event = await _build_confirm_event(tool_name, resolved_params, user, session_id, db)
                 except HTTPException as exc:
@@ -1034,8 +1266,9 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'running'})}\n\n"
 
             try:
-                tool_result = await tool_def["fn"](resolved_params, user, scope) if _tool_accepts_scope(tool_def) else await tool_def["fn"](resolved_params, user)
-                result_count = _extract_result_count(tool_result)
+                raw_tool_result = await tool_def["fn"](resolved_params, user, scope) if _tool_accepts_scope(tool_def) else await tool_def["fn"](resolved_params, user)
+                result_count = _extract_result_count(raw_tool_result)
+                tool_result = _safe_tool_result_for_chat(raw_tool_result)
                 count_msg = f"Found {result_count} records" if result_count is not None else "Data retrieved"
 
                 yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'done'})}\n\n"
@@ -1122,16 +1355,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
 
     # ── Phase 10: Strip residual JSON tool patterns from final response ───
     try:
-        llm_response = re.sub(
-            r'\{"action"\s*:\s*"[^"]+"\s*,\s*"params"\s*:\s*\{[^}]*\}(?:\s*,\s*"reason"\s*:\s*"[^"]*")?\s*\}',
-            '', llm_response
-        ).strip()
-
-        # Also strip leftover markdown-fenced JSON tool calls
-        llm_response = re.sub(
-            r'```(?:json)?\s*\{[^}]*"action"[^}]*\}\s*```',
-            '', llm_response
-        ).strip()
+        llm_response = _strip_tool_json_from_text(llm_response)
 
     except Exception as e:
         logger.error(f"Phase 10 (strip JSON) error: {e}")

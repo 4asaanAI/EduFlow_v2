@@ -29,11 +29,65 @@ function useDarkMode() {
 
 // Status: 'pending' | 'loading' | 'confirmed' | 'cancelled' | 'error'
 
-export default function ConfirmActionCard({ action, conversationId, onComplete }) {
+function formatParamKey(key) {
+  return String(key || '')
+    .replace(/^_+/, '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function formatParamValue(value) {
+  if (value == null || value === '') return 'Not provided';
+  if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? '' : 's'}`;
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function ActionDetails({ params, isDark }) {
+  const entries = Object.entries(params || {})
+    .filter(([key]) => !key.startsWith('_'))
+    .slice(0, 6);
+
+  if (entries.length === 0) return null;
+
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'minmax(92px, 0.45fr) minmax(0, 1fr)',
+      gap: '6px 10px',
+      background: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.55)',
+      border: `1px solid ${isDark ? '#2e2e2e' : '#f3e8b5'}`,
+      borderRadius: 8,
+      padding: '9px 10px',
+      marginBottom: 12,
+    }}>
+      {entries.map(([key, value]) => (
+        <React.Fragment key={key}>
+          <span style={{ color: isDark ? '#737373' : '#78716c', fontSize: 11, fontWeight: 600 }}>
+            {formatParamKey(key)}
+          </span>
+          <span style={{
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            color: isDark ? '#d4d4d4' : '#292524',
+            fontSize: 12,
+          }}>
+            {formatParamValue(value)}
+          </span>
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
+export default function ConfirmActionCard({ action, conversationId, sessionId, onComplete }) {
   const isDark = useDarkMode();
   const [status, setStatus] = useState('pending');
   const [clickedAction, setClickedAction] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [secondsLeft, setSecondsLeft] = useState(action.expires_in_seconds || null);
   const styleInjected = React.useRef(false);
 
   useEffect(() => {
@@ -44,6 +98,21 @@ export default function ConfirmActionCard({ action, conversationId, onComplete }
     document.head.appendChild(style);
     return () => { document.head.removeChild(style); };
   }, []);
+
+  useEffect(() => {
+    setSecondsLeft(action.expires_in_seconds || null);
+  }, [action.action_id, action.expires_in_seconds]);
+
+  useEffect(() => {
+    if (status !== 'pending' || secondsLeft == null) return undefined;
+    if (secondsLeft <= 0) {
+      setStatus('error');
+      setErrorMsg('This confirmation expired. Please ask EduFlow to prepare the action again.');
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setSecondsLeft(prev => (prev == null ? prev : prev - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [secondsLeft, status]);
 
   const handleClick = useCallback(async (button) => {
     if (status !== 'pending') return;
@@ -57,10 +126,12 @@ export default function ConfirmActionCard({ action, conversationId, onComplete }
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action_id: action.action_id,
+          token: action.token || action.action_id,
           decision: button.action,
+          confirmed: button.action === 'confirm',
           tool: action.tool,
           params: action.params,
-          session_id: conversationId,
+          session_id: sessionId || conversationId,
         }),
       });
 
@@ -81,7 +152,7 @@ export default function ConfirmActionCard({ action, conversationId, onComplete }
       setStatus('error');
       setClickedAction(null);
     }
-  }, [status, conversationId, action.action_id, action.tool, action.params, onComplete]);
+  }, [status, conversationId, sessionId, action.action_id, action.token, action.tool, action.params, onComplete]);
 
   const handleRetry = useCallback(() => {
     setStatus('pending');
@@ -243,6 +314,7 @@ export default function ConfirmActionCard({ action, conversationId, onComplete }
             }}>
               {action.display}
             </div>
+            {action.params && <ActionDetails params={action.params} isDark={isDark} />}
             <div style={{
               ...outcomeStyle,
               color: status === 'confirmed'
@@ -299,6 +371,7 @@ export default function ConfirmActionCard({ action, conversationId, onComplete }
       <div style={displayTextStyle}>
         {action.display}
       </div>
+      <ActionDetails params={action.params} isDark={isDark} />
       <div style={{ display: 'flex', gap: 8 }}>
         {(action.buttons || []).map((button, i) => (
           <button
@@ -322,6 +395,15 @@ export default function ConfirmActionCard({ action, conversationId, onComplete }
           </button>
         ))}
       </div>
+      {secondsLeft != null && status === 'pending' && (
+        <div style={{
+          marginTop: 10,
+          fontSize: 11,
+          color: isDark ? '#737373' : '#a3a3a3',
+        }}>
+          Expires in {Math.max(0, secondsLeft)}s
+        </div>
+      )}
     </div>
   );
 }

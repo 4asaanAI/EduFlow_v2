@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { createConversation, getMessages, sendMessageStream } from '../lib/api';
+import { createConversation, getBrowserSseSessionId, getMessages, sendMessageStream } from '../lib/api';
 import MessageRenderer from './MessageRenderer';
 import InputBar from './InputBar';
 import TokenBudgetBar from './TokenBudgetBar';
@@ -99,14 +99,66 @@ function HealthScoreWidget({ user }) {
   );
 }
 
-// Quick action suggestions for the greeting screen
-function QuickActions({ onSend, isDark }) {
-  const suggestions = [
-    "Show today's attendance overview",
-    "How many fee defaulters are there?",
-    "Generate a school health report",
-    "List all pending leave requests",
+function getQuickActionSuggestions(user) {
+  const role = user?.role;
+  const subRole = user?.sub_category;
+
+  if (role === 'student') {
+    return [
+      'Explain my latest attendance trend',
+      'Help me revise today\'s homework topic',
+      'Show my exam results',
+      'Guide me on career options after school',
+    ];
+  }
+
+  if (role === 'teacher') {
+    return [
+      'Show my class attendance today',
+      'List my class students',
+      'Create a quick lesson plan for tomorrow',
+      'Which students need attention this week?',
+    ];
+  }
+
+  if (role === 'admin' && subRole === 'accounts') {
+    return [
+      'Show today\'s fee collection summary',
+      'List overdue fee defaulters',
+      'Show fee structure for Class 5',
+      'Find payment history for a student',
+    ];
+  }
+
+  if (role === 'admin' && subRole === 'transport_head') {
+    return [
+      'Show transport status',
+      'List active bus routes',
+      'Which drivers are present today?',
+      'Show route issues needing attention',
+    ];
+  }
+
+  if (role === 'admin' && subRole === 'principal') {
+    return [
+      'Give me the principal morning brief',
+      'Show pending leave requests',
+      'List open parent complaints',
+      'Show today\'s attendance overview',
+    ];
+  }
+
+  return [
+    'Show today\'s school pulse',
+    'Generate a school health report',
+    'How many fee defaulters are there?',
+    'List pending leave requests',
   ];
+}
+
+// Quick action suggestions for the greeting screen
+function QuickActions({ onSend, isDark, user }) {
+  const suggestions = getQuickActionSuggestions(user);
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, maxWidth: 500, margin: '0 auto' }}>
       {suggestions.map((s, i) => (
@@ -136,6 +188,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   const [aiUnavailable, setAiUnavailable] = useState(false);
   const [aiUnavailableMessage, setAiUnavailableMessage] = useState('');
   const messagesEndRef = useRef(null);
+  const chatSessionIdRef = useRef(getBrowserSseSessionId());
 
   const justCreatedRef = useRef(false);
   const pendingFinalMsgRef = useRef(null);
@@ -263,7 +316,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   };
 
   const handleSend = async (text) => {
-    if (!text.trim() || streaming || aiUnavailable) return;
+    if (!text.trim() || streaming) return;
 
     let cid = convId;
 
@@ -398,7 +451,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           });
           setStreaming(false);
         }
-      });
+      }, chatSessionIdRef.current);
       setStreaming(prev => {
         if (prev) {
           setCurrentStreamMsg(cm => {
@@ -471,8 +524,26 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
       if (res.success) {
         const resultId = `res-${Date.now()}`;
         setMessages(prev => [...prev, { id: resultId, role: 'assistant', content: res.data?.message || 'Done.', created_at: new Date().toISOString() }]);
+      } else {
+        const resultId = `res-${Date.now()}`;
+        setMessages(prev => [...prev, {
+          id: resultId,
+          role: 'assistant',
+          content: res.error || 'Action failed. Please try again.',
+          interrupted: true,
+          created_at: new Date().toISOString(),
+        }]);
       }
-    } catch {}
+    } catch {
+      const resultId = `res-${Date.now()}`;
+      setMessages(prev => [...prev, {
+        id: resultId,
+        role: 'assistant',
+        content: 'Action failed. Please try again.',
+        interrupted: true,
+        created_at: new Date().toISOString(),
+      }]);
+    }
   };
 
   const isNewChat = !convId || messages.length === 0;
@@ -517,7 +588,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
                 How can I help you today?
               </p>
               <HealthScoreWidget user={currentUser} />
-              <QuickActions onSend={handleSend} isDark={isDark} />
+              <QuickActions onSend={handleSend} isDark={isDark} user={currentUser} />
             </div>
           )}
 
@@ -586,15 +657,17 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
             <ConfirmActionCard
               action={confirmAction}
               conversationId={convId}
+              sessionId={chatSessionIdRef.current}
               onComplete={(result) => {
                 setConfirmAction(null);
                 // Add result as a message
-                if (result && result.message) {
+                const message = result?.data?.message || result?.message;
+                if (message) {
                   const resultId = `confirm-res-${Date.now()}`;
                   setMessages(prev => [...prev, {
                     id: resultId,
                     role: 'assistant',
-                    content: result.message,
+                    content: message,
                     created_at: new Date().toISOString(),
                   }]);
                 }
@@ -605,7 +678,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           <div ref={messagesEndRef} />
         </div>
       </div>
-      <InputBar onSend={handleSend} disabled={streaming || tokenExhausted || aiUnavailable} isDark={isDark} />
+      <InputBar onSend={handleSend} disabled={streaming || tokenExhausted} isDark={isDark} />
       <div style={{
         position: 'absolute', bottom: 0, left: 0, right: 0,
         padding: '0 24px 4px', zIndex: 39, pointerEvents: 'auto',
