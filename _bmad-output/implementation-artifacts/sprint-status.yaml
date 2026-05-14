@@ -36,7 +36,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-05-12"
-last_updated: "2026-05-13"
+last_updated: "2026-05-15"
 project: eduflow
 project_key: NOKEY
 tracking_system: file-system
@@ -162,15 +162,15 @@ development_status:
   # Phase 7 — Growth Features / Phase 2 (10 stories)
   # Trigger: 4 consecutive clean pilot weeks on The Aaryans
   # ─────────────────────────────────────────────
-  epic-7: backlog
+  epic-7: in-progress
   7-39-teacher-student-login-activation: backlog
   7-40-whatsapp-twilio-integration-fee-reminders-attendance-alerts: backlog
-  7-41-advanced-reporting-recharts-dashboard: backlog
+  7-41-advanced-reporting-recharts-dashboard: done
   7-42-token-recharge-subscription-billing: backlog
   7-43-platform-health-dashboard-operator-view: backlog
   7-44-school-onboarding-flow: backlog
   7-45-multi-tenancy-schema-per-tenant-enforcement: backlog
   7-46-google-maps-transport-optimisation: backlog
-  7-47-announcement-moderation-approval-gate: backlog
-  7-48-ai-write-rate-limiting: backlog
+  7-47-announcement-moderation-approval-gate: done
+  7-48-ai-write-rate-limiting: done
   epic-7-retrospective: optional

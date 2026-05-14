@@ -50,6 +50,8 @@ from routes.issues import router as issues_router
 from routes.audit import router as audit_router
 from routes.chat_upload import router as chat_upload_router
 from routes.activities import router as activities_router
+from routes.operator import router as operator_router
+from routes.reports import router as reports_router
 from services.idempotency import (
     get_replay_response,
     record_key,
@@ -226,6 +228,8 @@ app.include_router(issues_router)
 app.include_router(audit_router)
 app.include_router(chat_upload_router)
 app.include_router(activities_router)
+app.include_router(operator_router)
+app.include_router(reports_router)
 
 
 @app.on_event("startup")

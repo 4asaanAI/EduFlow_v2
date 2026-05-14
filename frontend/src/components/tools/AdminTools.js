@@ -5,13 +5,52 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { getStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, getPendingLeaves, updateLeave } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
-import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn } from './ToolPage';
+import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, LineChartWidget } from './ToolPage';
 import { Search, Plus, CheckCircle, XCircle, Save, RefreshCw, X, FileDown } from 'lucide-react';
 import FullStudentDatabase from './StudentDatabase';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function h() { return getAuthHeaders(); }
 const tint = (color, amount) => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
+
+// Story 7-41 — Principal reports panel. Attendance trend only (no fees per RBAC).
+export function ReportsTrends() {
+  const [attendance, setAttendance] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { load(); }, []);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const a = await fetch(`${API}/reports/attendance-trends?months=3`, { headers: h() }).then(r => r.json());
+      setAttendance(a);
+    } catch {}
+    setLoading(false);
+  };
+
+  const chartData = (attendance?.overall || []).map(r => ({ month: r.month, pct: r.attendance_pct }));
+
+  return (
+    <ToolPage title="Attendance trends" subtitle="Last 3 months" onRefresh={load} loading={loading}>
+      <div style={{ maxWidth: 1000 }}>
+        {attendance?.empty ? (
+          <div style={{ padding: 24, border: '1px dashed var(--tool-hex-2e2e2e)', borderRadius: 12, color: 'var(--tool-hex-a3a3a3)' }}>
+            Not enough data yet — chart will appear once a month of attendance records exists.
+          </div>
+        ) : chartData.length > 0 && (
+          <LineChartWidget
+            title="Overall attendance % — last 3 months"
+            data={chartData}
+            xKey="month"
+            lines={[{ key: 'pct', name: 'Attendance %', color: 'var(--tool-hex-4f8ff7)' }]}
+          />
+        )}
+      </div>
+    </ToolPage>
+  );
+}
+
 
 // 1. Student Database Manager
 export function StudentDatabase() {

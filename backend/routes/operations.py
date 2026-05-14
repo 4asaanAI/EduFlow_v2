@@ -754,15 +754,22 @@ async def list_announcements(request: Request, page: int = 1, limit: int = 20):
     role = user.get("role", "")
     limit = min(max(limit, 1), 50)
     skip = max(page - 1, 0) * limit
-    # Show announcements where audience_roles is empty/missing (meaning "all") or includes this role
+    # Story 7-47: only `active` rows (or legacy rows missing `status`) are visible
+    # to recipients. Pending and rejected announcements are hidden.
     query = {
         "is_draft": {"$ne": True},
-        "$or": [
-            {"audience_roles": {"$in": [role, "all"]}},
-            {"audience_roles": {"$exists": False}},
-            {"audience_roles": []},
-            {"audience_type": "all"},
-        ]
+        "$and": [
+            {"$or": [
+                {"audience_roles": {"$in": [role, "all"]}},
+                {"audience_roles": {"$exists": False}},
+                {"audience_roles": []},
+                {"audience_type": "all"},
+            ]},
+            {"$or": [
+                {"status": "active"},
+                {"status": {"$exists": False}},
+            ]},
+        ],
     }
     total = await db.announcements.count_documents(query)
     announcements = await db.announcements.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
@@ -777,6 +784,12 @@ async def create_announcement(request: Request):
         raise HTTPException(403, "Forbidden")
     body = await request.json()
     target_roles = body.get("target_roles") or body.get("audience_roles", [])
+
+    # Story 7-47: announcements addressed to teachers/students require principal
+    # approval before they become visible. Admin-only audiences skip the gate.
+    requires_approval = any(r in ("teacher", "student") for r in (target_roles or []))
+    initial_status = "pending_approval" if requires_approval else "active"
+
     announcement = {
         "id": str(uuid.uuid4()),
         "title": body.get("title"),
@@ -787,6 +800,7 @@ async def create_announcement(request: Request):
         "target_roles": target_roles,
         "channels": body.get("channels", []),
         "is_draft": body.get("is_draft", False),
+        "status": initial_status,
         "sent_at": datetime.now().isoformat() if not body.get("is_draft", False) else None,
         "created_by": user["id"],
         "created_by_name": user.get("name", ""),
@@ -794,6 +808,118 @@ async def create_announcement(request: Request):
     }
     await db.announcements.insert_one({**announcement, "_id": announcement["id"]})
     return {"success": True, "data": announcement}
+
+
+@router.get("/announcements/pending")
+async def list_pending_announcements(request: Request):
+    """Story 7-47: principal-only list of announcements awaiting approval."""
+    db = get_db()
+    user = get_user(request)
+    if not _can_decide(user):
+        raise HTTPException(status_code=403, detail="Principal or owner only")
+    rows = (
+        await db.announcements.find({"status": "pending_approval"}, {"_id": 0})
+        .sort("created_at", -1)
+        .to_list(200)
+    )
+    return {"success": True, "data": rows}
+
+
+@router.patch("/announcements/{ann_id}/approve")
+async def approve_announcement(ann_id: str, request: Request):
+    """Story 7-47: principal approval moves announcement to active."""
+    db = get_db()
+    user = get_user(request)
+    if not _can_decide(user):
+        raise HTTPException(status_code=403, detail="Principal or owner only")
+    ann = await db.announcements.find_one({"id": ann_id})
+    if not ann:
+        raise HTTPException(status_code=404, detail="Announcement not found")
+    if ann.get("status") != "pending_approval":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot approve announcement in status '{ann.get('status', 'unknown')}'",
+        )
+
+    now = datetime.now().isoformat()
+    await db.announcements.update_one(
+        {"id": ann_id},
+        {"$set": {
+            "status": "active",
+            "approved_by": user.get("id"),
+            "approved_by_name": user.get("name", ""),
+            "approved_at": now,
+        }},
+    )
+    await db.audit_logs.insert_one(_audit_doc(
+        action="announcement_approved",
+        entity_type="announcement",
+        entity_id=ann_id,
+        user=user,
+        changes={
+            "status": {"from": "pending_approval", "to": "active"},
+            "target_roles": ann.get("target_roles") or ann.get("audience_roles"),
+        },
+    ))
+    return {"success": True, "data": {"id": ann_id, "status": "active", "approved_at": now}}
+
+
+@router.patch("/announcements/{ann_id}/reject")
+async def reject_announcement(ann_id: str, request: Request):
+    """Story 7-47: principal rejection with mandatory reason; notifies author."""
+    db = get_db()
+    user = get_user(request)
+    if not _can_decide(user):
+        raise HTTPException(status_code=403, detail="Principal or owner only")
+    body = await request.json()
+    reason = (body.get("reason") or "").strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="rejection reason is required")
+
+    ann = await db.announcements.find_one({"id": ann_id})
+    if not ann:
+        raise HTTPException(status_code=404, detail="Announcement not found")
+    if ann.get("status") != "pending_approval":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot reject announcement in status '{ann.get('status', 'unknown')}'",
+        )
+
+    now = datetime.now().isoformat()
+    await db.announcements.update_one(
+        {"id": ann_id},
+        {"$set": {
+            "status": "rejected",
+            "rejected_by": user.get("id"),
+            "rejected_by_name": user.get("name", ""),
+            "rejected_at": now,
+            "rejection_reason": reason,
+        }},
+    )
+    await db.audit_logs.insert_one(_audit_doc(
+        action="announcement_rejected",
+        entity_type="announcement",
+        entity_id=ann_id,
+        user=user,
+        changes={
+            "status": {"from": "pending_approval", "to": "rejected"},
+            "target_roles": ann.get("target_roles") or ann.get("audience_roles"),
+        },
+        reason=reason,
+    ))
+
+    author_id = ann.get("created_by")
+    if author_id:
+        await _notify(
+            db,
+            user_id=author_id,
+            notification_type="announcement_rejected",
+            message=f"Your announcement '{ann.get('title', '')}' was rejected: {reason}",
+            source_id=ann_id,
+            source_type="announcement",
+        )
+
+    return {"success": True, "data": {"id": ann_id, "status": "rejected", "rejected_at": now, "reason": reason}}
 
 
 # --- Enquiries ---

@@ -280,6 +280,69 @@ export function SchoolPulse() {
   );
 }
 
+// Story 7-41 — Advanced Reporting (Recharts) — Owner sees both attendance
+// trend (last 3 months) and fee collection summary (last 6 months); the
+// principal variant in AdminTools.js renders only the attendance chart.
+export function ReportsTrends() {
+  const [attendance, setAttendance] = useState(null);
+  const [fees, setFees] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { load(); }, []);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [a, f] = await Promise.all([
+        fetch(`${API}/reports/attendance-trends?months=3`, { headers: h() }).then(r => r.json()),
+        fetch(`${API}/reports/fee-collection-summary?months=6`, { headers: h() }).then(r => r.json()),
+      ]);
+      setAttendance(a);
+      setFees(f);
+    } catch {}
+    setLoading(false);
+  };
+
+  const attendanceChartData = (attendance?.overall || []).map(r => ({ month: r.month, pct: r.attendance_pct }));
+  const feeChartData = (fees?.data || []).map(r => ({ month: r.month, Collected: r.collected, Outstanding: r.outstanding }));
+
+  return (
+    <ToolPage title="Reports & trends" subtitle="Attendance and collection patterns" onRefresh={load} loading={loading}>
+      <div style={{ maxWidth: 1000 }}>
+        {attendance?.empty ? (
+          <div style={{ padding: 24, border: '1px dashed var(--tool-hex-2e2e2e)', borderRadius: 12, color: 'var(--tool-hex-a3a3a3)', marginBottom: 16 }}>
+            Not enough attendance data yet — chart will appear once a month of records exists.
+          </div>
+        ) : attendanceChartData.length > 0 && (
+          <LineChartWidget
+            title="Overall attendance % — last 3 months"
+            data={attendanceChartData}
+            xKey="month"
+            lines={[{ key: 'pct', name: 'Attendance %', color: 'var(--tool-hex-4f8ff7)' }]}
+          />
+        )}
+
+        {fees?.empty ? (
+          <div style={{ padding: 24, border: '1px dashed var(--tool-hex-2e2e2e)', borderRadius: 12, color: 'var(--tool-hex-a3a3a3)' }}>
+            Not enough fee data yet — chart will appear once transactions are recorded.
+          </div>
+        ) : feeChartData.length > 0 && (
+          <BarChartWidget
+            title="Fee collection vs outstanding — last 6 months"
+            data={feeChartData}
+            xKey="month"
+            bars={[
+              { key: 'Collected', name: 'Collected (₹)', color: 'var(--tool-hex-34d399)' },
+              { key: 'Outstanding', name: 'Outstanding (₹)', color: 'var(--tool-hex-f87171)' },
+            ]}
+          />
+        )}
+      </div>
+    </ToolPage>
+  );
+}
+
+
 // 2. Fee Collection Summary — with bar chart
 export function FeeCollection() {
   const { currentUser } = useUser();

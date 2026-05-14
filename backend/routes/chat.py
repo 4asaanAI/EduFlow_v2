@@ -23,7 +23,7 @@ import logging
 from datetime import datetime, date, timedelta
 from typing import Any, Optional
 from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from database import get_db
 from models.schemas import Conversation, Message, ConversationUpdate
 from ai.llm_client import llm_client
@@ -34,7 +34,29 @@ from ai.scope_resolver import resolve_scope
 from ai.content_filter import filter_response, check_input_safety
 from middleware.auth import get_current_user
 from services.token_service import check_and_reserve_tokens, record_usage
-from services.confirm_tokens import issue_confirm_token, consume_confirm_token, audit_ai_dispatch
+from services.confirm_tokens import (
+    issue_confirm_token,
+    consume_confirm_token,
+    peek_confirm_token,
+    audit_ai_dispatch,
+    audit_ai_rate_limit_hit,
+)
+from services.ai_rate_limiter import increment_and_check as _ai_rate_check
+from tenant import get_school_id
+
+
+class RateLimitExceeded(Exception):
+    """Raised when the confirm dispatch rate limiter rejects a request.
+
+    Caught at the route handler boundary and converted to a 429 JSONResponse
+    with the `Retry-After` header. We use an exception (rather than returning
+    a sentinel) so the dispatch helper retains a single happy-path signature.
+    """
+
+    def __init__(self, payload: dict, retry_after: int):
+        super().__init__(payload.get("error", "rate_limit_exceeded"))
+        self.payload = payload
+        self.retry_after = retry_after
 
 logger = logging.getLogger(__name__)
 
@@ -1558,6 +1580,55 @@ async def execute_action(conv_id: str, request: Request):
 # ─── Confirm action endpoint ─────────────────────────────────────────────────
 
 async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, db, conv_id: str = None):
+    # Validate token ownership BEFORE incrementing the rate-limit counter.
+    # If we incremented first, an attacker (or a buggy client) firing
+    # invalid/expired tokens could DoS a user's hourly budget. The peek call
+    # returns the token doc (including used=True replays) when (user, session)
+    # match, else None — giving us authentication-style proof of intent.
+    token_meta = await peek_confirm_token(
+        token=token,
+        user_id=user["id"],
+        session_id=session_id,
+        db=db,
+    )
+    if token_meta is None or token_meta.get("used"):
+        # Missing / wrong owner / wrong session / already-used token: surface
+        # the precise 4xx via the existing consume path without touching the
+        # rate counter. Invalid tokens must not burn a user's hourly budget.
+        await consume_confirm_token(
+            token=token,
+            user_id=user["id"],
+            session_id=session_id,
+            db=db,
+        )
+        # consume_confirm_token always raises in this path; defensive fallthrough.
+        raise HTTPException(status_code=400, detail="Confirmation token is invalid")
+
+    # Rate-limit gate runs BEFORE token consumption. A rejected request must
+    # not burn the user's one-shot confirm token — they should be able to
+    # retry the same action once the next clock-hour begins. school_id comes
+    # from the authoritative tenant context (env), never from caller-supplied
+    # fields, so per-tenant overrides cannot be spoofed.
+    rate_result = await _ai_rate_check(
+        user_id=user["id"],
+        role=user.get("role") or "",
+        school_id=get_school_id(),
+        db=db,
+    )
+    if not rate_result.allowed:
+        await audit_ai_rate_limit_hit(
+            tool_name=token_meta.get("action", "<unknown>"),
+            params=token_meta.get("params") or {},
+            user_id=user["id"],
+            session_id=session_id,
+            limit=rate_result.limit,
+            db=db,
+        )
+        raise RateLimitExceeded(
+            payload=rate_result.to_response_payload(),
+            retry_after=rate_result.retry_after_seconds,
+        )
+
     token_doc = await consume_confirm_token(
         token=token,
         user_id=user["id"],
@@ -1646,7 +1717,14 @@ async def confirm_token_action(request: Request):
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id is required")
 
-    return await _execute_confirmed_dispatch(token, session_id, user, db, body.get("conversation_id"))
+    try:
+        return await _execute_confirmed_dispatch(token, session_id, user, db, body.get("conversation_id"))
+    except RateLimitExceeded as exc:
+        return JSONResponse(
+            status_code=429,
+            content=exc.payload,
+            headers={"Retry-After": str(exc.retry_after)},
+        )
 
 
 @router.post("/conversations/{conv_id}/confirm")
@@ -1677,4 +1755,11 @@ async def confirm_action(conv_id: str, request: Request):
 
     token = body.get("token") or body.get("action_id")
     session_id = body.get("session_id") or conv_id
-    return await _execute_confirmed_dispatch(token, session_id, user, db, conv_id)
+    try:
+        return await _execute_confirmed_dispatch(token, session_id, user, db, conv_id)
+    except RateLimitExceeded as exc:
+        return JSONResponse(
+            status_code=429,
+            content=exc.payload,
+            headers={"Retry-After": str(exc.retry_after)},
+        )

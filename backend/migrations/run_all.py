@@ -44,6 +44,7 @@ MIGRATIONS = [
     ("011_add_support_tickets", "Add support_tickets collection"),
     ("012_migrate_uploads_to_s3", "Migrate legacy uploads to private S3 storage"),
     ("013_add_school_id", "Backfill schoolId for future multi-tenancy"),
+    ("015_ai_rate_limit_counters", "AI rate-limit counters + overrides (Story 7-48)"),
 ]
 
 

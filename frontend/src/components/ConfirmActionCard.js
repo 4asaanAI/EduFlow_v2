@@ -27,7 +27,7 @@ function useDarkMode() {
   return isDark;
 }
 
-// Status: 'pending' | 'loading' | 'confirmed' | 'cancelled' | 'error'
+// Status: 'pending' | 'loading' | 'confirmed' | 'cancelled' | 'error' | 'rate_limited'
 
 function formatParamKey(key) {
   return String(key || '')
@@ -88,6 +88,8 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
   const [clickedAction, setClickedAction] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [secondsLeft, setSecondsLeft] = useState(action.expires_in_seconds || null);
+  const [rateLimitSecondsLeft, setRateLimitSecondsLeft] = useState(0);
+  const [rateLimitInfo, setRateLimitInfo] = useState(null);
   const styleInjected = React.useRef(false);
 
   useEffect(() => {
@@ -114,8 +116,25 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
     return () => window.clearTimeout(timer);
   }, [secondsLeft, status]);
 
+  // Rate-limit cooldown: tick down and re-arm the confirm button at zero.
+  useEffect(() => {
+    if (status !== 'rate_limited') return undefined;
+    if (rateLimitSecondsLeft <= 0) {
+      setStatus('pending');
+      setRateLimitInfo(null);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setRateLimitSecondsLeft(prev => Math.max(0, prev - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [status, rateLimitSecondsLeft]);
+
   const handleClick = useCallback(async (button) => {
-    if (status !== 'pending') return;
+    // During rate-limited cooldown the cancel button must still work; only
+    // confirm is blocked. handleCancel paths through here with button.action
+    // === 'cancel' which we accept.
+    if (status === 'loading') return;
+    if (status === 'rate_limited' && button.action === 'confirm') return;
+    if (status !== 'pending' && status !== 'rate_limited') return;
     setStatus('loading');
     setClickedAction(button.action);
     setErrorMsg('');
@@ -134,6 +153,21 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
           session_id: sessionId || conversationId,
         }),
       });
+
+      if (res.status === 429) {
+        // Rate-limited. Read Retry-After header (seconds) — fall back to body.
+        const errData = await res.json().catch(() => null);
+        const headerRetry = parseInt(res.headers.get('Retry-After') || '', 10);
+        const bodyRetry = parseInt(errData?.retry_after_seconds, 10);
+        const retrySecs = Number.isFinite(headerRetry) && headerRetry > 0
+          ? headerRetry
+          : (Number.isFinite(bodyRetry) && bodyRetry > 0 ? bodyRetry : 60);
+        setRateLimitInfo({ limit: errData?.limit, window: errData?.window || 'hour' });
+        setRateLimitSecondsLeft(retrySecs);
+        setStatus('rate_limited');
+        setClickedAction(null);
+        return;
+      }
 
       if (!res.ok) {
         const errData = await res.json().catch(() => null);
@@ -218,7 +252,12 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
   };
 
   // Completed states override the card style
-  if (status === 'confirmed') {
+  if (status === 'rate_limited') {
+    cardStyle.borderLeftColor = '#f59e0b';
+    cardStyle.border = `1px solid ${isDark ? '#3a3520' : '#fde68a'}`;
+    cardStyle.borderLeft = '3px solid #f59e0b';
+    cardStyle.background = isDark ? '#241f15' : '#fffbeb';
+  } else if (status === 'confirmed') {
     cardStyle.borderLeftColor = '#34d399';
     cardStyle.border = `1px solid ${isDark ? '#1a3a2a' : '#bbf7d0'}`;
     cardStyle.borderLeft = '3px solid #34d399';
@@ -262,25 +301,30 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
 
   const getButtonStyle = (button) => {
     const isConfirm = button.action === 'confirm';
-    const isDisabled = status === 'loading';
+    // Confirm is locked during loading AND during rate-limit cooldown.
+    // Cancel is locked only during loading (it stays live during rate-limit
+    // so the user can dismiss the action).
+    const isLocked = isConfirm
+      ? (status === 'loading' || status === 'rate_limited')
+      : (status === 'loading');
     const isThisLoading = status === 'loading' && clickedAction === button.action;
 
     if (isConfirm) {
       return {
         ...btnBase,
-        background: isDisabled ? (isDark ? '#1a3a2a' : '#bbf7d0') : (isDark ? '#166534' : '#16a34a'),
-        color: isDisabled ? (isDark ? '#4ade80' : '#166534') : '#ffffff',
-        opacity: isDisabled && !isThisLoading ? 0.5 : 1,
-        cursor: isDisabled ? 'not-allowed' : 'pointer',
+        background: isLocked ? (isDark ? '#1a3a2a' : '#bbf7d0') : (isDark ? '#166534' : '#16a34a'),
+        color: isLocked ? (isDark ? '#4ade80' : '#166534') : '#ffffff',
+        opacity: isLocked && !isThisLoading ? 0.5 : 1,
+        cursor: isLocked ? 'not-allowed' : 'pointer',
       };
     }
 
     return {
       ...btnBase,
-      background: isDisabled ? (isDark ? '#252525' : '#f0f0f0') : (isDark ? '#2a2a2a' : '#e5e5e5'),
-      color: isDisabled ? (isDark ? '#737373' : '#a3a3a3') : (isDark ? '#d4d4d4' : '#525252'),
-      opacity: isDisabled && !isThisLoading ? 0.5 : 1,
-      cursor: isDisabled ? 'not-allowed' : 'pointer',
+      background: isLocked ? (isDark ? '#252525' : '#f0f0f0') : (isDark ? '#2a2a2a' : '#e5e5e5'),
+      color: isLocked ? (isDark ? '#737373' : '#a3a3a3') : (isDark ? '#d4d4d4' : '#525252'),
+      opacity: isLocked && !isThisLoading ? 0.5 : 1,
+      cursor: isLocked ? 'not-allowed' : 'pointer',
     };
   };
 
@@ -355,7 +399,7 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
 
   // Pending / Loading state
   return (
-    <div style={cardStyle}>
+    <div style={cardStyle} data-testid={`confirm-action-card-${status}`}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <WarningIcon />
         <span style={{
@@ -372,20 +416,47 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
         {action.display}
       </div>
       <ActionDetails params={action.params} isDark={isDark} />
+      {status === 'rate_limited' && (
+        <div data-testid="confirm-rate-limit-notice" style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '8px 10px',
+          marginBottom: 12,
+          borderRadius: 8,
+          background: isDark ? 'rgba(251,191,36,0.08)' : 'rgba(251,191,36,0.12)',
+          border: `1px solid ${isDark ? '#3a3520' : '#fde68a'}`,
+          color: isDark ? '#fbbf24' : '#92400e',
+          fontSize: 12,
+          fontWeight: 500,
+        }}>
+          <WarningIcon />
+          <span>
+            Too many AI actions — please wait {Math.max(1, Math.ceil(rateLimitSecondsLeft / 60))} minute{Math.max(1, Math.ceil(rateLimitSecondsLeft / 60)) === 1 ? '' : 's'}
+            {rateLimitInfo?.limit != null && (
+              <span style={{ opacity: 0.7 }}> (limit: {rateLimitInfo.limit}/hour)</span>
+            )}
+          </span>
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 8 }}>
         {(action.buttons || []).map((button, i) => (
           <button
             key={button.action || i}
             onClick={() => handleClick(button)}
-            disabled={status === 'loading'}
+            disabled={status === 'loading' || (status === 'rate_limited' && button.action === 'confirm')}
             style={getButtonStyle(button)}
             onMouseEnter={(e) => {
-              if (status !== 'loading') {
+              const buttonLocked = status === 'loading'
+                || (status === 'rate_limited' && button.action === 'confirm');
+              if (!buttonLocked) {
                 e.currentTarget.style.opacity = '0.85';
               }
             }}
             onMouseLeave={(e) => {
-              if (status !== 'loading') {
+              const buttonLocked = status === 'loading'
+                || (status === 'rate_limited' && button.action === 'confirm');
+              if (!buttonLocked) {
                 e.currentTarget.style.opacity = '1';
               }
             }}

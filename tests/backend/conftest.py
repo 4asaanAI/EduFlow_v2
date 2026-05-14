@@ -44,6 +44,8 @@ try:
     import routes.academics as academics_routes
     import routes.issues as issues_routes
     import routes.audit as audit_routes
+    import routes.operator as operator_routes
+    import routes.reports as reports_routes
     from middleware.auth import hash_password
     APP_AVAILABLE = True
 except (ImportError, TypeError) as e:
@@ -185,6 +187,28 @@ class FakeCollection:
             return type("Result", (), {"matched_count": 1, "modified_count": 1})()
         return type("Result", (), {"matched_count": 0, "modified_count": 0})()
 
+    async def find_one_and_update(self, query, update, upsert=False, return_document=None, sort=None):
+        # Minimal stand-in for Motor's find_one_and_update covering the cases
+        # the rate limiter exercises: upsert + $inc + $setOnInsert.
+        matched_doc = None
+        for doc in self.docs:
+            if _matches(doc, query):
+                matched_doc = doc
+                break
+
+        if matched_doc is None and upsert:
+            matched_doc = {**query, **update.get("$setOnInsert", {})}
+            self.docs.append(matched_doc)
+
+        if matched_doc is None:
+            return None
+
+        for key, value in update.get("$set", {}).items():
+            _set_nested(matched_doc, key, value)
+        for key, value in update.get("$inc", {}).items():
+            _inc_nested(matched_doc, key, value)
+        return {k: v for k, v in matched_doc.items() if k != "_id"}
+
     async def update_many(self, query, update):
         count = 0
         for doc in self.docs:
@@ -320,6 +344,11 @@ class FakeDb:
         self.confirm_tokens = FakeCollection()
         self.ai_dispatch_audit_log = FakeCollection()
         self.idempotency_keys = FakeCollection()
+        self.ai_rate_limit_counters = FakeCollection()
+        self.ai_rate_limit_overrides = FakeCollection()
+        self.messages = FakeCollection()
+        self.conversations = FakeCollection()
+        self.announcements = FakeCollection()
 
 
 if APP_AVAILABLE:
@@ -343,6 +372,8 @@ if APP_AVAILABLE:
     issues_routes.get_db = lambda: _fake_db
     audit_routes.get_db = lambda: _fake_db
     chat_routes.get_db = lambda: _fake_db
+    operator_routes.get_db = lambda: _fake_db
+    reports_routes.get_db = lambda: _fake_db
     server.get_raw_db = lambda: _fake_db
 
 

@@ -30,6 +30,7 @@ numpy>=1.24.4,<1.25; python_version < "3.9"
 numpy>=1.26.0; python_version >= "3.9"
 python-multipart>=0.0.9
 jq>=1.6.0
+pyyaml>=6.0.1
 typer>=0.9.0
 google-generativeai>=0.8.0; python_version >= "3.9"
 google-genai>=1.0.0; python_version >= "3.9"

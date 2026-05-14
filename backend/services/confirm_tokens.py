@@ -53,6 +53,40 @@ async def issue_confirm_token(
     return token
 
 
+async def peek_confirm_token(
+    *,
+    token: str,
+    user_id: str,
+    session_id: str,
+    db=None,
+) -> dict[str, Any] | None:
+    """Read a confirmation token without consuming it.
+
+    Used by the dispatch path to (1) validate token ownership before
+    incrementing the rate-limit counter, and (2) populate audit-log forensic
+    context when a request is rejected.
+
+    Returns the token document if it belongs to (user_id, session_id), else
+    None. Already-used tokens ARE returned — for replay forensics, the action
+    and params remain valuable even after consumption. The caller is
+    responsible for treating used tokens correctly (consume_confirm_token
+    raises 409 on replay).
+    """
+    if not token:
+        return None
+    token_db = db or get_db()
+    try:
+        doc = await token_db.confirm_tokens.find_one({"token": token})
+    except Exception:
+        logger.error("failed to peek AI confirmation token", exc_info=True)
+        return None
+    if not doc:
+        return None
+    if doc.get("user_id") != user_id or doc.get("session_id") != session_id:
+        return None
+    return doc
+
+
 async def consume_confirm_token(
     *,
     token: str,
@@ -125,6 +159,7 @@ async def audit_ai_dispatch(
     session_id: str,
     confirmed_at: datetime | None,
     result: dict[str, Any] | None = None,
+    rate_limit_hit: bool = False,
     db=None,
 ) -> None:
     audit_db = db or get_db()
@@ -138,9 +173,46 @@ async def audit_ai_dispatch(
         "confirmed_at": confirmed_at,
         "executed_at": now,
         "success": bool(result.get("success", True)) if isinstance(result, dict) else True,
+        "rate_limit_hit": rate_limit_hit,
     }
 
     try:
         await audit_db.ai_dispatch_audit_log.insert_one({**document, "_id": document["id"]})
     except Exception:
         logger.error("failed to write AI dispatch audit log", exc_info=True)
+
+
+async def audit_ai_rate_limit_hit(
+    *,
+    tool_name: str,
+    params: dict[str, Any],
+    user_id: str,
+    session_id: str,
+    limit: int,
+    db=None,
+) -> None:
+    """Write an ai_dispatch_audit_log row for a request rejected by the rate limiter.
+
+    Rate-limited attempts never execute, so executed_at is null and success is
+    False. The row carries enough context to forensically reconstruct who tried
+    to do what during a suspected compromise.
+    """
+    audit_db = db or get_db()
+    document = {
+        "id": f"ai-dispatch-{uuid.uuid4()}",
+        "tool_name": tool_name,
+        "params": params,
+        "user_id": user_id,
+        "session_id": session_id,
+        "confirmed_at": None,
+        "executed_at": None,
+        "success": False,
+        "rate_limit_hit": True,
+        "rate_limit_value": limit,
+        "rejected_at": _now(),
+    }
+
+    try:
+        await audit_db.ai_dispatch_audit_log.insert_one({**document, "_id": document["id"]})
+    except Exception:
+        logger.error("failed to write AI rate-limit audit log", exc_info=True)

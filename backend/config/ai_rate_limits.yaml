@@ -1,0 +1,13 @@
+# Per-role hourly AI write-dispatch ceiling.
+# Window: clock-hour (resets at top of each UTC hour, not rolling).
+# Operator override via PATCH /api/operator/schools/{school_id}/ai-rate-limit.
+#
+# Increase a role's ceiling here to lift the default everywhere; create an
+# override row instead to lift the ceiling for one school only.
+roles:
+  owner: 50
+  principal: 30
+  accountant: 20
+  admin: 20
+  teacher: 10
+  student: 0
