@@ -5,10 +5,10 @@ import hashlib
 import re
 import uuid
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
 from database import get_db
-from middleware.auth import get_current_user
+from middleware.auth import get_current_user, require_owner, require_role
 from models.schemas import Guardian, Student, StudentCreate
 from services.s3_storage import (
     build_upload_key,
@@ -142,6 +142,8 @@ async def list_students(
 ):
     db = get_db()
     user = get_user(request)
+    # auth: read-only roles gate (owner/admin/teacher); extra owner-only check
+    # below for `include_inactive`. Single Depends() can't express both.
     if user["role"] not in READ_ROLES:
         raise HTTPException(403, "Forbidden")
     if include_inactive and user["role"] != "owner":
@@ -245,11 +247,8 @@ async def create_student(body: StudentCreate, request: Request):
 
 
 @router.get("/me")
-async def get_my_profile(request: Request):
+async def get_my_profile(request: Request, user: dict = Depends(require_role("student"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] != "student":
-        raise HTTPException(403, "Only students can access this endpoint")
     student = await db.students.find_one(_student_query({"user_id": user["id"]}), {"_id": 0})
     if not student:
         return {"success": True, "data": None}
@@ -272,6 +271,8 @@ async def get_student(student_id: str, request: Request):
     if not student:
         raise HTTPException(404, "Student not found")
 
+    # auth: composite — students may view only their own record; staff
+    # with read roles may view any. Combined gate not expressible as one Depends.
     if user["role"] == "student" and student.get("user_id") != user["id"]:
         raise HTTPException(403, "Forbidden")
     if user["role"] not in READ_ROLES and user["role"] != "student":
@@ -408,6 +409,8 @@ async def upload_student_photo(student_id: str, request: Request, file: UploadFi
 async def list_guardians(student_id: str, request: Request):
     db = get_db()
     user = get_user(request)
+    # auth: students may view their own guardians; staff with read roles may
+    # view any. Combined gate not expressible as one Depends.
     if user["role"] not in READ_ROLES and user["role"] != "student":
         raise HTTPException(403, "Forbidden")
     student = await db.students.find_one(_student_query({"id": student_id}), {"_id": 0})
@@ -541,11 +544,8 @@ async def upload_guardian_photo(student_id: str, guardian_id: str, request: Requ
 
 
 @router.post("/{student_id}/erase")
-async def erase_student(student_id: str, request: Request, reason: str = Form(default=None)):
+async def erase_student(student_id: str, request: Request, reason: str = Form(default=None), user: dict = Depends(require_owner)):
     db = get_db()
-    user = get_user(request)
-    if user.get("role") != "owner":
-        raise HTTPException(403, "Owner only")
     if not reason or len(reason.strip()) < 10:
         raise HTTPException(400, "A detailed erasure reason is required")
 

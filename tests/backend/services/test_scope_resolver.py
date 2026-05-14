@@ -162,15 +162,22 @@ async def test_resolve_admin_unknown_sub_category_is_self_only():
 
 
 @_async
-async def test_resolve_admin_designation_principal_fallback():
-    """Some legacy rows have designation but no sub_category. Resolver normalises."""
+async def test_resolve_admin_designation_no_longer_elevates():
+    """Part 1.5 Patch J: designation is NOT a fallback path to type=all.
+
+    Migration 016 promotes legacy designation values into sub_category
+    before this resolver runs. Any admin row that still reaches the
+    resolver with only designation set is treated as deny-by-default
+    (self_only). Regression guard against the original bypass.
+    """
     rl = _import_resolver()
     db = _make_db(staff=[
-        {"id": "s-d", "user_id": "u-d", "is_active": True, "role": "admin", "designation": "Principal"},
+        {"id": "s-d", "user_id": "u-d", "is_active": True, "role": "admin",
+         "designation": "Principal"},  # NB: no sub_category
     ])
     scope = await rl.resolve_scope({"id": "u-d", "role": "admin"}, db)
-    assert scope.type == "all"
-    assert scope.sub_category == "principal"
+    assert scope.type == "self_only"
+    assert scope.sub_category is None
 
 
 # ─── resolve_scope: teacher sub_categories ─────────────────────────────────
@@ -453,3 +460,25 @@ def test_transport_head_allowed_collections_transport_only():
     cols = s.allowed_collections()
     assert cols is not None
     assert any("transport" in c or "vehicle" in c for c in cols)
+
+
+def test_scope_rejects_empty_user_id():
+    """Part 1.5 Patch E: empty-string user_id must fail closed at construction.
+
+    Without this guard `can_see_personal_info` matched empty-vs-empty and the
+    self-only filter became {"user_id": ""} — a permissive oracle.
+    """
+    rl = _import_resolver()
+    with pytest.raises(ValueError):
+        rl.Scope(type="all", role="owner", user_id="")
+
+
+def test_scope_can_see_personal_info_guards_empty_target_id():
+    rl = _import_resolver()
+    scope = rl.Scope(type="all", role="owner", user_id="real-user")
+    # Target dict missing "id" must NOT match owner.user_id by empty-string fall-through.
+    assert scope.can_see_personal_info({"role": "student"}) is True  # owner sees all
+    # Non-owner (admin/support_staff) without target id should not get a self-match.
+    self_scope = rl.Scope(type="self_only", role="admin",
+                          sub_category="support_staff", user_id="staff-1")
+    assert self_scope.can_see_personal_info({"role": "student"}) is False

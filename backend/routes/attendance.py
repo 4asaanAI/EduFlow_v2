@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from database import get_db
 from models.schemas import AttendanceBulkRequest, StudentAttendance, StaffAttendance
-from middleware.auth import get_current_user
+from middleware.auth import get_current_user, require_role
 from datetime import date, datetime
 from tenant import get_school_id, scoped_filter
 from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, publish
@@ -55,8 +55,10 @@ async def _audit(db, *, action: str, attendance_id: str, user: dict, changes: di
 async def manual_student_attendance(request: Request):
     db = get_db()
     user = get_user(request)
+    # auth: owner OR admin (sub_category=principal or absent). Slightly broader
+    # than require_owner_or_principal which rejects admins without sub_category.
     if not _can_admin_attendance(user):
-        raise HTTPException(403, "Only Owner or Principal can manually enter attendance")
+        raise HTTPException(403, "Forbidden")
     if os.environ.get("BIOMETRIC_ATTENDANCE_ENABLED", "false").lower() == "true":
         raise HTTPException(409, "Manual attendance is disabled while biometric attendance is enabled")
 
@@ -79,11 +81,8 @@ async def manual_student_attendance(request: Request):
 
 
 @router.patch("/{attendance_id}/correct")
-async def correct_attendance(attendance_id: str, request: Request):
+async def correct_attendance(attendance_id: str, request: Request, user: dict = Depends(require_role("owner", "admin", "teacher"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin", "teacher"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     correction_type = body.get("correction_type")
     reason = body.get("reason")
@@ -125,11 +124,8 @@ async def correct_attendance(attendance_id: str, request: Request):
 
 
 @router.get("/{attendance_id}/history")
-async def get_attendance_history(attendance_id: str, request: Request):
+async def get_attendance_history(attendance_id: str, request: Request, user: dict = Depends(require_role("owner", "admin", "teacher"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin", "teacher"]:
-        raise HTTPException(403, "Forbidden")
     original = await db.student_attendance.find_one(_attendance_query({"id": attendance_id}), {"_id": 0})
     if not original:
         raise HTTPException(404, "Attendance record not found")
@@ -150,12 +146,8 @@ async def delete_attendance(attendance_id: str, request: Request):
 
 
 @router.post("/student/bulk")
-async def mark_student_attendance(body: AttendanceBulkRequest, request: Request):
+async def mark_student_attendance(body: AttendanceBulkRequest, request: Request, user: dict = Depends(require_role("owner", "admin", "teacher"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin", "teacher"]:
-        raise HTTPException(403, "Forbidden")
-
     results = []
     for record in body.records:
         att = StudentAttendance(
@@ -231,12 +223,8 @@ async def get_today_attendance(class_id: str, request: Request, date: str = None
 
 
 @router.post("/staff/bulk")
-async def mark_staff_attendance(request: Request):
+async def mark_staff_attendance(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
-
     body = await request.json()
     today = body.get("date", date.today().strftime("%Y-%m-%d"))
     records = body.get("records", [])
@@ -265,12 +253,8 @@ async def mark_staff_attendance(request: Request):
 
 
 @router.get("/stream")
-async def attendance_stream(request: Request):
+async def attendance_stream(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
-
     session_id = request.headers.get("X-SSE-Session-ID") or request.query_params.get("session_id") or str(uuid.uuid4())
     keepalive = int(request.query_params.get("keepalive", KEEPALIVE_SECONDS))
     once = request.query_params.get("once", "").lower() == "true"
@@ -304,13 +288,9 @@ async def attendance_stream(request: Request):
 
 
 @router.get("/low-attendance")
-async def get_low_attendance_students(request: Request, threshold: float = 75.0, days: int = 30):
+async def get_low_attendance_students(request: Request, threshold: float = 75.0, days: int = 30, user: dict = Depends(require_role("owner", "admin"))):
     """Return students whose attendance rate over the last `days` days is below `threshold` percent."""
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
-
     from datetime import timedelta
     end = date.today()
     start = (end - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -356,11 +336,8 @@ async def get_low_attendance_students(request: Request, threshold: float = 75.0,
 
 
 @router.get("/export")
-async def export_attendance_summary(request: Request, class_id: str, month: str, format: str = "csv"):
+async def export_attendance_summary(request: Request, class_id: str, month: str, format: str = "csv", user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user.get("role") not in ("owner", "admin"):
-        raise HTTPException(403, "Only Owner or Accountant can export attendance data")
     if format != "csv":
         raise HTTPException(400, "Only csv export is supported")
     if not class_id or not month:
@@ -408,12 +385,8 @@ async def export_attendance_summary(request: Request, class_id: str, month: str,
 
 
 @router.get("/staff")
-async def get_staff_attendance(request: Request, start_date: str = None, end_date: str = None):
+async def get_staff_attendance(request: Request, start_date: str = None, end_date: str = None, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
-
     query = {}
     if start_date:
         query["date"] = {"$gte": start_date}

@@ -1,17 +1,13 @@
 """Export routes — CSV export for major data entities"""
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from database import get_db
-from middleware.auth import get_current_user
+from middleware.auth import require_owner, require_role
 import csv
 import io
 from datetime import date
 
 router = APIRouter(prefix="/api/export", tags=["export"])
-
-
-def get_user(req: Request):
-    return get_current_user(req)
 
 
 def make_csv_response(rows: list, headers: list, filename: str):
@@ -28,11 +24,8 @@ def make_csv_response(rows: list, headers: list, filename: str):
 
 
 @router.get("/students")
-async def export_students(request: Request, format: str = "csv"):
+async def export_students(request: Request, format: str = "csv", user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     students = await db.students.find({"is_active": True}, {"_id": 0}).to_list(2000)
     headers = ["Name", "Admission No.", "Roll No.", "Gender", "DOB", "Status", "Admission Date"]
     rows = [[s.get("name"), s.get("admission_number", ""), s.get("roll_number", ""), s.get("gender", ""), s.get("dob", ""), s.get("status", ""), s.get("admission_date", "")] for s in students]
@@ -40,11 +33,8 @@ async def export_students(request: Request, format: str = "csv"):
 
 
 @router.get("/fee-transactions")
-async def export_fees(request: Request, status: str = None):
+async def export_fees(request: Request, status: str = None, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     query = {}
     if status:
         query["status"] = status
@@ -58,11 +48,8 @@ async def export_fees(request: Request, status: str = None):
 
 
 @router.get("/attendance")
-async def export_attendance(request: Request, start_date: str = None, end_date: str = None):
+async def export_attendance(request: Request, start_date: str = None, end_date: str = None, user: dict = Depends(require_role("owner", "admin", "teacher"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin", "teacher"]:
-        raise HTTPException(403, "Forbidden")
     query = {}
     if start_date:
         query["date"] = {"$gte": start_date}
@@ -77,11 +64,8 @@ async def export_attendance(request: Request, start_date: str = None, end_date: 
 
 
 @router.get("/staff")
-async def export_staff(request: Request):
+async def export_staff(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     staff = await db.staff.find({"is_active": True}, {"_id": 0, "salary": 0}).to_list(500)
     headers = ["Name", "Type", "Employee ID", "Email", "Phone", "Join Date", "Department"]
     rows = [[s.get("name"), s.get("staff_type"), s.get("employee_id", ""), s.get("email", ""), s.get("phone", ""), s.get("join_date", ""), s.get("department", "")] for s in staff]
@@ -89,11 +73,8 @@ async def export_staff(request: Request):
 
 
 @router.get("/expenses")
-async def export_expenses(request: Request):
+async def export_expenses(request: Request, user: dict = Depends(require_owner)):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner"]:
-        raise HTTPException(403, "Owner only")
     expenses = await db.expenses.find({}, {"_id": 0}).sort("date", -1).to_list(1000)
     headers = ["Date", "Category", "Description", "Amount", "Vendor"]
     rows = [[e.get("date"), e.get("category"), e.get("description", ""), e.get("amount"), e.get("vendor", "")] for e in expenses]
@@ -101,11 +82,8 @@ async def export_expenses(request: Request):
 
 
 @router.get("/enquiries")
-async def export_enquiries(request: Request):
+async def export_enquiries(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     enquiries = await db.enquiries.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
     headers = ["Student Name", "Parent Name", "Class Applying", "Status", "Source", "Date"]
     rows = [[e.get("student_name"), e.get("parent_name"), e.get("class_applying", ""), e.get("status"), e.get("source", ""), e.get("created_at", "")[:10]] for e in enquiries]
@@ -113,11 +91,8 @@ async def export_enquiries(request: Request):
 
 
 @router.get("/exam-results")
-async def export_results(request: Request):
+async def export_results(request: Request, user: dict = Depends(require_role("owner", "admin", "teacher"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin", "teacher"]:
-        raise HTTPException(403, "Forbidden")
     results = await db.exam_results.find({}, {"_id": 0}).to_list(10000)
     headers = ["Student ID", "Exam ID", "Subject", "Marks", "Max Marks", "Grade"]
     rows = []

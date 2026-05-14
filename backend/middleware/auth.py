@@ -22,15 +22,51 @@ JWT_SECRET = os.environ.get("JWT_SECRET")
 if not JWT_SECRET:
     if os.environ.get("ENVIRONMENT") == "production":
         raise ValueError("JWT_SECRET environment variable is required in production")
-    # Part 1 hardening: dev secret is now per-process random instead of a
-    # committed constant. Prevents accidental cross-environment token reuse;
-    # tokens issued by one dev process are invalid for any other. Tests can
-    # still set JWT_SECRET explicitly via env var.
-    JWT_SECRET = secrets.token_urlsafe(48)
+
+    # Part 1.5 Patch N: a per-process random secret is fine for a single
+    # dev worker but silently breaks multi-worker setups (each worker would
+    # issue tokens the others reject — unreproducible 401s). Refuse to start
+    # if the configuration looks like staging or `gunicorn -w N`.
+    _env = os.environ.get("ENVIRONMENT", "").lower()
+    try:
+        _workers = int(os.environ.get("WEB_CONCURRENCY", "1"))
+    except ValueError:
+        _workers = 1
+    if _env in ("staging", "preview") or _workers > 1:
+        raise ValueError(
+            "JWT_SECRET must be set when ENVIRONMENT=%r or WEB_CONCURRENCY=%d. "
+            "Without it each worker generates its own secret and tokens issued "
+            "by one worker are invalid for the others. See backend/.env.example."
+            % (_env, _workers)
+        )
+
+    # Part 1.5 Patch N: cache the dev secret to disk so `uvicorn --reload`
+    # does not invalidate every active session each time the file is saved.
+    # File-mode 0600 under the user's cache dir (gitignored, machine-local).
+    import pathlib
+    _cache_dir = pathlib.Path(
+        os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
+    ) / "eduflow"
+    _cache_file = _cache_dir / "dev_jwt_secret"
+    try:
+        if _cache_file.is_file():
+            JWT_SECRET = _cache_file.read_text(encoding="utf-8").strip()
+        if not JWT_SECRET:
+            JWT_SECRET = secrets.token_urlsafe(48)
+            _cache_dir.mkdir(parents=True, exist_ok=True)
+            _cache_file.write_text(JWT_SECRET, encoding="utf-8")
+            try:
+                os.chmod(_cache_file, 0o600)
+            except OSError:
+                pass
+    except OSError:
+        # Cache directory unwritable — fall back to ephemeral per-process secret.
+        JWT_SECRET = secrets.token_urlsafe(48)
+
     logger.warning(
-        "JWT_SECRET not set — using a per-process random secret. "
-        "Tokens issued by this process will not be valid after restart. "
-        "Set JWT_SECRET in .env to persist sessions across restarts."
+        "JWT_SECRET not set — using a dev secret cached at %s. "
+        "Set JWT_SECRET in .env to override or in production environments.",
+        _cache_file,
     )
 
 JWT_ALGORITHM = "HS256"
@@ -127,9 +163,16 @@ def require_role(*roles: str):
     Error message does NOT leak the allowed-role list — clients only learn
     "forbidden", not which roles would have worked.
     """
+    # Part 1.5 hardening (Patch K): reject empty-tuple at factory time. A
+    # `Depends(require_role())` with no args silently denied every request
+    # before this guard — surfaced as a generic 403 instead of a programmer
+    # error.
+    if not roles:
+        raise ValueError("require_role() requires at least one role argument")
+
     def dependency(request: Request):
         user = get_current_user(request)
-        if user["role"] not in roles:
+        if user.get("role") not in roles:
             logger.info(
                 "role check failed: role=%s required=%s path=%s",
                 user.get("role"), roles, request.url.path,

@@ -11,9 +11,9 @@ Endpoints:
 """
 
 import logging
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 
-from middleware.auth import get_current_user
+from middleware.auth import get_current_user, require_owner
 from services.token_service import (
     get_balance,
     get_usage_stats,
@@ -62,12 +62,10 @@ async def usage_endpoint(request: Request, user_id: str = None):
     user = get_current_user(request)
     branch_id = _resolve_branch(user)
 
-    # Branch-level stats require owner or admin role
+    # auth: dynamic gate — only branch-wide stats require owner/admin;
+    # per-user stats are accessible to the caller themself.
     if not user_id and user["role"] not in ("owner", "admin"):
-        raise HTTPException(
-            status_code=403,
-            detail="Branch-level token stats are only available to owners and admins.",
-        )
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     try:
         data = await get_usage_stats(branch_id, user_id=user_id)
@@ -130,19 +128,11 @@ async def purchase_endpoint(request: Request):
 # ─── PUT /api/tokens/limits ──────────────────────────────────────────────────
 
 @router.put("/limits")
-async def limits_endpoint(request: Request):
+async def limits_endpoint(request: Request, user: dict = Depends(require_owner)):
     """
     Update per-role token limits. Owner only.
     Body: {"limits": {"owner": -1, "admin": 100000, "teacher": 50000, "student": 20000}}
     """
-    user = get_current_user(request)
-
-    if user["role"] != "owner":
-        raise HTTPException(
-            status_code=403,
-            detail="Only the branch owner can update token limits.",
-        )
-
     branch_id = _resolve_branch(user)
     body = await request.json()
     limits = body.get("limits")

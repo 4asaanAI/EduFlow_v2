@@ -206,3 +206,19 @@ async def test_ai_action_counts_returns_current_hour_count(client, fake_db, monk
     assert body["count"] == 7
     assert body["limit"] == 50  # YAML default for owner
     assert body["hour_bucket"] == "2026-05-15T14:00:00Z"
+
+
+async def test_override_rejects_subcategory_as_role(client, fake_db):
+    """Part 1.5 Patch O: principal/accountant are sub_categories, not roles.
+
+    Permitting them as `role` in an override silently creates a dead row that
+    never matches because no auth user has role=principal. Reject at PATCH.
+    """
+    token = _login_owner(client)
+    resp = client.patch(
+        "/api/operator/schools/school-x/ai-rate-limit",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"role": "principal", "limit": 5, "reason": "ignored"},
+    )
+    assert resp.status_code == 400
+    assert "Invalid role" in resp.text

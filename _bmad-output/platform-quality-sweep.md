@@ -10,8 +10,8 @@ User-confirmed order: **3 → 1 → 2 → 4 → 5 → 6 → 7 → 8 → 9 → ..
 
 | # | Part | Status | Sub-stories | Started | Closed | Notes |
 |---|---|---|---|---|---|---|
-| 1 | **Auth + RBAC** | 🟡 partial — review revealed gaps | 11/12 concerns closed; concern #1 (helper adoption) at 3% (4/130 routes) | 2026-05-15 | — | Hardening landed (migration 016, scope_resolver fallback removed, scoped_query, 48 scope tests, JWT/cookie hardening) BUT 3 parallel reviewers (adversarial-general, edge-case-hunter, party-mode) found 16 new issues. See `parts/auth-rbac/review-findings-and-fix-plan.md` for the full triage and ordered fix plan. **Do NOT start Part 2 until Part 1.5 closes these.** |
-| 2 | **AI Layer** | ⏸️ blocked by Part 1.5 | TBD | — | — | Tool dispatch, confirm tokens, idempotency, rate limiter, content filter, audit, prompts |
+| 1 | **Auth + RBAC** | ✅ done | 12/12 original concerns closed + all 16 Part 1.5 findings closed | 2026-05-15 | 2026-05-15 | Part 1 hardening + Part 1.5 fix sweep complete. ~119 of ~130 inline role checks migrated to `Depends(require_role/require_owner/require_owner_or_principal)`; 11 remaining are documented composite/dynamic gates annotated with `# auth:`. Migration 016 idempotent; scope_resolver denies by default; designation fallback removed; cookie phantom evicted; concurrent-refresh test now deterministically races; scoped_query rejects cross-branch attempts. 260 backend tests passing (up from 224 baseline). See `parts/auth-rbac/review-findings-and-fix-plan.md` for the 16 patches A–P. |
+| 2 | **AI Layer** | 🟦 queued | TBD | — | — | Tool dispatch, confirm tokens, idempotency, rate limiter, content filter, audit, prompts |
 | 3 | **Owner role (vertical)** | 🟦 queued | TBD | — | — | School Pulse, financial reports, fee collection, broadcaster — full stack |
 | 4 | **Multi-tenancy + Data Layer** | 🟦 queued | TBD | — | — | schoolId propagation, scoped queries, migration hygiene, index/TTL audit |
 | 5 | **Notifications + Real-time (SSE)** | 🟦 queued | TBD | — | — | in-app notifications, SSE keepalive, backpressure |

@@ -4,12 +4,12 @@ from __future__ import annotations
 from datetime import datetime
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from typing import List, Optional
 
 from database import get_db
-from middleware.auth import get_current_user
+from middleware.auth import require_role
 from tenant import get_school_id, scoped_filter
 
 router = APIRouter(prefix="/api/activities", tags=["activities"])
@@ -40,19 +40,11 @@ def _scope(extra: dict | None = None) -> dict:
     return scoped_filter(extra or {}, get_school_id())
 
 
-def _require_manage(user: dict):
-    if user.get("role") not in ADMIN_ROLES:
-        raise HTTPException(403, "Forbidden")
-
-
 # ─────────────────── Houses ────────────────────────────────────────────────────
 
 @router.get("/houses")
-async def list_houses(request: Request):
+async def list_houses(request: Request, user: dict = Depends(require_role("owner", "admin", "teacher"))):
     db = get_db()
-    user = get_current_user(request)
-    if user["role"] not in READ_ROLES:
-        raise HTTPException(403, "Forbidden")
     houses = await db.houses.find(_scope(), {"_id": 0}).to_list(10)
     if not houses:
         # Seed defaults if none exist
@@ -79,10 +71,8 @@ class HousePointsBody(BaseModel):
 
 
 @router.post("/houses/{house_id}/points")
-async def award_points(house_id: str, body: HousePointsBody, request: Request):
+async def award_points(house_id: str, body: HousePointsBody, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_current_user(request)
-    _require_manage(user)
     house = await db.houses.find_one(_scope({"id": house_id}), {"_id": 0})
     if not house:
         raise HTTPException(404, "House not found")
@@ -108,11 +98,8 @@ async def award_points(house_id: str, body: HousePointsBody, request: Request):
 
 
 @router.get("/houses/{house_id}/points-log")
-async def house_points_log(house_id: str, request: Request):
+async def house_points_log(house_id: str, request: Request, user: dict = Depends(require_role("owner", "admin", "teacher"))):
     db = get_db()
-    user = get_current_user(request)
-    if user["role"] not in READ_ROLES:
-        raise HTTPException(403, "Forbidden")
     logs = await db.house_points_log.find(
         _scope({"house_id": house_id}), {"_id": 0}
     ).sort("created_at", -1).limit(50).to_list(50)
@@ -131,11 +118,8 @@ class PositionBody(BaseModel):
 
 
 @router.get("/positions")
-async def list_positions(request: Request, academic_year: str = None):
+async def list_positions(request: Request, academic_year: str = None, user: dict = Depends(require_role("owner", "admin", "teacher"))):
     db = get_db()
-    user = get_current_user(request)
-    if user["role"] not in READ_ROLES:
-        raise HTTPException(403, "Forbidden")
     query = {}
     if academic_year:
         query["academic_year"] = academic_year
@@ -144,10 +128,8 @@ async def list_positions(request: Request, academic_year: str = None):
 
 
 @router.post("/positions")
-async def assign_position(body: PositionBody, request: Request):
+async def assign_position(body: PositionBody, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_current_user(request)
-    _require_manage(user)
     if body.position not in VALID_POSITIONS:
         raise HTTPException(400, f"Invalid position. Valid: {sorted(VALID_POSITIONS)}")
     existing = await db.student_positions.find_one(
@@ -178,10 +160,8 @@ async def assign_position(body: PositionBody, request: Request):
 
 
 @router.delete("/positions/{position_id}")
-async def remove_position(position_id: str, request: Request):
+async def remove_position(position_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_current_user(request)
-    _require_manage(user)
     pos = await db.student_positions.find_one(_scope({"id": position_id}), {"_id": 0})
     if not pos:
         raise HTTPException(404, "Position not found")
@@ -209,20 +189,15 @@ class TeamMemberBody(BaseModel):
 
 
 @router.get("/teams")
-async def list_teams(request: Request):
+async def list_teams(request: Request, user: dict = Depends(require_role("owner", "admin", "teacher"))):
     db = get_db()
-    user = get_current_user(request)
-    if user["role"] not in READ_ROLES:
-        raise HTTPException(403, "Forbidden")
     teams = await db.sports_teams.find(_scope({"is_active": True}), {"_id": 0}).sort("sport", 1).to_list(50)
     return {"success": True, "data": teams}
 
 
 @router.post("/teams")
-async def create_team(body: TeamBody, request: Request):
+async def create_team(body: TeamBody, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_current_user(request)
-    _require_manage(user)
     if body.sport not in VALID_SPORTS:
         raise HTTPException(400, f"Invalid sport. Valid: {sorted(VALID_SPORTS)}")
     doc = {
@@ -244,10 +219,8 @@ async def create_team(body: TeamBody, request: Request):
 
 
 @router.patch("/teams/{team_id}")
-async def update_team(team_id: str, request: Request):
+async def update_team(team_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_current_user(request)
-    _require_manage(user)
     team = await db.sports_teams.find_one(_scope({"id": team_id}), {"_id": 0})
     if not team:
         raise HTTPException(404, "Team not found")
@@ -260,10 +233,8 @@ async def update_team(team_id: str, request: Request):
 
 
 @router.delete("/teams/{team_id}")
-async def delete_team(team_id: str, request: Request):
+async def delete_team(team_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_current_user(request)
-    _require_manage(user)
     await db.sports_teams.update_one(
         _scope({"id": team_id}),
         {"$set": {"is_active": False, "updated_at": datetime.now().isoformat()}},

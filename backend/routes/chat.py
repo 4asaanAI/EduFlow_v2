@@ -1531,8 +1531,9 @@ async def execute_action(conv_id: str, request: Request):
     tool_def = TOOL_REGISTRY.get(action)
     if not tool_def:
         return {"success": False, "error": f"Unknown action: {action}"}
+    # auth: dynamic per-tool role allowlist — see TOOL_REGISTRY
     if user["role"] not in tool_def["roles"]:
-        return {"success": False, "error": "Not allowed for your role"}
+        return {"success": False, "error": "Forbidden"}
     if action in WRITE_ACTION_TOOLS:
         raise HTTPException(
             status_code=400,
@@ -1643,8 +1644,9 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
         raise HTTPException(status_code=400, detail=f"Unknown tool: {tool_name}")
     if tool_name not in WRITE_ACTION_TOOLS:
         raise HTTPException(status_code=400, detail="Confirmation token is not for a write action")
+    # auth: dynamic per-tool role allowlist — see TOOL_REGISTRY
     if user["role"] not in tool_def["roles"]:
-        raise HTTPException(status_code=403, detail="Not allowed for your role")
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     try:
         scope = await resolve_scope(user, db)

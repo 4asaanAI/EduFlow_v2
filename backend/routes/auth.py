@@ -26,6 +26,7 @@ from middleware.auth import (
 )
 from services.email_service import send_password_reset_email
 from services.auth_tokens import (
+    clear_legacy_refresh_cookie,
     clear_refresh_cookie,
     consume_refresh_token,
     get_refresh_cookie,
@@ -207,6 +208,9 @@ async def login(body: LoginRequest, request: Request, response: Response):
 @router.post("/refresh")
 async def refresh(request: Request, response: Response):
     db = get_db()
+    # Patch F: evict any phantom legacy /api/auth-scoped cookie before reading,
+    # so browsers send only the canonical path=/ cookie on subsequent requests.
+    clear_legacy_refresh_cookie(response)
     raw_token = get_refresh_cookie(request)
     record = await consume_refresh_token(db, raw_token)
     user_id = record["user_id"]

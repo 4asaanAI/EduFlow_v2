@@ -1,7 +1,7 @@
 """Audit Log UI — Story 33"""
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
-from middleware.auth import get_current_user
+from middleware.auth import get_current_user, require_role
 from tenant import get_school_id, scoped_filter
 
 router = APIRouter(prefix="/api/audit-log", tags=["audit"])
@@ -28,19 +28,22 @@ async def list_audit_log(
 ):
     db = get_db()
     user = get_user(request)
+    # auth: owner OR admin (with sub_category principal/None/"") — narrower
+    # than require_owner_or_principal because legacy admins without a
+    # sub_category were grandfathered in; canonical helper would lock them out.
     if user.get("role") == "admin":
         sub = user.get("sub_category", "")
         if sub not in ("principal", None, ""):
-            raise HTTPException(403, "Only Owner or Principal can view audit log")
+            raise HTTPException(403, "Forbidden")
     elif user.get("role") != "owner":
-        raise HTTPException(403, "Only Owner or Principal can view audit log")
+        raise HTTPException(403, "Forbidden")
 
     is_principal = user.get("role") == "admin" and user.get("sub_category") == "principal"
     query = {}
 
     if collection:
         if is_principal and collection in PRINCIPAL_BLOCKED:
-            raise HTTPException(403, "Principal cannot view financial or user-management audit entries")
+            raise HTTPException(403, "Forbidden")
         query["collection"] = collection
     elif is_principal:
         query["collection"] = {"$nin": list(PRINCIPAL_BLOCKED)}
@@ -71,11 +74,8 @@ async def list_audit_log(
 
 @router.get("/{record_id}")
 @router.get("/record/{record_id}")
-async def get_record_history(record_id: str, request: Request):
+async def get_record_history(record_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user.get("role") not in ("owner", "admin"):
-        raise HTTPException(403, "Forbidden")
     is_principal = user.get("role") == "admin" and user.get("sub_category") == "principal"
     query = {
         "$or": [

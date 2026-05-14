@@ -26,8 +26,9 @@ async def execute_tool(tool_id: str, request: Request):
     if not tool_def:
         raise HTTPException(404, f"Tool '{tool_id}' not found")
 
+    # auth: dynamic per-tool role allowlist — see TOOL_REGISTRY
     if user["role"] not in tool_def["roles"]:
-        raise HTTPException(403, f"Tool '{tool_id}' not available for role '{user['role']}'")
+        raise HTTPException(403, "Forbidden")
 
     try:
         result = await tool_def["fn"](params, user)

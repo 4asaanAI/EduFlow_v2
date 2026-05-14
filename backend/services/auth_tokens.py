@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, Request, Response
+
+logger = logging.getLogger(__name__)
 
 
 REFRESH_COOKIE_NAME = "eduflow_refresh_token"
@@ -38,6 +41,14 @@ def cookie_secure() -> bool:
 # malicious origins regardless of path scope.
 REFRESH_COOKIE_PATH = "/"
 
+# Part 1.5 Patch F: the cookie path widened from /api/auth → / in Part 1.
+# Pre-deploy users still have a stale cookie at /api/auth. Browsers happily
+# store both; the resulting "two cookies, one named eduflow_refresh_token"
+# state caused subtle logout/login loops. Until the 7-day TTL has expired
+# everywhere we evict both paths on every clear / refresh-entry call.
+# Safe to remove this dual-clear after 2026-08-15 (deploy day + 7d + buffer).
+LEGACY_REFRESH_COOKIE_PATH = "/api/auth"
+
 
 def set_refresh_cookie(response: Response, token: str) -> None:
     response.set_cookie(
@@ -58,6 +69,29 @@ def clear_refresh_cookie(response: Response) -> None:
         secure=cookie_secure(),
         samesite="strict",
         path=REFRESH_COOKIE_PATH,
+    )
+    # Evict any phantom cookie left over from the old /api/auth path.
+    response.delete_cookie(
+        key=REFRESH_COOKIE_NAME,
+        httponly=True,
+        secure=cookie_secure(),
+        samesite="strict",
+        path=LEGACY_REFRESH_COOKIE_PATH,
+    )
+
+
+def clear_legacy_refresh_cookie(response: Response) -> None:
+    """Evict the /api/auth-scoped phantom cookie on every refresh attempt.
+
+    Called at the entry of /api/auth/refresh so a stale path-scoped cookie
+    does not race the new one. Safe to remove after 2026-08-15.
+    """
+    response.delete_cookie(
+        key=REFRESH_COOKIE_NAME,
+        httponly=True,
+        secure=cookie_secure(),
+        samesite="strict",
+        path=LEGACY_REFRESH_COOKIE_PATH,
     )
 
 
@@ -112,11 +146,20 @@ async def consume_refresh_token(db, raw_token: str) -> dict:
     return record
 
 
-async def revoke_refresh_token(db, raw_token: str, reason: str = "logout") -> None:
-    await db.refresh_tokens.update_one(
+async def revoke_refresh_token(db, raw_token: str, reason: str = "logout") -> int:
+    """Revoke a refresh token by raw value. Returns modified_count (0 or 1).
+
+    Part 1.5 Patch L: callers can now distinguish "revoked successfully" from
+    "token unknown / already revoked" — useful for logout audit, and for
+    surfacing password-reset misroutes that previously absorbed silently.
+    """
+    result = await db.refresh_tokens.update_one(
         {"token_hash": hash_refresh_token(raw_token), "revoked_at": None},
         {"$set": {"revoked_at": utc_now(), "revoked_reason": reason}},
     )
+    if result.modified_count == 0:
+        logger.debug("revoke_refresh_token: no active token matched (reason=%s)", reason)
+    return result.modified_count
 
 
 async def revoke_user_refresh_tokens(db, user_id: str, reason: str = "user_deactivated") -> int:

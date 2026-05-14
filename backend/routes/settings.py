@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
-from middleware.auth import get_current_user
+from middleware.auth import get_current_user, require_role, require_owner
 from datetime import datetime
 import uuid
 
@@ -43,12 +43,9 @@ async def get_token_usage(request: Request):
 
 # --- Year-end Session Transition ---
 @router.post("/year-end-transition")
-async def year_end_transition(request: Request):
+async def year_end_transition(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     """Transition to new academic year: create new year, promote students, archive old data."""
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Owner/Admin only")
     body = await request.json()
     new_year_name = body.get("new_year_name")  # e.g. "2026-27"
     if not new_year_name:
@@ -81,11 +78,8 @@ async def year_end_transition(request: Request):
 
 
 @router.patch("/school")
-async def update_school_settings(request: Request):
+async def update_school_settings(request: Request, user: dict = Depends(require_owner)):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner"]:
-        raise HTTPException(403, "Owner only")
     body = await request.json()
     allowed = {"attendance_threshold", "school_name", "board", "city", "ai_context"}
     update = {k: v for k, v in body.items() if k in allowed}
@@ -153,12 +147,9 @@ async def list_forms(request: Request):
 
 
 @router.post("/forms")
-async def create_form(request: Request):
+async def create_form(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     try:
         db = get_db()
-        user = get_user(request)
-        if user["role"] not in ["admin", "owner"]:
-            raise HTTPException(403, f"Forbidden - user role is {user['role']}")
         body = await request.json()
         if not body.get("title"):
             raise HTTPException(400, "Title is required")
@@ -210,22 +201,15 @@ async def submit_form_response(form_id: str, request: Request):
 
 
 @router.get("/forms/{form_id}/responses")
-async def get_form_responses(form_id: str, request: Request):
+async def get_form_responses(form_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        from fastapi import HTTPException
-        raise HTTPException(403, "Forbidden")
     responses = await db.form_responses.find({"form_id": form_id}, {"_id": 0}).sort("submitted_at", -1).to_list(500)
     return {"success": True, "data": responses}
 
 
 @router.delete("/forms/{form_id}")
-async def delete_form(form_id: str, request: Request):
+async def delete_form(form_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     await db.custom_forms.delete_one({"id": form_id})
     await db.form_responses.delete_many({"form_id": form_id})
     return {"success": True}

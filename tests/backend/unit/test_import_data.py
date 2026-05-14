@@ -87,14 +87,16 @@ class FakeUpload:
 async def test_validate_import_reports_errors_and_duplicates(monkeypatch):
     db = FakeDb()
     monkeypatch.setattr(import_data, "get_db", lambda: db)
-    monkeypatch.setattr(import_data, "get_current_user", lambda _request: {"id": "owner-1", "role": "owner"})
     content = (
         "name,class,section,parent_name,parent_phone\n"
         "Existing Student,5,A,Parent,9999999999\n"
         "Missing Parent,5,A,,9999999998\n"
     ).encode()
 
-    report = await import_data.validate_import(object(), FakeUpload("students.csv", content))
+    report = await import_data.validate_import(
+        FakeUpload("students.csv", content),
+        user={"id": "owner-1", "role": "owner"},
+    )
 
     assert report["valid_count"] == 1
     assert report["error_count"] == 1
@@ -107,7 +109,6 @@ async def test_validate_import_reports_errors_and_duplicates(monkeypatch):
 async def test_commit_import_skips_duplicates_without_overwrite(monkeypatch):
     db = FakeDb()
     monkeypatch.setattr(import_data, "get_db", lambda: db)
-    monkeypatch.setattr(import_data, "get_current_user", lambda _request: {"id": "owner-1", "role": "owner"})
     content = (
         "name,class,section,parent_name,parent_phone,date_of_birth,address,route_zone_id\n"
         "New Student,5,A,New Parent,9999999997,2015-01-01,Main Road,Route 1\n"
@@ -115,9 +116,9 @@ async def test_commit_import_skips_duplicates_without_overwrite(monkeypatch):
     ).encode()
 
     result = await import_data.commit_import(
-        object(),
         FakeUpload("students.csv", content),
         overwrite_duplicates=False,
+        user={"id": "owner-1", "role": "owner"},
     )
 
     assert result["imported_count"] == 1
@@ -127,11 +128,25 @@ async def test_commit_import_skips_duplicates_without_overwrite(monkeypatch):
     assert db.audit_logs.docs[0]["action"] == "bulk_import"
 
 
-@pytest.mark.asyncio
-async def test_import_is_owner_only(monkeypatch):
-    monkeypatch.setattr(import_data, "get_current_user", lambda _request: {"id": "teacher-1", "role": "teacher"})
+def test_import_is_owner_only(monkeypatch):
+    # The /api/import routes use Depends(require_owner). Verify that helper
+    # rejects non-owner roles — the same gate FastAPI invokes on every request.
+    from backend.middleware import auth as auth_module
+
+    class _Req:
+        class headers:
+            @staticmethod
+            def get(_name, _default=""):
+                return ""
+
+        class url:
+            path = "/api/import/validate"
+
+    monkeypatch.setattr(
+        auth_module, "get_current_user", lambda _request: {"id": "teacher-1", "role": "teacher"}
+    )
 
     with pytest.raises(HTTPException) as exc:
-        await import_data.validate_import(object(), FakeUpload("students.csv", b"name\nAlice"))
+        auth_module.require_owner(_Req())
 
     assert exc.value.status_code == 403

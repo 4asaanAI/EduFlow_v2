@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 """Issue tracker — facility requests (Maintenance Admin) and tech requests (IT/Tech Admin)"""
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
-from middleware.auth import get_current_user
+from middleware.auth import get_current_user, require_owner
 from tenant import get_school_id, scoped_filter, add_school_id
 from datetime import datetime
 import uuid
@@ -202,11 +202,8 @@ async def update_facility_request(request_id: str, request: Request):
 
 
 @router.post("/facility/{request_id}/confirm-resolution")
-async def confirm_facility_resolution(request_id: str, request: Request):
+async def confirm_facility_resolution(request_id: str, request: Request, user: dict = Depends(require_owner)):
     db = get_db()
-    user = get_user(request)
-    if user.get("role") != "owner":
-        raise HTTPException(403, "Only Owner can confirm resolution")
     existing = await db.facility_requests.find_one(scoped_filter({"id": request_id}, get_school_id()))
     if not existing:
         raise HTTPException(404, "Facility request not found")

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse, Response
 from database import get_db
 from models.schemas import FeeTransaction
-from middleware.auth import get_current_user
+from middleware.auth import get_current_user, require_role, require_owner
 from datetime import datetime, timedelta
 from tenant import get_school_id, scoped_filter
 from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, publish
@@ -95,22 +95,15 @@ async def _publish_fee_update(db, event_type: str, payload: dict | None = None, 
 
 
 @router.get("/structures")
-async def get_fee_structures(request: Request):
+async def get_fee_structures(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     structures = await db.fee_structures.find(_fee_query(), {"_id": 0}).to_list(50)
     return {"success": True, "data": structures}
 
 
 @router.get("/transactions")
-async def get_fee_transactions(request: Request, student_id: str = None, status: str = None, class_id: str = None, overdue_days: int = None):
+async def get_fee_transactions(request: Request, student_id: str = None, status: str = None, class_id: str = None, overdue_days: int = None, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
-
     query = _fee_query()
     if student_id:
         query["student_id"] = student_id
@@ -141,13 +134,9 @@ async def get_fee_transactions(request: Request, student_id: str = None, status:
 
 
 @router.get("/class-summary")
-async def get_class_fee_summary(request: Request):
+async def get_class_fee_summary(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     """Returns per-class fee collection summary."""
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
-
     classes = await db.classes.find(_fee_query(), {"_id": 0}).to_list(50)
     result = []
     for cls in classes:
@@ -183,11 +172,8 @@ async def get_my_fees(request: Request):
 
 
 @router.post("/transactions")
-async def record_payment(request: Request):
+async def record_payment(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     key = request.headers.get("Idempotency-Key")
     fee_period = body.get("fee_period")
@@ -238,11 +224,8 @@ async def record_payment(request: Request):
 
 
 @router.patch("/transactions/{transaction_id}/correct")
-async def correct_fee_transaction(transaction_id: str, request: Request):
+async def correct_fee_transaction(transaction_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     reason = body.get("reason")
     if not reason:
@@ -274,11 +257,8 @@ async def correct_fee_transaction(transaction_id: str, request: Request):
 
 
 @router.post("/contact-log")
-async def create_fee_contact_log(request: Request):
+async def create_fee_contact_log(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     required = {"student_id", "fee_transaction_id", "date", "contact_type", "outcome", "notes"}
     if any(not body.get(field) for field in required):
@@ -302,22 +282,14 @@ async def create_fee_contact_log(request: Request):
 
 
 @router.get("/summary")
-async def get_fee_summary(request: Request, fee_period: str = None):
+async def get_fee_summary(request: Request, fee_period: str = None, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
-
     return {"success": True, "data": await _fee_summary_payload(db, fee_period)}
 
 
 @router.get("/stream")
-async def fee_stream(request: Request):
+async def fee_stream(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
-
     session_id = request.headers.get("X-SSE-Session-ID") or request.query_params.get("session_id") or str(uuid.uuid4())
     keepalive = int(request.query_params.get("keepalive", KEEPALIVE_SECONDS))
     once = request.query_params.get("once", "").lower() == "true"
@@ -350,11 +322,8 @@ async def fee_stream(request: Request):
 
 
 @router.get("/status/{student_id}")
-async def get_student_fee_status(student_id: str, request: Request):
+async def get_student_fee_status(student_id: str, request: Request, user: dict = Depends(require_role("owner", "admin", "teacher", "parent", "student"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin", "teacher", "parent", "student"]:
-        raise HTTPException(403, "Forbidden")
     txns = await db.fee_transactions.find(_fee_query({"student_id": student_id}), {"_id": 0}).to_list(200)
     today = datetime.now()
     status = "paid"
@@ -374,11 +343,8 @@ async def delete_fee_transaction(transaction_id: str, request: Request):
 
 
 @router.post("/discount-types")
-async def create_discount_type(request: Request):
+async def create_discount_type(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     required = {"name", "value", "value_type", "recurrence", "reason_note"}
     if any(body.get(field) in (None, "") for field in required):
@@ -404,22 +370,16 @@ async def create_discount_type(request: Request):
 
 
 @router.get("/discount-types")
-async def get_discount_types(request: Request, include_inactive: bool = False):
+async def get_discount_types(request: Request, include_inactive: bool = False, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     query = _fee_query() if include_inactive else _fee_query({"is_active": True})
     items = await db.fee_discount_types.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
     return {"success": True, "data": items}
 
 
 @router.patch("/discount-types/{discount_type_id}")
-async def update_discount_type(discount_type_id: str, request: Request):
+async def update_discount_type(discount_type_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     allowed = {"name", "is_active", "reason_note"}
     changes = {k: v for k, v in body.items() if k in allowed}
@@ -435,11 +395,8 @@ async def update_discount_type(discount_type_id: str, request: Request):
 
 
 @router.post("/discounts/apply")
-async def apply_discount(request: Request):
+async def apply_discount(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     required = {"student_id", "discount_type_id", "original_amount", "effective_from"}
     if any(body.get(field) in (None, "") for field in required):
@@ -498,19 +455,13 @@ async def _discount_breakdown(db, student_id: str):
 
 
 @router.get("/discounts/{student_id}")
-async def get_student_discounts(student_id: str, request: Request):
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin", "teacher", "parent", "student"]:
-        raise HTTPException(403, "Forbidden")
+async def get_student_discounts(student_id: str, request: Request, user: dict = Depends(require_role("owner", "admin", "teacher", "parent", "student"))):
     return {"success": True, "data": await _discount_breakdown(get_db(), student_id)}
 
 
 @router.get("/discount-summary")
-async def get_discount_summary(request: Request):
+async def get_discount_summary(request: Request, user: dict = Depends(require_owner)):
     db = get_db()
-    user = get_user(request)
-    if user["role"] != "owner":
-        raise HTTPException(403, "Only Owner can view discount impact summary")
     applications = await db.fee_discounts.find(_fee_query(), {"_id": 0}).to_list(2000)
     type_ids = [item["discount_type_id"] for item in applications]
     types = await db.fee_discount_types.find(_fee_query({"id": {"$in": type_ids}}), {"_id": 0}).to_list(len(type_ids)) if type_ids else []
@@ -556,11 +507,8 @@ def _external_key(record: dict):
 
 
 @router.post("/sync/trigger")
-async def trigger_fee_sync(request: Request):
+async def trigger_fee_sync(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     job_id = str(uuid.uuid4())
     job = {
         "_id": job_id,
@@ -639,10 +587,7 @@ async def trigger_fee_sync(request: Request):
 
 
 @router.get("/sync/{sync_job_id}")
-async def get_fee_sync_job(sync_job_id: str, request: Request):
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
+async def get_fee_sync_job(sync_job_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     job = await get_db().fee_sync_jobs.find_one(_fee_query({"id": sync_job_id}), {"_id": 0})
     if not job:
         raise HTTPException(404, "Sync job not found")
@@ -650,11 +595,8 @@ async def get_fee_sync_job(sync_job_id: str, request: Request):
 
 
 @router.post("/sync/{sync_job_id}/resolve-conflict")
-async def resolve_fee_sync_conflict(sync_job_id: str, request: Request):
+async def resolve_fee_sync_conflict(sync_job_id: str, request: Request, user: dict = Depends(require_owner)):
     db = get_db()
-    user = get_user(request)
-    if user["role"] != "owner":
-        raise HTTPException(403, "Only Owner can resolve fee sync conflicts")
     body = await request.json()
     conflict_id = body.get("conflict_id")
     decision = body.get("decision")
@@ -707,11 +649,8 @@ async def _next_receipt_number(db, school_id: str) -> str:
 
 
 @router.get("/transactions/{transaction_id}/receipt")
-async def get_fee_receipt(transaction_id: str, request: Request):
+async def get_fee_receipt(transaction_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user.get("role") not in ("owner", "admin"):
-        raise HTTPException(403, "Only Owner or Accountant can generate receipts")
     txn = await db.fee_transactions.find_one(_fee_query({"id": transaction_id}), {"_id": 0})
     if not txn:
         raise HTTPException(404, "Transaction not found")
@@ -798,11 +737,8 @@ async def get_fee_receipt(transaction_id: str, request: Request):
 
 
 @router.get("/export")
-async def export_fee_transactions(request: Request, period: str = None, format: str = "csv"):
+async def export_fee_transactions(request: Request, period: str = None, format: str = "csv", user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user.get("role") not in ("owner", "admin"):
-        raise HTTPException(403, "Only Owner or Accountant can export fee data")
     query = _fee_query({})
     if period:
         query["$and"] = query.get("$and", []) + [{"$or": [

@@ -135,6 +135,17 @@ class Scope:
     domain: Optional[str] = None
     staff_record: Optional[Dict[str, Any]] = field(default=None, repr=False)
 
+    def __post_init__(self) -> None:
+        # Part 1.5 Patch E: an empty-string user_id silently turns Scope into
+        # an oracle (can_see_personal_info matches "" == "" for any target
+        # without an id; self-only filter becomes {"user_id": ""}). Fail
+        # closed at construction so the issue surfaces at the call site.
+        if not isinstance(self.user_id, str) or self.user_id == "":
+            raise ValueError(
+                "Scope.user_id must be a non-empty string; "
+                "got %r (callers must propagate the authenticated user id)" % (self.user_id,)
+            )
+
     # ------------------------------------------------------------------
     # MongoDB filter builder
     # ------------------------------------------------------------------
@@ -235,8 +246,11 @@ class Scope:
         target_role: str = target.get("role", "student")
         target_id: str = target.get("id", "")
 
-        # Anyone can see their own info.
-        if target_id == self.user_id:
+        # Anyone can see their own info. Guard against empty target_id so
+        # `target_id == self.user_id` is never an empty-string match. Scope
+        # construction already forbids empty self.user_id; this is defense
+        # in depth for malformed target dicts.
+        if target_id and target_id == self.user_id:
             return True
 
         # Owner sees everything.
@@ -431,13 +445,16 @@ async def resolve_scope(user: Dict[str, Any], db: Any = None) -> Scope:
         return Scope(type="self_only", role=role, user_id=user_id)
 
     sub_category: Optional[str] = staff.get("sub_category")
-    designation: Optional[str] = staff.get("designation")
 
     # ------------------------------------------------------------------
     # Admin
     # ------------------------------------------------------------------
     if role == "admin":
-        return _resolve_admin_scope(user_id, staff, sub_category, designation)
+        # Part 1.5 Patch J: designation is NO LONGER honored as a fallback.
+        # Previously a legacy admin row with designation="Principal" silently
+        # got type=all even without sub_category. Migration 016 promotes known
+        # designation values to sub_category before this resolver runs.
+        return _resolve_admin_scope(user_id, staff, sub_category)
 
     # ------------------------------------------------------------------
     # Teacher
@@ -460,16 +477,17 @@ def _resolve_admin_scope(
     user_id: str,
     staff: Dict[str, Any],
     sub_category: Optional[str],
-    designation: Optional[str],
 ) -> Scope:
-    """Produce scope for an admin user based on sub_category.
+    """Produce scope for an admin user based on sub_category ONLY.
 
-    Falls back to ``designation`` when ``sub_category`` is not set, and
-    ultimately to full access (legacy behaviour) if neither field is populated.
+    Part 1.5 Patch J (strict mode): the `designation` field is no longer
+    consulted. Legacy rows where designation carried the privilege intent
+    (e.g. designation="Principal", sub_category=None) are promoted to
+    sub_category at migration time (016). Any admin row that reaches this
+    function without sub_category gets self-only (deny by default).
     """
 
-    # Normalise: prefer sub_category, fall back to designation.
-    effective: str = (sub_category or designation or "").strip().lower()
+    effective: str = (sub_category or "").strip().lower()
 
     if effective in ("principal",):
         logger.debug("resolve_scope: admin/principal -> scope type='all'")

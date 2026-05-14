@@ -1,7 +1,7 @@
 """Routes: certificates, expenses, complaints, visitors, assets, transport, announcements, incidents"""
 from fastapi import APIRouter, Depends, Request, HTTPException
 from database import get_db
-from middleware.auth import get_current_user, require_owner_or_principal
+from middleware.auth import get_current_user, require_owner_or_principal, require_role
 from datetime import datetime
 from tenant import get_school_id, scoped_filter, add_school_id
 import uuid
@@ -104,11 +104,8 @@ async def list_leave_requests(request: Request, status: str = None, page: int = 
 
 
 @workflow_router.patch("/leave-requests/{leave_id}/decide")
-async def decide_leave_request(leave_id: str, request: Request):
+async def decide_leave_request(leave_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
     db = get_db()
-    user = get_user(request)
-    if not _can_decide(user):
-        raise HTTPException(403, "Only Owner or Principal can decide leave requests")
     body = await request.json()
     if body.get("status") not in ("approved", "rejected") or not body.get("reason"):
         raise HTTPException(400, "status approved/rejected and reason are required")
@@ -142,11 +139,8 @@ async def decide_leave_request(leave_id: str, request: Request):
 
 
 @workflow_router.post("/approval-requests")
-async def create_approval_request(request: Request):
+async def create_approval_request(request: Request, user: dict = Depends(require_role("admin"))):
     db = get_db()
-    user = get_user(request)
-    if user.get("role") != "admin":
-        raise HTTPException(403, "Only Admin users can submit approval requests")
     body = await request.json()
     required = {"title", "description", "estimated_impact", "note", "routing"}
     if any(not body.get(field) for field in required):
@@ -202,9 +196,10 @@ async def decide_approval_request(approval_id: str, request: Request):
     approval = await db.approval_requests.find_one(scoped_filter({"id": approval_id}, get_school_id()), {"_id": 0})
     if not approval:
         raise HTTPException(404, "Approval request not found")
+    # auth: owner can decide any; principal can decide only owner_and_principal routings.
     principal = user.get("role") == "admin" and user.get("sub_category", "principal") == "principal"
     if user.get("role") != "owner" and not (principal and approval.get("routing") == "owner_and_principal"):
-        raise HTTPException(403, "Not authorized to decide this approval request")
+        raise HTTPException(403, "Forbidden")
     update = {
         "status": body["status"],
         "decision_reason": body["reason"],
@@ -243,11 +238,8 @@ async def list_certs(request: Request, student_id: str = None):
 
 
 @router.post("/certificates")
-async def create_cert(request: Request):
+async def create_cert(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     cert = {
         "id": str(uuid.uuid4()),
@@ -266,21 +258,15 @@ async def create_cert(request: Request):
 
 # --- Expenses ---
 @router.get("/expenses")
-async def list_expenses(request: Request):
+async def list_expenses(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     expenses = await db.expenses.find({}, {"_id": 0}).sort("date", -1).to_list(100)
     return {"success": True, "data": expenses}
 
 
 @router.post("/expenses")
-async def create_expense(request: Request):
+async def create_expense(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     expense = {
         "id": str(uuid.uuid4()),
@@ -303,6 +289,7 @@ async def list_complaints(request: Request):
     db = get_db()
     user = get_user(request)
     query = {}
+    # auth: scope-narrowing (own complaints only) for non-admin roles, not a gate.
     if user["role"] not in ["owner", "admin"]:
         query["submitted_by"] = user["id"]
     complaints = await db.complaints.find(query, {"_id": 0}).sort("created_at", -1).to_list(50)
@@ -329,11 +316,8 @@ async def create_complaint(request: Request):
 
 
 @router.patch("/complaints/{complaint_id}")
-async def update_complaint(complaint_id: str, request: Request):
+async def update_complaint(complaint_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     await db.complaints.update_one({"id": complaint_id}, {"$set": body})
     return {"success": True}
@@ -342,11 +326,8 @@ async def update_complaint(complaint_id: str, request: Request):
 # ─── Story 13: Incident Management (enhanced) ─────────────────────────────────
 
 @router.get("/incidents")
-async def list_incidents(request: Request, status: str = None, q: str = None, page: int = 1, limit: int = 20):
+async def list_incidents(request: Request, status: str = None, q: str = None, page: int = 1, limit: int = 20, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     query = {}
     if status:
         query["status"] = status
@@ -369,6 +350,7 @@ async def list_incidents(request: Request, status: str = None, q: str = None, pa
 async def create_incident(request: Request):
     db = get_db()
     user = get_user(request)
+    # auth: owner/admin OR admin-with-sub_category=receptionist. Composite gate.
     is_receptionist = user.get("role") == "admin" and user.get("sub_category") == "receptionist"
     if user["role"] not in ["owner", "admin"] and not is_receptionist:
         raise HTTPException(403, "Forbidden")
@@ -410,11 +392,8 @@ async def create_incident(request: Request):
 
 
 @router.get("/incidents/{incident_id}")
-async def get_incident(incident_id: str, request: Request):
+async def get_incident(incident_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     incident = await db.incidents.find_one(scoped_filter({"id": incident_id}, get_school_id()), {"_id": 0})
     if not incident:
         raise HTTPException(404, "Incident not found")
@@ -424,11 +403,8 @@ async def get_incident(incident_id: str, request: Request):
 
 
 @router.post("/incidents/{incident_id}/thread")
-async def add_incident_thread(incident_id: str, request: Request):
+async def add_incident_thread(incident_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     if not body.get("content"):
         raise HTTPException(400, "content is required")
@@ -450,11 +426,8 @@ async def add_incident_thread(incident_id: str, request: Request):
 
 
 @router.patch("/incidents/{incident_id}/assign")
-async def assign_incident(incident_id: str, request: Request):
+async def assign_incident(incident_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     updates = {"updated_at": datetime.now().isoformat()}
     if body.get("assigned_to"):
@@ -469,21 +442,15 @@ async def assign_incident(incident_id: str, request: Request):
 
 # --- Visitors ---
 @router.get("/visitors")
-async def list_visitors(request: Request):
+async def list_visitors(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     visitors = await db.visitor_log.find({}, {"_id": 0}).sort("time_in", -1).to_list(50)
     return {"success": True, "data": visitors}
 
 
 @router.post("/visitors")
-async def log_visitor(request: Request):
+async def log_visitor(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     visitor = {
         "id": str(uuid.uuid4()),
@@ -508,21 +475,15 @@ async def checkout_visitor(visitor_id: str, request: Request):
 
 # --- Assets ---
 @router.get("/assets")
-async def list_assets(request: Request):
+async def list_assets(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     assets = await db.assets.find({}, {"_id": 0}).to_list(100)
     return {"success": True, "data": assets}
 
 
 @router.post("/assets")
-async def create_asset(request: Request):
+async def create_asset(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     asset = {
         "id": str(uuid.uuid4()),
@@ -539,11 +500,8 @@ async def create_asset(request: Request):
 
 
 @router.patch("/assets/{asset_id}")
-async def update_asset(asset_id: str, request: Request):
+async def update_asset(asset_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     await db.assets.update_one({"id": asset_id}, {"$set": body})
     return {"success": True}
@@ -552,11 +510,8 @@ async def update_asset(asset_id: str, request: Request):
 # --- Transport ---
 @router.get("/transport")
 @transport_router.get("")
-async def list_transport(request: Request):
+async def list_transport(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     routes = await db.transport_routes.find({}, {"_id": 0}).to_list(50)
     # Enrich with student count per zone
     for route in routes:
@@ -567,11 +522,8 @@ async def list_transport(request: Request):
 
 @router.post("/transport")
 @transport_router.post("")
-async def create_route(request: Request):
+async def create_route(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     route = {
         "id": str(uuid.uuid4()),
@@ -593,12 +545,9 @@ async def create_route(request: Request):
 
 @router.get("/transport/roster")
 @transport_router.get("/roster")
-async def get_transport_roster(request: Request, zone_id: str = None):
+async def get_transport_roster(request: Request, zone_id: str = None, user: dict = Depends(require_role("owner", "admin"))):
     """Owner/Principal: full roster. Transport Head: zone-specific."""
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     query = {"is_active": {"$ne": False}}
     if zone_id:
         query["route_zone_id"] = zone_id
@@ -612,11 +561,8 @@ async def get_transport_roster(request: Request, zone_id: str = None):
 
 @router.post("/transport/vehicles")
 @transport_router.post("/vehicles")
-async def create_vehicle(request: Request):
+async def create_vehicle(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     vehicle = {
         "id": str(uuid.uuid4()),
@@ -634,23 +580,17 @@ async def create_vehicle(request: Request):
 
 @router.get("/transport/vehicles")
 @transport_router.get("/vehicles")
-async def list_vehicles(request: Request):
+async def list_vehicles(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     vehicles = await db.vehicles.find({}, {"_id": 0}).to_list(50)
     return {"success": True, "data": vehicles}
 
 
 @router.post("/transport/zones")
 @transport_router.post("/zones")
-async def create_zone(request: Request):
+async def create_zone(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     """Alias: zones map to transport routes with zone semantics."""
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     zone = {
         "id": str(uuid.uuid4()),
@@ -666,11 +606,8 @@ async def create_zone(request: Request):
 
 @router.patch("/transport/{route_id}")
 @transport_router.patch("/{route_id}")
-async def update_route(route_id: str, request: Request):
+async def update_route(route_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     await db.transport_routes.update_one({"id": route_id}, {"$set": body})
     route = await db.transport_routes.find_one({"id": route_id}, {"_id": 0})
@@ -679,11 +616,8 @@ async def update_route(route_id: str, request: Request):
 
 @router.delete("/transport/{route_id}")
 @transport_router.delete("/{route_id}")
-async def delete_route(route_id: str, request: Request):
+async def delete_route(route_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     await db.transport_routes.delete_one({"id": route_id})
     return {"success": True}
 
@@ -703,52 +637,37 @@ async def save_study_plan(request: Request):
 
 
 @router.patch("/expenses/{expense_id}")
-async def update_expense(expense_id: str, request: Request):
+async def update_expense(expense_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json(); body.pop("id", None)
     await db.expenses.update_one({"id": expense_id}, {"$set": body})
     return {"success": True}
 
 
 @router.delete("/expenses/{expense_id}")
-async def delete_expense(expense_id: str, request: Request):
+async def delete_expense(expense_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     await db.expenses.delete_one({"id": expense_id})
     return {"success": True}
 
 
 @router.delete("/assets/{asset_id}")
-async def delete_asset(asset_id: str, request: Request):
+async def delete_asset(asset_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     await db.assets.delete_one({"id": asset_id})
     return {"success": True}
 
 
 @router.delete("/announcements/{ann_id}")
-async def delete_announcement(ann_id: str, request: Request):
+async def delete_announcement(ann_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     await db.announcements.delete_one({"id": ann_id})
     return {"success": True}
 
 
 @router.delete("/visitors/{visitor_id}")
-async def delete_visitor(visitor_id: str, request: Request):
+async def delete_visitor(visitor_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     await db.visitor_log.delete_one({"id": visitor_id})
     return {"success": True}
 
@@ -785,11 +704,8 @@ async def list_announcements(request: Request, page: int = 1, limit: int = 20):
 
 
 @router.post("/announcements")
-async def create_announcement(request: Request):
+async def create_announcement(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     target_roles = body.get("target_roles") or body.get("audience_roles", [])
 
@@ -932,11 +848,8 @@ async def reject_announcement(ann_id: str, request: Request):
 
 # --- Enquiries ---
 @router.get("/enquiries")
-async def list_enquiries(request: Request, status: str = None):
+async def list_enquiries(request: Request, status: str = None, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     query = {}
     if status:
         query["status"] = status
@@ -945,11 +858,8 @@ async def list_enquiries(request: Request, status: str = None):
 
 
 @router.post("/enquiries")
-async def create_enquiry(request: Request):
+async def create_enquiry(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     enquiry = {
         "id": str(uuid.uuid4()),
@@ -967,11 +877,8 @@ async def create_enquiry(request: Request):
 
 
 @router.patch("/enquiries/{enquiry_id}")
-async def update_enquiry(enquiry_id: str, request: Request):
+async def update_enquiry(enquiry_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     await db.enquiries.update_one({"id": enquiry_id}, {"$set": body})
     return {"success": True}

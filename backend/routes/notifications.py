@@ -1,7 +1,7 @@
 """Notifications API — Story 16: persistent in-app notifications + role-scoped digest"""
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
-from middleware.auth import get_current_user
+from middleware.auth import get_current_user, require_role
 from tenant import get_school_id, scoped_filter, add_school_id
 from datetime import datetime, date
 import uuid
@@ -111,12 +111,9 @@ async def mark_all_read(request: Request):
 
 
 @router.post("")
-async def create_notification(request: Request):
+async def create_notification(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     """Internal endpoint: create a notification for a specific user."""
     db = get_db()
-    user = get_user(request)
-    if user.get("role") not in ("owner", "admin"):
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     if not body.get("user_id") or not body.get("message"):
         raise HTTPException(400, "user_id and message are required")

@@ -6,10 +6,10 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
 from database import get_db
-from middleware.auth import get_current_user
+from middleware.auth import require_owner
 from tenant import get_school_id
 
 router = APIRouter(prefix="/api/import", tags=["import"])
@@ -18,13 +18,6 @@ MAX_IMPORT_BYTES = 5 * 1024 * 1024
 REQUIRED_COLUMNS = ["name", "class", "section", "parent_name", "parent_phone"]
 OPTIONAL_COLUMNS = ["date_of_birth", "address", "route_zone_id"]
 SUPPORTED_EXTENSIONS = {".csv", ".xlsx"}
-
-
-def _require_owner(request: Request) -> dict:
-    user = get_current_user(request)
-    if user.get("role") != "owner":
-        raise HTTPException(403, "Only the owner can import data")
-    return user
 
 
 def _file_extension(filename: str) -> str:
@@ -210,8 +203,7 @@ def _guardian_update(row: dict) -> dict:
 
 
 @router.post("/validate")
-async def validate_import(request: Request, file: UploadFile = File(...)):
-    _require_owner(request)
+async def validate_import(file: UploadFile = File(...), user: dict = Depends(require_owner)):
     db = get_db()
     ext, content = await _read_file(file)
     rows = _parse_rows(ext, content)
@@ -221,11 +213,10 @@ async def validate_import(request: Request, file: UploadFile = File(...)):
 
 @router.post("/commit")
 async def commit_import(
-    request: Request,
     file: UploadFile = File(...),
     overwrite_duplicates: bool = Form(False),
+    user: dict = Depends(require_owner),
 ):
-    user = _require_owner(request)
     db = get_db()
     ext, content = await _read_file(file)
     rows = _parse_rows(ext, content)

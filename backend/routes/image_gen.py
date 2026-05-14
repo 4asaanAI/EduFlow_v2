@@ -9,9 +9,9 @@ import os
 import asyncio
 import logging
 from datetime import datetime
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from fastapi.responses import Response, JSONResponse
-from middleware.auth import get_current_user
+from middleware.auth import require_role
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/image-gen", tags=["image-gen"])
@@ -289,11 +289,7 @@ def _plain_card(pdf, x, y, w, h):
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 @router.post("/certificate")
-async def generate_certificate(request: Request):
-    user = get_current_user(request)
-    if user["role"] not in ("admin", "owner"):
-        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
-
+async def generate_certificate(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     try:
         data = await request.json()
     except Exception:
@@ -315,11 +311,7 @@ async def generate_certificate(request: Request):
 
 
 @router.post("/id-cards")
-async def generate_id_cards(request: Request):
-    user = get_current_user(request)
-    if user["role"] not in ("admin", "owner"):
-        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
-
+async def generate_id_cards(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     try:
         data = await request.json()
     except Exception:

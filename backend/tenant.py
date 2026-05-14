@@ -35,6 +35,31 @@ def scoped_filter(query: dict | None, school_id: str | None = None) -> dict:
     return {"$and": [base, school_clause]}
 
 
+def _find_branch_id_values(node) -> list:
+    """Walk a Mongo query tree collecting any literal `branch_id` clauses.
+
+    Recurses into `$and` / `$or` / `$nor`. Returns the raw values (anything
+    nested inside another operator like `{"$ne": ...}` is returned as-is so
+    the caller can decide whether it conflicts).
+    """
+    found = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k == "branch_id":
+                    found.append(v)
+                elif k in ("$and", "$or", "$nor") and isinstance(v, list):
+                    for child in v:
+                        walk(child)
+        elif isinstance(node, list):
+            for child in node:
+                walk(child)
+
+    walk(node)
+    return found
+
+
 def scoped_query(
     query: dict | None = None,
     *,
@@ -52,13 +77,38 @@ def scoped_query(
     via `$exists: False` (backward compatible with pre-Story-1-3 rows).
     branch_id is matched exactly — no exists-false fallback because every
     operational doc has been backfilled.
+
+    Part 1.5 Patch M (defense in depth):
+        * Treat empty-string branch_id the same as None (no clause applied).
+        * If the caller's query already pins branch_id (anywhere, including
+          inside `$and`/`$or`) AND that value differs from the parameter,
+          raise ValueError instead of silently letting the caller punch
+          through tenant boundaries.
+        * If the caller's query already pins the same branch_id, return the
+          query unchanged (no double-clause).
     """
+    # Empty string is just as wrong as None — fail closed instead of injecting
+    # `{"branch_id": ""}` which matches no documents but pretends to scope.
+    if branch_id == "":
+        branch_id = None
+
     base = scoped_filter(query, school_id=school_id)
     if branch_id is None:
         return base
+
+    existing = _find_branch_id_values(query or {})
+    if existing:
+        # Any caller-supplied branch_id MUST match the requested branch.
+        for value in existing:
+            if value != branch_id:
+                raise ValueError(
+                    "scoped_query branch_id conflict: query has %r, parameter has %r"
+                    % (value, branch_id)
+                )
+        # All occurrences match — caller already scoped correctly.
+        return base
+
     # Compose: existing $and with branch_id, or wrap a fresh $and.
     if "$and" in base:
         return {"$and": [*base["$and"], {"branch_id": branch_id}]}
-    if "branch_id" in base:
-        return base
     return {"$and": [base, {"branch_id": branch_id}]}

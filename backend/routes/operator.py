@@ -14,24 +14,20 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from database import get_db
-from middleware.auth import get_current_user, require_owner
+from middleware.auth import require_owner
 from services.ai_rate_limiter import get_current_count, resolve_limit
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/operator", tags=["operator"])
 
-ALLOWED_ROLES = {"owner", "principal", "accountant", "admin", "teacher", "student"}
-
-
-def _require_owner(request: Request) -> dict[str, Any]:
-    """Legacy alias kept for in-file callers. New code uses
-    `Depends(require_owner)` from middleware.auth — see operator endpoints below.
-    """
-    user = get_current_user(request)
-    if user.get("role") != "owner":
-        raise HTTPException(status_code=403, detail="Forbidden")
-    return user
+# Part 1.5 Patch O: must match the canonical top-level user `role` field that
+# resolve_limit / get_current_count look up. `principal`/`accountant` were
+# previously allowed as override keys but no user has role=principal — those
+# values are sub_categories, and an override targeting them silently never
+# matches. If a school needs a sub_category-specific ceiling the schema needs
+# a new (role, sub_category) tuple — out of scope for Part 1.5.
+ALLOWED_ROLES = {"owner", "admin", "teacher", "student"}
 
 
 def _parse_iso(value: Any) -> datetime | None:
@@ -50,14 +46,17 @@ def _parse_iso(value: Any) -> datetime | None:
 
 
 @router.patch("/schools/{school_id}/ai-rate-limit")
-async def upsert_ai_rate_limit_override(school_id: str, request: Request):
+async def upsert_ai_rate_limit_override(
+    school_id: str,
+    request: Request,
+    user: dict = Depends(require_owner),
+):
     """Create or replace the AI rate-limit override for a (school, role) pair.
 
     Body: { role, limit, reason, expires_at? }. expires_at may be omitted or
     null for a non-expiring override (it can still be removed by writing a
     fresh override later — older rows are ignored once a newer one exists).
     """
-    user = _require_owner(request)
     db = get_db()
     body = await request.json()
 
@@ -123,12 +122,15 @@ async def upsert_ai_rate_limit_override(school_id: str, request: Request):
 
 
 @router.get("/ai-action-counts")
-async def get_ai_action_counts(request: Request, user_id: str, session_id: str):
+async def get_ai_action_counts(
+    user_id: str,
+    session_id: str,
+    operator: dict = Depends(require_owner),
+):
     """Return the current-hour AI write count + configured limit for a session.
 
     Owner-only. Used by Story 7-43 platform health dashboard.
     """
-    operator = _require_owner(request)
     db = get_db()
 
     target = await db.auth_users.find_one({"$or": [{"id": user_id}, {"user_info.id": user_id}]})

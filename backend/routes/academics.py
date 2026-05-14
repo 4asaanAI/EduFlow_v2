@@ -1,7 +1,7 @@
 """Routes: assignments, exams, results, subjects, timetable"""
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
-from middleware.auth import get_current_user
+from middleware.auth import get_current_user, require_role
 from datetime import datetime
 from tenant import get_school_id
 import uuid
@@ -37,11 +37,8 @@ async def list_assignments(request: Request, class_id: str = None):
 
 
 @router.post("/assignments")
-async def create_assignment(request: Request):
+async def create_assignment(request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["teacher", "admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     assignment = {
         "id": str(uuid.uuid4()),
@@ -59,11 +56,8 @@ async def create_assignment(request: Request):
 
 
 @router.patch("/assignments/{assignment_id}")
-async def update_assignment(assignment_id: str, request: Request):
+async def update_assignment(assignment_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["teacher", "admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     update = {k: v for k, v in body.items() if k in ["title", "description", "due_date", "subject_id", "class_id"]}
     update["updated_at"] = datetime.now().isoformat()
@@ -74,11 +68,8 @@ async def update_assignment(assignment_id: str, request: Request):
 
 
 @router.delete("/assignments/{assignment_id}")
-async def delete_assignment(assignment_id: str, request: Request):
+async def delete_assignment(assignment_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["teacher", "admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     result = await db.assignments.delete_one({"id": assignment_id})
     if result.deleted_count == 0:
         raise HTTPException(404, "Assignment not found")
@@ -94,11 +85,8 @@ async def list_exams(request: Request):
 
 
 @router.post("/exams")
-async def create_exam(request: Request):
+async def create_exam(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     ay = await db.academic_years.find_one({"is_current": True})
     exam = {
@@ -145,11 +133,8 @@ async def get_results(request: Request, exam_id: str = None, student_id: str = N
 
 
 @router.post("/results/bulk")
-async def bulk_enter_results(request: Request):
+async def bulk_enter_results(request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["teacher", "admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     results = body.get("results", [])
     saved = 0
@@ -175,11 +160,8 @@ async def bulk_enter_results(request: Request):
 
 
 @router.post("/lesson-plans")
-async def create_lesson_plan(request: Request):
+async def create_lesson_plan(request: Request, user: dict = Depends(require_role("teacher", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["teacher", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     plan = {
         "id": str(uuid.uuid4()),
@@ -206,11 +188,8 @@ async def list_lesson_plans(request: Request):
 
 
 @router.patch("/lesson-plans/{plan_id}")
-async def update_lesson_plan(plan_id: str, request: Request):
+async def update_lesson_plan(plan_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["teacher", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     update = {k: v for k, v in body.items() if k in ["chapter", "subject_id", "class_id", "content"]}
     update["updated_at"] = datetime.now().isoformat()
@@ -221,11 +200,8 @@ async def update_lesson_plan(plan_id: str, request: Request):
 
 
 @router.delete("/lesson-plans/{plan_id}")
-async def delete_lesson_plan(plan_id: str, request: Request):
+async def delete_lesson_plan(plan_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["teacher", "admin"]:
-        raise HTTPException(403, "Forbidden")
     result = await db.lesson_plans.delete_one({"id": plan_id})
     if result.deleted_count == 0:
         raise HTTPException(404, "Not found")
@@ -233,12 +209,9 @@ async def delete_lesson_plan(plan_id: str, request: Request):
 
 
 @router.post("/question-papers/generate")
-async def generate_question_paper(request: Request):
+async def generate_question_paper(request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     """Use LLM to generate a question paper."""
     from ai.llm_client import llm_client
-    user = get_user(request)
-    if user["role"] not in ["teacher", "admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     subject = body.get("subject", "Mathematics")
     chapters = body.get("chapters", "all chapters")
@@ -312,11 +285,8 @@ async def get_question_paper(paper_id: str, request: Request):
 
 
 @router.patch("/question-papers/{paper_id}")
-async def update_question_paper(paper_id: str, request: Request):
+async def update_question_paper(paper_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["teacher", "admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     update = {k: v for k, v in body.items() if k in ["title", "generated_content"]}
     update["updated_at"] = datetime.now().isoformat()
@@ -327,11 +297,8 @@ async def update_question_paper(paper_id: str, request: Request):
 
 
 @router.delete("/question-papers/{paper_id}")
-async def delete_question_paper(paper_id: str, request: Request):
+async def delete_question_paper(paper_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["teacher", "admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     result = await db.question_papers.delete_one({"id": paper_id})
     if result.deleted_count == 0:
         raise HTTPException(404, "Not found")
@@ -363,11 +330,8 @@ async def get_timetable(class_id: str, request: Request):
 
 
 @router.post("/timetable")
-async def add_timetable_slot(request: Request):
+async def add_timetable_slot(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     slot = {
         "id": str(uuid.uuid4()),
@@ -388,11 +352,8 @@ async def add_timetable_slot(request: Request):
 
 
 @router.patch("/timetable/{slot_id}")
-async def update_timetable_slot(slot_id: str, request: Request):
+async def update_timetable_slot(slot_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     await db.timetable_slots.update_one({"id": slot_id}, {"$set": body})
     slot = await db.timetable_slots.find_one({"id": slot_id}, {"_id": 0})
@@ -400,22 +361,16 @@ async def update_timetable_slot(slot_id: str, request: Request):
 
 
 @router.delete("/timetable/{slot_id}")
-async def delete_timetable_slot(slot_id: str, request: Request):
+async def delete_timetable_slot(slot_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     await db.timetable_slots.delete_one({"id": slot_id})
     return {"success": True}
 
 
 @router.put("/timetable/import")
-async def bulk_import_timetable(request: Request):
+async def bulk_import_timetable(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     """Bulk import timetable entries — duplicates (same class+period+day) are replaced."""
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     entries = body if isinstance(body, list) else body.get("entries", [])
     if not entries:
@@ -466,12 +421,9 @@ async def bulk_import_timetable(request: Request):
 
 
 @router.get("/timetable/availability")
-async def teacher_availability(request: Request, teacher_id: str = None, date: str = None, day_of_week: int = None):
+async def teacher_availability(request: Request, teacher_id: str = None, date: str = None, day_of_week: int = None, user: dict = Depends(require_role("admin", "owner", "teacher"))):
     """Check which periods a teacher is free on a given day."""
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner", "teacher"]:
-        raise HTTPException(403, "Forbidden")
     query = {}
     if teacher_id:
         query["teacher_id"] = teacher_id
@@ -510,11 +462,8 @@ async def list_ptm_notes(request: Request, student_id: str = None):
 
 
 @router.post("/ptm-notes")
-async def create_ptm_note(request: Request):
+async def create_ptm_note(request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["teacher", "admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     note = {
         "id": str(uuid.uuid4()),
@@ -529,11 +478,8 @@ async def create_ptm_note(request: Request):
 
 
 @router.patch("/ptm-notes/{note_id}")
-async def update_ptm_note(note_id: str, request: Request):
+async def update_ptm_note(note_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["teacher", "admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     update = {k: v for k, v in body.items() if k in ["notes", "student_id"]}
     update["updated_at"] = datetime.now().isoformat()
@@ -544,11 +490,8 @@ async def update_ptm_note(note_id: str, request: Request):
 
 
 @router.delete("/ptm-notes/{note_id}")
-async def delete_ptm_note(note_id: str, request: Request):
+async def delete_ptm_note(note_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["teacher", "admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     result = await db.ptm_notes.delete_one({"id": note_id})
     if result.deleted_count == 0:
         raise HTTPException(404, "Not found")
@@ -571,11 +514,8 @@ async def list_worksheets(request: Request):
 
 
 @router.post("/worksheets")
-async def create_worksheet(request: Request):
+async def create_worksheet(request: Request, user: dict = Depends(require_role("teacher", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["teacher", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     ws = {
         "id": str(uuid.uuid4()),
@@ -592,11 +532,8 @@ async def create_worksheet(request: Request):
 
 
 @router.patch("/worksheets/{ws_id}")
-async def update_worksheet(ws_id: str, request: Request):
+async def update_worksheet(ws_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["teacher", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     update = {k: v for k, v in body.items() if k in ["topic", "subject_id", "type", "content"]}
     update["updated_at"] = datetime.now().isoformat()
@@ -607,11 +544,8 @@ async def update_worksheet(ws_id: str, request: Request):
 
 
 @router.delete("/worksheets/{ws_id}")
-async def delete_worksheet(ws_id: str, request: Request):
+async def delete_worksheet(ws_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["teacher", "admin"]:
-        raise HTTPException(403, "Forbidden")
     result = await db.worksheets.delete_one({"id": ws_id})
     if result.deleted_count == 0:
         raise HTTPException(404, "Not found")
@@ -641,6 +575,8 @@ async def list_substitutions(request: Request, date: str = None, teacher_id: str
         ).sort("period_number", 1).to_list(50)
         return {"success": True, "data": assigned}
 
+    # auth: teachers see their own substitutions above (early-return);
+    # full grid view is owner/admin only.
     if user["role"] not in ["owner", "admin"]:
         raise HTTPException(403, "Forbidden")
 
@@ -694,11 +630,8 @@ async def list_substitutions(request: Request, date: str = None, teacher_id: str
 
 
 @router.post("/substitutions")
-async def create_substitution(request: Request):
+async def create_substitution(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     required = ["date", "absent_teacher_id", "substitute_teacher_id", "class_id", "period_number"]
     if any(not body.get(field) for field in required):
@@ -753,11 +686,8 @@ async def list_curriculum(request: Request, class_id: str = None, subject_id: st
 
 
 @router.post("/curriculum")
-async def update_curriculum(request: Request):
+async def update_curriculum(request: Request, user: dict = Depends(require_role("teacher", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["teacher", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     doc = {
         "id": str(uuid.uuid4()),
@@ -776,11 +706,8 @@ async def update_curriculum(request: Request):
 
 
 @router.patch("/curriculum/{item_id}")
-async def patch_curriculum(item_id: str, request: Request):
+async def patch_curriculum(item_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["teacher", "admin"]:
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     update = {k: v for k, v in body.items() if k in ["topic", "status", "class_id", "subject_id"]}
     update["updated_at"] = datetime.now().isoformat()
@@ -791,11 +718,8 @@ async def patch_curriculum(item_id: str, request: Request):
 
 
 @router.delete("/curriculum/{item_id}")
-async def delete_curriculum(item_id: str, request: Request):
+async def delete_curriculum(item_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["teacher", "admin"]:
-        raise HTTPException(403, "Forbidden")
     result = await db.curriculum_progress.delete_one({"id": item_id})
     if result.deleted_count == 0:
         raise HTTPException(404, "Not found")

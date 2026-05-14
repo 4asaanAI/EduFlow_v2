@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
-from middleware.auth import get_current_user
+from middleware.auth import get_current_user, require_role
 from datetime import datetime
 import os
 import uuid
@@ -22,12 +22,8 @@ def get_twilio_client():
 
 
 @router.post("/send-reminder")
-async def send_fee_reminder(request: Request):
+async def send_fee_reminder(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
-
     body = await request.json()
     student_id = body.get("student_id")
     phone = body.get("phone")
@@ -92,12 +88,8 @@ async def send_fee_reminder(request: Request):
 
 
 @router.post("/send-bulk")
-async def send_bulk_reminders(request: Request):
+async def send_bulk_reminders(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
-
     body = await request.json()
     recipients = body.get("recipients", [])   # [{student_id, phone, student_name, amount}]
     message_template = body.get("message_template", "")
@@ -165,13 +157,9 @@ async def send_bulk_reminders(request: Request):
 
 
 @router.post("/send-parent-message")
-async def send_parent_message(request: Request):
+async def send_parent_message(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     """Send SMS to parents of selected students via Twilio."""
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
-
     body = await request.json()
     student_ids = body.get("student_ids", [])
     message_text = body.get("message", "").strip()
@@ -254,20 +242,14 @@ async def send_parent_message(request: Request):
 
 
 @router.get("/logs")
-async def get_sms_logs(request: Request):
+async def get_sms_logs(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
     logs = await db.sms_logs.find({}, {"_id": 0}).sort("sent_at", -1).to_list(100)
     return {"success": True, "data": logs}
 
 
 @router.get("/config-status")
-async def get_config_status(request: Request):
-    user = get_user(request)
-    if user["role"] not in ["admin", "owner"]:
-        raise HTTPException(403, "Forbidden")
+async def get_config_status(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
     token = os.environ.get("TWILIO_AUTH_TOKEN", "")
     phone = os.environ.get("TWILIO_PHONE_NUMBER", "")

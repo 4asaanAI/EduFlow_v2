@@ -4,10 +4,10 @@ from datetime import datetime
 import re
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from database import get_db
-from middleware.auth import get_current_user, hash_password
+from middleware.auth import get_current_user, hash_password, require_role
 from models.schemas import Staff
 from tenant import get_school_id, scoped_filter
 
@@ -249,12 +249,8 @@ async def delete_staff(staff_id: str, request: Request):
 
 
 @router.get("/{staff_id}/leave-requests")
-async def get_leave_requests(staff_id: str, request: Request):
+async def get_leave_requests(staff_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
-
     leaves = await db.leave_requests.find(scoped_filter({"staff_id": staff_id}, get_school_id()), {"_id": 0}).to_list(50)
     return {"success": True, "data": leaves}
 
@@ -272,12 +268,8 @@ async def get_my_leaves(request: Request):
 
 
 @router.get("/leaves/pending")
-async def get_pending_leaves(request: Request):
+async def get_pending_leaves(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
-
     leaves = await db.leave_requests.find(scoped_filter({"status": "pending"}, get_school_id()), {"_id": 0}).to_list(50)
     s_ids = list({lr["staff_id"] for lr in leaves if lr.get("staff_id")})
     staff_list = await db.staff.find(scoped_filter({"id": {"$in": s_ids}}, get_school_id()), {"_id": 0, "salary": 0}).to_list(len(s_ids)) if s_ids else []
@@ -287,12 +279,8 @@ async def get_pending_leaves(request: Request):
 
 
 @router.patch("/leaves/{leave_id}")
-async def update_leave(leave_id: str, request: Request):
+async def update_leave(leave_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    user = get_user(request)
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
-
     body = await request.json()
     update = {
         "status": body.get("status"),
