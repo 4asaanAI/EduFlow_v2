@@ -11,10 +11,10 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Iterable
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from database import get_db
-from middleware.auth import get_current_user
+from middleware.auth import get_current_user, require_owner, require_owner_or_principal
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -54,12 +54,12 @@ def _last_n_months(now: datetime, n: int) -> list[str]:
 
 
 @router.get("/attendance-trends")
-async def attendance_trends(request: Request, months: int = 3):
+async def attendance_trends(
+    request: Request,
+    months: int = 3,
+    user: dict = Depends(require_owner_or_principal),
+):
     """AC1 + AC4. Monthly attendance % overall + per class."""
-    user = _user(request)
-    if not _is_owner_or_principal(user):
-        raise HTTPException(status_code=403, detail="Owner or principal only")
-
     months = _clamp_months(months, 1, 12)
     db = get_db()
     bucket_keys = _last_n_months(datetime.utcnow(), months)
@@ -129,12 +129,12 @@ async def attendance_trends(request: Request, months: int = 3):
 
 
 @router.get("/fee-collection-summary")
-async def fee_collection_summary(request: Request, months: int = 6):
+async def fee_collection_summary(
+    request: Request,
+    months: int = 6,
+    user: dict = Depends(require_owner),
+):
     """AC2 + AC3 + AC4. Owner-only monthly collected vs outstanding."""
-    user = _user(request)
-    if user.get("role") != "owner":
-        raise HTTPException(status_code=403, detail="Owner only — financial data is restricted")
-
     months = _clamp_months(months, 1, 24)
     db = get_db()
     bucket_keys = _last_n_months(datetime.utcnow(), months)

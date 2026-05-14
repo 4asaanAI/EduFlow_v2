@@ -11,10 +11,10 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from database import get_db
-from middleware.auth import get_current_user
+from middleware.auth import get_current_user, require_owner
 from services.ai_rate_limiter import get_current_count, resolve_limit
 
 logger = logging.getLogger(__name__)
@@ -25,9 +25,12 @@ ALLOWED_ROLES = {"owner", "principal", "accountant", "admin", "teacher", "studen
 
 
 def _require_owner(request: Request) -> dict[str, Any]:
+    """Legacy alias kept for in-file callers. New code uses
+    `Depends(require_owner)` from middleware.auth — see operator endpoints below.
+    """
     user = get_current_user(request)
     if user.get("role") != "owner":
-        raise HTTPException(status_code=403, detail="Owner-only endpoint")
+        raise HTTPException(status_code=403, detail="Forbidden")
     return user
 
 

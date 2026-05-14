@@ -31,6 +31,14 @@ def cookie_secure() -> bool:
     return os.environ.get("ENVIRONMENT") == "production"
 
 
+# Part 1 hardening: cookie path widened from "/api/auth" to "/".
+# Rationale: future endpoints outside /api/auth (e.g. /api/account) need the
+# refresh cookie to be re-issued automatically. Security is preserved by the
+# HttpOnly + Secure + SameSite=Strict trio, which already prevents reuse from
+# malicious origins regardless of path scope.
+REFRESH_COOKIE_PATH = "/"
+
+
 def set_refresh_cookie(response: Response, token: str) -> None:
     response.set_cookie(
         key=REFRESH_COOKIE_NAME,
@@ -39,7 +47,7 @@ def set_refresh_cookie(response: Response, token: str) -> None:
         httponly=True,
         secure=cookie_secure(),
         samesite="strict",
-        path="/api/auth",
+        path=REFRESH_COOKIE_PATH,
     )
 
 
@@ -49,7 +57,7 @@ def clear_refresh_cookie(response: Response) -> None:
         httponly=True,
         secure=cookie_secure(),
         samesite="strict",
-        path="/api/auth",
+        path=REFRESH_COOKIE_PATH,
     )
 
 

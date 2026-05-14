@@ -49,7 +49,8 @@ async def test_override_endpoint_requires_owner_role(client, fake_db):
         json={"role": "owner", "limit": 200, "reason": "bump"},
     )
     assert resp.status_code == 403
-    assert "Owner-only" in resp.json()["detail"]
+    # Part 1 hardening: error message is sanitized; no role-list leak.
+    assert resp.json()["detail"] == "Forbidden"
 
 
 async def test_override_validates_role(client, fake_db):

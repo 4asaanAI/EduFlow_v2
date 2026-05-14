@@ -1,7 +1,7 @@
 """Routes: certificates, expenses, complaints, visitors, assets, transport, announcements, incidents"""
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Depends, Request, HTTPException
 from database import get_db
-from middleware.auth import get_current_user
+from middleware.auth import get_current_user, require_owner_or_principal
 from datetime import datetime
 from tenant import get_school_id, scoped_filter, add_school_id
 import uuid
@@ -16,7 +16,15 @@ def get_user(req: Request):
 
 
 def _can_decide(user: dict) -> bool:
-    return user.get("role") == "owner" or (user.get("role") == "admin" and user.get("sub_category", "principal") == "principal")
+    """Legacy predicate kept for in-file callers. New code uses
+    `Depends(require_owner_or_principal)` from middleware.auth.
+
+    NOTE: previously defaulted sub_category to 'principal' which silently
+    promoted any admin row missing sub_category. Now strict.
+    """
+    return user.get("role") == "owner" or (
+        user.get("role") == "admin" and user.get("sub_category") == "principal"
+    )
 
 
 def _audit_doc(action: str, entity_type: str, entity_id: str, user: dict, changes: dict, reason: str = None):

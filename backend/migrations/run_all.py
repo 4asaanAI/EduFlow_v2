@@ -45,6 +45,7 @@ MIGRATIONS = [
     ("012_migrate_uploads_to_s3", "Migrate legacy uploads to private S3 storage"),
     ("013_add_school_id", "Backfill schoolId for future multi-tenancy"),
     ("015_ai_rate_limit_counters", "AI rate-limit counters + overrides (Story 7-48)"),
+    ("016_admin_sub_category_default", "Backfill legacy admin sub_category=support_staff (Part 1 Auth+RBAC)"),
 ]
 
 

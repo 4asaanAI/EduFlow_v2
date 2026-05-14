@@ -7,6 +7,7 @@ All route files import get_current_user from here instead of defining locally.
 
 import os
 import logging
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, Request, Depends
@@ -21,8 +22,16 @@ JWT_SECRET = os.environ.get("JWT_SECRET")
 if not JWT_SECRET:
     if os.environ.get("ENVIRONMENT") == "production":
         raise ValueError("JWT_SECRET environment variable is required in production")
-    JWT_SECRET = "eduflow-dev-secret-change-in-production"
-    logger.warning("⚠️ Using weak JWT_SECRET in development — change in production")
+    # Part 1 hardening: dev secret is now per-process random instead of a
+    # committed constant. Prevents accidental cross-environment token reuse;
+    # tokens issued by one dev process are invalid for any other. Tests can
+    # still set JWT_SECRET explicitly via env var.
+    JWT_SECRET = secrets.token_urlsafe(48)
+    logger.warning(
+        "JWT_SECRET not set — using a per-process random secret. "
+        "Tokens issued by this process will not be valid after restart. "
+        "Set JWT_SECRET in .env to persist sessions across restarts."
+    )
 
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_MINUTES = 60
@@ -112,15 +121,50 @@ def require_role(*roles: str):
     FastAPI dependency that checks if the current user has one of the allowed roles.
     Usage:
         @router.get("/admin-only", dependencies=[Depends(require_role("owner", "admin"))])
-        async def admin_endpoint():
+        async def admin_endpoint(user: dict = Depends(require_role("owner", "admin"))):
             ...
+    Returns the user dict so handlers don't need a separate get_current_user call.
+    Error message does NOT leak the allowed-role list — clients only learn
+    "forbidden", not which roles would have worked.
     """
     def dependency(request: Request):
         user = get_current_user(request)
         if user["role"] not in roles:
-            raise HTTPException(
-                status_code=403,
-                detail=f"Role '{user['role']}' not authorized. Required: {', '.join(roles)}"
+            logger.info(
+                "role check failed: role=%s required=%s path=%s",
+                user.get("role"), roles, request.url.path,
             )
+            raise HTTPException(status_code=403, detail="Forbidden")
         return user
     return dependency
+
+
+def require_owner_or_principal(request: Request):
+    """Dependency: owner or admin-with-sub_category=principal only.
+
+    Codifies the most common 'managerial decision-maker' gate (announcements,
+    leave approvals, attendance reviews) that was previously inline-duplicated
+    across at least five routes.
+    """
+    user = get_current_user(request)
+    if user.get("role") == "owner":
+        return user
+    if user.get("role") == "admin" and user.get("sub_category") == "principal":
+        return user
+    logger.info(
+        "owner/principal gate failed: role=%s sub=%s path=%s",
+        user.get("role"), user.get("sub_category"), request.url.path,
+    )
+    raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def require_owner(request: Request):
+    """Dependency: owner role only. Replaces _require_owner inlined in routes/operator.py."""
+    user = get_current_user(request)
+    if user.get("role") != "owner":
+        logger.info(
+            "owner-only gate failed: role=%s path=%s",
+            user.get("role"), request.url.path,
+        )
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return user

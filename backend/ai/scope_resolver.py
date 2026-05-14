@@ -290,10 +290,10 @@ class Scope:
             return True
 
         if self.role == "admin":
-            # Principal and accountant can see financial data.
-            return self.sub_category in (
-                _ADMIN_FULL_OPS | {"accountant"}
-            ) or self.sub_category is None  # legacy admin without sub_category
+            # Principal and accountant can see financial data. Legacy admin
+            # rows with no sub_category are denied (Part 1 hardening) —
+            # migration 016 backfills these to support_staff.
+            return self.sub_category in (_ADMIN_FULL_OPS | {"accountant"})
 
         if self.role == "student":
             # Students can see their own fee data (self-only filter enforced).
@@ -524,16 +524,18 @@ def _resolve_admin_scope(
             staff_record=staff,
         )
 
-    # No sub_category at all -- legacy admin records get full operational
-    # access.  This matches the existing behaviour in context_builder.py
-    # where ``role == "admin"`` has the same view as owner.
+    # No sub_category at all -- DENY BY DEFAULT (Part 1 hardening).
+    # Previously this fell through to type='all', which silently granted
+    # full access to legacy admin rows. Migration 016 backfills support_staff
+    # for any admin row without sub_category; if anything still arrives here
+    # it's an unrecognised configuration and gets self_only.
     if not effective:
-        logger.debug(
-            "resolve_scope: admin with no sub_category -> scope type='all' "
-            "(legacy fallback)"
+        logger.warning(
+            "resolve_scope: admin with no sub_category and no designation -> "
+            "self_only (deny-by-default). Run migration 016 to backfill legacy rows."
         )
         return Scope(
-            type="all",
+            type="self_only",
             role="admin",
             sub_category=None,
             user_id=user_id,

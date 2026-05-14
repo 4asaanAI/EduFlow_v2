@@ -1,7 +1,8 @@
 ---
 project_name: 'eduflow'
 user_name: 'Abhimanyu'
-date: '2026-05-11'
+date: '2026-05-15'
+last_refresh: '2026-05-15'
 sections_completed:
   - technology_stack
   - language_rules
@@ -10,7 +11,12 @@ sections_completed:
   - code_quality
   - workflow_rules
   - critical_rules
-existing_patterns_found: 18
+  - ai_rate_limiting
+  - announcement_moderation
+  - reports
+  - operator_endpoints
+  - multi_tenancy
+existing_patterns_found: 24
 ---
 
 # Project Context for AI Agents — EduFlow
@@ -181,11 +187,14 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 - Never log JWT tokens, passwords, or PII
 - CORS origins are explicit (env `CORS_ORIGINS`) — never set `allow_origins=["*"]`
 
-**Multi-tenancy / Branch Scoping**
-- Every MongoDB query on operational data (students, fees, attendance, staff) MUST include `branch_id` filter
+**Multi-tenancy / Branch + School Scoping**
+- TWO tenancy axes coexist: `branch_id` (per-branch within a school — legacy) and `schoolId` (per-school — Story 1-3 forward-compat for multi-tenant)
+- Every MongoDB query on operational data (students, fees, attendance, staff) MUST include `branch_id` filter via `_apply_branch_filter(query, scope)` in `ai/tool_functions_v2.py`
+- `schoolId` is applied via helpers in `backend/tenant.py` — `add_school_id(doc)` for inserts and `scoped_filter(query)` for reads. New code should always set both
 - The scope resolver (`resolve_scope`) is the single source of truth for what a user can see — never bypass it
 - `owner` role can see all branches; all other roles are scoped to their `branch_id` from the JWT payload
-- Default `branch_id` fallback in chat.py is `"branch-aaryans-joya"` — this is intentional for dev but must not reach production without a real branch_id in the JWT
+- Default `schoolId` is `"aaryans-joya"` (env `SCHOOL_ID`); default `branch_id` fallback in chat.py is `"branch-aaryans-joya"` — both intentional for single-tenant dev, must be overridden via env/JWT before multi-school production
+- For per-tenant overrides (e.g., AI rate-limit overrides), `school_id` MUST come from `tenant.get_school_id()` unconditionally — never trust caller-supplied `user.schoolId` (spoofable)
 
 **Chat / SSE**
 - SSE events follow the shape `data: {json}\n\n` with types: `thinking`, `text_delta`, `tool_call`, `tool_result`, `confirm_action`, `navigate`, `done`, `token_exhausted`
@@ -215,3 +224,124 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 - Do NOT store sensitive fields (passwords, tokens) in MongoDB documents without hashing
 - Do NOT use `find().to_list(None)` — always set a limit
 - Do NOT add new npm packages without checking if a shadcn/ui or Radix primitive already covers the use case
+- Do NOT bind `_now` (or any time function) as a Python default argument value — Python evaluates defaults at definition time, breaking `monkeypatch.setattr(module, "_now", ...)`. Use `now_fn: Optional[Callable] = None` and resolve via `(now_fn or _now)()` inside the function.
+
+---
+
+## AI Rate Limiting (Story 7-48)
+
+- Per-user-per-hour counter at `db.ai_rate_limit_counters`, keyed `(user_id, hour_bucket)` — **NOT** per-session. Counter must never be keyed on session_id (allows rotation bypass).
+- Hour bucket format: `"YYYY-MM-DDTHH:00:00Z"` (UTC, top of hour). Helpers `hour_bucket(now)`, `seconds_until_next_hour(now)`, `hour_bucket_start(bucket)` in `backend/services/ai_rate_limiter.py`.
+- Atomic increment via `find_one_and_update` with `$inc` + `$setOnInsert` + `return_document=ReturnDocument.AFTER`. Falls back to `update_one(upsert=True)` + `find_one` if driver lacks `find_one_and_update`.
+- Pre-check before increment: if `existing_count >= limit`, return rejection WITHOUT incrementing. Counter must not inflate past limit (operator dashboard would show counts > limit).
+- Per-role defaults in `backend/config/ai_rate_limits.yaml` — mtime-cached. Operator override via `PATCH /api/operator/schools/{school_id}/ai-rate-limit` lives in `db.ai_rate_limit_overrides`. Override semantics: insert + mark prior `(school_id, role)` active rows as `superseded: True`. Resolver filters `superseded: {"$ne": True}` AND unexpired.
+- Rate-limit check runs BEFORE `consume_confirm_token` in `_execute_confirmed_dispatch` — rejected requests must not burn the confirm token.
+- `peek_confirm_token` validates ownership (user_id + session_id match) BEFORE rate-check. Invalid tokens must not burn rate slots. Used/replayed tokens still returned for forensic audit-log context.
+- 429 response shape: status 429, header `Retry-After: <seconds>`, body `{"success": false, "error": "rate_limit_exceeded", "retry_after_seconds": N, "limit": N, "window": "hour"}`. Use `JSONResponse(status_code=429, headers={...})` — `HTTPException` cannot set custom headers.
+- Audit log (`db.ai_dispatch_audit_log`) gained `rate_limit_hit: bool` field. Rate-limited rejections write `executed_at: None`, `success: False`, `rate_limit_hit: True`, `rate_limit_value: <limit>` via `audit_ai_rate_limit_hit`.
+
+---
+
+## Announcement Moderation (Story 7-47)
+
+- `announcements` documents gained `status` field: `"active" | "pending_approval" | "rejected"`. Legacy rows without `status` are treated as `active` for backward compatibility (filter: `{"$or": [{"status": "active"}, {"status": {"$exists": False}}]}`).
+- `POST /api/ops/announcements`: when `target_roles` (or `audience_roles`) includes `teacher` or `student`, status defaults to `pending_approval`; admin-only audiences bypass the gate.
+- Endpoints: `GET /api/ops/announcements/pending` (principal/owner only), `PATCH /api/ops/announcements/{id}/approve`, `PATCH /api/ops/announcements/{id}/reject` (requires non-empty `reason`).
+- Approver gate uses `_can_decide(user)` from `routes/operations.py` (owner OR admin with `sub_category == "principal"`).
+- Rejection notifies the original author via `_notify(db, user_id=..., ...)` helper.
+- All approve/reject decisions write to `db.audit_logs` via `_audit_doc(action, entity_type, entity_id, user, changes, reason)`.
+
+---
+
+## Reports Endpoints (Story 7-41)
+
+- `GET /api/reports/attendance-trends?months=N` — owner OR principal (admin+sub_category=principal). N clamped to [1, 12]. Returns `overall` series + per-class breakdown.
+- `GET /api/reports/fee-collection-summary?months=N` — **owner only** (principal does not see financial data — RBAC). N clamped to [1, 24].
+- Empty-state contract: `{"success": True, "empty": True, "data": []}` when no data exists. Frontend renders empty-state message instead of chart.
+- Month-bucket key format: `YYYY-MM` (string substring of ISO date). `student_attendance.date` and `fee_transactions.paid_date` are ISO strings, so lexicographic comparison works.
+- Frontend: use existing `LineChartWidget` / `BarChartWidget` from `ToolPage.js` (both Recharts-backed, `ResponsiveContainer`-wrapped — mobile-responsive by default).
+
+---
+
+## Operator Endpoints (Story 7-48)
+
+- All endpoints under `/api/operator/*` are owner-only. Use the `_require_owner(request)` helper from `routes/operator.py` (raises 403 with `"Owner-only endpoint"`).
+- Add new operator endpoints to `routes/operator.py`, not `routes/settings.py` — operator-namespace is for platform-level controls (rate limits, health, etc.), settings for school-level config.
+- Operator endpoint responses follow the standard shape: `{"success": True, "data": {...}}`.
+
+---
+
+## Test Infrastructure
+
+- `tests/backend/conftest.py` holds a session-wide `FakeDb` singleton (`_fake_db`) — collections persist across tests in the same session. **Always add an `autouse` cleanup fixture per test file** that wipes the specific collections the file uses:
+  ```python
+  @pytest.fixture(autouse=True)
+  def _clean(fake_db):
+      fake_db.<collection>.docs[:] = []
+      yield
+      fake_db.<collection>.docs[:] = []
+  ```
+- When adding new collections, register them as `FakeCollection()` attributes on `FakeDb.__init__`. Same for new route modules — patch `<routes_module>.get_db = lambda: _fake_db` in the APP_AVAILABLE block.
+- `FakeCollection` supports `find_one`, `find` (cursor), `count_documents`, `insert_one`, `update_one` (with upsert), `update_many`, `delete_one`, `delete_many`, `aggregate` (limited pipeline), `find_one_and_update` (with `$inc` + `$setOnInsert` + `return_document=AFTER`). It does NOT support: full aggregation pipeline, change streams, transactions.
+- When seeding `auth_users` for role-specific test logins, use **unique usernames per test file** (e.g., `principal_rpt` not `principal`). The session-wide DB means name collisions cause the wrong row to win at login.
+- Mock `_now` for time-sensitive tests via `monkeypatch.setattr(module, "_now", lambda: <datetime>)` — only works if the module looks up `_now` at call time (not as a default arg).
+
+---
+
+## Auth + RBAC — Part 1 hardening notes
+
+**JWT staleness policy (accepted limitation):**
+- Access tokens are issued at login + refresh; claims (including `role`, `sub_category`, `branch_id`) are frozen for the access token's 60-minute TTL.
+- If a user's `sub_category` or role changes server-side (e.g., admin promoted to principal), the change takes effect on the **next refresh** (within 60 minutes), not immediately.
+- This is an accepted trade-off — re-fetching the user record on every request would double the DB read load.
+- Mitigations: `consume_refresh_token` re-fetches `is_active` on every refresh, so deactivation propagates within 60 minutes. Password reset revokes all refresh tokens immediately.
+- **Do not add custom session-cache logic per-request** without an explicit performance budget — the staleness window is documented and accepted.
+
+**Access-token revocation (accepted limitation):**
+- We do not maintain an access-token deny-list. An access token is valid for its full 60-minute TTL even after the user logs out.
+- Logout revokes the **refresh** token, so the user cannot extend the session beyond the access-token's natural expiry.
+- Acceptable for the 60-minute window. If short-window leak becomes a concern, add a `token_revocations` collection keyed on JWT `jti` claim — but only if needed.
+
+**Role-check canonical pattern (Part 1 hardening):**
+- New routes MUST use one of these dependencies from `middleware/auth.py`:
+  - `Depends(require_role("owner", "admin"))` — generic role list
+  - `Depends(require_owner)` — owner-only (platform/operator endpoints)
+  - `Depends(require_owner_or_principal)` — managerial decision gates
+- Error message is always `"Forbidden"` — no allowed-role list leak.
+- Legacy inline `if user["role"] not in [...]` checks are tolerated but should be migrated when touching the file. Follow-up story will batch the remaining ~25 routes.
+
+**Legacy admin permissiveness (FIXED in Part 1):**
+- `scope_resolver` previously fell through to `type="all"` for any admin row missing `sub_category` (security bug).
+- Migration `016_admin_sub_category_default` backfills `sub_category="support_staff"` for these rows.
+- Resolver now denies-by-default (`type="self_only"`) for missing sub_category.
+
+**Dev JWT secret (FIXED in Part 1):**
+- No longer a committed constant. `secrets.token_urlsafe(48)` is generated per-process when `JWT_SECRET` env var is absent and `ENVIRONMENT != production`.
+- Side effect: dev tokens are invalidated on process restart. Set `JWT_SECRET` in `.env` to persist sessions locally.
+
+**Refresh cookie path (FIXED in Part 1):**
+- Path widened from `/api/auth` to `/`. Future auth-adjacent endpoints (e.g., `/api/account/*`) now receive the cookie.
+- Security still enforced by `HttpOnly + Secure + SameSite=Strict` trio.
+
+**Combined-tenancy helper (Part 1):**
+- `scoped_query(query, branch_id=..., school_id=...)` in `backend/tenant.py` returns a MongoDB query satisfying BOTH `branch_id` AND `schoolId` axes.
+- New operational queries should use this helper rather than applying `branch_id` and `scoped_filter` separately (which historically dropped one or the other).
+
+---
+
+## Dead Code / Documentation Debt
+
+- **`db.otps` collection** has indexes in `backend/database.py` but **zero references** in active route code. Legacy artifact from a planned phone-OTP login that was never implemented. Password resets use `db.password_reset_tokens`, not `otps`. Do not write to `otps` — the collection should be dropped during Part 4 (Multi-tenancy + Data Layer) audit.
+
+---
+
+## Migration Discipline
+
+- Migrations live in `backend/migrations/NNN_<slug>.py` — sequential numeric prefix.
+- Every migration must:
+  - Export an `async def migrate(db=None)` callable accepting an optional driver
+  - Be idempotent (re-run safe) — wrap mutations in conditional checks where needed
+  - Be registered in `run_all.py`'s `MIGRATIONS` list (sequential — DO NOT skip numbers)
+- **Known landmine:** `014_ensure_maintenance_user` exists but is NOT in `run_all.py` — flag for repair during Part 4 (Multi-tenancy + Data Layer).
+- For TTL indexes, use `expireAfterSeconds=0` and store the actual expiry datetime in the doc's `expires_at` field. Use `sparse=True` for collections where TTL is conditional (some rows persist forever).
+
