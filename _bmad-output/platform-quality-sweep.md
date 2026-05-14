@@ -10,8 +10,8 @@ User-confirmed order: **3 → 1 → 2 → 4 → 5 → 6 → 7 → 8 → 9 → ..
 
 | # | Part | Status | Sub-stories | Started | Closed | Notes |
 |---|---|---|---|---|---|---|
-| 1 | **Auth + RBAC** | ✅ done | All 12 concerns fixed (4 High, 5 Medium, 3 Low) | 2026-05-15 | 2026-05-15 | Migration 016, scoped_query helper, require_role + require_owner + require_owner_or_principal dependencies adopted in new routes, scope_resolver hardened (legacy fallback removed), 48 scope tests + 3 concurrency tests added, dev JWT secret per-process, refresh cookie path /, JWT staleness + access-token revocation policies documented. 224/224 backend tests pass. |
-| 2 | **AI Layer** | 📋 next | TBD | — | — | Tool dispatch, confirm tokens, idempotency, rate limiter, content filter, audit, prompts |
+| 1 | **Auth + RBAC** | 🟡 partial — review revealed gaps | 11/12 concerns closed; concern #1 (helper adoption) at 3% (4/130 routes) | 2026-05-15 | — | Hardening landed (migration 016, scope_resolver fallback removed, scoped_query, 48 scope tests, JWT/cookie hardening) BUT 3 parallel reviewers (adversarial-general, edge-case-hunter, party-mode) found 16 new issues. See `parts/auth-rbac/review-findings-and-fix-plan.md` for the full triage and ordered fix plan. **Do NOT start Part 2 until Part 1.5 closes these.** |
+| 2 | **AI Layer** | ⏸️ blocked by Part 1.5 | TBD | — | — | Tool dispatch, confirm tokens, idempotency, rate limiter, content filter, audit, prompts |
 | 3 | **Owner role (vertical)** | 🟦 queued | TBD | — | — | School Pulse, financial reports, fee collection, broadcaster — full stack |
 | 4 | **Multi-tenancy + Data Layer** | 🟦 queued | TBD | — | — | schoolId propagation, scoped queries, migration hygiene, index/TTL audit |
 | 5 | **Notifications + Real-time (SSE)** | 🟦 queued | TBD | — | — | in-app notifications, SSE keepalive, backpressure |
