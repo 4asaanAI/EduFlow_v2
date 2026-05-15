@@ -114,12 +114,18 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 - Indexes are created in `database.py → _create_indexes()` — add new indexes there, not ad-hoc
 
 **AI / LLM Integration**
-- Primary LLM: `LLMClient` in `backend/ai/llm_client.py` — uses Azure OpenAI via OpenAI SDK, deployment `gpt-5.3-chat`
+- Primary LLM: `LLMClient` in `backend/ai/llm_client.py` — uses Azure OpenAI via OpenAI SDK, deployment `gpt-5.3-chat`. **Per-call `timeout=45` is set** (Part 2 P5) — do not remove; the SDK default of ~600s leaks SSE workers under flaky LLM conditions.
 - Tool calls: tools are registered in `TOOL_REGISTRY` (dict in `tool_functions_v2.py`) with `roles` list — always check role before exposing a tool
-- Scope enforcement: call `await resolve_scope(user)` before every tool invocation; use `scope.filter()` to get the MongoDB filter dict
+- Scope enforcement: call `await resolve_scope(user)` before every tool invocation; use `scope.filter()` to get the MongoDB filter dict. **Part 2 P1: `Scope.branch_id` is now ALWAYS populated from the JWT** for non-owner users; `scope.filter()` always emits a `branch_id` clause when set. Tool authors do NOT need to pass branch_id manually — the helper covers it.
+- Tool signatures: prefer `(params, user, scope)`. v1 tools in `ai/tool_functions.py` are now all 3-arg (Part 2 P1 migration); never re-introduce a 2-arg tool. The helper `_tenant_query(scope, base)` composes branch_id + schoolId for every Mongo read.
 - Write operations (`mark_attendance`, `record_fee_payment`, etc.) require a confirm-action flow — add to `WRITE_ACTION_TOOLS` set in `routes/chat.py`
-- Max 3 tool-call rounds per chat turn (`MAX_TOOL_ROUNDS = 3`) — design tools to be composable, not monolithic
-- Content filter: `check_input_safety()` and `filter_response()` from `ai/content_filter.py` run for student-role users — student-facing AI responses must pass the filter
+- **Audit log is write-ahead** (Part 2 P4): `audit_ai_dispatch_pending()` inserts a `status="pending"` row BEFORE the tool runs; `audit_ai_dispatch_finalize()` updates with success/failure after. If the pending insert fails, abort the dispatch with 503. `_infer_success` returns False on missing/non-bool `success` key. Always finalize on exception paths.
+- **Tool errors leak nothing** (Part 2 P3): never put `str(e)` into a `tool_result.error`, SSE event, or chat history. Use `{"error": "data_unavailable", "correlation_id": <uuid>}`; full exception goes to `logger.exception(..., correlation_id)`. Same rule for 5xx HTTPException details.
+- Max 3 tool-call rounds per chat turn (`MAX_TOOL_ROUNDS = 3`) — design tools to be composable, not monolithic. Part 2 P5 fixed the off-by-one: `tool_rounds` initialises to 1 when a keyword tool fires.
+- Conversation history (Part 2 P2): load `HISTORY_KEEP_FIRST` anchors ASC + `HISTORY_KEEP_RECENT` recent DESC and reverse. Never use `.sort(created_at, ASC).to_list(HISTORY_LIMIT)` — loads the OLDEST messages and silently strips recent context. Insert an elision marker between anchors and recent so the LLM does not hallucinate continuity.
+- Name resolution (Part 2 P1): `_resolve_params(params, db, scope)` is scope-aware. Ambiguous matches set `_resolution_error` and the chat handler surfaces it to the user BEFORE issuing a confirm token. Inactive matches add `_resolved_inactive: True` instead of silently failing.
+- SSE generator (Part 2 P5): the LLM call is wrapped in `try/finally` that always sets `llm_task_done` and `task.cancel()`s on exit. Wallclock cap 90s; poll `request.is_disconnected()` between keepalives. Pass `request=` to `_generate_chat_sse` so disconnect detection works.
+- Content filter: `check_input_safety()` and `filter_response()` from `ai/content_filter.py` run for student-role users — student-facing AI responses must pass the filter. **TODO (Part 2 Wave 2 P8): rich_blocks and tool results are NOT yet filtered for students** — landing in Wave 2.
 
 ---
 
