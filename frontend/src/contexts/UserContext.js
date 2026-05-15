@@ -4,6 +4,7 @@ import {
   clearLegacyLongLivedTokens,
   getAccessToken,
   getStoredUser,
+  redirectToLoginOnce,
   refreshAccessToken,
   setAuthSession,
 } from '../lib/authSession';
@@ -30,8 +31,7 @@ export async function authFetch(url, options = {}) {
       res = await fetch(url, { credentials: 'include', ...options, headers: retryHeaders });
       if (res.status !== 401) return res;
     } catch {}
-    clearAuthSession();
-    if (window.location.pathname !== '/login') window.location.href = '/login';
+    redirectToLoginOnce('/login');
   }
 
   return res;

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { CalendarDays, RefreshCw, UserCheck } from 'lucide-react';
 import { getAuthHeaders } from '../../lib/authSession';
-import { ToolPage, StatCard, DataTable, Badge, ActionBtn } from './ToolPage';
+import { ToolPage, StatCard, DataTable, Badge, ActionBtn, ErrorCard } from './ToolPage';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -70,25 +70,26 @@ export default function PrincipalDailyOps() {
       loading={loading}
       onRefresh={load}
       actions={(
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--c-faint)', fontSize: 12 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-text-muted)', fontSize: 12 }}>
           <CalendarDays size={14} />
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 8, color: 'var(--c-text)', padding: '7px 10px' }} />
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, color: 'var(--color-text-primary)', padding: '7px 10px' }} />
         </label>
       )}
     >
-      {error && <div style={{ color: 'var(--tool-hex-f87171)', marginBottom: 14 }}>{error}</div>}
+      {error && <ErrorCard message={error} onRetry={load} />}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(160px, 1fr))', gap: 12, marginBottom: 16, maxWidth: 780 }}>
-        <StatCard value={meta.absent_teacher_count || 0} label="ABSENT TEACHERS" color="var(--tool-hex-f87171)" />
-        <StatCard value={items.length} label="AFFECTED PERIODS" color="var(--tool-hex-fbbf24)" />
-        <StatCard value={meta.uncovered_period_count || 0} label="NEEDS SUBSTITUTE" color="var(--tool-hex-4f8ff7)" />
+        <StatCard value={meta.absent_teacher_count || 0} label="ABSENT TEACHERS" color="var(--color-danger)" />
+        <StatCard value={items.length} label="AFFECTED PERIODS" color="var(--color-warning)" />
+        <StatCard value={meta.uncovered_period_count || 0} label="NEEDS SUBSTITUTE" color="var(--color-accent-blue)" />
       </div>
       <DataTable
         title="Substitution Plan"
         headers={['Absent Teacher', 'Period', 'Class', 'Subject', 'Status', 'Suggested Substitute', 'Action']}
         rows={rows}
         emptyMsg="No absent-teacher timetable conflicts for this date"
+        loading={loading}
       />
-      <button onClick={load} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none', color: 'var(--tool-hex-4f8ff7)', cursor: 'pointer', fontSize: 12 }}>
+      <button onClick={load} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none', color: 'var(--color-accent-blue)', cursor: 'pointer', fontSize: 12 }}>
         <RefreshCw size={13} /> Refresh coverage
       </button>
     </ToolPage>

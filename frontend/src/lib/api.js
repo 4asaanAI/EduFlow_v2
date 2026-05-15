@@ -1,4 +1,4 @@
-import { clearAuthSession, getAccessToken, refreshAccessToken } from './authSession';
+import { getAccessToken, redirectToLoginOnce, refreshAccessToken } from './authSession';
 
 const BACKEND = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND}/api`;
@@ -23,7 +23,7 @@ function getHeaders() {
 /**
  * Wrapper around fetch that refreshes once on 401 before redirecting.
  */
-async function apiFetch(url, options = {}) {
+export async function apiFetch(url, options = {}) {
   let res = await fetch(url, { credentials: 'include', ...options });
 
   if (res.status === 401) {
@@ -39,8 +39,7 @@ async function apiFetch(url, options = {}) {
       res = await fetch(url, { credentials: 'include', ...retryOptions });
       if (res.status !== 401) return res;
     } catch {}
-    clearAuthSession();
-    window.location.href = '/';
+    redirectToLoginOnce('/');
   }
 
   return res;
@@ -92,8 +91,9 @@ export function sendMessageStream(convId, text, user, onEvent, sessionId = null)
     body: JSON.stringify({ text, session_id: chatSessionId }),
   }).then(async (res) => {
     if (res.status === 401) {
-      clearAuthSession();
-      window.location.href = '/';
+      // SSE chat path: 401 mid-stream redirects immediately; retrying would
+      // duplicate the in-progress conversation message and AI token debit.
+      redirectToLoginOnce('/');
       return;
     }
 
@@ -105,21 +105,34 @@ export function sendMessageStream(convId, text, user, onEvent, sessionId = null)
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let receivedDone = false;
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split('\n\n');
-      buffer = parts.pop();
-      for (const part of parts) {
-        if (part.startsWith('data: ')) {
-          try {
-            const data = JSON.parse(part.slice(6));
-            onEvent(data);
-          } catch {}
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop();
+        for (const part of parts) {
+          if (part.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(part.slice(6));
+              if (data?.type === 'done') receivedDone = true;
+              onEvent(data);
+            } catch {}
+          }
         }
       }
+    } catch {
+      onEvent({ type: 'thinking_clear' });
+      onEvent({ type: 'stream_error', retryable: true, reason: 'stream_network_error' });
+      return;
+    }
+
+    if (!receivedDone) {
+      onEvent({ type: 'thinking_clear' });
+      onEvent({ type: 'stream_error', retryable: true, reason: 'stream_closed_without_done' });
     }
   });
 }
@@ -128,16 +141,27 @@ export function getBrowserSseSessionId() {
   const key = 'eduflow-sse-session-id';
   let sessionId = sessionStorage.getItem(key);
   if (!sessionId) {
-    sessionId = (crypto?.randomUUID?.() || `tab-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    const browserCrypto = typeof crypto !== 'undefined' ? crypto : null;
+    sessionId = (browserCrypto?.randomUUID?.() || `tab-${Date.now()}-${Math.random().toString(16).slice(2)}`);
     sessionStorage.setItem(key, sessionId);
   }
   return sessionId;
 }
 
-export function subscribeSSE(path, onEvent, { onReconnect } = {}) {
+export function subscribeSSE(path, onEvent, { onReconnect, reconnect = true, maxRetries = Infinity } = {}) {
   let stopped = false;
   let controller = null;
   const sessionId = getBrowserSseSessionId();
+  let retryCount = 0;
+  let retryTimer = null;
+
+  const scheduleReconnect = () => {
+    if (stopped || !reconnect || retryCount >= maxRetries) return;
+    retryCount += 1;
+    const delayMs = Math.min((2 ** (retryCount - 1)) * 500, 8000);
+    onEvent({ type: 'sse_reconnecting', retryCount, delayMs });
+    retryTimer = setTimeout(open, delayMs);
+  };
 
   const open = async () => {
     if (stopped) return;
@@ -152,7 +176,11 @@ export function subscribeSSE(path, onEvent, { onReconnect } = {}) {
         credentials: 'include',
         signal: controller.signal,
       });
-      if (!res.ok || !res.body) return;
+      if (!res.ok || !res.body) {
+        scheduleReconnect();
+        return;
+      }
+      retryCount = 0;
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -170,9 +198,10 @@ export function subscribeSSE(path, onEvent, { onReconnect } = {}) {
           } catch {}
         }
       }
+      scheduleReconnect();
     } catch (err) {
       if (!stopped && err.name !== 'AbortError') {
-        setTimeout(open, 3000);
+        scheduleReconnect();
       }
     }
   };
@@ -190,6 +219,7 @@ export function subscribeSSE(path, onEvent, { onReconnect } = {}) {
   return () => {
     stopped = true;
     document.removeEventListener('visibilitychange', handleVisibility);
+    if (retryTimer) clearTimeout(retryTimer);
     if (controller) controller.abort();
   };
 }

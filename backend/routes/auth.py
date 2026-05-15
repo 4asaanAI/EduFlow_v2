@@ -169,19 +169,23 @@ async def login(body: LoginRequest, request: Request, response: Response):
 
     if not auth:
         await _record_failed_attempt(db, attempt_key)
+        _log_login_failed(request, username, "user_not_found")
         raise HTTPException(401, "Invalid username or password")
     if auth.get("is_active") is False or auth.get("user_info", {}).get("is_active") is False:
         await _record_failed_attempt(db, attempt_key)
+        _log_login_failed(request, username, "account_inactive")
         raise HTTPException(401, "Invalid username or password")
 
     stored_password = auth.get("password_hash", "")
 
     if not stored_password or not stored_password.startswith("$2"):
         await _record_failed_attempt(db, attempt_key)
+        _log_login_failed(request, username, "missing_password_hash")
         raise HTTPException(401, "Invalid username or password")
 
     if not verify_password(password, stored_password):
         await _record_failed_attempt(db, attempt_key)
+        _log_login_failed(request, username, "invalid_password")
         raise HTTPException(401, "Invalid username or password")
 
     # Successful login — clear attempts
@@ -193,7 +197,16 @@ async def login(body: LoginRequest, request: Request, response: Response):
     refresh_token = await issue_refresh_token(db, jwt_payload["user_id"], request)
     set_refresh_cookie(response, refresh_token)
 
-    logger.info(f"Login success: {username} (role={user_info.get('role', '?')})")
+    logger.info(
+        "login_success",
+        extra={
+            "event": "login_success",
+            "username": username,
+            "user_id": jwt_payload["user_id"],
+            "role": user_info.get("role", ""),
+            "ip": _client_ip(request),
+        },
+    )
 
     return {
         "success": True,
@@ -254,6 +267,25 @@ async def _record_failed_attempt(db, key: str):
             "$set": {"last_attempt": now.isoformat(), "locked_until": locked_until.isoformat()},
         },
         upsert=True,
+    )
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip() or "unknown"
+    return request.client.host if request.client else "unknown"
+
+
+def _log_login_failed(request: Request, username: str, reason: str) -> None:
+    logger.warning(
+        "login_failed",
+        extra={
+            "event": "login_failed",
+            "username": username,
+            "reason": reason,
+            "ip": _client_ip(request),
+        },
     )
 
 

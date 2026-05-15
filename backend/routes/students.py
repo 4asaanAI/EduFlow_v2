@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from database import get_db
 from middleware.auth import get_current_user, require_owner, require_role
 from models.schemas import Guardian, Student, StudentCreate
+from services.audit_service import write_audit_doc
 from services.s3_storage import (
     build_upload_key,
     create_presigned_get_url,
@@ -127,7 +128,7 @@ async def _audit(db, *, action: str, student_id: str, user: dict, changes: dict 
         "reason": reason,
         "created_at": datetime.now().isoformat(),
     }
-    await db.audit_logs.insert_one(record)
+    await write_audit_doc(db, record, school_id=get_school_id(), branch_id=user.get("branch_id"))
 
 
 @router.get("/")

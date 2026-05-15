@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import mimetypes
 import os
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ from fastapi import HTTPException
 
 
 PRESIGNED_URL_EXPIRY_SECONDS = 3600
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -41,10 +43,13 @@ def get_s3_client():
     return boto3.client("s3", region_name=get_aws_region())
 
 
-def build_upload_key(file_id: str, original_filename: str) -> str:
+def build_upload_key(file_id: str, original_filename: str, school_id: str = "") -> str:
     suffix = PurePosixPath(original_filename or "upload").suffix.lower()
     filename = f"{file_id}{suffix}" if suffix else file_id
-    return str(PurePosixPath("uploads") / file_id / filename)
+    base = PurePosixPath("uploads") / file_id / filename
+    if school_id:
+        return str(PurePosixPath(school_id) / base)
+    return str(base)
 
 
 def infer_content_type(filename: str, fallback: str | None = None) -> str:
@@ -84,6 +89,11 @@ def upload_bytes(
         )
         head = client.head_object(Bucket=bucket, Key=key)
     except (BotoCoreError, ClientError) as exc:
+        logger.error(
+            "s3_operation_failed",
+            extra={"operation": "upload_bytes", "bucket": bucket, "key": key},
+            exc_info=True,
+        )
         raise HTTPException(502, "File upload failed") from exc
 
     remote_checksum = head.get("Metadata", {}).get("sha256")
@@ -91,7 +101,11 @@ def upload_bytes(
         try:
             client.delete_object(Bucket=bucket, Key=key)
         except (BotoCoreError, ClientError):
-            pass
+            logger.error(
+                "s3_operation_failed",
+                extra={"operation": "upload_bytes_checksum_rollback", "bucket": bucket, "key": key},
+                exc_info=True,
+            )
         raise HTTPException(502, "File upload checksum verification failed")
 
     return StoredObject(
@@ -124,19 +138,31 @@ def create_presigned_get_url(key: str, *, expires_in: int = PRESIGNED_URL_EXPIRY
     if expires_in > PRESIGNED_URL_EXPIRY_SECONDS:
         raise HTTPException(500, "Presigned URL expiry exceeds the 1 hour limit")
     client = s3_client or get_s3_client()
+    bucket = get_bucket_name()
     try:
         return client.generate_presigned_url(
             "get_object",
-            Params={"Bucket": get_bucket_name(), "Key": key},
+            Params={"Bucket": bucket, "Key": key},
             ExpiresIn=expires_in,
         )
     except (BotoCoreError, ClientError) as exc:
+        logger.error(
+            "s3_operation_failed",
+            extra={"operation": "create_presigned_get_url", "bucket": bucket, "key": key},
+            exc_info=True,
+        )
         raise HTTPException(502, "File URL generation failed") from exc
 
 
 def delete_object(key: str, *, s3_client=None) -> None:
     client = s3_client or get_s3_client()
+    bucket = get_bucket_name()
     try:
-        client.delete_object(Bucket=get_bucket_name(), Key=key)
+        client.delete_object(Bucket=bucket, Key=key)
     except (BotoCoreError, ClientError) as exc:
+        logger.error(
+            "s3_operation_failed",
+            extra={"operation": "delete_object", "bucket": bucket, "key": key},
+            exc_info=True,
+        )
         raise HTTPException(502, "File deletion failed") from exc

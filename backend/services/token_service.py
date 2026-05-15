@@ -209,8 +209,8 @@ async def record_usage(
     }
     try:
         await db.token_usage.insert_one(usage_entry)
-    except Exception as e:
-        logger.error(f"Failed to insert token_usage: {e}")
+    except Exception:
+        logger.error("token_usage_insert_failed", exc_info=True)
 
     # 2. Update balance depending on source
     if source == "personal_topup":
@@ -219,8 +219,8 @@ async def record_usage(
                 {"branch_id": branch_id},
                 {"$inc": {f"personal_topups.{user_id}": -tokens_used}},
             )
-        except Exception as e:
-            logger.error(f"Failed to update personal topup balance: {e}")
+        except Exception:
+            logger.error("personal_topup_balance_update_failed", exc_info=True)
 
     elif source == "school_topup":
         try:
@@ -228,8 +228,8 @@ async def record_usage(
                 {"branch_id": branch_id},
                 {"$inc": {"school_topup_pool": -tokens_used}},
             )
-        except Exception as e:
-            logger.error(f"Failed to update school topup pool: {e}")
+        except Exception:
+            logger.error("school_topup_pool_update_failed", exc_info=True)
 
     # For "plan" and "unlimited" sources, the usage is tracked in
     # token_usage only — the plan quota is computed dynamically from
@@ -270,8 +270,8 @@ async def record_usage(
                                 }
                             },
                         )
-        except Exception as e:
-            logger.error(f"Token warning check failed: {e}")
+        except Exception:
+            logger.warning("token_warning_check_failed", exc_info=True)
 
 
 # ─── get_usage_stats ─────────────────────────────────────────────────────────

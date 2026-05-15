@@ -3,6 +3,10 @@ from __future__ import annotations
 """
 Chat file upload endpoint — extract text from uploaded files for AI context.
 
+Files uploaded here are processed in-memory and never stored to S3 or the
+database. This is intentional: chat uploads are ephemeral AI context, not
+durable user documents.
+
 Supported formats:
   Text:   .txt  .md  .html  .htm  .csv  .json  .xml  .py  .js  .ts
   Office: .docx  .xlsx  .xls  .pptx  .pdf
@@ -25,11 +29,15 @@ router = APIRouter(prefix="/api/chat", tags=["chat-upload"])
 
 MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
 MAX_TEXT_LENGTH = 40_000                # chars forwarded to LLM context
+BLOCKED_EXTENSIONS = {
+    ".exe", ".bat", ".sh", ".cmd", ".com", ".ps1",
+    ".vbs", ".jar", ".msi", ".dll", ".bin", ".scr",
+}
 
 TEXT_EXTENSIONS = {
     ".txt", ".md", ".csv", ".json", ".xml", ".html", ".htm",
     ".py", ".js", ".ts", ".jsx", ".tsx", ".css", ".yaml", ".yml",
-    ".sh", ".sql", ".log",
+    ".sql", ".log",
 }
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".heic", ".webp", ".gif", ".bmp", ".tiff"}
 MEDIA_EXTENSIONS = {".mp3", ".mp4", ".mov", ".wav", ".m4a", ".aac", ".avi", ".mkv"}
@@ -197,11 +205,13 @@ async def upload_chat_file(request: Request, file: UploadFile = File(...)):
     get_current_user(request)  # auth guard — raises 401 if not authenticated
 
     data = await file.read()
-    if len(data) > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(413, f"File too large (max {MAX_FILE_SIZE_BYTES // (1024*1024)} MB)")
-
     filename = file.filename or "uploaded_file"
     suffix = Path(filename).suffix.lower()
+    if suffix in BLOCKED_EXTENSIONS:
+        raise HTTPException(415, f"File type {suffix} is not permitted")
+
+    if len(data) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(413, f"File too large (max {MAX_FILE_SIZE_BYTES // (1024*1024)} MB)")
 
     extracted = _extract_text(data, filename, suffix)
 

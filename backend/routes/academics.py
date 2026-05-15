@@ -3,6 +3,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
 from middleware.auth import get_current_user, require_role
 from datetime import datetime
+from services.audit_service import write_audit_doc
 from tenant import get_school_id
 import uuid
 
@@ -653,7 +654,7 @@ async def create_substitution(request: Request, user: dict = Depends(require_rol
         {"$set": {**substitution, "_id": substitution["id"]}},
         upsert=True,
     )
-    await db.audit_logs.insert_one({
+    await write_audit_doc(db, {
         "_id": str(uuid.uuid4()),
         "id": str(uuid.uuid4()),
         "schoolId": get_school_id(),
@@ -665,7 +666,7 @@ async def create_substitution(request: Request, user: dict = Depends(require_rol
         "changed_by_role": user.get("role"),
         "changes": {"created": substitution},
         "created_at": datetime.now().isoformat(),
-    })
+    }, school_id=get_school_id(), branch_id=user.get("branch_id"))
     return {"success": True, "data": substitution}
 
 

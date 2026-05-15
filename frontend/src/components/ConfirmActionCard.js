@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { getAuthHeaders } from '../lib/authSession';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
@@ -90,7 +90,10 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
   const [secondsLeft, setSecondsLeft] = useState(action.expires_in_seconds || null);
   const [rateLimitSecondsLeft, setRateLimitSecondsLeft] = useState(0);
   const [rateLimitInfo, setRateLimitInfo] = useState(null);
-  const styleInjected = React.useRef(false);
+  const [showProgressLabel, setShowProgressLabel] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const styleInjected = useRef(false);
 
   useEffect(() => {
     if (styleInjected.current) return;
@@ -128,13 +131,25 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
     return () => window.clearTimeout(timer);
   }, [status, rateLimitSecondsLeft]);
 
+  useEffect(() => {
+    if (status !== 'loading') {
+      setShowProgressLabel(false);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setShowProgressLabel(true), 2000);
+    return () => window.clearTimeout(timer);
+  }, [status]);
+
   const handleClick = useCallback(async (button) => {
     // During rate-limited cooldown the cancel button must still work; only
     // confirm is blocked. handleCancel paths through here with button.action
     // === 'cancel' which we accept.
+    if (submittingRef.current) return;
     if (status === 'loading') return;
     if (status === 'rate_limited' && button.action === 'confirm') return;
     if (status !== 'pending' && status !== 'rate_limited') return;
+    submittingRef.current = true;
+    setIsSubmitting(true);
     setStatus('loading');
     setClickedAction(button.action);
     setErrorMsg('');
@@ -185,6 +200,9 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
       setErrorMsg(err.message || 'Something went wrong. Please try again.');
       setStatus('error');
       setClickedAction(null);
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
     }
   }, [status, conversationId, sessionId, action.action_id, action.token, action.tool, action.params, onComplete]);
 
@@ -305,8 +323,8 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
     // Cancel is locked only during loading (it stays live during rate-limit
     // so the user can dismiss the action).
     const isLocked = isConfirm
-      ? (status === 'loading' || status === 'rate_limited')
-      : (status === 'loading');
+      ? (status === 'loading' || status === 'rate_limited' || isSubmitting)
+      : (status === 'loading' || isSubmitting);
     const isThisLoading = status === 'loading' && clickedAction === button.action;
 
     if (isConfirm) {
@@ -444,17 +462,19 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
           <button
             key={button.action || i}
             onClick={() => handleClick(button)}
-            disabled={status === 'loading' || (status === 'rate_limited' && button.action === 'confirm')}
+            disabled={isSubmitting || status === 'loading' || (status === 'rate_limited' && button.action === 'confirm')}
             style={getButtonStyle(button)}
             onMouseEnter={(e) => {
-              const buttonLocked = status === 'loading'
+              const buttonLocked = isSubmitting
+                || status === 'loading'
                 || (status === 'rate_limited' && button.action === 'confirm');
               if (!buttonLocked) {
                 e.currentTarget.style.opacity = '0.85';
               }
             }}
             onMouseLeave={(e) => {
-              const buttonLocked = status === 'loading'
+              const buttonLocked = isSubmitting
+                || status === 'loading'
                 || (status === 'rate_limited' && button.action === 'confirm');
               if (!buttonLocked) {
                 e.currentTarget.style.opacity = '1';
@@ -466,6 +486,15 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
           </button>
         ))}
       </div>
+      {showProgressLabel && status === 'loading' && (
+        <div role="status" aria-live="polite" style={{
+          marginTop: 10,
+          fontSize: 12,
+          color: isDark ? '#a0a0a0' : '#78716c',
+        }}>
+          Applying changes...
+        </div>
+      )}
       {secondsLeft != null && status === 'pending' && (
         <div style={{
           marginTop: 10,

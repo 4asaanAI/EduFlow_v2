@@ -443,11 +443,11 @@ def test_thinking_delay_uses_random(monkeypatch):
     assert chat_mod.THINKING_DELAY_MIN <= sleep_args[0] <= chat_mod.THINKING_DELAY_MAX
 
 
-def test_keepalive_event_is_sse_comment():
+def test_keepalive_event_is_data_event():
     from routes.chat import keepalive_event
     event = keepalive_event()
-    assert event == ":keepalive\n\n"
-    assert not event.startswith("data:")
+    assert event == 'data: {"type":"keepalive"}\n\n'
+    assert event.startswith("data: ")
 
 
 def test_empty_message_rejection_strips_zero_width_whitespace(client):

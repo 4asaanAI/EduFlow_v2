@@ -10,6 +10,8 @@ import time, re
 import uuid
 import logging
 from tenant import add_school_id, get_school_id, scoped_filter, scoped_query
+from services.audit_service import write_audit_doc
+from services.notification_service import create_notification
 
 # ----- Re-export all 14 original tools and their registry -----
 from ai.tool_functions import (
@@ -1034,20 +1036,22 @@ def _audit_doc(action: str, entity_type: str, entity_id: str, user: dict, change
     })
 
 
-async def _notify(db, *, user_id: str, notification_type: str, message: str, source_id: str, source_type: str):
-    if not user_id:
-        return
-    await db.notifications.insert_one(add_school_id({
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
-        "user_id": user_id,
-        "type": notification_type,
-        "message": message,
-        "source_record_id": source_id,
-        "source_record_type": source_type,
-        "read": False,
-        "created_at": datetime.now().isoformat(),
-    }))
+async def _write_audit(
+    db,
+    action: str,
+    entity_type: str,
+    entity_id: str,
+    user: dict,
+    changes: dict,
+    reason: str | None = None,
+    scope: dict | None = None,
+):
+    await write_audit_doc(
+        db,
+        _audit_doc(action, entity_type, entity_id, user, changes, reason),
+        school_id=get_school_id(),
+        branch_id=_branch_id(user, scope),
+    )
 
 
 async def _find_mutable_record(db, record_id: str, *, include_tech: bool = True, branch_id: str | None = None):
@@ -1097,8 +1101,16 @@ async def tool_assign_followup(params: dict, user: dict, scope: dict = None) -> 
     await handle.update_one(scoped_query({"id": params["record_id"]}, branch_id=bid), {"$set": updates})
     field = "thread" if collection in ("incidents", "complaints") else "notes"
     await _append_record_note(handle, params["record_id"], existing, user, params["note"], field, branch_id=bid)
-    await db.audit_logs.insert_one(_audit_doc("assign_followup", collection, params["record_id"], user, updates, params["note"]))
-    await _notify(db, user_id=(staff or {}).get("user_id"), notification_type="followup_assigned", message=params["note"], source_id=params["record_id"], source_type=collection)
+    await _write_audit(db, "assign_followup", collection, params["record_id"], user, updates, params["note"], scope=scope)
+    await create_notification(
+        db,
+        user_id=(staff or {}).get("user_id"),
+        notification_type="followup_assigned",
+        title="Follow-up assigned",
+        message=params["note"],
+        source_id=params["record_id"],
+        source_type=collection,
+    )
     return {"success": True, "data": {"record_id": params["record_id"], **updates}, "message": "Follow-up assigned."}
 
 
@@ -1118,7 +1130,7 @@ async def tool_update_incident_status(params: dict, user: dict, scope: dict = No
     await handle.update_one(scoped_query({"id": params["record_id"]}, branch_id=bid), {"$set": updates})
     field = "thread" if collection in ("incidents", "complaints") else "notes"
     await _append_record_note(handle, params["record_id"], existing, user, params["note"], field, branch_id=bid)
-    await db.audit_logs.insert_one(_audit_doc("update_incident_status", collection, params["record_id"], user, {"previous_status": existing.get("status"), **updates}, params["note"]))
+    await _write_audit(db, "update_incident_status", collection, params["record_id"], user, {"previous_status": existing.get("status"), **updates}, params["note"], scope=scope)
     return {"success": True, "data": {"record_id": params["record_id"], **updates}, "message": "Status updated."}
 
 
@@ -1132,7 +1144,7 @@ async def tool_add_thread_entry(params: dict, user: dict, scope: dict = None) ->
         return _empty_result("Record not found for thread entry.")
     field = "thread" if collection in ("incidents", "complaints") else "notes"
     entry = await _append_record_note(handle, params["record_id"], existing, user, params["content"], field, branch_id=bid)
-    await db.audit_logs.insert_one(_audit_doc("add_thread_entry", collection, params["record_id"], user, {"entry": entry}))
+    await _write_audit(db, "add_thread_entry", collection, params["record_id"], user, {"entry": entry}, scope=scope)
     return {"success": True, "data": entry, "message": "Thread entry added."}
 
 
@@ -1156,9 +1168,17 @@ async def tool_initiate_substitution(params: dict, user: dict, scope: dict = Non
         "created_at": datetime.now().isoformat(),
     })
     await db.substitutions.insert_one(record)
-    await db.audit_logs.insert_one(_audit_doc("initiate_substitution", "substitutions", record["id"], user, {"created": {k: v for k, v in record.items() if k != "_id"}}))
+    await _write_audit(db, "initiate_substitution", "substitutions", record["id"], user, {"created": {k: v for k, v in record.items() if k != "_id"}}, scope=scope)
     substitute = await db.staff.find_one(scoped_query({"id": params["substitute_staff_id"]}, branch_id=_branch_id(user, scope)), {"_id": 0})
-    await _notify(db, user_id=(substitute or {}).get("user_id"), notification_type="substitution_assigned", message="You have been assigned as a substitute teacher.", source_id=record["id"], source_type="substitution")
+    await create_notification(
+        db,
+        user_id=(substitute or {}).get("user_id"),
+        notification_type="substitution_assigned",
+        title="Substitution assigned",
+        message="You have been assigned as a substitute teacher.",
+        source_id=record["id"],
+        source_type="substitution",
+    )
     return {"success": True, "data": {k: v for k, v in record.items() if k != "_id"}, "message": "Substitution initiated."}
 
 
@@ -1186,7 +1206,7 @@ async def tool_correct_attendance(params: dict, user: dict, scope: dict = None) 
     })
     await db.attendance_corrections.insert_one(correction)
     await db.student_attendance.update_one(scoped_query({"id": params["record_id"]}, branch_id=bid), {"$set": {"status": new_status, "corrected": True, "updated_at": correction["corrected_at"]}})
-    await db.audit_logs.insert_one(_audit_doc("correct_attendance", "student_attendance", params["record_id"], user, {"status": {"previous": original.get("status"), "new": new_status}}, params["reason"]))
+    await _write_audit(db, "correct_attendance", "student_attendance", params["record_id"], user, {"status": {"previous": original.get("status"), "new": new_status}}, params["reason"], scope=scope)
     return {"success": True, "data": {k: v for k, v in correction.items() if k != "_id"}, "message": "Attendance correction applied."}
 
 
@@ -1217,7 +1237,7 @@ async def tool_log_contact_event(params: dict, user: dict, scope: dict = None) -
         "created_at": datetime.now().isoformat(),
     })
     await db.fee_contact_logs.insert_one(record)
-    await db.audit_logs.insert_one(_audit_doc("log_contact_event", "fee_transactions", txn["id"], user, {"contact": {k: v for k, v in record.items() if k != "_id"}}))
+    await _write_audit(db, "log_contact_event", "fee_transactions", txn["id"], user, {"contact": {k: v for k, v in record.items() if k != "_id"}}, scope=scope)
     return {"success": True, "data": {k: v for k, v in record.items() if k != "_id"}, "message": "Contact event logged."}
 
 
@@ -1246,7 +1266,7 @@ async def tool_apply_discount(params: dict, user: dict, scope: dict = None) -> d
         "note": params.get("note"),
     })
     await db.fee_discounts.insert_one(application)
-    await db.audit_logs.insert_one(_audit_doc("apply_discount", "fee_discounts", application["id"], user, {"applied": {k: v for k, v in application.items() if k != "_id"}}, params.get("note")))
+    await _write_audit(db, "apply_discount", "fee_discounts", application["id"], user, {"applied": {k: v for k, v in application.items() if k != "_id"}}, params.get("note"), scope=scope)
     return {"success": True, "data": {k: v for k, v in application.items() if k != "_id"}, "message": "Discount applied."}
 
 
@@ -1266,8 +1286,16 @@ async def tool_decide_approval_request(params: dict, user: dict, scope: dict = N
     # auth: enforcement is at the registry gate (_is_tool_authorized); body check removed (P6)
     update = {"status": status, "decision_reason": params["reason"], "decided_by": user.get("id"), "decided_at": datetime.now().isoformat(), "unread_for": []}
     await db.approval_requests.update_one(scoped_query({"id": params["request_id"]}, branch_id=bid), {"$set": update})
-    await db.audit_logs.insert_one(_audit_doc("decide_approval_request", "approval_requests", params["request_id"], user, update, params["reason"]))
-    await _notify(db, user_id=approval.get("submitted_by"), notification_type="approval_decision", message=f"{approval.get('title', 'Approval request')} {status}", source_id=params["request_id"], source_type="approval_request")
+    await _write_audit(db, "decide_approval_request", "approval_requests", params["request_id"], user, update, params["reason"], scope=scope)
+    await create_notification(
+        db,
+        user_id=approval.get("submitted_by"),
+        notification_type="approval_decision",
+        title="Approval decision",
+        message=f"{approval.get('title', 'Approval request')} {status}",
+        source_id=params["request_id"],
+        source_type="approval_request",
+    )
     return {"success": True, "data": {"request_id": params["request_id"], **update}, "message": f"Approval request {status}."}
 
 
@@ -1284,8 +1312,16 @@ async def tool_confirm_resolution(params: dict, user: dict, scope: dict = None) 
     update = {"status": "closed", "resolved_by": user.get("id"), "resolved_at": datetime.now().isoformat(), "updated_at": datetime.now().isoformat()}
     await db.facility_requests.update_one(scoped_query({"id": params["request_id"]}, branch_id=bid), {"$set": update})
     await _append_record_note(db.facility_requests, params["request_id"], existing, user, params["confirmation_note"], "notes", branch_id=bid)
-    await db.audit_logs.insert_one(_audit_doc("confirm_resolution", "facility_requests", params["request_id"], user, update, params["confirmation_note"]))
-    await _notify(db, user_id=existing.get("logged_by"), notification_type="facility_resolved", message="Facility request resolved and closed by Owner.", source_id=params["request_id"], source_type="facility_request")
+    await _write_audit(db, "confirm_resolution", "facility_requests", params["request_id"], user, update, params["confirmation_note"], scope=scope)
+    await create_notification(
+        db,
+        user_id=existing.get("logged_by"),
+        notification_type="facility_resolved",
+        title="Facility request resolved",
+        message="Facility request resolved and closed by Owner.",
+        source_id=params["request_id"],
+        source_type="facility_request",
+    )
     return {"success": True, "data": {"request_id": params["request_id"], **update}, "message": "Resolution confirmed."}
 
 
@@ -1313,7 +1349,7 @@ async def tool_record_fee_payment(params: dict, user: dict, scope: dict = None) 
         "created_at": datetime.now().isoformat(),
     })
     await db.fee_transactions.insert_one(txn)
-    await db.audit_logs.insert_one(_audit_doc("record_fee_payment", "fee_transactions", txn_id, user, {"created": {k: v for k, v in txn.items() if k != "_id"}}))
+    await _write_audit(db, "record_fee_payment", "fee_transactions", txn_id, user, {"created": {k: v for k, v in txn.items() if k != "_id"}}, scope=scope)
     return {"success": True, "data": {k: v for k, v in txn.items() if k != "_id"}, "message": "Fee payment recorded."}
 
 
@@ -1350,7 +1386,7 @@ async def tool_mark_attendance(params: dict, user: dict, scope: dict = None) -> 
             upsert=True,
         )
         saved.append({"student_id": item["student_id"], "status": item["status"]})
-    await db.audit_logs.insert_one(_audit_doc("mark_attendance", "student_attendance", class_id, user, {"date": target_date, "records": saved}))
+    await _write_audit(db, "mark_attendance", "student_attendance", class_id, user, {"date": target_date, "records": saved}, scope=scope)
     return {"success": True, "data": saved, "message": "Attendance marked."}
 
 
@@ -1498,7 +1534,7 @@ async def tool_create_announcement(params: dict, user: dict, scope: dict = None)
         "created_at": now,
     })
     await db.announcements.insert_one(announcement)
-    await db.audit_logs.insert_one(_audit_doc("create_announcement", "announcements", ann_id, user, {"title": title, "audience_type": audience_type, "status": initial_status}))
+    await _write_audit(db, "create_announcement", "announcements", ann_id, user, {"title": title, "audience_type": audience_type, "status": initial_status}, scope=scope)
     if requires_approval:
         return {
             "success": True,

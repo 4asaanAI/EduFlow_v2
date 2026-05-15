@@ -8,10 +8,20 @@ import io
 import os
 import asyncio
 import logging
+import uuid
 from datetime import datetime
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import Response, JSONResponse
+from database import get_db
 from middleware.auth import require_role
+from tenant import add_school_id, get_school_id
+from services.s3_storage import (
+    PRESIGNED_URL_EXPIRY_SECONDS,
+    build_upload_key,
+    create_presigned_get_url,
+    upload_bytes,
+)
+from services.audit_service import write_audit
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/image-gen", tags=["image-gen"])
@@ -82,7 +92,10 @@ async def _gemini_image(prompt: str, aspect_ratio: str = "3:4") -> bytes | None:
         try:
             from google import genai
             from google.genai import types
-            print(f"[AI] gemini | image-gen | aspect={aspect_ratio} | prompt_len={len(prompt)}")
+            logger.info(
+                "gemini_image_generation_started",
+                extra={"aspect_ratio": aspect_ratio, "prompt_len": len(prompt)},
+            )
             client = genai.Client(api_key=GEMINI_API_KEY)
             resp = client.models.generate_images(
                 model="imagen-3.0-generate-012",
@@ -94,10 +107,13 @@ async def _gemini_image(prompt: str, aspect_ratio: str = "3:4") -> bytes | None:
                 ),
             )
             data = resp.generated_images[0].image.image_bytes
-            print(f"[AI] gemini | image-gen | done | {len(data)} bytes")
+            logger.info(
+                "gemini_image_generation_completed",
+                extra={"aspect_ratio": aspect_ratio, "size_bytes": len(data)},
+            )
             return data
-        except Exception as exc:
-            logger.error(f"Gemini image generation error: {exc}")
+        except Exception:
+            logger.warning("gemini_image_generation_failed", exc_info=True)
             return None
 
     return await asyncio.to_thread(_call)
@@ -286,6 +302,72 @@ def _plain_card(pdf, x, y, w, h):
     pdf.rect(x, y, w, h, "F")
 
 
+def _safe_filename(filename: str) -> str:
+    cleaned = "".join(ch if ch.isalnum() or ch in "-_." else "-" for ch in filename)
+    while "--" in cleaned:
+        cleaned = cleaned.replace("--", "-")
+    return cleaned.strip("-") or "generated-document.pdf"
+
+
+async def _persist_generated_pdf(
+    *,
+    pdf_bytes: bytes,
+    filename: str,
+    user: dict,
+    linked_table: str,
+    linked_id: str,
+    audit_action: str,
+) -> dict:
+    db = get_db()
+    school_id = get_school_id()
+    file_id = str(uuid.uuid4())
+    safe_filename = f"{file_id}.pdf"
+    original_filename = _safe_filename(filename)
+    stored = upload_bytes(
+        content=pdf_bytes,
+        key=build_upload_key(file_id, original_filename, school_id=school_id),
+        content_type="application/pdf",
+        original_filename=original_filename,
+    )
+    record = add_school_id({
+        "_id": file_id,
+        "id": file_id,
+        "uploaded_by": user["id"],
+        "file_url": f"/api/uploads/serve/{safe_filename}",
+        "file_name": original_filename,
+        "safe_filename": safe_filename,
+        "file_type": "application/pdf",
+        "file_size_kb": int(len(pdf_bytes) / 1024),
+        "file_size_bytes": len(pdf_bytes),
+        "linked_table": linked_table,
+        "linked_id": linked_id or None,
+        "created_at": datetime.now().isoformat(),
+        "storage": "s3",
+        "s3_bucket": stored.bucket,
+        "s3_key": stored.key,
+        "s3_etag": stored.etag,
+        "sha256": stored.sha256,
+    }, school_id)
+    await db.file_uploads.insert_one(record)
+    await write_audit(
+        db,
+        action=audit_action,
+        entity_id=linked_id or file_id,
+        collection=linked_table,
+        changed_by=user["id"],
+        changed_by_role=user.get("role", ""),
+        school_id=school_id,
+        branch_id=user.get("branch_id", ""),
+        changes={"file_id": file_id, "file_name": original_filename},
+    )
+    return {
+        "success": True,
+        "file_url": create_presigned_get_url(stored.key),
+        "expires_in": PRESIGNED_URL_EXPIRY_SECONDS,
+        "file_id": file_id,
+    }
+
+
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 @router.post("/certificate")
@@ -303,6 +385,16 @@ async def generate_certificate(request: Request, user: dict = Depends(require_ro
     pdf_bytes = _build_cert_pdf(data, bg)
     student = data.get("student_name", "certificate").replace(" ", "-")
     filename = f"{title.replace(' ', '-')}-{student}.pdf"
+    if data.get("persist") is True:
+        linked_id = data.get("student_id") or data.get("admission_number") or data.get("student_name") or ""
+        return JSONResponse(content=await _persist_generated_pdf(
+            pdf_bytes=pdf_bytes,
+            filename=filename,
+            user=user,
+            linked_table="certificate",
+            linked_id=linked_id,
+            audit_action="certificate_generated",
+        ))
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -329,6 +421,16 @@ async def generate_id_cards(request: Request, user: dict = Depends(require_role(
 
     pdf_bytes = _build_id_cards_pdf(students, school, ay, bg)
     filename = f"ID-Cards-{datetime.now().strftime('%Y-%m-%d')}.pdf"
+    if data.get("persist") is True:
+        linked_id = data.get("batch_id") or data.get("class_id") or "batch"
+        return JSONResponse(content=await _persist_generated_pdf(
+            pdf_bytes=pdf_bytes,
+            filename=filename,
+            user=user,
+            linked_table="id_card",
+            linked_id=linked_id,
+            audit_action="id_card_generated",
+        ))
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

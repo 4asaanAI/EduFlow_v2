@@ -348,11 +348,19 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     setStreaming(true);
     setCurrentStreamMsg({ id: 'streaming', role: 'assistant', content: '', toolCall: null, richBlocks: [], actionButtons: [] });
 
+    let streamErrored = false;
     try {
       await sendMessageStream(cid, text, currentUser, (event) => {
         const parsed = event;
 
-        if (event.type === 'thinking') {
+        if (event.type === 'thinking_clear') {
+          setThinkingSteps([]);
+          setThinkingCollapsed(false);
+          setThinkingStartTime(null);
+          thinkingStartTimeRef.current = null;
+          thinkingCollapsedRef.current = false;
+          thinkingStepsRef.current = [];
+        } else if (event.type === 'thinking') {
           // Append to thinking steps
           setThinkingSteps(prev => {
             const updated = [...prev];
@@ -426,6 +434,33 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           );
         } else if (event.type === 'keepalive') {
           // Ignore - just prevents SSE timeout
+        } else if (event.type === 'stream_error') {
+          streamErrored = true;
+          setThinkingSteps([]);
+          setThinkingCollapsed(false);
+          setCurrentStreamMsg(prev => {
+            const interruptedId = `err-${Date.now()}`;
+            const suffix = event.retryCount ? `Connection interrupted - retrying (${event.retryCount}/3)...` : 'Connection lost. Tap retry.';
+            if (prev?.content) {
+              pendingFinalMsgRef.current = {
+                ...prev,
+                id: interruptedId,
+                role: 'assistant',
+                content: `${prev.content}\n\n${suffix}`,
+                interrupted: true,
+              };
+            } else {
+              setMessages(current => [...current, {
+                id: interruptedId,
+                role: 'assistant',
+                content: suffix,
+                interrupted: true,
+                created_at: new Date().toISOString(),
+              }]);
+            }
+            return null;
+          });
+          setStreaming(false);
         } else if (event.type === 'done') {
           const messageId = event.message_id || `ai-${Date.now()}`;
           if (event.tokens_used) {
@@ -452,6 +487,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           setStreaming(false);
         }
       }, chatSessionIdRef.current);
+      if (streamErrored) return;
       setStreaming(prev => {
         if (prev) {
           setCurrentStreamMsg(cm => {

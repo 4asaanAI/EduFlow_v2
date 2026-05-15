@@ -7,7 +7,8 @@ from models.schemas import AttendanceBulkRequest, StudentAttendance, StaffAttend
 from middleware.auth import get_current_user, require_role
 from datetime import date, datetime
 from tenant import get_school_id, scoped_filter
-from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, publish
+from services.audit_service import write_audit_doc
+from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, normalize_session_id, publish
 import asyncio
 import csv
 import io
@@ -36,7 +37,7 @@ def _can_admin_attendance(user: dict) -> bool:
 
 
 async def _audit(db, *, action: str, attendance_id: str, user: dict, changes: dict, reason: str | None = None):
-    await db.audit_logs.insert_one({
+    await write_audit_doc(db, {
         "_id": str(uuid.uuid4()),
         "id": str(uuid.uuid4()),
         "schoolId": get_school_id(),
@@ -48,7 +49,7 @@ async def _audit(db, *, action: str, attendance_id: str, user: dict, changes: di
         "changes": changes,
         "reason": reason,
         "created_at": datetime.now().isoformat(),
-    })
+    }, school_id=get_school_id(), branch_id=user.get("branch_id"))
 
 
 @router.post("")
@@ -255,7 +256,9 @@ async def mark_staff_attendance(request: Request, user: dict = Depends(require_r
 @router.get("/stream")
 async def attendance_stream(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    session_id = request.headers.get("X-SSE-Session-ID") or request.query_params.get("session_id") or str(uuid.uuid4())
+    session_id = normalize_session_id(
+        request.headers.get("X-SSE-Session-ID") or request.query_params.get("session_id")
+    )
     keepalive = int(request.query_params.get("keepalive", KEEPALIVE_SECONDS))
     once = request.query_params.get("once", "").lower() == "true"
     queue = await sse_connect("attendance", session_id)
@@ -276,6 +279,9 @@ async def attendance_stream(request: Request, user: dict = Depends(require_role(
                     event = await asyncio.wait_for(queue.get(), timeout=keepalive)
                 except asyncio.TimeoutError:
                     yield encode_sse({"type": "keepalive", "channel": "attendance"})
+                    continue
+                if isinstance(event, str):
+                    yield event
                     continue
                 if event.get("type") == "close":
                     yield encode_sse(event)

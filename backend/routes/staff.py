@@ -7,8 +7,9 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from database import get_db
-from middleware.auth import get_current_user, hash_password, require_role
+from middleware.auth import get_current_user, hash_password, require_owner_or_principal, require_role
 from models.schemas import Staff
+from services.audit_service import write_audit_doc
 from tenant import get_school_id, scoped_filter
 
 
@@ -72,7 +73,7 @@ def _public_staff(staff: dict) -> dict:
 
 
 async def _audit(db, *, action: str, staff_id: str, user: dict, changes: dict | None = None):
-    await db.audit_logs.insert_one({
+    await write_audit_doc(db, {
         "_id": str(uuid.uuid4()),
         "id": str(uuid.uuid4()),
         "schoolId": get_school_id(),
@@ -83,7 +84,7 @@ async def _audit(db, *, action: str, staff_id: str, user: dict, changes: dict | 
         "changed_by_role": user.get("role"),
         "changes": changes or {},
         "created_at": datetime.now().isoformat(),
-    })
+    }, school_id=get_school_id(), branch_id=user.get("branch_id"))
 
 
 async def _create_or_link_user(db, body: dict, actor: dict) -> tuple[str, str | None]:
@@ -279,7 +280,7 @@ async def get_pending_leaves(request: Request, user: dict = Depends(require_role
 
 
 @router.patch("/leaves/{leave_id}")
-async def update_leave(leave_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def update_leave(leave_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
     db = get_db()
     body = await request.json()
     update = {

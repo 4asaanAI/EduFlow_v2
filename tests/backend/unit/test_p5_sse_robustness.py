@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import pytest
 
-from routes.chat import KEEPALIVE_INTERVAL, LLM_WALLCLOCK_BUDGET, MAX_TOOL_ROUNDS
+from routes.chat import KEEPALIVE_INTERVAL, LLM_WALLCLOCK_BUDGET, MAX_TOOL_ROUNDS, keepalive_event
 from ai.scope_resolver import Scope
 
 
@@ -44,6 +44,15 @@ def test_done_event_format():
     json_part = raw_event[len("data: "):].strip()
     parsed = json.loads(json_part)
     assert parsed["type"] == "done"
+
+
+def test_keepalive_event_is_data_event():
+    """Chat keepalives must be JSON data events so the frontend parser sees them."""
+    raw_event = keepalive_event()
+    assert raw_event.startswith("data: ")
+    assert not raw_event.startswith(":")
+    parsed = json.loads(raw_event[len("data: "):].strip())
+    assert parsed["type"] == "keepalive"
 
 
 # ─── test 4: MAX_TOOL_ROUNDS is at least 3 ──────────────────────────────────

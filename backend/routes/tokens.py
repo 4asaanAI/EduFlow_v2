@@ -45,8 +45,8 @@ async def balance_endpoint(request: Request):
     try:
         data = await get_balance(branch_id)
         return {"success": True, "data": data}
-    except Exception as e:
-        logger.error(f"Token balance error: {e}")
+    except Exception:
+        logger.error("token_balance_fetch_failed", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch token balance.")
 
 
@@ -70,8 +70,8 @@ async def usage_endpoint(request: Request, user_id: str = None):
     try:
         data = await get_usage_stats(branch_id, user_id=user_id)
         return {"success": True, "data": data}
-    except Exception as e:
-        logger.error(f"Token usage stats error: {e}")
+    except Exception:
+        logger.error("token_usage_stats_fetch_failed", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch usage stats.")
 
 
@@ -86,8 +86,8 @@ async def my_usage_endpoint(request: Request):
     try:
         data = await get_usage_stats(branch_id, user_id=user["id"])
         return {"success": True, "data": data}
-    except Exception as e:
-        logger.error(f"My token usage error: {e}")
+    except Exception:
+        logger.error("my_token_usage_fetch_failed", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch your usage stats.")
 
 
@@ -120,8 +120,8 @@ async def purchase_endpoint(request: Request):
         return {"success": True, "data": result}
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Token purchase error: {e}")
+    except Exception:
+        logger.error("token_purchase_failed", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to process purchase.")
 
 
@@ -147,8 +147,8 @@ async def limits_endpoint(request: Request, user: dict = Depends(require_owner))
         return {"success": True, "data": result}
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Token limits update error: {e}")
+    except Exception:
+        logger.error("token_limits_update_failed", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update limits.")
 
 

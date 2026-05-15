@@ -49,6 +49,9 @@ MIGRATIONS = [
     ("016_admin_sub_category_default", "Backfill legacy admin sub_category=support_staff (Part 1 Auth+RBAC)"),
     ("017_backfill_rate_limit_override_expires_at", "Backfill expires_at=null on override rows without the field (Part 2 P10)"),
     ("018_drop_otps_collection", "Drop the otps collection — zero code references, dead indexes (Part 4)"),
+    ("019_notifications_index", "Add notifications compound index for unread count and list queries (Part 5)"),
+    ("020_file_uploads_add_school_id", "Backfill file_uploads schoolId and add scoped indexes (Part 6)"),
+    ("021_audit_log_indexes", "Add audit log scoped query indexes (Part 7)"),
 ]
 
 

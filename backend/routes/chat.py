@@ -556,7 +556,7 @@ def thinking_event(step: str, message: str, tool: str = None, count: int = None)
 # ─── Keepalive SSE event ─────────────────────────────────────────────────────
 
 def keepalive_event() -> str:
-    return f":keepalive\n\n"
+    return 'data: {"type":"keepalive"}\n\n'
 
 
 # ─── Token counting with null-check (BUG FIX #1) ────────────────────────────
@@ -1801,7 +1801,11 @@ async def send_message(conv_id: str, request: Request):
     user_text = re.sub(r"[​‌‍⁠﻿\s]+", " ", _raw_text).strip()
     if not user_text:
         return {"success": False, "error": "Empty message"}
-    session_id = body.get("session_id") or request.headers.get("x-session-id") or conv_id
+    raw_session_id = body.get("session_id") or request.headers.get("x-session-id") or request.headers.get("X-SSE-Session-ID")
+    session_id = (raw_session_id or "").strip()
+    if not session_id:
+        session_id = str(uuid.uuid4())
+        logger.warning("chat_sse_session_id_missing", extra={"conversation_id": conv_id, "generated_session_id": session_id})
 
     return StreamingResponse(
         _generate_chat_sse(conv_id, user_text, user, session_id=session_id, request=request),

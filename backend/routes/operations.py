@@ -3,6 +3,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request, HTTPException
 from database import get_db
 from middleware.auth import get_current_user, require_owner_or_principal, require_role
+from services.audit_service import write_audit_doc
+from services.notification_service import create_notification, fan_out_notifications
 from datetime import datetime
 from tenant import get_school_id, scoped_filter, add_school_id
 import uuid
@@ -58,19 +60,13 @@ def _audit_doc(action: str, entity_type: str, entity_id: str, user: dict, change
     }
 
 
-async def _notify(db, *, user_id: str, notification_type: str, message: str, source_id: str, source_type: str):
-    await db.notifications.insert_one({
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
-        "schoolId": get_school_id(),
-        "user_id": user_id,
-        "type": notification_type,
-        "message": message,
-        "source_record_id": source_id,
-        "source_record_type": source_type,
-        "read": False,
-        "created_at": datetime.now().isoformat(),
-    })
+async def _write_audit(db, action: str, entity_type: str, entity_id: str, user: dict, changes: dict, reason: str = None):
+    await write_audit_doc(
+        db,
+        _audit_doc(action, entity_type, entity_id, user, changes, reason),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id"),
+    )
 
 
 @workflow_router.post("/leave-requests")
@@ -99,7 +95,7 @@ async def create_leave_request(request: Request, user: dict = Depends(get_curren
         "applied_at": datetime.now().isoformat(),
     }
     await db.leave_requests.insert_one(leave)
-    await db.audit_logs.insert_one(_audit_doc("leave_submit", "leave_request", leave["id"], user, {"created": {k: v for k, v in leave.items() if k != "_id"}}))
+    await _write_audit(db, "leave_submit", "leave_request", leave["id"], user, {"created": {k: v for k, v in leave.items() if k != "_id"}})
     return {"success": True, "data": {k: v for k, v in leave.items() if k != "_id"}}
 
 
@@ -145,8 +141,16 @@ async def decide_leave_request(leave_id: str, request: Request, user: dict = Dep
             }},
             upsert=True,
         )
-    await db.audit_logs.insert_one(_audit_doc("leave_decide", "leave_request", leave_id, user, update, body["reason"]))
-    await _notify(db, user_id=leave["user_id"], notification_type="leave_decision", message=f"Leave request {body['status']}", source_id=leave_id, source_type="leave_request")
+    await _write_audit(db, "leave_decide", "leave_request", leave_id, user, update, body["reason"])
+    await create_notification(
+        db,
+        user_id=leave["user_id"],
+        notification_type="leave_decision",
+        title="Leave request updated",
+        message=f"Leave request {body['status']}",
+        source_id=leave_id,
+        source_type="leave_request",
+    )
     updated = await db.leave_requests.find_one(scoped_filter({"id": leave_id}, get_school_id()), {"_id": 0})
     return {"success": True, "data": updated}
 
@@ -175,15 +179,29 @@ async def create_approval_request(request: Request, user: dict = Depends(require
         "unread_for": ["owner"] + (["principal"] if body["routing"] == "owner_and_principal" else []),
     }
     await db.approval_requests.insert_one(record)
-    await db.audit_logs.insert_one(_audit_doc("approval_submit", "approval_request", record["id"], user, {"created": {k: v for k, v in record.items() if k != "_id"}}))
+    await _write_audit(db, "approval_submit", "approval_request", record["id"], user, {"created": {k: v for k, v in record.items() if k != "_id"}})
     # Notify by role: find actual user IDs rather than sending to literal role strings
     owner_users = await db.users.find(scoped_filter({"role": "owner"}, get_school_id()), {"_id": 0, "id": 1}).to_list(5)
-    for ou in owner_users:
-        await _notify(db, user_id=ou["id"], notification_type="approval_submitted", message=record["title"], source_id=record["id"], source_type="approval_request")
+    await fan_out_notifications(
+        db,
+        [ou["id"] for ou in owner_users],
+        notification_type="approval_submitted",
+        title="Approval submitted",
+        message=record["title"],
+        source_id=record["id"],
+        source_type="approval_request",
+    )
     if body["routing"] == "owner_and_principal":
         principal_users = await db.users.find(scoped_filter({"role": "admin", "sub_category": "principal"}, get_school_id()), {"_id": 0, "id": 1}).to_list(5)
-        for pu in principal_users:
-            await _notify(db, user_id=pu["id"], notification_type="approval_submitted", message=record["title"], source_id=record["id"], source_type="approval_request")
+        await fan_out_notifications(
+            db,
+            [pu["id"] for pu in principal_users],
+            notification_type="approval_submitted",
+            title="Approval submitted",
+            message=record["title"],
+            source_id=record["id"],
+            source_type="approval_request",
+        )
     return {"success": True, "data": {k: v for k, v in record.items() if k != "_id"}}
 
 
@@ -224,8 +242,16 @@ async def decide_approval_request(approval_id: str, request: Request, user: dict
         "unread_for": [],
     }
     await db.approval_requests.update_one(scoped_filter({"id": approval_id}, get_school_id()), {"$set": update})
-    await db.audit_logs.insert_one(_audit_doc("approval_decide", "approval_request", approval_id, user, update, body["reason"]))
-    await _notify(db, user_id=approval["submitted_by"], notification_type="approval_decision", message=f"{approval['title']} {body['status']}", source_id=approval_id, source_type="approval_request")
+    await _write_audit(db, "approval_decide", "approval_request", approval_id, user, update, body["reason"])
+    await create_notification(
+        db,
+        user_id=approval["submitted_by"],
+        notification_type="approval_decision",
+        title="Approval decision",
+        message=f"{approval['title']} {body['status']}",
+        source_id=approval_id,
+        source_type="approval_request",
+    )
     updated = await db.approval_requests.find_one(scoped_filter({"id": approval_id}, get_school_id()), {"_id": 0})
     return {"success": True, "data": updated}
 
@@ -393,12 +419,19 @@ async def create_incident(request: Request, user: dict = Depends(get_current_use
         owners_principals = await db.users.find(
             {"role": {"$in": ["owner", "admin"]}, "is_active": {"$ne": False}}, {"_id": 0, "id": 1, "sub_category": 1, "role": 1}
         ).to_list(20)
-        for up in owners_principals:
-            if up.get("role") == "owner" or up.get("sub_category") == "principal":
-                await _notify(db, user_id=up["id"], notification_type="high_severity_incident",
-                              message=f"High-severity incident reported: {body['description'][:80]}",
-                              source_id=incident["id"], source_type="incident")
-    await db.audit_logs.insert_one(_audit_doc("incident_create", "incidents", incident["id"], user, {"severity": severity, "description": body["description"][:100]}))
+        await fan_out_notifications(
+            db,
+            [
+                up["id"] for up in owners_principals
+                if up.get("role") == "owner" or up.get("sub_category") == "principal"
+            ],
+            notification_type="high_severity_incident",
+            title="High-severity incident",
+            message=f"High-severity incident reported: {body['description'][:80]}",
+            source_id=incident["id"],
+            source_type="incident",
+        )
+    await _write_audit(db, "incident_create", "incidents", incident["id"], user, {"severity": severity, "description": body["description"][:100]})
     return {"success": True, "data": {k: v for k, v in incident.items() if k != "_id"}}
 
 
@@ -781,7 +814,8 @@ async def approve_announcement(ann_id: str, request: Request, user: dict = Depen
             "approved_at": now,
         }},
     )
-    await db.audit_logs.insert_one(_audit_doc(
+    await _write_audit(
+        db,
         action="announcement_approved",
         entity_type="announcement",
         entity_id=ann_id,
@@ -790,7 +824,7 @@ async def approve_announcement(ann_id: str, request: Request, user: dict = Depen
             "status": {"from": "pending_approval", "to": "active"},
             "target_roles": ann.get("target_roles") or ann.get("audience_roles"),
         },
-    ))
+    )
     return {"success": True, "data": {"id": ann_id, "status": "active", "approved_at": now}}
 
 
@@ -823,7 +857,8 @@ async def reject_announcement(ann_id: str, request: Request, user: dict = Depend
             "rejection_reason": reason,
         }},
     )
-    await db.audit_logs.insert_one(_audit_doc(
+    await _write_audit(
+        db,
         action="announcement_rejected",
         entity_type="announcement",
         entity_id=ann_id,
@@ -833,14 +868,15 @@ async def reject_announcement(ann_id: str, request: Request, user: dict = Depend
             "target_roles": ann.get("target_roles") or ann.get("audience_roles"),
         },
         reason=reason,
-    ))
+    )
 
     author_id = ann.get("created_by")
     if author_id:
-        await _notify(
+        await create_notification(
             db,
             user_id=author_id,
             notification_type="announcement_rejected",
+            title="Announcement rejected",
             message=f"Your announcement '{ann.get('title', '')}' was rejected: {reason}",
             source_id=ann_id,
             source_type="announcement",

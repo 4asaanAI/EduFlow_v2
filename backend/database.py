@@ -1,9 +1,14 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import logging
+import time
 from tenant import add_school_id, get_school_id, scoped_filter
+from logging_config import request_id_ctx
 
 _client = None
 _db = None
+logger = logging.getLogger(__name__)
+SLOW_QUERY_MS = int(os.environ.get("SLOW_QUERY_MS", "100"))
 
 
 SYSTEM_COLLECTIONS = {
@@ -12,6 +17,44 @@ SYSTEM_COLLECTIONS = {
     "login_attempts",
     "refresh_tokens",
 }
+
+
+def _slow_query_threshold_ms() -> int:
+    try:
+        return int(os.environ.get("SLOW_QUERY_MS", str(SLOW_QUERY_MS)))
+    except ValueError:
+        return SLOW_QUERY_MS
+
+
+class TimedQuery:
+    def __init__(self, *, collection_name: str, operation: str, query_shape: str = ""):
+        self.collection_name = collection_name
+        self.operation = operation
+        self.query_shape = query_shape or operation
+        self.elapsed_ms = 0.0
+        self._started = 0.0
+
+    async def __aenter__(self):
+        self._started = time.time()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.elapsed_ms = round((time.time() - self._started) * 1000, 1)
+        threshold = _slow_query_threshold_ms()
+        if self.elapsed_ms > threshold:
+            logger.debug(
+                "slow_query",
+                extra={
+                    "collection": self.collection_name,
+                    "operation": self.operation,
+                    "elapsed_ms": self.elapsed_ms,
+                    "query_shape": self.query_shape,
+                    "slow_query": True,
+                    "event_loop_congestion": self.elapsed_ms > threshold * 3,
+                    "request_id": request_id_ctx.get(),
+                },
+            )
+        return False
 
 
 class ScopedCollection:
@@ -157,3 +200,8 @@ async def _create_indexes():
     await db.confirm_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.idempotency_keys.create_index("key", unique=True)
     await db.idempotency_keys.create_index("expires_at", expireAfterSeconds=0)
+    await db.notifications.create_index(
+        [("schoolId", 1), ("user_id", 1), ("read", 1), ("created_at", -1)]
+    )
+    await db.audit_logs.create_index([("schoolId", 1), ("created_at", -1)])
+    await db.audit_logs.create_index([("schoolId", 1), ("entity_id", 1), ("created_at", -1)])

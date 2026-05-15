@@ -7,12 +7,12 @@ import { useTheme } from '../../contexts/ThemeContext';
 
 export function ToolPage({ title, subtitle, actions, children, onRefresh, loading }) {
   const { isDark } = useTheme();
-  const bg = isDark ? 'var(--tool-hex-1a1a1a)' : 'var(--tool-hex-f5f5f5)';
-  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
-  const muted = isDark ? 'var(--tool-hex-666)' : 'var(--tool-hex-a3a3a3)';
-  const secondary = isDark ? 'var(--tool-hex-a0a0a0)' : 'var(--tool-hex-525252)';
-  const btnBg = isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-fff)';
-  const btnBorder = isDark ? 'var(--tool-hex-333)' : 'var(--tool-hex-e5e5e5)';
+  const bg = isDark ? 'var(--color-page)' : 'var(--color-page)';
+  const text = isDark ? 'var(--color-text-primary)' : 'var(--color-text-primary)';
+  const muted = isDark ? 'var(--color-text-muted)' : 'var(--color-text-muted)';
+  const secondary = isDark ? 'var(--color-text-secondary)' : 'var(--color-text-secondary)';
+  const btnBg = isDark ? 'var(--color-surface-raised)' : 'var(--color-surface)';
+  const btnBorder = isDark ? 'var(--color-border-strong)' : 'var(--color-border)';
 
   return (
     <div style={{ padding: '24px 28px', overflowY: 'auto', height: '100%', background: bg }}>
@@ -30,7 +30,7 @@ export function ToolPage({ title, subtitle, actions, children, onRefresh, loadin
               cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
               transition: 'all var(--transition-fast)',
             }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = isDark ? 'var(--tool-hex-444)' : 'var(--tool-hex-ccc)'}
+              onMouseEnter={e => e.currentTarget.style.borderColor = isDark ? 'var(--color-border-strong)' : 'var(--color-border-strong)'}
               onMouseLeave={e => e.currentTarget.style.borderColor = btnBorder}>
               <RefreshCw size={13} style={loading ? { animation: 'spin 0.8s linear infinite' } : {}} />
               Refresh
@@ -43,11 +43,11 @@ export function ToolPage({ title, subtitle, actions, children, onRefresh, loadin
   );
 }
 
-export function StatCard({ value, label, color = 'var(--tool-hex-4f8ff7)', sublabel, small }) {
+export function StatCard({ value, label, color = 'var(--color-accent-blue)', sublabel, small }) {
   const { isDark } = useTheme();
-  const bg = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-ffffff)';
-  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
-  const muted = isDark ? 'var(--tool-hex-666)' : 'var(--tool-hex-a3a3a3)';
+  const bg = isDark ? 'var(--color-surface)' : 'var(--color-surface)';
+  const border = isDark ? 'var(--color-border)' : 'var(--color-border)';
+  const muted = isDark ? 'var(--color-text-muted)' : 'var(--color-text-muted)';
   return (
     <div style={{
       background: bg, border: `1px solid ${border}`, borderRadius: 14,
@@ -61,14 +61,59 @@ export function StatCard({ value, label, color = 'var(--tool-hex-4f8ff7)', subla
   );
 }
 
-export function DataTable({ title, headers, rows, emptyMsg = 'No data found', actions }) {
+export function LoadingCard({ message = 'Loading data...' }) {
+  return (
+    <div role="status" aria-live="polite" style={{ padding: 24 }}>
+      <div className="skeleton" style={{ height: 12, width: '42%', marginBottom: 12 }} />
+      <div className="skeleton" style={{ height: 12, width: '68%', marginBottom: 12 }} />
+      <div className="skeleton" style={{ height: 12, width: '54%', marginBottom: 10 }} />
+      <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{message}</span>
+    </div>
+  );
+}
+
+export function ErrorCard({ message = 'Unable to load data.', onRetry }) {
+  return (
+    <div role="alert" style={{
+      background: 'color-mix(in srgb, var(--color-danger) 7%, transparent)',
+      border: '1px solid color-mix(in srgb, var(--color-danger) 30%, transparent)',
+      borderRadius: 10,
+      color: 'var(--color-danger)',
+      padding: 14,
+      marginBottom: 16,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+      fontSize: 13,
+    }}>
+      <span>{message}</span>
+      {onRetry && (
+        <button type="button" onClick={onRetry} style={{
+          border: '1px solid currentColor',
+          borderRadius: 8,
+          background: 'transparent',
+          color: 'inherit',
+          cursor: 'pointer',
+          fontSize: 12,
+          fontWeight: 700,
+          padding: '7px 10px',
+        }}>
+          Retry
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function DataTable({ title, headers, rows, emptyMsg = 'No data found', actions, loading = false }) {
   const { isDark } = useTheme();
-  const bg = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-ffffff)';
-  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
-  const rowBorder = isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)';
-  const thBg = isDark ? 'var(--tool-hex-1a1a1a)' : 'var(--tool-hex-fafafa)';
-  const tc = isDark ? 'var(--tool-hex-a0a0a0)' : 'var(--tool-hex-525252)';
-  const hc = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
+  const bg = isDark ? 'var(--color-surface)' : 'var(--color-surface)';
+  const border = isDark ? 'var(--color-border)' : 'var(--color-border)';
+  const rowBorder = isDark ? 'var(--color-surface-raised)' : 'var(--color-border)';
+  const thBg = isDark ? 'var(--color-page)' : 'var(--color-surface-raised)';
+  const tc = isDark ? 'var(--color-text-secondary)' : 'var(--color-text-secondary)';
+  const hc = isDark ? 'var(--color-text-primary)' : 'var(--color-text-primary)';
   return (
     <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 14, overflow: 'hidden', marginBottom: 16 }}>
       {(title || actions) && (
@@ -77,15 +122,17 @@ export function DataTable({ title, headers, rows, emptyMsg = 'No data found', ac
           {actions && <div>{actions}</div>}
         </div>
       )}
-      {rows.length === 0 ? (
-        <div style={{ padding: 36, textAlign: 'center', color: isDark ? 'var(--tool-hex-666)' : 'var(--tool-hex-a3a3a3)', fontSize: 13 }}>{emptyMsg}</div>
+      {loading && rows.length === 0 ? (
+        <LoadingCard />
+      ) : rows.length === 0 ? (
+        <div style={{ padding: 36, textAlign: 'center', color: isDark ? 'var(--color-text-muted)' : 'var(--color-text-muted)', fontSize: 13 }}>{emptyMsg}</div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
                 {headers.map((h, i) => (
-                  <th key={i} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--tool-hex-737373)', textTransform: 'uppercase', letterSpacing: '0.04em', background: thBg, borderBottom: `1px solid ${border}` }}>{h}</th>
+                  <th key={i} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--color-text-faint)', textTransform: 'uppercase', letterSpacing: '0.04em', background: thBg, borderBottom: `1px solid ${border}` }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -111,12 +158,12 @@ export function DataTable({ title, headers, rows, emptyMsg = 'No data found', ac
 
 export function Badge({ text, color = 'blue' }) {
   const colors = {
-    green: { bg: 'rgba(52,211,153,0.1)', text: 'var(--tool-hex-34d399)', border: 'rgba(52,211,153,0.2)' },
-    red: { bg: 'rgba(248,113,113,0.1)', text: 'var(--tool-hex-f87171)', border: 'rgba(248,113,113,0.2)' },
-    yellow: { bg: 'rgba(251,191,36,0.1)', text: 'var(--tool-hex-fbbf24)', border: 'rgba(251,191,36,0.2)' },
-    blue: { bg: 'rgba(79,143,247,0.1)', text: 'var(--tool-hex-4f8ff7)', border: 'rgba(79,143,247,0.2)' },
-    purple: { bg: 'rgba(167,139,250,0.1)', text: 'var(--tool-hex-a78bfa)', border: 'rgba(167,139,250,0.2)' },
-    gray: { bg: 'rgba(100,100,100,0.1)', text: 'var(--tool-hex-737373)', border: 'rgba(100,100,100,0.2)' },
+    green: { bg: 'rgba(52,211,153,0.1)', text: 'var(--color-success)', border: 'rgba(52,211,153,0.2)' },
+    red: { bg: 'rgba(248,113,113,0.1)', text: 'var(--color-danger)', border: 'rgba(248,113,113,0.2)' },
+    yellow: { bg: 'rgba(251,191,36,0.1)', text: 'var(--color-warning)', border: 'rgba(251,191,36,0.2)' },
+    blue: { bg: 'rgba(79,143,247,0.1)', text: 'var(--color-accent-blue)', border: 'rgba(79,143,247,0.2)' },
+    purple: { bg: 'rgba(167,139,250,0.1)', text: 'var(--color-purple)', border: 'rgba(167,139,250,0.2)' },
+    gray: { bg: 'rgba(100,100,100,0.1)', text: 'var(--color-text-faint)', border: 'rgba(100,100,100,0.2)' },
   };
   const c = colors[color] || colors.blue;
   return <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>{text}</span>;
@@ -125,27 +172,27 @@ export function Badge({ text, color = 'blue' }) {
 export function ComingSoon({ toolName }) {
   const { isDark } = useTheme();
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60%', gap: 16, color: 'var(--tool-hex-737373)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60%', gap: 16, color: 'var(--color-text-faint)' }}>
       <div style={{
         width: 60, height: 60, borderRadius: 16,
-        background: isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-fafafa)',
-        border: `1px solid ${isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)'}`,
+        background: isDark ? 'var(--color-surface)' : 'var(--color-surface-raised)',
+        border: `1px solid ${isDark ? 'var(--color-border)' : 'var(--color-border)'}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24,
       }}>
         <span style={{ opacity: 0.5 }}>{'\u2699'}</span>
       </div>
-      <h3 style={{ color: isDark ? 'var(--tool-hex-a0a0a0)' : 'var(--tool-hex-525252)', fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em' }}>{toolName}</h3>
-      <p style={{ fontSize: 13, color: isDark ? 'var(--tool-hex-666)' : 'var(--tool-hex-a3a3a3)', textAlign: 'center', maxWidth: 300 }}>Coming soon. Backend integration in progress.</p>
+      <h3 style={{ color: isDark ? 'var(--color-text-secondary)' : 'var(--color-text-secondary)', fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em' }}>{toolName}</h3>
+      <p style={{ fontSize: 13, color: isDark ? 'var(--color-text-muted)' : 'var(--color-text-muted)', textAlign: 'center', maxWidth: 300 }}>Coming soon. Backend integration in progress.</p>
     </div>
   );
 }
 
 export function FormField({ label, type = 'text', value, onChange, placeholder, options, required }) {
   const { isDark } = useTheme();
-  const bg = isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-fafafa)';
-  const border = isDark ? 'var(--tool-hex-333)' : 'var(--tool-hex-e5e5e5)';
-  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
-  const muted = isDark ? 'var(--tool-hex-666)' : 'var(--tool-hex-a3a3a3)';
+  const bg = isDark ? 'var(--color-surface-raised)' : 'var(--color-surface-raised)';
+  const border = isDark ? 'var(--color-border-strong)' : 'var(--color-border)';
+  const text = isDark ? 'var(--color-text-primary)' : 'var(--color-text-primary)';
+  const muted = isDark ? 'var(--color-text-muted)' : 'var(--color-text-muted)';
   const style = {
     width: '100%', background: bg, border: `1px solid ${border}`, borderRadius: 10,
     padding: '9px 14px', color: text, fontSize: 13, outline: 'none',
@@ -163,7 +210,7 @@ export function FormField({ label, type = 'text', value, onChange, placeholder, 
         <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={3} style={{ ...style, resize: 'vertical' }} />
       ) : (
         <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={style}
-          onFocus={e => e.target.style.borderColor = 'var(--tool-hex-4f8ff7)'}
+          onFocus={e => e.target.style.borderColor = 'var(--color-accent-blue)'}
           onBlur={e => e.target.style.borderColor = border} />
       )}
     </div>
@@ -173,10 +220,10 @@ export function FormField({ label, type = 'text', value, onChange, placeholder, 
 export function ActionBtn({ label, onClick, variant = 'primary', icon, disabled, type = 'button' }) {
   const { isDark } = useTheme();
   const styles = {
-    primary: { background: isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)', color: isDark ? 'var(--tool-hex-171717)' : 'var(--tool-hex-fff)', border: 'none' },
-    success: { background: 'rgba(52,211,153,0.1)', color: 'var(--tool-hex-34d399)', border: '1px solid rgba(52,211,153,0.2)' },
-    danger: { background: 'rgba(248,113,113,0.1)', color: 'var(--tool-hex-f87171)', border: '1px solid rgba(248,113,113,0.2)' },
-    secondary: { background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', color: isDark ? 'var(--tool-hex-a0a0a0)' : 'var(--tool-hex-525252)', border: `1px solid ${isDark ? 'var(--tool-hex-333)' : 'var(--tool-hex-e5e5e5)'}` },
+    primary: { background: 'var(--color-inverse-surface)', color: 'var(--color-inverse-text)', border: 'none' },
+    success: { background: 'rgba(52,211,153,0.1)', color: 'var(--color-success)', border: '1px solid rgba(52,211,153,0.2)' },
+    danger: { background: 'rgba(248,113,113,0.1)', color: 'var(--color-danger)', border: '1px solid rgba(248,113,113,0.2)' },
+    secondary: { background: isDark ? 'var(--color-surface-raised)' : 'var(--color-surface)', color: isDark ? 'var(--color-text-secondary)' : 'var(--color-text-secondary)', border: `1px solid ${isDark ? 'var(--color-border-strong)' : 'var(--color-border)'}` },
   };
   const s = styles[variant] || styles.primary;
   return (
@@ -191,7 +238,7 @@ export function ActionBtn({ label, onClick, variant = 'primary', icon, disabled,
   );
 }
 
-export function useToolData(fetcher, deps = []) {
+export function useToolData(fetcher, deps = [], options = {}) {
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(null);
@@ -202,17 +249,18 @@ export function useToolData(fetcher, deps = []) {
     setLoading(false);
   }, deps);
   React.useEffect(() => { load(); }, [load]);
-  return { data, loading, error, reload: load };
+  const ErrorView = options.renderError === null ? null : (options.renderError || ErrorCard);
+  return { data, loading, error, reload: load, ErrorView };
 }
 
 // Recharts Chart Components (theme-aware)
 export function LineChartWidget({ data, xKey, lines, title, height = 220 }) {
   const { isDark } = useTheme();
-  const bg = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-ffffff)';
-  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
-  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
-  const muted = isDark ? 'var(--tool-hex-666)' : 'var(--tool-hex-a3a3a3)';
-  const gridColor = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-f0f0f0)';
+  const bg = isDark ? 'var(--color-surface)' : 'var(--color-surface)';
+  const border = isDark ? 'var(--color-border)' : 'var(--color-border)';
+  const text = isDark ? 'var(--color-text-primary)' : 'var(--color-text-primary)';
+  const muted = isDark ? 'var(--color-text-muted)' : 'var(--color-text-muted)';
+  const gridColor = isDark ? 'var(--color-border)' : 'var(--color-surface-muted)';
 
   try {
     const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } = require('recharts');
@@ -224,9 +272,9 @@ export function LineChartWidget({ data, xKey, lines, title, height = 220 }) {
             <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
             <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: muted }} />
             <YAxis tick={{ fontSize: 11, fill: muted }} />
-            <Tooltip contentStyle={{ background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-fff)', border: `1px solid ${border}`, borderRadius: 10, fontSize: 12 }} />
+            <Tooltip contentStyle={{ background: isDark ? 'var(--color-surface-raised)' : 'var(--color-surface)', border: `1px solid ${border}`, borderRadius: 10, fontSize: 12 }} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            {lines.map(l => <Line key={l.key} type="monotone" dataKey={l.key} stroke={l.color || 'var(--tool-hex-4f8ff7)'} strokeWidth={2} dot={{ r: 3 }} name={l.name || l.key} />)}
+            {lines.map(l => <Line key={l.key} type="monotone" dataKey={l.key} stroke={l.color || 'var(--color-accent-blue)'} strokeWidth={2} dot={{ r: 3 }} name={l.name || l.key} />)}
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -236,11 +284,11 @@ export function LineChartWidget({ data, xKey, lines, title, height = 220 }) {
 
 export function BarChartWidget({ data, xKey, bars, title, height = 220 }) {
   const { isDark } = useTheme();
-  const bg = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-ffffff)';
-  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
-  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
-  const muted = isDark ? 'var(--tool-hex-666)' : 'var(--tool-hex-a3a3a3)';
-  const gridColor = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-f0f0f0)';
+  const bg = isDark ? 'var(--color-surface)' : 'var(--color-surface)';
+  const border = isDark ? 'var(--color-border)' : 'var(--color-border)';
+  const text = isDark ? 'var(--color-text-primary)' : 'var(--color-text-primary)';
+  const muted = isDark ? 'var(--color-text-muted)' : 'var(--color-text-muted)';
+  const gridColor = isDark ? 'var(--color-border)' : 'var(--color-surface-muted)';
 
   try {
     const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } = require('recharts');
@@ -252,9 +300,9 @@ export function BarChartWidget({ data, xKey, bars, title, height = 220 }) {
             <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
             <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: muted }} />
             <YAxis tick={{ fontSize: 11, fill: muted }} />
-            <Tooltip contentStyle={{ background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-fff)', border: `1px solid ${border}`, borderRadius: 10, fontSize: 12 }} />
+            <Tooltip contentStyle={{ background: isDark ? 'var(--color-surface-raised)' : 'var(--color-surface)', border: `1px solid ${border}`, borderRadius: 10, fontSize: 12 }} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            {bars.map(b => <Bar key={b.key} dataKey={b.key} fill={b.color || 'var(--tool-hex-4f8ff7)'} name={b.name || b.key} radius={[5, 5, 0, 0]} />)}
+            {bars.map(b => <Bar key={b.key} dataKey={b.key} fill={b.color || 'var(--color-accent-blue)'} name={b.name || b.key} radius={[5, 5, 0, 0]} />)}
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -264,13 +312,13 @@ export function BarChartWidget({ data, xKey, bars, title, height = 220 }) {
 
 export function PieChartWidget({ data, title, height = 220 }) {
   const { isDark } = useTheme();
-  const bg = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-ffffff)';
-  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
-  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
+  const bg = isDark ? 'var(--color-surface)' : 'var(--color-surface)';
+  const border = isDark ? 'var(--color-border)' : 'var(--color-border)';
+  const text = isDark ? 'var(--color-text-primary)' : 'var(--color-text-primary)';
 
   try {
     const { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } = require('recharts');
-    const COLORS = ['var(--tool-hex-34d399)', 'var(--tool-hex-4f8ff7)', 'var(--tool-hex-f87171)', 'var(--tool-hex-fbbf24)', 'var(--tool-hex-a78bfa)'];
+    const COLORS = ['var(--color-success)', 'var(--color-accent-blue)', 'var(--color-danger)', 'var(--color-warning)', 'var(--color-purple)'];
     return (
       <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 14, padding: '16px 18px', marginBottom: 16 }}>
         {title && <div style={{ fontWeight: 600, fontSize: 14, color: text, marginBottom: 14, letterSpacing: '-0.01em' }}>{title}</div>}
@@ -279,7 +327,7 @@ export function PieChartWidget({ data, title, height = 220 }) {
             <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
               {data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
             </Pie>
-            <Tooltip contentStyle={{ background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-fff)', border: `1px solid ${border}`, borderRadius: 10, fontSize: 12 }} />
+            <Tooltip contentStyle={{ background: isDark ? 'var(--color-surface-raised)' : 'var(--color-surface)', border: `1px solid ${border}`, borderRadius: 10, fontSize: 12 }} />
           </PieChart>
         </ResponsiveContainer>
       </div>

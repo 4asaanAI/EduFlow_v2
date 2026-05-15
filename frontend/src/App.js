@@ -1,4 +1,6 @@
 import './App.css';
+import { useEffect } from 'react';
+import { BrowserRouter } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import './theme.css';
 import { UserProvider, useUser } from './contexts/UserContext';
@@ -8,10 +10,15 @@ import Layout from './components/Layout';
 import Login from './components/Login';
 import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
+import { purgeExpiredAttendanceDrafts } from './lib/attendanceDrafts';
 
 function AppContent() {
   const { isAuthenticated, loading } = useUser();
   const path = window.location.pathname;
+
+  useEffect(() => {
+    purgeExpiredAttendanceDrafts();
+  }, []);
 
   if (loading) {
     return (
@@ -35,11 +42,13 @@ function AppContent() {
 
 export default function App() {
   return (
-    <ErrorBoundary>
+    <ErrorBoundary name="EduFlow">
       <ThemeProvider>
         <UserProvider>
           <ToastProvider>
-            <AppContent />
+            <BrowserRouter>
+              <AppContent />
+            </BrowserRouter>
           </ToastProvider>
         </UserProvider>
       </ThemeProvider>

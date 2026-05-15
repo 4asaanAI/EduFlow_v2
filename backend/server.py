@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 import os
 import logging
+import asyncio
 import time
 import uuid
 import httpx
@@ -59,6 +60,7 @@ from services.idempotency import (
     should_handle_idempotency,
     store_response,
 )
+from services.sse import keepalive_loop as sse_keepalive_loop
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -196,7 +198,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     logger.error("unhandled request error", exc_info=(type(exc), exc, exc.__traceback__))
     response = JSONResponse(
         status_code=500,
-        content={"success": False, "detail": "An internal error occurred"},
+        content={"detail": "An internal error occurred"},
     )
     return _add_cors(response, request.headers.get("origin"))
 
@@ -237,11 +239,19 @@ app.include_router(reports_router)
 async def startup():
     validate_school_id()
     await connect_db()
+    app.state.sse_keepalive_task = asyncio.create_task(sse_keepalive_loop())
     logger.info("EduFlow API started")
 
 
 @app.on_event("shutdown")
 async def shutdown():
+    task = getattr(app.state, "sse_keepalive_task", None)
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
     await disconnect_db()
 
 
@@ -285,14 +295,52 @@ async def _check_biometric() -> str:
         return "degraded"
 
 
+async def _check_s3() -> str:
+    bucket = os.environ.get("S3_BUCKET_NAME") or os.environ.get("S3_BUCKET")
+    if not bucket:
+        return "not_configured"
+
+    def _call():
+        from services.s3_storage import get_s3_client
+        get_s3_client().list_objects_v2(Bucket=bucket, MaxKeys=1)
+
+    try:
+        await asyncio.wait_for(asyncio.to_thread(_call), timeout=3.0)
+        return "ok"
+    except Exception:
+        logger.warning("readiness s3 check degraded", exc_info=True)
+        return "degraded"
+
+
+async def _check_sms() -> str:
+    sid = os.environ.get("TWILIO_ACCOUNT_SID")
+    token = os.environ.get("TWILIO_AUTH_TOKEN")
+    if not sid:
+        return "not_configured"
+    if not token:
+        logger.warning("readiness sms check degraded", extra={"reason": "missing_twilio_auth_token"})
+        return "degraded"
+    try:
+        async with httpx.AsyncClient(timeout=3.0, auth=(sid, token)) as client:
+            response = await client.get(f"https://api.twilio.com/2010-04-01/Accounts/{sid}.json")
+        return "ok" if response.status_code < 500 else "degraded"
+    except Exception:
+        logger.warning("readiness sms check degraded", exc_info=True)
+        return "degraded"
+
+
 @app.get("/api/health/ready")
 async def health_ready():
     db_status = await _check_db()
     ai_status = await _check_ai()
+    s3_status = await _check_s3()
+    sms_status = await _check_sms()
     school_id_configured = bool(os.environ.get("SCHOOL_ID"))
     response = {
         "db": db_status,
         "ai": ai_status,
+        "s3": s3_status,
+        "sms": sms_status,
         "school_id_configured": school_id_configured,
     }
     if os.environ.get("BIOMETRIC_ENABLED", "").lower() == "true":
@@ -300,6 +348,8 @@ async def health_ready():
 
     if db_status == "error":
         overall = "down"
+    elif any(value == "degraded" for value in response.values()):
+        overall = "degraded"
     else:
         overall = "ready"
 

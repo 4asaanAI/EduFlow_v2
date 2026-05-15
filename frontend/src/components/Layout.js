@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import ChatInterface from './ChatInterface';
+import ErrorBoundary from './ErrorBoundary';
 import FloatingAssistant from './FloatingAssistant';
 import { createConversation, getConversations } from '../lib/api';
 import ProfileModal from './ProfileModal';
@@ -61,7 +63,11 @@ function ToolView({ toolId }) {
       <span style={{ color: 'var(--text-muted)', fontSize: 13, fontWeight: 500 }}>Loading tool...</span>
     </div>
   );
-  return <Comp />;
+  return (
+    <ErrorBoundary name={toolId}>
+      <Comp />
+    </ErrorBoundary>
+  );
 }
 
 const TOOL_DASHBOARD_ROLES = ['admin', 'teacher', 'owner'];
@@ -69,7 +75,8 @@ const TOOL_DASHBOARD_ROLES = ['admin', 'teacher', 'owner'];
 export default function Layout() {
   const { currentUser } = useUser();
   const { isDark } = useTheme();
-  const [activeTool, setActiveTool] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTool = searchParams.get('tool');
   const [activeConvId, setActiveConvId] = useState(null);
   const [activeConvTitle, setActiveConvTitle] = useState('');
   const [convRefresh, setConvRefresh] = useState(0);
@@ -77,11 +84,21 @@ export default function Layout() {
   const [showSettings, setShowSettings] = useState(false);
   const [showCmdPalette, setShowCmdPalette] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const previousUserIdRef = useRef(currentUser.id);
 
   const isToolDashboardRole = TOOL_DASHBOARD_ROLES.includes(currentUser.role);
 
+  const setActiveToolParam = useCallback((toolId, options = {}) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (toolId) next.set('tool', toolId);
+      else next.delete('tool');
+      return next;
+    }, { replace: !!options.replace });
+  }, [setSearchParams]);
+
   const handleNewChat = async () => {
-    setActiveTool(null);
+    setActiveToolParam(null);
     const res = await createConversation(currentUser);
     if (res.success) {
       setActiveConvId(res.data.id);
@@ -91,7 +108,7 @@ export default function Layout() {
   };
 
   const handleSelectTool = (toolId) => {
-    setActiveTool(toolId);
+    setActiveToolParam(toolId);
     if (isToolDashboardRole) {
       const key = `eduflow_activity_${currentUser.id}`;
       const prev = JSON.parse(localStorage.getItem(key) || '[]').filter(a => a.id !== toolId);
@@ -101,7 +118,7 @@ export default function Layout() {
   };
 
   const handleSelectConv = async (convId) => {
-    setActiveTool(null);
+    setActiveToolParam(null);
     setActiveConvId(convId);
     try {
       const res = await getConversations(currentUser);
@@ -116,10 +133,10 @@ export default function Layout() {
   };
 
   useEffect(() => {
-    const handler = (e) => { if (e.detail) { setActiveTool(e.detail); } };
+    const handler = (e) => { if (e.detail) { setActiveToolParam(e.detail); } };
     window.addEventListener('open-tool', handler);
     return () => window.removeEventListener('open-tool', handler);
-  }, []);
+  }, [setActiveToolParam]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -133,10 +150,12 @@ export default function Layout() {
   }, []);
 
   useEffect(() => {
-    setActiveTool(null);
+    if (previousUserIdRef.current === currentUser.id) return;
+    previousUserIdRef.current = currentUser.id;
+    setActiveToolParam(null, { replace: true });
     setActiveConvId(null);
     setActiveConvTitle('');
-  }, [currentUser.id]);
+  }, [currentUser.id, setActiveToolParam]);
 
   useEffect(() => {
     const handleClick = (e) => {

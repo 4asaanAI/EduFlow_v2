@@ -5,7 +5,11 @@ import { getAuthHeaders } from '../../lib/authSession';
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 async function downloadReceipt(transactionId) {
-  const res = await fetch(`${API}/fees/transactions/${transactionId}/receipt`, { headers: getAuthHeaders() });
+  if (!transactionId) {
+    alert('Receipt is unavailable for this record');
+    return;
+  }
+  const res = await fetch(`${API}/fees/transactions/${encodeURIComponent(transactionId)}/receipt`, { headers: getAuthHeaders() });
   if (!res.ok) { alert('Receipt generation failed'); return; }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
@@ -248,9 +252,9 @@ export default function FeeCollection() {
     <div data-testid="fee-collection-tool" style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 650, margin: 0, color: 'var(--c-text)' }}>Fee collection</h1>
-          <p style={{ margin: '6px 0 0', color: 'var(--c-faint)', fontSize: 12 }}>Payments, corrections, defaulters, and contact recovery</p>
-          <p style={{ margin: '4px 0 0', color: 'var(--c-muted)', fontSize: 11 }}>{liveUpdateLabel}</p>
+          <h1 style={{ fontSize: 22, fontWeight: 650, margin: 0, color: 'var(--color-text-primary)' }}>Fee collection</h1>
+          <p style={{ margin: '6px 0 0', color: 'var(--color-text-muted)', fontSize: 12 }}>Payments, corrections, defaulters, and contact recovery</p>
+          <p style={{ margin: '4px 0 0', color: 'var(--color-text-secondary)', fontSize: 11 }}>{liveUpdateLabel}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => exportFeeCSV('')} title="Export all fees as CSV" style={iconButton}>
@@ -274,7 +278,7 @@ export default function FeeCollection() {
         ].map(([label, value, color]) => (
           <div key={label} style={panelStyle}>
             <div style={{ color, fontSize: 20, fontWeight: 750 }}>{value}</div>
-            <div style={{ color: 'var(--c-faint)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }}>{label}</div>
+            <div style={{ color: 'var(--color-text-muted)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase' }}>{label}</div>
           </div>
         ))}
       </div>
@@ -309,7 +313,7 @@ export default function FeeCollection() {
             <option value="">Select transaction</option>
             {transactions.map(t => <option key={t.id} value={t.id}>{t.student_name || t.student_id} - {t.fee_type} - {money(t.amount)}</option>)}
           </select>
-          {selectedTxn && <div style={{ color: 'var(--c-faint)', fontSize: 12 }}>Current: {selectedTxn.status} / {money(selectedTxn.amount)}</div>}
+          {selectedTxn && <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>Current: {selectedTxn.status} / {money(selectedTxn.amount)}</div>}
           <div style={twoCol}>
             <input value={correction.amount} onChange={e => setCorrection(prev => ({ ...prev, amount: e.target.value }))} placeholder="Corrected amount" type="number" style={inputStyle} />
             <select value={correction.status} onChange={e => setCorrection(prev => ({ ...prev, status: e.target.value }))} style={inputStyle}>
@@ -399,7 +403,7 @@ export default function FeeCollection() {
                   <strong>-{money(item.discount_amount)}</strong>
                 </div>
               ))}
-              <div style={{ ...lineItem, borderTop: '1px solid var(--c-border)', paddingTop: 10, color: 'var(--tool-hex-34d399)' }}>
+              <div style={{ ...lineItem, borderTop: '1px solid var(--color-border)', paddingTop: 10, color: 'var(--tool-hex-34d399)' }}>
                 <span>Payable</span><strong>{money(discountBreakdown.payable_amount)}</strong>
               </div>
             </div>
@@ -421,7 +425,7 @@ export default function FeeCollection() {
             <thead><tr>{['Student', 'Class', 'Head', 'Amount', 'Due', 'Status', 'Receipt'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
             <tbody>
               {overdue.map((txn, index) => (
-                <tr key={txn.id} style={{ borderTop: index ? '1px solid var(--c-border)' : 'none' }}>
+                <tr key={txn.id} style={{ borderTop: index ? '1px solid var(--color-border)' : 'none' }}>
                   <td style={tdStyle}>{txn.student_name || txn.student_id}</td>
                   <td style={tdStyle}>{txn.class_name || 'N/A'}</td>
                   <td style={tdStyle}>{txn.fee_head || txn.fee_type}</td>
@@ -430,7 +434,7 @@ export default function FeeCollection() {
                   <td style={tdStyle}>{txn.status}</td>
                   <td style={tdStyle}>
                     {txn.status === 'paid' && (
-                      <button onClick={() => downloadReceipt(txn.id)} title="Download PDF receipt" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tool-hex-4f8ff7)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+                      <button onClick={() => downloadReceipt(txn.id || txn.transaction_id)} title="Download PDF receipt" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tool-hex-4f8ff7)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
                         <FileDown size={13} /> PDF
                       </button>
                     )}
@@ -445,15 +449,15 @@ export default function FeeCollection() {
   );
 }
 
-const panelStyle = { background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 14 };
-const panelTitle = { display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 10px', color: 'var(--c-text)', fontSize: 13, fontWeight: 750 };
-const inputStyle = { minHeight: 40, width: '100%', boxSizing: 'border-box', background: 'var(--c-deep)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 10px', color: 'var(--c-text)', fontSize: 13, outline: 'none', marginBottom: 8 };
+const panelStyle = { background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, padding: 14 };
+const panelTitle = { display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 10px', color: 'var(--color-text-primary)', fontSize: 13, fontWeight: 750 };
+const inputStyle = { minHeight: 40, width: '100%', boxSizing: 'border-box', background: 'var(--color-surface-raised)', border: '1px solid var(--color-border)', borderRadius: 7, padding: '8px 10px', color: 'var(--color-text-primary)', fontSize: 13, outline: 'none', marginBottom: 8 };
 const textareaStyle = { ...inputStyle, minHeight: 76, resize: 'vertical' };
 const twoCol = { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 };
 const primaryButton = background => ({ minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, background, border: 'none', borderRadius: 8, padding: '11px 18px', color: 'var(--tool-hex-fff)', fontSize: 13, fontWeight: 750, cursor: 'pointer' });
-const iconButton = { minHeight: 44, minWidth: 44, display: 'grid', placeItems: 'center', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, color: 'var(--c-text)', cursor: 'pointer' };
+const iconButton = { minHeight: 44, minWidth: 44, display: 'grid', placeItems: 'center', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, color: 'var(--color-text-primary)', cursor: 'pointer' };
 const alertStyle = color => ({ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: 12, border: `1px solid color-mix(in srgb, ${color} 33%, transparent)`, borderRadius: 8, background: `color-mix(in srgb, ${color} 7%, transparent)`, color, fontSize: 13 });
-const thStyle = { padding: '10px 12px', textAlign: 'left', color: 'var(--c-faint)', fontSize: 10, textTransform: 'uppercase', background: 'var(--c-deep)' };
-const tdStyle = { padding: '10px 12px', color: 'var(--c-text)', fontSize: 13 };
-const emptyStyle = { padding: 30, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13 };
-const lineItem = { display: 'flex', justifyContent: 'space-between', gap: 12, padding: '7px 0', color: 'var(--c-text)', fontSize: 13 };
+const thStyle = { padding: '10px 12px', textAlign: 'left', color: 'var(--color-text-muted)', fontSize: 10, textTransform: 'uppercase', background: 'var(--color-surface-raised)' };
+const tdStyle = { padding: '10px 12px', color: 'var(--color-text-primary)', fontSize: 13 };
+const emptyStyle = { padding: 30, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 };
+const lineItem = { display: 'flex', justifyContent: 'space-between', gap: 12, padding: '7px 0', color: 'var(--color-text-primary)', fontSize: 13 };

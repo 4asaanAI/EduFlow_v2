@@ -3,6 +3,10 @@ import DOMPurify from 'dompurify';
 import { useTheme } from '../contexts/ThemeContext';
 import { Sparkles } from 'lucide-react';
 
+const MARKDOWN_SANITIZE_CONFIG = {
+  FORBID_ATTR: ['style', 'class', 'onerror', 'onload', 'onfocus'],
+};
+
 function parseMarkdownText(isDark) {
   const tp = isDark ? '#f5f5f5' : '#171717';
   const ts = isDark ? '#a0a0a0' : '#525252';
@@ -298,7 +302,15 @@ export default function MessageRenderer({ message, isStreaming, onActionButton }
       </div>
       <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
         {message.content && (
-          <div className="prose-chat" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(markdownFn(message.content)) }} />
+          <div
+            className="prose-chat"
+            dangerouslySetInnerHTML={{
+              // AI-authored markdown is converted to HTML before rendering. Strip
+              // inline style and class hooks so generated content cannot borrow
+              // theme CSS or event attributes to mislead the user.
+              __html: DOMPurify.sanitize(markdownFn(message.content), MARKDOWN_SANITIZE_CONFIG),
+            }}
+          />
         )}
         {isStreaming && <span style={{ display: 'inline-block', width: 2, height: 16, background: '#a78bfa', marginLeft: 2, animation: 'cursorBlink 1s infinite' }} />}
         {richBlocks.map((block, i) => {

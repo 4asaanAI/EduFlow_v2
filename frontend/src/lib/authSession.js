@@ -4,6 +4,10 @@ const USER_KEY = 'eduflow_user';
 let accessToken = null;
 let authUser = null;
 let refreshPromise = null;
+let loginRedirectInProgress = false;
+
+const defaultRedirect = (path) => { window.location.href = path; };
+let redirectHandler = defaultRedirect;
 
 export function getAccessToken() {
   return accessToken;
@@ -22,6 +26,7 @@ export function getAuthHeaders(contentType = 'application/json') {
 export function setAuthSession(token, user) {
   accessToken = token || null;
   authUser = user || null;
+  loginRedirectInProgress = false;
   try {
     if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
     else localStorage.removeItem(USER_KEY);
@@ -36,6 +41,24 @@ export function clearAuthSession() {
     localStorage.removeItem(USER_KEY);
     localStorage.removeItem('token');
   } catch {}
+}
+
+export function redirectToLoginOnce(path = '/') {
+  if (loginRedirectInProgress) return false;
+  loginRedirectInProgress = true;
+  clearAuthSession();
+  redirectHandler(path);
+  return true;
+}
+
+export function resetAuthRedirectGuardForTests() {
+  loginRedirectInProgress = false;
+  redirectHandler = defaultRedirect;
+}
+
+export function setAuthRedirectHandlerForTests(handler) {
+  loginRedirectInProgress = false;
+  redirectHandler = handler || defaultRedirect;
 }
 
 export function getStoredUser() {

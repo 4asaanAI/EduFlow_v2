@@ -11,6 +11,7 @@ from typing import List, Optional
 from database import get_db
 from middleware.auth import require_role
 from tenant import get_school_id, scoped_filter
+from services.audit_service import write_audit
 
 router = APIRouter(prefix="/api/activities", tags=["activities"])
 
@@ -94,6 +95,17 @@ async def award_points(house_id: str, body: HousePointsBody, request: Request, u
         "created_at": datetime.now().isoformat(),
     }
     await db.house_points_log.insert_one(log)
+    await write_audit(
+        db,
+        action="house_points_award",
+        entity_id=house_id,
+        collection="houses",
+        changed_by=user.get("id"),
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes={"delta": body.delta, "new_total": new_points, "reason": body.reason},
+    )
     return {"success": True, "data": {"points": new_points}}
 
 
@@ -155,6 +167,17 @@ async def assign_position(body: PositionBody, request: Request, user: dict = Dep
         "created_at": datetime.now().isoformat(),
     }
     await db.student_positions.insert_one(doc)
+    await write_audit(
+        db,
+        action="student_position_assign",
+        entity_id=doc["id"],
+        collection="student_positions",
+        changed_by=user.get("id"),
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes={"student_id": body.student_id, "position": body.position},
+    )
     doc.pop("_id", None)
     return {"success": True, "data": doc}
 
@@ -168,6 +191,17 @@ async def remove_position(position_id: str, request: Request, user: dict = Depen
     await db.student_positions.update_one(
         _scope({"id": position_id}),
         {"$set": {"is_active": False, "ended_at": datetime.now().isoformat()}},
+    )
+    await write_audit(
+        db,
+        action="student_position_remove",
+        entity_id=position_id,
+        collection="student_positions",
+        changed_by=user.get("id"),
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes={"is_active": False},
     )
     return {"success": True}
 
@@ -214,6 +248,17 @@ async def create_team(body: TeamBody, request: Request, user: dict = Depends(req
         "created_at": datetime.now().isoformat(),
     }
     await db.sports_teams.insert_one(doc)
+    await write_audit(
+        db,
+        action="sports_team_create",
+        entity_id=doc["id"],
+        collection="sports_teams",
+        changed_by=user.get("id"),
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes={"name": body.name, "sport": body.sport},
+    )
     doc.pop("_id", None)
     return {"success": True, "data": doc}
 
@@ -229,6 +274,17 @@ async def update_team(team_id: str, request: Request, user: dict = Depends(requi
     update = {k: v for k, v in body.items() if k in allowed}
     update["updated_at"] = datetime.now().isoformat()
     await db.sports_teams.update_one(_scope({"id": team_id}), {"$set": update})
+    await write_audit(
+        db,
+        action="sports_team_update",
+        entity_id=team_id,
+        collection="sports_teams",
+        changed_by=user.get("id"),
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes=update,
+    )
     return {"success": True}
 
 
@@ -238,5 +294,16 @@ async def delete_team(team_id: str, request: Request, user: dict = Depends(requi
     await db.sports_teams.update_one(
         _scope({"id": team_id}),
         {"$set": {"is_active": False, "updated_at": datetime.now().isoformat()}},
+    )
+    await write_audit(
+        db,
+        action="sports_team_delete",
+        entity_id=team_id,
+        collection="sports_teams",
+        changed_by=user.get("id"),
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes={"is_active": False},
     )
     return {"success": True}

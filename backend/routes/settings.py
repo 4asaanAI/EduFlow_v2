@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
 from middleware.auth import get_current_user, require_role, require_owner
+from tenant import get_school_id
+from services.audit_service import write_audit
 from datetime import datetime
 import uuid
 
@@ -24,6 +26,17 @@ async def track_token_usage(request: Request):
         {"user_id": user["id"], "month": month},
         {"$inc": {"tokens": tokens, "sessions": 1}, "$set": {"user_id": user["id"], "month": month}},
         upsert=True
+    )
+    await write_audit(
+        db,
+        action="token_usage_track",
+        entity_id=user["id"],
+        collection="token_usage",
+        changed_by=user["id"],
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes={"tokens": tokens, "month": month},
     )
     return {"success": True}
 
@@ -63,6 +76,17 @@ async def year_end_transition(request: Request, user: dict = Depends(require_rol
     # Set all current years to not current
     await db.academic_years.update_many({"is_current": True}, {"$set": {"is_current": False}})
     await db.academic_years.insert_one({**new_ay, "_id": new_ay["id"]})
+    await write_audit(
+        db,
+        action="academic_year_transition",
+        entity_id=new_ay["id"],
+        collection="academic_years",
+        changed_by=user["id"],
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes={"new_year": new_ay},
+    )
 
     # Count students promoted
     student_count = await db.students.count_documents({"is_active": True})
@@ -85,6 +109,17 @@ async def update_school_settings(request: Request, user: dict = Depends(require_
     update = {k: v for k, v in body.items() if k in allowed}
     from datetime import datetime as dt
     await db.school_settings.update_one({"id": "main"}, {"$set": {**update, "updated_at": dt.now().isoformat()}}, upsert=True)
+    await write_audit(
+        db,
+        action="school_settings_update",
+        entity_id="main",
+        collection="school_settings",
+        changed_by=user["id"],
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes=update,
+    )
     return {"success": True}
 
 
@@ -114,6 +149,17 @@ async def update_settings(request: Request):
             {"$set": {"notifications": update["notifications"], "updated_at": dt.now().isoformat()}},
             upsert=True
         )
+    await write_audit(
+        db,
+        action="user_settings_update",
+        entity_id=user["id"],
+        collection="users",
+        changed_by=user["id"],
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes=update,
+    )
     return {"success": True}
 
 
@@ -166,6 +212,17 @@ async def create_form(request: Request, user: dict = Depends(require_role("admin
             "created_at": datetime.now().isoformat(),
         }
         result = await db.custom_forms.insert_one({**form, "_id": form["id"]})
+        await write_audit(
+            db,
+            action="custom_form_create",
+            entity_id=form["id"],
+            collection="custom_forms",
+            changed_by=user["id"],
+            changed_by_role=user.get("role", ""),
+            school_id=get_school_id(),
+            branch_id=user.get("branch_id", ""),
+            changes={"title": form["title"], "audience": form["audience"]},
+        )
         return {"success": True, "data": form}
     except HTTPException:
         raise
@@ -197,6 +254,17 @@ async def submit_form_response(form_id: str, request: Request):
         "submitted_at": datetime.now().isoformat(),
     }
     await db.form_responses.insert_one({**response, "_id": response["id"]})
+    await write_audit(
+        db,
+        action="form_response_submit",
+        entity_id=response["id"],
+        collection="form_responses",
+        changed_by=user["id"],
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes={"form_id": form_id},
+    )
     return {"success": True, "data": response}
 
 
@@ -212,6 +280,17 @@ async def delete_form(form_id: str, request: Request, user: dict = Depends(requi
     db = get_db()
     await db.custom_forms.delete_one({"id": form_id})
     await db.form_responses.delete_many({"form_id": form_id})
+    await write_audit(
+        db,
+        action="custom_form_delete",
+        entity_id=form_id,
+        collection="custom_forms",
+        changed_by=user["id"],
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes={"deleted": True},
+    )
     return {"success": True}
 
 

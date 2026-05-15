@@ -36,7 +36,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-05-12"
-last_updated: "2026-05-15-p4-complete"
+last_updated: "2026-05-15-p8-complete"
 project: eduflow
 project_key: NOKEY
 tracking_system: file-system
@@ -196,10 +196,10 @@ development_status:
   # 🔥 HOTFIXES — Ship before Part 5 (active production failures)
   # Party-mode review 2026-05-15: P0 security + broken UX
   # ─────────────────────────────────────────────
-  epic-hotfix: in-progress
-  hotfix-1-file-serve-unauthenticated: backlog
-  hotfix-2-fee-collection-receipt-404: backlog
-  hotfix-3-leave-approval-rbac-any-admin: backlog
+  epic-hotfix: done
+  hotfix-1-file-serve-unauthenticated: done
+  hotfix-2-fee-collection-receipt-404: done
+  hotfix-3-leave-approval-rbac-any-admin: done
 
   # ─────────────────────────────────────────────
   # Pre-Part-9 Infra — MongoDB indexes + test factories
@@ -214,52 +214,56 @@ development_status:
   # Epics file: planning-artifacts/epic-part5-sse-notifications.md
   # Baseline: 420 tests · Model: Claude Sonnet 4.6
   # ─────────────────────────────────────────────
-  epic-p5: backlog
-  p5-1-sse-keepalive-reconnect: backlog
-  p5-2-notification-delivery-guarantees: backlog
-  p5-3-notification-fan-out-utility: backlog
-  p5-4-unread-count-performance: backlog
-  p5-5-sse-connection-leak-guard: backlog
-  p5-6-notification-tests: backlog
+  epic-p5: done
+  p5-1-sse-keepalive-reconnect: done
+  p5-2-notification-delivery-guarantees: done
+  p5-3-notification-fan-out-utility: done
+  p5-4-unread-count-performance: done
+  p5-5-sse-connection-leak-guard: done
+  p5-6-notification-tests: done
   epic-p5-retrospective: optional
 
   # ─────────────────────────────────────────────
   # Quality Sweep Part 6 — File Storage + Uploads
   # Epics file: planning-artifacts/epic-part6-file-storage.md
   # ─────────────────────────────────────────────
-  epic-p6: backlog
-  p6-1-upload-authentication-guard: backlog
-  p6-2-s3-school-namespacing: backlog
-  p6-3-mime-type-validation: backlog
-  p6-4-orphaned-file-cleanup: backlog
-  p6-5-chat-upload-limits: backlog
-  p6-6-file-storage-tests: backlog
+  epic-p6: done
+  p6-1-upload-authentication-guard: done
+  p6-2-s3-school-namespacing: done
+  p6-3-mime-type-validation: done
+  p6-4-orphaned-file-cleanup: done
+  p6-5-chat-upload-limits: done
+  p6-6-file-storage-tests: done
   epic-p6-retrospective: optional
 
   # ─────────────────────────────────────────────
   # Quality Sweep Part 7 — Observability + Audit
   # Epics file: planning-artifacts/epic-part7-observability-audit.md
   # ─────────────────────────────────────────────
-  epic-p7: backlog
-  p7-1-audit-coverage-settings-activities: backlog
-  p7-2-health-endpoint-s3-sms-checks: backlog
-  p7-3-error-response-shape-consistency: backlog
-  p7-4-log-level-correctness: backlog
-  p7-5-audit-log-branch-scoping: backlog
-  p7-6-observability-tests: backlog
+  epic-p7: done
+  p7-1-audit-coverage-settings-activities: done
+  p7-2-health-endpoint-s3-sms-checks: done
+  p7-3-error-response-shape-consistency: done
+  p7-4-log-level-correctness: done
+  p7-5-audit-log-branch-scoping: done
+  p7-6-observability-tests: done
   epic-p7-retrospective: optional
 
   # ─────────────────────────────────────────────
   # Quality Sweep Part 8 — Frontend Foundation
   # Epics file: planning-artifacts/epic-part8-frontend-foundation.md
   # ─────────────────────────────────────────────
-  epic-p8: backlog
-  p8-1-sse-reconnect-backoff: backlog
-  p8-2-confirm-double-submit-guard: backlog
-  p8-3-message-renderer-xss: backlog
-  p8-4-error-boundary-granularity: backlog
-  p8-5-401-refresh-race-guard: backlog
-  p8-6-url-routing-active-tool: backlog
+  epic-p8: done
+  p8-0-jest-rtl-test-infrastructure: done
+  p8-1-sse-reconnect-backoff: done
+  p8-2-confirm-double-submit-guard: done
+  p8-3-message-renderer-xss: done
+  p8-4-error-boundary-granularity: done
+  p8-5-401-refresh-race-guard: done
+  p8-6-url-routing-active-tool: done
+  p8-7-semantic-theme-tokens: done
+  p8-8-attendance-draft-ttl-purge: done
+  p8-9-frontend-foundation-tests-build: done
   epic-p8-retrospective: optional
 
   # ─────────────────────────────────────────────

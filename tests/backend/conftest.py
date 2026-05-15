@@ -40,10 +40,16 @@ try:
     import routes.staff as staff_routes
     import routes.attendance as attendance_routes
     import routes.fees as fees_routes
+    import routes.settings as settings_routes
+    import routes.activities as activities_routes
     import routes.operations as operations_routes
+    import routes.notifications as notifications_routes
     import routes.academics as academics_routes
     import routes.issues as issues_routes
     import routes.audit as audit_routes
+    import routes.upload as upload_routes
+    import routes.chat_upload as chat_upload_routes
+    import routes.image_gen as image_gen_routes
     import routes.operator as operator_routes
     import routes.reports as reports_routes
     import routes.exports as exports_routes
@@ -272,6 +278,12 @@ class FakeCollection:
         self.docs[:] = [doc for doc in self.docs if not _matches(doc, query)]
         return type("Result", (), {"deleted_count": before - len(self.docs)})()
 
+    async def create_index(self, *args, **kwargs):
+        return kwargs.get("name") or str(args[0] if args else "index")
+
+    async def index_information(self):
+        return {}
+
     def aggregate(self, pipeline):
         docs = [doc.copy() for doc in self.docs]
         for stage in pipeline:
@@ -363,8 +375,12 @@ class FakeDb:
         self.notifications = FakeCollection()
         self.audit_logs = FakeCollection()
         self.file_uploads = FakeCollection()
+        self.orphaned_s3_keys = FakeCollection()
         self.users = FakeCollection()
+        self.user_settings = FakeCollection()
         self.school_settings = FakeCollection()
+        self.custom_forms = FakeCollection()
+        self.form_responses = FakeCollection()
         self.expenses = FakeCollection()
         self.visitor_log = FakeCollection()
         self.assets = FakeCollection()
@@ -405,6 +421,15 @@ class FakeDb:
         self.announcements = FakeCollection()
         self.exam_results = FakeCollection()
         self.exams = FakeCollection()
+        self.houses = FakeCollection()
+        self.house_points_log = FakeCollection()
+        self.student_positions = FakeCollection()
+        self.sports_teams = FakeCollection()
+
+    async def command(self, command_name):
+        if command_name == "ping":
+            return {"ok": 1}
+        return {"ok": 1}
 
 
 if APP_AVAILABLE:
@@ -423,10 +448,15 @@ if APP_AVAILABLE:
     staff_routes.get_db = lambda: _fake_db
     attendance_routes.get_db = lambda: _fake_db
     fees_routes.get_db = lambda: _fake_db
+    settings_routes.get_db = lambda: _fake_db
+    activities_routes.get_db = lambda: _fake_db
     operations_routes.get_db = lambda: _fake_db
+    notifications_routes.get_db = lambda: _fake_db
     academics_routes.get_db = lambda: _fake_db
     issues_routes.get_db = lambda: _fake_db
     audit_routes.get_db = lambda: _fake_db
+    upload_routes.get_db = lambda: _fake_db
+    image_gen_routes.get_db = lambda: _fake_db
     chat_routes.get_db = lambda: _fake_db
     operator_routes.get_db = lambda: _fake_db
     reports_routes.get_db = lambda: _fake_db

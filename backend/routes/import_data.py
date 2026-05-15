@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 
 from database import get_db
 from middleware.auth import require_owner
+from services.audit_service import write_audit_doc
 from tenant import get_school_id
 
 router = APIRouter(prefix="/api/import", tags=["import"])
@@ -252,6 +253,8 @@ async def commit_import(
         imported_count += 1
 
     audit = {
+        "entity_type": "student",
+        "entity_id": "bulk_import",
         "action": "bulk_import",
         "imported_count": imported_count,
         "skipped_count": skipped_count,
@@ -259,7 +262,7 @@ async def commit_import(
         "triggered_by": user.get("id"),
         "timestamp": datetime.now().isoformat(),
     }
-    await db.audit_logs.insert_one(audit)
+    await write_audit_doc(db, audit, school_id=get_school_id(), branch_id=user.get("branch_id"))
 
     return {
         "success": True,

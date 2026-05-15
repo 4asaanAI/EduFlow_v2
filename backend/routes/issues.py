@@ -4,6 +4,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
 from middleware.auth import get_current_user, require_owner, require_access
+from services.audit_service import write_audit_doc
+from services.notification_service import create_notification, fan_out_notifications
 from tenant import get_school_id, scoped_filter, add_school_id
 from datetime import datetime
 import uuid
@@ -54,20 +56,13 @@ def _audit(action, entity_type, entity_id, user, changes):
     })
 
 
-async def _notify(db, *, user_id: str, notification_type: str, message: str, source_id: str, source_type: str):
-    if not user_id:
-        return
-    await db.notifications.insert_one(add_school_id({
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
-        "user_id": user_id,
-        "type": notification_type,
-        "message": message,
-        "source_record_id": source_id,
-        "source_record_type": source_type,
-        "read": False,
-        "created_at": datetime.now().isoformat(),
-    }))
+async def _write_audit(db, action, entity_type, entity_id, user, changes):
+    await write_audit_doc(
+        db,
+        _audit(action, entity_type, entity_id, user, changes),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id"),
+    )
 
 
 async def _notification_targets(db, query: dict, projection: dict, limit: int = 30) -> list[dict]:
@@ -117,7 +112,7 @@ async def create_facility_request(request: Request):
         "updated_at": datetime.now().isoformat(),
     })
     await db.facility_requests.insert_one(req_doc)
-    await db.audit_logs.insert_one(_audit("facility_request_create", "facility_requests", req_doc["id"], user, {"created": req_doc["description"]}))
+    await _write_audit(db, "facility_request_create", "facility_requests", req_doc["id"], user, {"created": req_doc["description"]})
 
     msg = f"New maintenance request [{priority.upper()}]: {req_doc['description'][:80]} @ {req_doc['location']} — raised by {user.get('name', 'Staff')}."
     # Notify maintenance admins, owners, and principals (flat users collection schema)
@@ -125,13 +120,20 @@ async def create_facility_request(request: Request):
         {"role": {"$in": ["owner", "admin"]}, "is_active": {"$ne": False}},
         {"_id": 0, "id": 1, "role": 1, "sub_category": 1},
     )
-    for target in notify_targets:
-        uid = target.get("id")
-        if not uid or uid == user["id"]:
-            continue
-        if target.get("role") == "owner" or target.get("sub_category") in ("principal", "maintenance"):
-            await _notify(db, user_id=uid, notification_type="facility_request_new",
-                          message=msg, source_id=req_doc["id"], source_type="facility_request")
+    await fan_out_notifications(
+        db,
+        [
+            target["id"] for target in notify_targets
+            if target.get("id")
+            and target.get("id") != user["id"]
+            and (target.get("role") == "owner" or target.get("sub_category") in ("principal", "maintenance"))
+        ],
+        notification_type="facility_request_new",
+        title="New facility request",
+        message=msg,
+        source_id=req_doc["id"],
+        source_type="facility_request",
+    )
 
     return {"success": True, "data": {k: v for k, v in req_doc.items() if k != "_id"}}
 
@@ -197,7 +199,7 @@ async def update_facility_request(request_id: str, request: Request):
         await db.facility_requests.update_one(scoped_filter({"id": request_id}, get_school_id()), {"$push": {"notes": note_entry}})
     if updates:
         await db.facility_requests.update_one(scoped_filter({"id": request_id}, get_school_id()), {"$set": updates})
-    await db.audit_logs.insert_one(_audit("facility_request_update", "facility_requests", request_id, user, {"changes": updates}))
+    await _write_audit(db, "facility_request_update", "facility_requests", request_id, user, {"changes": updates})
     updated = await db.facility_requests.find_one(scoped_filter({"id": request_id}, get_school_id()), {"_id": 0})
     return {"success": True, "data": updated}
 
@@ -215,10 +217,16 @@ async def confirm_facility_resolution(request_id: str, request: Request, user: d
         {"$set": {"status": "closed", "resolved_by": user["id"], "resolved_at": datetime.now().isoformat(), "updated_at": datetime.now().isoformat()}}
     )
     # Notify the maintenance admin who logged it
-    await _notify(db, user_id=existing["logged_by"], notification_type="facility_resolved",
-                  message=f"Your facility request has been resolved and closed by the Owner.",
-                  source_id=request_id, source_type="facility_request")
-    await db.audit_logs.insert_one(_audit("facility_request_close", "facility_requests", request_id, user, {"status": "closed"}))
+    await create_notification(
+        db,
+        user_id=existing["logged_by"],
+        notification_type="facility_resolved",
+        title="Facility request resolved",
+        message=f"Your facility request has been resolved and closed by the Owner.",
+        source_id=request_id,
+        source_type="facility_request",
+    )
+    await _write_audit(db, "facility_request_close", "facility_requests", request_id, user, {"status": "closed"})
     return {"success": True, "message": "Facility request closed and maintenance admin notified"}
 
 
@@ -248,7 +256,7 @@ async def create_tech_request(
         "updated_at": datetime.now().isoformat(),
     })
     await db.tech_requests.insert_one(req_doc)
-    await db.audit_logs.insert_one(_audit("tech_request_create", "tech_requests", req_doc["id"], user, {"created": req_doc["description"]}))
+    await _write_audit(db, "tech_request_create", "tech_requests", req_doc["id"], user, {"created": req_doc["description"]})
     return {"success": True, "data": {k: v for k, v in req_doc.items() if k != "_id"}}
 
 
@@ -304,7 +312,7 @@ async def update_tech_request(request_id: str, request: Request):
         await db.tech_requests.update_one(scoped_filter({"id": request_id}, get_school_id()), {"$push": {"notes": note_entry}})
     if updates:
         await db.tech_requests.update_one(scoped_filter({"id": request_id}, get_school_id()), {"$set": updates})
-    await db.audit_logs.insert_one(_audit("tech_request_update", "tech_requests", request_id, user, {"changes": updates}))
+    await _write_audit(db, "tech_request_update", "tech_requests", request_id, user, {"changes": updates})
     updated = await db.tech_requests.find_one(scoped_filter({"id": request_id}, get_school_id()), {"_id": 0})
     return {"success": True, "data": updated}
 
@@ -382,7 +390,7 @@ async def create_maintenance_schedule(request: Request):
         "updated_at": datetime.now().isoformat(),
     })
     await db.maintenance_schedule.insert_one(entry)
-    await db.audit_logs.insert_one(_audit("maintenance_schedule_create", "maintenance_schedule", entry["id"], user, {"title": entry["title"]}))
+    await _write_audit(db, "maintenance_schedule_create", "maintenance_schedule", entry["id"], user, {"title": entry["title"]})
     return {"success": True, "data": {k: v for k, v in entry.items() if k != "_id"}}
 
 
@@ -401,7 +409,7 @@ async def update_maintenance_schedule(entry_id: str, request: Request):
         if field in body:
             updates[field] = body[field]
     await db.maintenance_schedule.update_one(scoped_filter({"id": entry_id}, get_school_id()), {"$set": updates})
-    await db.audit_logs.insert_one(_audit("maintenance_schedule_update", "maintenance_schedule", entry_id, user, {"changes": updates}))
+    await _write_audit(db, "maintenance_schedule_update", "maintenance_schedule", entry_id, user, {"changes": updates})
     updated = await db.maintenance_schedule.find_one(scoped_filter({"id": entry_id}, get_school_id()), {"_id": 0})
     return {"success": True, "data": updated}
 
@@ -449,7 +457,7 @@ async def create_vendor(request: Request):
         "updated_at": datetime.now().isoformat(),
     })
     await db.maintenance_vendors.insert_one(vendor)
-    await db.audit_logs.insert_one(_audit("vendor_create", "maintenance_vendors", vendor["id"], user, {"name": vendor["name"]}))
+    await _write_audit(db, "vendor_create", "maintenance_vendors", vendor["id"], user, {"name": vendor["name"]})
     return {"success": True, "data": {k: v for k, v in vendor.items() if k != "_id"}}
 
 
@@ -468,6 +476,6 @@ async def update_vendor(vendor_id: str, request: Request):
         if field in body:
             updates[field] = body[field]
     await db.maintenance_vendors.update_one(scoped_filter({"id": vendor_id}, get_school_id()), {"$set": updates})
-    await db.audit_logs.insert_one(_audit("vendor_update", "maintenance_vendors", vendor_id, user, {"changes": updates}))
+    await _write_audit(db, "vendor_update", "maintenance_vendors", vendor_id, user, {"changes": updates})
     updated = await db.maintenance_vendors.find_one(scoped_filter({"id": vendor_id}, get_school_id()), {"_id": 0})
     return {"success": True, "data": updated}

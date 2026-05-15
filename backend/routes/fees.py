@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse, Response
-from database import get_db
+from database import TimedQuery, get_db
 from models.schemas import FeeTransaction
 from middleware.auth import get_current_user, require_role, require_owner
 from datetime import datetime, timedelta
 from tenant import get_school_id, scoped_filter
-from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, publish
+from services.audit_service import write_audit_doc
+from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, normalize_session_id, publish
 from pymongo import ReturnDocument
 import asyncio
 import uuid
@@ -43,7 +44,7 @@ def _parse_date(value: str | None):
 
 
 async def _audit(db, *, action: str, entity_id: str, user: dict, changes: dict, reason: str | None = None):
-    await db.audit_logs.insert_one({
+    await write_audit_doc(db, {
         "_id": str(uuid.uuid4()),
         "id": str(uuid.uuid4()),
         "schoolId": get_school_id(),
@@ -55,7 +56,7 @@ async def _audit(db, *, action: str, entity_id: str, user: dict, changes: dict, 
         "changes": changes,
         "reason": reason,
         "created_at": datetime.now().isoformat(),
-    })
+    }, school_id=get_school_id(), branch_id=user.get("branch_id"))
 
 
 async def _student_map(db, txns):
@@ -114,7 +115,8 @@ async def get_fee_transactions(request: Request, student_id: str = None, status:
         class_students = await db.students.find(_fee_query({"class_id": class_id}), {"_id": 0, "id": 1}).to_list(500)
         query["student_id"] = {"$in": [s["id"] for s in class_students]}
 
-    txns = await db.fee_transactions.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    async with TimedQuery(collection_name="fee_transactions", operation="find", query_shape="fee_transactions_list"):
+        txns = await db.fee_transactions.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
     if overdue_days is not None:
         cutoff = datetime.now() - timedelta(days=overdue_days)
         txns = [
@@ -289,7 +291,9 @@ async def get_fee_summary(request: Request, fee_period: str = None, user: dict =
 @router.get("/stream")
 async def fee_stream(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    session_id = request.headers.get("X-SSE-Session-ID") or request.query_params.get("session_id") or str(uuid.uuid4())
+    session_id = normalize_session_id(
+        request.headers.get("X-SSE-Session-ID") or request.query_params.get("session_id")
+    )
     keepalive = int(request.query_params.get("keepalive", KEEPALIVE_SECONDS))
     once = request.query_params.get("once", "").lower() == "true"
     queue = await sse_connect("fees", session_id)
@@ -309,6 +313,9 @@ async def fee_stream(request: Request, user: dict = Depends(require_role("owner"
                     event = await asyncio.wait_for(queue.get(), timeout=keepalive)
                 except asyncio.TimeoutError:
                     yield encode_sse({"type": "keepalive", "channel": "fees"})
+                    continue
+                if isinstance(event, str):
+                    yield event
                     continue
                 if event.get("type") == "close":
                     yield encode_sse(event)

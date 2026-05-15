@@ -2,9 +2,9 @@
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
 from middleware.auth import get_current_user, require_role
-from tenant import get_school_id, scoped_filter, add_school_id
+from services.notification_service import create_notification as create_persistent_notification
+from tenant import get_school_id, scoped_filter
 from datetime import datetime, date
-import uuid
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
@@ -69,11 +69,24 @@ async def get_notifications(request: Request, page: int = 1, limit: int = 20):
             if not target_roles or "all" in target_roles or role in target_roles:
                 digest.append({"type": "info", "title": "Announcement", "message": a["title"], "time": a.get("created_at", "")[:10], "read": True, "is_digest": True})
 
+    digest_count = len(digest)
     combined = persistent + digest
+    has_fallback = False
     if not combined and page == 1:
+        has_fallback = True
         combined = [{"type": "success", "title": "All Good", "message": "No pending actions for now", "time": "Now", "read": True, "is_digest": True}]
 
-    return {"success": True, "data": combined[:limit + len(digest)], "meta": {"page": page, "limit": limit, "total": total + len(digest)}}
+    return {
+        "success": True,
+        "data": combined[:limit + digest_count],
+        "meta": {
+            "page": page,
+            "limit": limit,
+            "total": total,
+            "digest_count": digest_count,
+            "has_fallback": has_fallback,
+        },
+    }
 
 
 @router.get("/unread-count")
@@ -103,9 +116,13 @@ async def mark_notification_read(notification_id: str, request: Request):
 async def mark_all_read(request: Request):
     db = get_db()
     user = get_user(request)
+    request_start = datetime.now().isoformat()
     await db.notifications.update_many(
-        scoped_filter({"user_id": user["id"], "read": False}, get_school_id()),
-        {"$set": {"read": True, "read_at": datetime.now().isoformat()}}
+        scoped_filter(
+            {"user_id": user["id"], "read": False, "created_at": {"$lt": request_start}},
+            get_school_id(),
+        ),
+        {"$set": {"read": True, "read_at": request_start}}
     )
     return {"success": True}
 
@@ -115,18 +132,28 @@ async def create_notification(request: Request, user: dict = Depends(require_rol
     """Internal endpoint: create a notification for a specific user."""
     db = get_db()
     body = await request.json()
-    if not body.get("user_id") or not body.get("message"):
-        raise HTTPException(400, "user_id and message are required")
-    notif = add_school_id({
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
-        "user_id": body["user_id"],
-        "type": body.get("type", "info"),
-        "message": body["message"],
-        "source_record_id": body.get("source_record_id", ""),
-        "source_record_type": body.get("source_record_type", ""),
-        "read": False,
-        "created_at": datetime.now().isoformat(),
-    })
-    await db.notifications.insert_one(notif)
-    return {"success": True, "data": {k: v for k, v in notif.items() if k != "_id"}}
+    if not body.get("user_id") or not body.get("title") or not body.get("message"):
+        raise HTTPException(400, "user_id, title, and message are required")
+    ok = await create_persistent_notification(
+        db,
+        user_id=body["user_id"],
+        notification_type=body.get("type", "info"),
+        title=body["title"],
+        message=body["message"],
+        source_id=body.get("source_record_id", ""),
+        source_type=body.get("source_record_type", ""),
+    )
+    if not ok:
+        raise HTTPException(503, "Notification could not be created")
+    created = await db.notifications.find_one(
+        scoped_filter(
+            {
+                "user_id": body["user_id"],
+                "title": body["title"],
+                "message": body["message"],
+            },
+            get_school_id(),
+        ),
+        {"_id": 0},
+    )
+    return {"success": True, "data": created}
