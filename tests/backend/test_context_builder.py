@@ -236,3 +236,33 @@ async def test_build_receptionist_context_uses_school_wide_scope(monkeypatch):
     assert "todays_visitor_count" in ctx
     # School-wide — receptionists see all school enquiries/visitors
     assert ctx["pending_enquiries"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# _build_class_teacher_context
+# ---------------------------------------------------------------------------
+
+async def test_build_class_teacher_context_uses_school_wide_scope(monkeypatch):
+    """School-scoped only — branch_id intentionally omitted per architecture ADR-003."""
+    from ai import context_builder
+
+    today = date.today().strftime("%Y-%m-%d")
+    db = _make_db(
+        classes=FakeCollection([
+            {"id": "cls-1", "name": "5A", "schoolId": "aaryans-joya", "class_teacher_id": "t1"},
+        ]),
+        students=FakeCollection([
+            {"id": "stu-1", "name": "Alice", "class_id": "cls-1", "is_active": True, "schoolId": "aaryans-joya"},
+        ]),
+        student_attendance=FakeCollection([]),
+        assignments=FakeCollection([]),
+    )
+
+    monkeypatch.setenv("SCHOOL_ID", "aaryans-joya")
+
+    ctx = await context_builder._build_class_teacher_context(db, today, user_id="t1")
+
+    assert "assigned_class" in ctx
+    assert ctx["assigned_class"] == "5A"
+    # School-wide context — class teacher gets school-scoped class data, no branch_id filter
+    assert "branch_id" not in ctx

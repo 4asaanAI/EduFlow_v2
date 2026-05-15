@@ -36,7 +36,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-05-12"
-last_updated: "2026-05-15"
+last_updated: "2026-05-15-p4-complete"
 project: eduflow
 project_key: NOKEY
 tracking_system: file-system
@@ -180,13 +180,13 @@ development_status:
   # Source: platform-quality-sweep.md Part 4 · Epics file: planning-artifacts/epic-part4-multitenancy.md
   # Baseline: 387 backend tests passing, 0 skipped
   # ─────────────────────────────────────────────
-  epic-p4: backlog
-  p4-1-fix-exports-cross-tenant-exam-results-enrichment: backlog
-  p4-2-add-require-access-auth-helper: backlog
-  p4-3-migration-014-run-all-audit: backlog
-  p4-4-drop-otps-collection: backlog
-  p4-5-enforce-branch-id-ai-tools: backlog
-  p4-6-school-id-jwt-vs-env-adr: backlog
-  p4-7-audit-gate-fail-open: backlog
-  p4-8-context-builder-scoping-tests: backlog
-  epic-p4-retrospective: optional
+  epic-p4: done
+  p4-1-fix-exports-cross-tenant-exam-results-enrichment: done
+  p4-2-add-require-access-auth-helper: done
+  p4-3-migration-014-run-all-audit: done
+  p4-4-drop-otps-collection: done
+  p4-5-enforce-branch-id-ai-tools: done
+  p4-6-school-id-jwt-vs-env-adr: done
+  p4-7-audit-gate-fail-open: done
+  p4-8-context-builder-scoping-tests: done
+  epic-p4-retrospective: done

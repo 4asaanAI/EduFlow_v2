@@ -151,6 +151,17 @@ class FakeCursor:
     async def to_list(self, _limit):
         return [{k: v for k, v in doc.items() if k != "_id"} for doc in self.docs]
 
+    def __aiter__(self):
+        self._iter_index = 0
+        return self
+
+    async def __anext__(self):
+        if self._iter_index >= len(self.docs):
+            raise StopAsyncIteration
+        doc = {k: v for k, v in self.docs[self._iter_index].items() if k != "_id"}
+        self._iter_index += 1
+        return doc
+
 
 class FakeAggregateCursor:
     def __init__(self, docs):

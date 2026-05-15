@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_SCHOOL_ID = "aaryans-joya"
 
@@ -19,8 +22,7 @@ def validate_school_id() -> None:
             "route all requests to the wrong tenant."
         )
     if not school_id:
-        import logging
-        logging.getLogger(__name__).warning(
+        logger.warning(
             "SCHOOL_ID not set — using dev default 'aaryans-joya'. "
             "Set SCHOOL_ID in .env for a consistent dev environment."
         )

@@ -1,14 +1,23 @@
 from __future__ import annotations
-"""Migration 018: Drop the otps collection — zero code references, dead indexes."""
+# Migration 018: Drop the otps collection — zero code references, dead indexes.
+
+import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 async def run(db):
     collections = await db.list_collection_names()
-    if "otps" in collections:
+    dropped = "otps" in collections
+    if dropped:
         await db.drop_collection("otps")
-    return {"dropped": "otps" in collections}
+        logger.info("migration_018: otps collection dropped")
+    else:
+        logger.info("migration_018: otps collection not present, nothing to drop")
+    return {"dropped": dropped}
 
 
-# Support both calling conventions used by the runner
-async def migrate(db=None):
+async def migrate(db):
+    # db is always provided by run_all.py; if called directly, pass a real DB instance.
     await run(db)

@@ -230,13 +230,15 @@ async def audit_ai_dispatch_pending(
 
 async def audit_ai_dispatch_finalize(
     *,
-    audit_id: str,
+    audit_id: str | None,
     result: dict[str, Any] | None = None,
     error: str | None = None,
     rate_limit_hit: bool = False,
     db=None,
 ) -> None:
     """Part 2 Patch P4: update the write-ahead row with the dispatch outcome."""
+    if audit_id is None:
+        return
     audit_db = db or get_db()
     now = _now()
     success = _infer_success(result) if error is None else False
