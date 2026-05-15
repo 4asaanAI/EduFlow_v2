@@ -666,7 +666,7 @@ async def get_fee_receipt(transaction_id: str, request: Request, user: dict = De
     txn = await db.fee_transactions.find_one(_fee_query({"id": transaction_id}), {"_id": 0})
     if not txn:
         raise HTTPException(404, "Transaction not found")
-    student = await db.students.find_one({"id": txn.get("student_id")}, {"_id": 0})
+    student = await db.students.find_one(_fee_query({"id": txn.get("student_id")}), {"_id": 0})
     school_name = os.environ.get("SCHOOL_NAME", "The Aaryans")
     school_id = get_school_id()
 
@@ -674,7 +674,7 @@ async def get_fee_receipt(transaction_id: str, request: Request, user: dict = De
     receipt_number = txn.get("receipt_number")
     if not receipt_number:
         receipt_number = await _next_receipt_number(db, school_id)
-        await db.fee_transactions.update_one({"id": transaction_id}, {"$set": {"receipt_number": receipt_number}})
+        await db.fee_transactions.update_one(_fee_query({"id": transaction_id}), {"$set": {"receipt_number": receipt_number}})
 
     try:
         from fpdf import FPDF
@@ -762,7 +762,7 @@ async def export_fee_transactions(request: Request, period: str = None, format: 
     writer = csv.writer(output)
     writer.writerow(["student_name", "class", "fee_head", "amount", "payment_date", "receipt_number", "payment_mode", "status"])
     for t in txns:
-        student = await db.students.find_one({"id": t.get("student_id")}, {"_id": 0, "name": 1, "class_name": 1})
+        student = await db.students.find_one(_fee_query({"id": t.get("student_id")}), {"_id": 0, "name": 1, "class_name": 1})
         writer.writerow([
             student["name"] if student else "",
             student.get("class_name", "") if student else "",

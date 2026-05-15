@@ -182,11 +182,23 @@ class FakeCollection:
                     _set_nested(doc, key, value)
                 for key, value in update.get("$inc", {}).items():
                     _inc_nested(doc, key, value)
+                for key, value in update.get("$push", {}).items():
+                    current = _get_nested(doc, key) or []
+                    if not isinstance(current, list):
+                        current = [current]
+                    current.append(value)
+                    _set_nested(doc, key, current)
                 return type("Result", (), {"matched_count": 1, "modified_count": 1})()
         if upsert:
             doc = {**query, **update.get("$setOnInsert", {}), **update.get("$set", {})}
             for key, value in update.get("$inc", {}).items():
                 _inc_nested(doc, key, value)
+            for key, value in update.get("$push", {}).items():
+                current = _get_nested(doc, key) or []
+                if not isinstance(current, list):
+                    current = [current]
+                current.append(value)
+                _set_nested(doc, key, current)
             self.docs.append(doc)
             return type("Result", (), {"matched_count": 1, "modified_count": 1})()
         return type("Result", (), {"matched_count": 0, "modified_count": 0})()
@@ -323,9 +335,16 @@ class FakeDb:
         self.notifications = FakeCollection()
         self.audit_logs = FakeCollection()
         self.file_uploads = FakeCollection()
+        self.users = FakeCollection()
+        self.school_settings = FakeCollection()
+        self.expenses = FakeCollection()
+        self.visitor_log = FakeCollection()
+        self.assets = FakeCollection()
+        self.enquiries = FakeCollection()
         self.student_attendance = FakeCollection()
         self.staff_attendance = FakeCollection()
         self.attendance_corrections = FakeCollection()
+        self.incidents = FakeCollection()
         self.fee_transactions = FakeCollection()
         self.fee_idempotency_keys = FakeCollection()
         self.fee_transaction_corrections = FakeCollection()
@@ -334,9 +353,12 @@ class FakeDb:
         self.fee_discount_types = FakeCollection()
         self.fee_discounts = FakeCollection()
         self.fee_sync_jobs = FakeCollection()
+        self.receipt_counters = FakeCollection()
         self.facility_requests = FakeCollection()
         self.tech_requests = FakeCollection()
         self.complaints = FakeCollection()
+        self.maintenance_schedule = FakeCollection()
+        self.maintenance_vendors = FakeCollection()
         self.transport_routes = FakeCollection()
         self.vehicles = FakeCollection()
         self.timetable_slots = FakeCollection()

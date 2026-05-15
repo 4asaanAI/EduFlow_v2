@@ -193,11 +193,11 @@ async def update_facility_request(request_id: str, request: Request):
             "content": body["note"],
             "timestamp": datetime.now().isoformat(),
         }
-        await db.facility_requests.update_one({"id": request_id}, {"$push": {"notes": note_entry}})
+        await db.facility_requests.update_one(scoped_filter({"id": request_id}, get_school_id()), {"$push": {"notes": note_entry}})
     if updates:
-        await db.facility_requests.update_one({"id": request_id}, {"$set": updates})
+        await db.facility_requests.update_one(scoped_filter({"id": request_id}, get_school_id()), {"$set": updates})
     await db.audit_logs.insert_one(_audit("facility_request_update", "facility_requests", request_id, user, {"changes": updates}))
-    updated = await db.facility_requests.find_one({"id": request_id}, {"_id": 0})
+    updated = await db.facility_requests.find_one(scoped_filter({"id": request_id}, get_school_id()), {"_id": 0})
     return {"success": True, "data": updated}
 
 
@@ -210,7 +210,7 @@ async def confirm_facility_resolution(request_id: str, request: Request, user: d
     if existing.get("status") != "pending_owner_confirmation":
         raise HTTPException(400, "Request must be in pending_owner_confirmation status")
     await db.facility_requests.update_one(
-        {"id": request_id},
+        scoped_filter({"id": request_id}, get_school_id()),
         {"$set": {"status": "closed", "resolved_by": user["id"], "resolved_at": datetime.now().isoformat(), "updated_at": datetime.now().isoformat()}}
     )
     # Notify the maintenance admin who logged it
