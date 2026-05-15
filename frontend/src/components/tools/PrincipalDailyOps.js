@@ -11,6 +11,8 @@ export default function PrincipalDailyOps() {
   const [meta, setMeta] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [lessonCompletion, setLessonCompletion] = useState([]);
+  const [loadingAcademics, setLoadingAcademics] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -29,6 +31,23 @@ export default function PrincipalDailyOps() {
   }, [date]);
 
   useEffect(() => { load(); }, [load]);
+
+  const fetchAcademics = useCallback(async () => {
+    setLoadingAcademics(true);
+    try {
+      const res = await fetch(`${API}/academics/lesson-plan-completion`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setLessonCompletion(data.data || []);
+      }
+    } catch (e) {
+      console.error('Failed to load academics:', e);
+    } finally {
+      setLoadingAcademics(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchAcademics(); }, [fetchAcademics]);
 
   const assign = async (item, teacherId) => {
     if (!teacherId) return;
@@ -92,6 +111,45 @@ export default function PrincipalDailyOps() {
       <button onClick={load} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none', color: 'var(--color-accent-blue)', cursor: 'pointer', fontSize: 12 }}>
         <RefreshCw size={13} /> Refresh coverage
       </button>
+
+      {/* Lesson Plan Completion */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4" style={{ marginTop: 20 }}>
+        <h3 className="font-semibold text-gray-700 mb-3">Lesson Plan Completion</h3>
+        {loadingAcademics ? (
+          <p className="text-sm text-gray-400">Loading...</p>
+        ) : lessonCompletion.length === 0 ? (
+          <p className="text-sm text-gray-400">No lesson plans found for this month.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-500 border-b">
+                  <th className="pb-2">Class</th>
+                  <th className="pb-2">Teacher</th>
+                  <th className="pb-2">Completed</th>
+                  <th className="pb-2">Total</th>
+                  <th className="pb-2">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lessonCompletion.map(cls => (
+                  <tr key={cls.class_id} className="border-b border-gray-50">
+                    <td className="py-1.5 font-medium">{cls.class_name}</td>
+                    <td className="py-1.5 text-gray-600">{cls.teacher_name}</td>
+                    <td className="py-1.5">{cls.completed}</td>
+                    <td className="py-1.5">{cls.total_plans}</td>
+                    <td className="py-1.5">
+                      <span className={`font-semibold ${cls.completion_pct >= 80 ? 'text-green-600' : cls.completion_pct >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                        {cls.completion_pct}%
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </ToolPage>
   );
 }

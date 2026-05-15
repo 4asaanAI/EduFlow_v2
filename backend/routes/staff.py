@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 import re
 import uuid
 
@@ -10,7 +10,9 @@ from database import get_db
 from middleware.auth import get_current_user, hash_password, require_owner_or_principal, require_role
 from models.schemas import Staff
 from services.audit_service import write_audit_doc
-from tenant import get_school_id, scoped_filter
+from services.audit_service import write_audit
+from services.notification_service import create_notification
+from tenant import get_school_id, scoped_filter, scoped_query
 
 
 router = APIRouter(prefix="/api/staff", tags=["staff"])
@@ -207,7 +209,22 @@ async def update_staff(staff_id: str, request: Request):
         raise HTTPException(403, "Forbidden")
 
     update = {k: v for k, v in body.items() if k in allowed}
+
+    # EC-9.4: OWNER_ONLY_FIELDS — principals cannot change role, sub_category, salary, or is_active.
+    # Applies to ALL updates including self-updates (staff_id == user['id'] is NOT exempt).
+    OWNER_ONLY_FIELDS = {"role", "sub_category", "salary", "is_active"}
+    stripped_owner_only = False
+    if user.get("role") != "owner":
+        for field in OWNER_ONLY_FIELDS:
+            if field in update:
+                update.pop(field)
+                stripped_owner_only = True  # track that we silently removed something
+
     if not update:
+        # If the caller only sent owner-only fields and we stripped them all, return
+        # success with the existing doc (no-op, backwards compatible).
+        if stripped_owner_only:
+            return {"success": True, "data": existing}
         raise HTTPException(400, "No updatable fields provided")
     update["updated_at"] = datetime.now().isoformat()
     changes = {k: {"previous": existing.get(k), "new": v} for k, v in update.items() if k != "updated_at" and existing.get(k) != v}
@@ -283,12 +300,59 @@ async def get_pending_leaves(request: Request, user: dict = Depends(require_role
 async def update_leave(leave_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
     db = get_db()
     body = await request.json()
-    update = {
-        "status": body.get("status"),
+    new_status = body.get("status")
+
+    # EC-9.3: Idempotency guard — only update if still pending.
+    # Prevents double-approval creating duplicate notifications and audit entries.
+    set_fields: dict = {
+        "status": new_status,
         "approved_by": user["id"],
-        "approved_at": datetime.now().isoformat(),
+        "approved_at": datetime.now(timezone.utc).isoformat(),
     }
     if body.get("rejection_reason"):
-        update["rejection_reason"] = body["rejection_reason"]
-    await db.leave_requests.update_one(scoped_filter({"id": leave_id}, get_school_id()), {"$set": update})
-    return {"success": True}
+        set_fields["rejection_reason"] = body["rejection_reason"]
+
+    result = await db.leave_requests.update_one(
+        scoped_query({"id": leave_id, "status": "pending"}, branch_id=user.get("branch_id")),
+        {"$set": set_fields},
+    )
+
+    if result.matched_count == 0:
+        # Either already approved/rejected, or not found — distinguish the two cases.
+        existing = await db.leave_requests.find_one(
+            scoped_query({"id": leave_id}, branch_id=user.get("branch_id"))
+        )
+        if existing and existing.get("status") != "pending":
+            raise HTTPException(status_code=409, detail=f"Leave already {existing['status']}")
+        raise HTTPException(status_code=404, detail="Leave request not found")
+
+    # Fetch the updated leave request for notification details.
+    leave = await db.leave_requests.find_one(
+        scoped_query({"id": leave_id}, branch_id=user.get("branch_id"))
+    )
+
+    # Notify the staff member.
+    if leave and leave.get("user_id"):
+        action_word = "approved" if new_status == "approved" else "rejected"
+        await create_notification(
+            db=db,
+            user_id=leave["user_id"],
+            notification_type="leave_decision",
+            title=f"Leave Request {action_word.title()}",
+            message=f"Your leave from {leave.get('start_date')} to {leave.get('end_date')} has been {action_word}.",
+        )
+
+    # Audit trail.
+    await write_audit(
+        db=db,
+        action=f"leave_{new_status}",
+        entity_id=leave_id,
+        collection="leave_requests",
+        changed_by=user["id"],
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes={"status": new_status, "approved_by": user["id"]},
+    )
+
+    return {"success": True, "status": new_status}

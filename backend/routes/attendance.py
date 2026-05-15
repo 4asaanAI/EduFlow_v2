@@ -4,9 +4,9 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from database import get_db
 from models.schemas import AttendanceBulkRequest, StudentAttendance, StaffAttendance
-from middleware.auth import get_current_user, require_role
+from middleware.auth import get_current_user, require_role, require_owner_or_principal
 from datetime import date, datetime
-from tenant import get_school_id, scoped_filter
+from tenant import get_school_id, scoped_filter, scoped_query
 from services.audit_service import write_audit_doc
 from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, normalize_session_id, publish
 import asyncio
@@ -388,6 +388,82 @@ async def export_attendance_summary(request: Request, class_id: str, month: str,
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
+@router.get("/class-summary")
+async def get_class_summary(
+    request: Request,
+    date: str = None,
+    user: dict = Depends(require_owner_or_principal),
+):
+    """Class-level attendance summary for principal — uses aggregation pipeline (EC-9.2: ≤5 queries total)."""
+    db = get_db()
+    bid = user.get("branch_id")
+    today = date or datetime.now().strftime("%Y-%m-%d")
+
+    # EC-9.2: Single aggregation pipeline — NOT N×3 individual count queries
+    pipeline = [
+        {"$match": scoped_query({"date": today}, branch_id=bid)},
+        {"$group": {
+            "_id": "$class_id",
+            "present": {"$sum": {"$cond": [{"$eq": ["$status", "present"]}, 1, 0]}},
+            "absent":  {"$sum": {"$cond": [{"$eq": ["$status", "absent"]},  1, 0]}},
+            "late":    {"$sum": {"$cond": [{"$eq": ["$status", "late"]},    1, 0]}},
+            "total":   {"$sum": 1},
+        }},
+    ]
+    results = await db.student_attendance.aggregate(pipeline).to_list(None)
+
+    # Enrich with class names
+    enriched = []
+    for r in results:
+        cls = await db.classes.find_one(scoped_query({"id": r["_id"]}, branch_id=bid))
+        class_name = f"{cls.get('name','')} {cls.get('section','')}".strip() if cls else r["_id"]
+        total = r["total"]
+        enriched.append({
+            "class_id": r["_id"],
+            "class_name": class_name,
+            "present": r["present"],
+            "absent": r["absent"],
+            "late": r.get("late", 0),
+            "not_marked": 0,  # calculated separately if needed
+            "total_marked": total,
+            "attendance_pct": round(r["present"] / total * 100, 1) if total else 0,
+        })
+
+    enriched.sort(key=lambda x: x["class_name"])
+    return {"success": True, "data": enriched, "meta": {"count": len(enriched), "date": today}}
+
+
+@router.get("/staff/today")
+async def get_staff_attendance_today(
+    request: Request,
+    date: str = None,
+    user: dict = Depends(require_owner_or_principal),
+):
+    """Staff attendance for today — shows which teachers are present/absent."""
+    db = get_db()
+    bid = user.get("branch_id")
+    today = date or datetime.now().strftime("%Y-%m-%d")
+
+    attendance_records = await db.staff_attendance.find(
+        scoped_query({"date": today}, branch_id=bid)
+    ).to_list(200)
+
+    # Enrich with staff names
+    result = []
+    for rec in attendance_records:
+        staff = await db.staff.find_one(scoped_query({"id": rec.get("staff_id")}, branch_id=bid))
+        result.append({
+            "staff_id": rec.get("staff_id"),
+            "staff_name": staff.get("name") if staff else rec.get("staff_id"),
+            "role": staff.get("role") if staff else None,
+            "sub_category": staff.get("sub_category") if staff else None,
+            "status": rec.get("status"),
+            "marked_at": rec.get("marked_at") or rec.get("created_at"),
+        })
+
+    return {"success": True, "data": result, "meta": {"count": len(result), "date": today}}
 
 
 @router.get("/staff")

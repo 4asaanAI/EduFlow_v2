@@ -164,7 +164,7 @@ async def update_settings(request: Request):
 
 
 @router.get("/school")
-async def get_school_settings(request: Request):
+async def get_school_settings(request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff"))):
     db = get_db()
     settings = await db.school_settings.find_one({"id": "main"}, {"_id": 0})
     if not settings:
@@ -179,14 +179,14 @@ async def get_school_settings(request: Request):
 
 
 @router.get("/classes")
-async def get_classes(request: Request):
+async def get_classes(request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff"))):
     db = get_db()
     classes = await db.classes.find({}, {"_id": 0}).to_list(50)
     return {"success": True, "data": classes}
 
 
 @router.get("/forms")
-async def list_forms(request: Request):
+async def list_forms(request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff"))):
     db = get_db()
     forms = await db.custom_forms.find({}, {"_id": 0}).sort("created_at", -1).to_list(50)
     return {"success": True, "data": forms}
@@ -231,7 +231,7 @@ async def create_form(request: Request, user: dict = Depends(require_role("admin
 
 
 @router.get("/forms/{form_id}")
-async def get_form(form_id: str, request: Request):
+async def get_form(form_id: str, request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff"))):
     db = get_db()
     form = await db.custom_forms.find_one({"id": form_id}, {"_id": 0})
     if not form:

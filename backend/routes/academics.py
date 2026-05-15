@@ -1,10 +1,10 @@
 """Routes: assignments, exams, results, subjects, timetable"""
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
-from middleware.auth import get_current_user, require_role
+from middleware.auth import get_current_user, require_role, require_owner_or_principal
 from datetime import datetime
 from services.audit_service import write_audit_doc
-from tenant import get_school_id
+from tenant import get_school_id, scoped_query
 import uuid
 
 router = APIRouter(prefix="/api/academics", tags=["academics"])
@@ -79,7 +79,7 @@ async def delete_assignment(assignment_id: str, request: Request, user: dict = D
 
 # --- Exams ---
 @router.get("/exams")
-async def list_exams(request: Request):
+async def list_exams(request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff"))):
     db = get_db()
     exams = await db.exams.find({}, {"_id": 0}).sort("created_at", -1).to_list(20)
     return {"success": True, "data": exams}
@@ -209,6 +209,64 @@ async def delete_lesson_plan(plan_id: str, request: Request, user: dict = Depend
     return {"success": True}
 
 
+@router.get("/lesson-plan-completion")
+async def get_lesson_plan_completion(
+    request: Request,
+    month: str = None,
+    user: dict = Depends(require_owner_or_principal),
+):
+    """Returns per-class lesson plan completion stats for a given month (YYYY-MM)."""
+    from datetime import datetime as _dt
+    db = get_db()
+    bid = user.get("branch_id")
+
+    current_month = month or _dt.now().strftime("%Y-%m")
+
+    # Get all classes
+    classes = await db.classes.find(
+        scoped_query({}, branch_id=bid), {"_id": 0, "id": 1, "name": 1, "section": 1, "class_teacher_id": 1}
+    ).to_list(100)
+
+    result = []
+    for cls in classes:
+        class_id = cls["id"]
+
+        # Count lesson plans for this class this month
+        total_plans = await db.lesson_plans.count_documents(
+            scoped_query({"class_id": class_id, "week": {"$regex": f"^{current_month}"}}, branch_id=bid)
+        )
+
+        # Count completed plans (those with content or marked_complete)
+        completed = await db.lesson_plans.count_documents(
+            scoped_query({
+                "class_id": class_id,
+                "week": {"$regex": f"^{current_month}"},
+                "$or": [{"is_complete": True}, {"content": {"$exists": True, "$ne": ""}}]
+            }, branch_id=bid)
+        )
+
+        # Get teacher name
+        teacher_name = "Unassigned"
+        if cls.get("class_teacher_id"):
+            staff = await db.staff.find_one(scoped_query({"id": cls["class_teacher_id"]}, branch_id=bid))
+            if staff:
+                teacher_name = staff.get("name", "Unknown")
+
+        pct = round(completed / total_plans * 100, 1) if total_plans > 0 else 0
+        result.append({
+            "class_id": class_id,
+            "class_name": f"{cls.get('name', '')} {cls.get('section', '')}".strip(),
+            "teacher_name": teacher_name,
+            "total_plans": total_plans,
+            "completed": completed,
+            "completion_pct": pct,
+            "month": current_month,
+        })
+
+    result.sort(key=lambda x: x["class_name"])
+    return {"success": True, "data": result, "meta": {"count": len(result), "month": current_month}}
+
+
 @router.post("/question-papers/generate")
 async def generate_question_paper(request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     """Use LLM to generate a question paper."""
@@ -267,8 +325,8 @@ Make questions appropriate for Classes 9-12 CBSE standard."""
 
 @router.get("/question-papers")
 async def list_question_papers(request: Request):
-    db = get_db()
     user = get_user(request)
+    db = get_db()
     query = {}
     if user["role"] == "teacher":
         query["teacher_id"] = user["id"]
@@ -278,6 +336,7 @@ async def list_question_papers(request: Request):
 
 @router.get("/question-papers/{paper_id}")
 async def get_question_paper(paper_id: str, request: Request):
+    user = get_user(request)
     db = get_db()
     paper = await db.question_papers.find_one({"id": paper_id}, {"_id": 0})
     if not paper:
@@ -308,7 +367,7 @@ async def delete_question_paper(paper_id: str, request: Request, user: dict = De
 
 # --- Subjects ---
 @router.get("/subjects")
-async def list_subjects(request: Request, class_id: str = None):
+async def list_subjects(request: Request, class_id: str = None, user: dict = Depends(require_role("admin", "owner", "teacher", "staff"))):
     db = get_db()
     query = {}
     if class_id:
@@ -319,7 +378,7 @@ async def list_subjects(request: Request, class_id: str = None):
 
 # --- Timetable ---
 @router.get("/timetable/{class_id}")
-async def get_timetable(class_id: str, request: Request):
+async def get_timetable(class_id: str, request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff"))):
     db = get_db()
     slots = await db.timetable_slots.find({"class_id": class_id}, {"_id": 0}).sort("day_of_week", 1).to_list(100)
     enriched = []

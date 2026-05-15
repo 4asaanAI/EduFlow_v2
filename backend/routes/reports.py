@@ -14,7 +14,7 @@ from typing import Iterable
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from database import get_db
-from middleware.auth import get_current_user, require_owner, require_owner_or_principal
+from middleware.auth import get_current_user, require_owner_or_principal
 from tenant import get_school_id, scoped_filter
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
@@ -133,9 +133,9 @@ async def attendance_trends(
 async def fee_collection_summary(
     request: Request,
     months: int = 6,
-    user: dict = Depends(require_owner),
+    user: dict = Depends(require_owner_or_principal),
 ):
-    """AC2 + AC3 + AC4. Owner-only monthly collected vs outstanding."""
+    """Principal and Owner — read-only fee trend data."""
     months = _clamp_months(months, 1, 24)
     db = get_db()
     bucket_keys = _last_n_months(datetime.now(), months)

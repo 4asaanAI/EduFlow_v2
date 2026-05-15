@@ -55,7 +55,7 @@ def _owner() -> dict:
 
 
 OWNER_ONLY_ENDPOINTS = (
-    ("GET", "/api/reports/fee-collection-summary", None, None),
+    # P9.6: fee-collection-summary is now owner OR principal — moved to OWNER_OR_PRINCIPAL_ENDPOINTS below.
     ("GET", "/api/fees/discount-summary", None, None),
     ("POST", "/api/fees/sync/job-1/resolve-conflict", {"conflict_id": "c1", "decision": "keep_ours"}, None),
     ("POST", "/api/issues/facility/fr-1/confirm-resolution", None, None),
@@ -100,6 +100,28 @@ async def test_owner_only_endpoints_reject_teacher_admin_and_student(
     response = client.request(method, url, **kwargs)
 
     assert response.status_code == 403
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        _headers("teacher"),
+        _headers("student"),
+        _headers("admin", "accountant"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_fee_summary_rejects_non_owner_non_principal(client, headers):
+    """P9.6: fee-collection-summary is owner+principal — teacher/student/accountant still blocked."""
+    resp = client.get("/api/reports/fee-collection-summary", headers=headers)
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_fee_summary_allows_principal(client):
+    """P9.6: principal (admin + sub_category=principal) can access fee-collection-summary."""
+    resp = client.get("/api/reports/fee-collection-summary", headers=_headers("admin", "principal"))
+    assert resp.status_code == 200
 
 
 @pytest.mark.parametrize("tool_name", ["get_financial_report", "query_dashboard_summary", "confirm_resolution"])

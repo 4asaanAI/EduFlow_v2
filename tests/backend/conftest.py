@@ -421,6 +421,7 @@ class FakeDb:
         self.announcements = FakeCollection()
         self.exam_results = FakeCollection()
         self.exams = FakeCollection()
+        self.lesson_plans = FakeCollection()
         self.houses = FakeCollection()
         self.house_points_log = FakeCollection()
         self.student_positions = FakeCollection()

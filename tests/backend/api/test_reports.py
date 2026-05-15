@@ -1,11 +1,11 @@
-"""Story 7-41: Advanced Reporting endpoint tests."""
+"""Story 7-41 + P9.6: Advanced Reporting endpoint tests."""
 
 from __future__ import annotations
 
 from datetime import datetime
 
 import pytest
-from middleware.auth import hash_password
+from middleware.auth import hash_password, create_jwt
 
 pytestmark = pytest.mark.asyncio
 
@@ -61,14 +61,14 @@ async def test_attendance_trends_requires_owner_or_principal(client, fake_db):
     assert resp.status_code == 403
 
 
-async def test_fee_summary_owner_only(client, fake_db):
-    """AC3: principal can read attendance but NOT financial data."""
+async def test_fee_summary_principal_can_read(client, fake_db):
+    """P9.6: principal can now read fee collection summary (was owner-only before P9.6)."""
     _seed_principal(fake_db)
     token = _login(client, "principal_rpt", "p123")
     resp = client.get("/api/reports/fee-collection-summary", headers={"Authorization": f"Bearer {token}"})
-    assert resp.status_code == 403
+    assert resp.status_code == 200
 
-    # Principal CAN read attendance.
+    # Principal CAN also read attendance.
     resp_ok = client.get("/api/reports/attendance-trends", headers={"Authorization": f"Bearer {token}"})
     assert resp_ok.status_code == 200
 
@@ -193,3 +193,20 @@ async def test_months_param_invalid_string_falls_back(client):
     # FastAPI's int param validation will reject a non-int with 422 — accept either
     # 200 (if our clamping receives it) or 422 (if validation fires first).
     assert resp.status_code in (200, 422)
+
+
+# ─── P9.6 JWT-based auth matrix ────────────────────────────────────────────
+
+
+def test_fee_collection_summary_accessible_to_principal(client):
+    """Principal role can read fee collection summary (was owner-only before P9.6)."""
+    token = create_jwt({"user_id": "p1", "role": "admin", "name": "Principal", "sub_category": "principal"})
+    resp = client.get("/api/reports/fee-collection-summary", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+
+
+def test_fee_collection_summary_blocked_for_accountant(client):
+    """Accountant role cannot read fee collection summary."""
+    token = create_jwt({"user_id": "a1", "role": "admin", "name": "Acct", "sub_category": "accountant"})
+    resp = client.get("/api/reports/fee-collection-summary", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 403

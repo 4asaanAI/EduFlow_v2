@@ -257,7 +257,7 @@ async def get_my_profile(request: Request, user: dict = Depends(require_role("st
 
 
 @router.get("/classes/all")
-async def get_all_classes(request: Request):
+async def get_all_classes(request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff"))):
     db = get_db()
     classes = await db.classes.find(scoped_filter({}, get_school_id()), {"_id": 0}).to_list(50)
     return {"success": True, "data": classes}

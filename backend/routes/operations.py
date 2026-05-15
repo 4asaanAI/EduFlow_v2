@@ -27,6 +27,10 @@ def _can_decide(user: dict) -> bool:
 
 _ALL_ANNOUNCEMENT_ROLES = ["teacher", "student", "admin", "parent"]
 
+# EC-9.1: Audiences a principal is allowed to target directly (without approval).
+# "owner" is explicitly excluded — principals cannot broadcast to owner.
+PRINCIPAL_ALLOWED_AUDIENCES = {"teacher", "student", "admin", "all", "parent"}
+
 
 def _announcement_target_roles(body: dict, audience_type: str | None = None) -> list[str]:
     audience_type = audience_type or body.get("audience_type", "all")
@@ -42,6 +46,23 @@ def _announcement_target_roles(body: dict, audience_type: str | None = None) -> 
 
 def _announcement_requires_approval(audience_type: str, target_roles: list[str]) -> bool:
     return audience_type in ("all", "class") or any(r in ("teacher", "student") for r in target_roles)
+
+
+def _should_require_approval(user: dict, audience_roles: list) -> bool:
+    """EC-9.1: principal can broadcast directly.
+
+    Returns True  → go through the normal approval gate.
+    Returns False → skip the gate (broadcast directly as active).
+
+    Owner still goes through the gate (unchanged legacy behaviour).
+    Principal (admin+sub_category=principal) bypasses the gate via P9.4.
+    """
+    if user.get("role") == "admin" and user.get("sub_category") == "principal":
+        # EC-9.1 injection guard: principal cannot target owner role
+        if "owner" in (audience_roles or []):
+            raise HTTPException(422, "Principal cannot target owner role in announcements")
+        return False  # principal bypasses approval gate
+    return True  # owner and all other roles go through the normal gate
 
 
 def _audit_doc(action: str, entity_type: str, entity_id: str, user: dict, changes: dict, reason: str = None):
@@ -388,18 +409,19 @@ async def list_incidents(request: Request, status: str = None, q: str = None, pa
 @router.post("/incidents")
 async def create_incident(request: Request, user: dict = Depends(get_current_user)):
     db = get_db()
-    # auth: any admin (including receptionist) or owner may log incidents. Composite gate.
-    if user["role"] not in ["owner", "admin"]:
-        raise HTTPException(403, "Forbidden")
+    # P9.8: Any authenticated user (teacher, admin, owner) may log incidents.
     body = await request.json()
     if not body.get("description"):
         raise HTTPException(400, "description is required")
     severity = body.get("severity", "low")
     if severity not in ("low", "medium", "high"):
         raise HTTPException(400, "severity must be low, medium, or high")
+    # P9.8: Auto-assign high-severity incidents to principal
+    assigned_to = "principal" if severity == "high" else body.get("assigned_to", None)
     incident = add_school_id({
         "_id": str(uuid.uuid4()),
         "id": str(uuid.uuid4()),
+        "title": body.get("title", ""),
         "description": body["description"],
         "severity": severity,
         "involved_parties": body.get("involved_parties", ""),
@@ -408,7 +430,7 @@ async def create_incident(request: Request, user: dict = Depends(get_current_use
         "thread": [],
         "logged_by": user["id"],
         "logged_by_name": user.get("name", ""),
-        "assigned_to": None,
+        "assigned_to": assigned_to,
         "due_date": None,
         "created_at": datetime.now().isoformat(),
         "updated_at": datetime.now().isoformat(),
@@ -481,6 +503,33 @@ async def assign_incident(incident_id: str, request: Request, user: dict = Depen
     if body.get("status"):
         updates["status"] = body["status"]
     await db.incidents.update_one(scoped_filter({"id": incident_id}, get_school_id()), {"$set": updates})
+    return {"success": True}
+
+
+@router.patch("/incidents/{incident_id}")
+async def update_incident(incident_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
+    """P9.8: Principal/owner can update status and add resolution note."""
+    db = get_db()
+    body = await request.json()
+    bid = user.get("branch_id")
+
+    update = {"updated_at": datetime.now().isoformat()}
+    if body.get("status"):
+        update["status"] = body["status"]
+    if body.get("resolution_note"):
+        update["resolution_note"] = body["resolution_note"]
+        update["resolved_by"] = user["id"]
+        update["resolved_at"] = datetime.now().isoformat()
+
+    if len(update) == 1:  # only updated_at was added
+        raise HTTPException(400, "No update fields provided")
+
+    result = await db.incidents.update_one(
+        scoped_filter({"id": incident_id}, get_school_id()),
+        {"$set": update},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(404, "Incident not found")
     return {"success": True}
 
 
@@ -754,9 +803,20 @@ async def create_announcement(request: Request, user: dict = Depends(require_rol
     audience_type = body.get("audience_type") or ("role" if has_explicit_roles else "all")
     target_roles = _announcement_target_roles(body, audience_type)
 
+    # EC-9.1: Principal can broadcast directly — validate audience guard first.
+    # For principal, check that audience_roles doesn't include "owner".
+    if user.get("role") == "admin" and user.get("sub_category") == "principal":
+        audience_set = set(body.get("audience_roles") or [])
+        if not audience_set.issubset(PRINCIPAL_ALLOWED_AUDIENCES):
+            raise HTTPException(422, detail="Principal cannot target owner role")
+
     # Story 7-47: announcements addressed to teachers/students require principal
-    # approval before they become visible. Admin-only audiences skip the gate.
-    requires_approval = _announcement_requires_approval(audience_type, target_roles)
+    # approval before they become visible. Owner and principal can broadcast directly.
+    # Other roles (teacher, receptionist, etc.) always require approval.
+    if _should_require_approval(user, target_roles):
+        requires_approval = _announcement_requires_approval(audience_type, target_roles)
+    else:
+        requires_approval = False
     initial_status = "pending_approval" if requires_approval else "active"
 
     announcement = add_school_id({
