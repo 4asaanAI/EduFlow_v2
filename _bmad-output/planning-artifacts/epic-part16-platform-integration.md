@@ -120,7 +120,11 @@ Part 16 is the capstone quality sweep. By this point all role verticals (owner, 
 
 **AC4:** Given two bulk attendance submissions for the same class+date come from two different teachers (different `marked_by`), then both are processed normally (not collapsed by idempotency).
 
+**EC-16.1 (ambiguous fee_head normalisation):** Given school has fee heads `'Tuition Fee'` and `'TUITION FEE'` as DISTINCT fee heads (different IDs), When idempotency key normalisation runs, Then the system detects the collision and DOES NOT normalise — instead raises a configuration error: `'Ambiguous fee_head names after normalisation'`.
+
 **AC5:** Existing 387 tests still pass.
+
+**Implementation note (EC-16.1 — fee_head normalisation collision detection):** Pre-check before normalising: `normalized = fee_head.lower().strip(); if await db.fee_structures.count_documents({'fee_head_normalized': normalized}) > 1: raise HTTPException(422, f'Ambiguous fee_head: {fee_head!r} normalises to a name shared by multiple fee heads')`. Store `fee_head_normalized` on all fee structure documents as a precomputed field so this check is a single indexed query, not a scan.
 
 ---
 
@@ -225,7 +229,11 @@ The Playwright configuration (`playwright.config.js`) exists but the test count 
 
 **AC4:** Given the DB is unreachable, `GET /api/health/ready` returns HTTP 503.
 
+**EC-16.3 (Motor connection pool):** Given Motor connection pool is configured with `maxPoolSize=50` AND the Locust test runs 50 concurrent users, When the load test runs for 60 seconds, Then no `ServerSelectionTimeoutError` appears in logs.
+
 **AC5:** `docs/operations.md` exists and documents the backup policy, restore procedure, and RTO/RPO targets.
+
+**Implementation note (EC-16.3 — Motor connection pool sizing):** Set Motor connection pool size explicitly before running load tests: `AsyncIOMotorClient(MONGO_URL, maxPoolSize=50, minPoolSize=5)`. Ensure Locust concurrency ≤ `maxPoolSize`. For Atlas M0 (500 connection limit), `maxPoolSize=100` is safe for 50 Locust users. Pool exhaustion presents as slow queries (not connection errors) and is easy to misattribute to missing indexes.
 
 ---
 
@@ -289,7 +297,13 @@ The Playwright configuration (`playwright.config.js`) exists but the test count 
 
 **AC4:** Given a student JWT from branch-a directly queries a student_id that belongs to branch-b via `GET /api/students/{id}`, then the response is HTTP 403 or 404 (cross-branch isolation confirmed).
 
+**EC-16.2 (owner + explicit branch_id query param):** Given owner (no JWT branch_id) calls `GET /api/students/?branch_id=branch-a`, When the endpoint processes it, Then only branch-a students are returned (the explicit query param IS applied).
+
+**EC-16.2 (owner without branch_id param):** Given owner (no JWT branch_id) calls `GET /api/students/` with no `branch_id` param, Then students from ALL branches are returned.
+
 **AC5:** Existing 387 tests still pass.
+
+**Implementation note (EC-16.2 — owner branch scoping):** For owner role, `branch_id` for scoping comes from the QUERY PARAM (not JWT): `effective_branch_id = params.get('branch_id') if user['role'] == 'owner' else user.get('branch_id')`. For all other roles, the JWT `branch_id` is authoritative and the query param must not override it (security boundary). The undefined case — owner with no query param — must return all branches.
 
 ---
 
@@ -320,6 +334,33 @@ The Playwright configuration (`playwright.config.js`) exists but the test count 
 **AC4:** The runbook includes the rollback command for AWS Elastic Beanstalk and the Atlas point-in-time restore procedure.
 
 **AC5:** No regressions to existing tests.
+
+---
+
+---
+
+### Story P16.X: localStorage draft cleanup — TTL purge and E2E test isolation (EC-16.4)
+
+**Problem:** `localStorage["attendance_draft_{class_id}_{date}"]` keys written by `AttendanceRecorder.js` during a session persist indefinitely. In Playwright E2E tests, a draft key from a previous test run triggers a "Restore Draft?" dialog at the start of the next test, breaking clean attendance recording flows. In production, a teacher who used the attendance recorder every school day for one year would accumulate 200+ draft keys, and at 5 MB of localStorage the browser may start evicting other data. Neither problem is addressed in the current implementation.
+
+**Scope:**
+- Add Playwright `beforeEach` cleanup: in every E2E test that involves `AttendanceRecorder`, add `await page.evaluate(() => { Object.keys(localStorage).filter(k => k.startsWith('attendance_draft_')).forEach(k => localStorage.removeItem(k)) })` to clear stale drafts before the test begins
+- Add production-side TTL purge: in `AttendanceRecorder.js` `useEffect` (on mount), purge draft keys older than 7 days using `date-fns differenceInDays()`. The key format is `attendance_draft_{classId}_{YYYY-MM-DD}` — parse the date from the key suffix
+- Ensure the 7-day purge runs only once per mount (not on every re-render)
+
+**Acceptance Criteria (Given/When/Then):**
+
+**AC1:** Given Playwright test setup, When the test begins, Then `await page.evaluate(() => { Object.keys(localStorage).filter(k => k.startsWith('attendance_draft_')).forEach(k => localStorage.removeItem(k)) })` is called in `beforeEach` for all attendance E2E specs — no "Restore Draft?" dialog appears at the start of a clean test.
+
+**AC2:** Given a teacher has opened the attendance recorder on a previous day, When the current day's test runs with the `beforeEach` cleanup in place, Then no "Restore Draft?" dialog appears.
+
+**AC3:** Given the app mounts on the real school frontend (not a test), When more than 7 days of draft keys exist in localStorage, Then drafts older than 7 days are purged automatically on mount — the localStorage footprint is bounded.
+
+**AC4:** Given a draft key `attendance_draft_cls-1_2026-04-01` exists and today is `2026-05-15` (44 days later), When `AttendanceRecorder.js` mounts, Then that key is removed from localStorage.
+
+**AC5:** Existing 387 tests still pass.
+
+**Implementation note (EC-16.4 — draft key date parsing):** Key format is `attendance_draft_{classId}_{YYYY-MM-DD}`. Parse with: `const parts = key.split('_'); const dateStr = parts[parts.length - 1]; const draftDate = parseISO(dateStr); if (differenceInDays(new Date(), draftDate) > 7) localStorage.removeItem(key)`. Import `parseISO` and `differenceInDays` from `date-fns`. Run this in a `useEffect(() => { /* purge */ }, [])` with empty deps to fire once on mount only.
 
 ---
 
@@ -355,6 +396,7 @@ The Playwright configuration (`playwright.config.js`) exists but the test count 
 | SMS end-to-end tests | P16.7 | POST /api/sms/send-reminder, /send-bulk, /send-parent-message |
 | SMS TTL index | P16.7 | sms_logs collection, migration 020 |
 | Multi-branch isolation tests | P16.8 | All role-facing endpoints, branch_id scoping |
+| localStorage draft TTL purge + E2E cleanup | P16.X | AttendanceRecorder.js, Playwright beforeEach |
 | Deployment runbook | P16.9 | docs/deployment-runbook.md |
 
 ---
@@ -367,9 +409,10 @@ The Playwright configuration (`playwright.config.js`) exists but the test count 
 4. P16.1 — Cross-role E2E workflow tests (requires Parts 14 and 15 to be closed)
 5. P16.8 — Multi-branch smoke test (requires Parts 14 and 15 to be closed)
 6. P16.2 — JWT expiry handling (frontend + backend)
-7. P16.5 — Playwright E2E suite expansion (requires full stack running)
-8. P16.6 — NFR validation and load testing (requires all other stories closed)
-9. P16.9 — Deployment runbook (documentation, can be written in parallel)
+7. P16.X — localStorage draft cleanup (implement alongside P16.5 — required for reliable E2E tests)
+8. P16.5 — Playwright E2E suite expansion (requires full stack running; P16.X must land first)
+9. P16.6 — NFR validation and load testing (requires all other stories closed)
+10. P16.9 — Deployment runbook (documentation, can be written in parallel)
 
 ---
 

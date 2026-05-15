@@ -60,6 +60,9 @@ Part 11 targets the Receptionist sub_category admin vertical end-to-end. The rec
 - Backward transition (enrolled→new) returns 403 for receptionist, succeeds for owner
 - At least 4 unit tests covering the state machine
 - Existing 387 tests still pass
+- **[EC-11.2]** Given an enquiry with status='enrolled' that has a linked student record in `db.students`, When an owner attempts to transition it back to 'new', Then 409 is returned with detail 'Cannot revert enrolled enquiry — student record exists. Delete the student record first.'
+
+**Implementation note (EC-11.2 — backward transition with linked student):** Before backward transition: `linked_student = await db.students.find_one({'enquiry_id': enquiry_id}); if linked_student and new_status in ('new','contacted'): raise HTTPException(409, 'Student record linked — cannot revert')`
 
 **Scoped-query audit (mandatory before merge):**
 - Given: `grep -n "scoped_filter(" backend/routes/operations.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
@@ -86,6 +89,9 @@ Part 11 targets the Receptionist sub_category admin vertical end-to-end. The rec
 - `GET /api/ops/visitors/pending-checkout` returns only unchecked-out visitors older than stale_hours
 - At least 4 unit tests
 - Existing 387 tests still pass
+- **[EC-11.1]** Given a receptionist uses `force: true` 5+ times for the same visitor on the same day, When the 6th forced check-in is attempted, Then 429 is returned with detail 'Maximum forced check-ins for this visitor today exceeded'
+
+**Implementation note (EC-11.1 — force:true rate limit):** Count force-overrides per (visitor_name_normalized, date): `force_count = await db.visitors.count_documents({'visitor_name_normalized': norm_name, 'date': today, 'force_override': True}); if force_count >= MAX_FORCE_OVERRIDES (default 3): raise HTTPException(429, 'Maximum forced check-ins for this visitor today exceeded')`
 
 **Scoped-query audit (mandatory before merge):**
 - Given: `grep -n "scoped_filter(" backend/routes/operations.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
@@ -146,6 +152,10 @@ Part 11 targets the Receptionist sub_category admin vertical end-to-end. The rec
 - PATCH reject requires `reason`; returns 400 if missing
 - At least 5 unit tests
 - Existing 387 tests still pass
+- **[EC-11.4]** Given a certificate request has been in 'pending_approval' for more than CERT_APPROVAL_SLA_HOURS (default 48 hours), When the receptionist views the certificate list, Then the record is flagged with `is_overdue: true`
+- **[EC-11.4]** Given a certificate request is overdue, When `POST /api/ops/certificates/{id}/escalate` is called, Then the request is escalated to the owner role and a notification is sent
+
+**Implementation note (EC-11.4 — pending_approval SLA):** Compute overdue in the list endpoint: `is_overdue = (now - cert['created_at']).total_seconds() / 3600 > CERT_APPROVAL_SLA_HOURS and cert['status'] == 'pending_approval'`
 
 **Scoped-query audit (mandatory before merge):**
 - Given: `grep -n "scoped_filter(" backend/routes/operations.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
@@ -260,6 +270,35 @@ Part 11 targets the Receptionist sub_category admin vertical end-to-end. The rec
 
 ---
 
+### Story P11.9: DPDP-compliant complaint PII handling
+
+**As** a school compliance officer,
+**I want** parent phone numbers in complaint records masked for non-owner roles,
+**So that** EduFlow complies with India's DPDP Act 2023 for third-party PII.
+
+**Context (EC-11.3):** `on_behalf_of_phone` is stored verbatim in complaint records (added by P11.6). Accountants, receptionists, and other admin sub-categories can read raw parent phone numbers via `GET /api/ops/complaints` without any PII consent record. Under the DPDP Act 2023, third-party PII must be masked for roles that do not have a lawful basis to view it.
+
+**Scope:**
+- Apply masking in `GET /api/ops/complaints` response handler: for any caller who is NOT `role=owner`, mask `on_behalf_of_phone` to `"***-***-XXXX"` format (show only last 4 digits)
+- Store full number in DB unchanged — masking is read-time only
+- Add `POST /api/ops/complaints/{id}/erase-pii` endpoint (owner-only): sets `on_behalf_of_phone` to `"[ERASED]"` and writes a DPDP audit log entry
+- Add 4 unit tests covering the masking scenarios
+
+**Acceptance Criteria:**
+- **[EC-11.3]** Given `GET /api/ops/complaints` is called by an admin+accountant, When the response is returned, Then `on_behalf_of_phone` field shows `"***-***-XXXX"` (masked, not full number)
+- **[EC-11.3]** Given `GET /api/ops/complaints` is called by an owner, When the response is returned, Then full `on_behalf_of_phone` is visible
+- **[EC-11.3]** Given `POST /api/ops/complaints` with `on_behalf_of_phone`, When stored, Then the full number is stored in DB but masked on read for non-owner roles
+- **[EC-11.3]** Given a GDPR/DPDP erasure request for a parent, When `POST /api/ops/complaints/{id}/erase-pii` is processed, Then `on_behalf_of_phone` in related complaints is set to `"[ERASED]"`
+- At least 4 unit tests
+- Existing 387 tests still pass
+
+**Implementation note (EC-11.3 — DPDP PII masking):** Apply masking in the GET handler: `if user['role'] != 'owner' and complaint.get('on_behalf_of_phone'): complaint['on_behalf_of_phone'] = '***-***-' + complaint['on_behalf_of_phone'][-4:]`
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/operations.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
+
+---
+
 ## Epic P11: FR Coverage Map
 
 | FR # | Route / Component | Gap Identified | Story |
@@ -272,6 +311,7 @@ Part 11 targets the Receptionist sub_category admin vertical end-to-end. The rec
 | FR6 | `POST /api/ops/complaints` | No on_behalf_of, no department routing, bare status update | P11.6 |
 | FR7 | `POST /api/settings/forms/{id}/responses` | No entity linkage, no enquiry-form convenience endpoint | P11.7 |
 | FR8 | `POST /api/sms/*` | No explicit receptionist access test | P11.8 |
+| FR9 | `GET /api/ops/complaints` | `on_behalf_of_phone` exposed as raw PII to non-owner roles (DPDP) | P11.9 |
 
 ---
 
@@ -284,7 +324,7 @@ All existing API response shapes for `/api/ops/enquiries`, `/api/ops/visitors`, 
 Every status change on enquiries, complaints, and certificates must produce an audit log entry in `db.audit_logs` using the existing `_audit_doc()` helper in `operations.py`. Audit entries must include `from_status`, `to_status`, `changed_by`, and `reason` (if applicable).
 
 **NFR11.3 — Test Coverage:**
-Each story must add at minimum the number of unit/integration tests stated in its Acceptance Criteria. Total new tests for Part 11 must be at least 32. All new tests must pass alongside the 387 baseline.
+Each story must add at minimum the number of unit/integration tests stated in its Acceptance Criteria. Total new tests for Part 11 must be at least 36 (32 baseline + 4 new tests from P11.9 DPDP story). All new tests must pass alongside the 387 baseline.
 
 **NFR11.4 — RBAC Documentation:**
 Every route that has a deliberate RBAC decision (e.g., receptionist sees all queries, receptionist SMS access) must have a `# rbac: intentional — <reason>` comment in the route handler. This prevents future regressions from well-meaning hardening sweeps.
@@ -401,11 +441,12 @@ All test data creation must use `tests/backend/factories.py` (created in pre-Par
 4. P11.2 — Visitor duplicate detection (new read + 409 path, new endpoint)
 5. P11.1 — Enquiry stage machine (requires schema + logic change)
 6. P11.6 — Complaint routing + on_behalf_of (additive fields + status machine)
-7. P11.4 — Certificate approval gate (RBAC + new endpoints)
-8. P11.7 — Form entity linkage (new fields + convenience endpoint)
+7. P11.9 — DPDP complaint PII masking (depends on P11.6 adding on_behalf_of_phone field)
+8. P11.4 — Certificate approval gate (RBAC + new endpoints)
+9. P11.7 — Form entity linkage (new fields + convenience endpoint)
 
 ---
 
 ## Epic P11: Retrospective
 
-A retrospective entry for Part 11 to be completed after all P11.1–P11.8 stories are done.
+A retrospective entry for Part 11 to be completed after all P11.1–P11.9 stories are done.

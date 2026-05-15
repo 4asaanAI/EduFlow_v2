@@ -89,6 +89,9 @@ Part 12 targets the Maintenance Admin (`sub_category=maintenance`) vertical end-
 - PATCH response includes `"next_occurrence"` key when a next entry was created (null otherwise)
 - At least 4 unit tests
 - Existing 387 tests still pass
+- **[EC-12.1]** Given a schedule entry with title `'Generator Service '` (trailing space), When duplicate detection runs, Then it correctly matches `'Generator Service'` (trimmed) and does NOT create a duplicate
+
+**Implementation note (EC-12.1 — title whitespace duplicate detection):** Always normalize title before duplicate check: `title_normalized = title.strip(); existing = await db.maintenance_schedule.find_one({'title_normalized': title_normalized, 'scheduled_date': next_date})`. Store BOTH `title` (original) and `title_normalized` (stripped) in the document so the index query is exact-match (not `$regex` with trim).
 
 **Scoped-query audit (mandatory before merge):**
 - Given: `grep -n "scoped_filter(" backend/routes/issues.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
@@ -143,6 +146,9 @@ Part 12 targets the Maintenance Admin (`sub_category=maintenance`) vertical end-
 - Teacher/student PATCH to set cost returns 403
 - At least 4 unit tests
 - Existing 387 tests still pass
+- **[EC-12.4]** Given facility requests where some have `estimated_cost=null` (created before P12.4), When `GET /api/issues/facility/cost-summary` is called, Then null-cost records contribute Rs 0 to the total (not TypeError)
+
+**Implementation note (EC-12.4 — null cost aggregation):** Use MongoDB `$sum` aggregation (ignores null): `{'$group': {'_id': None, 'total_estimated': {'$sum': '$estimated_cost'}}}` — NEVER use Python `sum()` over fetched documents with None values, as `sum([2500, None, 1200])` raises `TypeError`.
 
 **Scoped-query audit (mandatory before merge):**
 - Given: `grep -n "scoped_filter(" backend/routes/issues.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
@@ -203,6 +209,9 @@ Part 12 targets the Maintenance Admin (`sub_category=maintenance`) vertical end-
 - GET returns photos array with all stored URLs
 - At least 4 unit tests
 - Existing 387 tests still pass
+- **[EC-12.3]** Given a facility request already has 4 photos, When two technicians concurrently PATCH to append 1 photo each, Then exactly ONE succeeds and the other receives 409 (not both succeed, producing 6 photos)
+
+**Implementation note (EC-12.3 — concurrent photo PATCH, non-atomic):** Use atomic conditional update: `result = await db.facility_requests.update_one({'id': req_id, '$expr': {'$lt': [{'$size': '$photos'}, 5]}}, {'$push': {'photos': new_photo}}); if result.matched_count == 0: raise HTTPException(409, 'Maximum 5 photos allowed — request was modified concurrently')`
 
 **Scoped-query audit (mandatory before merge):**
 - Given: `grep -n "scoped_filter(" backend/routes/issues.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
@@ -231,6 +240,9 @@ Part 12 targets the Maintenance Admin (`sub_category=maintenance`) vertical end-
 - Teacher calling escalate returns 403
 - At least 4 unit tests
 - Existing 387 tests still pass
+- **[EC-12.2]** Given `escalated_at` is set to a future timestamp (data corruption or clock skew), When `POST /api/issues/facility/{id}/escalate` is called, Then the rate limit check validates that `escalated_at <= now` — if `escalated_at > now`, log a warning and allow escalation (treat as never-escalated)
+
+**Implementation note (EC-12.2 — future escalated_at timestamp):** Guard: `if escalated_at and escalated_at > now: logger.warning('escalated_at_in_future', issue_id=id, escalated_at=escalated_at); # allow escalation — treat as never escalated. Else: apply normal 1-hour rate limit.`
 
 **Scoped-query audit (mandatory before merge):**
 - Given: `grep -n "scoped_filter(" backend/routes/issues.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`

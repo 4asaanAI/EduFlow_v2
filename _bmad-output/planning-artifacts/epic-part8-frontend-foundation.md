@@ -89,11 +89,31 @@ Then the mock is invoked (verifying fetch can be intercepted at unit test level)
 - Add a `retryCount` display to the "interrupted" fallback message: "Connection interrupted — retrying (1/3)..." so the user can see that recovery is in progress.
 - Add unit tests: mock fetch to fail once → expect retry; mock fail 3× → expect error surfaced.
 
+**EC-8.1 — SSE retry must NEVER auto-reconnect for chat streams (duplicate AI call + double token debit):**
+
+Given an SSE stream that drops mid-response (network error),
+When the frontend detects the error,
+Then it does NOT auto-retry with a new POST request (which would create a duplicate AI call and a duplicate conversation message).
+
+Given an SSE stream that drops,
+When the user clicks 'Retry' (manual trigger),
+Then a new POST is sent — retry is MANUAL only, never automatic.
+
+> **Implementation note (EC-8.1 — CRITICAL):** Chat streams (`POST /conversations/{id}/messages`) must NEVER auto-reconnect. Auto-reconnect creates duplicate AI calls, duplicate messages in conversation history, and double token debits.
+>
+> The exponential back-off reconnect logic described in this story applies ONLY to notification/attendance/fee SSE streams — NOT to chat streams. Implement reconnect logic with a `stream_type` parameter:
+> ```js
+> subscribeSSE(url, { reconnect: stream_type !== 'chat' })
+> ```
+> For `sendMessageStream` specifically: on network drop, surface the error and a manual "Retry" button — do NOT auto-issue a new POST.
+
 **Acceptance Criteria:**
-- `sendMessageStream` retries up to 3× with exponential back-off on network error
+- `sendMessageStream` retries up to 3× with exponential back-off on network error — **only for non-chat SSE streams** (notification, attendance, fee)
+- **Chat stream drops surface a manual "Retry" button — no automatic POST re-issue**
 - "Thinking" panel is cleared on each retry attempt (not left in stale state)
 - After 3 failures the user sees the interrupted message with retry count
 - At least 2 unit tests covering retry logic
+- At least 1 unit test asserting that chat stream drop does NOT auto-issue a new POST
 - Existing 387 backend tests still pass
 
 ---
@@ -150,11 +170,24 @@ Then the mock is invoked (verifying fetch can be intercepted at unit test level)
 - Add a test fixture: a message content containing `<span style="background:url(javascript:...)">` — assert no `style` attribute survives.
 - Document the sanitisation config choice in a comment above the `DOMPurify.sanitize` call.
 
+**EC-8.3 — `class` attribute CSS injection via themed stylesheets:**
+
+Given AI response contains `<span class='danger'>text</span>` where `.danger { color: red }` is defined in the school theme stylesheet,
+When the content is rendered,
+Then the span's `class` attribute is stripped OR the DOMPurify config includes `FORBID_ATTR: ['class', 'style', 'onload', 'onerror']` to prevent CSS class injection via themed stylesheets.
+
+> **Implementation note (EC-8.3):** Add `class` to `FORBID_ATTR` in the DOMPurify config:
+> ```js
+> DOMPurify.sanitize(html, { FORBID_ATTR: ['style', 'class', 'onerror', 'onload', 'onfocus'] })
+> ```
+> This prevents an AI response from referencing themed CSS classes (e.g. `.danger`, `.admin-only`, `.highlight`) to inject visual styling that could mislead users. Alternatively, use CSS Modules for all theme classes (scoped class names prevent injection).
+
 **Acceptance Criteria:**
-- `DOMPurify.sanitize` is called with `FORBID_ATTR` config for `style`, `onerror`, `onload`, `onfocus`
+- `DOMPurify.sanitize` is called with `FORBID_ATTR` config for `style`, `class`, `onerror`, `onload`, `onfocus`
 - Test: `onerror` attribute is stripped from table cell content
 - Test: `style` attribute containing `javascript:` is stripped
-- Comment documents the config rationale
+- Test: `class` attribute referencing a themed CSS class (e.g. `class="danger"`) is stripped from AI-rendered output
+- Comment documents the config rationale (including why `class` is forbidden)
 - Existing 387 backend tests still pass
 
 ---
@@ -230,10 +263,30 @@ Then the mock is invoked (verifying fetch can be intercepted at unit test level)
 - Add a unit test: mock two simultaneous `apiFetch` calls that both receive 401 — assert `refreshAccessToken` is called exactly once, and both calls eventually resolve (or both redirect).
 - Add a unit test: mock `refreshAccessToken` to fail — assert `clearAuthSession` is called and `window.location.href` is set to `/`.
 
+**EC-8.4 — Singleton refresh promise rejected → N concurrent browser navigations:**
+
+Given 8 concurrent requests all receive 401 AND the shared refresh promise is rejected (token fully expired),
+When all 8 callers receive the rejection,
+Then exactly ONE navigation to the login page occurs (not 8 simultaneous `window.location.href = '/'` assignments).
+
+> **Implementation note (EC-8.4):** After the shared refresh promise rejects, clear the singleton reference and trigger navigation only from the first caller:
+> ```js
+> singleton.catch(err => {
+>   singleton = null;
+>   if (!navigating) {
+>     navigating = true;
+>     navigate('/login');
+>   }
+> })
+> ```
+> Without this guard, 8 concurrent callers each call `clearAuthSession()` and navigate independently — causing 8 React state resets and potential race conditions in the auth session teardown.
+
 **Acceptance Criteria:**
 - Concurrent 401s trigger exactly one `refreshAccessToken` call (singleton promise)
+- Given the singleton refresh promise rejects, When N callers all receive the rejection, Then exactly one navigation to `/login` occurs (not N)
 - Comment in `sendMessageStream` documents the intentional non-retry behaviour
 - At least 2 unit tests for 401 race condition scenarios
+- At least 1 unit test verifying that a rejected refresh with 8 concurrent callers triggers exactly one `navigate('/login')` call
 - Existing 387 backend tests still pass
 
 ---
@@ -305,6 +358,52 @@ Then the previously active tool is restored via browser history (React Router ha
 
 ---
 
+### Story P8.9: localStorage attendance draft TTL purge (EC-8.2)
+
+> **Requires P8.0** (Jest+RTL setup) to be complete before writing unit tests in this story.
+
+**Problem:** `localStorage['attendance_draft_{class_id}_{date}']` keys are written each time a teacher saves a draft attendance record. Keys are never deleted — they accumulate indefinitely. A teacher who takes attendance every day for 200 classes over a school year will accumulate 200 × 220 = 44,000 keys. The browser `localStorage` limit is 5–10MB per origin. Once the limit is hit, `localStorage.setItem()` throws a `QuotaExceededError`, silently breaking the draft save feature. Additionally, stale drafts from months ago are irrelevant noise.
+
+**Scope:**
+- On app mount (in `useEffect` in `App.js` or `AttendanceRecorder.js`), run a TTL purge for all `attendance_draft_*` keys older than 7 days:
+  ```js
+  const DRAFT_TTL_DAYS = 7;
+  Object.keys(localStorage)
+    .filter(k => k.startsWith('attendance_draft_'))
+    .forEach(key => {
+      const parts = key.split('_');
+      const dateStr = parts[parts.length - 1]; // format: YYYY-MM-DD
+      if (dayjs().diff(dayjs(dateStr), 'day') > DRAFT_TTL_DAYS) {
+        localStorage.removeItem(key);
+      }
+    });
+  ```
+- Run the purge once per app mount (not on every render). Use a `useEffect` with an empty dependency array.
+- Log (at `console.debug` level) the number of keys purged for diagnostics.
+- Add a unit test: populate `localStorage` with 3 keys (2 older than 7 days, 1 recent), mount the component, assert only the recent key remains.
+
+**Acceptance Criteria:**
+
+Given a teacher has 200+ `localStorage['attendance_draft_*']` keys from previous sessions,
+When the app mounts,
+Then all draft keys older than 7 days are automatically purged.
+
+Given a draft key with today's date,
+When the purge runs,
+Then the key is retained (not purged).
+
+Given the purge runs on mount,
+When it has already run for this session,
+Then it does NOT re-run on subsequent renders (single `useEffect` with empty deps).
+
+- Purge runs on app mount via `useEffect(fn, [])`
+- Keys older than 7 days (by date in key name) are removed
+- Recent keys are preserved
+- At least 1 unit test covering the purge logic
+- Existing 387 backend tests still pass
+
+---
+
 ## FR Coverage Map
 
 | FR ID | Story | Description |
@@ -322,6 +421,7 @@ Then the previously active tool is restored via browser history (React Router ha
 | FR-P8.10 | P8.6 | Concurrent 401 refresh de-duplicated via singleton promise |
 | FR-P8.11 | P8.7 | Semantic CSS variables replace `var(--tool-hex-...)` and `var(--c-...)` |
 | FR-P8.12 | P8.8 | URL search-param routing (`?tool=`) via React Router v7 `useSearchParams` |
+| FR-P8.13 | P8.9 | localStorage attendance draft keys older than 7 days purged on app mount (EC-8.2) |
 
 ---
 
@@ -347,6 +447,7 @@ Then the previously active tool is restored via browser history (React Router ha
 7. **P8.1** (SSE reconnect) — needs P8.5 error states to display retry progress
 8. **P8.7** (theme consistency) — CSS-only refactor, low risk, can run in parallel with P8.6
 9. **P8.8** (sidebar URL routing via React Router v7 `useSearchParams`) — last; touches Layout, Sidebar, and requires stable tool panel rendering from P8.4/P8.5
+10. **P8.9** (localStorage draft TTL purge) — isolated `useEffect`, zero regression risk, can run in parallel with P8.7 or P8.8
 
 ---
 

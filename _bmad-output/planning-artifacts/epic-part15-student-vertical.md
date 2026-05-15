@@ -95,7 +95,13 @@ Part 15 activates and hardens the Student role end-to-end. Student auth_users AR
 
 **AC4:** Given `SKIP_CONSENT_CHECK=true` in the test environment, then all student requests proceed without the consent gate (enabling existing tests to pass without consent setup).
 
+**EC-15.1 (production guard):** Given `SKIP_CONSENT_CHECK=true` is set in the environment AND `ENVIRONMENT=production`, When the server starts, Then a `ValueError` is raised: `'SKIP_CONSENT_CHECK cannot be true in production/staging'`.
+
+**EC-15.1 (dev warning):** Given `SKIP_CONSENT_CHECK=true` is set AND `ENVIRONMENT=development`, When the server starts, Then the server starts normally with a WARNING log: `'DPDP consent check skipped — development mode only'`.
+
 **AC5:** Migration `019` runs idempotently on a clean database without errors. Existing 387 tests still pass.
+
+**Implementation note (EC-15.1 — SKIP_CONSENT_CHECK environment guard):** Add to `server.py startup()` or `tenant.py validate_school_id()`: `if os.getenv('SKIP_CONSENT_CHECK','').lower()=='true' and os.getenv('ENVIRONMENT','development').lower() not in ('development','test','testing'): raise ValueError('SKIP_CONSENT_CHECK cannot be true in production/staging')`. This startup-time guard prevents accidental deployment of the bypass flag to production.
 
 ---
 
@@ -117,9 +123,13 @@ Part 15 activates and hardens the Student role end-to-end. Student auth_users AR
 
 **AC3:** Given a student sends `PATCH /api/students/me` with `{"emergency_contact": "9876543210"}`, then the update is saved and a DPDP-aware audit log is created.
 
+**EC-15.3 (DPDP audit log fields):** Given a student updates their `emergency_contact`, When the DPDP-aware audit log entry is written, Then it includes fields: `{'actor_id': student_id, 'action': 'student_self_update', 'entity_id': student_id, 'lawful_basis': 'self_service', 'changed_fields': ['emergency_contact'], 'purpose': 'student_initiated_update'}`.
+
 **AC4:** Given a student sends `PATCH /api/students/me` with `{"class_id": "cls-7"}`, then the response is HTTP 400 "Field not updatable by student".
 
 **AC5:** Existing 387 tests still pass.
+
+**Implementation note (EC-15.3 — DPDP audit log fields):** Extend `write_audit()` call with DPDP fields: `await write_audit(db, actor_id=user['id'], action='student_self_update', entity_id=student_id, changes=changed_fields, lawful_basis='self_service', purpose='student_initiated_update')`. The `lawful_basis` and `purpose` fields are required for DPDP compliance audit trails — a generic `write_audit()` call without these fields does not satisfy the "DPDP-aware audit" requirement.
 
 ---
 
@@ -142,6 +152,10 @@ Part 15 activates and hardens the Student role end-to-end. Student auth_users AR
 
 **AC1:** Given student S1 has 2 paid transactions of ₹5000 each and 1 pending transaction of ₹3000, when they call `GET /api/fees/my`, then `summary.total_paid=10000`, `summary.total_pending=3000`, `summary.outstanding_balance=3000`.
 
+**EC-15.2 (partial status in total_paid):** Given a student has 1 paid transaction (amount=5000) and 1 partial transaction (amount=5000, paid_amount=2000), When `GET /api/fees/my` is called, Then `summary.total_paid = 7000` (5000 from the paid transaction + 2000 `paid_amount` from the partial transaction).
+
+**EC-15.2 (outstanding with partial):** Given only partial transactions, Then `summary.outstanding_balance = sum(amount - paid_amount) for partial status rows + sum(amount) for pending status rows`.
+
 **AC2:** Given student S1 calls `GET /api/fees/my` with zero transactions, then `summary.total_paid=0`, `summary.outstanding_balance=0`, and `transactions=[]`.
 
 **AC3:** Given `FeeStatusViewer` is rendered for a student with an outstanding balance, then it displays "Outstanding: ₹3000" prominently.
@@ -149,6 +163,8 @@ Part 15 activates and hardens the Student role end-to-end. Student auth_users AR
 **AC4:** The student lookup uses `scoped_filter({"user_id": user["id"]}, get_school_id())` rather than `_fee_query({"user_id": user["id"]})` for the student record query.
 
 **AC5:** Existing 387 tests still pass.
+
+**Implementation note (EC-15.2 — partial status fee calculation):** Compute `total_paid` as: `total_paid = sum(t['amount'] for t in txns if t['status']=='paid') + sum(t.get('paid_amount',0) for t in txns if t['status']=='partial')`. The `partial` status was introduced in Part 10 (P10.1) — its `paid_amount` field represents the portion already collected and must count toward `total_paid`.
 
 ---
 
@@ -202,7 +218,11 @@ Part 15 activates and hardens the Student role end-to-end. Student auth_users AR
 
 **AC4:** Given a student has sent 20 AI messages today (at the default cap), when they send message 21, then the response is HTTP 429 "Daily message limit reached".
 
+**EC-15.4 (daily reset timezone):** Given a student sends messages on both sides of midnight UTC (11:55 PM and 12:05 AM UTC), When the daily cap resets, Then the reset occurs at midnight IST (UTC+5:30) — NOT midnight UTC. A message sent at 12:05 AM UTC is in the same IST day as one sent at 11:55 PM UTC the night before.
+
 **AC5:** Existing 387 tests still pass.
+
+**Implementation note (EC-15.4 — IST timezone for daily counter):** Daily counter bucket must use IST date: `from zoneinfo import ZoneInfo; ist = ZoneInfo('Asia/Kolkata'); today_ist = datetime.now(ist).strftime('%Y-%m-%d'); counter_key = f'{user_id}:{today_ist}'`. Using UTC dates creates a 5.5-hour gaming window where students can send messages at 12:01 AM IST, reset the UTC counter at 6:30 AM IST, and send another batch.
 
 ---
 

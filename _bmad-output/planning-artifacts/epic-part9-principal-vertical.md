@@ -63,12 +63,35 @@ Part 9 targets the completeness and correctness of the principal (admin + sub_ca
 - Add a comment near `operations.py` line 120 noting the second (fully-featured) leave-decision endpoint so future developers do not add a third.
 - Add backend unit tests: approve a leave → notification created; reject a leave → notification created; accountant role → 403.
 
+**EC-9.3 — Leave approved twice (idempotency gap — double notification + double audit entry):**
+
+Given leave request L1 has `status='approved'`,
+When `PATCH /api/staff/leaves/L1` is called again with `{action: 'approve'}`,
+Then 409 is returned with detail `'Leave already approved'`.
+
+Given two concurrent PATCH requests for the same leave ID arrive simultaneously,
+When both are processed,
+Then exactly ONE succeeds and the other receives 409.
+
+> **Implementation note (EC-9.3):** Use a conditional MongoDB update to make approval idempotent:
+> ```python
+> result = await db.leave_requests.update_one(
+>     {'id': leave_id, 'status': 'pending'},  # only match if still pending
+>     {'$set': {'status': new_status, 'approved_by': user['id'], 'approved_at': now}}
+> )
+> if result.matched_count == 0:
+>     raise HTTPException(409, 'Leave already approved or not found')
+> ```
+> Without this guard, two rapid clicks or two admins approving the same leave simultaneously create: two notification documents (staff gets two "approved" emails/in-app notifications), two audit entries (falsifying governance record), and potential double-count in payroll processing.
+
 **Acceptance Criteria:**
 - `PATCH /api/staff/leaves/{id}` with `approved` status inserts a notification document for the staff's `user_id`
 - `PATCH /api/staff/leaves/{id}` with `rejected` status inserts a notification document
 - Audit log entry created for every leave decision
+- Given leave is already `approved`, When approved again, Then 409 is returned (idempotency guard)
+- Given two concurrent approval requests, When processed, Then exactly one succeeds and one returns 409
 - Accountant sub-category admin receives 403 from the leave approval endpoint (`require_access("owner", "admin", sub_category="principal")` is the exact guard used)
-- At least 3 new backend unit tests
+- At least 3 new backend unit tests (include idempotency test)
 - Existing 387 tests still pass
 
 **Scoped-query audit (mandatory before merge):**
@@ -92,12 +115,34 @@ Part 9 targets the completeness and correctness of the principal (admin + sub_ca
   - An "Absent Staff Today" list (staff name, role) with a "Mark in timetable" shortcut.
 - Add backend tests for both new endpoints: data returned, correct school scoping, 403 for non-principal/non-owner.
 
+**EC-9.2 — N+1 query problem (120 queries for 40 classes):**
+
+Given 40 classes in the school,
+When `GET /api/attendance/class-summary` is called,
+Then the response is generated with ≤ 5 MongoDB queries total (NOT 40×3=120 individual count queries for present/absent/not_marked per class).
+
+> **Implementation note (EC-9.2):** Use a single aggregation pipeline instead of per-class individual counts:
+> ```python
+> db.student_attendance.aggregate([
+>     {'$match': scoped_query({'date': today}, branch_id=bid)},
+>     {'$group': {
+>         '_id': '$class_id',
+>         'present': {'$sum': {'$cond': [{'$eq': ['$status', 'present']}, 1, 0]}},
+>         'absent':  {'$sum': {'$cond': [{'$eq': ['$status', 'absent']},  1, 0]}},
+>         'total':   {'$sum': 1}
+>     }},
+>     {'$lookup': {'from': 'classes', 'localField': '_id', 'foreignField': '_id', 'as': 'class_info'}}
+> ])
+> ```
+> A naive implementation that iterates classes and calls `.count_documents()` three times per class will issue 40×3=120 queries for a school with 40 classes — this will time out on Atlas M0 under load.
+
 **Acceptance Criteria:**
 - `GET /api/attendance/class-summary` returns per-class attendance counts scoped to schoolId
+- `GET /api/attendance/class-summary` uses an aggregation pipeline (≤ 5 total queries, not N×3 individual counts)
 - `GET /api/attendance/staff/today` returns staff attendance for the requested date
 - Both endpoints return 403 for roles other than owner/principal
 - `PrincipalDailyOps.js` renders the class summary table and absent staff list
-- At least 4 new backend tests (2 per endpoint)
+- At least 4 new backend tests (2 per endpoint; include a test asserting aggregation pipeline usage for class-summary)
 - Existing 387 tests still pass
 
 **Scoped-query audit (mandatory before merge):**
@@ -119,12 +164,34 @@ Part 9 targets the completeness and correctness of the principal (admin + sub_ca
 - The compose panel should show a confirmation preview before posting (repurpose the `ConfirmActionCard` pattern).
 - Add backend tests: principal posts to `student` audience → status is `approved`, not `pending_approval`; teacher posts to `student` audience → status is `pending_approval`.
 
+**EC-9.1 — Principal `audience_roles` injection (targeting the owner role):**
+
+Given a principal sends `POST /announcements` with `audience_roles: ['owner']`,
+When the request is processed,
+Then 422 is returned — principals cannot target the owner role.
+
+Given a principal sends `POST /announcements` with `audience_roles: ['teacher', 'student']` (valid audiences),
+When the request is processed,
+Then the announcement is created with `status: 'published'` (no approval queue).
+
+> **Implementation note (EC-9.1):** Add allowed-audience validation for the principal role:
+> ```python
+> PRINCIPAL_ALLOWED_AUDIENCES = {'teacher', 'student', 'admin', 'all'}
+> if user['role'] == 'admin' and user.get('sub_category') == 'principal':
+>     audience_set = set(body.get('audience_roles', []))
+>     if not audience_set.issubset(PRINCIPAL_ALLOWED_AUDIENCES):
+>         raise HTTPException(422, 'Principal cannot target owner role')
+> ```
+> Without this guard, a principal could compose an announcement appearing to come from the owner (since principals bypass the approval gate), potentially spoofing official communications to staff and parents.
+
 **Acceptance Criteria:**
 - Principal-posted announcements are approved directly (no owner gate)
 - Owner-posted announcements are approved directly
 - Teacher-posted announcements to student audience remain in `pending_approval`
+- Principal with `audience_roles: ['owner']` receives 422
+- Principal with `audience_roles: ['teacher', 'student']` receives `status: 'published'`
 - Frontend compose panel accessible from the principal daily ops view
-- At least 2 new backend tests
+- At least 2 new backend tests (include EC-9.1 audience injection test)
 - Existing 387 tests still pass
 
 **Scoped-query audit (mandatory before merge):**
@@ -200,13 +267,30 @@ Part 9 targets the completeness and correctness of the principal (admin + sub_ca
 - Add a "Leave Balance" adjustment section to the principal's staff management view: a form to increment/decrement leave balance fields. Calls `PATCH /api/staff/{id}` with only the leave balance fields.
 - Add backend tests: principal sends PATCH with `{'role': 'owner'}` in body → staff record's role is NOT changed (field is silently stripped); owner sends PATCH with `{'role': 'teacher'}` → role IS updated (200); principal updates `casual_leave_balance` → 200. Add a regression test matrix verifying every `(role, field)` combination that should be blocked is verified as blocked.
 
+**EC-9.4 — Principal self-update privilege escalation (self-update is NOT exempt from field restrictions):**
+
+Given a principal calls `PATCH /api/staff/{their_own_staff_id}` with `{role: 'owner'}`,
+When the request is processed,
+Then the `role` field is stripped (OWNER_ONLY_FIELDS applies to self-updates too — the principal's own record is NOT exempt).
+
+> **Implementation note (EC-9.4):** The `OWNER_ONLY_FIELDS` stripping logic must apply regardless of whether `staff_id == user['id']`. Self-update is NOT a special case:
+> ```python
+> OWNER_ONLY_FIELDS = {'role', 'sub_category', 'salary', 'is_active'}
+> if user['role'] != 'owner':
+>     for field in OWNER_ONLY_FIELDS:
+>         body_data.pop(field, None)
+> # This block runs even when staff_id == user['id']
+> ```
+> Without this guard, a principal can call `PATCH /api/staff/{own_id}` with `{sub_category: 'owner'}` to self-escalate. The API currently does not distinguish self-updates from other-staff updates at the field-restriction layer.
+
 **Acceptance Criteria:**
 - Given a principal sends `PATCH /api/staff/{id}` with `{'role': 'owner'}` in the body, When the request is processed, Then the staff record's role is NOT changed (the field is silently stripped)
+- Given a principal sends `PATCH /api/staff/{their_own_id}` with `{'role': 'owner'}`, When the request is processed, Then the role field is silently stripped (self-update is NOT exempt from OWNER_ONLY_FIELDS)
 - Owner can update `role` and `sub_category` of any staff member (200, change applied)
 - `GET /api/staff/{id}/leave-balance` endpoint returns leave balance fields
 - Leave balance adjustment UI accessible in the principal vertical
-- Given a regression test matrix, When it runs, Then every combination of (role, field) that should be blocked is verified as blocked
-- At least 3 new backend tests
+- Given a regression test matrix, When it runs, Then every combination of (role, field) that should be blocked is verified as blocked — including the self-update case
+- At least 3 new backend tests (include self-update privilege escalation test)
 - Existing 387 tests still pass
 
 **Scoped-query audit (mandatory before merge):**

@@ -74,7 +74,11 @@ The codebase already has significant teacher-facing logic: attendance bulk-mark 
 
 **AC4:** Given a teacher seeded with `force_password_change=True`, when they log in for the first time, then the UI prompts them to set a new password before accessing any tool.
 
+**EC-14.4:** Given a teacher with `force_password_change=true` navigates directly to `/?tool=attendance` (bypassing the password-change prompt), When any tool panel attempts to load, Then they are redirected to the password-change screen regardless of the URL.
+
 **AC5:** Existing 387 tests still pass.
+
+**Implementation note (EC-14.4 — force_password_change route guard):** The `force_password_change` check must be a route guard applied in the frontend BEFORE tool panels render. In `App.js`: `if (user.force_password_change) { return <Redirect to='/change-password' /> }` — this must wrap ALL protected routes, not just the login redirect. A direct URL navigation must not bypass this guard.
 
 ---
 
@@ -99,7 +103,11 @@ The codebase already has significant teacher-facing logic: attendance bulk-mark 
 
 **AC4:** Given `AttendanceRecorder.js` is rendered for a class that already has attendance marked, when the teacher selects that date, then a warning banner is displayed before they attempt to save.
 
+**EC-14.1 (bulk audit granularity):** Given `POST /api/attendance/student/bulk` with 40 student records, When the write completes, Then exactly ONE audit log entry is created with `action='attendance_bulk', entity_id=class_id, changes={'count_marked': 40, 'date': today}`.
+
 **AC5:** Existing 387 tests still pass.
+
+**Implementation note (EC-14.1 — bulk attendance audit granularity decision):** Bulk attendance writes require a decision on audit granularity: (A) One audit entry per student (N writes per bulk call, max 40 for a full class) — fine-grained but higher write cost. (B) One audit entry for the whole class (1 write, loses per-student granularity). **Decision for Part 14: use Option B** (one entry per class bulk call) with `entity_id=class_id` and `count_marked=N` in the `changes` field. Document this decision with a code comment: `# AUDIT: one entry per bulk call (not per student) — see Part 14 decision log`.
 
 ---
 
@@ -126,9 +134,15 @@ Fix: add `if assignment['created_by'] != user['id'] and user['role'] != 'owner':
 
 **AC4:** Given teacher T1 is scoped to class C1, when they create an assignment with `class_id=C2` (foreign class), then the response is HTTP 403.
 
+**EC-14.2 (HoD subject scope — no AttributeError):** Given a teacher with `sub_category='hod'` and `scope.type='subject'` creates an assignment, When the class_id ownership check runs, Then it does NOT raise `AttributeError`.
+
+**EC-14.2 (HoD cross-class authority):** Given a HoD creates an assignment with `class_id='cls-1'` (any class in their subject), Then the assignment is created successfully (HoD has cross-class subject authority).
+
 **AC5:** Given an admin user, when they send `PATCH` or `DELETE` on any assignment regardless of `teacher_id`, then the operation succeeds.
 
 **AC6:** Existing 387 tests still pass.
+
+**Implementation note (EC-14.2 — HoD scope.type='subject' guard):** Check scope type before accessing `class_ids`: `if hasattr(scope, 'type') and scope.get('type') == 'subject': pass  # HoD has cross-class authority for their subject, skip class_id validation. elif scope.get('class_ids') and class_id not in scope.get('class_ids', []): raise HTTPException(403, 'Not your class')`. Never access `scope.class_ids` without first confirming `scope.type != 'subject'`.
 
 ---
 
@@ -155,7 +169,13 @@ Fix: add `if assignment['created_by'] != user['id'] and user['role'] != 'owner':
 
 **AC4:** Given teacher T1 is scoped to class C1, when they attempt to submit a result for a student in class C2, then the row is rejected with HTTP 403.
 
+**EC-14.3 (partial failure response shape):** Given `POST /api/academics/results/bulk` with 10 rows where 2 have marks > max_marks, When the request is processed, Then the response is `{'success': 'partial', 'saved': 8, 'errors': [{'row': 3, 'reason': 'marks 105 exceeds max_marks 100'}, {'row': 7, 'reason': 'marks 110 exceeds max_marks 100'}]}`.
+
+**EC-14.3 (all-valid response shape):** Given all 10 rows are valid, Then response is `{'success': True, 'data': {'saved': 10}}`.
+
 **AC5:** Existing 387 tests still pass.
+
+**Implementation note (EC-14.3 — bulk partial success response shape):** Define a new response shape for bulk partial success — this deviates from the standard `{'success': True, 'data': [...]}` convention. Document in the route's docstring: `# Response shape: {'success': True|'partial'|False, 'saved': int, 'errors': list}`. The `'partial'` string value is intentional to distinguish from full success (`True`) and full failure (`False`).
 
 ---
 

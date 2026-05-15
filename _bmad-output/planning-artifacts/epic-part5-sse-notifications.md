@@ -337,6 +337,12 @@ Then the leave approval response still returns 200 OK and a `logger.warning` is 
   - Verify the generator terminates and queue is cleaned up
 - Document the KEEPALIVE_INTERVAL value with a comment: "must be < load balancer idle timeout ÷ 2"
 
+**EC-5.1 — defaultdict ghost entries (connection cleanup):**
+After every `publish()` call, clean up empty channel buckets that the `defaultdict` creates on access. The `_connections` defaultdict creates an empty dict bucket whenever `_connections[channel]` is accessed for a channel with no subscribers. These empty buckets persist indefinitely unless explicitly deleted.
+
+**EC-5.3 — Whitespace-only SSE session ID:**
+The `X-SSE-Session-ID` header validation must strip whitespace before the empty check. `if not session_id` evaluates to False for `"   "` (whitespace-only string), allowing a whitespace key into `_connections` which corrupts the channel namespace.
+
 **Acceptance Criteria:**
 
 Given an active SSE generator,
@@ -351,9 +357,18 @@ Given a stale session_id entry in `_connections`,
 When `sse.disconnect()` is called with the correct queue reference,
 Then `_connections[channel]` no longer contains the session_id key.
 
+**EC-5.1 AC:** Given `publish()` is called for a channel with no active subscribers, When it accesses `_connections[channel]`, Then the resulting empty dict bucket must NOT persist — add `if not _connections[channel]: del _connections[channel]` after publishing.
+
+**EC-5.3 AC:** Given `X-SSE-Session-ID: '   '` (whitespace only), When the request is processed, Then a server-generated UUID is used instead (not the whitespace string).
+
+**Implementation Notes:**
+
+- **EC-5.1:** The `_connections` defaultdict creates empty buckets on access. After every `publish()` call, clean up empty channels: `for channel in list(_connections.keys()): if not _connections[channel]: del _connections[channel]`
+- **EC-5.3:** Use `session_id = (session_id or '').strip() or str(uuid.uuid4())` to handle whitespace-only session IDs.
+
 - Generator has disconnect check on keepalive path
 - `finally` block guaranteed
-- At least 3 unit tests covering exit paths
+- At least 3 unit tests covering exit paths (including EC-5.1 ghost-entry cleanup and EC-5.3 whitespace session ID)
 - All 387 existing tests still pass
 
 ---
@@ -372,6 +387,9 @@ Then `_connections[channel]` no longer contains the session_id key.
   - `digest_count` equals the number of digest items appended
   - `has_fallback` is True when no persistent + no digest items exist
 
+**EC-5.4 — Notification digest cross-school exposure:**
+Notification digest sub-queries (`leave_requests`, `facility_requests`) use bare dicts and rely entirely on ScopedCollection auto-injection. Any future refactor bypassing ScopedCollection would expose cross-school data. This must be verified and documented.
+
 **Acceptance Criteria:**
 
 Given a user with 5 persistent notifications and 3 digest items,
@@ -386,8 +404,13 @@ Given a user on page 2,
 When they request `GET /api/notifications?page=2`,
 Then `meta.digest_count` equals 0 (digest only on page 1).
 
+**EC-5.4 AC:** Given school A and school B share a MongoDB instance, When school A's principal views the digest, Then leave_requests count shows only school A's pending leaves.
+
+**Implementation Note (EC-5.4):** Notification digest sub-queries MUST go through `get_db()` (ScopedCollection) with bare dicts — do NOT call `get_raw_db()` for any digest count query. Verify with grep: `grep -n 'get_raw_db' backend/routes/notifications.py` must return 0 hits.
+
 - `meta` shape documented in route docstring
 - At least 3 unit tests in `tests/backend/unit/test_notifications.py`
+- EC-5.4: `grep -n 'get_raw_db' backend/routes/notifications.py` returns 0 hits (verified in CI)
 - All 387 existing tests still pass
 
 ---
@@ -403,6 +426,9 @@ Then `meta.digest_count` equals 0 (digest only on page 1).
 - Apply the same pattern to `issues.py`'s multi-target fan-out
 - Add unit test: 20 targets — all notifications attempted, partial failure (5 fail) — parent action succeeds
 
+**EC-5.5 — gather(return_exceptions=True) swallows False returns:**
+`create_notification()` returns `False` on failure (not raises). `asyncio.gather(return_exceptions=True)` only captures exceptions in its results list — `False` return values pass through as normal results. Using `isinstance(r, Exception)` to count failures will always produce 0 for `False` returns. The failure count logic MUST check for both `False` returns and exceptions.
+
 **Acceptance Criteria:**
 
 Given a high-severity incident creation with 15 owner/admin users to notify,
@@ -417,9 +443,13 @@ Given the gather completes,
 When `logger.info` is called,
 Then the log record contains `notifications_sent` and `notifications_failed` counts.
 
+**EC-5.5 AC:** Given `create_notification()` returns `False` for 5 of 20 targets (not raises), When `asyncio.gather(return_exceptions=True)` completes, Then `notifications_failed` count is computed as `sum(1 for r in results if r is False or isinstance(r, Exception))` — NOT just `isinstance(r, Exception)`.
+
+**Implementation Note (EC-5.5):** The failure count MUST be: `notifications_failed = sum(1 for r in results if r is False or isinstance(r, Exception))`. The pattern `sum(1 for r in results if isinstance(r, Exception))` silently undercounts failures because `create_notification()` returns `False` (not raises) on DB error.
+
 - Sequential fan-out loops replaced in both files
 - Semaphore prevents > 10 concurrent writes
-- At least 2 unit tests
+- At least 3 unit tests (including EC-5.5: False-return failure counting)
 - All 387 existing tests still pass
 
 ---
@@ -442,6 +472,9 @@ Then the log record contains `notifications_sent` and `notifications_failed` cou
   7. `PATCH /mark-all-read` is idempotent (second call succeeds, 0 modified is OK)
   8. `POST /` (create notification) requires owner/admin role
 
+**EC-5.2 — Concurrent notification + mark-all-read race:**
+A new notification created at the exact moment `mark-all-read` runs can be marked read immediately (born-already-read) if the filter boundary is `created_at <= now`. The filter must use a timestamp captured at request start, not at the time the query executes.
+
 **Acceptance Criteria:**
 
 Given `database.py` `_create_indexes()`,
@@ -456,9 +489,13 @@ Given a teacher user calls `PATCH /{id}/read` for a notification belonging to a 
 When the request is processed,
 Then a 404 is returned (user_id filter prevents cross-user reads).
 
+**EC-5.2 AC:** Given a notification is created at timestamp T, When `mark-all-read` runs at timestamp T (concurrent window), Then the new notification is NOT marked read — use `created_at < now_at_request_start` as the filter boundary, not `created_at <= now`.
+
+**Implementation Note (EC-5.2):** Capture `request_start = datetime.now(timezone.utc)` BEFORE the DB query. Pass it as the upper bound of the mark-all-read filter: `update_many({'read': False, 'created_at': {'$lt': request_start}})`.
+
 - Migration 019 created and in `run_all.py`
 - `database.py` has the index call
-- 8+ unit tests covering all major notification paths
+- 8+ unit tests covering all major notification paths (including EC-5.2 concurrent mark-all-read boundary)
 - All 387 + new tests pass
 
 ---

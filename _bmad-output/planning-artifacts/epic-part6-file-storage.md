@@ -135,6 +135,9 @@ These are infrastructure requirements outside the application code but must be v
   - Authenticated student requesting another student's file → 403
   - File not found → 404
 
+**EC-6.1 — S3 upload + DB insert fails + S3 delete fails → orphaned file:**
+The upload endpoint has a double-failure path: S3 upload succeeds, then `file_uploads.insert_one` raises, and the subsequent S3 rollback `delete_object` also raises `ClientError`. In this scenario, the original `insert_one` exception is silently replaced by the S3 delete exception, the file is permanently orphaned in S3, and there is no record of the failure. This is a DPDP risk — files exist beyond their intended lifecycle with no DB record to support deletion requests.
+
 **Acceptance Criteria:**
 
 Given an unauthenticated GET request to `/api/uploads/serve/abc.pdf`,
@@ -153,9 +156,25 @@ Given a valid authenticated request to an existing file,
 When the redirect is followed,
 Then the presigned URL is served and the original S3 key is not exposed in the response.
 
+**EC-6.1 AC:** Given S3 upload succeeds AND `file_uploads.insert_one` raises AND the subsequent `s3_client.delete_object` also raises `ClientError`, When the upload endpoint handles this double-failure, Then:
+- The original `insert_one` exception is logged (not replaced by the S3 delete exception)
+- An entry is written to `orphaned_s3_keys` collection: `{'s3_key': stored_key, 'school_id': school_id, 'failed_at': now, 'reason': 'insert_failed_delete_failed'}`
+- The endpoint returns 500 to the client
+
+**Implementation Note (EC-6.1):** The rollback pattern must be:
+```python
+try:
+    await delete_object(key)
+except ClientError as del_err:
+    logger.error('s3_rollback_failed', s3_key=key, exc_info=True)
+    await db.orphaned_s3_keys.insert_one({'s3_key': key, 'school_id': school_id, 'failed_at': now, 'reason': 'insert_failed_delete_failed'})
+```
+The original `insert_one` exception must be re-raised after the rollback attempt, not replaced by `del_err`.
+
 - `serve_file` requires authentication
 - Access model comment block added
-- 4+ unit tests in `tests/backend/unit/test_upload_routes.py`
+- EC-6.1 double-failure rollback path implemented with `orphaned_s3_keys` logging
+- 5+ unit tests in `tests/backend/unit/test_upload_routes.py` (including EC-6.1 double-failure scenario)
 - All 387 existing tests still pass
 
 ---
@@ -183,6 +202,9 @@ Then the presigned URL is served and the original S3 key is not exposed in the r
   - `build_upload_key` without school_id produces `uploads/{id}/{name}` (backward compat)
   - Uploaded file record has `schoolId` field
 
+**EC-6.3 — DELETE uses legacy S3 key path for pre-migration records:**
+Records created before migration 020 have no `schoolId` prefix in their S3 key (stored as `uploads/{file_id}/{filename}`). After P6.2 ships, the DELETE endpoint must use the `s3_key` field from the DB record as-is for S3 deletion — it must NOT reconstruct the key from the current naming convention (`{school_id}/uploads/{file_id}/{filename}`), because pre-migration records still exist in S3 under the legacy path.
+
 **Acceptance Criteria:**
 
 Given `build_upload_key("uuid123", "report.pdf", school_id="school-a")`,
@@ -205,10 +227,15 @@ Given an existing file record without `school_id` prefix in its S3 key,
 When migration 020 runs,
 Then the record's `schoolId` field is backfilled (from `SCHOOL_ID` env var) but the S3 key stored in the DB is preserved as-is (do not move the S3 object, only add `schoolId` to the DB document).
 
+**EC-6.3 AC:** Given a file record created before migration 020 (no schoolId prefix in S3 key), When `DELETE /api/uploads/{file_id}` is called, Then the `s3_key` field from the DB record is used AS-IS for S3 deletion (not reconstructed from the new naming convention).
+
+**Implementation Note (EC-6.3):** Always use `record['s3_key']` from the DB for deletions — never reconstruct the key from the current naming convention. Pre-migration keys are legacy paths (`uploads/{file_id}/{filename}`) that still exist in S3 under the original key. Reconstructing the key using `{school_id}/uploads/{file_id}/{filename}` would attempt to delete a non-existent S3 object and leave the real file orphaned.
+
 - Migration 020 created and added to `run_all.py`
 - `build_upload_key` signature updated with canonical convention `{school_id}/uploads/{file_id}/{safe_filename}`
 - All upload/list/delete endpoints scoped
-- Unit tests pass
+- EC-6.3: DELETE endpoint uses `record['s3_key']` from DB (not reconstructed key)
+- Unit tests pass (including EC-6.3 pre-migration record deletion)
 - All 387 existing tests still pass
 
 ---
@@ -220,6 +247,7 @@ Then the record's `schoolId` field is backfilled (from `SCHOOL_ID` env var) but 
 **Scope:**
 - Add `detect_mime_from_bytes(content: bytes) -> str` helper in `s3_storage.py` or `upload.py`:
   - Inspect the first 512 bytes of the file content
+  - Strip BOM prefix before magic byte check (see EC-6.2 below)
   - Check against known magic byte signatures for common formats: PDF (`%PDF`), PNG (`\x89PNG`), JPEG (`\xff\xd8\xff`), ZIP (`PK\x03\x04`), DOCX/XLSX (also ZIP-based)
   - If detected MIME does not match the extension's expected MIME family, raise `HTTPException(415, "File content does not match declared extension")`
   - Add code comment: `# DOCX/XLSX are ZIP-based; we accept valid ZIP for these extensions`
@@ -241,6 +269,12 @@ Then the record's `schoolId` field is backfilled (from `SCHOOL_ID` env var) but 
   - 15 MB file from admin → accepted
 
 > ⚠️ Known limitation: `.docx` and `.xlsx` files use ZIP format (PK magic bytes). A valid `.zip` renamed to `.docx` will pass the MIME check because both are valid ZIP files. This is an accepted limitation — document it in code with a comment: `# DOCX/XLSX are ZIP-based; we accept valid ZIP for these extensions`
+
+**EC-6.2 — PDF with BOM prefix rejected:**
+Some PDF-generating tools produce files that begin with a UTF-8 BOM (`EF BB BF`) before the `%PDF` magic bytes. A naive `content[:4] == b'%PDF'` check rejects these valid PDFs. The BOM must be stripped before inspecting magic bytes.
+
+**EC-6.4 — Double-extension bypass (.exe.pdf passes MIME check):**
+A file named `malware.exe.pdf` has a final extension of `.pdf`. The MIME check uses the final extension only, so the file will pass if its magic bytes are valid PDF bytes. This is a known and accepted limitation because the files are stored in S3 and served (not executed). It must be documented in code.
 
 **Acceptance Criteria:**
 
@@ -264,10 +298,21 @@ Given a `.docx` file that is actually a ZIP bomb (valid ZIP magic bytes, >100 MB
 When uploaded,
 Then the size check (from `MAX_SIZE_BY_ROLE`) rejects it before any extraction is attempted.
 
+**EC-6.2 AC:** Given a valid PDF file that begins with UTF-8 BOM bytes (`EF BB BF`) followed by `%PDF`, When it is uploaded with `.pdf` extension, Then it is accepted (not rejected as invalid MIME).
+
+**EC-6.4 AC:** Given a file named `malware.exe.pdf` (final extension `.pdf`, but early extension `.exe`), When the MIME check runs, Then it is accepted as PDF (this is a KNOWN LIMITATION).
+
+**Implementation Notes:**
+
+- **EC-6.2:** Strip BOM before magic byte check: `content_to_check = content.lstrip(b'\xef\xbb\xbf')`. Also note: HEIC images have magic bytes at a variable offset (not byte 0) — accept HEIC by extension only with an explicit note in code.
+- **EC-6.4:** Known limitation: the MIME check uses the FINAL extension only. `malware.exe.pdf` will be accepted as a PDF because the magic bytes check passes and the final extension is `.pdf`. This is acceptable because the file is stored in S3, served via presigned URL, and not executed. Add a code comment: `# Known limitation: double-extension bypass (.exe.pdf passes as PDF) — acceptable since files are served, not executed`
+
 - `detect_mime_from_bytes` implemented without external dependency (magic byte inspection only)
 - `MAX_SIZE_BY_ROLE` replaces `MAX_SIZE_BYTES`
 - DOCX/ZIP limitation comment present in code
-- At least 5 unit tests in `tests/backend/unit/test_upload_routes.py`
+- EC-6.2 BOM stripping implemented and tested
+- EC-6.4 known limitation documented in code comment
+- At least 7 unit tests in `tests/backend/unit/test_upload_routes.py` (including EC-6.2 BOM PDF and EC-6.4 double-extension)
 - All 387 existing tests still pass
 
 ---
@@ -359,9 +404,11 @@ Then a `certificate_generated` record exists with `changed_by`, `entity_id` (stu
 
 ---
 
-### Story P6.6: Delete and list endpoints full schoolId scoping
+### Story P6.6: Delete and list endpoints full schoolId scoping + pagination
 
 **Problem:** `DELETE /api/uploads/{file_id}` queries `db.file_uploads.find_one({"id": file_id})` with no `schoolId` filter. An admin from a future secondary school in the same MongoDB instance could delete another school's files if they guess or obtain a file UUID. Similarly, `GET /api/uploads` for admin/owner resets the query to `{}` with optional entity filters — no `schoolId` scope is applied. The `file_uploads` collection is currently scoped only by `uploaded_by` for non-admin users, but completely unscoped for admin queries.
+
+Additionally, `GET /api/uploads` uses `.to_list(100)` as a hard cap with no pagination, silently truncating results for schools with more than 100 uploads and providing no `meta.total` to the caller.
 
 **Scope:**
 - Update `delete_file()`:
@@ -369,11 +416,17 @@ Then a `certificate_generated` record exists with `changed_by`, `entity_id` (stu
   - If record not found with scoped query: 404 (same as before, but now school-safe)
 - Update `list_uploads()` admin/owner branch:
   - Apply `scoped_filter(query, get_school_id())` before executing the find
+- Replace `.to_list(100)` hard cap with proper pagination:
+  - Accept `page: int = 1` and `limit: int = 50` query params (max limit 100)
+  - Return `meta: {total, page, limit, has_more}` in response
 - Add unit tests:
   - Delete file belonging to same school → 200
   - Delete file with mismatched schoolId → 404
   - Admin list returns only same-school files
   - Student list returns only own files
+
+**EC-6.5 — GET /uploads pagination missing:**
+`GET /api/uploads` silently truncates results at 100 with no `meta.total` or pagination support. A school with 200+ upload records gets only the first 100 with no indication that more exist.
 
 **Acceptance Criteria:**
 
@@ -389,9 +442,16 @@ Given a student calls `GET /api/uploads`,
 When the query executes,
 Then only records with `uploaded_by = student["id"]` are returned.
 
+**EC-6.5 AC:** Given a school with 200+ upload records, When `GET /api/uploads` is called without pagination params, Then the response includes `meta.total` count AND `meta.page` AND `meta.limit` AND `meta.has_more: true`.
+
+**EC-6.5 AC:** Given `GET /api/uploads?page=2&limit=50`, Then records 51–100 are returned.
+
+**Implementation Note (EC-6.5):** The current `.to_list(100)` hard cap must be replaced with proper pagination: `skip = (page-1)*limit; results = await db.file_uploads.find(query).skip(skip).limit(limit).to_list(limit)`. Always return `meta.total` computed via `count_documents(query)` so the caller can derive `has_more = (skip + len(results)) < total`.
+
 - All three upload endpoints have `schoolId` scope
-- Unit tests cover cross-school isolation
-- 4+ unit tests in `tests/backend/unit/test_upload_routes.py`
+- EC-6.5 pagination implemented with `meta.total`, `meta.page`, `meta.limit`, `meta.has_more`
+- Unit tests cover cross-school isolation and pagination behavior
+- 6+ unit tests in `tests/backend/unit/test_upload_routes.py`
 - All 387 existing tests still pass
 
 ---

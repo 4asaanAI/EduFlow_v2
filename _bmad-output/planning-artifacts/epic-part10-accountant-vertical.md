@@ -98,6 +98,10 @@ Part 10 targets the completeness and correctness of the accountant (admin + sub_
 - Conflict display labels "EduFlow" vs "External System (Fee Software)" clearly
 - At least 2 new backend tests
 - Existing 387 tests still pass
+- **[EC-10.1]** Given a sync job has been in `status='in_progress'` for more than `SYNC_JOB_TIMEOUT_MINUTES` (default 30), When a new sync trigger arrives, Then the hung job is automatically transitioned to `status='failed'` with `reason='timeout'` AND a new job is created
+- **[EC-10.1]** Given `SYNC_JOB_TIMEOUT_MINUTES=30`, When the FeeSync status endpoint is polled, Then a job older than 30 minutes in 'in_progress' state is reported as 'failed' (not still 'in_progress')
+
+**Implementation note (EC-10.1 — hung job recovery):** Add timeout check in the idempotency guard: `if existing_job.status == 'in_progress' and (now - existing_job.started_at).minutes > SYNC_JOB_TIMEOUT_MINUTES: await db.fee_sync_jobs.update_one({'id': existing_job.id}, {'$set': {'status': 'failed', 'reason': 'timeout'}}); create new job`
 
 **Scoped-query audit (mandatory before merge):**
 - Given: `grep -n "scoped_filter(" backend/routes/fees.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
@@ -156,6 +160,10 @@ Part 10 targets the completeness and correctness of the accountant (admin + sub_
 - `FeeCollection.js` handles 202 response and shows "Pending approval" state
 - At least 4 new backend tests
 - Existing 387 tests still pass
+- **[EC-10.2]** Given DISCOUNT_APPROVAL_THRESHOLD is Rs 10,000, When a discount of EXACTLY Rs 10,000.00 is applied, Then it is approved immediately (not routed to pending) — threshold is EXCLUSIVE upper bound
+- **[EC-10.2]** Given a discount of Rs 10,000.001 (floating point rounding artifact from UI), When processed, Then it is treated as Rs 10,000 (round to 2 decimal places before comparison)
+
+**Implementation note (EC-10.2 — float precision):** Use `Decimal` for threshold comparison: `from decimal import Decimal; discount_decimal = Decimal(str(discount_amount)).quantize(Decimal('0.01')); if discount_decimal > Decimal(str(THRESHOLD)): route_to_pending()`
 
 **Scoped-query audit (mandatory before merge):**
 - Given: `grep -n "scoped_filter(" backend/routes/fees.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
@@ -185,6 +193,11 @@ Part 10 targets the completeness and correctness of the accountant (admin + sub_
 - `FeeCollection.js` highlights corrected transactions with an amber badge
 - At least 4 new backend tests
 - Existing 387 tests still pass
+- **[EC-10.3]** Given a transaction is corrected for the first time, When the correction completes, Then `correction_count = 1` in the updated document
+- **[EC-10.3]** Given a transaction already corrected once (correction_count=1), When corrected again, Then `correction_count = 2` AND `original_snapshot` is still the PRE-first-correction values (not overwritten)
+- **[EC-10.3]** Given the correction audit log, When 2 corrections have been made, Then 2 audit entries exist — the first showing original→correction1, the second showing correction1→correction2
+
+**Implementation note (EC-10.3 — correction_count increment):** Use `$inc` for correction_count: `$inc: {'correction_count': 1}`. The `original_snapshot` uses `$setOnInsert` equivalent — only set if the field doesn't exist: use `$set: {'original_snapshot': ...}` inside an update filter that checks `$exists: false` for `original_snapshot`, or use `update_one` with `upsert=False` and a separate conditional branch.
 
 **Scoped-query audit (mandatory before merge):**
 - Given: `grep -n "scoped_filter(" backend/routes/fees.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
@@ -276,6 +289,9 @@ Part 10 targets the completeness and correctness of the accountant (admin + sub_
 - At least 4 new backend tests
 - `payroll.router` registered in main app
 - Existing 387 tests still pass
+- **[EC-10.4]** Given two concurrent POST /api/payroll/disburse requests for the same {staff_id, month}, When both arrive simultaneously, Then exactly ONE disbursement record is created and the other receives 409
+
+**Implementation note (EC-10.4 — concurrent payroll disbursements):** Add unique index: `db.salary_disbursements.create_index([('schoolId',1),('staff_id',1),('month',1)], unique=True)` in `database.py _create_indexes()`. Handle the `DuplicateKeyError`: `except DuplicateKeyError: raise HTTPException(409, 'Salary already disbursed for this staff member this month')`
 
 **Scoped-query audit (mandatory before merge):**
 - Given: `grep -n "scoped_filter(" backend/routes/payroll.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`

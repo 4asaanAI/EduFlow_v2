@@ -119,8 +119,11 @@ Part 13 targets the IT-Tech Admin (`sub_category=it_tech`) vertical end-to-end. 
 - IT-tech calling `GET /api/audit-log?collection=fee_transactions` returns 403
 - IT-tech calling `GET /api/audit-log?collection=tech_requests` returns 200
 - `# rbac: intentional` comment explains the it_tech scoping decision
+- **EC-13.4:** Given `IT_TECH_BLOCKED` collections list has 5 entries, When `GET /api/audit-log` is called by IT-tech, Then the MongoDB query includes `{'collection': {'$nin': IT_TECH_BLOCKED}}` filter — NOT fetching all documents and filtering in Python
 - At least 4 unit tests
 - Existing 387 tests still pass
+
+**Implementation note (EC-13.4 — N+1-equivalent filter):** ALWAYS apply collection blocking at the query layer: `query['collection'] = {'$nin': IT_TECH_BLOCKED}` before passing to `db.audit_log.find(query)`. Never fetch all docs and filter in Python — this is both a performance and a data exposure risk (a future Python-level bypass would expose blocked collections).
 
 **Scoped-query audit (mandatory before merge):**
 - Given: `grep -n "scoped_filter(" backend/routes/audit.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
@@ -152,8 +155,13 @@ Part 13 targets the IT-Tech Admin (`sub_category=it_tech`) vertical end-to-end. 
 - IT-tech trying to reset owner password returns 403
 - Unlock endpoint clears lockout fields and writes audit log
 - Teacher calling either endpoint returns 403
+- **EC-13.1 (multi-owner lockout):** Given two owner accounts exist (Owner A and Owner B), When Owner A calls `POST /api/auth/admin-reset-password` for Owner B's account, Then the reset succeeds (owner CAN reset another owner)
+- **EC-13.1 (full lockout emergency):** Given Owner A's credentials are lost AND Owner B's credentials are lost (full owner lockout), When IT-tech attempts to reset either owner's password, Then 403 is returned — but the response includes `detail: 'Contact system administrator for emergency recovery'`
+- **EC-13.1 (IT-tech resets teacher):** Given IT-tech calls `POST /api/auth/admin-reset-password` for a teacher account, Then the reset succeeds
 - At least 5 unit tests
 - Existing 387 tests still pass
+
+**Implementation note (EC-13.1 — two-tier reset rules):** IT-tech can reset any role EXCEPT owner. Owner can reset any role INCLUDING other owners. Emergency lockout recovery path: document that full owner lockout requires direct MongoDB access or a separate recovery script — add this as a comment in the route handler: `# RECOVERY: full owner lockout requires direct MongoDB access or a recovery script — see docs/operations.md`.
 
 **Scoped-query audit (mandatory before merge):**
 - Given: `grep -n "scoped_filter(" backend/routes/auth.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
@@ -189,8 +197,11 @@ Part 13 targets the IT-Tech Admin (`sub_category=it_tech`) vertical end-to-end. 
 - `meta.users_over_80_pct` correctly counts users with > 80% of their limit consumed
 - PATCH limit override stored; GET by that user returns the overridden limit
 - Teacher/student calling admin endpoint returns 403
+- **EC-13.3 (custom limit 80% check):** Given User B has a custom limit of 10,000 tokens and has used 8,500 (85%), When `GET /api/settings/token-usage/admin` is called, Then User B appears in `meta.users_over_80_pct` (85% of their CUSTOM limit, not the default 50,000 limit)
 - At least 4 unit tests
 - Existing 387 tests still pass
+
+**Implementation note (EC-13.3 — per-user effective limit):** Per-user 80% check must compare against the user's EFFECTIVE limit (custom limit if set, default if not): `effective_limit = user.get('token_limit_override') or DEFAULT_TOKEN_LIMIT; pct = (tokens_used / effective_limit) * 100; if pct >= 80: over_80_users.append(user)`
 
 **Scoped-query audit (mandatory before merge):**
 - Given: `grep -n "scoped_filter(" backend/routes/settings.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
@@ -252,8 +263,12 @@ Part 13 targets the IT-Tech Admin (`sub_category=it_tech`) vertical end-to-end. 
 - IT-tech `PATCH /api/settings/branches/{id}` returns 200
 - IT-tech `PATCH /api/settings/school` returns 403
 - `branch_code` uniqueness validated on create (409 if duplicate)
+- **EC-13.2 (race condition — concurrent branch creation):** Given two concurrent `POST /api/settings/branches` requests with the same `branch_code`, When both arrive simultaneously, Then exactly ONE succeeds and the other receives 409
+- **EC-13.2 (DB-level catch):** Given `POST /api/settings/branches` with duplicate `branch_code`, When the application-level check passes but the DB index catches it, Then 409 (not 500) is returned
 - At least 5 unit tests
 - Existing 387 tests still pass
+
+**Implementation note (EC-13.2 — unique MongoDB index for branch code):** Add unique MongoDB index: `db.branches.create_index([('schoolId',1),('branch_code',1)], unique=True)` in `database.py _create_indexes()`. Handle the duplicate key error: `except DuplicateKeyError: raise HTTPException(409, 'Branch code already exists')`. The application-level `find_one` check alone is insufficient — the DB index is the only reliable guard against concurrent creation races.
 
 **Scoped-query audit (mandatory before merge):**
 - Given: `grep -n "scoped_filter(" backend/routes/settings.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
@@ -383,6 +398,10 @@ All test data creation must use `tests/backend/factories.py` (created in pre-Par
 **When** it is reviewed
 **Then** the IT-tech inclusion and `IT_TECH_BLOCKED` collection set both have `# rbac: intentional` comments
 
+**EC-13.4 — Given** `IT_TECH_BLOCKED` has 5 collection entries
+**When** `GET /api/audit-log` is called by an IT-tech user
+**Then** the MongoDB query sent to the driver includes `{'collection': {'$nin': IT_TECH_BLOCKED}}` — the filter is NOT applied in Python after fetching all documents
+
 ---
 
 ### Story P13.S4: Admin password reset and account unlock
@@ -400,6 +419,18 @@ All test data creation must use `tests/backend/factories.py` (created in pre-Par
 **When** IT-tech calls `POST /api/auth/unlock-account` with `{"user_id": "<staff_id>"}`
 **Then** the response returns HTTP 200 and `locked_at`, `failed_attempts`, `locked_until` are cleared on the user document
 
+**EC-13.1 — Given** two owner accounts exist (Owner A and Owner B)
+**When** Owner A calls `POST /api/auth/admin-reset-password` for Owner B's account
+**Then** the reset succeeds (owner CAN reset another owner)
+
+**EC-13.1 — Given** Owner A's credentials are lost AND Owner B's credentials are lost (full owner lockout)
+**When** IT-tech attempts to reset either owner's password
+**Then** HTTP 403 is returned with `detail: 'Contact system administrator for emergency recovery'`
+
+**EC-13.1 — Given** IT-tech calls `POST /api/auth/admin-reset-password` for a teacher account
+**When** the request is processed
+**Then** the reset succeeds and HTTP 200 is returned
+
 ---
 
 ### Story P13.S5: Token budget aggregate view for IT-tech
@@ -416,6 +447,10 @@ All test data creation must use `tests/backend/factories.py` (created in pre-Par
 **Given** a teacher JWT
 **When** `GET /api/settings/token-usage/admin` is called
 **Then** the response returns HTTP 403
+
+**EC-13.3 — Given** User B has a custom limit of 10,000 tokens and has used 8,500 (85%)
+**When** IT-tech calls `GET /api/settings/token-usage/admin`
+**Then** User B appears in `meta.users_over_80_pct` because 8,500 is 85% of their CUSTOM limit (10,000) — not 17% of the default 50,000 limit
 
 ---
 

@@ -153,9 +153,32 @@ Given `limit=200` is passed to `get_record_history`,
 When the cap is applied,
 Then `limit` is capped at 100.
 
+**EC-7.1 — page=0 / negative limit validation:**
+
+Given `GET /api/audit-log?page=0`,
+When the request is processed,
+Then 400 is returned with detail `'page must be ≥ 1'`.
+
+Given `GET /api/audit-log?limit=-5`,
+When the request is processed,
+Then 400 is returned with detail `'limit must be between 1 and 100'`.
+
+Given `GET /api/audit-log?page=1` (valid) and `GET /api/audit-log?page=0` (invalid),
+When both requests are issued,
+Then they do NOT return the same results — `page=0` returns 400 (not the same records as page 1).
+
+> **Implementation note (EC-7.1):** Validate before applying skip arithmetic:
+> ```python
+> if page < 1:
+>     raise HTTPException(400, 'page must be ≥ 1')
+> if not 1 <= limit <= 100:
+>     raise HTTPException(400, 'limit must be between 1 and 100')
+> ```
+
 - Branch filter implemented
 - Record history paginated
-- At least 4 unit tests in `tests/backend/unit/test_audit_routes.py`
+- **page=0 and negative limit return 400 (not silently treated as page 1)**
+- At least 4 unit tests in `tests/backend/unit/test_audit_routes.py` (include page=0 and limit=-5 cases)
 - All 387 existing tests still pass
 
 ---
@@ -201,8 +224,24 @@ Given `write_audit()` is called without `branch_id`,
 When the document is built,
 Then `branch_id` defaults to `""` (not missing/absent).
 
+**EC-7.2 — Persistent audit failure escalation:**
+
+Given `write_audit()` has failed 10+ consecutive times (persistent failure, not transient),
+When the 11th call fails,
+Then a log line at ERROR level (not WARNING) is emitted with field `persistent_audit_failure: true`.
+
+> **Implementation note (EC-7.2):** Use a simple module-scope counter:
+> ```python
+> _audit_failure_count = 0
+> AUDIT_FAILURE_ALERT_THRESHOLD = 10
+> # On failure: increment counter; on success: reset to 0.
+> # If count > AUDIT_FAILURE_ALERT_THRESHOLD, escalate to logger.error.
+> ```
+> This is NOT a circuit breaker — audit writes still proceed (fail-open). The escalation is alerting only. Persistent failures (Atlas disk full, network partition) must surface to on-call via ERROR-level log monitoring.
+
 - `backend/services/audit_service.py` created with `write_audit()` function
-- 5 unit tests in `tests/backend/unit/test_audit_service.py`
+- Module-scope `_audit_failure_count` counter escalates to `logger.error` after 10 consecutive failures
+- 5 unit tests in `tests/backend/unit/test_audit_service.py` (include persistent-failure escalation case)
 - All 387 existing tests still pass
 
 ---
@@ -373,9 +412,30 @@ Given a successful login,
 When the log record is checked,
 Then no field contains the literal password value.
 
+**EC-7.3 — ALB IP masking (real client IP vs internal ALB IP):**
+
+Given EduFlow runs behind AWS ALB,
+When a login failure is logged,
+Then the `ip` field contains the real client IP from the `X-Forwarded-For` header (NOT `request.client.host`, which is the ALB's internal `10.x.x.x` address).
+
+Given no `X-Forwarded-For` header (direct connection, no load balancer),
+When a login fails,
+Then the `ip` field contains `request.client.host`.
+
+Given `X-Forwarded-For: 1.2.3.4, 10.0.0.1` (multiple hops: real client + ALB),
+When a login fails,
+Then the `ip` field is `1.2.3.4` (leftmost entry = real client).
+
+> **Implementation note (EC-7.3):** Use:
+> ```python
+> client_ip = request.headers.get('X-Forwarded-For', request.client.host or 'unknown').split(',')[0].strip()
+> ```
+> Without this fix, all login-failure alerts behind AWS ALB log the ALB's internal `10.x.x.x` IP, making CloudWatch brute-force detection alarms useless — an attacker making 10,000 attempts appears as a single internal IP.
+
 - `auth.py` logs failures at warning level
 - Structured extra fields used (not f-string)
-- 4+ unit tests in `tests/backend/unit/test_auth_logging.py`
+- `ip` field uses `X-Forwarded-For` (first hop) with fallback to `request.client.host`
+- 4+ unit tests in `tests/backend/unit/test_auth_logging.py` (include ALB header cases)
 - Password never appears in any log
 - All 387 existing tests still pass
 
@@ -507,10 +567,22 @@ Given `request_id_ctx` has a value in the current context,
 When a slow query log is emitted,
 Then the log record's `request_id` field matches the context value.
 
+**EC-7.4 — Wall-clock `time.time()` includes event-loop queue wait (false positives under load):**
+
+Given a monkeypatched `time.time` that simulates 150ms elapsed,
+When a query completes,
+Then a slow query WARNING is emitted with `elapsed_ms: 150` and NOT with `elapsed_ms: 0`.
+
+> **Implementation note (EC-7.4):** `time.time()` measures wall-clock elapsed time which includes asyncio event loop queue wait time — not pure I/O time. Under heavy concurrent load, a fast query may appear "slow" due to event loop congestion. This is an acceptable false-positive rate for alerting: the goal is to surface sustained slow queries, not microsecond precision.
+>
+> Logged slow-query records SHOULD include an `event_loop_congestion` boolean field (set to `true` when elapsed_ms significantly exceeds expected I/O time) to help operators distinguish genuine slow queries from queue-wait spikes. This field is informational only — do not gate alerts on it.
+>
+> **Do NOT switch to `time.perf_counter()` or CPU-time alternatives** — wall-clock is intentional here because queue-wait time IS user-visible latency, even if it is not DB I/O time.
+
 - `TimedQuery` context manager implemented in `database.py`
 - Context manager wraps `.to_list()` or equivalent terminal awaitable, NOT cursor construction
 - `audit_logs` indexes verified/added
-- 3+ unit tests in `tests/backend/unit/test_slow_query.py`
+- 3+ unit tests in `tests/backend/unit/test_slow_query.py` (include monkeypatched `time.time` for 150ms case)
 - Slow query logging is DEBUG level (does not appear in INFO output)
 - All 387 existing tests still pass
 
