@@ -46,6 +46,7 @@ MIGRATIONS = [
     ("013_add_school_id", "Backfill schoolId for future multi-tenancy"),
     ("015_ai_rate_limit_counters", "AI rate-limit counters + overrides (Story 7-48)"),
     ("016_admin_sub_category_default", "Backfill legacy admin sub_category=support_staff (Part 1 Auth+RBAC)"),
+    ("017_backfill_rate_limit_override_expires_at", "Backfill expires_at=null on override rows without the field (Part 2 P10)"),
 ]
 
 

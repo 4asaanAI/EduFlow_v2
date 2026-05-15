@@ -24,6 +24,8 @@ async def issue_confirm_token(
     params: dict[str, Any],
     user_id: str,
     session_id: str,
+    school_id: str | None = None,
+    branch_id: str | None = None,
     db=None,
 ) -> str:
     """Create a one-time confirmation token for a pending AI write dispatch."""
@@ -36,6 +38,8 @@ async def issue_confirm_token(
         "params": params,
         "user_id": user_id,
         "session_id": session_id,
+        "school_id": school_id,
+        "branch_id": branch_id,
         "expires_at": expires_at,
         "used": False,
         "created_at": _now(),
@@ -77,9 +81,12 @@ async def peek_confirm_token(
     token_db = db or get_db()
     try:
         doc = await token_db.confirm_tokens.find_one({"token": token})
-    except Exception:
+    except Exception as exc:
         logger.error("failed to peek AI confirmation token", exc_info=True)
-        return None
+        raise HTTPException(
+            status_code=503,
+            detail="Confirmation validation is unavailable. Please retry.",
+        ) from exc
     if not doc:
         return None
     if doc.get("user_id") != user_id or doc.get("session_id") != session_id:
@@ -92,13 +99,17 @@ async def consume_confirm_token(
     token: str,
     user_id: str,
     session_id: str,
+    school_id: str | None = None,
+    branch_id: str | None = None,
     db=None,
 ) -> dict[str, Any]:
     """
     Atomically marks a confirmation token used before action execution.
 
     Replays fail closed. Expired or missing tokens return 400, wrong-session
-    tokens return 401, and already-used tokens return 409.
+    tokens return 401, already-used tokens return 409, and tenant drift
+    (school_id/branch_id mismatch) returns 409 to signal the token cannot
+    be replayed in this tenant context.
     """
     if not token:
         raise HTTPException(status_code=400, detail="Confirmation token is required")
@@ -113,7 +124,9 @@ async def consume_confirm_token(
                 "user_id": user_id,
                 "session_id": session_id,
                 "used": False,
-                "expires_at": {"$gt": now},
+                # P11 E8: use $gte so a token expiring exactly at `now` is still
+                # accepted (eliminates the 1-second boundary rejection window).
+                "expires_at": {"$gte": now},
             },
             {"$set": {"used": True, "confirmed_at": now}},
         )
@@ -128,6 +141,14 @@ async def consume_confirm_token(
         doc = await token_db.confirm_tokens.find_one({"token": token})
         if not doc:
             raise HTTPException(status_code=400, detail="Confirmation token not found")
+        # P9: Tenant binding check — reject if the request context drifted from
+        # the tenant context at token-issue time.
+        if school_id is not None and doc.get("school_id") is not None:
+            if doc["school_id"] != school_id:
+                raise HTTPException(status_code=409, detail="Confirmation token tenant mismatch")
+        if branch_id is not None and doc.get("branch_id") is not None:
+            if doc["branch_id"] != branch_id:
+                raise HTTPException(status_code=409, detail="Confirmation token tenant mismatch")
         return doc
 
     try:

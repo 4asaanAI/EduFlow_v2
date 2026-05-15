@@ -16,6 +16,7 @@ Handles:
 """
 import json
 import asyncio
+import random
 import re
 import time
 import uuid
@@ -43,7 +44,7 @@ from services.confirm_tokens import (
     audit_ai_dispatch_finalize,
     audit_ai_rate_limit_hit,
 )
-from services.ai_rate_limiter import increment_and_check as _ai_rate_check
+from services.ai_rate_limiter import increment_and_check as _ai_rate_check, decrement_count as _ai_rate_decrement
 from tenant import get_school_id
 
 
@@ -330,16 +331,24 @@ async def get_messages(conv_id: str, request: Request):
 # ─── Rich content extraction ─────────────────────────────────────────────────
 
 def _extract_rich_content(text: str):
-    """Extract <<<RICH_CONTENT>>>...<<<END>>> block from LLM response."""
-    pattern = r"<<<RICH_CONTENT>>>\s*(.*?)\s*<<<END>>>"
-    match = re.search(pattern, text, re.DOTALL)
-    if match:
-        clean_text = text[:match.start()].strip()
+    """Extract <<<RICH_CONTENT>>>...<<<END>>> block from LLM response.
+
+    Uses balance-aware _json_candidates instead of regex to correctly handle
+    nested JSON objects that might confuse a greedy `.*?<<<END>>>` pattern.
+    """
+    marker = "<<<RICH_CONTENT>>>"
+    idx = text.find(marker)
+    if idx == -1:
+        return text.strip(), None
+    clean_text = text[:idx].strip()
+    after_marker = text[idx + len(marker):]
+    for candidate in _json_candidates(after_marker):
         try:
-            rich = json.loads(match.group(1))
-            return clean_text, rich
+            rich = json.loads(candidate)
+            if isinstance(rich, dict):
+                return clean_text, rich
         except Exception:
-            pass
+            continue
     return text.strip(), None
 
 
@@ -483,15 +492,34 @@ def _strip_tool_json_from_text(text) -> str:
     return cleaned.strip()
 
 
+# ─── Tool authorization ───────────────────────────────────────────────────────
+
+def _is_tool_authorized(user: dict, tool_def: dict) -> bool:
+    """Check role + sub_category authorization against TOOL_REGISTRY definition.
+
+    sub_categories: None means no sub_category restriction (any admin).
+    sub_categories: [...] means admin must have a matching sub_category;
+    non-admin roles that appear in roles[] are never blocked by sub_categories.
+    """
+    if user.get("role") not in tool_def.get("roles", []):
+        return False
+    sub_categories = tool_def.get("sub_categories")
+    if sub_categories is None:
+        return True
+    if user.get("role") != "admin":
+        return True
+    return user.get("sub_category") in sub_categories
+
+
 # ─── Keyword detection ────────────────────────────────────────────────────────
 
-def detect_tool_from_keywords(text: str, role: str) -> Optional[str]:
+def detect_tool_from_keywords(text: str, user: dict) -> Optional[str]:
     """Detect which tool to call based on keywords in the user message."""
     text_lower = text.lower()
     for keywords, tool_name in KEYWORD_TOOL_MAP:
         if any(kw in text_lower for kw in keywords):
             tool_def = TOOL_REGISTRY.get(tool_name)
-            if tool_def and role in tool_def["roles"]:
+            if tool_def and _is_tool_authorized(user, tool_def):
                 return tool_name
     return None
 
@@ -527,7 +555,7 @@ def thinking_event(step: str, message: str, tool: str = None, count: int = None)
 # ─── Keepalive SSE event ─────────────────────────────────────────────────────
 
 def keepalive_event() -> str:
-    return f"data: {json.dumps({'type': 'keepalive', 'ts': time.time()})}\n\n"
+    return f":keepalive\n\n"
 
 
 # ─── Token counting with null-check (BUG FIX #1) ────────────────────────────
@@ -537,6 +565,8 @@ def safe_token_count(tokens_from_api, fallback_text: str = "") -> int:
     if tokens_from_api is not None and isinstance(tokens_from_api, (int, float)):
         return int(tokens_from_api)
     # Fallback: rough estimate of 1 token per 4 characters
+    if not isinstance(fallback_text, str):
+        fallback_text = ""
     return max(1, len(fallback_text) // 4)
 
 
@@ -670,14 +700,31 @@ def _safe_tool_result_for_chat(value: Any) -> Any:
         "aadhaar",
         "aadhaar_number",
         "password",
+        "password_hash",
+        "salt",
+        "secret",
+        "api_key",
+        "private_key",
+        "refresh_token",
+        "access_token",
+        "session_token",
+        "webhook_secret",
         "medical_record",
         "medical_records",
     }
+    # Exact phone keys + keys that end/start with phone/mobile (e.g. guardian_phone)
+    # but NOT keys like is_phone_verified that contain "phone" but aren't numbers.
+    phone_field_prefixes_suffixes = ("phone", "mobile", "_phone", "_mobile", "phone_", "mobile_")
     for key, raw in value.items():
         key_lower = str(key).lower()
+        is_phone_field = (
+            key_lower in ("phone", "mobile", "phone_number", "mobile_number")
+            or key_lower.endswith(("_phone", "_mobile"))
+            or key_lower.startswith(("phone_", "mobile_"))
+        )
         if key_lower in restricted_exact:
             safe[key] = "[restricted in chat]"
-        elif "phone" in key_lower or "contact" in key_lower:
+        elif is_phone_field or "contact" in key_lower:
             if isinstance(raw, str):
                 safe[key] = _mask_phone(raw)
             elif isinstance(raw, (dict, list)):
@@ -689,6 +736,9 @@ def _safe_tool_result_for_chat(value: Any) -> Any:
     return safe
 
 
+_NUMERIC_POSITIVE_PARAMS = {"points", "amount"}
+
+
 def _missing_required_params(tool_name: str, params: dict) -> list[str]:
     required = WRITE_TOOL_REQUIRED_PARAMS.get(tool_name, ())
     missing: list[str] = []
@@ -696,6 +746,12 @@ def _missing_required_params(tool_name: str, params: dict) -> list[str]:
         val = params.get(key)
         if val is None or val == "" or val == []:
             missing.append(key)
+        elif key in _NUMERIC_POSITIVE_PARAMS:
+            try:
+                if float(val) <= 0:
+                    missing.append(key)
+            except (TypeError, ValueError):
+                missing.append(key)
     return missing
 
 
@@ -903,6 +959,8 @@ async def _build_confirm_event(tool_name: str, params: dict, user: dict, session
         params=public_params,
         user_id=user["id"],
         session_id=session_id,
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id"),
         db=db,
     )
     return {
@@ -931,9 +989,8 @@ def _ai_unavailable_event(result: dict) -> str:
 # ─── Thinking delay helper ────────────────────────────────────────────────────
 
 async def _thinking_delay():
-    """Add a small random-ish delay between thinking steps for natural feel."""
-    delay = THINKING_DELAY_MIN + (time.time() % 1) * (THINKING_DELAY_MAX - THINKING_DELAY_MIN)
-    await asyncio.sleep(delay)
+    """Add a small random delay between thinking steps for natural feel."""
+    await asyncio.sleep(random.uniform(THINKING_DELAY_MIN, THINKING_DELAY_MAX))
 
 
 # ─── SSE Generator (main pipeline) ───────────────────────────────────────────
@@ -1127,7 +1184,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         scope = {"role": user["role"], "user_id": user["id"]}
 
     # ── Phase 7: Keyword tool detection ───────────────────────────────────
-    detected_tool = detect_tool_from_keywords(user_text, user["role"])
+    detected_tool = detect_tool_from_keywords(user_text, user)
     tool_result = None
     tool_name = None
     all_tool_calls = []  # Track all tool calls for message persistence
@@ -1142,7 +1199,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         await _thinking_delay()
 
         # ── BUG FIX #5: Role validation (explicit check) ─────────────
-        if not tool_def or user["role"] not in tool_def["roles"]:
+        if not tool_def or not _is_tool_authorized(user, tool_def):
             logger.warning(f"Role {user['role']} not allowed for tool {tool_name}")
             tool_name = None
             detected_tool = None
@@ -1288,9 +1345,12 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             if empty_msg:
                 empty_note = f"\n\nNote: The tool returned no data with this message: \"{empty_msg}\". Relay this to the user helpfully."
 
+            tool_data_str = json.dumps(tool_result, ensure_ascii=False, indent=2)
+            if user.get("role") == "student":
+                tool_data_str = filter_response(tool_data_str, "student")
             tool_result_msg = (
                 f"Tool '{tool_name}' returned the following data:\n"
-                f"{json.dumps(tool_result, ensure_ascii=False, indent=2)}"
+                f"{tool_data_str}"
                 f"{empty_note}\n\n"
                 f"Now provide a comprehensive, well-formatted response to the user's question "
                 f"based on this data. Use markdown tables and formatting. "
@@ -1419,7 +1479,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             llm_tool_params = llm_tool_call.get("params", {})
 
             tool_def = TOOL_REGISTRY.get(llm_tool_name)
-            if not tool_def or user["role"] not in tool_def["roles"]:
+            if not tool_def or not _is_tool_authorized(user, tool_def):
                 break  # Not allowed
 
             tool_name = llm_tool_name
@@ -1538,9 +1598,12 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             if empty_msg:
                 empty_note = f"\n\nNote: The tool returned no data with this message: \"{empty_msg}\". Relay this to the user helpfully."
 
+            tool_data_str = json.dumps(tool_result, ensure_ascii=False, indent=2)
+            if user.get("role") == "student":
+                tool_data_str = filter_response(tool_data_str, "student")
             tool_msg = (
                 f"Tool '{tool_name}' data:\n"
-                f"{json.dumps(tool_result, ensure_ascii=False, indent=2)}"
+                f"{tool_data_str}"
                 f"{empty_note}\n\n"
                 f"Now provide a comprehensive, well-formatted natural language response. "
                 f"Do NOT output any JSON tool calls."
@@ -1651,8 +1714,14 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             yield f"data: {json.dumps({'type': 'text_delta', 'delta': chunk})}\n\n"
             await asyncio.sleep(0.008)
 
-        # Send rich content block
+        # Send rich content block (P8: filter for students before emitting)
         if rich_content:
+            if user.get("role") == "student":
+                try:
+                    filtered_str = filter_response(json.dumps(rich_content.get("rich_blocks", [])), "student")
+                    rich_content["rich_blocks"] = json.loads(filtered_str)
+                except Exception:
+                    pass
             yield f"data: {json.dumps({'type': 'rich_blocks', 'blocks': rich_content.get('rich_blocks', []), 'action_buttons': rich_content.get('action_buttons', [])})}\n\n"
 
     except Exception as e:
@@ -1721,7 +1790,9 @@ def _tool_accepts_scope(tool_def: dict) -> bool:
 async def send_message(conv_id: str, request: Request):
     user = get_current_user(request)
     body = await request.json()
-    user_text = body.get("text", "").strip()
+    _raw_text = body.get("text", "") or ""
+    # Strip zero-width and normal whitespace before empty-message check (P11 E7)
+    user_text = re.sub(r"[​‌‍⁠﻿\s]+", " ", _raw_text).strip()
     if not user_text:
         return {"success": False, "error": "Empty message"}
     session_id = body.get("session_id") or request.headers.get("x-session-id") or conv_id
@@ -1752,8 +1823,8 @@ async def execute_action(conv_id: str, request: Request):
     tool_def = TOOL_REGISTRY.get(action)
     if not tool_def:
         return {"success": False, "error": f"Unknown action: {action}"}
-    # auth: dynamic per-tool role allowlist — see TOOL_REGISTRY
-    if user["role"] not in tool_def["roles"]:
+    # auth: registry enforces role + sub_category — see _is_tool_authorized
+    if not _is_tool_authorized(user, tool_def):
         return {"success": False, "error": "Forbidden"}
     if action in WRITE_ACTION_TOOLS:
         raise HTTPException(
@@ -1853,12 +1924,22 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
             retry_after=rate_result.retry_after_seconds,
         )
 
-    token_doc = await consume_confirm_token(
-        token=token,
-        user_id=user["id"],
-        session_id=session_id,
-        db=db,
-    )
+    try:
+        token_doc = await consume_confirm_token(
+            token=token,
+            user_id=user["id"],
+            session_id=session_id,
+            school_id=get_school_id(),
+            branch_id=user.get("branch_id"),
+            db=db,
+        )
+    except HTTPException as exc:
+        if exc.status_code == 409:
+            # Concurrent replay or tenant mismatch: rate-limit counter was already
+            # incremented for this request but the dispatch won't happen. Undo the
+            # increment so the losing request doesn't permanently reduce the budget.
+            await _ai_rate_decrement(user_id=user["id"], db=db)
+        raise
     tool_name = token_doc.get("action")
     params = token_doc.get("params") or {}
 
@@ -1867,8 +1948,8 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
         raise HTTPException(status_code=400, detail=f"Unknown tool: {tool_name}")
     if tool_name not in WRITE_ACTION_TOOLS:
         raise HTTPException(status_code=400, detail="Confirmation token is not for a write action")
-    # auth: dynamic per-tool role allowlist — see TOOL_REGISTRY
-    if user["role"] not in tool_def["roles"]:
+    # auth: registry enforces role + sub_category — see _is_tool_authorized
+    if not _is_tool_authorized(user, tool_def):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     # Part 2 Patch P4: write-ahead audit row. If this insert fails, refuse to

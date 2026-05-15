@@ -100,8 +100,14 @@ class _Cursor:
     def __init__(self, rows):
         self._rows = rows
 
-    def sort(self, key, direction):
-        self._rows.sort(key=lambda r: r.get(key) or datetime.min.replace(tzinfo=timezone.utc), reverse=direction < 0)
+    def sort(self, key_or_list, direction=None):
+        """Accept both pymongo single-field and compound-sort list forms."""
+        if isinstance(key_or_list, list):
+            # Compound sort: apply in reverse order so first key wins
+            for k, d in reversed(key_or_list):
+                self._rows.sort(key=lambda r, _k=k: r.get(_k) or datetime.min.replace(tzinfo=timezone.utc), reverse=d < 0)
+        else:
+            self._rows.sort(key=lambda r: r.get(key_or_list) or datetime.min.replace(tzinfo=timezone.utc), reverse=direction < 0)
         return self
 
     async def to_list(self, limit):

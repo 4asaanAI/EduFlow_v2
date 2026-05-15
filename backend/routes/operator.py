@@ -75,6 +75,11 @@ async def upsert_ai_rate_limit_override(
     if not reason:
         raise HTTPException(status_code=400, detail="reason is required for audit trail")
 
+    if "expires_at" not in body:
+        raise HTTPException(
+            status_code=400,
+            detail="expires_at is required; use null for a permanent (non-expiring) override",
+        )
     expires_at = _parse_iso(body.get("expires_at"))
     now = datetime.now(timezone.utc)
 

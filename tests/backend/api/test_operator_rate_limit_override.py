@@ -87,13 +87,26 @@ async def test_override_rejects_negative_limit(client):
     assert resp.status_code == 400
 
 
+async def test_override_rejects_missing_expires_at(client):
+    """P10 E11: expires_at key must be present; omitting it returns 400."""
+    token = _login_owner(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = client.patch(
+        "/api/operator/schools/school-1/ai-rate-limit",
+        headers=headers,
+        json={"role": "owner", "limit": 200, "reason": "test"},
+    )
+    assert resp.status_code == 400
+    assert "expires_at" in resp.json()["detail"]
+
+
 async def test_override_persists_and_takes_effect(client, fake_db):
     token = _login_owner(client)
     headers = {"Authorization": f"Bearer {token}"}
     resp = client.patch(
         "/api/operator/schools/school-1/ai-rate-limit",
         headers=headers,
-        json={"role": "owner", "limit": 200, "reason": "pilot scale-up"},
+        json={"role": "owner", "limit": 200, "reason": "pilot scale-up", "expires_at": None},
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -117,13 +130,13 @@ async def test_override_supersedes_previous_active_rows(client, fake_db):
     client.patch(
         "/api/operator/schools/school-X/ai-rate-limit",
         headers=headers,
-        json={"role": "owner", "limit": 100, "reason": "first"},
+        json={"role": "owner", "limit": 100, "reason": "first", "expires_at": None},
     )
     # Second override for same (school, role).
     client.patch(
         "/api/operator/schools/school-X/ai-rate-limit",
         headers=headers,
-        json={"role": "owner", "limit": 300, "reason": "second"},
+        json={"role": "owner", "limit": 300, "reason": "second", "expires_at": None},
     )
 
     rows = [r for r in fake_db.ai_rate_limit_overrides.docs

@@ -1073,8 +1073,6 @@ async def _append_record_note(handle, record_id: str, existing: dict, user: dict
 
 
 async def tool_assign_followup(params: dict, user: dict, scope: dict = None) -> dict:
-    if not _can_owner_or_principal(user):
-        return {"success": False, "message": "Only Owner or Principal can assign follow-up actions."}
     required = ("record_id", "assignee_staff_id", "due_date", "note")
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "record_id, assignee_staff_id, due_date, and note are required."}
@@ -1113,8 +1111,6 @@ async def tool_update_incident_status(params: dict, user: dict, scope: dict = No
 
 
 async def tool_add_thread_entry(params: dict, user: dict, scope: dict = None) -> dict:
-    if not _can_owner_or_principal(user):
-        return {"success": False, "message": "Only Owner or Principal can add thread entries."}
     if not params.get("record_id") or not params.get("content"):
         return {"success": False, "message": "record_id and content are required."}
     db = get_db()
@@ -1128,8 +1124,6 @@ async def tool_add_thread_entry(params: dict, user: dict, scope: dict = None) ->
 
 
 async def tool_initiate_substitution(params: dict, user: dict, scope: dict = None) -> dict:
-    if not _is_principal(user):
-        return {"success": False, "message": "Only Principal can initiate substitutions."}
     required = ("absent_staff_id", "substitute_staff_id", "class_id", "period_id")
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "absent_staff_id, substitute_staff_id, class_id, and period_id are required."}
@@ -1156,8 +1150,6 @@ async def tool_initiate_substitution(params: dict, user: dict, scope: dict = Non
 
 
 async def tool_correct_attendance(params: dict, user: dict, scope: dict = None) -> dict:
-    if user.get("role") != "owner" and not _is_principal(user):
-        return {"success": False, "message": "Only Owner or Principal can correct attendance through AI dispatch."}
     required = ("record_id", "correction_type", "reason")
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "record_id, correction_type, and reason are required."}
@@ -1185,8 +1177,6 @@ async def tool_correct_attendance(params: dict, user: dict, scope: dict = None) 
 
 
 async def tool_log_contact_event(params: dict, user: dict, scope: dict = None) -> dict:
-    if not _is_accountant(user):
-        return {"success": False, "message": "Only Accountant can log fee contact events through AI dispatch."}
     required = ("student_id", "contact_type", "outcome", "note")
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "student_id, contact_type, outcome, and note are required."}
@@ -1217,8 +1207,6 @@ async def tool_log_contact_event(params: dict, user: dict, scope: dict = None) -
 
 
 async def tool_apply_discount(params: dict, user: dict, scope: dict = None) -> dict:
-    if not _is_accountant(user):
-        return {"success": False, "message": "Only Accountant can apply discounts through AI dispatch."}
     required = ("student_id", "discount_type_id", "effective_from")
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "student_id, discount_type_id, and effective_from are required."}
@@ -1268,8 +1256,6 @@ async def tool_decide_approval_request(params: dict, user: dict, scope: dict = N
 
 
 async def tool_confirm_resolution(params: dict, user: dict, scope: dict = None) -> dict:
-    if user.get("role") != "owner":
-        return {"success": False, "message": "Only Owner can confirm facility resolution."}
     if not params.get("request_id") or not params.get("confirmation_note"):
         return {"success": False, "message": "request_id and confirmation_note are required."}
     db = get_db()
@@ -1287,8 +1273,6 @@ async def tool_confirm_resolution(params: dict, user: dict, scope: dict = None) 
 
 
 async def tool_record_fee_payment(params: dict, user: dict, scope: dict = None) -> dict:
-    if user.get("role") != "owner" and not _is_accountant(user):
-        return {"success": False, "message": "Only Owner or Accountant can record fee payments through AI dispatch."}
     required = ("student_id", "amount", "fee_head", "mode")
     if any(params.get(field) in (None, "") for field in required):
         return {"success": False, "message": "student_id, amount, fee_head, and mode are required."}
@@ -1317,8 +1301,6 @@ async def tool_record_fee_payment(params: dict, user: dict, scope: dict = None) 
 
 
 async def tool_mark_attendance(params: dict, user: dict, scope: dict = None) -> dict:
-    if user.get("role") not in ("owner", "admin", "teacher"):
-        return {"success": False, "message": "Only Owner, Admin, or Teacher can mark attendance."}
     if not params.get("class_id") and not params.get("class_name"):
         return {"success": False, "message": "class_id or class_name is required."}
     if not params.get("attendance"):
@@ -1356,8 +1338,6 @@ async def tool_mark_attendance(params: dict, user: dict, scope: dict = None) -> 
 
 
 async def tool_query_dashboard_summary(params: dict, user: dict, scope: dict = None) -> dict:
-    if user.get("role") != "owner":
-        return {"success": False, "message": "Only Owner can query dashboard summary."}
     db = get_db()
     today = date.today().isoformat()
     data = [{
@@ -1370,8 +1350,6 @@ async def tool_query_dashboard_summary(params: dict, user: dict, scope: dict = N
 
 
 async def tool_query_attendance_status(params: dict, user: dict, scope: dict = None) -> dict:
-    if not _can_owner_or_principal(user):
-        return {"success": False, "message": "Only Owner or Principal can query staff attendance status."}
     db = get_db()
     target_date = params.get("date", date.today().isoformat())
     records = await db.staff_attendance.find({"date": target_date}, {"_id": 0}).to_list(500)
@@ -1379,8 +1357,6 @@ async def tool_query_attendance_status(params: dict, user: dict, scope: dict = N
 
 
 async def tool_query_fee_status(params: dict, user: dict, scope: dict = None) -> dict:
-    if user.get("role") != "owner" and not _is_accountant(user) and not _is_principal(user):
-        return {"success": False, "message": "Only Owner, Accountant, or Principal can query fee status."}
     db = get_db()
     query = scoped_filter({}, get_school_id())
     if params.get("student_id"):
@@ -1392,8 +1368,6 @@ async def tool_query_fee_status(params: dict, user: dict, scope: dict = None) ->
 
 
 async def tool_query_incidents(params: dict, user: dict, scope: dict = None) -> dict:
-    if not _can_owner_or_principal(user):
-        return {"success": False, "message": "Only Owner or Principal can query incidents."}
     db = get_db()
     query = {}
     if params.get("status"):
@@ -1405,16 +1379,12 @@ async def tool_query_incidents(params: dict, user: dict, scope: dict = None) -> 
 
 
 async def tool_query_staff_availability(params: dict, user: dict, scope: dict = None) -> dict:
-    if not _is_principal(user):
-        return {"success": False, "message": "Only Principal can query staff availability."}
     db = get_db()
     staff = await db.staff.find(scoped_filter({"is_active": {"$ne": False}, "staff_type": "teacher"}, get_school_id()), {"_id": 0}).to_list(500)
     return _ok(staff, 0, "Staff availability ready.")
 
 
 async def tool_query_maintenance_requests(params: dict, user: dict, scope: dict = None) -> dict:
-    if user.get("role") != "owner" and not _is_maintenance(user):
-        return {"success": False, "message": "Only Owner or Maintenance Admin can query maintenance requests."}
     db = get_db()
     query = {}
     if params.get("status"):
@@ -1428,9 +1398,6 @@ async def tool_query_maintenance_requests(params: dict, user: dict, scope: dict 
 async def tool_query_student_record(params: dict, user: dict, scope: dict = None) -> dict:
     if not params.get("student_id"):
         return {"success": False, "message": "student_id is required."}
-    allowed = user.get("role") == "owner" or _is_principal(user) or _is_accountant(user) or (user.get("role") == "admin" and user.get("sub_category") == "transport_head")
-    if not allowed:
-        return {"success": False, "message": "Not authorized to query student records."}
     db = get_db()
     student = await db.students.find_one(scoped_filter({"id": params["student_id"]}, get_school_id()), {"_id": 0})
     if not student:
@@ -1462,8 +1429,6 @@ _AUDIENCE_ROLE_MAP = {
 }
 
 async def tool_create_announcement(params: dict, user: dict, scope: dict = None) -> dict:
-    if not _can_owner_or_principal(user):
-        return {"success": False, "message": "Only Owner or Principal can publish announcements via AI."}
     title = (params.get("title") or "").strip()
     content = (params.get("content") or "").strip()
     if not title or not content:
@@ -1476,6 +1441,13 @@ async def tool_create_announcement(params: dict, user: dict, scope: dict = None)
     if audience_type not in _AUDIENCE_ROLE_MAP:
         audience_type = "all"
     audience_roles = _AUDIENCE_ROLE_MAP[audience_type]
+
+    # P7: Story 7-47 moderation gate — mirror routes/operations.py behaviour.
+    # Announcements that reach teachers or students require principal approval
+    # before they become visible. AI-dispatched announcements are no exception.
+    requires_approval = any(r in ("teacher", "student") for r in audience_roles)
+    initial_status = "pending_approval" if requires_approval else "active"
+
     db = get_db()
     ann_id = str(uuid.uuid4())
     created_by = user.get("id") or "unknown"
@@ -1491,13 +1463,22 @@ async def tool_create_announcement(params: dict, user: dict, scope: dict = None)
         "target_roles": audience_roles,
         "channels": ["push"],
         "is_draft": False,
-        "sent_at": now,
+        "status": initial_status,
+        # sent_at is intentionally omitted for pending_approval announcements;
+        # it will be set when the principal approves via /announcements/{id}/approve.
+        "sent_at": None if requires_approval else now,
         "created_by": created_by,
         "created_by_name": user.get("name", ""),
         "created_at": now,
     })
     await db.announcements.insert_one(announcement)
-    await db.audit_logs.insert_one(_audit_doc("create_announcement", "announcements", ann_id, user, {"title": title, "audience_type": audience_type}))
+    await db.audit_logs.insert_one(_audit_doc("create_announcement", "announcements", ann_id, user, {"title": title, "audience_type": audience_type, "status": initial_status}))
+    if requires_approval:
+        return {
+            "success": True,
+            "data": {k: v for k, v in announcement.items() if k != "_id"},
+            "message": f"Announcement '{title}' submitted for principal approval (id: {ann_id}). It will be sent once approved.",
+        }
     return {"success": True, "data": {k: v for k, v in announcement.items() if k != "_id"}, "message": f"Announcement '{title}' published successfully to {audience_type}."}
 
 
@@ -1736,6 +1717,7 @@ TOOL_REGISTRY = {
     "assign_followup": {
         "fn": tool_assign_followup,
         "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
         "description": "Assign a follow-up action on a complaint or incident to a named staff member.",
         "dispatch_type": "write",
         "requires_confirmation": True,
@@ -1761,6 +1743,7 @@ TOOL_REGISTRY = {
     "add_thread_entry": {
         "fn": tool_add_thread_entry,
         "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
         "description": "Add a follow-up entry to an existing complaint or incident thread.",
         "dispatch_type": "write",
         "requires_confirmation": True,
@@ -1772,6 +1755,7 @@ TOOL_REGISTRY = {
     "initiate_substitution": {
         "fn": tool_initiate_substitution,
         "roles": ["admin"],
+        "sub_categories": ["principal"],
         "description": "Approve a substitution assignment for an absent teacher.",
         "dispatch_type": "write",
         "requires_confirmation": True,
@@ -1785,6 +1769,7 @@ TOOL_REGISTRY = {
     "correct_attendance": {
         "fn": tool_correct_attendance,
         "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
         "description": "Apply a correction to an existing attendance record with a mandatory reason.",
         "dispatch_type": "write",
         "requires_confirmation": True,
@@ -1797,6 +1782,7 @@ TOOL_REGISTRY = {
     "log_contact_event": {
         "fn": tool_log_contact_event,
         "roles": ["admin"],
+        "sub_categories": ["accountant"],
         "description": "Log a contact event against a student's fee record.",
         "dispatch_type": "write",
         "requires_confirmation": True,
@@ -1810,6 +1796,7 @@ TOOL_REGISTRY = {
     "apply_discount": {
         "fn": tool_apply_discount,
         "roles": ["admin"],
+        "sub_categories": ["accountant"],
         "description": "Apply a configured discount type to a student's fee profile.",
         "dispatch_type": "write",
         "requires_confirmation": True,
@@ -1845,6 +1832,7 @@ TOOL_REGISTRY = {
     "record_fee_payment": {
         "fn": tool_record_fee_payment,
         "roles": ["owner", "admin"],
+        "sub_categories": ["accountant"],
         "description": "Record a fee payment for a student.",
         "dispatch_type": "write",
         "requires_confirmation": True,
@@ -1876,6 +1864,7 @@ TOOL_REGISTRY = {
     "query_attendance_status": {
         "fn": tool_query_attendance_status,
         "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
         "description": "Current staff attendance status from biometric feed.",
         "params_schema": {
             "date": {"type": "string", "description": "Optional date YYYY-MM-DD"},
@@ -1884,6 +1873,7 @@ TOOL_REGISTRY = {
     "query_fee_status": {
         "fn": tool_query_fee_status,
         "roles": ["owner", "admin"],
+        "sub_categories": ["accountant", "principal"],
         "description": "Fee status, defaulters, and overdue list for a student or cohort.",
         "params_schema": {
             "student_id": {"type": "string", "description": "Optional student ID"},
@@ -1893,6 +1883,7 @@ TOOL_REGISTRY = {
     "query_incidents": {
         "fn": tool_query_incidents,
         "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
         "description": "Open complaints, incidents, or visitor logs by status/date/person.",
         "params_schema": {
             "status": {"type": "string", "description": "Optional status"},
@@ -1901,6 +1892,7 @@ TOOL_REGISTRY = {
     "query_staff_availability": {
         "fn": tool_query_staff_availability,
         "roles": ["admin"],
+        "sub_categories": ["principal"],
         "description": "Available staff for a given period, filtered against timetable.",
         "params_schema": {
             "period_id": {"type": "string", "description": "Optional period ID"},
@@ -1909,6 +1901,7 @@ TOOL_REGISTRY = {
     "query_maintenance_requests": {
         "fn": tool_query_maintenance_requests,
         "roles": ["owner", "admin"],
+        "sub_categories": ["maintenance"],
         "description": "Open facility requests by status, date, or location.",
         "params_schema": {
             "status": {"type": "string", "description": "Optional status"},
@@ -1917,6 +1910,7 @@ TOOL_REGISTRY = {
     "query_student_record": {
         "fn": tool_query_student_record,
         "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "accountant", "transport_head"],
         "description": "Student profile, fee profile, and transport assignment.",
         "params_schema": {
             "student_id": {"type": "string", "description": "Student ID"},
@@ -1933,6 +1927,7 @@ TOOL_REGISTRY = {
     "create_announcement": {
         "fn": tool_create_announcement,
         "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
         "description": "Publish a school announcement to all parents, students, and staff.",
         "params_schema": {
             "title": {"type": "string", "description": "Announcement title"},

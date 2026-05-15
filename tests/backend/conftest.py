@@ -123,8 +123,12 @@ class FakeCursor:
     def __init__(self, docs):
         self.docs = list(docs)
 
-    def sort(self, key, direction):
-        self.docs.sort(key=lambda doc: doc.get(key) or "", reverse=direction < 0)
+    def sort(self, key_or_list, direction=None):
+        if isinstance(key_or_list, list):
+            for k, d in reversed(key_or_list):
+                self.docs.sort(key=lambda doc, _k=k: doc.get(_k) or "", reverse=d < 0)
+        else:
+            self.docs.sort(key=lambda doc: doc.get(key_or_list) or "", reverse=direction < 0)
         return self
 
     def skip(self, count):

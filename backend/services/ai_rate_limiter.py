@@ -113,7 +113,9 @@ async def resolve_limit(
     }
     try:
         cursor = db.ai_rate_limit_overrides.find(query)
-        cursor = cursor.sort("created_at", -1)
+        # Stable tie-break: newest created_at wins; use _id as secondary key so
+        # two overrides written in the same second resolve deterministically.
+        cursor = cursor.sort([("created_at", -1), ("_id", -1)])
         rows = await cursor.to_list(1)
     except AttributeError:
         # Collection missing on legacy fake DBs — fall back to defaults.
@@ -235,6 +237,26 @@ async def increment_and_check(
         retry_after_seconds=retry_secs,
         bucket=bucket,
     )
+
+
+async def decrement_count(
+    *,
+    user_id: str,
+    db,
+    now_fn: Optional[Callable[[], datetime]] = None,
+) -> None:
+    """Decrement the current-hour rate-limit counter by 1 (floor 0).
+
+    Called when a confirmed dispatch is cancelled after the counter was already
+    incremented — e.g., a concurrent replay that lost the token-consume race.
+    The $gt: 0 filter makes the decrement atomic and safe (no underflow).
+    """
+    bucket = hour_bucket((now_fn or _now)())
+    key = {"user_id": user_id, "hour_bucket": bucket, "count": {"$gt": 0}}
+    try:
+        await db.ai_rate_limit_counters.update_one(key, {"$inc": {"count": -1}})
+    except Exception:
+        logger.exception("failed to decrement rate-limit counter for user=%s", user_id)
 
 
 async def get_current_count(
