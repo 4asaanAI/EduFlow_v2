@@ -205,9 +205,9 @@ development_status:
   # Pre-Part-9 Infra — MongoDB indexes + test factories
   # Moved from Part 16 per party-mode: run before role verticals
   # ─────────────────────────────────────────────
-  pre-p9-1-missing-mongodb-indexes: backlog
-  pre-p9-2-shared-test-factories: backlog
-  pre-p9-3-unauthenticated-surface-test: backlog
+  pre-p9-1-missing-mongodb-indexes: done
+  pre-p9-2-shared-test-factories: done
+  pre-p9-3-unauthenticated-surface-test: done
 
   # ─────────────────────────────────────────────
   # Quality Sweep Part 5 — Notifications + Real-time (SSE)
@@ -270,13 +270,15 @@ development_status:
   # Quality Sweep Part 9 — Principal Role Vertical
   # Epics file: planning-artifacts/epic-part9-principal-vertical.md
   # ─────────────────────────────────────────────
-  epic-p9: backlog
-  p9-1-leave-approval-notification: backlog
-  p9-2-leave-approval-rbac-fix: backlog
-  p9-3-fee-report-principal-access: backlog
-  p9-4-announcement-broadcast-fix: backlog
-  p9-5-staff-privilege-escalation-guard: backlog
-  p9-6-principal-daily-ops-dashboard: backlog
+  epic-p9: done
+  p9-1-principal-daily-ops-dashboard: done
+  p9-2-leave-approval-notification: done
+  p9-3-attendance-class-summary-endpoints: done
+  p9-4-announcement-broadcast-fix: done
+  p9-5-academic-oversight-lesson-plan: done
+  p9-6-fee-report-principal-access: done
+  p9-7-staff-owner-only-fields-guard: done
+  p9-8-incident-escalation: done
   epic-p9-retrospective: optional
 
   # ─────────────────────────────────────────────
