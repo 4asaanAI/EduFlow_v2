@@ -3,7 +3,7 @@ from __future__ import annotations
 """Issue tracker — facility requests (Maintenance Admin) and tech requests (IT/Tech Admin)"""
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
-from middleware.auth import get_current_user, require_owner
+from middleware.auth import get_current_user, require_owner, require_access
 from tenant import get_school_id, scoped_filter, add_school_id
 from datetime import datetime
 import uuid
@@ -225,11 +225,11 @@ async def confirm_facility_resolution(request_id: str, request: Request, user: d
 # ─── Tech Requests (IT/Tech Admin) ────────────────────────────────────────────
 
 @router.post("/tech")
-async def create_tech_request(request: Request):
+async def create_tech_request(
+    request: Request,
+    user: dict = Depends(require_access("owner", "admin", sub_category="it_tech")),
+):
     db = get_db()
-    user = get_user(request)
-    if not (user.get("role") == "admin" and user.get("sub_category") == "it_tech") and user.get("role") != "owner":
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     if not body.get("description"):
         raise HTTPException(400, "description is required")

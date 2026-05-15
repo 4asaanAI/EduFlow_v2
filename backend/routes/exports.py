@@ -99,5 +99,5 @@ async def export_results(request: Request, user: dict = Depends(require_role("ow
     rows = []
     for r in results:
         subj = await db.subjects.find_one({"id": r.get("subject_id")}, {"_id": 0, "name": 1})
-        rows.append([r.get("student_id"), r.get("exam_id"), subj["name"] if subj else "N/A", r.get("marks_obtained"), r.get("max_marks"), r.get("grade", "")])
+        rows.append([r.get("student_id"), r.get("exam_id"), subj["name"] if subj else "Unknown", r.get("marks_obtained"), r.get("max_marks"), r.get("grade", "")])
     return make_csv_response(rows, headers, f"results_{date.today()}.csv")

@@ -46,6 +46,7 @@ try:
     import routes.audit as audit_routes
     import routes.operator as operator_routes
     import routes.reports as reports_routes
+    import routes.exports as exports_routes
     from middleware.auth import hash_password
     APP_AVAILABLE = True
 except (ImportError, TypeError) as e:
@@ -391,6 +392,8 @@ class FakeDb:
         self.messages = FakeCollection()
         self.conversations = FakeCollection()
         self.announcements = FakeCollection()
+        self.exam_results = FakeCollection()
+        self.exams = FakeCollection()
 
 
 if APP_AVAILABLE:
@@ -416,6 +419,7 @@ if APP_AVAILABLE:
     chat_routes.get_db = lambda: _fake_db
     operator_routes.get_db = lambda: _fake_db
     reports_routes.get_db = lambda: _fake_db
+    exports_routes.get_db = lambda: _fake_db
     server.get_raw_db = lambda: _fake_db
 
 

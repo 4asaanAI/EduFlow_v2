@@ -5,6 +5,8 @@ Provides JWT-based authentication with dev-mode header fallback.
 All route files import get_current_user from here instead of defining locally.
 """
 
+from __future__ import annotations
+
 import os
 import logging
 import secrets
@@ -182,32 +184,61 @@ def require_role(*roles: str):
     return dependency
 
 
-def require_owner_or_principal(request: Request):
-    """Dependency: owner or admin-with-sub_category=principal only.
+def require_access(*roles: str, sub_category: str | tuple[str, ...] | None = None):
+    """
+    FastAPI dependency checking role AND optional sub_category.
+    Returns user dict on success. Raises 403 on role/sub_category mismatch.
+    Raises ValueError at factory time if called with no role arguments.
 
-    Codifies the most common 'managerial decision-maker' gate (announcements,
-    leave approvals, attendance reviews) that was previously inline-duplicated
-    across at least five routes.
+    Examples:
+      Depends(require_access("owner"))
+      Depends(require_access("admin", sub_category="accountant"))
+      Depends(require_access("owner", "admin", sub_category=("principal", "accountant")))
+    """
+    if not roles:
+        raise ValueError("require_access() requires at least one role argument")
+
+    def dependency(request: Request):
+        user = get_current_user(request)
+        if user.get("role") not in roles:
+            logger.info(
+                "role check failed: role=%s required=%s path=%s",
+                user.get("role"), roles, request.url.path,
+            )
+            raise HTTPException(status_code=403, detail="Forbidden")
+        if sub_category is not None:
+            allowed_subs = (sub_category,) if isinstance(sub_category, str) else sub_category
+            if user.get("sub_category") not in allowed_subs:
+                logger.info(
+                    "sub_category check failed: sub=%s required=%s path=%s",
+                    user.get("sub_category"), allowed_subs, request.url.path,
+                )
+                raise HTTPException(status_code=403, detail="Forbidden")
+        return user
+    return dependency
+
+
+def require_owner(request: Request):
+    """Owner role only. Thin wrapper over require_access."""
+    return require_access("owner")(request)
+
+
+def require_owner_or_principal(request: Request):
+    """Owner or admin+principal.
+
+    Semantics: owner role is allowed regardless of sub_category;
+    admin is allowed only when sub_category == 'principal'.
+    Implemented as two require_access probes so behaviour is identical
+    to the original inline logic.
     """
     user = get_current_user(request)
     if user.get("role") == "owner":
         return user
-    if user.get("role") == "admin" and user.get("sub_category") == "principal":
-        return user
-    logger.info(
-        "owner/principal gate failed: role=%s sub=%s path=%s",
-        user.get("role"), user.get("sub_category"), request.url.path,
-    )
-    raise HTTPException(status_code=403, detail="Forbidden")
-
-
-def require_owner(request: Request):
-    """Dependency: owner role only. Replaces _require_owner inlined in routes/operator.py."""
-    user = get_current_user(request)
-    if user.get("role") != "owner":
+    try:
+        return require_access("admin", sub_category="principal")(request)
+    except HTTPException:
         logger.info(
-            "owner-only gate failed: role=%s path=%s",
-            user.get("role"), request.url.path,
+            "owner/principal gate failed: role=%s sub=%s path=%s",
+            user.get("role"), user.get("sub_category"), request.url.path,
         )
         raise HTTPException(status_code=403, detail="Forbidden")
-    return user

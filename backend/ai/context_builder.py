@@ -4,9 +4,15 @@ from datetime import datetime, date
 from database import get_db
 from tenant import get_school_id, scoped_filter
 
+# SCOPING NOTE: context_builder deliberately uses school-wide scope (no branch_id filter).
+# Context gives the AI "awareness" of the whole school — staff may ask about any branch.
+# Branch isolation is enforced at the TOOL EXECUTION layer (tool_functions_v2.py),
+# not at the context-building layer. Do not add branch_id filters here without
+# revisiting the architecture decision in _bmad-output/parts/multi-tenancy/architecture.md §5.
+
 
 def _tenant_query(query: dict | None = None) -> dict:
-    return scoped_filter(query or {}, get_school_id())
+    return scoped_filter(query or {}, get_school_id())  # branch-scope: intentional — school-wide AI context
 
 
 def _tenant_match(query: dict | None = None) -> dict:

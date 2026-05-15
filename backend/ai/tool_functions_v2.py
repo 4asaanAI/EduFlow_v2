@@ -9,7 +9,7 @@ from database import get_db
 import time, re
 import uuid
 import logging
-from tenant import add_school_id, get_school_id, scoped_filter
+from tenant import add_school_id, get_school_id, scoped_filter, scoped_query
 
 # ----- Re-export all 14 original tools and their registry -----
 from ai.tool_functions import (
@@ -71,6 +71,19 @@ def _scope_bool(scope, key: str, default: bool = False) -> bool:
     if not scope:
         return default
     return bool(scope.get(key, default)) if isinstance(scope, dict) else bool(getattr(scope, key, default))
+
+
+def _branch_id(user: dict | None, scope: dict | None = None) -> str | None:
+    """Extract branch_id from the user JWT dict (preferred) or scope dict."""
+    if user and isinstance(user, dict):
+        bid = user.get("branch_id")
+        if bid:
+            return bid
+    if scope and isinstance(scope, dict):
+        bid = scope.get("branch_id")
+        if bid:
+            return bid
+    return None
 
 
 def _empty_result(message: str, query_time_ms: float = 0) -> dict:
@@ -250,16 +263,15 @@ async def tool_get_leave_requests(params: dict, user: dict, scope: dict = None) 
     db = get_db()
 
     query: dict = {}
-    _apply_branch_filter(query, scope)
-
     if params.get("status"):
         query["status"] = params["status"]
 
-    leaves = await db.leave_requests.find(scoped_filter(query, get_school_id())).sort("created_at", -1).to_list(100)
+    bid = _branch_id(user, scope)
+    leaves = await db.leave_requests.find(scoped_query(query, branch_id=bid)).sort("created_at", -1).to_list(100)
 
     results = []
     for lr in leaves:
-        staff = await db.staff.find_one(scoped_filter({"id": lr.get("staff_id")}, get_school_id()))
+        staff = await db.staff.find_one(scoped_query({"id": lr.get("staff_id")}, branch_id=bid))
         results.append({
             "staff_name": staff["name"] if staff else "Unknown",
             "staff_type": staff.get("staff_type", "") if staff else "",
@@ -288,14 +300,13 @@ async def tool_get_staff_list(params: dict, user: dict, scope: dict = None) -> d
     db = get_db()
 
     query: dict = {"is_active": True}
-    _apply_branch_filter(query, scope)
-
     if params.get("staff_type"):
         query["staff_type"] = {"$regex": re.escape(params["staff_type"]), "$options": "i"}
     if params.get("department"):
         query["department"] = {"$regex": re.escape(params["department"]), "$options": "i"}
 
-    staff_list = await db.staff.find(scoped_filter(query, get_school_id())).to_list(200)
+    bid = _branch_id(user, scope)
+    staff_list = await db.staff.find(scoped_query(query, branch_id=bid)).to_list(200)
 
     today = date.today()
     month_start = today.replace(day=1).strftime("%Y-%m-%d")
@@ -492,7 +503,7 @@ async def tool_get_student_profile(params: dict, user: dict, scope: dict = None)
     # Fee status
     fee_status = {}
     if scope is None or _scope_bool(scope, "can_see_fees", False):
-        fee_txns = await db.fee_transactions.find(scoped_filter({"student_id": student["id"]}, get_school_id())).to_list(100)
+        fee_txns = await db.fee_transactions.find(scoped_query({"student_id": student["id"]}, branch_id=_branch_id(user, scope))).to_list(100)
         total_paid = sum(t.get("amount", 0) for t in fee_txns if t.get("status") == "paid")
         total_pending = sum(t.get("amount", 0) for t in fee_txns if t.get("status") in ("pending", "overdue"))
         fee_status = {
@@ -1039,7 +1050,7 @@ async def _notify(db, *, user_id: str, notification_type: str, message: str, sou
     }))
 
 
-async def _find_mutable_record(db, record_id: str, *, include_tech: bool = True):
+async def _find_mutable_record(db, record_id: str, *, include_tech: bool = True, branch_id: str | None = None):
     candidates = [
         ("incidents", db.incidents, {"id": record_id}),
         ("complaints", db.complaints, {"id": record_id}),
@@ -1048,13 +1059,13 @@ async def _find_mutable_record(db, record_id: str, *, include_tech: bool = True)
     if include_tech:
         candidates.append(("tech_requests", db.tech_requests, {"id": record_id}))
     for collection, handle, query in candidates:
-        doc = await handle.find_one(scoped_filter(query, get_school_id()), {"_id": 0})
+        doc = await handle.find_one(scoped_query(query, branch_id=branch_id), {"_id": 0})
         if doc:
             return collection, handle, doc
     return None, None, None
 
 
-async def _append_record_note(handle, record_id: str, existing: dict, user: dict, content: str, field: str):
+async def _append_record_note(handle, record_id: str, existing: dict, user: dict, content: str, field: str, branch_id: str | None = None):
     entry = {
         "id": str(uuid.uuid4()),
         "author_id": user.get("id"),
@@ -1066,7 +1077,7 @@ async def _append_record_note(handle, record_id: str, existing: dict, user: dict
     current = list(existing.get(field) or [])
     current.append(entry)
     await handle.update_one(
-        scoped_filter({"id": record_id}, get_school_id()),
+        scoped_query({"id": record_id}, branch_id=branch_id),
         {"$set": {field: current, "updated_at": datetime.now().isoformat()}},
     )
     return entry
@@ -1077,14 +1088,15 @@ async def tool_assign_followup(params: dict, user: dict, scope: dict = None) -> 
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "record_id, assignee_staff_id, due_date, and note are required."}
     db = get_db()
-    collection, handle, existing = await _find_mutable_record(db, params["record_id"])
+    bid = _branch_id(user, scope)
+    collection, handle, existing = await _find_mutable_record(db, params["record_id"], branch_id=bid)
     if not existing:
         return _empty_result("Record not found for follow-up assignment.")
-    staff = await db.staff.find_one(scoped_filter({"id": params["assignee_staff_id"]}, get_school_id()), {"_id": 0})
+    staff = await db.staff.find_one(scoped_query({"id": params["assignee_staff_id"]}, branch_id=bid), {"_id": 0})
     updates = {"assigned_to": params["assignee_staff_id"], "due_date": params["due_date"], "updated_at": datetime.now().isoformat()}
-    await handle.update_one(scoped_filter({"id": params["record_id"]}, get_school_id()), {"$set": updates})
+    await handle.update_one(scoped_query({"id": params["record_id"]}, branch_id=bid), {"$set": updates})
     field = "thread" if collection in ("incidents", "complaints") else "notes"
-    await _append_record_note(handle, params["record_id"], existing, user, params["note"], field)
+    await _append_record_note(handle, params["record_id"], existing, user, params["note"], field, branch_id=bid)
     await db.audit_logs.insert_one(_audit_doc("assign_followup", collection, params["record_id"], user, updates, params["note"]))
     await _notify(db, user_id=(staff or {}).get("user_id"), notification_type="followup_assigned", message=params["note"], source_id=params["record_id"], source_type=collection)
     return {"success": True, "data": {"record_id": params["record_id"], **updates}, "message": "Follow-up assigned."}
@@ -1095,16 +1107,17 @@ async def tool_update_incident_status(params: dict, user: dict, scope: dict = No
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "record_id, new_status, and note are required."}
     db = get_db()
-    collection, handle, existing = await _find_mutable_record(db, params["record_id"])
+    bid = _branch_id(user, scope)
+    collection, handle, existing = await _find_mutable_record(db, params["record_id"], branch_id=bid)
     if not existing:
         return _empty_result("Incident, complaint, or request not found.")
     # auth: enforcement is at the registry gate (_is_tool_authorized); body check removed (P6)
     if _is_maintenance(user) and params["new_status"] == "closed":
         return {"success": False, "message": "Maintenance Admin cannot close a facility request directly."}
     updates = {"status": params["new_status"], "updated_at": datetime.now().isoformat()}
-    await handle.update_one(scoped_filter({"id": params["record_id"]}, get_school_id()), {"$set": updates})
+    await handle.update_one(scoped_query({"id": params["record_id"]}, branch_id=bid), {"$set": updates})
     field = "thread" if collection in ("incidents", "complaints") else "notes"
-    await _append_record_note(handle, params["record_id"], existing, user, params["note"], field)
+    await _append_record_note(handle, params["record_id"], existing, user, params["note"], field, branch_id=bid)
     await db.audit_logs.insert_one(_audit_doc("update_incident_status", collection, params["record_id"], user, {"previous_status": existing.get("status"), **updates}, params["note"]))
     return {"success": True, "data": {"record_id": params["record_id"], **updates}, "message": "Status updated."}
 
@@ -1113,11 +1126,12 @@ async def tool_add_thread_entry(params: dict, user: dict, scope: dict = None) ->
     if not params.get("record_id") or not params.get("content"):
         return {"success": False, "message": "record_id and content are required."}
     db = get_db()
-    collection, handle, existing = await _find_mutable_record(db, params["record_id"])
+    bid = _branch_id(user, scope)
+    collection, handle, existing = await _find_mutable_record(db, params["record_id"], branch_id=bid)
     if not existing:
         return _empty_result("Record not found for thread entry.")
     field = "thread" if collection in ("incidents", "complaints") else "notes"
-    entry = await _append_record_note(handle, params["record_id"], existing, user, params["content"], field)
+    entry = await _append_record_note(handle, params["record_id"], existing, user, params["content"], field, branch_id=bid)
     await db.audit_logs.insert_one(_audit_doc("add_thread_entry", collection, params["record_id"], user, {"entry": entry}))
     return {"success": True, "data": entry, "message": "Thread entry added."}
 
@@ -1143,7 +1157,7 @@ async def tool_initiate_substitution(params: dict, user: dict, scope: dict = Non
     })
     await db.substitutions.insert_one(record)
     await db.audit_logs.insert_one(_audit_doc("initiate_substitution", "substitutions", record["id"], user, {"created": {k: v for k, v in record.items() if k != "_id"}}))
-    substitute = await db.staff.find_one(scoped_filter({"id": params["substitute_staff_id"]}, get_school_id()), {"_id": 0})
+    substitute = await db.staff.find_one(scoped_query({"id": params["substitute_staff_id"]}, branch_id=_branch_id(user, scope)), {"_id": 0})
     await _notify(db, user_id=(substitute or {}).get("user_id"), notification_type="substitution_assigned", message="You have been assigned as a substitute teacher.", source_id=record["id"], source_type="substitution")
     return {"success": True, "data": {k: v for k, v in record.items() if k != "_id"}, "message": "Substitution initiated."}
 
@@ -1153,7 +1167,8 @@ async def tool_correct_attendance(params: dict, user: dict, scope: dict = None) 
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "record_id, correction_type, and reason are required."}
     db = get_db()
-    original = await db.student_attendance.find_one(scoped_filter({"id": params["record_id"]}, get_school_id()), {"_id": 0})
+    bid = _branch_id(user, scope)
+    original = await db.student_attendance.find_one(scoped_query({"id": params["record_id"]}, branch_id=bid), {"_id": 0})
     if not original:
         return _empty_result("Attendance record not found.")
     new_status = params.get("status") or params["correction_type"]
@@ -1170,7 +1185,7 @@ async def tool_correct_attendance(params: dict, user: dict, scope: dict = None) 
         "corrected_at": datetime.now().isoformat(),
     })
     await db.attendance_corrections.insert_one(correction)
-    await db.student_attendance.update_one(scoped_filter({"id": params["record_id"]}, get_school_id()), {"$set": {"status": new_status, "corrected": True, "updated_at": correction["corrected_at"]}})
+    await db.student_attendance.update_one(scoped_query({"id": params["record_id"]}, branch_id=bid), {"$set": {"status": new_status, "corrected": True, "updated_at": correction["corrected_at"]}})
     await db.audit_logs.insert_one(_audit_doc("correct_attendance", "student_attendance", params["record_id"], user, {"status": {"previous": original.get("status"), "new": new_status}}, params["reason"]))
     return {"success": True, "data": {k: v for k, v in correction.items() if k != "_id"}, "message": "Attendance correction applied."}
 
@@ -1180,11 +1195,12 @@ async def tool_log_contact_event(params: dict, user: dict, scope: dict = None) -
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "student_id, contact_type, outcome, and note are required."}
     db = get_db()
+    bid = _branch_id(user, scope)
     txn = None
     if params.get("fee_transaction_id"):
-        txn = await db.fee_transactions.find_one(scoped_filter({"id": params["fee_transaction_id"]}, get_school_id()), {"_id": 0})
+        txn = await db.fee_transactions.find_one(scoped_query({"id": params["fee_transaction_id"]}, branch_id=bid), {"_id": 0})
     if not txn:
-        txns = await db.fee_transactions.find(scoped_filter({"student_id": params["student_id"]}, get_school_id()), {"_id": 0}).sort("created_at", -1).to_list(1)
+        txns = await db.fee_transactions.find(scoped_query({"student_id": params["student_id"]}, branch_id=bid), {"_id": 0}).sort("created_at", -1).to_list(1)
         txn = txns[0] if txns else None
     if not txn:
         return _empty_result("No fee transaction found for this student.")
@@ -1210,12 +1226,13 @@ async def tool_apply_discount(params: dict, user: dict, scope: dict = None) -> d
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "student_id, discount_type_id, and effective_from are required."}
     db = get_db()
-    dtype = await db.fee_discount_types.find_one(scoped_filter({"id": params["discount_type_id"], "is_active": True}, get_school_id()), {"_id": 0})
+    bid = _branch_id(user, scope)
+    dtype = await db.fee_discount_types.find_one(scoped_query({"id": params["discount_type_id"], "is_active": True}, branch_id=bid), {"_id": 0})
     if not dtype:
         return _empty_result("Active discount type not found.")
     original_amount = params.get("original_amount")
     if original_amount in (None, ""):
-        txns = await db.fee_transactions.find(scoped_filter({"student_id": params["student_id"]}, get_school_id()), {"_id": 0}).to_list(200)
+        txns = await db.fee_transactions.find(scoped_query({"student_id": params["student_id"]}, branch_id=bid), {"_id": 0}).to_list(200)
         original_amount = sum(float(txn.get("amount", 0)) for txn in txns if txn.get("status") in ("pending", "overdue", "unpaid"))
     application = add_school_id({
         "_id": str(uuid.uuid4()),
@@ -1242,12 +1259,13 @@ async def tool_decide_approval_request(params: dict, user: dict, scope: dict = N
     if not status:
         return {"success": False, "message": "decision must be approve or reject."}
     db = get_db()
-    approval = await db.approval_requests.find_one(scoped_filter({"id": params["request_id"]}, get_school_id()), {"_id": 0})
+    bid = _branch_id(user, scope)
+    approval = await db.approval_requests.find_one(scoped_query({"id": params["request_id"]}, branch_id=bid), {"_id": 0})
     if not approval:
         return _empty_result("Approval request not found.")
     # auth: enforcement is at the registry gate (_is_tool_authorized); body check removed (P6)
     update = {"status": status, "decision_reason": params["reason"], "decided_by": user.get("id"), "decided_at": datetime.now().isoformat(), "unread_for": []}
-    await db.approval_requests.update_one(scoped_filter({"id": params["request_id"]}, get_school_id()), {"$set": update})
+    await db.approval_requests.update_one(scoped_query({"id": params["request_id"]}, branch_id=bid), {"$set": update})
     await db.audit_logs.insert_one(_audit_doc("decide_approval_request", "approval_requests", params["request_id"], user, update, params["reason"]))
     await _notify(db, user_id=approval.get("submitted_by"), notification_type="approval_decision", message=f"{approval.get('title', 'Approval request')} {status}", source_id=params["request_id"], source_type="approval_request")
     return {"success": True, "data": {"request_id": params["request_id"], **update}, "message": f"Approval request {status}."}
@@ -1257,14 +1275,15 @@ async def tool_confirm_resolution(params: dict, user: dict, scope: dict = None) 
     if not params.get("request_id") or not params.get("confirmation_note"):
         return {"success": False, "message": "request_id and confirmation_note are required."}
     db = get_db()
-    existing = await db.facility_requests.find_one(scoped_filter({"id": params["request_id"]}, get_school_id()), {"_id": 0})
+    bid = _branch_id(user, scope)
+    existing = await db.facility_requests.find_one(scoped_query({"id": params["request_id"]}, branch_id=bid), {"_id": 0})
     if not existing:
         return _empty_result("Facility request not found.")
     if existing.get("status") != "pending_owner_confirmation":
         return {"success": False, "message": "Request must be pending Owner confirmation before it can be closed."}
     update = {"status": "closed", "resolved_by": user.get("id"), "resolved_at": datetime.now().isoformat(), "updated_at": datetime.now().isoformat()}
-    await db.facility_requests.update_one(scoped_filter({"id": params["request_id"]}, get_school_id()), {"$set": update})
-    await _append_record_note(db.facility_requests, params["request_id"], existing, user, params["confirmation_note"], "notes")
+    await db.facility_requests.update_one(scoped_query({"id": params["request_id"]}, branch_id=bid), {"$set": update})
+    await _append_record_note(db.facility_requests, params["request_id"], existing, user, params["confirmation_note"], "notes", branch_id=bid)
     await db.audit_logs.insert_one(_audit_doc("confirm_resolution", "facility_requests", params["request_id"], user, update, params["confirmation_note"]))
     await _notify(db, user_id=existing.get("logged_by"), notification_type="facility_resolved", message="Facility request resolved and closed by Owner.", source_id=params["request_id"], source_type="facility_request")
     return {"success": True, "data": {"request_id": params["request_id"], **update}, "message": "Resolution confirmed."}
@@ -1326,7 +1345,7 @@ async def tool_mark_attendance(params: dict, user: dict, scope: dict = None) -> 
             "created_at": datetime.now().isoformat(),
         })
         await db.student_attendance.update_one(
-            scoped_filter({"student_id": item["student_id"], "class_id": class_id, "date": target_date}, get_school_id()),
+            scoped_query({"student_id": item["student_id"], "class_id": class_id, "date": target_date}, branch_id=_branch_id(user, scope)),
             {"$set": doc},
             upsert=True,
         )
@@ -1338,11 +1357,12 @@ async def tool_mark_attendance(params: dict, user: dict, scope: dict = None) -> 
 async def tool_query_dashboard_summary(params: dict, user: dict, scope: dict = None) -> dict:
     db = get_db()
     today = date.today().isoformat()
+    bid = _branch_id(user, scope)
     data = [{
-        "open_incidents": await db.incidents.count_documents(scoped_filter({"status": {"$ne": "closed"}}, get_school_id())),
-        "pending_approvals": await db.approval_requests.count_documents(scoped_filter({"status": "pending"}, get_school_id())),
-        "staff_absent_today": await db.staff_attendance.count_documents(scoped_filter({"date": today, "status": "absent"}, get_school_id())),
-        "fee_outstanding_transactions": await db.fee_transactions.count_documents(scoped_filter({"status": {"$in": ["pending", "overdue", "unpaid"]}}, get_school_id())),
+        "open_incidents": await db.incidents.count_documents(scoped_query({"status": {"$ne": "closed"}}, branch_id=bid)),
+        "pending_approvals": await db.approval_requests.count_documents(scoped_query({"status": "pending"}, branch_id=bid)),
+        "staff_absent_today": await db.staff_attendance.count_documents(scoped_query({"date": today, "status": "absent"}, branch_id=bid)),
+        "fee_outstanding_transactions": await db.fee_transactions.count_documents(scoped_query({"status": {"$in": ["pending", "overdue", "unpaid"]}}, branch_id=bid)),
     }]
     return _ok(data, 0, "Dashboard summary ready.")
 
@@ -1350,46 +1370,52 @@ async def tool_query_dashboard_summary(params: dict, user: dict, scope: dict = N
 async def tool_query_attendance_status(params: dict, user: dict, scope: dict = None) -> dict:
     db = get_db()
     target_date = params.get("date", date.today().isoformat())
-    records = await db.staff_attendance.find(scoped_filter({"date": target_date}, get_school_id()), {"_id": 0}).to_list(500)
+    bid = _branch_id(user, scope)
+    records = await db.staff_attendance.find(scoped_query({"date": target_date}, branch_id=bid), {"_id": 0}).to_list(500)
     return _ok(records, 0, "Staff attendance status ready.")
 
 
 async def tool_query_fee_status(params: dict, user: dict, scope: dict = None) -> dict:
     db = get_db()
-    query = scoped_filter({}, get_school_id())
+    bid = _branch_id(user, scope)
+    base: dict = {}
     if params.get("student_id"):
-        query["student_id"] = params["student_id"]
+        base["student_id"] = params["student_id"]
     if params.get("status"):
-        query["status"] = params["status"]
+        base["status"] = params["status"]
+    query = scoped_query(base, branch_id=bid)
     txns = await db.fee_transactions.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
     return _ok(txns, 0, "Fee status ready.")
 
 
 async def tool_query_incidents(params: dict, user: dict, scope: dict = None) -> dict:
     db = get_db()
-    query = {}
+    bid = _branch_id(user, scope)
+    query: dict = {}
     if params.get("status"):
         query["status"] = params["status"]
-    incidents = await db.incidents.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("created_at", -1).to_list(100)
-    complaints = await db.complaints.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("created_at", -1).to_list(100)
-    visitors = await db.visitor_log.find(scoped_filter({}, get_school_id()), {"_id": 0}).sort("time_in", -1).to_list(100)
+    incidents = await db.incidents.find(scoped_query(query, branch_id=bid), {"_id": 0}).sort("created_at", -1).to_list(100)
+    complaints = await db.complaints.find(scoped_query(query, branch_id=bid), {"_id": 0}).sort("created_at", -1).to_list(100)
+    visitors = await db.visitor_log.find(scoped_query({}, branch_id=bid), {"_id": 0}).sort("time_in", -1).to_list(100)
     return _ok([{"incidents": incidents, "complaints": complaints, "visitors": visitors}], 0, "Incident data ready.")
 
 
 async def tool_query_staff_availability(params: dict, user: dict, scope: dict = None) -> dict:
     db = get_db()
-    staff = await db.staff.find(scoped_filter({"is_active": {"$ne": False}, "staff_type": "teacher"}, get_school_id()), {"_id": 0}).to_list(500)
+    bid = _branch_id(user, scope)
+    staff = await db.staff.find(scoped_query({"is_active": {"$ne": False}, "staff_type": "teacher"}, branch_id=bid), {"_id": 0}).to_list(500)
     return _ok(staff, 0, "Staff availability ready.")
 
 
 async def tool_query_maintenance_requests(params: dict, user: dict, scope: dict = None) -> dict:
     db = get_db()
-    query = {}
+    bid = _branch_id(user, scope)
+    query: dict = {}
     if params.get("status"):
         query["status"] = params["status"]
     if _is_maintenance(user):
         query["logged_by"] = user.get("id")
-    items = await db.facility_requests.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("created_at", -1).to_list(100)
+    items = await db.facility_requests.find(scoped_query(query, branch_id=bid), {"_id": 0}).sort("created_at", -1).to_list(100)
     return _ok(items, 0, "Maintenance requests ready.")
 
 
@@ -1397,12 +1423,13 @@ async def tool_query_student_record(params: dict, user: dict, scope: dict = None
     if not params.get("student_id"):
         return {"success": False, "message": "student_id is required."}
     db = get_db()
-    student = await db.students.find_one(scoped_filter({"id": params["student_id"]}, get_school_id()), {"_id": 0})
+    bid = _branch_id(user, scope)
+    student = await db.students.find_one(scoped_query({"id": params["student_id"]}, branch_id=bid), {"_id": 0})
     if not student:
         return _empty_result("Student not found.")
     data = {"student": student}
     if _is_accountant(user) or user.get("role") == "owner" or _is_principal(user):
-        data["fees"] = await db.fee_transactions.find(scoped_filter({"student_id": params["student_id"]}, get_school_id()), {"_id": 0}).to_list(100)
+        data["fees"] = await db.fee_transactions.find(scoped_query({"student_id": params["student_id"]}, branch_id=bid), {"_id": 0}).to_list(100)
     if user.get("role") == "owner" or _is_principal(user) or user.get("sub_category") == "transport_head":
         data["transport"] = {"route_zone_id": student.get("route_zone_id")}
     return _ok([data], 0, "Student record ready.")
@@ -1410,11 +1437,13 @@ async def tool_query_student_record(params: dict, user: dict, scope: dict = None
 
 async def tool_query_audit_log(params: dict, user: dict, scope: dict = None) -> dict:
     db = get_db()
-    query = scoped_filter({}, get_school_id())
+    bid = _branch_id(user, scope)
+    base: dict = {}
     if params.get("collection"):
-        query["collection"] = params["collection"]
+        base["collection"] = params["collection"]
     if user.get("role") != "owner":
-        query["changed_by"] = user.get("id")
+        base["changed_by"] = user.get("id")
+    query = scoped_query(base, branch_id=bid)
     items = await db.audit_logs.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
     return _ok(items, 0, "Audit log ready.")
 

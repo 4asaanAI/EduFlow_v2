@@ -7,6 +7,25 @@ import os
 DEFAULT_SCHOOL_ID = "aaryans-joya"
 
 
+def validate_school_id() -> None:
+    """Called at startup. Raises ValueError if SCHOOL_ID is not configured in non-dev."""
+    env = os.environ.get("ENVIRONMENT", "development").lower()
+    school_id = os.environ.get("SCHOOL_ID", "")
+    if not school_id and env not in ("development", "test", "testing"):
+        raise ValueError(
+            "SCHOOL_ID environment variable is required. "
+            "Set it to your school's identifier (e.g. SCHOOL_ID=my-school). "
+            "Missing SCHOOL_ID in a non-development environment would silently "
+            "route all requests to the wrong tenant."
+        )
+    if not school_id:
+        import logging
+        logging.getLogger(__name__).warning(
+            "SCHOOL_ID not set — using dev default 'aaryans-joya'. "
+            "Set SCHOOL_ID in .env for a consistent dev environment."
+        )
+
+
 def get_school_id() -> str:
     return os.environ.get("SCHOOL_ID", DEFAULT_SCHOOL_ID)
 

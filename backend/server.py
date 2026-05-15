@@ -18,6 +18,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
 from database import connect_db, disconnect_db, get_raw_db
+from tenant import validate_school_id
 from logging_config import (
     configure_logging,
     duration_ms_ctx,
@@ -234,6 +235,7 @@ app.include_router(reports_router)
 
 @app.on_event("startup")
 async def startup():
+    validate_school_id()
     await connect_db()
     logger.info("EduFlow API started")
 
@@ -287,9 +289,11 @@ async def _check_biometric() -> str:
 async def health_ready():
     db_status = await _check_db()
     ai_status = await _check_ai()
+    school_id_configured = bool(os.environ.get("SCHOOL_ID"))
     response = {
         "db": db_status,
         "ai": ai_status,
+        "school_id_configured": school_id_configured,
     }
     if os.environ.get("BIOMETRIC_ENABLED", "").lower() == "true":
         response["biometric"] = await _check_biometric()

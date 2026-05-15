@@ -1958,8 +1958,9 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
     if not _is_tool_authorized(user, tool_def):
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    # Part 2 Patch P4: write-ahead audit row. If this insert fails, refuse to
-    # run the tool — we will not execute a write whose forensic record is gone.
+    # Part 4 Story 4.2: write-ahead audit row — fail-open with structured warning.
+    # Audit failure must not block AI responses; proceed and log loudly.
+    audit_id = None
     try:
         audit_id = await audit_ai_dispatch_pending(
             tool_name=tool_name,
@@ -1972,12 +1973,13 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
             db=db,
             dispatch_id=f"ai-dispatch-{token}",
         )
-    except Exception as exc:
-        logger.exception("Pre-execution audit insert failed for %s", tool_name)
-        raise HTTPException(
-            status_code=503,
-            detail="Audit log unavailable; please retry shortly.",
-        ) from exc
+    except Exception:
+        logger.warning(
+            "audit_pre_write_failed",
+            exc_info=True,
+            extra={"action_name": tool_name, "user_id": user.get("id", "")},
+        )
+        # Proceed — audit failure must not block AI responses
 
     try:
         scope = await resolve_scope(user, db)

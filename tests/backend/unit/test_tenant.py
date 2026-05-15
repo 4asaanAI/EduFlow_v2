@@ -1,4 +1,4 @@
-from backend.tenant import add_school_id, scoped_filter
+from backend.tenant import add_school_id, scoped_filter, validate_school_id
 
 
 def test_add_school_id_sets_default_when_missing(monkeypatch):
@@ -121,3 +121,42 @@ def test_scoped_query_both_axes(monkeypatch):
     flat = str(result)
     assert "school-x" in flat
     assert "b1" in flat
+
+
+# ─── validate_school_id — Part 4 Story 4.1 ──────────────────────────────────
+
+def test_validate_school_id_passes_in_development(monkeypatch):
+    """SCHOOL_ID unset + ENVIRONMENT=development must not raise."""
+    monkeypatch.delenv("SCHOOL_ID", raising=False)
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    validate_school_id()  # should not raise
+
+
+def test_validate_school_id_passes_in_test_env(monkeypatch):
+    """SCHOOL_ID unset + ENVIRONMENT=test must not raise."""
+    monkeypatch.delenv("SCHOOL_ID", raising=False)
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    validate_school_id()  # should not raise
+
+
+def test_validate_school_id_raises_in_production(monkeypatch):
+    """SCHOOL_ID unset + ENVIRONMENT=production must raise ValueError."""
+    monkeypatch.delenv("SCHOOL_ID", raising=False)
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    with pytest.raises(ValueError, match="SCHOOL_ID environment variable is required"):
+        validate_school_id()
+
+
+def test_validate_school_id_raises_in_staging(monkeypatch):
+    """SCHOOL_ID unset + ENVIRONMENT=staging must raise ValueError."""
+    monkeypatch.delenv("SCHOOL_ID", raising=False)
+    monkeypatch.setenv("ENVIRONMENT", "staging")
+    with pytest.raises(ValueError, match="SCHOOL_ID"):
+        validate_school_id()
+
+
+def test_validate_school_id_passes_when_set_in_production(monkeypatch):
+    """SCHOOL_ID set + ENVIRONMENT=production must not raise."""
+    monkeypatch.setenv("SCHOOL_ID", "my-school")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    validate_school_id()  # should not raise
