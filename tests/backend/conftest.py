@@ -239,6 +239,14 @@ class FakeCollection:
             if _matches(doc, query):
                 for key, value in update.get("$set", {}).items():
                     _set_nested(doc, key, value)
+                for key, value in update.get("$inc", {}).items():
+                    _inc_nested(doc, key, value)
+                for key, value in update.get("$push", {}).items():
+                    existing = _get_nested(doc, key)
+                    if isinstance(existing, list):
+                        existing.append(value)
+                    else:
+                        _set_nested(doc, key, [value])
                 count += 1
         return type("Result", (), {"modified_count": count})()
 

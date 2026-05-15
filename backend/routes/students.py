@@ -147,7 +147,7 @@ async def list_students(
     if user["role"] not in READ_ROLES:
         raise HTTPException(403, "Forbidden")
     if include_inactive and user["role"] != "owner":
-        raise HTTPException(403, "Only owners can include inactive students")
+        raise HTTPException(403, "Forbidden")
 
     page = max(page, 1)
     per_page = max(1, min(limit, 20))

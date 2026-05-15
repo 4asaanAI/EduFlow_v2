@@ -111,7 +111,7 @@ async def create_query(
 async def resolve_query(ticket_id: str, request: Request):
     user = get_user(request)
     if not _is_it_tech(user):
-        raise HTTPException(403, "Only IT & Tech staff can resolve tickets")
+        raise HTTPException(403, "Forbidden")
     db = get_db()
     ticket = await db.queries.find_one({"id": ticket_id}, {"_id": 0})
     if not ticket:
@@ -135,7 +135,7 @@ async def resolve_query(ticket_id: str, request: Request):
 async def unresolve_query(ticket_id: str, request: Request):
     user = get_user(request)
     if not _is_it_tech(user):
-        raise HTTPException(403, "Only IT & Tech staff can reopen tickets")
+        raise HTTPException(403, "Forbidden")
     db = get_db()
     ticket = await db.queries.find_one({"id": ticket_id}, {"_id": 0})
     if not ticket:
@@ -157,7 +157,7 @@ async def delete_query(ticket_id: str, request: Request):
     if not ticket:
         raise HTTPException(404, "Ticket not found")
     if not _is_it_tech(user):
-        raise HTTPException(403, "Only IT & Tech staff can delete tickets")
+        raise HTTPException(403, "Forbidden")
     await db.queries.delete_one({"id": ticket_id})
     return {"success": True}
 
