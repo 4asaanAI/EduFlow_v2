@@ -1162,15 +1162,15 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             {"role": m["role"], "content": m.get("content", "") or ""}
             for m in history_raw
         ]
+        messages_for_llm = _trim_history(messages_for_llm)
         if omitted > 0 and len(anchors) >= 1:
-            # Splice elision marker between anchors and recent so the LLM
-            # knows context was elided rather than hallucinating continuity.
+            # Splice AFTER trim so _trim_history never drops the marker.
+            insert_pos = min(len(anchors), len(messages_for_llm))
             messages_for_llm.insert(
-                len(anchors),
+                insert_pos,
                 {"role": "system",
                  "content": f"[{omitted} earlier messages omitted for context length]"},
             )
-        messages_for_llm = _trim_history(messages_for_llm)
 
     except Exception as e:
         logger.error(f"Phase 5 (load history) error: {e}")
@@ -1970,6 +1970,7 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
             school_id=get_school_id(),
             branch_id=user.get("branch_id"),
             db=db,
+            dispatch_id=f"ai-dispatch-{token}",
         )
     except Exception as exc:
         logger.exception("Pre-execution audit insert failed for %s", tool_name)
