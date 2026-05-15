@@ -161,7 +161,7 @@ async def get_class_fee_summary(request: Request, user: dict = Depends(require_r
 
 
 @router.get("/my")
-async def get_my_fees(request: Request, user: dict = Depends(get_current_user)):
+async def get_my_fees(request: Request, user: dict = Depends(require_role("student"))):
     db = get_db()
     student = await db.students.find_one(_fee_query({"user_id": user["id"]}), {"_id": 0})
     if not student:

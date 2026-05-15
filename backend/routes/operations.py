@@ -1,4 +1,5 @@
 """Routes: certificates, expenses, complaints, visitors, assets, transport, announcements, incidents"""
+from __future__ import annotations
 from fastapi import APIRouter, Depends, Request, HTTPException
 from database import get_db
 from middleware.auth import get_current_user, require_owner_or_principal, require_role
@@ -175,9 +176,14 @@ async def create_approval_request(request: Request, user: dict = Depends(require
     }
     await db.approval_requests.insert_one(record)
     await db.audit_logs.insert_one(_audit_doc("approval_submit", "approval_request", record["id"], user, {"created": {k: v for k, v in record.items() if k != "_id"}}))
-    await _notify(db, user_id="owner", notification_type="approval_submitted", message=record["title"], source_id=record["id"], source_type="approval_request")
+    # Notify by role: find actual user IDs rather than sending to literal role strings
+    owner_users = await db.users.find(scoped_filter({"role": "owner"}, get_school_id()), {"_id": 0, "id": 1}).to_list(5)
+    for ou in owner_users:
+        await _notify(db, user_id=ou["id"], notification_type="approval_submitted", message=record["title"], source_id=record["id"], source_type="approval_request")
     if body["routing"] == "owner_and_principal":
-        await _notify(db, user_id="principal", notification_type="approval_submitted", message=record["title"], source_id=record["id"], source_type="approval_request")
+        principal_users = await db.users.find(scoped_filter({"role": "admin", "sub_category": "principal"}, get_school_id()), {"_id": 0, "id": 1}).to_list(5)
+        for pu in principal_users:
+            await _notify(db, user_id=pu["id"], notification_type="approval_submitted", message=record["title"], source_id=record["id"], source_type="approval_request")
     return {"success": True, "data": {k: v for k, v in record.items() if k != "_id"}}
 
 
@@ -250,7 +256,7 @@ async def list_certs(request: Request, student_id: str = None, user: dict = Depe
 async def create_cert(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
     body = await request.json()
-    cert = {
+    cert = add_school_id({
         "id": str(uuid.uuid4()),
         "student_id": body.get("student_id"),
         "cert_type": body.get("cert_type", "bonafide"),
@@ -260,7 +266,7 @@ async def create_cert(request: Request, user: dict = Depends(require_role("admin
         "issued_date": datetime.now().strftime("%Y-%m-%d"),
         "issued_by": user["id"],
         "created_at": datetime.now().isoformat(),
-    }
+    })
     await db.certificates.insert_one({**cert, "_id": cert["id"]})
     return {"success": True, "data": cert}
 
@@ -356,9 +362,8 @@ async def list_incidents(request: Request, status: str = None, q: str = None, pa
 @router.post("/incidents")
 async def create_incident(request: Request, user: dict = Depends(get_current_user)):
     db = get_db()
-    # auth: owner/admin OR admin-with-sub_category=receptionist. Composite gate.
-    is_receptionist = user.get("role") == "admin" and user.get("sub_category") == "receptionist"
-    if user["role"] not in ["owner", "admin"] and not is_receptionist:
+    # auth: any admin (including receptionist) or owner may log incidents. Composite gate.
+    if user["role"] not in ["owner", "admin"]:
         raise HTTPException(403, "Forbidden")
     body = await request.json()
     if not body.get("description"):

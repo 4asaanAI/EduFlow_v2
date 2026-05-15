@@ -203,7 +203,7 @@ async def update_staff(staff_id: str, request: Request):
     if _is_owner_or_principal(user):
         allowed |= LEAVE_BALANCE_FIELDS
     elif any(field in body for field in LEAVE_BALANCE_FIELDS):
-        raise HTTPException(403, "Only Owner or Principal can edit leave balances")
+        raise HTTPException(403, "Forbidden")
 
     update = {k: v for k, v in body.items() if k in allowed}
     if not update:

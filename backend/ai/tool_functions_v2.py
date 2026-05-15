@@ -255,11 +255,11 @@ async def tool_get_leave_requests(params: dict, user: dict, scope: dict = None) 
     if params.get("status"):
         query["status"] = params["status"]
 
-    leaves = await db.leave_requests.find(query).sort("created_at", -1).to_list(100)
+    leaves = await db.leave_requests.find(scoped_filter(query, get_school_id())).sort("created_at", -1).to_list(100)
 
     results = []
     for lr in leaves:
-        staff = await db.staff.find_one({"id": lr.get("staff_id")})
+        staff = await db.staff.find_one(scoped_filter({"id": lr.get("staff_id")}, get_school_id()))
         results.append({
             "staff_name": staff["name"] if staff else "Unknown",
             "staff_type": staff.get("staff_type", "") if staff else "",
@@ -295,7 +295,7 @@ async def tool_get_staff_list(params: dict, user: dict, scope: dict = None) -> d
     if params.get("department"):
         query["department"] = {"$regex": re.escape(params["department"]), "$options": "i"}
 
-    staff_list = await db.staff.find(query).to_list(200)
+    staff_list = await db.staff.find(scoped_filter(query, get_school_id())).to_list(200)
 
     today = date.today()
     month_start = today.replace(day=1).strftime("%Y-%m-%d")
@@ -492,7 +492,7 @@ async def tool_get_student_profile(params: dict, user: dict, scope: dict = None)
     # Fee status
     fee_status = {}
     if scope is None or _scope_bool(scope, "can_see_fees", False):
-        fee_txns = await db.fee_transactions.find({"student_id": student["id"]}).to_list(100)
+        fee_txns = await db.fee_transactions.find(scoped_filter({"student_id": student["id"]}, get_school_id())).to_list(100)
         total_paid = sum(t.get("amount", 0) for t in fee_txns if t.get("status") == "paid")
         total_pending = sum(t.get("amount", 0) for t in fee_txns if t.get("status") in ("pending", "overdue"))
         fee_status = {
@@ -1098,8 +1098,7 @@ async def tool_update_incident_status(params: dict, user: dict, scope: dict = No
     collection, handle, existing = await _find_mutable_record(db, params["record_id"])
     if not existing:
         return _empty_result("Incident, complaint, or request not found.")
-    if not _can_owner_or_principal(user) and not (_is_maintenance(user) and collection == "facility_requests"):
-        return {"success": False, "message": "Only Owner, Principal, or Maintenance Admin for facility requests can update status."}
+    # auth: enforcement is at the registry gate (_is_tool_authorized); body check removed (P6)
     if _is_maintenance(user) and params["new_status"] == "closed":
         return {"success": False, "message": "Maintenance Admin cannot close a facility request directly."}
     updates = {"status": params["new_status"], "updated_at": datetime.now().isoformat()}
@@ -1246,8 +1245,7 @@ async def tool_decide_approval_request(params: dict, user: dict, scope: dict = N
     approval = await db.approval_requests.find_one(scoped_filter({"id": params["request_id"]}, get_school_id()), {"_id": 0})
     if not approval:
         return _empty_result("Approval request not found.")
-    if user.get("role") != "owner" and not (_is_principal(user) and approval.get("routing") in ("owner_and_principal", "academic")):
-        return {"success": False, "message": "Not authorized to decide this approval request."}
+    # auth: enforcement is at the registry gate (_is_tool_authorized); body check removed (P6)
     update = {"status": status, "decision_reason": params["reason"], "decided_by": user.get("id"), "decided_at": datetime.now().isoformat(), "unread_for": []}
     await db.approval_requests.update_one(scoped_filter({"id": params["request_id"]}, get_school_id()), {"$set": update})
     await db.audit_logs.insert_one(_audit_doc("decide_approval_request", "approval_requests", params["request_id"], user, update, params["reason"]))
@@ -1442,10 +1440,9 @@ async def tool_create_announcement(params: dict, user: dict, scope: dict = None)
         audience_type = "all"
     audience_roles = _AUDIENCE_ROLE_MAP[audience_type]
 
-    # P7: Story 7-47 moderation gate — mirror routes/operations.py behaviour.
-    # Announcements that reach teachers or students require principal approval
-    # before they become visible. AI-dispatched announcements are no exception.
-    requires_approval = any(r in ("teacher", "student") for r in audience_roles)
+    # P7: Story 7-47 moderation gate — mirrors _announcement_requires_approval() in routes/operations.py.
+    # audience_type "all"/"class" fast-path added to match REST gate defensively.
+    requires_approval = audience_type in ("all", "class") or any(r in ("teacher", "student") for r in audience_roles)
     initial_status = "pending_approval" if requires_approval else "active"
 
     db = get_db()

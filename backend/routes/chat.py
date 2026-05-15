@@ -31,7 +31,7 @@ from ai.llm_client import ai_unavailable_result, llm_client
 from ai.prompts import build_system_prompt
 from ai.context_builder import build_school_context, detect_language
 from ai.tool_functions_v2 import TOOL_REGISTRY, WRITE_TOOL_NAMES
-from ai.scope_resolver import resolve_scope
+from ai.scope_resolver import resolve_scope, Scope
 from ai.content_filter import filter_response, check_input_safety
 from middleware.auth import get_current_user
 from services.token_service import check_and_reserve_tokens, record_usage
@@ -68,7 +68,8 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 # ─── Constants ────────────────────────────────────────────────────────────────
 
 MAX_TOOL_ROUNDS = 3
-KEEPALIVE_INTERVAL = 15  # seconds
+KEEPALIVE_INTERVAL = 5  # seconds — keep short for fast disconnect detection
+LLM_WALLCLOCK_BUDGET = 90  # seconds; bounded ceiling above per-call 45s timeout
 CHAR_BUDGET = 24000
 HISTORY_LIMIT = 20
 HISTORY_KEEP_FIRST = 2
@@ -1181,7 +1182,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         scope = await resolve_scope(user, db)
     except Exception as e:
         logger.error(f"Scope resolution error: {e}")
-        scope = {"role": user["role"], "user_id": user["id"]}
+        scope = Scope(type="self_only", role=user.get("role", ""), user_id=user.get("id", ""))
 
     # ── Phase 7: Keyword tool detection ───────────────────────────────────
     detected_tool = detect_tool_from_keywords(user_text, user)
@@ -1377,7 +1378,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         llm_task_done = asyncio.Event()
         llm_response = ""
         llm_tokens = 0
-        LLM_WALLCLOCK_BUDGET = 90  # seconds; bounded ceiling above per-call 45s
+        # LLM_WALLCLOCK_BUDGET is a module constant (see top of file)
 
         async def _llm_call():
             nonlocal llm_response, llm_tokens
@@ -1618,7 +1619,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             llm_task_done = asyncio.Event()
             llm_response = ""
             llm_tokens = 0
-            LLM_WALLCLOCK_BUDGET = 90
+            # LLM_WALLCLOCK_BUDGET is a module constant (see top of file)
 
             async def _llm_followup():
                 nonlocal llm_response, llm_tokens
@@ -1714,12 +1715,17 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             yield f"data: {json.dumps({'type': 'text_delta', 'delta': chunk})}\n\n"
             await asyncio.sleep(0.008)
 
-        # Send rich content block (P8: filter for students before emitting)
+        # Send rich content block (P8: filter rich_blocks AND action_buttons for students)
         if rich_content:
             if user.get("role") == "student":
                 try:
                     filtered_str = filter_response(json.dumps(rich_content.get("rich_blocks", [])), "student")
                     rich_content["rich_blocks"] = json.loads(filtered_str)
+                except Exception:
+                    pass
+                try:
+                    filtered_btn = filter_response(json.dumps(rich_content.get("action_buttons", [])), "student")
+                    rich_content["action_buttons"] = json.loads(filtered_btn)
                 except Exception:
                     pass
             yield f"data: {json.dumps({'type': 'rich_blocks', 'blocks': rich_content.get('rich_blocks', []), 'action_buttons': rich_content.get('action_buttons', [])})}\n\n"

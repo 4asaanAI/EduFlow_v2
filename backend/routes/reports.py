@@ -63,7 +63,7 @@ async def attendance_trends(
     """AC1 + AC4. Monthly attendance % overall + per class."""
     months = _clamp_months(months, 1, 12)
     db = get_db()
-    bucket_keys = _last_n_months(datetime.utcnow(), months)
+    bucket_keys = _last_n_months(datetime.now(), months)
     earliest_bucket = bucket_keys[0]
 
     # Pull only rows in the window. `date` is stored as ISO `YYYY-MM-DD` string,
@@ -138,9 +138,16 @@ async def fee_collection_summary(
     """AC2 + AC3 + AC4. Owner-only monthly collected vs outstanding."""
     months = _clamp_months(months, 1, 24)
     db = get_db()
-    bucket_keys = _last_n_months(datetime.utcnow(), months)
+    bucket_keys = _last_n_months(datetime.now(), months)
+    earliest_bucket = bucket_keys[0] if bucket_keys else "1970-01"
 
-    rows = await db.fee_transactions.find(scoped_filter({}, get_school_id()), {"_id": 0}).to_list(20000)
+    date_filter = {"$or": [
+        {"paid_date": {"$gte": f"{earliest_bucket}-01"}},
+        {"due_date": {"$gte": f"{earliest_bucket}-01"}, "status": {"$in": ["pending", "overdue", "unpaid"]}},
+    ]}
+    rows = await db.fee_transactions.find(
+        scoped_filter(date_filter, get_school_id()), {"_id": 0}
+    ).to_list(20000)
 
     if not rows:
         return {"success": True, "data": [], "empty": True}

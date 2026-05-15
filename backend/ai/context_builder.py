@@ -196,9 +196,9 @@ async def _build_transport_head_context(db, today: str) -> dict:
 # ---------------------------------------------------------------------------
 async def _build_receptionist_context(db, today: str) -> dict:
     ctx = {}
-    ctx["new_enquiries_today"] = await db.enquiries.count_documents(_tenant_query({"date": today}))
+    ctx["new_enquiries_today"] = await db.enquiries.count_documents(_tenant_query({"created_at": {"$gte": today}}))
     ctx["pending_enquiries"] = await db.enquiries.count_documents(_tenant_query({"status": "pending"}))
-    ctx["todays_visitor_count"] = await db.visitors.count_documents(_tenant_query({"date": today}))
+    ctx["todays_visitor_count"] = await db.visitor_log.count_documents(_tenant_query({"time_in": {"$gte": today}}))
     return ctx
 
 

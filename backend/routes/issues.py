@@ -74,7 +74,8 @@ async def _notification_targets(db, query: dict, projection: dict, limit: int = 
     users = getattr(db, "users", None)
     if users is None:
         return []
-    return await users.find(query, projection).to_list(limit)
+    scoped_q = scoped_filter(query, get_school_id())
+    return await users.find(scoped_q, projection).to_list(limit)
 
 
 # ─── Facility Requests (Maintenance Admin) ────────────────────────────────────
@@ -183,7 +184,7 @@ async def update_facility_request(request_id: str, request: Request):
         if new_status not in VALID_STATUSES:
             raise HTTPException(400, f"Invalid status. Valid: {sorted(VALID_STATUSES)}")
         if is_maint and new_status == "closed":
-            raise HTTPException(403, "Maintenance Admin cannot close a request — Owner must confirm resolution")
+            raise HTTPException(403, "Forbidden")
         updates["status"] = new_status
     if body.get("note"):
         note_entry = {
@@ -228,7 +229,7 @@ async def create_tech_request(request: Request):
     db = get_db()
     user = get_user(request)
     if not (user.get("role") == "admin" and user.get("sub_category") == "it_tech") and user.get("role") != "owner":
-        raise HTTPException(403, "Only IT/Tech Admin or Owner can create tech requests")
+        raise HTTPException(403, "Forbidden")
     body = await request.json()
     if not body.get("description"):
         raise HTTPException(400, "description is required")
@@ -300,11 +301,11 @@ async def update_tech_request(request_id: str, request: Request):
             "content": body["note"],
             "timestamp": datetime.now().isoformat(),
         }
-        await db.tech_requests.update_one({"id": request_id}, {"$push": {"notes": note_entry}})
+        await db.tech_requests.update_one(scoped_filter({"id": request_id}, get_school_id()), {"$push": {"notes": note_entry}})
     if updates:
-        await db.tech_requests.update_one({"id": request_id}, {"$set": updates})
+        await db.tech_requests.update_one(scoped_filter({"id": request_id}, get_school_id()), {"$set": updates})
     await db.audit_logs.insert_one(_audit("tech_request_update", "tech_requests", request_id, user, {"changes": updates}))
-    updated = await db.tech_requests.find_one({"id": request_id}, {"_id": 0})
+    updated = await db.tech_requests.find_one(scoped_filter({"id": request_id}, get_school_id()), {"_id": 0})
     return {"success": True, "data": updated}
 
 
@@ -315,7 +316,7 @@ async def list_all_issues(request: Request, type: str = "all", status: str = Non
     db = get_db()
     user = get_user(request)
     if not _can_view_all(user):
-        raise HTTPException(403, "Only Owner or Principal can view all issues")
+        raise HTTPException(403, "Forbidden")
     query = {}
     if status:
         query["status"] = status
@@ -359,7 +360,7 @@ async def create_maintenance_schedule(request: Request):
     db = get_db()
     user = get_user(request)
     if not _can_view_all(user) and not _is_maint(user):
-        raise HTTPException(403, "Only Maintenance Admin or Owner/Principal can create schedule entries")
+        raise HTTPException(403, "Forbidden")
     body = await request.json()
     if not body.get("title") or not body.get("scheduled_date"):
         raise HTTPException(400, "title and scheduled_date are required")
@@ -399,9 +400,9 @@ async def update_maintenance_schedule(entry_id: str, request: Request):
     for field in ("title", "description", "scheduled_date", "recurrence", "category", "assigned_to", "vendor_id", "status"):
         if field in body:
             updates[field] = body[field]
-    await db.maintenance_schedule.update_one({"id": entry_id}, {"$set": updates})
+    await db.maintenance_schedule.update_one(scoped_filter({"id": entry_id}, get_school_id()), {"$set": updates})
     await db.audit_logs.insert_one(_audit("maintenance_schedule_update", "maintenance_schedule", entry_id, user, {"changes": updates}))
-    updated = await db.maintenance_schedule.find_one({"id": entry_id}, {"_id": 0})
+    updated = await db.maintenance_schedule.find_one(scoped_filter({"id": entry_id}, get_school_id()), {"_id": 0})
     return {"success": True, "data": updated}
 
 
@@ -425,7 +426,7 @@ async def create_vendor(request: Request):
     db = get_db()
     user = get_user(request)
     if not _can_view_all(user) and not _is_maint(user):
-        raise HTTPException(403, "Only Maintenance Admin or Owner/Principal can add vendors")
+        raise HTTPException(403, "Forbidden")
     body = await request.json()
     if not body.get("name"):
         raise HTTPException(400, "name is required")
@@ -466,7 +467,7 @@ async def update_vendor(vendor_id: str, request: Request):
     for field in ("name", "category", "contact_person", "phone", "email", "address", "gst_number", "rating", "tags", "is_active"):
         if field in body:
             updates[field] = body[field]
-    await db.maintenance_vendors.update_one({"id": vendor_id}, {"$set": updates})
+    await db.maintenance_vendors.update_one(scoped_filter({"id": vendor_id}, get_school_id()), {"$set": updates})
     await db.audit_logs.insert_one(_audit("vendor_update", "maintenance_vendors", vendor_id, user, {"changes": updates}))
-    updated = await db.maintenance_vendors.find_one({"id": vendor_id}, {"_id": 0})
+    updated = await db.maintenance_vendors.find_one(scoped_filter({"id": vendor_id}, get_school_id()), {"_id": 0})
     return {"success": True, "data": updated}

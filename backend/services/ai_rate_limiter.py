@@ -109,6 +109,7 @@ async def resolve_limit(
         "school_id": school_id,
         "role": role,
         "superseded": {"$ne": True},
+        "expires_at": {"$exists": True},
         "$or": [{"expires_at": None}, {"expires_at": {"$gt": now}}],
     }
     try:

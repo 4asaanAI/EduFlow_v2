@@ -94,17 +94,25 @@ def _matches(doc, query):
                     return False
                 if op == "$ne" and actual == value:
                     return False
-                if op == "$gte" and actual < value:
+                if op == "$gte" and (actual is None or actual < value):
                     return False
-                if op == "$lte" and actual > value:
+                if op == "$lte" and (actual is None or actual > value):
                     return False
-                if op == "$gt" and actual <= value:
+                if op == "$gt" and (actual is None or actual <= value):
                     return False
-                if op == "$lt" and actual >= value:
+                if op == "$lt" and (actual is None or actual >= value):
                     return False
                 if op == "$exists":
-                    exists = actual is not None
-                    if exists is not bool(value):
+                    # Proper $exists: check key presence, not value nullness
+                    parts = key.split(".")
+                    target = doc
+                    key_present = True
+                    for part in parts:
+                        if not isinstance(target, dict) or part not in target:
+                            key_present = False
+                            break
+                        target = target[part]
+                    if bool(value) != key_present:
                         return False
                 if op == "$regex":
                     import re

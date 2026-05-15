@@ -3,6 +3,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from database import get_db
 from middleware.auth import require_owner, require_role
+from tenant import get_school_id, scoped_filter
 import csv
 import io
 from datetime import date
@@ -26,7 +27,7 @@ def make_csv_response(rows: list, headers: list, filename: str):
 @router.get("/students")
 async def export_students(request: Request, format: str = "csv", user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    students = await db.students.find({"is_active": True}, {"_id": 0}).to_list(2000)
+    students = await db.students.find(scoped_filter({"is_active": True}, get_school_id()), {"_id": 0}).to_list(2000)
     headers = ["Name", "Admission No.", "Roll No.", "Gender", "DOB", "Status", "Admission Date"]
     rows = [[s.get("name"), s.get("admission_number", ""), s.get("roll_number", ""), s.get("gender", ""), s.get("dob", ""), s.get("status", ""), s.get("admission_date", "")] for s in students]
     return make_csv_response(rows, headers, f"students_{date.today()}.csv")
@@ -38,11 +39,11 @@ async def export_fees(request: Request, status: str = None, user: dict = Depends
     query = {}
     if status:
         query["status"] = status
-    txns = await db.fee_transactions.find(query, {"_id": 0}).to_list(5000)
+    txns = await db.fee_transactions.find(scoped_filter(query, get_school_id()), {"_id": 0}).to_list(5000)
     headers = ["Student", "Fee Type", "Amount", "Status", "Due Date", "Paid Date", "Payment Mode"]
     rows = []
     for t in txns:
-        student = await db.students.find_one({"id": t["student_id"]}, {"_id": 0, "name": 1})
+        student = await db.students.find_one(scoped_filter({"id": t["student_id"]}, get_school_id()), {"_id": 0, "name": 1})
         rows.append([student["name"] if student else "N/A", t.get("fee_type"), t.get("amount"), t.get("status"), t.get("due_date", ""), t.get("paid_date", ""), t.get("payment_mode", "")])
     return make_csv_response(rows, headers, f"fees_{date.today()}.csv")
 
@@ -57,7 +58,7 @@ async def export_attendance(request: Request, start_date: str = None, end_date: 
         existing = query.get("date", {})
         existing["$lte"] = end_date
         query["date"] = existing
-    records = await db.student_attendance.find(query, {"_id": 0}).sort("date", 1).to_list(10000)
+    records = await db.student_attendance.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("date", 1).to_list(10000)
     headers = ["Student ID", "Date", "Status"]
     rows = [[r.get("student_id"), r.get("date"), r.get("status")] for r in records]
     return make_csv_response(rows, headers, f"attendance_{date.today()}.csv")
@@ -66,7 +67,7 @@ async def export_attendance(request: Request, start_date: str = None, end_date: 
 @router.get("/staff")
 async def export_staff(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    staff = await db.staff.find({"is_active": True}, {"_id": 0, "salary": 0}).to_list(500)
+    staff = await db.staff.find(scoped_filter({"is_active": True}, get_school_id()), {"_id": 0, "salary": 0}).to_list(500)
     headers = ["Name", "Type", "Employee ID", "Email", "Phone", "Join Date", "Department"]
     rows = [[s.get("name"), s.get("staff_type"), s.get("employee_id", ""), s.get("email", ""), s.get("phone", ""), s.get("join_date", ""), s.get("department", "")] for s in staff]
     return make_csv_response(rows, headers, f"staff_{date.today()}.csv")
@@ -75,7 +76,7 @@ async def export_staff(request: Request, user: dict = Depends(require_role("owne
 @router.get("/expenses")
 async def export_expenses(request: Request, user: dict = Depends(require_owner)):
     db = get_db()
-    expenses = await db.expenses.find({}, {"_id": 0}).sort("date", -1).to_list(1000)
+    expenses = await db.expenses.find(scoped_filter({}, get_school_id()), {"_id": 0}).sort("date", -1).to_list(1000)
     headers = ["Date", "Category", "Description", "Amount", "Vendor"]
     rows = [[e.get("date"), e.get("category"), e.get("description", ""), e.get("amount"), e.get("vendor", "")] for e in expenses]
     return make_csv_response(rows, headers, f"expenses_{date.today()}.csv")
@@ -84,7 +85,7 @@ async def export_expenses(request: Request, user: dict = Depends(require_owner))
 @router.get("/enquiries")
 async def export_enquiries(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    enquiries = await db.enquiries.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    enquiries = await db.enquiries.find(scoped_filter({}, get_school_id()), {"_id": 0}).sort("created_at", -1).to_list(1000)
     headers = ["Student Name", "Parent Name", "Class Applying", "Status", "Source", "Date"]
     rows = [[e.get("student_name"), e.get("parent_name"), e.get("class_applying", ""), e.get("status"), e.get("source", ""), e.get("created_at", "")[:10]] for e in enquiries]
     return make_csv_response(rows, headers, f"enquiries_{date.today()}.csv")
@@ -93,7 +94,7 @@ async def export_enquiries(request: Request, user: dict = Depends(require_role("
 @router.get("/exam-results")
 async def export_results(request: Request, user: dict = Depends(require_role("owner", "admin", "teacher"))):
     db = get_db()
-    results = await db.exam_results.find({}, {"_id": 0}).to_list(10000)
+    results = await db.exam_results.find(scoped_filter({}, get_school_id()), {"_id": 0}).to_list(10000)
     headers = ["Student ID", "Exam ID", "Subject", "Marks", "Max Marks", "Grade"]
     rows = []
     for r in results:
