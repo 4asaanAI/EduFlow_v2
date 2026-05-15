@@ -115,7 +115,8 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 
 **AI / LLM Integration**
 - Primary LLM: `LLMClient` in `backend/ai/llm_client.py` — uses Azure OpenAI via OpenAI SDK, deployment `gpt-5.3-chat`. **Per-call `timeout=45` is set** (Part 2 P5) — do not remove; the SDK default of ~600s leaks SSE workers under flaky LLM conditions.
-- Tool calls: tools are registered in `TOOL_REGISTRY` (dict in `tool_functions_v2.py`) with `roles` list — always check role before exposing a tool
+- Tool calls: tools are registered in `TOOL_REGISTRY` (dict in `tool_functions_v2.py`) with `roles` AND `sub_categories` lists — always call `_is_tool_authorized(user, tool_def)` in `routes/chat.py`, never check `role in tool_def["roles"]` directly. `sub_categories: None` means any admin; `sub_categories: [...]` means admin must have a matching sub_category; non-admin roles in `roles` bypass the sub_category check.
+- **Single authorization gate** (Part 2 P6): `_is_tool_authorized` is called at keyword dispatch, LLM-tool dispatch, execute_action, and confirm dispatch. Do NOT add per-tool body-level role/sub_category checks for static authorization — the registry is the source of truth. Dynamic checks (e.g. record.routing field) may remain as body-level guards.
 - Scope enforcement: call `await resolve_scope(user)` before every tool invocation; use `scope.filter()` to get the MongoDB filter dict. **Part 2 P1: `Scope.branch_id` is now ALWAYS populated from the JWT** for non-owner users; `scope.filter()` always emits a `branch_id` clause when set. Tool authors do NOT need to pass branch_id manually — the helper covers it.
 - Tool signatures: prefer `(params, user, scope)`. v1 tools in `ai/tool_functions.py` are now all 3-arg (Part 2 P1 migration); never re-introduce a 2-arg tool. The helper `_tenant_query(scope, base)` composes branch_id + schoolId for every Mongo read.
 - Write operations (`mark_attendance`, `record_fee_payment`, etc.) require a confirm-action flow — add to `WRITE_ACTION_TOOLS` set in `routes/chat.py`
@@ -125,7 +126,9 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 - Conversation history (Part 2 P2): load `HISTORY_KEEP_FIRST` anchors ASC + `HISTORY_KEEP_RECENT` recent DESC and reverse. Never use `.sort(created_at, ASC).to_list(HISTORY_LIMIT)` — loads the OLDEST messages and silently strips recent context. Insert an elision marker between anchors and recent so the LLM does not hallucinate continuity.
 - Name resolution (Part 2 P1): `_resolve_params(params, db, scope)` is scope-aware. Ambiguous matches set `_resolution_error` and the chat handler surfaces it to the user BEFORE issuing a confirm token. Inactive matches add `_resolved_inactive: True` instead of silently failing.
 - SSE generator (Part 2 P5): the LLM call is wrapped in `try/finally` that always sets `llm_task_done` and `task.cancel()`s on exit. Wallclock cap 90s; poll `request.is_disconnected()` between keepalives. Pass `request=` to `_generate_chat_sse` so disconnect detection works.
-- Content filter: `check_input_safety()` and `filter_response()` from `ai/content_filter.py` run for student-role users — student-facing AI responses must pass the filter. **TODO (Part 2 Wave 2 P8): rich_blocks and tool results are NOT yet filtered for students** — landing in Wave 2.
+- Content filter (Part 2 P8): `filter_response()` is applied to (a) LLM natural-language output; (b) tool data JSON string before injecting into LLM messages for student users; (c) rich_blocks JSON before SSE emit for student users. `check_input_safety()` checks user input. Both use `ai/content_filter.py`.
+- **Confirm tokens persist school_id + branch_id** (Part 2 P9): `issue_confirm_token` requires `school_id` and `branch_id` kwargs; `consume_confirm_token` validates them and raises 409 on mismatch. `peek_confirm_token` raises 503 on Mongo errors (no longer silent None). Concurrent 409 replays trigger a compensating `decrement_count()` call so the rate counter stays accurate.
+- **Announcement moderation via AI** (Part 2 P7): `tool_create_announcement` in `tool_functions_v2.py` applies the Story 7-47 gate — when `audience_roles` includes `teacher` or `student`, status is `pending_approval` and `sent_at` is None. Mirrors `routes/operations.py` semantics exactly.
 
 ---
 
@@ -242,9 +245,11 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 - Pre-check before increment: if `existing_count >= limit`, return rejection WITHOUT incrementing. Counter must not inflate past limit (operator dashboard would show counts > limit).
 - Per-role defaults in `backend/config/ai_rate_limits.yaml` — mtime-cached. Operator override via `PATCH /api/operator/schools/{school_id}/ai-rate-limit` lives in `db.ai_rate_limit_overrides`. Override semantics: insert + mark prior `(school_id, role)` active rows as `superseded: True`. Resolver filters `superseded: {"$ne": True}` AND unexpired.
 - Rate-limit check runs BEFORE `consume_confirm_token` in `_execute_confirmed_dispatch` — rejected requests must not burn the confirm token.
-- `peek_confirm_token` validates ownership (user_id + session_id match) BEFORE rate-check. Invalid tokens must not burn rate slots. Used/replayed tokens still returned for forensic audit-log context.
+- `peek_confirm_token` validates ownership (user_id + session_id match) BEFORE rate-check. Invalid tokens must not burn rate slots. Used/replayed tokens still returned for forensic audit-log context. Mongo errors raise 503 (Part 2 P9).
 - 429 response shape: status 429, header `Retry-After: <seconds>`, body `{"success": false, "error": "rate_limit_exceeded", "retry_after_seconds": N, "limit": N, "window": "hour"}`. Use `JSONResponse(status_code=429, headers={...})` — `HTTPException` cannot set custom headers.
 - Audit log (`db.ai_dispatch_audit_log`) gained `rate_limit_hit: bool` field. Rate-limited rejections write `executed_at: None`, `success: False`, `rate_limit_hit: True`, `rate_limit_value: <limit>` via `audit_ai_rate_limit_hit`.
+- **Rate-limit override requires `expires_at`** (Part 2 P10): `PATCH /api/operator/.../ai-rate-limit` now rejects if `expires_at` key is absent (400). Use `expires_at: null` for permanent overrides. Migration 017 backfills existing rows. Resolver sort is `[("created_at", -1), ("_id", -1)]` for stable tiebreak.
+- **Compensating decrement** (Part 2 P9): if `consume_confirm_token` raises 409 (concurrent replay), `decrement_count(user_id, db)` is called to undo the rate-limit increment. Net delta = exactly +1 for the winning request.
 
 ---
 
