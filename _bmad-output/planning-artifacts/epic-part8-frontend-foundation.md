@@ -31,7 +31,50 @@ Part 8 targets structural correctness and resilience of the shared frontend laye
 
 ## Epic P8: Frontend Foundation Hardening
 
+### Story P8.0: Establish frontend unit test infrastructure (Jest + React Testing Library)
+
+**Problem:** All stories P8.1 through P8.8 require frontend unit tests: mocked fetch, hook behaviour, render assertions. The project currently has NO Jest/RTL unit test setup for the frontend. Playwright (`npx playwright test`) is e2e only — it cannot mock `fetch` at module level, cannot test individual React hooks or component state, and is not suitable for sub-component assertion. Without a unit test harness, no P8 story can be verified at the unit level.
+
+> **Note:** CRA (`react-scripts`) already bundles Jest. Only React Testing Library packages need to be added — no webpack config changes are needed.
+
+**Scope:**
+- Install in `frontend/`:
+  - `@testing-library/react`
+  - `@testing-library/jest-dom`
+  - `@testing-library/user-event`
+- Add `"test": "react-scripts test"` to `frontend/package.json` scripts (or verify it already exists)
+- Create `frontend/src/setupTests.js` with `import '@testing-library/jest-dom'` (CRA convention)
+- Write a trivial smoke test `frontend/src/components/__tests__/Login.test.js`:
+  - Renders `<Login />` (or any simple component) and asserts it contains expected text
+  - Confirms Jest can find and run `.test.js` files under `src/`
+- Write a fetch-mock verification test confirming `jest.fn()` can intercept `fetch` before a component calls an API
+- Verify `yarn test` (or `npm test`) runs from `frontend/` and the tests pass
+
+**Acceptance Criteria:**
+
+Given `package.json` in `frontend/` has `@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event` installed,
+When `yarn test` runs from `frontend/`,
+Then Jest finds and runs `.test.js` files in `src/`.
+
+Given a trivial test that renders a simple component and asserts it contains expected text,
+When `yarn test` runs,
+Then the test passes.
+
+Given a test that mocks `fetch` via `jest.fn()` and a component that calls an API,
+When the component mounts and calls fetch,
+Then the mock is invoked (verifying fetch can be intercepted at unit test level).
+
+- `@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event` installed in `frontend/`
+- `setupTests.js` created with jest-dom import
+- At least 1 component render test and 1 fetch-mock test passing
+- `yarn test` exits 0 from `frontend/`
+- This story MUST be done before any other P8 story that requires unit tests (P8.1–P8.8)
+
+---
+
 ### Story P8.1: SSE stream — add exponential back-off reconnect and clear thinking state on hard error
+
+> **Requires P8.0** (Jest+RTL setup) to be complete before writing unit tests in this story.
 
 **Problem:** `sendMessageStream` in `api.js` (lines 81–125) is a plain `fetch` call that reads the stream with a `while (true)` loop. On network drop mid-stream, the `while` loop exits via `done = true` from the reader — which falls through to the post-`await` cleanup block (lines 455–469 in `ChatInterface.js`) that marks streaming done. This path works for a clean close, but:
 
@@ -57,6 +100,8 @@ Part 8 targets structural correctness and resilience of the shared frontend laye
 
 ### Story P8.2: ConfirmActionCard — idempotent double-submit guard
 
+> **Requires P8.0** (Jest+RTL setup) to be complete before writing unit tests in this story.
+
 **Problem:** `ConfirmActionCard.js` `handleClick` (line 131) already guards `status === 'loading'` at the top of the callback — which prevents a second click while the first request is in flight. However:
 
 1. The guard uses `status` from the `useCallback` closure, which is stale if React batches a re-render. A rapid double-click within the same event-loop tick can bypass the guard because both clicks read the same pre-update `status = 'pending'`.
@@ -64,21 +109,34 @@ Part 8 targets structural correctness and resilience of the shared frontend laye
 3. If the network is slow (> 5s), the user has no visual indication beyond the spinner inside the button. The outer card does not show a progress message.
 
 **Scope:**
-- Add a `useRef` submitting guard (`submittingRef`) that is set to `true` synchronously at the top of `handleClick` and cleared in the `finally` block. Check this ref before the `status` state check so rapid double-clicks are caught even within the same React render cycle.
+- Add a `useRef` submitting guard (`submittingRef`) that is set to `true` synchronously at the top of `handleClick` and cleared in the `finally` block. The guard must use a `ref` (not state) for in-flight tracking to avoid stale closure issues:
+  ```js
+  const submittingRef = useRef(false)
+  const handleConfirm = async () => {
+    if (submittingRef.current) return
+    submittingRef.current = true
+    try { await onConfirm() } finally { submittingRef.current = false }
+  }
+  ```
+  Check this ref before the `status` state check so rapid double-clicks are caught even within the same React render cycle.
 - Ensure the `disabled` prop on the button element matches the `submittingRef` state, not only the `status` state, so keyboard activation is also blocked.
 - Add a subtle progress label below the action details when status is `loading` and more than 2 seconds have elapsed: "Applying changes..." (use a `useEffect` with a 2-second timer).
 - Add unit tests: render card in pending state, fire two rapid click events on the confirm button, assert `fetch` is called exactly once.
 
 **Acceptance Criteria:**
 - Rapid double-click on Confirm issues exactly one HTTP request (verified by test)
+- The guard uses `useRef` (not state) to avoid stale closure issues
 - Keyboard activation (Enter) on the confirm button is also blocked while loading
 - "Applying changes..." label appears after 2 seconds of `loading` state
+- Given two rapid clicks within 50ms of each other, When the component processes them, Then `onConfirm` is called exactly once (use a `jest.fn()` mock with a 100ms artificial delay)
 - At least 2 unit tests covering double-submit protection
 - Existing 387 backend tests still pass
 
 ---
 
 ### Story P8.3: MessageRenderer — DOMPurify is applied but inline style injection is not blocked
+
+> **Requires P8.0** (Jest+RTL setup) to be complete before writing unit tests in this story.
 
 **Problem:** `MessageRenderer.js` applies `DOMPurify.sanitize(markdownFn(message.content))` at line 301. This is correct for preventing script injection. However:
 
@@ -102,6 +160,8 @@ Part 8 targets structural correctness and resilience of the shared frontend laye
 ---
 
 ### Story P8.4: ErrorBoundary — narrow scope to individual tool panels, not the whole app
+
+> **Requires P8.0** (Jest+RTL setup) to be complete before writing unit tests in this story.
 
 **Problem:** `ErrorBoundary.js` currently wraps the entire React tree (or a large portion of it). The render fallback is `minHeight: '100vh'` with a full-page "Something went wrong" overlay. This means:
 
@@ -129,6 +189,8 @@ Part 8 targets structural correctness and resilience of the shared frontend laye
 
 ### Story P8.5: ToolPage — `useToolData` does not surface error state; `loading` prop unused in ToolPage header
 
+> **Requires P8.0** (Jest+RTL setup) to be complete before writing unit tests in this story.
+
 **Problem:** `ToolPage.js` exposes a `useToolData` hook (lines 194–206) that returns `{ data, loading, error, reload }`. However:
 
 1. `ToolPage` component itself accepts a `loading` prop (line 8) and passes it to the RefreshCw spinner but does NOT render a skeleton or loading indicator in the content area — the `children` are rendered regardless.
@@ -154,6 +216,8 @@ Part 8 targets structural correctness and resilience of the shared frontend laye
 
 ### Story P8.6: api.js — 401 race condition with concurrent requests
 
+> **Requires P8.0** (Jest+RTL setup) to be complete before writing unit tests in this story.
+
 **Problem:** `apiFetch` in `api.js` (lines 26–47) handles 401 by calling `refreshAccessToken`, then retrying the original request. However:
 
 1. If two concurrent requests both receive 401 (e.g. after a token expiry during the initial page load burst), both will call `refreshAccessToken` simultaneously. This can cause a "refresh race" — two simultaneous refresh calls to `POST /api/auth/refresh`, of which only one will succeed (the other gets 401 back from the refresh endpoint because the refresh token was already consumed). The second concurrent refresh attempt then calls `clearAuthSession()` and redirects to login.
@@ -176,6 +240,8 @@ Part 8 targets structural correctness and resilience of the shared frontend laye
 
 ### Story P8.7: Theme consistency — tool panels bypass ThemeContext via hardcoded CSS variable names
 
+> **Requires P8.0** (Jest+RTL setup) to be complete before writing unit tests in this story.
+
 **Problem:** `ToolPage.js` uses CSS variable references in the format `var(--tool-hex-<value>)` (e.g. `var(--tool-hex-1a1a1a)`, `var(--tool-hex-f5f5f5)`) rather than using `isDark` from `useTheme()`. These variable names are literal hex-colour stand-ins, not semantic theme tokens. If `ThemeContext` switches to a new colour scheme (e.g. a high-contrast mode), the tool panels will not respond. Meanwhile, `FeeCollection.js` uses CSS variables named `var(--c-bg)`, `var(--c-text)`, `var(--c-border)` — which ARE semantic. This split convention means tools look inconsistent and the theme switch does not apply uniformly.
 
 **Scope:**
@@ -197,24 +263,44 @@ Part 8 targets structural correctness and resilience of the shared frontend laye
 
 ### Story P8.8: Sidebar active state — URL-direct navigation does not highlight active tool
 
+> **Requires P8.0** (Jest+RTL setup) to be complete before writing unit tests in this story.
+
 **Problem:** `Layout.js` manages `activeTool` as React state (initialized to `null`, line 72). The tool is set by calling `setActiveTool(toolId)` from the sidebar click handler or from a `CustomEvent('eduflow-navigate')`. However:
 
-1. There is no URL-based routing (`react-router-dom` is not used). The URL does not change when a tool is selected (the app is a single page at `/`). This means a browser back-button press cannot navigate between tools.
+1. There is no URL-based tool routing. The URL does not change when a tool is selected. This means a browser back-button press cannot navigate between tools.
 2. Deep-linking to a tool is impossible: if a user is sent a link to a specific tool, the sidebar will not highlight the tool and the tool panel will not open — `activeTool` will be `null` after page load.
 3. The `customEvent` handler in `Layout.js` (line 119) sets `activeTool` to `e.detail` (the tool ID) but the sidebar `activeTool` prop is only compared as a string match — if the navigate event arrives before the sidebar has mounted, it is silently dropped.
 
+> **Architecture note:** `react-router-dom 7.5.1` is already installed in this project. Do NOT use `window.location.hash` — it conflicts with React Router's history management. Use React Router v7 primitives exclusively.
+
 **Scope:**
-- Add URL-hash-based routing: when the user selects a tool, set `window.location.hash = toolId`. On page load, read `window.location.hash` to initialise `activeTool`.
-- Add a `hashchange` event listener in `Layout.js` to keep `activeTool` in sync with hash changes (back/forward navigation).
-- Update the `Sidebar` to derive the active item from the hash as a fallback when `activeTool` prop is `null`.
-- Add a unit test: simulate `window.location.hash = '#fee-collection'` on mount — assert `activeTool` is set to `'fee-collection'`.
-- Add a unit test: programmatic back navigation (hash change) — assert `activeTool` updates correctly.
+- Use React Router v7's `useSearchParams()` hook to store the active tool in the URL query string:
+  - On tool selection: `setSearchParams({ tool: toolId })`
+  - On mount and on param changes: read `searchParams.get('tool')` to restore the active tool
+- Replace ALL `window.location.hash` usage in this story with `useSearchParams()` / `setSearchParams()`
+- Update `Layout.js` to use `useSearchParams()` for `activeTool` persistence instead of plain React state
+- Update the `Sidebar` to derive the active item from `searchParams.get('tool')` rather than a `CustomEvent`
+- Remove any `hashchange` event listener — use React Router's navigation instead
+- Add a unit test: render `Layout` wrapped in a `MemoryRouter` with `initialEntries={['/?tool=attendance']}` — assert `activeTool` is set to `'attendance'` without user interaction.
+- Add a unit test: simulate tool selection that triggers `setSearchParams` — assert browser history is updated via React Router's `navigate` function (verifying back-button support).
 
 **Acceptance Criteria:**
-- Selecting a tool updates `window.location.hash`
-- Page reload with hash set correctly opens the tool and highlights it in sidebar
-- Browser back/forward navigation between tools works via hash change
-- At least 2 unit tests for hash-based routing
+
+Given URL `/app?tool=attendance`,
+When the page loads,
+Then the AttendanceRecorder panel is active without user interaction.
+
+Given the user selects a different tool,
+When the selection is handled,
+Then `setSearchParams({ tool: toolId })` is called (not `window.location.hash`).
+
+Given the user navigates browser back,
+When the back button is clicked,
+Then the previously active tool is restored via browser history (React Router handles this automatically via `useSearchParams`).
+
+- `useSearchParams()` replaces all state-only `activeTool` management in `Layout.js`
+- Zero `window.location.hash` references in the story implementation
+- At least 2 unit tests using `MemoryRouter` for URL-based routing
 - Existing 387 backend tests still pass
 
 ---
@@ -223,9 +309,10 @@ Part 8 targets structural correctness and resilience of the shared frontend laye
 
 | FR ID | Story | Description |
 |-------|-------|-------------|
+| FR-P8.0 | P8.0 | Jest + RTL unit test infrastructure established (prerequisite for all P8 stories) |
 | FR-P8.1 | P8.1 | SSE stream reconnects with exponential back-off on network drop |
 | FR-P8.2 | P8.1 | Thinking state cleared on stream error before retry |
-| FR-P8.3 | P8.2 | Confirm button double-submit protected via `useRef` guard |
+| FR-P8.3 | P8.2 | Confirm button double-submit protected via `useRef` guard (not state) |
 | FR-P8.4 | P8.2 | Progress label shown after 2s of loading state |
 | FR-P8.5 | P8.3 | DOMPurify called with `FORBID_ATTR` for style and event handlers |
 | FR-P8.6 | P8.4 | ErrorBoundary accepts `name` prop; fallback is contained card |
@@ -234,7 +321,7 @@ Part 8 targets structural correctness and resilience of the shared frontend laye
 | FR-P8.9 | P8.5 | ErrorCard component available for all tool panels |
 | FR-P8.10 | P8.6 | Concurrent 401 refresh de-duplicated via singleton promise |
 | FR-P8.11 | P8.7 | Semantic CSS variables replace `var(--tool-hex-...)` and `var(--c-...)` |
-| FR-P8.12 | P8.8 | URL hash routing for tool navigation |
+| FR-P8.12 | P8.8 | URL search-param routing (`?tool=`) via React Router v7 `useSearchParams` |
 
 ---
 
@@ -251,17 +338,18 @@ Part 8 targets structural correctness and resilience of the shared frontend laye
 
 ## Implementation Order
 
-1. **P8.3** (DOMPurify hardening) — pure additive, no UI changes, ship first
-2. **P8.2** (double-submit guard) — isolated to ConfirmActionCard, low regression risk
-3. **P8.6** (401 race condition) — foundational API client fix before other API work
-4. **P8.4** (ErrorBoundary scope) — enables isolated tool crash recovery; prerequisite for P8.5
-5. **P8.5** (ToolPage loading/error states) — uses ErrorBoundary from P8.4
-6. **P8.1** (SSE reconnect) — needs P8.5 error states to display retry progress
-7. **P8.7** (theme consistency) — CSS-only refactor, low risk, can run in parallel with P8.6
-8. **P8.8** (sidebar URL routing) — last; touches Layout, Sidebar, and requires stable tool panel rendering from P8.4/P8.5
+1. **P8.0** (Jest+RTL infrastructure) — MUST be first; all other P8 stories require unit tests
+2. **P8.3** (DOMPurify hardening) — pure additive, no UI changes, ship second
+3. **P8.2** (double-submit guard) — isolated to ConfirmActionCard, low regression risk
+4. **P8.6** (401 race condition) — foundational API client fix before other API work
+5. **P8.4** (ErrorBoundary scope) — enables isolated tool crash recovery; prerequisite for P8.5
+6. **P8.5** (ToolPage loading/error states) — uses ErrorBoundary from P8.4
+7. **P8.1** (SSE reconnect) — needs P8.5 error states to display retry progress
+8. **P8.7** (theme consistency) — CSS-only refactor, low risk, can run in parallel with P8.6
+9. **P8.8** (sidebar URL routing via React Router v7 `useSearchParams`) — last; touches Layout, Sidebar, and requires stable tool panel rendering from P8.4/P8.5
 
 ---
 
 ## Epic P8: Retrospective
 
-A retrospective entry for Part 8 to be completed after all P8.1–P8.8 stories are done.
+A retrospective entry for Part 8 to be completed after all P8.0–P8.8 stories are done.

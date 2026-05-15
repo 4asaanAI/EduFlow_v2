@@ -12,6 +12,18 @@ test_baseline: '387 backend tests passing, 0 skipped'
 
 # EduFlow Quality Sweep — Part 10: Accountant Role Vertical
 
+## Pattern References
+
+Part 9 (Principal) is the pattern-setter for `require_access(role, sub_category)` usage across all role verticals. Before implementing any role gate in this part, read Part 9's implementation to ensure consistency.
+
+---
+
+## Scope Decision (answer before starting this epic)
+
+**Payroll scope decision (answer before starting this epic):** Migration 009 created `salary_structures` and `salary_disbursements` collections. These have zero HTTP routes. Decision required: (A) Implement basic payroll routes in Part 10 — read salary_structure, record disbursement, view payroll history. (B) Formally descope payroll — add a comment to migration 009 noting it is reserved for future Phase 2. If (B), add a placeholder story P10.X: 'Document payroll scope decision and add in-code TODO note to migration 009.' Story P10.8 below implements Option A. If the team chooses Option B before starting, replace P10.8 with the placeholder story.
+
+---
+
 ## Context
 
 Part 10 targets the completeness and correctness of the accountant (admin + sub_category=accounts) role vertical. The accountant is the primary operator for fee management, discount applications, payment corrections, expense tracking, and financial exports. Auditing `FeeCollection.js`, `FeeSync.js`, `backend/routes/fees.py`, `backend/routes/operations.py`, `backend/routes/exports.py`, and migration `009_add_payroll.py` reveals: the fee workflows are largely implemented but have notable gaps — the discount application has no approval gate for large amounts, the export is missing `receipt_number` and `corrected` flag fields, the expense workflow is accessible to ALL admin sub-categories (not gated to accountant/owner), and the payroll data model from migration 009 has zero route coverage.
@@ -21,6 +33,22 @@ Part 10 targets the completeness and correctness of the accountant (admin + sub_
 ---
 
 ## Epic P10: Accountant Role Vertical
+
+### Story P10.0: Audit all frontend API calls against backend routes for 404s
+
+**Problem:** The receipt endpoint is a known 404 (GET /api/fees/transactions/{id}/receipt). There may be additional frontend-called URLs with no matching backend route that cause silent failures for accountants.
+
+**Scope:**
+- Extract all `fetch()` and `axios` URL patterns from `frontend/src/lib/api.js` and match each against the OpenAPI schema served at `/api/docs`.
+- Generate a report listing any frontend-called URLs with no matching backend route.
+- If additional 404s beyond the receipt endpoint are found, they become hotfixes before Part 10 stories start.
+
+**Acceptance Criteria:**
+- Given a script that extracts all `fetch()` and `axios` URL patterns from `frontend/src/lib/api.js`, When each URL is matched against the OpenAPI schema from `/api/docs`, Then a report lists any frontend-called URLs with no matching backend route
+- The receipt endpoint is the only known 404 — if others are found, they become hotfixes before Part 10 starts
+- Report is committed to `_bmad-output/` for traceability
+
+---
 
 ### Story P10.1: FeeCollection.js — partial payment support and receipt generation audit
 
@@ -45,6 +73,9 @@ Part 10 targets the completeness and correctness of the accountant (admin + sub_
 - At least 3 new backend tests (partial payment, receipt fields, receipt 404 for non-existent id)
 - Existing 387 tests still pass
 
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/fees.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
+
 ---
 
 ### Story P10.2: FeeSync.js — idempotency, external system context, and conflict resolution audit
@@ -67,6 +98,9 @@ Part 10 targets the completeness and correctness of the accountant (admin + sub_
 - Conflict display labels "EduFlow" vs "External System (Fee Software)" clearly
 - At least 2 new backend tests
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/fees.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -91,6 +125,9 @@ Part 10 targets the completeness and correctness of the accountant (admin + sub_
 - Fee Structures read-only tab visible in `FeeCollection.js` for accountant
 - At least 3 new backend tests
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/fees.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -120,6 +157,9 @@ Part 10 targets the completeness and correctness of the accountant (admin + sub_
 - At least 4 new backend tests
 - Existing 387 tests still pass
 
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/fees.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
+
 ---
 
 ### Story P10.5: Fee transaction correction — original record preservation and role restriction
@@ -146,6 +186,9 @@ Part 10 targets the completeness and correctness of the accountant (admin + sub_
 - At least 4 new backend tests
 - Existing 387 tests still pass
 
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/fees.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
+
 ---
 
 ### Story P10.6: Expense tracking — restrict to accountant/owner; add category budget
@@ -170,6 +213,9 @@ Part 10 targets the completeness and correctness of the accountant (admin + sub_
 - `GET /api/ops/expenses/summary` returns monthly and YTD totals by category
 - At least 4 new backend tests
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/operations.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -197,6 +243,9 @@ Part 10 targets the completeness and correctness of the accountant (admin + sub_
 - `fee_period` filter parameter works
 - At least 3 new backend tests
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/exports.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -228,6 +277,9 @@ Part 10 targets the completeness and correctness of the accountant (admin + sub_
 - `payroll.router` registered in main app
 - Existing 387 tests still pass
 
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/payroll.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
+
 ---
 
 ## FR Coverage Map
@@ -257,6 +309,7 @@ Part 10 targets the completeness and correctness of the accountant (admin + sub_
 | NFR-P10.2 | Financial control | No discount exceeding the configured threshold may be applied without owner approval |
 | NFR-P10.3 | Audit | Every fee correction must preserve the original record snapshot; correction audit log must include `reason` and `corrected_by` |
 | NFR-P10.4 | Security | Expense, payroll, and fee-structure write endpoints must return 403 for all non-owner, non-accountant admin sub-categories |
+| NFR-P10.5 | Test Data | All test data creation must use `tests/backend/factories.py` (created in pre-Part-9 infrastructure story). Do NOT create one-off inline test dicts — they fragment into inconsistent formats across parts. |
 
 ---
 

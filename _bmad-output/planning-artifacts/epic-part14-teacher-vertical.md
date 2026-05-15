@@ -13,6 +13,27 @@ gating_dependency: 'Story 7-39 — teacher/student auth_users must be activated 
 
 # EduFlow Quality Sweep — Part 14: Teacher Role Vertical
 
+## Gating Dependency: Story 7-39
+
+Story 7-39 activates teacher and student logins by:
+- Creating auth_users records for teachers (seeded in seed.py with 7 accounts)
+- Exposing the login flow to teacher/student roles (currently owner-only)
+- Setting force_password_change=false on initial seeded accounts
+
+Parts 9-13 (role verticals for admin sub-categories) are NOT gated — they use the
+existing admin login flow. Only teacher and student login is gated.
+
+Go/no-go checkpoint: Story 7-39 is done when a teacher account can successfully call
+POST /api/auth/login and receive a JWT with role=teacher.
+
+## Parallel-Path Contingency for Gated Work
+
+While gated on 7-39, the following can be built and tested in Part 14 using MOCK AUTHENTICATION (hardcoded test JWTs with role=teacher):
+- P14.2 assignment ownership check — does not require actual teacher login
+- P14.3 marks ceiling validation — does not require actual teacher login
+- P14.5 student class scope — does not require actual teacher login
+The gated parts (P14.1 teacher login flow, P14.4 teacher attendance self-view) require 7-39.
+
 ## Context
 
 Part 14 activates and hardens the Teacher role end-to-end. Teacher auth_users ARE seeded in `seed.py` (7 teacher accounts with sub-categories: class_teacher x2, subject_teacher x2, coordinator, hod, kg_incharge). However, the PRD explicitly defers teacher login to Phase 2, designating this as Story 7-39. Until that story is closed, teacher login is latent — credentials exist, but the platform has not been validated for teacher daily use.
@@ -95,19 +116,25 @@ The codebase already has significant teacher-facing logic: attendance bulk-mark 
 
 **Acceptance Criteria (Given/When/Then):**
 
-**AC1:** Given teacher T1 creates assignment A1, when teacher T2 (different user) sends `PATCH /api/academics/assignments/A1`, then the response is HTTP 403.
+**AC1:** Given teacher A creates assignment X, when teacher B (different staff_id, same school) calls `PATCH /api/academics/assignments/{X_id}`, then 403 is returned.
 
-**AC2:** Given teacher T1 creates assignment A1, when teacher T2 sends `DELETE /api/academics/assignments/A1`, then the response is HTTP 403.
+**AC2:** Given teacher A creates assignment X, when teacher A calls `PATCH /api/academics/assignments/{X_id}`, then 200 is returned.
 
-**AC3:** Given teacher T1 is scoped to class C1, when they create an assignment with `class_id=C2` (foreign class), then the response is HTTP 403.
+Fix: add `if assignment['created_by'] != user['id'] and user['role'] != 'owner': raise HTTPException(403, 'Not your assignment')`
 
-**AC4:** Given an admin user, when they send `PATCH` or `DELETE` on any assignment regardless of `teacher_id`, then the operation succeeds.
+**AC3:** Given teacher T1 creates assignment A1, when teacher T2 sends `DELETE /api/academics/assignments/A1`, then the response is HTTP 403.
 
-**AC5:** Existing 387 tests still pass.
+**AC4:** Given teacher T1 is scoped to class C1, when they create an assignment with `class_id=C2` (foreign class), then the response is HTTP 403.
+
+**AC5:** Given an admin user, when they send `PATCH` or `DELETE` on any assignment regardless of `teacher_id`, then the operation succeeds.
+
+**AC6:** Existing 387 tests still pass.
 
 ---
 
 ### Story P14.4: Exam results — validation, marks ceiling, and publication gate
+
+> **Cross-Part Dependency:** The `is_published` field on exam results is required by P15.4 (Student role — students see results only when published). P14.4 must be implemented before P15 starts or P15.4 must use a feature flag.
 
 **Problem:** `POST /api/academics/results/bulk` has no validation that `marks_obtained <= max_marks`. A teacher can submit `{"marks_obtained": 150, "max_marks": 100}` and the record is saved without error. There is no concept of "published" results — as soon as a result is entered, it is visible to students via `GET /api/academics/results`. There is also no check that the teacher is entering results only for their own class students.
 

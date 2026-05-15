@@ -163,6 +163,7 @@ development_status:
   # Trigger: 4 consecutive clean pilot weeks on The Aaryans
   # ─────────────────────────────────────────────
   epic-7: in-progress
+  # ⚠️  7-39 is the GATE for Parts 14 and 15 — teacher/student login must ship before those parts start
   7-39-teacher-student-login-activation: backlog
   7-40-whatsapp-twilio-integration-fee-reminders-attendance-alerts: backlog
   7-41-advanced-reporting-recharts-dashboard: done
@@ -195,6 +196,7 @@ development_status:
   # 🔥 HOTFIXES — Ship before Part 5 (active production failures)
   # Party-mode review 2026-05-15: P0 security + broken UX
   # ─────────────────────────────────────────────
+  epic-hotfix: in-progress
   hotfix-1-file-serve-unauthenticated: backlog
   hotfix-2-fee-collection-receipt-404: backlog
   hotfix-3-leave-approval-rbac-any-admin: backlog
@@ -357,7 +359,7 @@ development_status:
   p16-1-cross-role-e2e-workflow: backlog
   p16-2-jwt-expiry-mid-session: backlog
   p16-3-concurrent-write-idempotency: backlog
-  p16-4-missing-mongodb-indexes: backlog
+  p16-4-missing-mongodb-indexes: superseded  # ← moved to pre-p9-1-missing-mongodb-indexes (runs before Part 9)
   p16-5-sms-integration-tests: backlog
   p16-6-deployment-runbook: backlog
   epic-p16-retrospective: optional

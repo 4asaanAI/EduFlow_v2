@@ -41,6 +41,9 @@ Part 9 targets the completeness and correctness of the principal (admin + sub_ca
 - All four data fetches happen in parallel (single `Promise.all` on mount)
 - No regressions in existing substitution plan display
 
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/attendance.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
+
 ---
 
 ### Story P9.2: Leave approval — staff notification and audit trail
@@ -56,7 +59,7 @@ Part 9 targets the completeness and correctness of the principal (admin + sub_ca
   - Message: `"Your leave request from {start_date} to {end_date} has been {status}"`.
   - `user_id`: the `user_id` field from the leave request document.
 - Add an audit log write to `db.audit_logs` for the leave approval/rejection action.
-- Change `require_role("owner", "admin")` in the `update_leave` endpoint to `require_owner_or_principal` to tighten the authority.
+- Change `require_role("owner", "admin")` in the `update_leave` endpoint to `require_access("owner", "admin", sub_category="principal")` to tighten the authority. **Decision: leave approval is restricted to `owner` and `admin` with `sub_category=principal`. Accountants, receptionists, maintenance, and IT-tech cannot approve leaves. This decision should be documented in a code comment at the endpoint.**
 - Add a comment near `operations.py` line 120 noting the second (fully-featured) leave-decision endpoint so future developers do not add a third.
 - Add backend unit tests: approve a leave → notification created; reject a leave → notification created; accountant role → 403.
 
@@ -64,9 +67,12 @@ Part 9 targets the completeness and correctness of the principal (admin + sub_ca
 - `PATCH /api/staff/leaves/{id}` with `approved` status inserts a notification document for the staff's `user_id`
 - `PATCH /api/staff/leaves/{id}` with `rejected` status inserts a notification document
 - Audit log entry created for every leave decision
-- Accountant sub-category admin receives 403 from the leave approval endpoint
+- Accountant sub-category admin receives 403 from the leave approval endpoint (`require_access("owner", "admin", sub_category="principal")` is the exact guard used)
 - At least 3 new backend unit tests
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/staff.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -94,6 +100,9 @@ Part 9 targets the completeness and correctness of the principal (admin + sub_ca
 - At least 4 new backend tests (2 per endpoint)
 - Existing 387 tests still pass
 
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/attendance.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
+
 ---
 
 ### Story P9.4: Announcement moderation — principal broadcast to all students/parents
@@ -105,7 +114,7 @@ Part 9 targets the completeness and correctness of the principal (admin + sub_ca
 3. There is no frontend panel for announcement composition in the principal vertical — the principal can only VIEW pending announcements in the current `PrincipalDailyOps.js` (badge link), not compose new ones.
 
 **Scope:**
-- Fix `POST /api/ops/announcements`: if the poster is owner or principal (`_is_owner_or_principal(user)`), set `status = "approved"` directly regardless of audience. Existing tests cover the approval gate for other roles.
+- Fix `POST /api/ops/announcements`: change the `pending_approval` gate from `if user['role'] != 'owner'` to `if user['role'] not in ('owner', 'admin') or (user['role'] == 'admin' and user.get('sub_category') not in ('principal',))`. Principal-role admins broadcast directly; teacher/student-audience posts still require moderation.
 - Add an "Compose Announcement" panel to `PrincipalDailyOps.js` (or a dedicated sub-page): form fields for title, body, audience (all/teachers/students/parents), and a "Post" button that calls `POST /api/ops/announcements`.
 - The compose panel should show a confirmation preview before posting (repurpose the `ConfirmActionCard` pattern).
 - Add backend tests: principal posts to `student` audience → status is `approved`, not `pending_approval`; teacher posts to `student` audience → status is `pending_approval`.
@@ -117,6 +126,9 @@ Part 9 targets the completeness and correctness of the principal (admin + sub_ca
 - Frontend compose panel accessible from the principal daily ops view
 - At least 2 new backend tests
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/operations.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -139,6 +151,9 @@ Part 9 targets the completeness and correctness of the principal (admin + sub_ca
 - At least 3 new backend tests
 - Existing 387 tests still pass
 
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/academics.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
+
 ---
 
 ### Story P9.6: Report access — fee-collection-summary blocked for principal
@@ -159,6 +174,9 @@ Part 9 targets the completeness and correctness of the principal (admin + sub_ca
 - At least 2 new backend tests
 - Existing 387 tests still pass
 
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/reports.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
+
 ---
 
 ### Story P9.7: Staff management — class assignment and leave balance adjustment
@@ -170,18 +188,29 @@ Part 9 targets the completeness and correctness of the principal (admin + sub_ca
 3. `PATCH /api/staff/{id}` allows updating `role` and `sub_category` fields for a principal — this is an over-permission: a principal should NOT be able to change another admin's `role` to `owner` or `sub_category`.
 
 **Scope:**
-- In `PATCH /api/staff/{id}`, add a guard: if the requesting user is principal (not owner), disallow updates to `role` and `sub_category` fields. Only owner can change roles.
+- In `PATCH /api/staff/{id}`, the fix is NOT to change the role gate — it is to add field-level write restrictions in the request handler:
+  ```python
+  OWNER_ONLY_FIELDS = {'role', 'sub_category', 'salary', 'is_active'}
+  if user['role'] != 'owner':
+      for field in OWNER_ONLY_FIELDS:
+          body_data.pop(field, None)
+  ```
+  Owner-only fields are silently stripped (not 403'd) for non-owner callers so existing clients do not break with an error.
 - Add `GET /api/staff/{staff_id}/leave-balance` endpoint: returns `{casual_leave_balance, medical_leave_balance, earned_leave_balance}` for the given staff. Auth: `require_owner_or_principal`.
 - Add a "Leave Balance" adjustment section to the principal's staff management view: a form to increment/decrement leave balance fields. Calls `PATCH /api/staff/{id}` with only the leave balance fields.
-- Add backend tests: principal updates `role` field → 403; owner updates `role` field → 200; principal updates `casual_leave_balance` → 200.
+- Add backend tests: principal sends PATCH with `{'role': 'owner'}` in body → staff record's role is NOT changed (field is silently stripped); owner sends PATCH with `{'role': 'teacher'}` → role IS updated (200); principal updates `casual_leave_balance` → 200. Add a regression test matrix verifying every `(role, field)` combination that should be blocked is verified as blocked.
 
 **Acceptance Criteria:**
-- Principal cannot update `role` or `sub_category` of any staff member (403)
-- Owner can update `role` of any staff member (200)
+- Given a principal sends `PATCH /api/staff/{id}` with `{'role': 'owner'}` in the body, When the request is processed, Then the staff record's role is NOT changed (the field is silently stripped)
+- Owner can update `role` and `sub_category` of any staff member (200, change applied)
 - `GET /api/staff/{id}/leave-balance` endpoint returns leave balance fields
 - Leave balance adjustment UI accessible in the principal vertical
+- Given a regression test matrix, When it runs, Then every combination of (role, field) that should be blocked is verified as blocked
 - At least 3 new backend tests
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/staff.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -207,6 +236,9 @@ Part 9 targets the completeness and correctness of the principal (admin + sub_ca
 - Teacher cannot resolve an incident (403)
 - At least 3 new backend tests
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/operations.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -237,6 +269,7 @@ Part 9 targets the completeness and correctness of the principal (admin + sub_ca
 | NFR-P9.2 | Audit | Every leave decision (approve/reject) must produce an audit log entry in `db.audit_logs` |
 | NFR-P9.3 | Security | Principal role must not be able to escalate its own permissions (no role/sub_category self-update, no updating other admins to owner) |
 | NFR-P9.4 | Correctness | All attendance and report endpoints for principal must be scoped to `schoolId` (no cross-school data leakage) |
+| NFR-P9.5 | Test Data | All test data creation must use `tests/backend/factories.py` (created in pre-Part-9 infrastructure story). Do NOT create one-off inline test dicts — they fragment into inconsistent formats across parts. |
 
 ---
 

@@ -12,6 +12,12 @@ test_baseline: '387 backend tests passing, 0 skipped'
 
 # EduFlow Quality Sweep — Part 11: Receptionist Role Vertical
 
+## Pattern References
+
+Part 9 (Principal) is the pattern-setter for `require_access(role, sub_category)` usage across all role verticals. Before implementing any role gate in this part, read Part 9's implementation to ensure consistency.
+
+---
+
 ## Context
 
 Part 11 targets the Receptionist sub_category admin vertical end-to-end. The receptionist is the school's front-desk role: they log enquiries, welcome visitors, issue bonafide certificates, file complaints on behalf of parents, and handle support queries. Several backend routes already accept `sub_category=receptionist` in their allow-lists, but the vertical has never been audited holistically — RBAC gaps, missing stage-transition logic, duplicate visitor detection, and SMS-to-parent access are all unverified.
@@ -55,6 +61,9 @@ Part 11 targets the Receptionist sub_category admin vertical end-to-end. The rec
 - At least 4 unit tests covering the state machine
 - Existing 387 tests still pass
 
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/operations.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
+
 ---
 
 ### Story P11.2: Visitor duplicate detection and missed-checkout alerts
@@ -77,6 +86,9 @@ Part 11 targets the Receptionist sub_category admin vertical end-to-end. The rec
 - `GET /api/ops/visitors/pending-checkout` returns only unchecked-out visitors older than stale_hours
 - At least 4 unit tests
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/operations.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -104,6 +116,9 @@ Part 11 targets the Receptionist sub_category admin vertical end-to-end. The rec
 - At least 5 unit tests
 - Existing 387 tests still pass
 
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/queries.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
+
 ---
 
 ### Story P11.4: Certificate issuance approval gate for bonafide
@@ -112,23 +127,28 @@ Part 11 targets the Receptionist sub_category admin vertical end-to-end. The rec
 
 **Scope:**
 - Add a `cert_type` to approval routing table in `operations.py`:
-  - `bonafide`: can be issued directly by `principal` admin or `owner`; a `receptionist` admin must submit for principal approval (`status: "pending_approval"`)
-  - `tc` (transfer certificate): requires principal or owner regardless of requester role
+  - `bonafide`: can be issued directly (no approval queue) by `owner` and `admin` with `sub_category=principal`. All other roles (receptionist, accountant) must go through an approval queue reviewed by admin+principal or owner.
+  - `tc` (transfer certificate): requires `owner` or `admin+principal` regardless of requester role
   - `character`, `merit`: same as bonafide
 - Update `POST /api/ops/certificates`:
-  - If requester is `receptionist` admin and cert_type requires approval, set `status: "pending_approval"` (not `"generated"`)
-  - If requester is `principal` admin or `owner`, set `status: "generated"` immediately
+  - If requester is `receptionist` admin (or any admin without `sub_category=principal`) and cert_type requires approval, set `status: "pending_approval"` (not `"generated"`)
+  - If requester is `admin+principal` or `owner`, set `status: "generated"` immediately
 - Add `PATCH /api/ops/certificates/{cert_id}/approve` — requires `require_owner_or_principal`, moves status from `pending_approval` to `generated`
 - Add `PATCH /api/ops/certificates/{cert_id}/reject` — requires `require_owner_or_principal`, moves status to `rejected` with mandatory `reason`
-- Add unit tests: receptionist creates → pending, principal creates → generated, owner approves pending, principal rejects with reason
+- Add unit tests: receptionist creates → pending, principal creates → generated, accountant creates → pending, owner approves pending, principal rejects with reason
 
 **Acceptance Criteria:**
 - Receptionist POST /api/ops/certificates returns `status: "pending_approval"` for bonafide/tc/character
+- Accountant POST /api/ops/certificates returns `status: "pending_approval"` (accountant is not in the bypass set)
 - Principal POST /api/ops/certificates returns `status: "generated"`
+- Owner POST /api/ops/certificates returns `status: "generated"`
 - PATCH approve succeeds for principal/owner; returns 403 for receptionist
 - PATCH reject requires `reason`; returns 400 if missing
 - At least 5 unit tests
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/operations.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -151,6 +171,9 @@ Part 11 targets the Receptionist sub_category admin vertical end-to-end. The rec
 - `TOOLS_BY_ROLE["admin"]` still works; receptionist sub_category tools are additive
 - At least 3 unit tests
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/search.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -182,6 +205,9 @@ Part 11 targets the Receptionist sub_category admin vertical end-to-end. The rec
 - At least 4 unit tests
 - Existing 387 tests still pass
 
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/operations.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
+
 ---
 
 ### Story P11.7: Custom form usage for enquiry intake
@@ -205,6 +231,9 @@ Part 11 targets the Receptionist sub_category admin vertical end-to-end. The rec
 - At least 4 unit tests
 - Existing 387 tests still pass
 
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/settings.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
+
 ---
 
 ### Story P11.8: Verify SMS-to-parent access for receptionist role
@@ -225,6 +254,9 @@ Part 11 targets the Receptionist sub_category admin vertical end-to-end. The rec
 - If any SMS endpoint should be blocked for receptionist, it has a documented 403 test and code comment
 - At least 3 unit tests
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/sms.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -256,6 +288,9 @@ Each story must add at minimum the number of unit/integration tests stated in it
 
 **NFR11.4 — RBAC Documentation:**
 Every route that has a deliberate RBAC decision (e.g., receptionist sees all queries, receptionist SMS access) must have a `# rbac: intentional — <reason>` comment in the route handler. This prevents future regressions from well-meaning hardening sweeps.
+
+**NFR11.5 — Test Data:**
+All test data creation must use `tests/backend/factories.py` (created in pre-Part-9 infrastructure story). Do NOT create one-off inline test dicts — they fragment into inconsistent formats across parts.
 
 ---
 

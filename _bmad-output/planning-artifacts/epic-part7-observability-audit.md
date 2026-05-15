@@ -16,6 +16,8 @@ test_baseline: '387 backend tests passing, 0 skipped'
 
 Part 7 addresses gaps in audit logging coverage, structured logging quality, health endpoint completeness, error response consistency, and slow query observability. Items were identified by auditing `backend/routes/audit.py`, `backend/logging_config.py`, `backend/server.py`, and performing a cross-route grep for unaudited write operations.
 
+> **Cross-part dependency note:** P7.2a creates `write_audit()`. P6.5 in Part 6 should use this function. If Part 6 is implemented before Part 7, P6.5 must inline the audit write with a TODO comment: `# TODO Part 7: replace with write_audit() once audit_service.py exists`
+
 Key discoveries from the code audit:
 
 1. **Audit log is not branch-scoped**: `GET /api/audit-log` uses `scoped_filter(query, get_school_id())` which applies only `schoolId`. In a multi-branch school, a principal at branch A can see audit records for branch B. There is no `branch_id` filter. The audit log collection lacks branch isolation.
@@ -96,16 +98,16 @@ Key discoveries from the code audit:
 | FR | Story | Notes |
 |----|-------|-------|
 | FR7.1 | P7.1 | branch-scoped audit query |
-| FR7.2 | P7.2 | settings audit |
-| FR7.3 | P7.3 | activities audit |
-| FR7.4 | P7.1 + P7.2 + P7.3 | branch_id in all audit writes |
+| FR7.2 | P7.2a + P7.2b | settings audit: helper created in P7.2a, settings.py + route migration in P7.2b |
+| FR7.3 | P7.3 | activities audit (depends on P7.2a) |
+| FR7.4 | P7.1 + P7.2b + P7.3 | branch_id in all audit writes |
 | FR7.5 | P7.4 | S3 health check |
 | FR7.6 | P7.5 | failed login logging |
 | FR7.7 | P7.6 | error shape consistency |
 | FR7.8 | P7.1 | audit record pagination |
 | NFR7.1 | P7.7 | log level fixes |
 | NFR7.2 | P7.8 | slow query detection |
-| AR7.1 | P7.2 + P7.3 | shared audit write helper |
+| AR7.1 | P7.2a + P7.3 | shared audit write helper (P7.2a), used by P7.2b and P7.3 |
 | NFR7.4 | P7.8 | audit log indexes |
 
 ---
@@ -113,6 +115,8 @@ Key discoveries from the code audit:
 ## Epic P7: Observability + Audit Hardening
 
 ### Story P7.1: Branch-scoped audit log + pagination for record history
+
+> **Cross-part dependency note:** P7.2a creates `write_audit()`. P6.5 in Part 6 should use this function. If Part 6 is implemented before Part 7, P6.5 must inline the audit write with a TODO comment: `# TODO Part 7: replace with write_audit() once audit_service.py exists`
 
 **Problem:** `GET /api/audit-log` is scoped to `schoolId` only. In a multi-branch school, a principal at branch A can see all audit records from all branches, including branch B's fee transactions and staff changes. Additionally, `GET /api/audit-log/{record_id}` fetches `.to_list(200)` with no pagination — a high-traffic entity (attendance corrections) could return 200 large documents, causing slow responses and memory spikes.
 
@@ -156,9 +160,11 @@ Then `limit` is capped at 100.
 
 ---
 
-### Story P7.2: Settings changes audit coverage + shared audit write helper
+### Story P7.2a: Create shared audit write helper (`audit_service.py`)
 
-**Problem:** `backend/routes/settings.py` writes school-level configuration: fee heads, academic years, school info, discount types. None of these writes have `db.audit_logs.insert_one()` calls. An accountant could create/delete a fee head or change a fee structure, and there would be no audit trail. This is a compliance violation for any regulated school. Additionally, audit `insert_one()` calls across 6 routes (`staff.py`, `fees.py`, `attendance.py`, `academics.py`, `issues.py`, `operations.py`) each build their own dict with varying schemas — no shared helper ensures consistent fields.
+**Problem:** Audit `insert_one()` calls across 6 routes (`staff.py`, `fees.py`, `attendance.py`, `academics.py`, `issues.py`, `operations.py`) each build their own dict with varying schemas — no shared helper ensures consistent fields including `branch_id`. A canonical utility is needed before any new audit coverage can be added reliably.
+
+> **Dependency note:** P7.2a MUST complete before P7.3 (activities audit) and before P7.2b (route migration), since both use `write_audit()`. Cross-part note: P6.5 in Part 6 should also use this function once available.
 
 **Scope:**
 - Create `backend/services/audit_service.py`:
@@ -171,21 +177,57 @@ Then `limit` is capped at 100.
   ) -> bool:
       """Write audit log entry. Returns True on success, False on failure (fail-open)."""
   ```
-  - Builds consistent document with all required fields including `branch_id`
-  - Wraps in try/except, logs warning on failure, returns False
+  - Builds consistent document with all required fields including `branch_id` and `created_at`
+  - Wraps in try/except, logs `logger.warning` on failure, returns False
   - Never raises (fail-open like `notification_service.py`)
-- Add audit calls in `settings.py` for:
+- Add 5 unit tests for `write_audit()` in `tests/backend/unit/test_audit_service.py`:
+  - Happy path writes correct document with all required fields
+  - DB error returns False (no exception propagated)
+  - DB error emits `logger.warning`
+  - `branch_id` defaults to `""` when not supplied
+  - `created_at` field is present in the written document
+
+**Acceptance Criteria:**
+
+Given `write_audit()` is called with all required params and MongoDB succeeds,
+When the document is inserted,
+Then it has: `action`, `entity_id`, `collection`, `changed_by`, `changed_by_role`, `schoolId`, `branch_id`, `changes`, `reason`, `created_at` fields.
+
+Given `write_audit()` is called and MongoDB raises an exception,
+When the exception is caught,
+Then the function returns False, `logger.warning` is emitted, and no exception propagates to the caller.
+
+Given `write_audit()` is called without `branch_id`,
+When the document is built,
+Then `branch_id` defaults to `""` (not missing/absent).
+
+- `backend/services/audit_service.py` created with `write_audit()` function
+- 5 unit tests in `tests/backend/unit/test_audit_service.py`
+- All 387 existing tests still pass
+
+---
+
+### Story P7.2b: Migrate all inline audit writes + add settings.py audit coverage
+
+**Problem:** `backend/routes/settings.py` writes school-level configuration: fee heads, academic years, school info, discount types. None of these writes have `db.audit_logs.insert_one()` calls. An accountant could create/delete a fee head or change a fee structure with no audit trail — a compliance violation. Additionally, existing inline `db.audit_logs.insert_one()` calls across all route files use inconsistent field schemas and must be migrated to `write_audit()` for schema consistency.
+
+> **Depends on:** P7.2a (`write_audit()` must exist before this story starts).
+
+**Scope:**
+- Add audit calls in `settings.py` using `write_audit()` for ALL write endpoints:
   - `POST /api/settings/fee-heads` → action `fee_head_create`
   - `PUT /api/settings/fee-heads/{id}` → action `fee_head_update`
   - `DELETE /api/settings/fee-heads/{id}` → action `fee_head_delete`
   - `POST /api/settings/academic-years` → action `academic_year_create`
   - `PATCH /api/settings` → action `school_settings_update`
-  - And any other settings write endpoints identified in `settings.py`
-- Optionally migrate existing `db.audit_logs.insert_one()` calls to use `write_audit()` (non-breaking refactor)
-- Add unit tests for `write_audit()`:
-  - Happy path writes correct document
-  - DB error returns False, warning logged, no exception
-  - All required fields present
+  - Scan `settings.py` for any additional write endpoints and add coverage
+- **Mandatory migration** (not optional): scan ALL files in `backend/routes/` and `backend/ai/` for existing `db.audit_logs.insert_one()` calls and replace them with `write_audit()`. This is a required non-breaking refactor to enforce schema consistency.
+- All migrated and new audit records must include `branch_id` from the current user context
+- Add unit tests verifying settings audit calls:
+  - Fee head create emits audit record with correct action and branch_id
+  - Fee head delete emits audit record
+  - Settings update emits audit record
+  - Existing migrated calls preserve original field values
 
 **Acceptance Criteria:**
 
@@ -193,17 +235,17 @@ Given a fee head is created via `POST /api/settings/fee-heads`,
 When the request completes,
 Then `db.audit_logs` contains a record with `action="fee_head_create"`, `collection="fee_heads"`, `changed_by=<user_id>`, and `branch_id=<user_branch>`.
 
-Given `write_audit()` is called and MongoDB raises an exception,
-When the exception is caught,
-Then the function returns False, `logger.warning` is emitted, and the parent action is unaffected.
+Given a fee head is deleted via `DELETE /api/settings/fee-heads/{id}`,
+When the request completes,
+Then `db.audit_logs` contains a record with `action="fee_head_delete"`.
 
-Given an audit document written via `write_audit()`,
-When retrieved from the database,
-Then it has: `action`, `entity_id`, `collection`, `changed_by`, `changed_by_role`, `schoolId`, `branch_id`, `changes`, `reason`, `created_at` fields.
+Given any existing inline `db.audit_logs.insert_one()` call in `backend/routes/` or `backend/ai/`,
+When the migration is complete,
+Then zero `audit_logs.insert_one` calls remain in those files (all replaced by `write_audit()`).
 
-- `audit_service.py` created
-- At least 6 audit calls added to `settings.py`
-- 5+ unit tests in `tests/backend/unit/test_audit_service.py`
+- At least 6 audit calls added or verified in `settings.py`
+- All existing inline audit writes in `backend/routes/` and `backend/ai/` migrated to `write_audit()`
+- 4+ unit tests in `tests/backend/unit/test_settings_audit.py`
 - All 387 existing tests still pass
 
 ---
@@ -219,7 +261,7 @@ Then it has: `action`, `entity_id`, `collection`, `changed_by`, `changed_by_role
   - `PUT /api/activities/events/{id}` → `write_audit(action="event_update", ...)`
   - `DELETE /api/activities/events/{id}` → `write_audit(action="event_delete", ...)`
   - Any other write endpoints found in `activities.py`
-- All audit calls must use `write_audit()` from `audit_service.py` (P7.2)
+- All audit calls must use `write_audit()` from `audit_service.py` (P7.2a)
 - All audit records must include `branch_id`
 - Add unit tests verifying audit records exist after each operation
 
@@ -307,6 +349,8 @@ Then `response["overall"] == "down"`.
   - Successful login → info logged, no password field in log output
   - Log record does not contain the literal password string
 
+> **Before writing tests:** Verify that `logging_config.py`'s JSON formatter includes `extra` dict keys in the rendered output. If it doesn't, add that capability first (the structured field assertions below depend on it).
+
 **Acceptance Criteria:**
 
 Given a POST to `/api/auth/login` with a wrong password,
@@ -317,13 +361,17 @@ Given a POST to `/api/auth/login` with an unknown username,
 When the handler processes the request,
 Then `logger.warning` is called with `reason="user_not_found"`.
 
+Given a failed login attempt captured with `caplog` at INFO level,
+When the log records are inspected,
+Then:
+- `caplog.records[-1].msg == 'login_failed'`
+- `caplog.records[-1].__dict__` contains keys: `event`, `username`, `reason`, `ip`
+- `caplog.text` does NOT contain the literal password string
+- The log record's `extra` dict contains all four fields (verify `logging_config.py` renders `extra` keys)
+
 Given a successful login,
 When the log record is checked,
 Then no field contains the literal password value.
-
-Given any login failure log,
-When the log record is serialized,
-Then it includes `username`, `event`, `reason`, and `ip` fields.
 
 - `auth.py` logs failures at warning level
 - Structured extra fields used (not f-string)
@@ -416,32 +464,40 @@ Then a comment block documents the log level policy (debug/info/warning/error/cr
 
 **Problem:** `logging_config.py` tracks request-level `duration_ms` via middleware, but there is no per-operation MongoDB timing. A slow `find()` with an unindexed query (e.g. `fee_transactions.find({"student_id": x}).sort("created_at", -1)` without an index on `student_id`) can make a request slow without any diagnostic signal pointing to the database. Additionally, `audit_logs` indexes are unverified — the collection may be doing collection scans for every audit log query.
 
+> **Architecture note:** Motor's `find()` returns a cursor (not a coroutine), so timing `find()` measures cursor construction (nanoseconds), NOT I/O. A `TimedCollection` wrapper that intercepts `find()` would measure the wrong thing. Instead, use a `TimedQuery` context manager that wraps the terminal awaitable operation (`.to_list()`, `.to_list(n)`, etc.).
+
 **Scope:**
 - Add `SLOW_QUERY_MS = int(os.environ.get("SLOW_QUERY_MS", "100"))` to `database.py`
-- Create a `TimedCollection` wrapper (or AsyncIOMotorCollection proxy) that:
-  - Wraps `find`, `find_one`, `count_documents`, `insert_one`, `update_one`, `update_many`, `delete_one`, `delete_many`
-  - Records wall-clock time for each operation using `time.time()`
-  - If elapsed > `SLOW_QUERY_MS`: logs `logger.debug("slow_query", extra={"collection": name, "op": op, "duration_ms": ms, "slow_query": True, "request_id": request_id_ctx.get()})`
-  - Normal-speed operations: no log (not even debug — to avoid log volume explosion)
-- Integrate into `ScopedDatabase` / `get_db()` (the wrapper applies when `LOG_LEVEL=DEBUG`)
+- Implement a `TimedQuery` async context manager in `database.py`:
+  ```python
+  async with TimedQuery(collection_name="students", operation="find") as tq:
+      results = await db.students.find(query).to_list(500)
+  # tq.elapsed_ms is logged if > SLOW_QUERY_MS
+  ```
+  - The context manager wraps the `.to_list()` call (or any awaitable terminal operation), not cursor construction
+  - Uses `time.time()` to measure wall-clock elapsed time for the body of the `async with` block
+  - If elapsed > `SLOW_QUERY_MS`: logs `logger.debug("slow_query", extra={"collection": collection_name, "operation": operation, "elapsed_ms": elapsed_ms, "query_shape": query_shape, "request_id": request_id_ctx.get()})`
+  - If elapsed <= `SLOW_QUERY_MS`: no log emitted (not even debug — to avoid log volume explosion)
+  - `query_shape` is optional metadata (collection + operation name, not the full filter dict)
+- Wrap slow-path queries in the codebase as examples (at least fee_transactions list and audit_log list)
 - Verify `database.py` creates indexes for `audit_logs`:
   - `(schoolId, created_at)` descending
   - `(schoolId, entity_id, created_at)`
   - Add if missing; add to migration script
-- Add unit tests:
-  - Query taking > 100 ms triggers slow query log
-  - Query taking < 100 ms does not log
+- Add unit tests using `time.time` mock:
+  - Query body taking > SLOW_QUERY_MS (monkeypatched to 50ms) triggers DEBUG log with fields: `collection`, `operation`, `elapsed_ms`, `query_shape`
+  - Query body taking < SLOW_QUERY_MS does not emit any slow query log
   - `SLOW_QUERY_MS` env var configures the threshold
 
 **Acceptance Criteria:**
 
-Given `SLOW_QUERY_MS=50` is set and a collection operation takes 75 ms,
-When the operation completes,
-Then a debug log with `slow_query: True` and `duration_ms >= 75` is emitted.
+Given `SLOW_QUERY_MS=50` is set (via monkeypatch) and a query that takes > 50ms,
+When the `async with TimedQuery(...)` block completes,
+Then a DEBUG log line is emitted with fields: `collection`, `operation`, `elapsed_ms`, `query_shape`.
 
-Given `SLOW_QUERY_MS=50` is set and a collection operation takes 30 ms,
-When the operation completes,
-Then no slow query log is emitted.
+Given `SLOW_QUERY_MS=50` is set and a query that takes < 50ms,
+When the `async with TimedQuery(...)` block completes,
+Then NO slow query log is emitted.
 
 Given `database.py` `_create_indexes()` is called,
 When it runs,
@@ -451,7 +507,8 @@ Given `request_id_ctx` has a value in the current context,
 When a slow query log is emitted,
 Then the log record's `request_id` field matches the context value.
 
-- `TimedCollection` or equivalent proxy implemented
+- `TimedQuery` context manager implemented in `database.py`
+- Context manager wraps `.to_list()` or equivalent terminal awaitable, NOT cursor construction
 - `audit_logs` indexes verified/added
 - 3+ unit tests in `tests/backend/unit/test_slow_query.py`
 - Slow query logging is DEBUG level (does not appear in INFO output)
@@ -461,14 +518,15 @@ Then the log record's `request_id` field matches the context value.
 
 ## Implementation Order Recommendation
 
-1. **P7.2** — `audit_service.py` shared helper (foundational for P7.3, P7.2 settings coverage)
+1. **P7.2a** — `audit_service.py` shared helper (foundational for P7.2b and P7.3; must be first)
 2. **P7.6** — Error shape consistency (2-line fix, high value, zero risk)
 3. **P7.7** — Log level audit in tokens.py (low-risk quality fix)
 4. **P7.5** — Failed login logging (security event — implement early)
 5. **P7.1** — Branch-scoped audit + pagination (depends on no other story)
-6. **P7.3** — Activities audit (depends on P7.2 `audit_service.py`)
-7. **P7.4** — Health endpoint S3/SMS checks (infrastructure, can run in parallel)
-8. **P7.8** — Slow query detection + index audit (most complex, last)
+6. **P7.2b** — Route migration + settings.py audit coverage (depends on P7.2a)
+7. **P7.3** — Activities audit (depends on P7.2a `audit_service.py`)
+8. **P7.4** — Health endpoint S3/SMS checks (infrastructure, can run in parallel)
+9. **P7.8** — Slow query detection + index audit (most complex, last)
 
 ---
 

@@ -13,6 +13,20 @@ gating_dependency: 'Story 7-39 — student auth_users must be activated; DPDP pa
 
 # EduFlow Quality Sweep — Part 15: Student Role Vertical
 
+## Dual Gating Dependencies
+
+Gate 1 — Story 7-39: Student login requires teacher/student auth activation.
+Same condition as Part 14.
+
+Gate 2 — DPDP parental consent: The Digital Personal Data Protection Act 2023
+(India) requires verifiable parental consent for data access by minors (under 18).
+DPDP consent is NOT currently modeled anywhere in EduFlow. Part 15 Story P15.1
+creates the consent model. Until P15.1 ships, student data access via the student
+login role is a compliance risk.
+
+Parts 14-15 should be planned together — teacher activation (7-39) likely precedes
+student activation by one sprint to allow DPDP consent infrastructure to be in place.
+
 ## Context
 
 Part 15 activates and hardens the Student role end-to-end. Student auth_users ARE seeded in `seed.py` — every student gets a `username = admission_number` and `password_hash = bcrypt("student@123")`. The student role is partially implemented: `GET /api/students/me`, `GET /api/fees/my`, scope_resolver returns `type="self_only"` with `student_id` populated, and `StudentTools.js` has 10 components. However, the student role has never been tested in production, carries specific DPDP (India's Data Protection and Digital Personal Data) obligations for minors, and has several gaps that would make the experience unusable or insecure.
@@ -66,6 +80,12 @@ Part 15 activates and hardens the Student role end-to-end. Student auth_users AR
 - Seed data: create consent records for all students created in `seed.py` (development mode only — `SKIP_CONSENT_CHECK=true` in `.env.test`)
 
 **Acceptance Criteria (Given/When/Then):**
+
+**Required consent record fields:** The consent record must include: student_id, guardian_id (who gave consent), consent_date, consent_version (for future re-consent on policy changes), consent_channel ('in_person' | 'sms' | 'app').
+
+**AC-pre-1:** Without an active consent record for a student, `GET /api/students/me` returns 403 with detail "Parental consent required".
+
+**AC-pre-2:** The consent record is created by an admin (owner/principal) after obtaining physical consent — students cannot create their own consent records.
 
 **AC1:** Given student S1 has no DPDP consent record, when they call `GET /api/students/me`, then the response is HTTP 403 "Parental consent required to access student data".
 
@@ -160,6 +180,8 @@ Part 15 activates and hardens the Student role end-to-end. Student auth_users AR
 ---
 
 ### Story P15.6: Assignment and result student views — class-scope and publish gate
+
+> **Cross-Part Dependency:** P15.4 (student result visibility) depends on P14.6 (publish gate) from Part 14. P15 implementation should begin only after P14.6 is complete, regardless of the 7-39 gate status. Note: P14.6 in the implementation order refers to the publish gate story (Story P14.4 in this epic series).
 
 **Problem:** `GET /api/academics/assignments` for students correctly queries by `class_id` (resolved from the student's record). `GET /api/academics/results` for students filters to `student_id=own["id"]`. However: (1) The assignment view in `HomeworkViewer` (`StudentTools.js`) does not display `due_date` proximity warnings (i.e. "due in 2 days"). (2) Results are visible to students regardless of `is_published` because the publish gate from Story P14.4 does not exist yet — Part 15 depends on Part 14 closing this. (3) The practice test component (`PracticeTest.js`) calls the AI chat endpoint without any rate-limiting specific to the student role, meaning a student could exhaust the AI token budget.
 

@@ -22,6 +22,25 @@ Part 16 is the capstone quality sweep. By this point all role verticals (owner, 
 
 ## Epic P16: Platform Integration
 
+### Story P16.0: Establish performance baseline with realistic seed data
+
+**Problem:** There is no performance regression baseline. Without one, it is impossible to tell whether a new index or query change improved or degraded query times.
+
+**Scope:**
+- Create a seed script that creates 2000 students, 100 staff, 10000 attendance records, 5000 fee_transactions
+- Add `tests/performance/test_query_baseline.py` using `pytest-benchmark` or a simple `time.time()` wrapper
+- Not a full load test — just a regression baseline
+
+**Acceptance Criteria (Given/When/Then):**
+
+**AC1:** Given a seed script that creates 2000 students, 100 staff, 10000 attendance records, 5000 fee_transactions, when `pytest tests/performance/test_query_baseline.py` runs against this seeded DB, then P95 query time for `GET /api/students`, `GET /api/attendance/student`, `GET /api/fees/transactions` is under 500ms each.
+
+**AC2:** The baseline test is reproducible and can be run on demand against staging without affecting production.
+
+**AC3:** Existing 387 tests still pass.
+
+---
+
 ### Story P16.1: Cross-role E2E workflow — attendance recorded by teacher, seen by principal, exported by accountant
 
 **Problem:** No integration test validates the end-to-end data flow from a write by one role through to read by another role. The attendance flow specifically is: teacher marks bulk attendance → SSE event is emitted to `attendance` channel → principal can see today's attendance → owner can export attendance CSV. This chain involves `POST /api/attendance/student/bulk`, `GET /api/attendance/student/today/{class_id}`, `GET /api/attendance/export`, and the SSE stream. If scoping or tenant isolation breaks at any step, the downstream readers may see wrong data or nothing.
@@ -107,6 +126,8 @@ Part 16 is the capstone quality sweep. By this point all role verticals (owner, 
 
 ### Story P16.4: Scale test preparation — missing indexes and query audit
 
+> ⚠️ This story has been MOVED to pre-Part-9 infrastructure (see sprint-status.yaml pre-p9-1-missing-mongodb-indexes). The index migration runs BEFORE the role vertical sprints (Parts 9-13) to avoid collection scans under load. The full specification remains here for reference, but implementation happens before Part 9.
+
 **Problem:** The current `_create_indexes()` in `database.py` creates indexes for the most common collection queries but is missing several that will become bottlenecks at scale:
 - `exam_results`: no index on `(exam_id, student_id)` — bulk result entry and cross-student queries do full collection scans
 - `audit_logs`: no index on `(entity_type, entity_id)` — audit history queries scan the full collection
@@ -118,11 +139,15 @@ Expected peak usage: 500 concurrent users (400 students + 50 teachers + 50 admin
 
 **Scope:**
 - Add to `_create_indexes()` in `database.py`:
-  - `exam_results`: compound index `(exam_id, student_id, subject_id)`, unique=True, sparse=True
-  - `audit_logs`: compound index `(entity_type, entity_id, created_at)`
-  - `lesson_plans`: compound index `(teacher_id, created_at)`
+  - `exam_results`: index on `(student_id, exam_id)` — supports `GET /api/academics/results?student_id=X` and the exam results export
+  - `audit_logs`: index on `(actor_id, created_at)` — supports `GET /api/audit-log?actor_id=X&from=Y`
+  - `lesson_plans`: index on `(class_id, week)` — supports `GET /api/academics/lesson-plans?class_id=X&week=Y`
+  - `sms_logs`: TTL index on `created_at` (expireAfterSeconds=7776000, i.e. 90 days) — prevents unbounded collection growth
+  - `notifications`: compound index on `(user_id, read, created_at)` — supports `GET /api/notifications?read=false` sorted by date
+  - `exam_results` (additional): compound index `(exam_id, student_id, subject_id)`, unique=True, sparse=True
+  - `audit_logs` (additional): compound index `(entity_type, entity_id, created_at)`
+  - `lesson_plans` (additional): compound index `(teacher_id, created_at)`
   - `ptm_notes`: index `teacher_id`, index `student_id`
-  - `sms_logs`: index `sent_at`
   - `question_papers`: compound index `(teacher_id, created_at)`
   - `curriculum_progress`: compound index `(class_id, subject_id, topic)`, unique=True
 - Add migration `020_add_performance_indexes.py` that calls `create_index` for all new indexes (idempotent)
@@ -219,7 +244,7 @@ The Playwright configuration (`playwright.config.js`) exists but the test count 
   - Test `POST /api/sms/send-bulk` with 5 recipients: verify 5 log entries created
   - Test `GET /api/sms/config-status` with credentials set vs. not set
 - Add rate limit to `POST /api/sms/send-bulk`: max 500 recipients per request; raise HTTP 400 if `len(recipients) > 500`
-- Add TTL index to `sms_logs`: 90-day expiry on `sent_at` field; add to `_create_indexes()` and migration `020`
+- Add TTL index to `sms_logs`: `expireAfterSeconds=7776000` (90 days) on `created_at` field; add to `_create_indexes()` and migration `020`. At 2000 students with 5 SMS messages/year each, without TTL the collection grows by 10,000 records/year indefinitely.
 - Add `schoolId` to all `sms_logs` inserts for multi-tenant hygiene
 - Verify `send-parent-message` student/guardian lookup uses school-scoped DB (already goes through `db.students`, which is a `ScopedCollection` — add a test asserting this)
 

@@ -12,6 +12,11 @@ test_baseline: '387 backend tests passing, 0 skipped'
 
 # EduFlow Quality Sweep — Part 6: File Storage + Uploads
 
+> ⚠️ HOTFIX ALERT: P6.1 (unauthenticated file serve) is a P0 security regression that
+> should be shipped as hotfix-1-file-serve-unauthenticated BEFORE this Part 6 sprint.
+> A separate hotfix story exists in sprint-status.yaml. P6.1 in this epic covers the
+> full S3-presigned-URL implementation; the hotfix covers the minimal auth guard.
+
 ## Context
 
 Part 6 addresses correctness, security, and data lifecycle gaps in the file upload and storage layer. Items were identified by auditing `backend/services/s3_storage.py`, `backend/routes/upload.py`, `backend/routes/chat_upload.py`, `backend/routes/image_gen.py`, and `backend/routes/students.py`.
@@ -54,7 +59,7 @@ Key discoveries from the code audit:
 
 **FR6.5 — chat_upload.py file type blocklist**: `upload_chat_file()` MUST reject files with extensions in a defined blocklist: `{".exe", ".bat", ".sh", ".cmd", ".com", ".ps1", ".vbs", ".jar", ".msi", ".dll"}`. Return 415 for blocked types with a clear error message.
 
-**FR6.6 — Image generation optional persistence**: `POST /api/image-gen/certificate` and `POST /api/image-gen/id-cards` MUST accept an optional `persist: true` body flag. When `persist` is true, the generated PDF bytes MUST be stored in S3 using `upload_bytes()` and a record inserted in `file_uploads`. The response must include the `file_url` in addition to (or instead of) streaming the bytes.
+**FR6.6 — Image generation optional persistence**: `POST /api/image-gen/certificate` and `POST /api/image-gen/id-cards` MUST accept an optional `persist: true` body flag. When `persist=true`, the generated PDF bytes MUST be stored in S3 using `upload_bytes()` and a record inserted in `file_uploads`; the response MUST be JSON `{"success": true, "file_url": "...", "expires_in": 3600}` — binary is NOT streamed. When `persist=false` (default), the response is the binary PDF/image stream as today — no change.
 
 **FR6.7 — Delete endpoint schoolId guard**: `DELETE /api/uploads/{file_id}` MUST scope the lookup to `scoped_filter({"id": file_id}, get_school_id())`. A file belonging to a different school (by schoolId) must return 404.
 
@@ -157,7 +162,11 @@ Then the presigned URL is served and the original S3 key is not exposed in the r
 
 ### Story P6.2: School-scoped S3 key namespace + schoolId in file_uploads
 
+**Requires:** P6.1 complete first. This story extends `serve_file()` from P6.1 — do NOT rewrite the auth check added in P6.1. Extend it. The P6.1 auth check must be in place before this story is implemented.
+
 **Problem:** `build_upload_key(file_id, original_filename)` returns `uploads/{file_id}/{filename}` with no school prefix. If the same S3 bucket is shared across deployments (e.g. staging, dev, or a future multi-school setup), files are commingled in the same namespace. Additionally, `upload.py` `upload_file()` does not call `add_school_id()`, so `file_uploads` documents lack `schoolId`. This means all `db.file_uploads` queries run without tenant scoping — the collection is not multi-tenant-safe.
+
+**S3 key naming convention:** The canonical convention documented in CLAUDE.md is: `{school_id}/uploads/{file_id}/{safe_filename}`. This is the authoritative format going forward.
 
 **Scope:**
 - Modify `build_upload_key(file_id, original_filename, school_id: str = "")`:
@@ -192,8 +201,12 @@ Given an owner/admin calls `GET /api/uploads`,
 When the query runs,
 Then only records with the current `schoolId` are returned.
 
+Given an existing file record without `school_id` prefix in its S3 key,
+When migration 020 runs,
+Then the record's `schoolId` field is backfilled (from `SCHOOL_ID` env var) but the S3 key stored in the DB is preserved as-is (do not move the S3 object, only add `schoolId` to the DB document).
+
 - Migration 020 created and added to `run_all.py`
-- `build_upload_key` signature updated
+- `build_upload_key` signature updated with canonical convention `{school_id}/uploads/{file_id}/{safe_filename}`
 - All upload/list/delete endpoints scoped
 - Unit tests pass
 - All 387 existing tests still pass
@@ -209,6 +222,7 @@ Then only records with the current `schoolId` are returned.
   - Inspect the first 512 bytes of the file content
   - Check against known magic byte signatures for common formats: PDF (`%PDF`), PNG (`\x89PNG`), JPEG (`\xff\xd8\xff`), ZIP (`PK\x03\x04`), DOCX/XLSX (also ZIP-based)
   - If detected MIME does not match the extension's expected MIME family, raise `HTTPException(415, "File content does not match declared extension")`
+  - Add code comment: `# DOCX/XLSX are ZIP-based; we accept valid ZIP for these extensions`
 - Add `MAX_SIZE_BY_ROLE: dict[str, int]` in `upload.py`:
   ```python
   MAX_SIZE_BY_ROLE = {
@@ -225,6 +239,8 @@ Then only records with the current `schoolId` are returned.
   - EXE renamed to `.docx` → 415
   - 15 MB file from teacher → rejected
   - 15 MB file from admin → accepted
+
+> ⚠️ Known limitation: `.docx` and `.xlsx` files use ZIP format (PK magic bytes). A valid `.zip` renamed to `.docx` will pass the MIME check because both are valid ZIP files. This is an accepted limitation — document it in code with a comment: `# DOCX/XLSX are ZIP-based; we accept valid ZIP for these extensions`
 
 **Acceptance Criteria:**
 
@@ -244,8 +260,13 @@ Given a file with correct PDF magic bytes and `.pdf` extension,
 When uploaded by any allowed role,
 Then it is stored successfully.
 
+Given a `.docx` file that is actually a ZIP bomb (valid ZIP magic bytes, >100 MB uncompressed),
+When uploaded,
+Then the size check (from `MAX_SIZE_BY_ROLE`) rejects it before any extraction is attempted.
+
 - `detect_mime_from_bytes` implemented without external dependency (magic byte inspection only)
 - `MAX_SIZE_BY_ROLE` replaces `MAX_SIZE_BYTES`
+- DOCX/ZIP limitation comment present in code
 - At least 5 unit tests in `tests/backend/unit/test_upload_routes.py`
 - All 387 existing tests still pass
 
@@ -291,28 +312,34 @@ Then the module docstring clearly states files are not persisted.
 
 **Problem:** `POST /api/image-gen/certificate` and `POST /api/image-gen/id-cards` return PDF bytes directly in the HTTP response with `Content-Disposition: attachment`. The generated PDF is never stored. If the user does not receive the download (network failure, accidental close), there is no way to retrieve the document. Additionally, there is no audit trail for certificate generation — a teacher could generate a fraudulent certificate and there would be no record in `audit_logs`. The Gemini image API call has no retry on transient failure; a 500 from Gemini silently falls back to a plain background without logging the failure level.
 
+**Response contract (unambiguous):**
+
+- When `persist=true` in the request body: the response is JSON `{"success": true, "file_url": "...", "expires_in": 3600}`. The binary PDF/image is NOT streamed in the response body.
+- When `persist=false` (default): the response is a binary PDF/image stream exactly as today. No change to the existing behavior.
+
 **Scope:**
 - Add optional `persist: bool = False` field to the request body for both endpoints
 - When `persist=True`:
   - Store the generated PDF bytes in S3 using `upload_bytes()` with `school_id` prefix
   - Insert a record in `db.file_uploads` linked to the student (`linked_table="certificate"` or `"id_card"`, `linked_id=<student_id>`)
-  - Return response with `file_url` in addition to (or instead of) the binary response
+  - Return JSON response: `{"success": true, "file_url": "<presigned_url>", "expires_in": 3600}` — binary is NOT streamed
   - Write an audit log entry: action `certificate_generated` or `id_card_generated`
+- When `persist=False` (default): return binary PDF stream as today — no change
 - When Gemini call fails, log at `logger.warning` level (not silent fallback at debug/info)
 - Add unit tests:
-  - `persist=False` returns binary PDF (no DB write)
-  - `persist=True` returns `file_url` and writes to `file_uploads`
+  - `persist=False` returns binary PDF (no DB write, no `file_url` in response)
+  - `persist=True` returns JSON `{"success": true, "file_url": "..."}` (not binary), writes to `file_uploads`
   - Gemini failure → warning logged, fallback used, response still valid
 
 **Acceptance Criteria:**
 
 Given `POST /api/image-gen/certificate` with `persist=true` and valid student data,
 When the endpoint runs,
-Then a `file_uploads` record is created and `response["file_url"]` is present.
+Then the response is JSON `{"success": true, "file_url": "...", "expires_in": 3600}` and a `file_uploads` record is created. The binary PDF is NOT in the response body.
 
 Given `POST /api/image-gen/certificate` with `persist=false` (default),
 When the endpoint runs,
-Then no `file_uploads` record is created and the response is a binary PDF.
+Then no `file_uploads` record is created and the response is a binary PDF stream (identical to pre-Part-6 behavior).
 
 Given the Gemini API returns a 500 error,
 When `_gemini_image()` catches it,
@@ -323,6 +350,8 @@ When the audit log is checked,
 Then a `certificate_generated` record exists with `changed_by`, `entity_id` (student id), and `schoolId`.
 
 - `persist` flag implemented for both endpoints
+- `persist=true` → JSON response (not binary stream)
+- `persist=false` → binary stream (no change)
 - Audit log written for persisted generations
 - Gemini failure logs at warning level
 - 4+ unit tests

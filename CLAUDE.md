@@ -81,7 +81,7 @@ db.classes.find(scoped_filter({}))  # branch-scope: intentional — cross-branch
 ```bash
 grep -n "scoped_filter(" backend/routes/<new_file>.py
 ```
-Every hit must have a `# branch-scope: intentional` comment or be migrated to `scoped_query()`.
+Every hit must EITHER have a `# branch-scope: intentional — <reason>` comment (approved, do not change) OR be migrated to `scoped_query(branch_id=user.get("branch_id"))`. A hit WITH the comment is a passing result — never convert intentional cross-branch queries.
 
 ### Database
 - All DB ops must be `async`/`await` with Motor — never pymongo in request handlers
@@ -100,6 +100,7 @@ Every hit must have a `# branch-scope: intentional` comment or be migrated to `s
 
 ### Notification utility (canonical — set in Part 5)
 ```python
+# ⚠️  NOT YET CREATED — do not import before Part 5 ships
 # After Part 5 ships, ALL notification writes use:
 from services.notification_service import create_notification
 await create_notification(db=db, user_id=..., title=..., body=...)
@@ -108,7 +109,7 @@ await create_notification(db=db, user_id=..., title=..., body=...)
 
 ### S3 key naming (canonical — set in Part 6)
 ```python
-# All S3 keys must be namespaced by school_id:
+# ⚠️  Convention established in Part 6 — all new uploads after P6.2 ships use:
 key = f"{school_id}/uploads/{file_id}/{safe_filename}"
 # Never: f"uploads/{file_id}/{safe_filename}"  ← no school namespace
 ```
@@ -201,7 +202,8 @@ def test_keepalive_sends_ping(monkeypatch):
 
 ### Shared test factories
 ```python
-# Use tests/backend/factories.py for all test data creation (Part 9+)
+# ⚠️  NOT YET CREATED — do not import before pre-p9 infra story ships
+# After pre-p9-2 ships, use for all test data creation (Parts 9+):
 from tests.backend.factories import make_student, make_staff, make_fee_transaction
 # Do NOT create one-off dicts inline — they fragment into 6 different formats by Part 13
 ```
@@ -238,7 +240,7 @@ tests/backend/
 ├── factories.py       # Shared test data factories (created in Part 9)
 ├── api/               # HTTP integration tests
 ├── unit/              # Unit tests
-└── test_unauthenticated_surface.py  # Enumerates all routes, asserts 401 (created Part 5)
+└── test_unauthenticated_surface.py  # Enumerates all routes, asserts 401 (⚠️ NOT YET — created pre-p9-3)
 
 _bmad-output/
 ├── project-context.md     # 34 critical patterns — load before implementing
@@ -255,7 +257,7 @@ _bmad-output/
 |----------|---------|------|
 | schoolId: env-var vs JWT | **env-var per instance** (Option A) | `parts/multi-tenancy/adr-001` |
 | Audit gate: sync vs fail-open | **fail-open** (logger.warning + proceed) | `parts/multi-tenancy/adr-002` |
-| Branch scoping: auto vs explicit | **explicit** (`scoped_query(branch_id=...)`) | `architecture.md §3` |
+| Branch scoping: auto vs explicit | **explicit** (`scoped_query(branch_id=...)`) | `_bmad-output/parts/multi-tenancy/architecture.md §3` |
 | Auth: one helper vs per-role | **`require_access()` canonical** | `middleware/auth.py` |
 | Notification utility | **`create_notification()` canonical** | set in Part 5 |
 | S3 key namespace | **`{school_id}/uploads/...`** | set in Part 6 |
@@ -265,13 +267,14 @@ _bmad-output/
 
 ## Hotfixes (Ship Before Part 5)
 
-These are active production failures — do NOT wait for their respective sweep parts:
+These are active production failures — do NOT wait for their respective sweep parts.
+Sprint-status keys: `hotfix-1-file-serve-unauthenticated`, `hotfix-2-fee-collection-receipt-404`, `hotfix-3-leave-approval-rbac-any-admin`
 
 | Hotfix | File | Fix |
 |--------|------|-----|
-| `hotfix-1-file-serve-auth` | `backend/routes/upload.py` | Add `Depends(get_current_user)` + schoolId scope to `GET /serve/{filename}` |
-| `hotfix-2-receipt-404` | `frontend/src/components/tools/FeeCollection.js` | Fix `downloadReceipt` URL to match actual backend endpoint |
-| `hotfix-3-leave-approval-rbac` | `backend/routes/staff.py` | Change `PATCH /leaves/{id}` from `require_role("owner","admin")` to `require_access("owner","admin", sub_category=("principal","hr"))` |
+| `hotfix-1-file-serve-unauthenticated` | `backend/routes/upload.py` | `GET /serve/{filename}` has NO auth at all. Add `Depends(get_current_user)` and a `schoolId`-scoped DB lookup. ⚠️ `hotfix-1` = minimal auth guard only. P6.1 (Part 6) adds the full presigned-URL rewrite on top of this guard — do them in order. |
+| `hotfix-2-fee-collection-receipt-404` | `frontend/src/components/tools/FeeCollection.js` | `downloadReceipt` calls `GET /api/fees/transactions/{id}/receipt` which does not exist. Fix the URL to match an actual backend endpoint (e.g. re-use the export endpoint or create a minimal receipt route). |
+| `hotfix-3-leave-approval-rbac-any-admin` | `backend/routes/staff.py` | `PATCH /leaves/{id}` uses `require_role("owner","admin")` allowing ANY admin sub_category to approve leaves. Use `Depends(require_owner_or_principal)` which correctly allows owner OR admin+principal only. ⚠️ Do NOT use `require_access("owner","admin", sub_category="principal")` — `require_access` does NOT bypass the sub_category check for owner, which would lock the owner out. |
 
 ---
 
@@ -326,6 +329,7 @@ CORS_ORIGINS=http://localhost:3000
 ENVIRONMENT=development        # development | staging | production
 AZURE_OPENAI_ENDPOINT=...
 AZURE_OPENAI_KEY=...
+AZURE_OPENAI_DEPLOYMENT=gpt-5.3-chat   # Azure deployment name (default in llm_client.py)
 S3_BUCKET=...
 AWS_REGION=ap-south-1
 ```

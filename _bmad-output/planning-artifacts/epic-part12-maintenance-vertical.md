@@ -12,6 +12,12 @@ test_baseline: '387 backend tests passing, 0 skipped'
 
 # EduFlow Quality Sweep — Part 12: Maintenance Admin Vertical
 
+## Pattern References
+
+Part 9 (Principal) is the pattern-setter for `require_access(role, sub_category)` usage across all role verticals. Before implementing any role gate in this part, read Part 9's implementation to ensure consistency.
+
+---
+
 ## Context
 
 Part 12 targets the Maintenance Admin (`sub_category=maintenance`) vertical end-to-end. The backend routes in `issues.py` are broadly complete for facility requests, maintenance schedule, and vendor management. However, several operational gaps remain: no cost tracking on work orders, missing SLA/priority logic, incomplete lifecycle verification, and frontend coverage that diverges from available backend routes.
@@ -52,6 +58,9 @@ Part 12 targets the Maintenance Admin (`sub_category=maintenance`) vertical end-
 - At least 4 unit tests
 - Existing 387 tests still pass
 
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/issues.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
+
 ---
 
 ### Story P12.2: Recurring maintenance schedule auto-generation
@@ -59,6 +68,7 @@ Part 12 targets the Maintenance Admin (`sub_category=maintenance`) vertical end-
 **Problem:** The maintenance schedule supports `recurrence: weekly | monthly | quarterly | annual` in the backend, but when a recurring entry is marked `done` or `skipped`, no next occurrence is automatically created. A truly recurring preventive maintenance system requires the next scheduled entry to appear when the current one is completed.
 
 **Scope:**
+- Use a `recurrence_rule` string field following simplified iCal RRULE syntax: `FREQ=WEEKLY;BYDAY=MO,WE,FR`. When a scheduled entry is marked complete, the system auto-creates the next occurrence based on the RRULE. The next-occurrence creation is synchronous (not async) for Part 12 — async job queue is Part 16.
 - Update `PATCH /api/issues/maintenance/schedule/{entry_id}` in `issues.py`:
   - When `status` is set to `done` or `skipped` AND `recurrence != "one_time"`:
     - Calculate next `scheduled_date` based on recurrence type:
@@ -66,7 +76,7 @@ Part 12 targets the Maintenance Admin (`sub_category=maintenance`) vertical end-
       - `monthly`: +1 month (same day)
       - `quarterly`: +3 months
       - `annual`: +1 year
-    - Create a new maintenance schedule document with status `"scheduled"` and same `title`, `description`, `category`, `assigned_to`, `vendor_id`, `recurrence`
+    - Create a new maintenance schedule document with status `"scheduled"` and same `title`, `description`, `category`, `assigned_to`, `vendor_id`, `recurrence`, `recurrence_rule`
     - Return `{"next_occurrence": {"id": ..., "scheduled_date": ...}}` in the PATCH response
   - For `one_time` recurrence: no next occurrence created (current behavior)
 - Add `GET /api/issues/maintenance/schedule/upcoming?days=30` endpoint: returns all scheduled entries with `scheduled_date` within next N days and `status == "scheduled"`
@@ -79,6 +89,9 @@ Part 12 targets the Maintenance Admin (`sub_category=maintenance`) vertical end-
 - PATCH response includes `"next_occurrence"` key when a next entry was created (null otherwise)
 - At least 4 unit tests
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/issues.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -104,6 +117,9 @@ Part 12 targets the Maintenance Admin (`sub_category=maintenance`) vertical end-
 - At least 4 unit tests
 - Existing 387 tests still pass
 
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/issues.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
+
 ---
 
 ### Story P12.4: Work order cost tracking
@@ -127,6 +143,9 @@ Part 12 targets the Maintenance Admin (`sub_category=maintenance`) vertical end-
 - Teacher/student PATCH to set cost returns 403
 - At least 4 unit tests
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/issues.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -158,6 +177,9 @@ Part 12 targets the Maintenance Admin (`sub_category=maintenance`) vertical end-
 - At least 4 unit tests
 - Existing 387 tests still pass
 
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/issues.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
+
 ---
 
 ### Story P12.6: Photo attachment backend verification
@@ -181,6 +203,9 @@ Part 12 targets the Maintenance Admin (`sub_category=maintenance`) vertical end-
 - GET returns photos array with all stored URLs
 - At least 4 unit tests
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/issues.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -206,6 +231,9 @@ Part 12 targets the Maintenance Admin (`sub_category=maintenance`) vertical end-
 - Teacher calling escalate returns 403
 - At least 4 unit tests
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/issues.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -236,6 +264,9 @@ The next-occurrence creation on schedule completion must be idempotent if called
 
 **NFR12.4 — Test Coverage:**
 Each story must add at minimum the number of unit/integration tests stated in its Acceptance Criteria. Total new tests for Part 12 must be at least 28. All new tests must pass alongside the 387 baseline.
+
+**NFR12.5 — Test Data:**
+All test data creation must use `tests/backend/factories.py` (created in pre-Part-9 infrastructure story). Do NOT create one-off inline test dicts — they fragment into inconsistent formats across parts.
 
 ---
 

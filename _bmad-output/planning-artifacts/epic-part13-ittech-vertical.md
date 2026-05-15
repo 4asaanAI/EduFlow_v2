@@ -12,6 +12,12 @@ test_baseline: '387 backend tests passing, 0 skipped'
 
 # EduFlow Quality Sweep — Part 13: IT-Tech Admin Vertical
 
+## Pattern References
+
+Part 9 (Principal) is the pattern-setter for `require_access(role, sub_category)` usage across all role verticals. Before implementing any role gate in this part, read Part 9's implementation to ensure consistency.
+
+---
+
 ## Context
 
 Part 13 targets the IT-Tech Admin (`sub_category=it_tech`) vertical end-to-end. The IT-tech role owns tech issue tracking and is the implied system administrator for the school platform. Several critical system-level operations (audit log access, user password reset, AI token budget visibility, import tool access, branch configuration) have inconsistent or undocumented RBAC decisions for this role.
@@ -37,19 +43,22 @@ Part 13 targets the IT-Tech Admin (`sub_category=it_tech`) vertical end-to-end. 
 **Problem:** `POST /api/issues/tech` uses `Depends(require_access("owner", "admin", sub_category="it_tech"))` — the canonical Part 4 pattern. But `GET /api/issues/tech` uses a manual `_is_it(user)` inline check. `PATCH /api/issues/tech/{id}` also uses an inline `_is_it()` check. This inconsistency means future changes to the `require_access` helper would not automatically apply to GET and PATCH, and the intent is not self-documenting.
 
 **Scope:**
-- Migrate `GET /api/issues/tech` authentication from inline `_is_it()` to use `require_access` pattern:
-  - GET should be accessible to: `owner`, `admin` with `sub_category=it_tech`, `admin` with `sub_category=principal` or `sub_category=None` (viewing is intentionally broader than creating)
-  - Document with `# rbac: intentional — principals can view all tech requests` comment
-- Migrate `PATCH /api/issues/tech/{id}` to use the `require_access` pattern for its ownership check
+- Migrate `GET /api/issues/tech` authentication from inline `_is_it()` to use `Depends(require_access('owner', 'admin', sub_category='it_tech'))` — matching the POST endpoint. The GET handler must use the same `require_access` dependency injection pattern, not an inline check.
+  - GET should additionally allow `admin` with `sub_category=principal` (viewing is intentionally broader than creating). Use a second dependency or document this extension with `# rbac: intentional — principals can view all tech requests`.
+- Migrate `PATCH /api/issues/tech/{id}` to use the `require_access` pattern for its ownership check (also use `Depends(require_access(...))`)
 - Add `# branch-scope: intentional` comment to both GET and PATCH to satisfy the Part 4 P4.5 CI rule
-- Add unit tests: it_tech GET returns 200, principal GET returns 200, maintenance admin GET returns 403, it_tech PATCH returns 200, teacher PATCH returns 403
+- Add unit tests: it_tech GET returns 200, principal GET returns 200, maintenance admin GET returns 403, it_tech PATCH returns 200, teacher PATCH returns 403; Given an admin+accountant user, When GET /api/issues/tech is called, Then 403 is returned (not 200)
 
 **Acceptance Criteria:**
-- `GET /api/issues/tech` uses `require_access` or a documented equivalent (not bare inline check)
-- `PATCH /api/issues/tech/{id}` uses consistent auth pattern
+- `GET /api/issues/tech` uses `Depends(require_access('owner', 'admin', sub_category='it_tech'))` — not a bare inline `_is_it()` check
+- `PATCH /api/issues/tech/{id}` uses consistent `require_access`-based auth pattern
 - Both handlers have `# rbac: intentional` comments
-- At least 4 unit tests
+- Given an admin+accountant user, When `GET /api/issues/tech` is called, Then 403 is returned (not 200)
+- At least 4 unit tests (including the accountant 403 case)
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/issues.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -85,6 +94,9 @@ Part 13 targets the IT-Tech Admin (`sub_category=it_tech`) vertical end-to-end. 
 - At least 4 unit tests
 - Existing 387 tests still pass
 
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/health.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
+
 ---
 
 ### Story P13.3: Audit log access — explicit IT-tech decision
@@ -109,6 +121,9 @@ Part 13 targets the IT-Tech Admin (`sub_category=it_tech`) vertical end-to-end. 
 - `# rbac: intentional` comment explains the it_tech scoping decision
 - At least 4 unit tests
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/audit.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -139,6 +154,9 @@ Part 13 targets the IT-Tech Admin (`sub_category=it_tech`) vertical end-to-end. 
 - Teacher calling either endpoint returns 403
 - At least 5 unit tests
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/auth.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -174,6 +192,9 @@ Part 13 targets the IT-Tech Admin (`sub_category=it_tech`) vertical end-to-end. 
 - At least 4 unit tests
 - Existing 387 tests still pass
 
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/settings.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
+
 ---
 
 ### Story P13.6: Import tool RBAC decision and IT-tech access
@@ -200,6 +221,9 @@ Part 13 targets the IT-Tech Admin (`sub_category=it_tech`) vertical end-to-end. 
 - `# rbac: intentional` comment in `import_data.py`
 - At least 4 unit tests
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/import_data.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -231,6 +255,9 @@ Part 13 targets the IT-Tech Admin (`sub_category=it_tech`) vertical end-to-end. 
 - At least 5 unit tests
 - Existing 387 tests still pass
 
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/settings.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
+
 ---
 
 ### Story P13.8: Integration health frontend dashboard for IT-tech
@@ -256,6 +283,9 @@ Part 13 targets the IT-Tech Admin (`sub_category=it_tech`) vertical end-to-end. 
 - Shows top 3 token consumers from admin usage API
 - At least 1 frontend smoke test (render without crash)
 - Existing 387 tests still pass
+
+**Scoped-query audit (mandatory before merge):**
+- Given: `grep -n "scoped_filter(" backend/routes/health.py`, Then: every result either has `# branch-scope: intentional` comment OR is migrated to `scoped_query(branch_id=user.get("branch_id"))`
 
 ---
 
@@ -287,6 +317,9 @@ Part 13 targets the IT-Tech Admin (`sub_category=it_tech`) vertical end-to-end. 
 
 **NFR13.4 — Test Coverage:**
 Each story must add at minimum the number of unit/integration tests stated in its Acceptance Criteria. Total new tests for Part 13 must be at least 35. All new tests must pass alongside the 387 baseline.
+
+**NFR13.5 — Test Data:**
+All test data creation must use `tests/backend/factories.py` (created in pre-Part-9 infrastructure story). Do NOT create one-off inline test dicts — they fragment into inconsistent formats across parts.
 
 ---
 

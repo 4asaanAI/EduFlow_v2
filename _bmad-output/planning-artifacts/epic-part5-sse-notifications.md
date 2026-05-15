@@ -12,6 +12,10 @@ test_baseline: '387 backend tests passing, 0 skipped'
 
 # EduFlow Quality Sweep — Part 5: Notifications + Real-time (SSE)
 
+## Coordination Notes
+
+Parts 5 and 8 ship as a coordinated pair. The SSE keepalive format and reconnect contract established in Part 5 must be stable before the frontend SSE reconnect (Part 8) is implemented. Ship Part 5 completely before starting Part 8.
+
 ## Context
 
 Part 5 addresses correctness, resilience, and observability gaps in the in-app notification system and the SSE (Server-Sent Events) delivery layer. Items were identified by auditing `backend/services/sse.py`, `backend/routes/notifications.py`, `backend/routes/chat.py` (SSE section), and `frontend/src/lib/api.js`.
@@ -81,9 +85,9 @@ Key discoveries from the code audit:
 | FR5.1 | P5.1 | keepalive format fix |
 | FR5.2 | P5.2 | sse.py keepalive loop |
 | FR5.3 | P5.3 | frontend stream error |
-| FR5.4 | P5.4 | shared notification service |
-| FR5.5 | P5.4 | fail-open delivery |
-| FR5.6 | P5.4 | title field standardization |
+| FR5.4 | P5.4a + P5.4b | shared notification service |
+| FR5.5 | P5.4a + P5.4b | fail-open delivery |
+| FR5.6 | P5.4a + P5.4b | title field standardization |
 | FR5.7 | P5.5 | disconnect detection |
 | FR5.8 | P5.6 | pagination meta accuracy |
 | NFR5.1 | P5.1 + P5.2 | keepalive timing |
@@ -94,7 +98,43 @@ Key discoveries from the code audit:
 
 ## Epic P5: Notifications + Real-time (SSE) Hardening
 
-### Story P5.1: Fix SSE keepalive format in chat.py
+### Story P5.0 (FIRST): Resolve _notify() double-definition and establish canonical notification utility
+
+**Problem:** `_notify()` is defined independently in both `backend/routes/operations.py` and `backend/routes/issues.py` with DIFFERENT behavior: `issues.py` has a `if not user_id: return` guard; `operations.py` does not. Python's import order determines which definition is active in any given execution context — this is non-deterministic. Additionally, neither definition has a try/except guard for MongoDB write failures, and neither includes a `title` field in the inserted document.
+
+This story MUST be completed first, before any SSE or keepalive work in Part 5, because the shared utility it creates is a dependency for P5.4a, P5.4b, and P5.7.
+
+**Scope:**
+- Create `backend/services/notification_service.py` with `create_notification(db, user_id, title, body, **kwargs)` as the canonical async function
+- The function MUST have a guard: `if not user_id: log a warning and return` (do not raise)
+- The function MUST wrap `insert_one` in try/except, log at `logger.warning` on error, and not re-raise (fail-open)
+- Remove `def _notify` from both `operations.py` and `issues.py`
+- Migrate all existing call sites in `operations.py` and `issues.py` to `create_notification()`
+- Add 3 unit tests in `tests/backend/unit/test_notification_service.py`
+
+**Acceptance Criteria:**
+
+Given: `grep -r "def _notify" backend/` is run after this story,
+Then: it returns exactly 0 results.
+
+When: `services/notification_service.py` is created,
+Then: it exports `create_notification(db, user_id, title, body, **kwargs)` as the canonical function.
+
+Then: all existing call sites in `operations.py` and `issues.py` are migrated to `create_notification()`.
+
+And: the function has a guard — `if not user_id`, log a warning and return (do not raise).
+
+And: 3 unit tests exist covering: basic create (happy path), no-user_id guard (returns without inserting), DB error is logged not raised.
+
+- `grep -r "def _notify" backend/` returns zero hits
+- `services/notification_service.py` exists with canonical function
+- All call sites migrated
+- 3 unit tests pass
+- All 387 existing tests still pass
+
+---
+
+### Story P5.1 (was P5.1): Fix SSE keepalive format in chat.py
 
 **Problem:** `keepalive_event()` in `chat.py` returns `":keepalive\n\n"` — an SSE comment line (lines starting with `:` are comments in the SSE spec). The `sendMessageStream()` function in `frontend/src/lib/api.js` only processes lines starting with `data: `. SSE comment lines are silently skipped by the buffer-splitting logic. Meanwhile, `ChatInterface.js` contains an explicit handler `event.type === 'keepalive'` that expects a JSON data event. The result: keepalive events sent from the server do NOT reach the frontend handler. The 60 s idle-timeout protection the keepalives were meant to provide is ineffective.
 
@@ -128,24 +168,29 @@ Then the return value starts with `"data: "` and does NOT start with `":"`.
 
 **Problem:** `services/sse.py` defines `KEEPALIVE_SECONDS = 30` but never uses it. The module has no background loop that pings idle channels. SSE connections that are subscribed via `subscribeSSE()` (the non-chat push channel) will be silently dropped by load balancers after 60 s of inactivity. This affects the notification push path used for real-time badge updates.
 
+**Format note:** Keepalive events sent by `services/sse.py` are published as SSE comments (`: keepalive\n\n`). The frontend `sendMessageStream` only parses `data:` prefixed lines and intentionally ignores SSE comments — keepalive comments keep the TCP connection alive without being parsed as data events. The client does not need to handle them; that is the intended behavior. Do NOT send keepalive events as `data:` lines through the pub/sub channel; that would trigger spurious `onEvent` calls.
+
 **Scope:**
 - Add a `keepalive_loop()` async coroutine in `services/sse.py`:
   - Runs forever (until cancelled)
-  - Every `KEEPALIVE_SECONDS` seconds, calls `publish(channel, {"type": "ping"})` for every active channel
+  - Every `KEEPALIVE_SECONDS` seconds, publishes `: keepalive\n\n` (SSE comment, raw string) directly into each active channel's queues
   - Uses `asyncio.sleep(KEEPALIVE_SECONDS)` not a blocking sleep
   - Handles `asyncio.CancelledError` cleanly
 - Start the loop as a background task in `server.py` `startup()` event, store in `app.state.sse_keepalive_task`
 - Cancel the task in `shutdown()` event
-- Add unit tests for `keepalive_loop()`:
-  - After `KEEPALIVE_SECONDS`, a ping event appears in a subscribed queue
+- Add unit tests for `keepalive_loop()` — NOTE: tests MUST monkeypatch `KEEPALIVE_SECONDS` to a small value (0.05 seconds / 50ms) to avoid sleeping for real:
+  - `KEEPALIVE_SECONDS` monkeypatched to 0.05; after running the loop for 200ms, at least 2 keepalive events appear in a subscribed queue
+  - Each event has the exact format `': keepalive\n\n'` (SSE comment, no `data:` prefix)
   - CancelledError causes clean exit
 - Add test: if no channels are active, keepalive loop does not error
 
 **Acceptance Criteria:**
 
-Given one active SSE channel with one connected client,
-When `KEEPALIVE_SECONDS` seconds elapse without any other publish,
-Then a `{"type": "ping"}` event is placed in the client's queue.
+Given `KEEPALIVE_SECONDS` is monkeypatched to 0.05 (50ms),
+When the keepalive loop runs for 200ms,
+Then at least 2 keepalive events appear in the connected client's queue.
+
+And each event has format `': keepalive\n\n'` (SSE comment, no `data:` prefix).
 
 Given the keepalive task is running,
 When the application shuts down,
@@ -158,6 +203,7 @@ Then no error is raised and nothing is published.
 - `services/sse.py` `KEEPALIVE_SECONDS` is used by the loop (not a dead constant)
 - `server.py` starts and stops the keepalive task
 - At least 3 unit tests in `tests/backend/unit/test_sse_service.py`
+- Tests use monkeypatching (not real sleep) to validate keepalive timing
 - All 387 existing tests still pass
 
 ---
@@ -196,11 +242,13 @@ Then the last user message text is re-submitted as a new stream request.
 
 ---
 
-### Story P5.4: Shared notification service + fail-open delivery
+### Story P5.4a: Create notification_service.py with create_notification() + unit tests
 
-**Problem:** `_notify()` is defined independently in `backend/routes/operations.py` (lines 61–73) and `backend/routes/issues.py` (lines 57–70) with different behavior: `issues.py` guards `if not user_id: return` while `operations.py` does not. Neither has try/except — a MongoDB write failure will propagate as an unhandled exception and roll back the parent action. The `POST /api/notifications` endpoint (`notifications.py`) uses `add_school_id()` while the inline `_notify()` helpers manually set `schoolId`. There is no `title` field in `_notify()` inserts, creating a schema inconsistency with digest items and manually created notifications.
+**Note:** P5.4 has been split into P5.4a and P5.4b because implementing the service module plus migrating all 8 call sites across multiple files is too large for a single session. P5.0 (canonical resolution) must be complete before this story begins. P5.4a must be complete before P5.4b begins.
 
-**Scope:**
+**Problem:** `_notify()` is defined independently in `backend/routes/operations.py` (lines 61–73) and `backend/routes/issues.py` (lines 57–70) with different behavior: `issues.py` guards `if not user_id: return` while `operations.py` does not. Neither has try/except — a MongoDB write failure will propagate as an unhandled exception and roll back the parent action. There is no `title` field in `_notify()` inserts, creating a schema inconsistency with digest items and manually created notifications.
+
+**Scope (P5.4a only — service creation, NOT call site migration):**
 - Create `backend/services/notification_service.py`:
   ```python
   async def create_notification(
@@ -215,32 +263,63 @@ Then the last user message text is re-submitted as a new stream request.
   - Uses `add_school_id()` for tenant field
   - Includes `title` field in the inserted document
   - Wraps `insert_one` in try/except, logs `logger.warning("notification_write_failed", ...)` on error, returns False
-- Remove `_notify()` from `operations.py` and `issues.py`
-- Import and use `create_notification()` at all 8 call sites (3 in issues.py, 5 in operations.py)
 - Update `POST /api/notifications` endpoint in `notifications.py` to also require `title` field
-- Add unit tests in `tests/backend/unit/test_notification_service.py`:
-  - Happy path: notification inserted, True returned
-  - Missing user_id: returns False, no insert
+- Add 5 unit tests in `tests/backend/unit/test_notification_service.py`:
+  - Happy path: notification inserted, True returned, document has all required fields
+  - Missing user_id (empty string): returns False, no insert attempted
+  - Missing user_id (None): returns False, no insert attempted
   - DB error: returns False, warning logged, no exception raised
+  - Document shape: inserted doc has `schoolId`, `user_id`, `type`, `title`, `message`, `source_record_id`, `source_record_type`, `read`, `created_at`
 
 **Acceptance Criteria:**
-
-Given a leave approval action that triggers notification delivery,
-When the MongoDB `insert_one` raises an exception,
-Then the leave approval response still returns 200 OK and a `logger.warning` is emitted with `notification_write_failed: true`.
 
 Given `create_notification(db, user_id="", ...)` is called with an empty user_id,
 When the function executes,
 Then it returns False immediately without touching the database.
 
+Given the MongoDB `insert_one` raises an exception,
+When `create_notification()` catches it,
+Then it returns False and a `logger.warning` is emitted with `notification_write_failed: true` (do not re-raise).
+
 Given a successful notification write,
 When the document is inserted,
 Then it has `schoolId`, `user_id`, `type`, `title`, `message`, `source_record_id`, `source_record_type`, `read`, and `created_at` fields.
 
-- `_notify()` removed from `operations.py` and `issues.py` (grep returns zero hits)
-- `notification_service.py` exists with at least 5 unit tests
-- All 8 call sites migrated
+- `notification_service.py` exists and is importable
+- 5 unit tests pass in `tests/backend/unit/test_notification_service.py`
 - All 387 existing tests still pass
+
+---
+
+### Story P5.4b: Migrate all _notify() call sites to create_notification()
+
+**Depends on:** P5.4a complete (service module exists), P5.0 complete (`def _notify` already removed from both files). If P5.0 was skipped, remove `_notify()` from `operations.py` and `issues.py` as the first step of this story.
+
+**Problem:** After P5.4a creates the canonical `create_notification()`, all existing direct `db.notifications.insert_one()` and `_notify()` call sites across route files must be migrated. There are 8 call sites total (approximately 3 in `issues.py`, 5 in `operations.py`). Until this migration is complete, the shared utility provides no runtime benefit.
+
+**Scope:**
+- Scan all files in `backend/routes/` for any remaining direct `db.notifications.insert_one()` calls or `_notify()` calls
+- Replace all 8 call sites with `await create_notification(db, user_id=..., ...)`
+- Wrap each call site in a try/except if not already covered by `create_notification()`'s internal guard
+- Verify: `grep -r "db.notifications.insert_one\|_notify(" backend/routes/` returns zero hits after migration
+- Add integration smoke test: leave approval creates a notification record (end-to-end call site verification)
+
+**Acceptance Criteria:**
+
+Given: `grep -r "db.notifications.insert_one" backend/routes/` is run after this story,
+Then: it returns exactly 0 results.
+
+Given: `grep -r "_notify(" backend/routes/` is run after this story,
+Then: it returns exactly 0 results.
+
+Given a leave approval action that triggers notification delivery,
+When the MongoDB `insert_one` inside `create_notification()` raises an exception,
+Then the leave approval response still returns 200 OK and a `logger.warning` is emitted.
+
+- All 8 call sites migrated
+- Zero direct `insert_one` calls remaining in route files
+- Integration smoke test passes
+- All 387 + P5.4a tests still pass
 
 ---
 
@@ -384,16 +463,53 @@ Then a 404 is returned (user_id filter prevents cross-user reads).
 
 ---
 
+### Story P5.X: Unauthenticated surface test suite
+
+**Problem:** There is no automated test that verifies all backend routes require authentication. As new routes are added, it is easy to accidentally omit `get_current_user` or `require_access` — the Part 6 audit found exactly this bug in `serve_file()`. A comprehensive surface test prevents auth regressions from reaching production.
+
+**Scope:**
+- Create `tests/backend/test_unauthenticated_surface.py`
+- The test enumerates all routes registered in `server.py` (by scanning all router routes or loading the OpenAPI schema from `/api/docs`)
+- For each route, make a request with NO `Authorization` header
+- Assert the response status code is 401 or 403 (never 200 or 404 for protected routes)
+- This test suite runs in CI and fails the build if any protected endpoint returns 200 without auth
+- Exclude known-public routes: `/api/health`, `/api/health/ready`, `/api/auth/login`, `/api/auth/forgot-password`, `/api/auth/reset-password`, `/api/auth/seed-status`
+- The exclusion list is maintained as a constant `PUBLIC_ROUTES` in the test file so it is easy to audit
+
+**Acceptance Criteria:**
+
+Given all routes registered in `server.py` except `PUBLIC_ROUTES`,
+When each route receives a request with no Authorization header,
+Then every response is 401 or 403.
+
+Given a new route is added without an auth check,
+When the test suite runs,
+Then `test_unauthenticated_surface.py` fails with a clear message naming the unprotected route.
+
+Given the test file,
+When `PUBLIC_ROUTES` is read,
+Then it contains exactly: `/api/health`, `/api/health/ready`, `/api/auth/login`, `/api/auth/forgot-password`, `/api/auth/reset-password`, `/api/auth/seed-status`.
+
+- `test_unauthenticated_surface.py` created
+- `PUBLIC_ROUTES` constant defined and auditable
+- Test runs in CI (added to test runner config if needed)
+- All 387 existing tests still pass
+
+---
+
 ## Implementation Order Recommendation
 
-1. **P5.4** — Create `notification_service.py` first (unblocks P5.5, P5.7, and provides test infrastructure)
-2. **P5.1** — Fix keepalive format (high-impact, 2-line change, low risk)
-3. **P5.5** — Disconnect detection (prevents resource leaks in production)
-4. **P5.8** — Add index and test coverage (required before performance testing)
-5. **P5.6** — Pagination meta fix (correctness, medium risk)
-6. **P5.2** — SSE service keepalive loop (infrastructure work)
-7. **P5.7** — Fan-out parallelism (depends on P5.4 completion)
-8. **P5.3** — Frontend stream error recovery (last as it requires frontend + backend coordination)
+1. **P5.0 (FIRST)** — Resolve `_notify()` double-definition (unblocks P5.4a, P5.4b, P5.7)
+2. **P5.4a** — Create `notification_service.py` (unblocks P5.4b and P5.7)
+3. **P5.4b** — Migrate all call sites (completes shared utility story)
+4. **P5.1** — Fix keepalive format (high-impact, 2-line change, low risk)
+5. **P5.5** — Disconnect detection (prevents resource leaks in production)
+6. **P5.8** — Add index and test coverage (required before performance testing)
+7. **P5.6** — Pagination meta fix (correctness, medium risk)
+8. **P5.2** — SSE service keepalive loop (infrastructure work)
+9. **P5.7** — Fan-out parallelism (depends on P5.4b completion)
+10. **P5.3** — Frontend stream error recovery (last as it requires frontend + backend coordination)
+11. **P5.X** — Unauthenticated surface test (can run in parallel with any story; recommended after P5.5)
 
 ---
 
