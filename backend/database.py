@@ -10,7 +10,6 @@ SYSTEM_COLLECTIONS = {
     "_migrations",
     "auth_users",
     "login_attempts",
-    "otps",
     "refresh_tokens",
 }
 
@@ -142,9 +141,6 @@ async def _create_indexes():
     await db.assignments.create_index("class_id")
     await db.leave_requests.create_index("staff_id")
     await db.enquiries.create_index("status")
-    # OTP TTL index — auto-deletes expired OTP documents
-    await db.otps.create_index("expires_at", expireAfterSeconds=0)
-    await db.otps.create_index("phone")
     # Token budget indexes
     await db.token_balances.create_index("branch_id", unique=True)
     await db.token_usage.create_index([("branch_id", 1), ("user_id", 1), ("month", 1)])
