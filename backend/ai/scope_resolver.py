@@ -134,6 +134,7 @@ class Scope:
     subject: Optional[str] = None
     domain: Optional[str] = None
     staff_record: Optional[Dict[str, Any]] = field(default=None, repr=False)
+    can_write: bool = True  # write permission gated at TOOL_REGISTRY level
 
     def __post_init__(self) -> None:
         # Part 1.5 Patch E: an empty-string user_id silently turns Scope into
@@ -367,6 +368,18 @@ class Scope:
             ]
         if self.domain == "enquiries":
             return ["enquiries"]
+        if self.domain == "tech_issues":
+            return [
+                "maintenance_requests",  # tech support tickets
+                "audit_log",
+                "system_health",
+            ]
+        if self.domain == "facility_requests":
+            return [
+                "maintenance_requests",  # facility tickets
+                "maintenance_schedule",
+                "vendors",
+            ]
         return None
 
     def __repr__(self) -> str:
@@ -569,6 +582,30 @@ def _resolve_admin_scope(
             sub_category="receptionist",
             user_id=user_id,
             domain="enquiries",
+            staff_record=staff,
+            branch_id=branch_id,
+        )
+
+    if effective in ("it_tech", "it", "tech"):
+        logger.debug("resolve_scope: admin/it_tech -> domain='tech_issues'")
+        return Scope(
+            type="domain",
+            role="admin",
+            sub_category="it_tech",
+            user_id=user_id,
+            domain="tech_issues",
+            staff_record=staff,
+            branch_id=branch_id,
+        )
+
+    if effective in ("maintenance", "facilities"):
+        logger.debug("resolve_scope: admin/maintenance -> domain='facility_requests'")
+        return Scope(
+            type="domain",
+            role="admin",
+            sub_category="maintenance",
+            user_id=user_id,
+            domain="facility_requests",
             staff_record=staff,
             branch_id=branch_id,
         )

@@ -1491,6 +1491,244 @@ _AUDIENCE_ROLE_MAP = {
     "parents": ["parent"],
 }
 
+async def tool_get_timetable(params: dict, user: dict, scope: dict = None) -> dict:
+    """Get class timetable for a specific day. Works for teachers (their classes) and admins (any class)."""
+    t0 = time.time()
+    db = get_db()
+    bid = _branch_id(user, scope)
+
+    # Determine which class to show
+    class_name = params.get("class_name") or params.get("class")
+    target_date = params.get("date", date.today().isoformat())
+    day_name = params.get("day") or date.fromisoformat(target_date).strftime("%A")  # Monday, Tuesday, etc.
+
+    # Find the class
+    if class_name:
+        cls = await db.classes.find_one(scoped_query(
+            {"name": {"$regex": re.escape(class_name), "$options": "i"}}, branch_id=bid
+        ))
+    elif _scope_class_ids(scope):
+        # Teacher: first assigned class
+        class_ids = _scope_class_ids(scope)
+        cls = await db.classes.find_one(scoped_query({"id": {"$in": class_ids}}, branch_id=bid))
+    else:
+        cls = None
+
+    if not cls:
+        return _empty_result("No class found. Please specify a class name.", (time.time() - t0) * 1000)
+
+    class_id = cls["id"]
+
+    # Fetch timetable slots for this class and day
+    slots = await db.timetable_slots.find(
+        scoped_query({"class_id": class_id, "day": {"$regex": f"^{day_name}", "$options": "i"}}, branch_id=bid),
+        {"_id": 0}
+    ).sort("period_number", 1).to_list(10)
+
+    if not slots:
+        return _empty_result(f"No timetable found for {cls.get('name')} {cls.get('section','')} on {day_name}.", (time.time() - t0) * 1000)
+
+    # Enrich with teacher names
+    results = []
+    for s in slots:
+        teacher_name = "TBD"
+        if s.get("teacher_id"):
+            staff = await db.staff.find_one({"id": s["teacher_id"]}, {"_id": 0, "name": 1})
+            if staff:
+                teacher_name = staff["name"]
+        results.append({
+            "period": s.get("period_number", "?"),
+            "time": f"{s.get('start_time','?')}–{s.get('end_time','?')}",
+            "subject": s.get("subject", "?"),
+            "teacher": teacher_name,
+            "room": s.get("room", ""),
+        })
+
+    elapsed = (time.time() - t0) * 1000
+    return _ok(results, elapsed, f"Timetable for {cls.get('name')} {cls.get('section','')} — {day_name}")
+
+
+async def tool_get_exam_results_summary(params: dict, user: dict, scope: dict = None) -> dict:
+    """Get exam performance summary for a class or subject. For teachers and admins."""
+    t0 = time.time()
+    db = get_db()
+    bid = _branch_id(user, scope)
+
+    exam_name = params.get("exam_name") or params.get("exam")
+    class_name = params.get("class_name") or params.get("class")
+    subject = params.get("subject")
+
+    # Find the exam
+    exam_query = {}
+    if exam_name:
+        exam_query["name"] = {"$regex": re.escape(exam_name), "$options": "i"}
+
+    # Apply class filter via scope
+    class_ids = _scope_class_ids(scope) if _scope_class_ids(scope) else None
+    if class_name:
+        cls = await db.classes.find_one(scoped_query(
+            {"name": {"$regex": re.escape(class_name), "$options": "i"}}, branch_id=bid
+        ))
+        if cls:
+            exam_query["class_id"] = cls["id"]
+    elif class_ids:
+        exam_query["class_id"] = {"$in": class_ids}
+
+    if subject:
+        exam_query["subject"] = {"$regex": re.escape(subject), "$options": "i"}
+
+    exams = await db.exams.find(
+        scoped_query(exam_query, branch_id=bid), {"_id": 0}
+    ).sort("exam_date", -1).to_list(5)
+
+    if not exams:
+        return _empty_result("No exams found matching the criteria.", (time.time() - t0) * 1000)
+
+    results = []
+    for exam in exams:
+        # Get results for this exam
+        exam_results = await db.exam_results.find(
+            scoped_query({"exam_id": exam["id"]}, branch_id=bid),
+            {"_id": 0, "student_id": 1, "marks_obtained": 1, "max_marks": 1, "grade": 1}
+        ).to_list(200)
+
+        if not exam_results:
+            continue
+
+        marks = [r["marks_obtained"] for r in exam_results if r.get("marks_obtained") is not None]
+        max_marks = exam.get("max_marks", exam_results[0].get("max_marks", 100)) if exam_results else 100
+
+        avg = round(sum(marks) / len(marks), 1) if marks else 0
+        highest = max(marks) if marks else 0
+        lowest = min(marks) if marks else 0
+        passed = sum(1 for m in marks if m >= max_marks * 0.33)  # 33% passing
+
+        results.append({
+            "exam": exam.get("name", "Unnamed Exam"),
+            "subject": exam.get("subject", ""),
+            "date": exam.get("exam_date", ""),
+            "students": len(marks),
+            "average": f"{avg}/{max_marks}",
+            "highest": highest,
+            "lowest": lowest,
+            "pass_rate": f"{round(passed/len(marks)*100, 1)}%" if marks else "N/A",
+        })
+
+    elapsed = (time.time() - t0) * 1000
+    return _ok(results, elapsed, f"Exam results summary — {len(results)} exam(s)")
+
+
+async def tool_get_upcoming_events(params: dict, user: dict, scope: dict = None) -> dict:
+    """Get upcoming school events, exams, and announcements for the next N days."""
+    t0 = time.time()
+    db = get_db()
+    bid = _branch_id(user, scope)
+
+    days_ahead = min(int(params.get("days", 7)), 30)
+    today = date.today().isoformat()
+    until = (date.today() + timedelta(days=days_ahead)).isoformat()
+
+    events = []
+
+    # Upcoming exams
+    class_ids = _scope_class_ids(scope) if _scope_class_ids(scope) else None
+    exam_query = {"exam_date": {"$gte": today, "$lte": until}}
+    if class_ids:
+        exam_query["class_id"] = {"$in": class_ids}
+
+    exams = await db.exams.find(
+        scoped_query(exam_query, branch_id=bid), {"_id": 0, "name": 1, "subject": 1, "exam_date": 1, "class_id": 1}
+    ).sort("exam_date", 1).to_list(20)
+
+    for e in exams:
+        events.append({"date": e.get("exam_date"), "type": "exam", "title": f"{e.get('name')} — {e.get('subject')}"})
+
+    # Upcoming announcements / events (from announcements collection)
+    announcements = await db.announcements.find(
+        scoped_query(
+            {"event_date": {"$gte": today, "$lte": until}, "status": "published"},
+            branch_id=bid
+        ),
+        {"_id": 0, "title": 1, "event_date": 1, "audience": 1}
+    ).sort("event_date", 1).to_list(10)
+
+    for a in announcements:
+        events.append({"date": a.get("event_date", today), "type": "event", "title": a.get("title", "Event")})
+
+    # Sort all events by date
+    events.sort(key=lambda x: x.get("date", ""))
+
+    elapsed = (time.time() - t0) * 1000
+    if not events:
+        return _empty_result(f"No events scheduled in the next {days_ahead} days.", elapsed)
+    return _ok(events, elapsed, f"Upcoming events — next {days_ahead} days")
+
+
+async def tool_draft_parent_message(params: dict, user: dict, scope: dict = None) -> dict:
+    """Draft a WhatsApp/SMS message to a student's parent for a given message type."""
+    t0 = time.time()
+    db = get_db()
+    bid = _branch_id(user, scope)
+
+    student_id = params.get("student_id") or params.get("student")
+    message_type = params.get("message_type", "general")  # fee_reminder, absence_notification, general, exam_reminder
+    custom_note = params.get("note", "")
+
+    # Find student
+    if student_id:
+        student = await db.students.find_one(
+            scoped_query({"$or": [{"id": student_id}, {"name": {"$regex": re.escape(str(student_id)), "$options": "i"}}]}, branch_id=bid),
+            {"_id": 0, "name": 1, "id": 1, "class_id": 1, "admission_number": 1}
+        )
+    else:
+        return _empty_result("Please specify a student name or ID.", (time.time() - t0) * 1000)
+
+    if not student:
+        return _empty_result(f"Student '{student_id}' not found.", (time.time() - t0) * 1000)
+
+    # Get guardian contacts
+    guardian = await db.students.find_one(
+        {"id": student["id"]},
+        {"_id": 0, "guardians": 1}
+    )
+    guardians = (guardian or {}).get("guardians", [])
+    primary_guardian = next((g for g in guardians if g.get("is_primary")), guardians[0] if guardians else {})
+    guardian_name = primary_guardian.get("name", "Parent/Guardian")
+    guardian_phone = primary_guardian.get("whatsapp_phone") or primary_guardian.get("phone", "Not on file")
+
+    # Resolve class name
+    cls = await db.classes.find_one({"id": student.get("class_id")}, {"_id": 0, "name": 1, "section": 1})
+    class_display = f"{cls.get('name','')} {cls.get('section','')}" if cls else "the class"
+
+    # Draft message based on type
+    student_name = student.get("name", "the student")
+    school_name = "The Aaryans"
+
+    templates = {
+        "fee_reminder": f"Dear {guardian_name},\n\nThis is a reminder that fee payment for {student_name} ({class_display}) is due. Kindly visit the school office or contact the accounts department to clear the outstanding dues.\n\nRegards,\n{school_name}",
+        "absence_notification": f"Dear {guardian_name},\n\n{student_name} ({class_display}) was absent from school today ({date.today().strftime('%d %b %Y')}). Please ensure regular attendance.\n\nIf there is a health concern, kindly inform the class teacher.\n\nRegards,\n{school_name}",
+        "exam_reminder": f"Dear {guardian_name},\n\nThis is a reminder that exams for {student_name} ({class_display}) are scheduled soon. Please ensure {student_name} is well-prepared and present on time.\n\nRegards,\n{school_name}",
+        "general": f"Dear {guardian_name},\n\nWe would like to speak with you regarding {student_name} ({class_display}). Please contact the school at your earliest convenience.\n\nRegards,\n{school_name}",
+    }
+
+    draft = templates.get(message_type, templates["general"])
+    if custom_note:
+        draft = draft.replace("Regards,", f"{custom_note}\n\nRegards,")
+
+    result = {
+        "student": student_name,
+        "guardian": guardian_name,
+        "phone": guardian_phone,
+        "message_type": message_type,
+        "draft_message": draft,
+        "char_count": len(draft),
+        "note": "This is a draft. Review before sending via the SMS panel.",
+    }
+
+    elapsed = (time.time() - t0) * 1000
+    return _ok([result], elapsed, f"Parent message draft — {message_type} for {student_name}")
+
+
 async def tool_create_announcement(params: dict, user: dict, scope: dict = None) -> dict:
     title = (params.get("title") or "").strip()
     content = (params.get("content") or "").strip()
@@ -1998,6 +2236,50 @@ TOOL_REGISTRY = {
         },
         "requires_confirmation": True,
         "dispatch_type": "write",
+    },
+
+    # ---- 4 new high-impact tools ----
+    "get_timetable": {
+        "fn": tool_get_timetable,
+        "roles": ["owner", "admin", "teacher"],
+        "description": "Get the class timetable for a specific day. Specify class name and optionally a day of week or date.",
+        "params_schema": {
+            "class_name": {"type": "string", "description": "class name (e.g. 'Class 9A')"},
+            "day": {"type": "string", "description": "day of week (Monday/Tuesday/etc.) or leave blank for today"},
+            "date": {"type": "string", "description": "ISO date YYYY-MM-DD"},
+        },
+        "requires_confirmation": False,
+    },
+    "get_exam_results_summary": {
+        "fn": tool_get_exam_results_summary,
+        "roles": ["owner", "admin", "teacher"],
+        "description": "Get exam performance analytics for a class or subject — averages, pass rate, highest/lowest marks.",
+        "params_schema": {
+            "exam_name": {"type": "string", "description": "exam name filter"},
+            "class_name": {"type": "string", "description": "class name"},
+            "subject": {"type": "string", "description": "subject filter"},
+        },
+        "requires_confirmation": False,
+    },
+    "get_upcoming_events": {
+        "fn": tool_get_upcoming_events,
+        "roles": ["owner", "admin", "teacher", "student"],
+        "description": "Get upcoming school events, scheduled exams, and announcements for the next N days (default 7).",
+        "params_schema": {
+            "days": {"type": "integer", "description": "number of days to look ahead (default 7, max 30)"},
+        },
+        "requires_confirmation": False,
+    },
+    "draft_parent_message": {
+        "fn": tool_draft_parent_message,
+        "roles": ["owner", "admin", "teacher"],
+        "description": "Draft a WhatsApp/SMS message to a student's parent. Types: fee_reminder, absence_notification, exam_reminder, general.",
+        "params_schema": {
+            "student_id": {"type": "string", "description": "student name or ID"},
+            "message_type": {"type": "string", "description": "fee_reminder|absence_notification|exam_reminder|general"},
+            "note": {"type": "string", "description": "additional note to include"},
+        },
+        "requires_confirmation": False,
     },
 }
 

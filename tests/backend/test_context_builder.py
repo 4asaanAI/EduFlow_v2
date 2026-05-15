@@ -32,7 +32,7 @@ def _make_db(**collections):
         "student_attendance", "staff_attendance", "fee_transactions",
         "leave_requests", "house_points", "library_books",
         "library_transactions", "vehicles", "transport_routes",
-        "inventory", "enquiries", "visitor_log", "subjects",
+        "inventory", "enquiries", "visitor_log", "subjects", "exams",
     ]
     for name in defaults:
         setattr(db, name, FakeCollection())

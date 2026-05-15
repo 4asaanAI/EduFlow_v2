@@ -18,9 +18,11 @@ SCHOOL_CITY = os.environ.get("SCHOOL_CITY", "Lucknow")
 # ---------------------------------------------------------------------------
 # School Organisation Context (The Aaryans specific)
 # ---------------------------------------------------------------------------
-ORG_CONTEXT = """
+# Default org context — names are kept generic to avoid mismatch with DB.
+# build_system_prompt() accepts a school_settings dict to personalise these.
+_ORG_CONTEXT_TEMPLATE = """
 School Organisation — The Aaryans (CBSE, Lucknow):
-Hierarchy: Head (Aman/Owner) -> Principal (Adeen Sir) -> 4 Departments:
+Hierarchy: Head ({owner_name}) -> Principal ({principal_name}) -> 4 Departments:
 1. Accounts — fee collection, payroll, financial records
 2. Admin — Medical, Reception, Admission, Day-to-Day (Peon, Aaya, Sweeper, Guard, Gardner)
 3. Transport — Head + 4-5 Drivers + Conductors
@@ -29,6 +31,12 @@ Hierarchy: Head (Aman/Owner) -> Principal (Adeen Sir) -> 4 Departments:
    - Classes 1-12: HOD -> Coordinators (1-5, 6-8, 9-12) -> Subject Teachers / Class Teachers
    Subjects: English, Hindi, Maths, Science, Social Studies, Sports, Music, Arts, Library, Computers
 """
+
+# Legacy module-level constant kept for any code that imports ORG_CONTEXT directly.
+ORG_CONTEXT = _ORG_CONTEXT_TEMPLATE.format(
+    owner_name="the Owner",
+    principal_name="the Principal",
+)
 
 # ---------------------------------------------------------------------------
 # Tool Definitions — name, description, params schema
@@ -226,6 +234,28 @@ TOOL_GET_TODAY_CLASS_ATTENDANCE = {
     "params_schema": {"class_name": "optional — defaults to assigned class"},
 }
 
+# ---- New high-impact tools ----
+TOOL_GET_TIMETABLE = {
+    "name": "get_timetable",
+    "description": "Get the class timetable for a specific day. Specify class name and optionally a day of week or date.",
+    "params_schema": {"class_name": "optional e.g. 'Class 9A'", "day": "optional e.g. 'Monday'", "date": "optional YYYY-MM-DD"},
+}
+TOOL_GET_EXAM_RESULTS_SUMMARY = {
+    "name": "get_exam_results_summary",
+    "description": "Get exam performance analytics for a class or subject — averages, pass rate, highest/lowest marks.",
+    "params_schema": {"exam_name": "optional exam name filter", "class_name": "optional class name", "subject": "optional subject filter"},
+}
+TOOL_GET_UPCOMING_EVENTS = {
+    "name": "get_upcoming_events",
+    "description": "Get upcoming school events, scheduled exams, and announcements for the next N days (default 7).",
+    "params_schema": {"days": "optional int default 7, max 30"},
+}
+TOOL_DRAFT_PARENT_MESSAGE = {
+    "name": "draft_parent_message",
+    "description": "Draft a WhatsApp/SMS message to a student's parent. Types: fee_reminder, absence_notification, exam_reminder, general.",
+    "params_schema": {"student_id": "required — student name or ID", "message_type": "optional: fee_reminder|absence_notification|exam_reminder|general", "note": "optional additional note"},
+}
+
 
 # ---------------------------------------------------------------------------
 # TOOLS_BY_ROLE — maps (role, sub_category) to list of tool dicts
@@ -262,6 +292,10 @@ _OWNER_TOOLS = [
     TOOL_MARK_ATTENDANCE,
     TOOL_GET_BRANCH_COMPARISON,
     TOOL_CREATE_ANNOUNCEMENT,
+    TOOL_GET_TIMETABLE,
+    TOOL_GET_EXAM_RESULTS_SUMMARY,
+    TOOL_GET_UPCOMING_EVENTS,
+    TOOL_DRAFT_PARENT_MESSAGE,
 ]
 
 _PRINCIPAL_TOOLS = [
@@ -295,6 +329,10 @@ _PRINCIPAL_TOOLS = [
     TOOL_MARK_ATTENDANCE,
     # NO get_branch_comparison — owner only
     TOOL_CREATE_ANNOUNCEMENT,
+    TOOL_GET_TIMETABLE,
+    TOOL_GET_EXAM_RESULTS_SUMMARY,
+    TOOL_GET_UPCOMING_EVENTS,
+    TOOL_DRAFT_PARENT_MESSAGE,
 ]
 
 _ACCOUNTS_TOOLS = [
@@ -325,6 +363,10 @@ _CLASS_TEACHER_TOOLS = [
     TOOL_AWARD_HOUSE_POINTS,
     TOOL_GET_LIBRARY_STATUS,
     TOOL_SEARCH_STUDENTS,  # own class only — enforced in role rules
+    TOOL_GET_TIMETABLE,
+    TOOL_GET_EXAM_RESULTS_SUMMARY,
+    TOOL_GET_UPCOMING_EVENTS,
+    TOOL_DRAFT_PARENT_MESSAGE,
 ]
 
 _HOD_TOOLS = list(_CLASS_TEACHER_TOOLS)  # same base + subject-wide note in role rules
@@ -341,6 +383,10 @@ _SUBJECT_TEACHER_TOOLS = [
     TOOL_GET_HOUSE_STANDINGS,
     TOOL_GET_LIBRARY_STATUS,
     TOOL_SEARCH_STUDENTS,  # assigned classes, subject data only
+    TOOL_GET_TIMETABLE,
+    TOOL_GET_EXAM_RESULTS_SUMMARY,
+    TOOL_GET_UPCOMING_EVENTS,
+    TOOL_DRAFT_PARENT_MESSAGE,
 ]
 
 _KG_INCHARGE_TOOLS = list(_CLASS_TEACHER_TOOLS)  # own KG class all sections — enforced in role rules
@@ -352,9 +398,37 @@ _STUDENT_TOOLS = [
     TOOL_GET_ANNOUNCEMENTS,
     TOOL_GET_HOUSE_STANDINGS,
     TOOL_GET_LIBRARY_STATUS,  # own books only — enforced in role rules
+    TOOL_GET_UPCOMING_EVENTS,
 ]
 
 _SUPPORT_STAFF_TOOLS = []  # own data only — no AI tools, handled via role rules
+
+# ---- IT & Tech Support tools ----
+TOOL_QUERY_MAINTENANCE_REQUESTS = {
+    "name": "query_maintenance_requests",
+    "description": "View tech support / maintenance tickets — filter by status or category.",
+    "params_schema": {"status": "optional: 'open' | 'in_progress' | 'resolved'", "category": "optional: 'tech' | 'facility' | 'all'"},
+}
+TOOL_QUERY_AUDIT_LOG = {
+    "name": "query_audit_log",
+    "description": "View system audit log entries (excludes financial transactions and personal fee data).",
+    "params_schema": {"days": "optional int, default 7", "event_type": "optional e.g. 'login' | 'export' | 'import'"},
+}
+TOOL_CONFIRM_RESOLUTION = {
+    "name": "confirm_resolution",
+    "description": "Mark a maintenance or tech ticket as resolved. Write action — requires confirmation.",
+    "params_schema": {"ticket_id": "required", "resolution_note": "optional"},
+}
+
+_IT_TECH_TOOLS = [
+    TOOL_QUERY_MAINTENANCE_REQUESTS,
+    TOOL_QUERY_AUDIT_LOG,
+]
+
+_MAINTENANCE_TOOLS = [
+    TOOL_QUERY_MAINTENANCE_REQUESTS,
+    TOOL_CONFIRM_RESOLUTION,
+]
 
 TOOLS_BY_ROLE = {
     # Owner
@@ -365,6 +439,8 @@ TOOLS_BY_ROLE = {
     ("admin", "accounts"): _ACCOUNTS_TOOLS,
     ("admin", "transport_head"): _TRANSPORT_HEAD_TOOLS,
     ("admin", "receptionist"): _RECEPTIONIST_TOOLS,
+    ("admin", "it_tech"): _IT_TECH_TOOLS,
+    ("admin", "maintenance"): _MAINTENANCE_TOOLS,
     # Teacher sub-categories
     ("teacher", "class_teacher"): _CLASS_TEACHER_TOOLS,
     ("teacher", "hod"): _HOD_TOOLS,
@@ -431,7 +507,8 @@ ROLE_RULES = {
 ROLE: Owner — Full Access
 - You can see ALL school data and perform ALL actions through tools.
 - Salary information: never reveal exact salaries through chat — direct to Financial Reports panel.
-- You have access to all 29 tools.
+- You have access to ALL tools across all roles.
+- You can use all available AI tools including attendance, fees, academics, timetable, exam analytics, communications, and administrative functions.
 - You can approve/reject leaves, record fee payments, mark attendance, award house points.
 - Branch comparison and financial reports are exclusive to you.
 """,
@@ -485,6 +562,32 @@ ROLE: Receptionist — Enquiries Only
 - You can ONLY access admission enquiries: new, follow-up, converted, lost.
 - You CANNOT see: student data, fee data, attendance, academic data, staff data, financial reports, or any other school data.
 - If asked about non-enquiry data, politely explain that it is outside your access scope.
+""",
+
+    # ---- Admin: IT & Tech Support ----
+    ("admin", "it_tech"): """
+ROLE: IT & Tech Support
+You assist with technology and platform issues.
+- You can view tech support tickets (open, in-progress, resolved) and update their status
+- You can check system health indicators (DB status, AI status, S3 connectivity)
+- You can view audit logs (excluding financial transactions and personal fee data)
+- You can manage user access issues (e.g., login problems, password resets for non-owner accounts)
+- You can view import/export logs and data sync status
+- Salary, personal fee, and medical data is NOT accessible to you
+- For school management decisions, escalate to the Principal or Owner
+""",
+
+    # ---- Admin: Maintenance & Facilities ----
+    ("admin", "maintenance"): """
+ROLE: Maintenance & Facilities Admin
+You manage the physical infrastructure and facilities of the school.
+- You can view and update facility request tickets — open, in-progress, confirm resolutions
+- You can manage the maintenance schedule (recurring tasks, one-time jobs)
+- You can view and manage the vendor directory (rates, contact info, category)
+- You can record estimated costs and attach photos to facility requests (described in text)
+- You can escalate critical or overdue requests to the Owner/Principal
+- Student records, fees, exam results, and staff salary data are NOT accessible to you
+- For staffing and financial decisions, escalate to the appropriate department
 """,
 
     # ---- Teacher: Class Teacher ----
@@ -736,7 +839,12 @@ Rich block types:
 # Main prompt builder
 # ---------------------------------------------------------------------------
 
-def build_system_prompt(user: dict, school_context: dict, lang: str = "en") -> str:
+def build_system_prompt(
+    user: dict,
+    school_context: dict,
+    lang: str = "en",
+    school_settings: dict | None = None,
+) -> str:
     """
     Build the complete EduFlow AI system prompt.
 
@@ -744,6 +852,9 @@ def build_system_prompt(user: dict, school_context: dict, lang: str = "en") -> s
         user: dict with keys: role, name, sub_category, class_names (list), subject (str)
         school_context: dict with live school stats (total_students, attendance_rate, etc.)
         lang: "en" or "hi"
+        school_settings: optional dict from DB school_settings collection. When
+            provided, ``principal_name`` and ``owner_name`` keys personalise the
+            org context. Falls back to generic titles if absent.
 
     Returns:
         Complete system prompt string.
@@ -755,6 +866,18 @@ def build_system_prompt(user: dict, school_context: dict, lang: str = "en") -> s
     name = user.get("name", "User")
     class_names = user.get("class_names", [])
     subject = user.get("subject", "")
+
+    # ---- Org context (personalised if school_settings provided) ----
+    if school_settings:
+        principal_name = school_settings.get("principal_name", "the Principal")
+        owner_name = school_settings.get("owner_name", "the Owner")
+    else:
+        principal_name = "the Principal"
+        owner_name = "the Owner"
+    org_context = _ORG_CONTEXT_TEMPLATE.format(
+        owner_name=owner_name,
+        principal_name=principal_name,
+    )
 
     # ---- Language instruction ----
     if lang == "hi":
@@ -824,7 +947,7 @@ def build_system_prompt(user: dict, school_context: dict, lang: str = "en") -> s
 Today: {today} (ISO: {today_iso})
 User: {user_context}
 
-{ORG_CONTEXT}
+{org_context}
 
 {lang_instruction}
 

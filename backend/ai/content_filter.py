@@ -145,6 +145,18 @@ BLOCKED_TOPICS: list[dict] = [
         ],
     },
     {
+        "name": "ragging",
+        "patterns": [
+            r"(?:rag|ragging)\s+(?:someone|junior|fresher)",
+        ],
+    },
+    {
+        "name": "bullying",
+        "patterns": [
+            r"how\s+to\s+(?:bully|harass|intimidate)\s+(?:a\s+)?(?:student|classmate|junior)",
+        ],
+    },
+    {
         "name": "answer keys",
         "patterns": [
             r"\banswer\s+key(?:s)?\b",
@@ -161,6 +173,46 @@ for topic in BLOCKED_TOPICS:
         _BLOCKED_COMPILED.append(
             (topic["name"], re.compile(pat, re.IGNORECASE))
         )
+
+# Hindi/Devanagari blocked topic patterns — critical for UP school context
+BLOCKED_TOPICS_HINDI: list[str] = [
+    # Suicide / self-harm
+    r"आत्महत्या",
+    r"खुद\s*को\s*नुकसान",
+    r"जीना\s*नहीं\s*चाहता",
+    r"मरना\s*चाहता",
+    r"नसें\s*काट",
+
+    # Drugs / narcotics
+    r"नशा\s*(?:कहाँ|कैसे|मिलेगा)",
+    r"(?:गांजा|चरस|अफीम|हेरोइन|स्मैक)\s*(?:कहाँ|कैसे|मिलेगा|लेना)",
+    r"नशीली\s*दवाई",
+    r"ड्रग्स\s*(?:कहाँ|कैसे)",
+
+    # Alcohol
+    r"(?:शराब|दारू|बीयर)\s*(?:कहाँ|कैसे|पीना|मिलेगी)",
+
+    # Violence / weapons
+    r"(?:चाकू|हथियार|बंदूक)\s*(?:कहाँ|कैसे|मिलेगा)",
+    r"मारना\s*(?:है|चाहता|कैसे)",
+
+    # Sexual content
+    r"(?:अश्लील|पोर्न|सेक्स)\s*(?:वीडियो|फ़िल्म|साइट)",
+
+    # Exam cheating
+    r"(?:नकल|चीटिंग)\s*(?:कैसे|करें)",
+    r"पेपर\s*(?:लीक|आउट)\s*(?:कहाँ|है)",
+
+    # Ragging/bullying (common in Indian schools)
+    r"रैगिंग\s*(?:कैसे|करें)",
+    r"(?:धमकाना|धमकी)\s*(?:कैसे|करें)",
+    r"बुली(?:इंग)?\s*(?:कैसे|करें)",
+]
+
+# Pre-compile Hindi blocked-topic patterns for performance
+_BLOCKED_HINDI_COMPILED: list[re.Pattern] = [
+    re.compile(pat, re.IGNORECASE) for pat in BLOCKED_TOPICS_HINDI
+]
 
 # ---------------------------------------------------------------------------
 # 2. SENSITIVE TOPICS — allowed with textbook-appropriate language only
@@ -379,6 +431,29 @@ BLOCKED_TOPIC_RESPONSE: str = (
     "I'm here to help you with your studies and school-related questions!"
 )
 
+BLOCKED_TOPIC_RESPONSE_HINDI: str = (
+    "मुझे खेद है, मैं इस विषय में सहायता नहीं कर सकता। "
+    "यदि आपको इस बारे में सहायता चाहिए, तो कृपया अपने शिक्षक या माता-पिता से बात करें।"
+)
+
+
+def get_blocked_response(message: str = "") -> str:
+    """Return the appropriate blocked-topic response based on the message language.
+
+    Detects Devanagari characters (Unicode range U+0900–U+097F) to decide
+    whether to respond in Hindi.
+
+    Args:
+        message: The original user message (used for language detection only).
+
+    Returns:
+        BLOCKED_TOPIC_RESPONSE_HINDI if Devanagari script is detected,
+        otherwise BLOCKED_TOPIC_RESPONSE.
+    """
+    if re.search(r'[ऀ-ॿ]', message):
+        return BLOCKED_TOPIC_RESPONSE_HINDI
+    return BLOCKED_TOPIC_RESPONSE
+
 SENSITIVE_TOPIC_REDIRECT: str = (
     "\n\n---\n"
     "This topic is covered in your NCERT textbook. "
@@ -593,7 +668,7 @@ def check_input_safety(user_message: str, role: str) -> dict:
             "filtered_message": INJECTION_BLOCKED_RESPONSE,
         }
 
-    # --- Check 2: Blocked topics ---
+    # --- Check 2: Blocked topics (English) ---
     blocked = _check_blocked_topics(user_message)
     if blocked:
         logger.warning(
@@ -602,8 +677,20 @@ def check_input_safety(user_message: str, role: str) -> dict:
         return {
             "safe": False,
             "reason": f"blocked_topic:{blocked}",
-            "filtered_message": BLOCKED_TOPIC_RESPONSE,
+            "filtered_message": get_blocked_response(user_message),
         }
+
+    # --- Check 2b: Hindi/Devanagari blocked topics ---
+    for pattern in _BLOCKED_HINDI_COMPILED:
+        if pattern.search(user_message):
+            logger.warning(
+                "Hindi blocked topic detected in student input"
+            )
+            return {
+                "safe": False,
+                "reason": "blocked_topic_hindi",
+                "filtered_message": get_blocked_response(user_message),
+            }
 
     # --- Check 3: Homework / direct answer solicitation ---
     if _check_homework_request(user_message):
@@ -661,7 +748,7 @@ def filter_response(
             "Blocked topic '%s' found in LLM output for student; replacing",
             blocked,
         )
-        return BLOCKED_TOPIC_RESPONSE
+        return get_blocked_response()
 
     # --- Check 2: Sensitive topics ---
     sensitive = _check_sensitive_topics(text)

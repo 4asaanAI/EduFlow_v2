@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, date
 from database import get_db
-from tenant import get_school_id, scoped_filter
+from tenant import get_school_id, scoped_filter, scoped_query
 
 # SCOPING NOTE: context_builder deliberately uses school-wide scope (no branch_id filter).
 # Context gives the AI "awareness" of the whole school — staff may ask about any branch.
@@ -194,7 +194,25 @@ async def _build_accounts_context(db, today: str) -> dict:
 # Transport head: transport context only
 # ---------------------------------------------------------------------------
 async def _build_transport_head_context(db, today: str) -> dict:
-    return await _get_transport_stats(db, today)
+    ctx = await _get_transport_stats(db, today)
+
+    # Route-level detail (top 10 routes)
+    school_id = get_school_id()
+    routes = await db.transport_routes.find(
+        scoped_filter({}, school_id),
+        {"_id": 0, "name": 1, "route_number": 1, "is_active": 1, "stops": 1},
+    ).to_list(10)
+
+    route_summary = []
+    for r in routes:
+        status = "active" if r.get("is_active", True) else "inactive"
+        stop_count = len(r.get("stops", []))
+        route_summary.append(
+            f"Route {r.get('route_number', '?')} ({r.get('name', 'unnamed')}): {stop_count} stops, {status}"
+        )
+
+    ctx["routes"] = route_summary if route_summary else ["No routes configured"]
+    return ctx
 
 
 # ---------------------------------------------------------------------------
@@ -336,8 +354,23 @@ async def _build_coordinator_context(db, today: str, user_id: str) -> dict:
 
     ctx["classes_in_range"] = len(classes)
 
-    # Attendance summary for range
+    # Per-class attendance for coordinator's range
     class_ids = [c["id"] for c in classes if "id" in c]
+
+    class_attendance = []
+    for cls in classes[:8]:  # cap at 8 classes to keep context size manageable
+        present = await db.student_attendance.count_documents(
+            _tenant_query({"class_id": cls["id"], "date": today, "status": "present"})
+        )
+        total = await db.students.count_documents(
+            _tenant_query({"class_id": cls["id"], "is_active": True})
+        )
+        pct = round(present / total * 100, 1) if total else 0
+        class_attendance.append(f"{cls.get('name', '')} {cls.get('section', '')}: {pct}% ({present}/{total})")
+
+    ctx["class_attendance_breakdown"] = class_attendance if class_attendance else ["No classes in range"]
+
+    # Aggregate summary for backward compat
     if class_ids:
         student_ids = [
             s["id"]
@@ -348,20 +381,20 @@ async def _build_coordinator_context(db, today: str, user_id: str) -> dict:
                 "student_id": {"$in": student_ids},
                 "date": today,
             }))
-            present = await db.student_attendance.count_documents(_tenant_query({
+            present_total = await db.student_attendance.count_documents(_tenant_query({
                 "student_id": {"$in": student_ids},
                 "date": today,
                 "status": "present",
             }))
             if marked > 0:
-                rate = round(present / marked * 100, 1)
-                ctx["attendance_summary"] = f"{rate}% ({present}/{marked})"
+                rate = round(present_total / marked * 100, 1)
+                ctx["overall_attendance"] = f"{rate}% ({present_total}/{marked})"
             else:
-                ctx["attendance_summary"] = "Not yet marked"
+                ctx["overall_attendance"] = "Not yet marked"
         else:
-            ctx["attendance_summary"] = "No students found"
+            ctx["overall_attendance"] = "No students found"
     else:
-        ctx["attendance_summary"] = "No classes in range"
+        ctx["overall_attendance"] = "No classes in range"
 
     return ctx
 
@@ -380,6 +413,39 @@ async def _build_student_context(db, today: str, user_id: str) -> dict:
     student_id = student["id"]
     ctx["student_id"] = student_id
     ctx["class_id"] = student.get("class_id")
+
+    # Resolve class name from class_id
+    class_doc = await db.classes.find_one({"id": student.get("class_id")}, {"_id": 0, "name": 1, "section": 1})
+    if class_doc:
+        ctx["class_name"] = f"{class_doc.get('name', '')} {class_doc.get('section', '')}".strip()
+    else:
+        ctx["class_name"] = ctx.get("class_id", "Unknown Class")
+
+    # Next upcoming exam (school-wide, exams use start_date not exam_date)
+    today_iso = today
+    try:
+        next_exam = await db.exams.find_one(
+            _tenant_query({"start_date": {"$gte": today_iso}}),
+            sort=[("start_date", 1)],
+            projection={"_id": 0, "name": 1, "start_date": 1, "exam_type": 1},
+        )
+    except AttributeError:
+        next_exam = None
+    if next_exam:
+        ctx["next_exam"] = f"{next_exam.get('name')} ({next_exam.get('exam_type', '')}) starting {next_exam.get('start_date')}"
+    else:
+        ctx["next_exam"] = "No upcoming exams scheduled"
+
+    # Is student currently in an active exam period?
+    try:
+        active_exam = await db.exams.find_one(_tenant_query({
+            "start_date": {"$lte": today_iso},
+            "end_date": {"$gte": today_iso},
+        }))
+    except AttributeError:
+        active_exam = None
+    ctx["is_exam_period"] = active_exam is not None
+    ctx["current_exam_name"] = active_exam.get("name") if active_exam else None
 
     # Today's own attendance
     att = await db.student_attendance.find_one(_tenant_query({"student_id": student_id, "date": today}))
@@ -434,44 +500,62 @@ async def build_school_context(role: str, user_id: str) -> dict:
     db = get_db()
     today = date.today().strftime("%Y-%m-%d")
 
+    # Load school settings once for all roles
+    settings = await db.school_settings.find_one(
+        {}, {"_id": 0, "principal": 1, "owner_name": 1, "school_name": 1}
+    )
+    settings = settings or {}
+
+    # Fetch current academic year name
+    ay_doc = await db.academic_years.find_one({"is_current": True}, {"_id": 0, "name": 1})
+    academic_year = (ay_doc or {}).get("name", "2025-26")
+
     # Determine sub_category for scoped context
     if role == "student":
-        return await _build_student_context(db, today, user_id)
+        role_ctx = await _build_student_context(db, today, user_id)
+        role_ctx["_school_settings"] = settings
+        role_ctx["academic_year"] = academic_year
+        return role_ctx
 
     # For all staff roles, look up sub_category
     staff = await db.staff.find_one(_tenant_query({"user_id": user_id}))
     sub_category = staff.get("sub_category", role) if staff else role
 
+    def _with_school(ctx: dict) -> dict:
+        ctx["_school_settings"] = settings
+        ctx["academic_year"] = academic_year
+        return ctx
+
     # Owner: everything
     if role == "owner":
-        return await _build_owner_context(db, today)
+        return _with_school(await _build_owner_context(db, today))
 
     # Admin sub-categories
     if role == "admin":
         if sub_category == "principal":
-            return await _build_principal_context(db, today)
+            return _with_school(await _build_principal_context(db, today))
         if sub_category == "accounts":
-            return await _build_accounts_context(db, today)
+            return _with_school(await _build_accounts_context(db, today))
         if sub_category == "transport_head":
-            return await _build_transport_head_context(db, today)
+            return _with_school(await _build_transport_head_context(db, today))
         if sub_category == "receptionist":
-            return await _build_receptionist_context(db, today)
+            return _with_school(await _build_receptionist_context(db, today))
         # Default admin (e.g. sub_category == "admin") gets principal-level view
-        return await _build_principal_context(db, today)
+        return _with_school(await _build_principal_context(db, today))
 
     # Teacher sub-categories
     if role == "teacher":
         if sub_category == "class_teacher":
-            return await _build_class_teacher_context(db, today, user_id)
+            return _with_school(await _build_class_teacher_context(db, today, user_id))
         if str(sub_category).lower() == "hod":
-            return await _build_hod_context(db, today, user_id)
+            return _with_school(await _build_hod_context(db, today, user_id))
         if sub_category == "coordinator":
-            return await _build_coordinator_context(db, today, user_id)
+            return _with_school(await _build_coordinator_context(db, today, user_id))
         # Default teacher gets class_teacher view
-        return await _build_class_teacher_context(db, today, user_id)
+        return _with_school(await _build_class_teacher_context(db, today, user_id))
 
     # Fallback: return minimal context
-    return {"role": role, "note": "No scoped context available for this role"}
+    return _with_school({"role": role, "note": "No scoped context available for this role"})
 
 
 def detect_language(text: str) -> str:

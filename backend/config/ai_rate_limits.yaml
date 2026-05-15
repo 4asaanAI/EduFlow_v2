@@ -4,10 +4,17 @@
 #
 # Increase a role's ceiling here to lift the default everywhere; create an
 # override row instead to lift the ceiling for one school only.
+#
+# NOTE: Rate limits use CLOCK-HOUR windows (resets at top of UTC hour), not rolling 60-min.
+# This means a user can fire N dispatches in the last minute of hour N and N more in the
+# first minute of hour N+1 — effectively 2N in 2 minutes. A Redis sorted-set sliding window
+# would fix this but requires infrastructure changes (tracked in Part 16 backlog).
 roles:
   owner: 50
   principal: 30
   accountant: 20
+  it_tech: 15      # new — tech issue updates, system health checks
+  maintenance: 10  # new — facility request status updates, cost logging
   admin: 20
   teacher: 10
-  student: 0
+  student: 0       # students have no write-action tools
