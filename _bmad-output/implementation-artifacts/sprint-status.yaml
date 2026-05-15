@@ -192,6 +192,22 @@ development_status:
   epic-p4-retrospective: done
 
   # ─────────────────────────────────────────────
+  # 🔥 HOTFIXES — Ship before Part 5 (active production failures)
+  # Party-mode review 2026-05-15: P0 security + broken UX
+  # ─────────────────────────────────────────────
+  hotfix-1-file-serve-unauthenticated: backlog
+  hotfix-2-fee-collection-receipt-404: backlog
+  hotfix-3-leave-approval-rbac-any-admin: backlog
+
+  # ─────────────────────────────────────────────
+  # Pre-Part-9 Infra — MongoDB indexes + test factories
+  # Moved from Part 16 per party-mode: run before role verticals
+  # ─────────────────────────────────────────────
+  pre-p9-1-missing-mongodb-indexes: backlog
+  pre-p9-2-shared-test-factories: backlog
+  pre-p9-3-unauthenticated-surface-test: backlog
+
+  # ─────────────────────────────────────────────
   # Quality Sweep Part 5 — Notifications + Real-time (SSE)
   # Epics file: planning-artifacts/epic-part5-sse-notifications.md
   # Baseline: 420 tests · Model: Claude Sonnet 4.6
