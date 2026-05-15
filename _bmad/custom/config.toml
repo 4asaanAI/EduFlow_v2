@@ -1,7 +1,13 @@
 # Team / enterprise overrides for _bmad/config.toml.
 # Committed to the repo — applies to every developer on the project.
 # Tables deep-merge over base config; keyed entries merge by key.
-# Example: override an agent descriptor, or add a new agent.
-#
-# [agents.bmad-agent-pm]
-# description = "Prefers short, bulleted PRDs over narrative drafts."
+
+# ─── Working model ──────────────────────────────────────────────
+# All implementation from Part 5 onward uses Claude Sonnet 4.6 (1M context).
+# Model ID: claude-sonnet-4-6[1m]
+# Switched from Opus after Part 4 close (2026-05-15).
+# ────────────────────────────────────────────────────────────────
+
+[core]
+model = "claude-sonnet-4-6"
+model_note = "Sonnet 4.6 (1M context) — active from Part 5. Parts 1-4 were Opus/Sonnet mix."

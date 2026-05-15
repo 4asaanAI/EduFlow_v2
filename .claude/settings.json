@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git status*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git push*)",
+      "Bash(grep*)",
+      "Bash(find . *)",
+      "Bash(ls*)",
+      "Bash(cat /Users/abhishek/Downloads/eduflow/*)",
+      "Bash(wc -l*)",
+      "Bash(python3 /Users/abhishek/Downloads/eduflow/_bmad/scripts/*)"
+    ]
+  }
+}

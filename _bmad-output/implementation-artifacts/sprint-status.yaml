@@ -190,3 +190,158 @@ development_status:
   p4-7-audit-gate-fail-open: done
   p4-8-context-builder-scoping-tests: done
   epic-p4-retrospective: done
+
+  # ─────────────────────────────────────────────
+  # Quality Sweep Part 5 — Notifications + Real-time (SSE)
+  # Epics file: planning-artifacts/epic-part5-sse-notifications.md
+  # Baseline: 420 tests · Model: Claude Sonnet 4.6
+  # ─────────────────────────────────────────────
+  epic-p5: backlog
+  p5-1-sse-keepalive-reconnect: backlog
+  p5-2-notification-delivery-guarantees: backlog
+  p5-3-notification-fan-out-utility: backlog
+  p5-4-unread-count-performance: backlog
+  p5-5-sse-connection-leak-guard: backlog
+  p5-6-notification-tests: backlog
+  epic-p5-retrospective: optional
+
+  # ─────────────────────────────────────────────
+  # Quality Sweep Part 6 — File Storage + Uploads
+  # Epics file: planning-artifacts/epic-part6-file-storage.md
+  # ─────────────────────────────────────────────
+  epic-p6: backlog
+  p6-1-upload-authentication-guard: backlog
+  p6-2-s3-school-namespacing: backlog
+  p6-3-mime-type-validation: backlog
+  p6-4-orphaned-file-cleanup: backlog
+  p6-5-chat-upload-limits: backlog
+  p6-6-file-storage-tests: backlog
+  epic-p6-retrospective: optional
+
+  # ─────────────────────────────────────────────
+  # Quality Sweep Part 7 — Observability + Audit
+  # Epics file: planning-artifacts/epic-part7-observability-audit.md
+  # ─────────────────────────────────────────────
+  epic-p7: backlog
+  p7-1-audit-coverage-settings-activities: backlog
+  p7-2-health-endpoint-s3-sms-checks: backlog
+  p7-3-error-response-shape-consistency: backlog
+  p7-4-log-level-correctness: backlog
+  p7-5-audit-log-branch-scoping: backlog
+  p7-6-observability-tests: backlog
+  epic-p7-retrospective: optional
+
+  # ─────────────────────────────────────────────
+  # Quality Sweep Part 8 — Frontend Foundation
+  # Epics file: planning-artifacts/epic-part8-frontend-foundation.md
+  # ─────────────────────────────────────────────
+  epic-p8: backlog
+  p8-1-sse-reconnect-backoff: backlog
+  p8-2-confirm-double-submit-guard: backlog
+  p8-3-message-renderer-xss: backlog
+  p8-4-error-boundary-granularity: backlog
+  p8-5-401-refresh-race-guard: backlog
+  p8-6-url-routing-active-tool: backlog
+  epic-p8-retrospective: optional
+
+  # ─────────────────────────────────────────────
+  # Quality Sweep Part 9 — Principal Role Vertical
+  # Epics file: planning-artifacts/epic-part9-principal-vertical.md
+  # ─────────────────────────────────────────────
+  epic-p9: backlog
+  p9-1-leave-approval-notification: backlog
+  p9-2-leave-approval-rbac-fix: backlog
+  p9-3-fee-report-principal-access: backlog
+  p9-4-announcement-broadcast-fix: backlog
+  p9-5-staff-privilege-escalation-guard: backlog
+  p9-6-principal-daily-ops-dashboard: backlog
+  epic-p9-retrospective: optional
+
+  # ─────────────────────────────────────────────
+  # Quality Sweep Part 10 — Accountant Role Vertical
+  # Epics file: planning-artifacts/epic-part10-accountant-vertical.md
+  # ─────────────────────────────────────────────
+  epic-p10: backlog
+  p10-1-receipt-endpoint: backlog
+  p10-2-fee-export-missing-fields: backlog
+  p10-3-discount-approval-gate: backlog
+  p10-4-expense-rbac-fix: backlog
+  p10-5-payroll-routes: backlog
+  p10-6-fee-correction-audit: backlog
+  epic-p10-retrospective: optional
+
+  # ─────────────────────────────────────────────
+  # Quality Sweep Part 11 — Receptionist Role Vertical
+  # Epics file: planning-artifacts/epic-part11-receptionist-vertical.md
+  # ─────────────────────────────────────────────
+  epic-p11: backlog
+  p11-1-enquiry-stage-machine: backlog
+  p11-2-visitor-duplicate-detection: backlog
+  p11-3-query-ticket-scoping: backlog
+  p11-4-certificate-approval-gate: backlog
+  p11-5-complaint-routing: backlog
+  epic-p11-retrospective: optional
+
+  # ─────────────────────────────────────────────
+  # Quality Sweep Part 12 — Maintenance Admin Vertical
+  # Epics file: planning-artifacts/epic-part12-maintenance-vertical.md
+  # ─────────────────────────────────────────────
+  epic-p12: backlog
+  p12-1-facility-request-lifecycle: backlog
+  p12-2-maintenance-schedule-recurrence: backlog
+  p12-3-vendor-management-ui: backlog
+  p12-4-work-order-sla-tracking: backlog
+  p12-5-maintenance-escalation: backlog
+  epic-p12-retrospective: optional
+
+  # ─────────────────────────────────────────────
+  # Quality Sweep Part 13 — IT-Tech Admin Vertical
+  # Epics file: planning-artifacts/epic-part13-ittech-vertical.md
+  # ─────────────────────────────────────────────
+  epic-p13: backlog
+  p13-1-tech-issue-rbac-consistency: backlog
+  p13-2-system-health-dashboard: backlog
+  p13-3-password-reset-account-unlock: backlog
+  p13-4-token-usage-visibility: backlog
+  p13-5-import-tool-access: backlog
+  epic-p13-retrospective: optional
+
+  # ─────────────────────────────────────────────
+  # Quality Sweep Part 14 — Teacher Role Vertical
+  # ⚠️  GATED on Story 7-39 (teacher login activation)
+  # Epics file: planning-artifacts/epic-part14-teacher-vertical.md
+  # ─────────────────────────────────────────────
+  epic-p14: backlog
+  p14-1-assignment-ownership-check: backlog
+  p14-2-marks-ceiling-validation: backlog
+  p14-3-teacher-attendance-self-view: backlog
+  p14-4-student-class-scope: backlog
+  p14-5-results-publish-gate: backlog
+  p14-6-lesson-plan-principal-review: backlog
+  epic-p14-retrospective: optional
+
+  # ─────────────────────────────────────────────
+  # Quality Sweep Part 15 — Student Role Vertical
+  # ⚠️  GATED on Story 7-39 + DPDP parental consent
+  # Epics file: planning-artifacts/epic-part15-student-vertical.md
+  # ─────────────────────────────────────────────
+  epic-p15: backlog
+  p15-1-dpdp-consent-model: backlog
+  p15-2-student-fee-summary: backlog
+  p15-3-attendance-self-view: backlog
+  p15-4-results-visibility-gate: backlog
+  p15-5-student-profile-update: backlog
+  epic-p15-retrospective: optional
+
+  # ─────────────────────────────────────────────
+  # Quality Sweep Part 16 — Platform Integration
+  # Epics file: planning-artifacts/epic-part16-platform-integration.md
+  # ─────────────────────────────────────────────
+  epic-p16: backlog
+  p16-1-cross-role-e2e-workflow: backlog
+  p16-2-jwt-expiry-mid-session: backlog
+  p16-3-concurrent-write-idempotency: backlog
+  p16-4-missing-mongodb-indexes: backlog
+  p16-5-sms-integration-tests: backlog
+  p16-6-deployment-runbook: backlog
+  epic-p16-retrospective: optional
