@@ -88,6 +88,30 @@ async def test_student_targeted_also_lands_in_pending(client):
     assert resp.json()["data"]["status"] == "pending_approval"
 
 
+async def test_all_audience_requires_approval_and_expands_roles(client):
+    token = _login_owner(client)
+    resp = client.post(
+        "/api/ops/announcements",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"title": "All hands", "content": "Read this.", "audience_type": "all", "target_roles": []},
+    )
+    data = resp.json()["data"]
+    assert data["status"] == "pending_approval"
+    assert set(data["target_roles"]) == {"teacher", "student", "admin", "parent"}
+
+
+async def test_class_audience_requires_approval_and_targets_students(client):
+    token = _login_owner(client)
+    resp = client.post(
+        "/api/ops/announcements",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"title": "Class notice", "content": "For class.", "audience_type": "class", "audience_classes": ["5 A"]},
+    )
+    data = resp.json()["data"]
+    assert data["status"] == "pending_approval"
+    assert data["target_roles"] == ["student"]
+
+
 async def test_mixed_admin_teacher_still_pending(client):
     """Any inclusion of teacher/student forces approval."""
     token = _login_owner(client)

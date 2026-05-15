@@ -385,8 +385,8 @@ export function StudentStrength() {
     setLoading(true);
     try {
       const [classRes, studRes] = await Promise.all([
-        fetch(`${API}/settings/classes`, { headers: h(currentUser) }).then(r => r.json()),
-        fetch(`${API}/students/?limit=2000`, { headers: h(currentUser) }).then(r => r.json()),
+        fetch(`${API}/settings/classes`, { headers: h() }).then(r => r.json()),
+        fetch(`${API}/students/?limit=2000`, { headers: h() }).then(r => r.json()),
       ]);
       const classes = classRes.data || [];
       const students = studRes.data || [];
@@ -461,9 +461,11 @@ export function DataImport() {
     form.append('file', file);
     if (mode === 'commit') form.append('overwrite_duplicates', overwrite ? 'true' : 'false');
     try {
+      const headers = h();
+      delete headers['Content-Type'];
       const res = await fetch(`${API}/import/${mode}`, {
         method: 'POST',
-        headers: getAuthHeaders(null),
+        headers,
         body: form,
       });
       const data = await res.json();
@@ -545,7 +547,7 @@ export function AttendanceOverview() {
     try {
       const [attRes, classRes] = await Promise.all([
         executeTool('get_attendance_overview', { days: 30 }, currentUser),
-        fetch(`${API}/settings/classes`, { headers: h(currentUser) }).then(r => r.json()),
+        fetch(`${API}/settings/classes`, { headers: h() }).then(r => r.json()),
       ]);
       if (attRes.success) setData(attRes.data);
       setClasses(classRes.data || []);
@@ -668,7 +670,7 @@ export function FinancialReports() {
     try {
       const [feeRes, expRes] = await Promise.all([
         executeTool('get_financial_report', {}, currentUser),
-        fetch(`${API}/ops/expenses`, { headers: h(currentUser) }).then(r => r.json()),
+        fetch(`${API}/ops/expenses`, { headers: h() }).then(r => r.json()),
       ]);
       if (feeRes.success) setData(feeRes.data);
       if (expRes.success) setExpenses(expRes.data || []);
@@ -716,8 +718,8 @@ export function AnnouncementBroadcaster() {
     setLoading(true);
     try {
       const [annRes, classRes] = await Promise.all([
-        fetch(`${API}/ops/announcements`, { headers: h(currentUser) }).then(r => r.json()),
-        fetch(`${API}/settings/classes`, { headers: h(currentUser) }).then(r => r.json()),
+        fetch(`${API}/ops/announcements`, { headers: h() }).then(r => r.json()),
+        fetch(`${API}/settings/classes`, { headers: h() }).then(r => r.json()),
       ]);
       if (annRes.success) setAnnouncements(annRes.data || []);
       setClasses(classRes.data || []);
@@ -742,15 +744,21 @@ export function AnnouncementBroadcaster() {
     if (!form.title.trim() || !form.content.trim()) return;
     setSaving(true);
     try {
+      const targetRoles = form.audience_type === 'all'
+        ? ['teacher', 'student', 'admin', 'parent']
+        : form.audience_type === 'class'
+          ? ['student']
+          : form.audience_roles;
       const payload = {
         title: form.title,
         content: form.content,
         audience_type: form.audience_type,
-        audience_roles: form.audience_type === 'role' ? form.audience_roles : [],
+        audience_roles: targetRoles,
+        target_roles: targetRoles,
         audience_classes: form.audience_type === 'class' ? form.audience_classes : [],
         is_draft: false,
       };
-      const r = await fetch(`${API}/ops/announcements`, { method: 'POST', headers: h(currentUser), body: JSON.stringify(payload) }).then(r => r.json());
+      const r = await fetch(`${API}/ops/announcements`, { method: 'POST', headers: h(), body: JSON.stringify(payload) }).then(r => r.json());
       if (r.success) { resetForm(); load(); }
       else alert('Failed to send announcement. Please try again.');
     } catch { alert('Network error. Please try again.'); }
@@ -880,7 +888,7 @@ export function StaffPerformance() {
     try {
       const [staffRes, attRes] = await Promise.all([
         getStaff(currentUser),
-        fetch(`${API}/attendance/staff`, { headers: h(currentUser) }).then(r => r.json()),
+        fetch(`${API}/attendance/staff`, { headers: h() }).then(r => r.json()),
       ]);
       const staffList = staffRes.success ? (staffRes.data || []) : [];
       setStaff(staffList);
@@ -1068,13 +1076,13 @@ export function ExpenseTracker() {
   const [form, setForm] = useState({ category: '', description: '', amount: '', date: new Date().toISOString().slice(0, 10), vendor: '' });
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
   useEffect(() => { load(); }, []);
-  const load = async () => { setLoading(true); try { const r = await fetch(`${API}/ops/expenses`, { headers: h(currentUser) }).then(r => r.json()); if (r.success) setExpenses(r.data || []); } catch {} setLoading(false); };
+  const load = async () => { setLoading(true); try { const r = await fetch(`${API}/ops/expenses`, { headers: h() }).then(r => r.json()); if (r.success) setExpenses(r.data || []); } catch {} setLoading(false); };
   const handleAdd = async (e) => {
     e.preventDefault();
     if (!form.category || !form.amount) { alert('Category and Amount are required.'); return; }
     try {
       const r = await fetch(`${API}/ops/expenses`, {
-        method: 'POST', headers: h(currentUser),
+        method: 'POST', headers: h(),
         body: JSON.stringify({ ...form, amount: parseFloat(form.amount) }),
       }).then(res => res.json());
       if (r.success) {
@@ -1120,7 +1128,7 @@ export function ComplaintTracker() {
   const [complaints, setComplaints] = useState([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => { load(); }, []);
-  const load = async () => { setLoading(true); try { const r = await fetch(`${API}/ops/complaints`, { headers: h(currentUser) }).then(r => r.json()); if (r.success) setComplaints(r.data || []); } catch {} setLoading(false); };
+  const load = async () => { setLoading(true); try { const r = await fetch(`${API}/ops/complaints`, { headers: h() }).then(r => r.json()); if (r.success) setComplaints(r.data || []); } catch {} setLoading(false); };
   const statusColors = { open: 'red', assigned: 'yellow', in_progress: 'blue', resolved: 'green', closed: 'gray' };
   return (
     <ToolPage title="Complaint & Grievance Tracker" subtitle="Manage and resolve complaints" onRefresh={load} loading={loading}>
@@ -1232,7 +1240,7 @@ export function CustomReportBuilder() {
         let fetchOk = false;
 
         try {
-          const res = await fetch(buildUrl(src.endpoint), { headers: h(currentUser) });
+          const res = await fetch(buildUrl(src.endpoint), { headers: h() });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const text = await res.text();
           const parsed = parseCSV(text);
@@ -1392,8 +1400,8 @@ export function BoardReport() {
         executeTool('get_fee_summary', {}, currentUser),
         executeTool('get_smart_alerts', {}, currentUser),
         executeTool('get_attendance_overview', { days: 30 }, currentUser),
-        fetch(`${API}/staff/`, { headers: h(currentUser) }).then(r => r.json()).catch(() => ({ data: [] })),
-        fetch(`${API}/ops/expenses`, { headers: h(currentUser) }).then(r => r.json()).catch(() => ({ data: [] })),
+        fetch(`${API}/staff/`, { headers: h() }).then(r => r.json()).catch(() => ({ data: [] })),
+        fetch(`${API}/ops/expenses`, { headers: h() }).then(r => r.json()).catch(() => ({ data: [] })),
       ]);
       const expenses = expRes.data || [];
       const totalExp = expenses.reduce((s, e) => s + (e.amount || 0), 0);
@@ -1640,7 +1648,7 @@ export function YearEndTransition() {
     setLoading(true);
     try {
       const r = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/settings/year-end-transition`, {
-        method: 'POST', headers: h(currentUser),
+        method: 'POST', headers: h(),
         body: JSON.stringify({ new_year_name: newYear, start_date: startDate, end_date: endDate })
       }).then(r => r.json());
       if (r.success) setResult(r.data);
@@ -1707,7 +1715,7 @@ export function AttendanceAlerts() {
   const [smsLogs, setSmsLogs] = useState([]);
 
   useEffect(() => {
-    fetch(`${API}/sms/config-status`, { headers: h(currentUser) })
+    fetch(`${API}/sms/config-status`, { headers: h() })
       .then(r => r.json())
       .then(r => { if (r.success) setTwilioConfigured(r.data.configured); })
       .catch(() => {});
@@ -1717,7 +1725,7 @@ export function AttendanceAlerts() {
     setLoading(true);
     setFetched(false);
     try {
-      const res = await fetch(`${API}/attendance/low-attendance?threshold=${threshold}&days=${days}`, { headers: h(currentUser) });
+      const res = await fetch(`${API}/attendance/low-attendance?threshold=${threshold}&days=${days}`, { headers: h() });
       const r = await res.json();
       if (r.success) { setStudents(r.data || []); setFetched(true); setSelectedRows([]); }
     } catch (e) {
@@ -1728,7 +1736,7 @@ export function AttendanceAlerts() {
   };
 
   const loadLogs = async () => {
-    const r = await fetch(`${API}/sms/logs`, { headers: h(currentUser) }).then(r => r.json());
+    const r = await fetch(`${API}/sms/logs`, { headers: h() }).then(r => r.json());
     if (r.success) setSmsLogs(r.data || []);
   };
 
@@ -1749,7 +1757,7 @@ export function AttendanceAlerts() {
     try {
       const res = await fetch(`${API}/sms/send-parent-message`, {
         method: 'POST',
-        headers: h(currentUser),
+        headers: h(),
         body: JSON.stringify({
           student_id: selectedStudent.student_id,
           student_name: selectedStudent.student_name,
@@ -1776,7 +1784,7 @@ export function AttendanceAlerts() {
     try {
       const res = await fetch(`${API}/sms/send-bulk`, {
         method: 'POST',
-        headers: h(currentUser),
+        headers: h(),
         body: JSON.stringify({
           message_template: bulkTemplate,
           recipients: targets.map(s => ({

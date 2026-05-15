@@ -119,6 +119,20 @@ async def test_attendance_trends_calculates_monthly_pct(client, fake_db):
     assert c1_now["attendance_pct"] == round(2 / 3 * 100, 2)
 
 
+async def test_attendance_trends_excludes_other_school_rows(client, fake_db):
+    now = datetime.utcnow()
+    month = f"{now.year:04d}-{now.month:02d}"
+    fake_db.student_attendance.docs.extend([
+        {"schoolId": "aaryans-joya", "date": f"{month}-01", "status": "present", "class_id": "c1"},
+        {"schoolId": "other-school", "date": f"{month}-01", "status": "absent", "class_id": "c1"},
+    ])
+    token = _login_owner(client)
+    resp = client.get("/api/reports/attendance-trends?months=1", headers={"Authorization": f"Bearer {token}"})
+    overall = next(r for r in resp.json()["overall"] if r["month"] == month)
+    assert overall["present"] == 1
+    assert overall["total"] == 1
+
+
 # ─── Fee summary math ──────────────────────────────────────────────────────
 
 
@@ -140,6 +154,19 @@ async def test_fee_summary_groups_paid_and_outstanding(client, fake_db):
     row = next(r for r in body["data"] if r["month"] == month)
     assert row["collected"] == 8000.0
     assert row["outstanding"] == 3500.0
+
+
+async def test_fee_summary_excludes_other_school_transactions(client, fake_db):
+    now = datetime.utcnow()
+    month = f"{now.year:04d}-{now.month:02d}"
+    fake_db.fee_transactions.docs.extend([
+        {"schoolId": "aaryans-joya", "amount": 1000, "status": "paid", "paid_date": f"{month}-01"},
+        {"schoolId": "other-school", "amount": 9000, "status": "paid", "paid_date": f"{month}-01"},
+    ])
+    token = _login_owner(client)
+    resp = client.get("/api/reports/fee-collection-summary?months=1", headers={"Authorization": f"Bearer {token}"})
+    row = next(r for r in resp.json()["data"] if r["month"] == month)
+    assert row["collected"] == 1000.0
 
 
 # ─── Clamping ──────────────────────────────────────────────────────────────

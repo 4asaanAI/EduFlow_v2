@@ -53,3 +53,4 @@ User-confirmed order: **3 → 1 → 2 → 4 → 5 → 6 → 7 → 8 → 9 → ..
 
 - Migration 014 (`014_ensure_maintenance_user`) is missing from `run_all.py` — pre-existing, surface during Part 4 (Multi-tenancy + Data Layer).
 - ALLOWED_ROLES override may unlock students past their YAML floor — surface during Part 1 (Auth + RBAC).
+- Part 3 Owner role hardening follow-up remains deferred: complete FR8 owner-exclusive endpoint role-matrix tests for the 8 scoped endpoints, reach the NFR2 backend test-count target (≥360), and rerun pytest/frontend build once `pytest` and `frontend/node_modules` are available. Current pass already patched tenant scoping, announcement moderation, auth-dependency migration, fee-sync field whitelisting, and frontend auth header consistency, but this follow-up must close the remaining verification backlog before marking Part 3 done.

@@ -2,11 +2,21 @@ from __future__ import annotations
 
 from datetime import datetime, date
 from database import get_db
+from tenant import get_school_id, scoped_filter
+
+
+def _tenant_query(query: dict | None = None) -> dict:
+    return scoped_filter(query or {}, get_school_id())
+
+
+def _tenant_match(query: dict | None = None) -> dict:
+    return {"$match": _tenant_query(query)}
 
 
 async def _get_house_standings(db) -> list:
     """Return the 4 houses sorted by points (descending)."""
     pipeline = [
+        _tenant_match({}),
         {"$group": {"_id": "$house", "points": {"$sum": "$points"}}},
         {"$sort": {"points": -1}},
         {"$limit": 4},
@@ -17,8 +27,8 @@ async def _get_house_standings(db) -> list:
 
 async def _get_attendance_rate(db, today: str) -> str:
     """Return today's school-wide attendance rate as a formatted string."""
-    total_marked = await db.student_attendance.count_documents({"date": today})
-    present = await db.student_attendance.count_documents({"date": today, "status": "present"})
+    total_marked = await db.student_attendance.count_documents(_tenant_query({"date": today}))
+    present = await db.student_attendance.count_documents(_tenant_query({"date": today, "status": "present"}))
     if total_marked > 0:
         rate = round(present / total_marked * 100, 1)
         return f"{rate}% ({present}/{total_marked} present)"
@@ -35,7 +45,7 @@ def _format_currency(amount: int | float) -> str:
 async def _get_fee_outstanding(db) -> str:
     """Return total outstanding (pending + overdue) fees as formatted string."""
     pipeline = [
-        {"$match": {"status": {"$in": ["pending", "overdue"]}}},
+        _tenant_match({"status": {"$in": ["pending", "overdue"]}}),
         {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
     ]
     result = await db.fee_transactions.aggregate(pipeline).to_list(1)
@@ -46,7 +56,7 @@ async def _get_fee_outstanding(db) -> str:
 async def _get_todays_collections(db, today: str) -> str:
     """Return total fee collections made today as formatted string."""
     pipeline = [
-        {"$match": {"status": "paid", "paid_date": today}},
+        _tenant_match({"status": "paid", "paid_date": today}),
         {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
     ]
     result = await db.fee_transactions.aggregate(pipeline).to_list(1)
@@ -57,10 +67,10 @@ async def _get_todays_collections(db, today: str) -> str:
 async def _get_active_alerts(db, today: str) -> int:
     """Count active alerts (absent staff, overdue fees)."""
     alerts = 0
-    absent_staff = await db.staff_attendance.count_documents({"date": today, "status": "absent"})
+    absent_staff = await db.staff_attendance.count_documents(_tenant_query({"date": today, "status": "absent"}))
     if absent_staff > 0:
         alerts += 1
-    overdue_fees = await db.fee_transactions.count_documents({"status": "overdue"})
+    overdue_fees = await db.fee_transactions.count_documents(_tenant_query({"status": "overdue"}))
     if overdue_fees > 0:
         alerts += 1
     return alerts
@@ -68,9 +78,9 @@ async def _get_active_alerts(db, today: str) -> int:
 
 async def _get_library_stats(db) -> dict:
     """Return library statistics: total books, books issued, overdue returns."""
-    total_books = await db.library_books.count_documents({})
-    books_issued = await db.library_transactions.count_documents({"status": "issued"})
-    overdue_returns = await db.library_transactions.count_documents({"status": "overdue"})
+    total_books = await db.library_books.count_documents(_tenant_query())
+    books_issued = await db.library_transactions.count_documents(_tenant_query({"status": "issued"}))
+    overdue_returns = await db.library_transactions.count_documents(_tenant_query({"status": "overdue"}))
     return {
         "total_books": total_books,
         "books_issued": books_issued,
@@ -80,15 +90,15 @@ async def _get_library_stats(db) -> dict:
 
 async def _get_transport_stats(db, today: str) -> dict:
     """Return transport statistics."""
-    total_vehicles = await db.vehicles.count_documents({"is_active": True})
-    active_routes = await db.transport_routes.count_documents({"is_active": True})
-    students_using_transport = await db.students.count_documents({"transport_opted": True, "is_active": True})
-    driver_present = await db.staff_attendance.count_documents({
+    total_vehicles = await db.vehicles.count_documents(_tenant_query({"is_active": True}))
+    active_routes = await db.transport_routes.count_documents(_tenant_query({"is_active": True}))
+    students_using_transport = await db.students.count_documents(_tenant_query({"transport_opted": True, "is_active": True}))
+    driver_present = await db.staff_attendance.count_documents(_tenant_query({
         "date": today,
         "status": "present",
         "role": "driver",
-    })
-    driver_total = await db.staff.count_documents({"role": "driver", "is_active": True})
+    }))
+    driver_total = await db.staff.count_documents(_tenant_query({"role": "driver", "is_active": True}))
     return {
         "total_vehicles": total_vehicles,
         "active_routes": active_routes,
@@ -99,9 +109,9 @@ async def _get_transport_stats(db, today: str) -> dict:
 
 async def _get_inventory_alerts(db) -> int:
     """Return count of inventory items below reorder level."""
-    return await db.inventory.count_documents({
+    return await db.inventory.count_documents(_tenant_query({
         "$expr": {"$lte": ["$quantity", "$reorder_level"]}
-    })
+    }))
 
 
 # ---------------------------------------------------------------------------
@@ -110,14 +120,14 @@ async def _get_inventory_alerts(db) -> int:
 async def _build_owner_context(db, today: str) -> dict:
     ctx = {}
 
-    ctx["total_students"] = await db.students.count_documents({"is_active": True})
-    ctx["total_staff"] = await db.staff.count_documents({"is_active": True})
+    ctx["total_students"] = await db.students.count_documents(_tenant_query({"is_active": True}))
+    ctx["total_staff"] = await db.staff.count_documents(_tenant_query({"is_active": True}))
     ctx["attendance_rate"] = await _get_attendance_rate(db, today)
     ctx["fee_outstanding"] = await _get_fee_outstanding(db)
     ctx["todays_collections"] = await _get_todays_collections(db, today)
-    ctx["fee_defaulters"] = await db.fee_transactions.count_documents({"status": "overdue"})
-    ctx["pending_invoices"] = await db.fee_transactions.count_documents({"status": "pending"})
-    ctx["pending_leaves"] = await db.leave_requests.count_documents({"status": "pending"})
+    ctx["fee_defaulters"] = await db.fee_transactions.count_documents(_tenant_query({"status": "overdue"}))
+    ctx["pending_invoices"] = await db.fee_transactions.count_documents(_tenant_query({"status": "pending"}))
+    ctx["pending_leaves"] = await db.leave_requests.count_documents(_tenant_query({"status": "pending"}))
     ctx["active_alerts"] = await _get_active_alerts(db, today)
 
     # House standings
@@ -141,10 +151,10 @@ async def _build_owner_context(db, today: str) -> dict:
 async def _build_principal_context(db, today: str) -> dict:
     ctx = {}
 
-    ctx["total_students"] = await db.students.count_documents({"is_active": True})
-    ctx["total_staff"] = await db.staff.count_documents({"is_active": True})
+    ctx["total_students"] = await db.students.count_documents(_tenant_query({"is_active": True}))
+    ctx["total_staff"] = await db.staff.count_documents(_tenant_query({"is_active": True}))
     ctx["attendance_rate"] = await _get_attendance_rate(db, today)
-    ctx["pending_leaves"] = await db.leave_requests.count_documents({"status": "pending"})
+    ctx["pending_leaves"] = await db.leave_requests.count_documents(_tenant_query({"status": "pending"}))
     ctx["active_alerts"] = await _get_active_alerts(db, today)
 
     # House standings
@@ -169,8 +179,8 @@ async def _build_accounts_context(db, today: str) -> dict:
     ctx = {}
     ctx["fee_outstanding"] = await _get_fee_outstanding(db)
     ctx["todays_collections"] = await _get_todays_collections(db, today)
-    ctx["fee_defaulters"] = await db.fee_transactions.count_documents({"status": "overdue"})
-    ctx["pending_invoices"] = await db.fee_transactions.count_documents({"status": "pending"})
+    ctx["fee_defaulters"] = await db.fee_transactions.count_documents(_tenant_query({"status": "overdue"}))
+    ctx["pending_invoices"] = await db.fee_transactions.count_documents(_tenant_query({"status": "pending"}))
     return ctx
 
 
@@ -186,9 +196,9 @@ async def _build_transport_head_context(db, today: str) -> dict:
 # ---------------------------------------------------------------------------
 async def _build_receptionist_context(db, today: str) -> dict:
     ctx = {}
-    ctx["new_enquiries_today"] = await db.enquiries.count_documents({"date": today})
-    ctx["pending_enquiries"] = await db.enquiries.count_documents({"status": "pending"})
-    ctx["todays_visitor_count"] = await db.visitors.count_documents({"date": today})
+    ctx["new_enquiries_today"] = await db.enquiries.count_documents(_tenant_query({"date": today}))
+    ctx["pending_enquiries"] = await db.enquiries.count_documents(_tenant_query({"status": "pending"}))
+    ctx["todays_visitor_count"] = await db.visitors.count_documents(_tenant_query({"date": today}))
     return ctx
 
 
@@ -198,7 +208,7 @@ async def _build_receptionist_context(db, today: str) -> dict:
 async def _build_class_teacher_context(db, today: str, user_id: str) -> dict:
     ctx = {}
 
-    assigned_class = await db.classes.find_one({"class_teacher_id": user_id})
+    assigned_class = await db.classes.find_one(_tenant_query({"class_teacher_id": user_id}))
     if not assigned_class:
         ctx["note"] = "No class assigned"
         return ctx
@@ -207,24 +217,24 @@ async def _build_class_teacher_context(db, today: str, user_id: str) -> dict:
     ctx["assigned_class"] = assigned_class.get("name", class_id)
 
     # Student count in class
-    student_count = await db.students.count_documents({"class_id": class_id, "is_active": True})
+    student_count = await db.students.count_documents(_tenant_query({"class_id": class_id, "is_active": True}))
     ctx["student_count"] = student_count
 
     # Today's attendance for class
     student_ids = [
         s["id"]
-        async for s in db.students.find({"class_id": class_id, "is_active": True}, {"id": 1})
+        async for s in db.students.find(_tenant_query({"class_id": class_id, "is_active": True}), {"id": 1})
     ]
     if student_ids:
-        marked = await db.student_attendance.count_documents({
+        marked = await db.student_attendance.count_documents(_tenant_query({
             "student_id": {"$in": student_ids},
             "date": today,
-        })
-        present = await db.student_attendance.count_documents({
+        }))
+        present = await db.student_attendance.count_documents(_tenant_query({
             "student_id": {"$in": student_ids},
             "date": today,
             "status": "present",
-        })
+        }))
         if marked > 0:
             rate = round(present / marked * 100, 1)
             ctx["class_attendance_today"] = f"{rate}% ({present}/{marked})"
@@ -234,13 +244,13 @@ async def _build_class_teacher_context(db, today: str, user_id: str) -> dict:
         ctx["class_attendance_today"] = "No students in class"
 
     # Pending assignments for this class
-    ctx["pending_assignments"] = await db.assignments.count_documents({
+    ctx["pending_assignments"] = await db.assignments.count_documents(_tenant_query({
         "class_id": class_id,
         "status": "pending",
-    })
+    }))
 
     # Own leave balance
-    staff = await db.staff.find_one({"user_id": user_id})
+    staff = await db.staff.find_one(_tenant_query({"user_id": user_id}))
     if staff:
         ctx["own_leave_balance"] = staff.get("leave_balance", 0)
 
@@ -253,12 +263,12 @@ async def _build_class_teacher_context(db, today: str, user_id: str) -> dict:
 async def _build_hod_context(db, today: str, user_id: str) -> dict:
     ctx = {}
 
-    staff = await db.staff.find_one({"user_id": user_id})
+    staff = await db.staff.find_one(_tenant_query({"user_id": user_id}))
     subject = staff.get("subject", "Unknown") if staff else "Unknown"
     ctx["subject"] = subject
 
     # Classes teaching this subject
-    classes = await db.classes.find({"subjects": subject}).to_list(100)
+    classes = await db.classes.find(_tenant_query({"subjects": subject})).to_list(100)
     ctx["classes_teaching_subject"] = len(classes)
     class_names = [c.get("name", c.get("id", "")) for c in classes]
     ctx["class_names"] = class_names
@@ -268,18 +278,18 @@ async def _build_hod_context(db, today: str, user_id: str) -> dict:
     if class_ids:
         student_ids = [
             s["id"]
-            async for s in db.students.find({"class_id": {"$in": class_ids}, "is_active": True}, {"id": 1})
+            async for s in db.students.find(_tenant_query({"class_id": {"$in": class_ids}, "is_active": True}), {"id": 1})
         ]
         if student_ids:
-            marked = await db.student_attendance.count_documents({
+            marked = await db.student_attendance.count_documents(_tenant_query({
                 "student_id": {"$in": student_ids},
                 "date": today,
-            })
-            present = await db.student_attendance.count_documents({
+            }))
+            present = await db.student_attendance.count_documents(_tenant_query({
                 "student_id": {"$in": student_ids},
                 "date": today,
                 "status": "present",
-            })
+            }))
             if marked > 0:
                 rate = round(present / marked * 100, 1)
                 ctx["cross_class_attendance"] = f"{rate}% ({present}/{marked})"
@@ -299,7 +309,7 @@ async def _build_hod_context(db, today: str, user_id: str) -> dict:
 async def _build_coordinator_context(db, today: str, user_id: str) -> dict:
     ctx = {}
 
-    staff = await db.staff.find_one({"user_id": user_id})
+    staff = await db.staff.find_one(_tenant_query({"user_id": user_id}))
     coordinator_range = staff.get("coordinator_range", "") if staff else ""
     ctx["class_range"] = coordinator_range
 
@@ -310,11 +320,11 @@ async def _build_coordinator_context(db, today: str, user_id: str) -> dict:
             start, end = coordinator_range.split("-")
             class_numbers = list(range(int(start), int(end) + 1))
             class_name_patterns = [str(n) for n in class_numbers]
-            classes = await db.classes.find({"name": {"$regex": "|".join(class_name_patterns), "$options": "i"}}).to_list(100)
+            classes = await db.classes.find(_tenant_query({"name": {"$regex": "|".join(class_name_patterns), "$options": "i"}})).to_list(100)
         except (ValueError, TypeError):
             classes = []
     elif coordinator_range:
-        classes = await db.classes.find({"name": {"$regex": coordinator_range, "$options": "i"}}).to_list(100)
+        classes = await db.classes.find(_tenant_query({"name": {"$regex": coordinator_range, "$options": "i"}})).to_list(100)
     else:
         classes = []
 
@@ -325,18 +335,18 @@ async def _build_coordinator_context(db, today: str, user_id: str) -> dict:
     if class_ids:
         student_ids = [
             s["id"]
-            async for s in db.students.find({"class_id": {"$in": class_ids}, "is_active": True}, {"id": 1})
+            async for s in db.students.find(_tenant_query({"class_id": {"$in": class_ids}, "is_active": True}), {"id": 1})
         ]
         if student_ids:
-            marked = await db.student_attendance.count_documents({
+            marked = await db.student_attendance.count_documents(_tenant_query({
                 "student_id": {"$in": student_ids},
                 "date": today,
-            })
-            present = await db.student_attendance.count_documents({
+            }))
+            present = await db.student_attendance.count_documents(_tenant_query({
                 "student_id": {"$in": student_ids},
                 "date": today,
                 "status": "present",
-            })
+            }))
             if marked > 0:
                 rate = round(present / marked * 100, 1)
                 ctx["attendance_summary"] = f"{rate}% ({present}/{marked})"
@@ -356,7 +366,7 @@ async def _build_coordinator_context(db, today: str, user_id: str) -> dict:
 async def _build_student_context(db, today: str, user_id: str) -> dict:
     ctx = {}
 
-    student = await db.students.find_one({"user_id": user_id})
+    student = await db.students.find_one(_tenant_query({"user_id": user_id}))
     if not student:
         ctx["note"] = "Student record not found"
         return ctx
@@ -366,12 +376,12 @@ async def _build_student_context(db, today: str, user_id: str) -> dict:
     ctx["class_id"] = student.get("class_id")
 
     # Today's own attendance
-    att = await db.student_attendance.find_one({"student_id": student_id, "date": today})
+    att = await db.student_attendance.find_one(_tenant_query({"student_id": student_id, "date": today}))
     ctx["my_attendance_today"] = att["status"] if att else "Not marked"
 
     # Overall attendance percentage
-    total_days = await db.student_attendance.count_documents({"student_id": student_id})
-    present_days = await db.student_attendance.count_documents({"student_id": student_id, "status": "present"})
+    total_days = await db.student_attendance.count_documents(_tenant_query({"student_id": student_id}))
+    present_days = await db.student_attendance.count_documents(_tenant_query({"student_id": student_id, "status": "present"}))
     if total_days > 0:
         ctx["my_attendance_pct"] = f"{round(present_days / total_days * 100, 1)}%"
     else:
@@ -380,25 +390,25 @@ async def _build_student_context(db, today: str, user_id: str) -> dict:
     # Pending assignments
     class_id = student.get("class_id")
     if class_id:
-        ctx["pending_assignments"] = await db.assignments.count_documents({
+        ctx["pending_assignments"] = await db.assignments.count_documents(_tenant_query({
             "class_id": class_id,
             "status": "pending",
-        })
+        }))
     else:
         ctx["pending_assignments"] = 0
 
     # Fee status (paid/unpaid, no amounts)
-    unpaid = await db.fee_transactions.count_documents({
+    unpaid = await db.fee_transactions.count_documents(_tenant_query({
         "student_id": student_id,
         "status": {"$in": ["pending", "overdue"]},
-    })
+    }))
     ctx["fee_status"] = "unpaid" if unpaid > 0 else "paid"
 
     # House points
     house = student.get("house")
     if house:
         pipeline = [
-            {"$match": {"house": house}},
+            _tenant_match({"house": house}),
             {"$group": {"_id": None, "points": {"$sum": "$points"}}},
         ]
         result = await db.house_points.aggregate(pipeline).to_list(1)
@@ -423,7 +433,7 @@ async def build_school_context(role: str, user_id: str) -> dict:
         return await _build_student_context(db, today, user_id)
 
     # For all staff roles, look up sub_category
-    staff = await db.staff.find_one({"user_id": user_id})
+    staff = await db.staff.find_one(_tenant_query({"user_id": user_id}))
     sub_category = staff.get("sub_category", role) if staff else role
 
     # Owner: everything

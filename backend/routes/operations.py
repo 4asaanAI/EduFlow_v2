@@ -10,11 +10,6 @@ router = APIRouter(prefix="/api/ops", tags=["operations"])
 workflow_router = APIRouter(prefix="/api/operations", tags=["operations-workflow"])
 transport_router = APIRouter(prefix="/api/transport", tags=["transport"])
 
-
-def get_user(req: Request):
-    return get_current_user(req)
-
-
 def _can_decide(user: dict) -> bool:
     """Legacy predicate kept for in-file callers. New code uses
     `Depends(require_owner_or_principal)` from middleware.auth.
@@ -25,6 +20,25 @@ def _can_decide(user: dict) -> bool:
     return user.get("role") == "owner" or (
         user.get("role") == "admin" and user.get("sub_category") == "principal"
     )
+
+
+_ALL_ANNOUNCEMENT_ROLES = ["teacher", "student", "admin", "parent"]
+
+
+def _announcement_target_roles(body: dict, audience_type: str | None = None) -> list[str]:
+    audience_type = audience_type or body.get("audience_type", "all")
+    explicit_roles = body.get("target_roles")
+    if explicit_roles is None:
+        explicit_roles = body.get("audience_roles")
+    if audience_type == "all":
+        return list(_ALL_ANNOUNCEMENT_ROLES)
+    if audience_type == "class":
+        return ["student"]
+    return list(explicit_roles or [])
+
+
+def _announcement_requires_approval(audience_type: str, target_roles: list[str]) -> bool:
+    return audience_type in ("all", "class") or any(r in ("teacher", "student") for r in target_roles)
 
 
 def _audit_doc(action: str, entity_type: str, entity_id: str, user: dict, changes: dict, reason: str = None):
@@ -59,9 +73,8 @@ async def _notify(db, *, user_id: str, notification_type: str, message: str, sou
 
 
 @workflow_router.post("/leave-requests")
-async def create_leave_request(request: Request):
+async def create_leave_request(request: Request, user: dict = Depends(get_current_user)):
     db = get_db()
-    user = get_user(request)
     body = await request.json()
     if body.get("user_id") and body.get("user_id") != user["id"]:
         raise HTTPException(403, "Cannot submit leave on behalf of another user")
@@ -90,9 +103,8 @@ async def create_leave_request(request: Request):
 
 
 @workflow_router.get("/leave-requests")
-async def list_leave_requests(request: Request, status: str = None, page: int = 1, limit: int = 20):
+async def list_leave_requests(request: Request, status: str = None, page: int = 1, limit: int = 20, user: dict = Depends(get_current_user)):
     db = get_db()
-    user = get_user(request)
     query = {"status": status} if status else {}
     if not _can_decide(user):
         query["user_id"] = user["id"]
@@ -170,13 +182,12 @@ async def create_approval_request(request: Request, user: dict = Depends(require
 
 
 @workflow_router.get("/approval-requests")
-async def list_approval_requests(request: Request, status: str = None):
+async def list_approval_requests(request: Request, status: str = None, user: dict = Depends(get_current_user)):
     db = get_db()
-    user = get_user(request)
     query = {"status": status} if status else {}
     if user.get("role") == "owner":
         pass
-    elif user.get("role") == "admin" and user.get("sub_category", "principal") == "principal":
+    elif user.get("role") == "admin" and user.get("sub_category") == "principal":
         query["routing"] = "owner_and_principal"
     else:
         query["submitted_by"] = user["id"]
@@ -187,9 +198,8 @@ async def list_approval_requests(request: Request, status: str = None):
 
 
 @workflow_router.patch("/approval-requests/{approval_id}/decide")
-async def decide_approval_request(approval_id: str, request: Request):
+async def decide_approval_request(approval_id: str, request: Request, user: dict = Depends(get_current_user)):
     db = get_db()
-    user = get_user(request)
     body = await request.json()
     if body.get("status") not in ("approved", "rejected") or not body.get("reason"):
         raise HTTPException(400, "status approved/rejected and reason are required")
@@ -197,7 +207,7 @@ async def decide_approval_request(approval_id: str, request: Request):
     if not approval:
         raise HTTPException(404, "Approval request not found")
     # auth: owner can decide any; principal can decide only owner_and_principal routings.
-    principal = user.get("role") == "admin" and user.get("sub_category", "principal") == "principal"
+    principal = user.get("role") == "admin" and user.get("sub_category") == "principal"
     if user.get("role") != "owner" and not (principal and approval.get("routing") == "owner_and_principal"):
         raise HTTPException(403, "Forbidden")
     update = {
@@ -216,23 +226,22 @@ async def decide_approval_request(approval_id: str, request: Request):
 
 # --- Certificates ---
 @router.get("/certificates")
-async def list_certs(request: Request, student_id: str = None):
+async def list_certs(request: Request, student_id: str = None, user: dict = Depends(get_current_user)):
     db = get_db()
-    user = get_user(request)
     query = {}
     if student_id:
         if user["role"] == "student":
-            own = await db.students.find_one({"user_id": user["id"]})
+            own = await db.students.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()))
             if not own or own["id"] != student_id:
                 raise HTTPException(403, "Forbidden")
         query["student_id"] = student_id
     elif user["role"] == "student":
-        own = await db.students.find_one({"user_id": user["id"]})
+        own = await db.students.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()))
         if own:
             query["student_id"] = own["id"]
-    certs = await db.certificates.find(query, {"_id": 0}).sort("created_at", -1).to_list(50)
+    certs = await db.certificates.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("created_at", -1).to_list(50)
     for c in certs:
-        s = await db.students.find_one({"id": c.get("student_id")}, {"_id": 0})
+        s = await db.students.find_one(scoped_filter({"id": c.get("student_id")}, get_school_id()), {"_id": 0})
         c["student_name"] = s["name"] if s else "N/A"
     return {"success": True, "data": certs}
 
@@ -260,7 +269,7 @@ async def create_cert(request: Request, user: dict = Depends(require_role("admin
 @router.get("/expenses")
 async def list_expenses(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    expenses = await db.expenses.find({}, {"_id": 0}).sort("date", -1).to_list(100)
+    expenses = await db.expenses.find(scoped_filter({}, get_school_id()), {"_id": 0}).sort("date", -1).to_list(100)
     return {"success": True, "data": expenses}
 
 
@@ -268,7 +277,7 @@ async def list_expenses(request: Request, user: dict = Depends(require_role("own
 async def create_expense(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
     body = await request.json()
-    expense = {
+    expense = add_school_id({
         "id": str(uuid.uuid4()),
         "category": body.get("category"),
         "description": body.get("description", ""),
@@ -278,30 +287,28 @@ async def create_expense(request: Request, user: dict = Depends(require_role("ow
         "approved_by": user["id"],
         "recorded_by": user["id"],
         "created_at": datetime.now().isoformat(),
-    }
+    })
     await db.expenses.insert_one({**expense, "_id": expense["id"]})
     return {"success": True, "data": expense}
 
 
 # --- Complaints ---
 @router.get("/complaints")
-async def list_complaints(request: Request):
+async def list_complaints(request: Request, user: dict = Depends(get_current_user)):
     db = get_db()
-    user = get_user(request)
     query = {}
     # auth: scope-narrowing (own complaints only) for non-admin roles, not a gate.
     if user["role"] not in ["owner", "admin"]:
         query["submitted_by"] = user["id"]
-    complaints = await db.complaints.find(query, {"_id": 0}).sort("created_at", -1).to_list(50)
+    complaints = await db.complaints.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("created_at", -1).to_list(50)
     return {"success": True, "data": complaints}
 
 
 @router.post("/complaints")
-async def create_complaint(request: Request):
+async def create_complaint(request: Request, user: dict = Depends(get_current_user)):
     db = get_db()
-    user = get_user(request)
     body = await request.json()
-    complaint = {
+    complaint = add_school_id({
         "id": str(uuid.uuid4()),
         "submitted_by": user["id"],
         "subject": body.get("subject"),
@@ -310,7 +317,7 @@ async def create_complaint(request: Request):
         "priority": body.get("priority", "normal"),
         "status": "open",
         "created_at": datetime.now().isoformat(),
-    }
+    })
     await db.complaints.insert_one({**complaint, "_id": complaint["id"]})
     return {"success": True, "data": complaint}
 
@@ -319,7 +326,7 @@ async def create_complaint(request: Request):
 async def update_complaint(complaint_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
     body = await request.json()
-    await db.complaints.update_one({"id": complaint_id}, {"$set": body})
+    await db.complaints.update_one(scoped_filter({"id": complaint_id}, get_school_id()), {"$set": body})
     return {"success": True}
 
 
@@ -347,9 +354,8 @@ async def list_incidents(request: Request, status: str = None, q: str = None, pa
 
 
 @router.post("/incidents")
-async def create_incident(request: Request):
+async def create_incident(request: Request, user: dict = Depends(get_current_user)):
     db = get_db()
-    user = get_user(request)
     # auth: owner/admin OR admin-with-sub_category=receptionist. Composite gate.
     is_receptionist = user.get("role") == "admin" and user.get("sub_category") == "receptionist"
     if user["role"] not in ["owner", "admin"] and not is_receptionist:
@@ -444,7 +450,7 @@ async def assign_incident(incident_id: str, request: Request, user: dict = Depen
 @router.get("/visitors")
 async def list_visitors(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    visitors = await db.visitor_log.find({}, {"_id": 0}).sort("time_in", -1).to_list(50)
+    visitors = await db.visitor_log.find(scoped_filter({}, get_school_id()), {"_id": 0}).sort("time_in", -1).to_list(50)
     return {"success": True, "data": visitors}
 
 
@@ -452,7 +458,7 @@ async def list_visitors(request: Request, user: dict = Depends(require_role("own
 async def log_visitor(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
     body = await request.json()
-    visitor = {
+    visitor = add_school_id({
         "id": str(uuid.uuid4()),
         "visitor_name": body.get("visitor_name"),
         "phone": body.get("phone", ""),
@@ -461,15 +467,15 @@ async def log_visitor(request: Request, user: dict = Depends(require_role("owner
         "id_type": body.get("id_type", ""),
         "time_in": datetime.now().isoformat(),
         "time_out": None,
-    }
+    })
     await db.visitor_log.insert_one({**visitor, "_id": visitor["id"]})
     return {"success": True, "data": visitor}
 
 
 @router.patch("/visitors/{visitor_id}/checkout")
-async def checkout_visitor(visitor_id: str, request: Request):
+async def checkout_visitor(visitor_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    await db.visitor_log.update_one({"id": visitor_id}, {"$set": {"time_out": datetime.now().isoformat()}})
+    await db.visitor_log.update_one(scoped_filter({"id": visitor_id}, get_school_id()), {"$set": {"time_out": datetime.now().isoformat()}})
     return {"success": True}
 
 
@@ -477,7 +483,7 @@ async def checkout_visitor(visitor_id: str, request: Request):
 @router.get("/assets")
 async def list_assets(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    assets = await db.assets.find({}, {"_id": 0}).to_list(100)
+    assets = await db.assets.find(scoped_filter({}, get_school_id()), {"_id": 0}).to_list(100)
     return {"success": True, "data": assets}
 
 
@@ -485,7 +491,7 @@ async def list_assets(request: Request, user: dict = Depends(require_role("owner
 async def create_asset(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
     body = await request.json()
-    asset = {
+    asset = add_school_id({
         "id": str(uuid.uuid4()),
         "name": body.get("name"),
         "category": body.get("category", ""),
@@ -494,7 +500,7 @@ async def create_asset(request: Request, user: dict = Depends(require_role("admi
         "status": body.get("status", "good"),
         "purchase_date": body.get("purchase_date", ""),
         "maintenance_due": body.get("maintenance_due", ""),
-    }
+    })
     await db.assets.insert_one({**asset, "_id": asset["id"]})
     return {"success": True, "data": asset}
 
@@ -503,7 +509,7 @@ async def create_asset(request: Request, user: dict = Depends(require_role("admi
 async def update_asset(asset_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
     body = await request.json()
-    await db.assets.update_one({"id": asset_id}, {"$set": body})
+    await db.assets.update_one(scoped_filter({"id": asset_id}, get_school_id()), {"$set": body})
     return {"success": True}
 
 
@@ -512,10 +518,10 @@ async def update_asset(asset_id: str, request: Request, user: dict = Depends(req
 @transport_router.get("")
 async def list_transport(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    routes = await db.transport_routes.find({}, {"_id": 0}).to_list(50)
+    routes = await db.transport_routes.find(scoped_filter({}, get_school_id()), {"_id": 0}).to_list(50)
     # Enrich with student count per zone
     for route in routes:
-        count = await db.students.count_documents({"route_zone_id": route.get("id"), "is_active": {"$ne": False}})
+        count = await db.students.count_documents(scoped_filter({"route_zone_id": route.get("id"), "is_active": {"$ne": False}}, get_school_id()))
         route["student_count"] = count
     return {"success": True, "data": routes}
 
@@ -525,7 +531,7 @@ async def list_transport(request: Request, user: dict = Depends(require_role("ow
 async def create_route(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
     body = await request.json()
-    route = {
+    route = add_school_id({
         "id": str(uuid.uuid4()),
         "route_name": body.get("route_name") or body.get("name"),
         "start_point": body.get("start_point", ""),
@@ -538,7 +544,7 @@ async def create_route(request: Request, user: dict = Depends(require_role("admi
         "fare": body.get("fare", 0),
         "is_active": True,
         "created_at": datetime.now().isoformat(),
-    }
+    })
     await db.transport_routes.insert_one({**route, "_id": route["id"]})
     return {"success": True, "data": route}
 
@@ -551,8 +557,8 @@ async def get_transport_roster(request: Request, zone_id: str = None, user: dict
     query = {"is_active": {"$ne": False}}
     if zone_id:
         query["route_zone_id"] = zone_id
-    students = await db.students.find(query, {"_id": 0, "name": 1, "class_name": 1, "guardian_phone": 1, "route_zone_id": 1}).to_list(500)
-    zones = await db.transport_routes.find({}, {"_id": 0, "id": 1, "route_name": 1}).to_list(50)
+    students = await db.students.find(scoped_filter(query, get_school_id()), {"_id": 0, "name": 1, "class_name": 1, "guardian_phone": 1, "route_zone_id": 1}).to_list(500)
+    zones = await db.transport_routes.find(scoped_filter({}, get_school_id()), {"_id": 0, "id": 1, "route_name": 1}).to_list(50)
     zone_map = {z["id"]: z["route_name"] for z in zones}
     for s in students:
         s["zone_name"] = zone_map.get(s.get("route_zone_id", ""), "Not Assigned")
@@ -564,7 +570,7 @@ async def get_transport_roster(request: Request, zone_id: str = None, user: dict
 async def create_vehicle(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
     body = await request.json()
-    vehicle = {
+    vehicle = add_school_id({
         "id": str(uuid.uuid4()),
         "vehicle_number": body.get("vehicle_number", ""),
         "vehicle_type": body.get("vehicle_type", "bus"),
@@ -573,7 +579,7 @@ async def create_vehicle(request: Request, user: dict = Depends(require_role("ad
         "driver_phone": body.get("driver_phone", ""),
         "is_active": True,
         "created_at": datetime.now().isoformat(),
-    }
+    })
     await db.vehicles.insert_one({**vehicle, "_id": vehicle["id"]})
     return {"success": True, "data": vehicle}
 
@@ -582,7 +588,7 @@ async def create_vehicle(request: Request, user: dict = Depends(require_role("ad
 @transport_router.get("/vehicles")
 async def list_vehicles(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    vehicles = await db.vehicles.find({}, {"_id": 0}).to_list(50)
+    vehicles = await db.vehicles.find(scoped_filter({}, get_school_id()), {"_id": 0}).to_list(50)
     return {"success": True, "data": vehicles}
 
 
@@ -592,14 +598,14 @@ async def create_zone(request: Request, user: dict = Depends(require_role("admin
     """Alias: zones map to transport routes with zone semantics."""
     db = get_db()
     body = await request.json()
-    zone = {
+    zone = add_school_id({
         "id": str(uuid.uuid4()),
         "route_name": body.get("name") or body.get("route_name", ""),
         "description": body.get("description", ""),
         "fare": body.get("fare", 0),
         "is_active": True,
         "created_at": datetime.now().isoformat(),
-    }
+    })
     await db.transport_routes.insert_one({**zone, "_id": zone["id"]})
     return {"success": True, "data": zone}
 
@@ -609,8 +615,8 @@ async def create_zone(request: Request, user: dict = Depends(require_role("admin
 async def update_route(route_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
     body = await request.json()
-    await db.transport_routes.update_one({"id": route_id}, {"$set": body})
-    route = await db.transport_routes.find_one({"id": route_id}, {"_id": 0})
+    await db.transport_routes.update_one(scoped_filter({"id": route_id}, get_school_id()), {"$set": body})
+    route = await db.transport_routes.find_one(scoped_filter({"id": route_id}, get_school_id()), {"_id": 0})
     return {"success": True, "data": route}
 
 
@@ -618,18 +624,17 @@ async def update_route(route_id: str, request: Request, user: dict = Depends(req
 @transport_router.delete("/{route_id}")
 async def delete_route(route_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    await db.transport_routes.delete_one({"id": route_id})
+    await db.transport_routes.delete_one(scoped_filter({"id": route_id}, get_school_id()))
     return {"success": True}
 
 
 @router.post("/study-plan")
-async def save_study_plan(request: Request):
+async def save_study_plan(request: Request, user: dict = Depends(get_current_user)):
     db = get_db()
-    user = get_user(request)
     body = await request.json()
     from datetime import datetime as dt
     await db.study_plans.update_one(
-        {"user_id": user["id"]},
+        scoped_filter({"user_id": user["id"]}, get_school_id()),
         {"$set": {**body, "user_id": user["id"], "updated_at": dt.now().isoformat()}},
         upsert=True
     )
@@ -640,44 +645,43 @@ async def save_study_plan(request: Request):
 async def update_expense(expense_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
     body = await request.json(); body.pop("id", None)
-    await db.expenses.update_one({"id": expense_id}, {"$set": body})
+    await db.expenses.update_one(scoped_filter({"id": expense_id}, get_school_id()), {"$set": body})
     return {"success": True}
 
 
 @router.delete("/expenses/{expense_id}")
 async def delete_expense(expense_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    await db.expenses.delete_one({"id": expense_id})
+    await db.expenses.delete_one(scoped_filter({"id": expense_id}, get_school_id()))
     return {"success": True}
 
 
 @router.delete("/assets/{asset_id}")
 async def delete_asset(asset_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    await db.assets.delete_one({"id": asset_id})
+    await db.assets.delete_one(scoped_filter({"id": asset_id}, get_school_id()))
     return {"success": True}
 
 
 @router.delete("/announcements/{ann_id}")
 async def delete_announcement(ann_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    await db.announcements.delete_one({"id": ann_id})
+    await db.announcements.delete_one(scoped_filter({"id": ann_id}, get_school_id()))
     return {"success": True}
 
 
 @router.delete("/visitors/{visitor_id}")
 async def delete_visitor(visitor_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    await db.visitor_log.delete_one({"id": visitor_id})
+    await db.visitor_log.delete_one(scoped_filter({"id": visitor_id}, get_school_id()))
     return {"success": True}
 
 
 # --- Announcements ---
 @router.get("/announcements")
-async def list_announcements(request: Request, page: int = 1, limit: int = 20):
+async def list_announcements(request: Request, page: int = 1, limit: int = 20, user: dict = Depends(get_current_user)):
     """Story 14: returns announcements targeted at the calling user's role."""
     db = get_db()
-    user = get_user(request)
     role = user.get("role", "")
     limit = min(max(limit, 1), 50)
     skip = max(page - 1, 0) * limit
@@ -698,6 +702,7 @@ async def list_announcements(request: Request, page: int = 1, limit: int = 20):
             ]},
         ],
     }
+    query = scoped_filter(query, get_school_id())
     total = await db.announcements.count_documents(query)
     announcements = await db.announcements.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     return {"success": True, "data": announcements, "meta": {"page": page, "limit": limit, "total": total}}
@@ -707,18 +712,20 @@ async def list_announcements(request: Request, page: int = 1, limit: int = 20):
 async def create_announcement(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
     body = await request.json()
-    target_roles = body.get("target_roles") or body.get("audience_roles", [])
+    has_explicit_roles = body.get("target_roles") is not None or body.get("audience_roles") is not None
+    audience_type = body.get("audience_type") or ("role" if has_explicit_roles else "all")
+    target_roles = _announcement_target_roles(body, audience_type)
 
     # Story 7-47: announcements addressed to teachers/students require principal
     # approval before they become visible. Admin-only audiences skip the gate.
-    requires_approval = any(r in ("teacher", "student") for r in (target_roles or []))
+    requires_approval = _announcement_requires_approval(audience_type, target_roles)
     initial_status = "pending_approval" if requires_approval else "active"
 
-    announcement = {
+    announcement = add_school_id({
         "id": str(uuid.uuid4()),
         "title": body.get("title"),
         "content": body.get("content"),
-        "audience_type": body.get("audience_type", "all"),
+        "audience_type": audience_type,
         "audience_classes": body.get("audience_classes", []),
         "audience_roles": target_roles,
         "target_roles": target_roles,
@@ -729,20 +736,17 @@ async def create_announcement(request: Request, user: dict = Depends(require_rol
         "created_by": user["id"],
         "created_by_name": user.get("name", ""),
         "created_at": datetime.now().isoformat(),
-    }
+    })
     await db.announcements.insert_one({**announcement, "_id": announcement["id"]})
     return {"success": True, "data": announcement}
 
 
 @router.get("/announcements/pending")
-async def list_pending_announcements(request: Request):
+async def list_pending_announcements(request: Request, user: dict = Depends(require_owner_or_principal)):
     """Story 7-47: principal-only list of announcements awaiting approval."""
     db = get_db()
-    user = get_user(request)
-    if not _can_decide(user):
-        raise HTTPException(status_code=403, detail="Principal or owner only")
     rows = (
-        await db.announcements.find({"status": "pending_approval"}, {"_id": 0})
+        await db.announcements.find(scoped_filter({"status": "pending_approval"}, get_school_id()), {"_id": 0})
         .sort("created_at", -1)
         .to_list(200)
     )
@@ -750,13 +754,10 @@ async def list_pending_announcements(request: Request):
 
 
 @router.patch("/announcements/{ann_id}/approve")
-async def approve_announcement(ann_id: str, request: Request):
+async def approve_announcement(ann_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
     """Story 7-47: principal approval moves announcement to active."""
     db = get_db()
-    user = get_user(request)
-    if not _can_decide(user):
-        raise HTTPException(status_code=403, detail="Principal or owner only")
-    ann = await db.announcements.find_one({"id": ann_id})
+    ann = await db.announcements.find_one(scoped_filter({"id": ann_id}, get_school_id()))
     if not ann:
         raise HTTPException(status_code=404, detail="Announcement not found")
     if ann.get("status") != "pending_approval":
@@ -767,7 +768,7 @@ async def approve_announcement(ann_id: str, request: Request):
 
     now = datetime.now().isoformat()
     await db.announcements.update_one(
-        {"id": ann_id},
+        scoped_filter({"id": ann_id}, get_school_id()),
         {"$set": {
             "status": "active",
             "approved_by": user.get("id"),
@@ -789,18 +790,15 @@ async def approve_announcement(ann_id: str, request: Request):
 
 
 @router.patch("/announcements/{ann_id}/reject")
-async def reject_announcement(ann_id: str, request: Request):
+async def reject_announcement(ann_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
     """Story 7-47: principal rejection with mandatory reason; notifies author."""
     db = get_db()
-    user = get_user(request)
-    if not _can_decide(user):
-        raise HTTPException(status_code=403, detail="Principal or owner only")
     body = await request.json()
     reason = (body.get("reason") or "").strip()
     if not reason:
         raise HTTPException(status_code=400, detail="rejection reason is required")
 
-    ann = await db.announcements.find_one({"id": ann_id})
+    ann = await db.announcements.find_one(scoped_filter({"id": ann_id}, get_school_id()))
     if not ann:
         raise HTTPException(status_code=404, detail="Announcement not found")
     if ann.get("status") != "pending_approval":
@@ -811,7 +809,7 @@ async def reject_announcement(ann_id: str, request: Request):
 
     now = datetime.now().isoformat()
     await db.announcements.update_one(
-        {"id": ann_id},
+        scoped_filter({"id": ann_id}, get_school_id()),
         {"$set": {
             "status": "rejected",
             "rejected_by": user.get("id"),
@@ -853,7 +851,7 @@ async def list_enquiries(request: Request, status: str = None, user: dict = Depe
     query = {}
     if status:
         query["status"] = status
-    enquiries = await db.enquiries.find(query, {"_id": 0}).sort("created_at", -1).to_list(50)
+    enquiries = await db.enquiries.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("created_at", -1).to_list(50)
     return {"success": True, "data": enquiries}
 
 
@@ -861,7 +859,7 @@ async def list_enquiries(request: Request, status: str = None, user: dict = Depe
 async def create_enquiry(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
     body = await request.json()
-    enquiry = {
+    enquiry = add_school_id({
         "id": str(uuid.uuid4()),
         "student_name": body.get("student_name"),
         "parent_name": body.get("parent_name"),
@@ -871,7 +869,7 @@ async def create_enquiry(request: Request, user: dict = Depends(require_role("ow
         "source": body.get("source", "walk_in"),
         "assigned_to": user["id"],
         "created_at": datetime.now().isoformat(),
-    }
+    })
     await db.enquiries.insert_one({**enquiry, "_id": enquiry["id"]})
     return {"success": True, "data": enquiry}
 
@@ -880,24 +878,23 @@ async def create_enquiry(request: Request, user: dict = Depends(require_role("ow
 async def update_enquiry(enquiry_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
     body = await request.json()
-    await db.enquiries.update_one({"id": enquiry_id}, {"$set": body})
+    await db.enquiries.update_one(scoped_filter({"id": enquiry_id}, get_school_id()), {"$set": body})
     return {"success": True}
 
 
 # --- Leave (teacher self-apply) ---
 @router.post("/leaves")
-async def apply_leave(request: Request):
+async def apply_leave(request: Request, user: dict = Depends(get_current_user)):
     db = get_db()
-    user = get_user(request)
     body = await request.json()
-    staff = await db.staff.find_one({"user_id": user["id"]})
+    staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()))
     if not staff:
         # Create a minimal staff record for this teacher if not found
         from datetime import datetime as dt
         import uuid
         staff_id = str(uuid.uuid4())
         await db.staff.insert_one({
-            "_id": staff_id, "id": staff_id, "user_id": user["id"],
+            "_id": staff_id, "id": staff_id, "schoolId": get_school_id(), "user_id": user["id"],
             "name": user.get("name", "Staff"), "staff_type": "teacher",
             "is_active": True, "created_at": dt.now().isoformat(),
         })
@@ -914,6 +911,7 @@ async def apply_leave(request: Request):
         "reason": body.get("reason"),
         "status": "pending",
         "applied_at": dt.now().isoformat(),
+        "schoolId": get_school_id(),
     }
     await db.leave_requests.insert_one({**leave, "_id": leave["id"]})
     return {"success": True, "data": leave}
@@ -921,10 +919,9 @@ async def apply_leave(request: Request):
 
 # --- Study Planner ---
 @router.get("/study-plan")
-async def get_study_plan(request: Request):
+async def get_study_plan(request: Request, user: dict = Depends(get_current_user)):
     db = get_db()
-    user = get_user(request)
-    plan = await db.study_plans.find_one({"user_id": user["id"]}, {"_id": 0})
+    plan = await db.study_plans.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})
     if not plan:
         return {"success": True, "data": {"monday": "", "tuesday": "", "wednesday": "", "thursday": "", "friday": "", "saturday": ""}}
     return {"success": True, "data": plan}

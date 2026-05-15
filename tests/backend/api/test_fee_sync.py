@@ -95,6 +95,9 @@ class TestFeeSync:
         })
         job = client.post("/api/fees/sync/trigger", headers=auth_headers).json()["data"]
         conflict_id = job["conflicts"][0]["id"]
+        stored_job = next(item for item in fake_db.fee_sync_jobs.docs if item["id"] == job["sync_job_id"])
+        stored_job["conflicts"][0]["theirs"]["hacked_field"] = "must-not-land"
+        stored_job["conflicts"][0]["theirs"]["status"] = "paid"
 
         forbidden = client.post(f"/api/fees/sync/{job['sync_job_id']}/resolve-conflict", json={"conflict_id": conflict_id, "decision": "use_theirs"}, headers=_admin_headers())
         resolved = client.post(f"/api/fees/sync/{job['sync_job_id']}/resolve-conflict", json={"conflict_id": conflict_id, "decision": "use_theirs"}, headers=_owner_headers())
@@ -103,4 +106,8 @@ class TestFeeSync:
         assert resolved.json()["data"]["status"] == "completed"
         updated = next(item for item in fake_db.fee_transactions.docs if item["id"] == "fee-existing")
         assert updated["amount"] == 3200
+        assert updated["status"] == "paid"
+        assert "hacked_field" not in updated
+        resolved_conflict = resolved.json()["data"]["conflicts"][0]
+        assert set(resolved_conflict["resolved_fields"]) == {"amount", "status", "due_date", "source"}
         assert fake_db.audit_logs.docs[-1]["action"] == "fee_sync_conflict_resolved"

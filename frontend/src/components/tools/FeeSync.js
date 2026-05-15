@@ -93,16 +93,25 @@ export default function FeeSync() {
             </div>
             {conflicts.length === 0 ? (
               <div style={emptyStyle}>No unresolved conflicts.</div>
-            ) : conflicts.map(conflict => (
-              <div key={conflict.id} style={{ borderTop: '1px solid var(--c-border)', padding: '12px 0' }}>
-                <div style={{ color: 'var(--c-text)', fontWeight: 700, fontSize: 13 }}>{conflict.student_id} / {conflict.period} / {conflict.fee_head}</div>
-                <div style={{ color: 'var(--c-faint)', fontSize: 12, marginTop: 4 }}>Ours: Rs {conflict.ours?.amount} | Theirs: Rs {conflict.theirs?.amount}</div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                  <button onClick={() => resolve(conflict.id, 'keep_ours')} disabled={loading || conflict.status === 'resolved'} style={buttonStyle('var(--c-bg)', 'var(--c-text)')}>Keep ours</button>
-                  <button onClick={() => resolve(conflict.id, 'use_theirs')} disabled={loading || conflict.status === 'resolved'} style={buttonStyle('var(--tool-hex-6366f1)', 'var(--tool-hex-fff)')}>Use theirs</button>
+            ) : conflicts.map(conflict => {
+              const resolvedFields = conflict.resolved_fields || {};
+              const resolvedFieldNames = Object.keys(resolvedFields);
+              return (
+                <div key={conflict.id} style={{ borderTop: '1px solid var(--c-border)', padding: '12px 0' }}>
+                  <div style={{ color: 'var(--c-text)', fontWeight: 700, fontSize: 13 }}>{conflict.student_id} / {conflict.period} / {conflict.fee_head}</div>
+                  <div style={{ color: 'var(--c-faint)', fontSize: 12, marginTop: 4 }}>Ours: Rs {conflict.ours?.amount} | Theirs: Rs {conflict.theirs?.amount}</div>
+                  {resolvedFieldNames.length > 0 && (
+                    <div style={{ color: 'var(--tool-hex-34d399)', fontSize: 12, marginTop: 6 }}>
+                      Overwritten: {resolvedFieldNames.map(field => `${field}: ${resolvedFields[field] ?? '-'}`).join(', ')}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                    <button onClick={() => resolve(conflict.id, 'keep_ours')} disabled={loading || conflict.status === 'resolved'} style={buttonStyle('var(--c-bg)', 'var(--c-text)')}>Keep ours</button>
+                    <button onClick={() => resolve(conflict.id, 'use_theirs')} disabled={loading || conflict.status === 'resolved'} style={buttonStyle('var(--tool-hex-6366f1)', 'var(--tool-hex-fff)')}>Use theirs</button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </>
         )}
       </section>

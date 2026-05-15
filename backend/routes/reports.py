@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from database import get_db
 from middleware.auth import get_current_user, require_owner, require_owner_or_principal
+from tenant import get_school_id, scoped_filter
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -68,7 +69,7 @@ async def attendance_trends(
     # Pull only rows in the window. `date` is stored as ISO `YYYY-MM-DD` string,
     # so a $gte against the bucket start works lexicographically.
     rows = await db.student_attendance.find(
-        {"date": {"$gte": f"{earliest_bucket}-01"}},
+        scoped_filter({"date": {"$gte": f"{earliest_bucket}-01"}}, get_school_id()),
         {"_id": 0},
     ).to_list(20000)
 
@@ -139,7 +140,7 @@ async def fee_collection_summary(
     db = get_db()
     bucket_keys = _last_n_months(datetime.utcnow(), months)
 
-    rows = await db.fee_transactions.find({}, {"_id": 0}).to_list(20000)
+    rows = await db.fee_transactions.find(scoped_filter({}, get_school_id()), {"_id": 0}).to_list(20000)
 
     if not rows:
         return {"success": True, "data": [], "empty": True}

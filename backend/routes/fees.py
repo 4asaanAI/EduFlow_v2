@@ -161,9 +161,8 @@ async def get_class_fee_summary(request: Request, user: dict = Depends(require_r
 
 
 @router.get("/my")
-async def get_my_fees(request: Request):
+async def get_my_fees(request: Request, user: dict = Depends(get_current_user)):
     db = get_db()
-    user = get_user(request)
     student = await db.students.find_one(_fee_query({"user_id": user["id"]}), {"_id": 0})
     if not student:
         raise HTTPException(404, "Student record not found")
@@ -506,6 +505,15 @@ def _external_key(record: dict):
     return record.get("student_id"), record.get("fee_period") or record.get("period"), record.get("fee_head") or record.get("fee_type")
 
 
+def _fee_sync_resolution_update(theirs: dict) -> dict:
+    return {
+        "amount": float(theirs.get("amount", 0)),
+        "status": theirs.get("status", "pending"),
+        "due_date": theirs.get("due_date"),
+        "source": theirs.get("source", "fee_api_sync"),
+    }
+
+
 @router.post("/sync/trigger")
 async def trigger_fee_sync(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
@@ -609,11 +617,13 @@ async def resolve_fee_sync_conflict(sync_job_id: str, request: Request, user: di
     target = next((item for item in conflicts if item.get("id") == conflict_id), None)
     if not target:
         raise HTTPException(404, "Conflict not found")
+    resolved_fields = {}
     if decision == "use_theirs":
         theirs = target["theirs"]
+        resolved_fields = _fee_sync_resolution_update(theirs)
         await db.fee_transactions.update_one(
             _fee_query({"student_id": target["student_id"], "fee_period": target["period"], "fee_head": target["fee_head"]}),
-            {"$set": {"amount": float(theirs.get("amount", 0)), "status": theirs.get("status", "pending"), "due_date": theirs.get("due_date"), "updated_at": datetime.now().isoformat(), "source": "fee_api_sync"}},
+            {"$set": {**resolved_fields, "updated_at": datetime.now().isoformat()}},
             upsert=True,
         )
     for conflict in conflicts:
@@ -622,10 +632,12 @@ async def resolve_fee_sync_conflict(sync_job_id: str, request: Request, user: di
             conflict["resolution"] = decision
             conflict["resolved_by"] = user["id"]
             conflict["resolved_at"] = datetime.now().isoformat()
+            if resolved_fields:
+                conflict["resolved_fields"] = resolved_fields
     unresolved = [item for item in conflicts if item.get("status") == "conflict"]
     update = {"conflicts": conflicts, "conflict_count": len(unresolved), "status": "completed" if not unresolved else "conflict"}
     await db.fee_sync_jobs.update_one(_fee_query({"id": sync_job_id}), {"$set": update})
-    await _audit(db, action="fee_sync_conflict_resolved", entity_id=sync_job_id, user=user, changes={"conflict_id": conflict_id, "decision": decision})
+    await _audit(db, action="fee_sync_conflict_resolved", entity_id=sync_job_id, user=user, changes={"conflict_id": conflict_id, "decision": decision, "resolved_fields": resolved_fields})
     updated = await db.fee_sync_jobs.find_one(_fee_query({"id": sync_job_id}), {"_id": 0})
     if decision == "use_theirs":
         await _publish_fee_update(db, "fee_sync_conflict_resolved", {"sync_job_id": sync_job_id, "conflict_id": conflict_id})

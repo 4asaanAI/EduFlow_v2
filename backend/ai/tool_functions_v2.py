@@ -1343,7 +1343,7 @@ async def tool_query_dashboard_summary(params: dict, user: dict, scope: dict = N
     data = [{
         "open_incidents": await db.incidents.count_documents(scoped_filter({"status": {"$ne": "closed"}}, get_school_id())),
         "pending_approvals": await db.approval_requests.count_documents(scoped_filter({"status": "pending"}, get_school_id())),
-        "staff_absent_today": await db.staff_attendance.count_documents({"date": today, "status": "absent"}),
+        "staff_absent_today": await db.staff_attendance.count_documents(scoped_filter({"date": today, "status": "absent"}, get_school_id())),
         "fee_outstanding_transactions": await db.fee_transactions.count_documents(scoped_filter({"status": {"$in": ["pending", "overdue", "unpaid"]}}, get_school_id())),
     }]
     return _ok(data, 0, "Dashboard summary ready.")
@@ -1352,7 +1352,7 @@ async def tool_query_dashboard_summary(params: dict, user: dict, scope: dict = N
 async def tool_query_attendance_status(params: dict, user: dict, scope: dict = None) -> dict:
     db = get_db()
     target_date = params.get("date", date.today().isoformat())
-    records = await db.staff_attendance.find({"date": target_date}, {"_id": 0}).to_list(500)
+    records = await db.staff_attendance.find(scoped_filter({"date": target_date}, get_school_id()), {"_id": 0}).to_list(500)
     return _ok(records, 0, "Staff attendance status ready.")
 
 
@@ -1373,8 +1373,8 @@ async def tool_query_incidents(params: dict, user: dict, scope: dict = None) -> 
     if params.get("status"):
         query["status"] = params["status"]
     incidents = await db.incidents.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("created_at", -1).to_list(100)
-    complaints = await db.complaints.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
-    visitors = await db.visitor_log.find({}, {"_id": 0}).sort("time_in", -1).to_list(100)
+    complaints = await db.complaints.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("created_at", -1).to_list(100)
+    visitors = await db.visitor_log.find(scoped_filter({}, get_school_id()), {"_id": 0}).sort("time_in", -1).to_list(100)
     return _ok([{"incidents": incidents, "complaints": complaints, "visitors": visitors}], 0, "Incident data ready.")
 
 
@@ -1422,7 +1422,7 @@ async def tool_query_audit_log(params: dict, user: dict, scope: dict = None) -> 
 
 
 _AUDIENCE_ROLE_MAP = {
-    "all": [],
+    "all": ["teacher", "student", "admin", "parent"],
     "staff": ["admin", "teacher"],
     "students": ["student"],
     "parents": ["parent"],
