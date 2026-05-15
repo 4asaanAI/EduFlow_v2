@@ -1,10 +1,10 @@
 # generated: 2026-05-12
-# last_updated: 2026-05-12
+# last_updated: 2026-05-15
 # project: eduflow
 # project_key: NOKEY
 # tracking_system: file-system
 # story_location: _bmad-output/implementation-artifacts
-# note: Phases 1–5 complete. Phase 6 (Deployment & Go-Live) is the active sprint. Phase 7 (Growth Features) begins after 4 clean pilot weeks.
+# note: Phases 1–5 complete. Phase 6 (Deployment & Go-Live) is the active sprint. Phase 7 (Growth Features) begins after 4 clean pilot weeks. Quality Sweep Part 4 (Multi-tenancy) added 2026-05-15.
 
 # STATUS DEFINITIONS:
 # ==================
@@ -174,3 +174,19 @@ development_status:
   7-47-announcement-moderation-approval-gate: done
   7-48-ai-write-rate-limiting: done
   epic-7-retrospective: optional
+
+  # ─────────────────────────────────────────────
+  # Quality Sweep Part 4 — Multi-tenancy + Data Layer (8 stories)
+  # Source: platform-quality-sweep.md Part 4 · Epics file: planning-artifacts/epic-part4-multitenancy.md
+  # Baseline: 387 backend tests passing, 0 skipped
+  # ─────────────────────────────────────────────
+  epic-p4: backlog
+  p4-1-fix-exports-cross-tenant-exam-results-enrichment: backlog
+  p4-2-add-require-access-auth-helper: backlog
+  p4-3-migration-014-run-all-audit: backlog
+  p4-4-drop-otps-collection: backlog
+  p4-5-enforce-branch-id-ai-tools: backlog
+  p4-6-school-id-jwt-vs-env-adr: backlog
+  p4-7-audit-gate-fail-open: backlog
+  p4-8-context-builder-scoping-tests: backlog
+  epic-p4-retrospective: optional
