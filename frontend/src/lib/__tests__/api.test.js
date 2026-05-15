@@ -82,6 +82,21 @@ test('chat stream drop does not auto-issue another POST', async () => {
   expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'stream_error', retryable: true }));
 });
 
+test('chat stream initial fetch failure clears thinking without auto-retry', async () => {
+  const onEvent = jest.fn();
+  global.fetch.mockRejectedValue(new Error('offline'));
+
+  await sendMessageStream('conv-1', 'hello', { id: 'user-1' }, onEvent, 'tab-1');
+
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+  expect(onEvent).toHaveBeenCalledWith({ type: 'thinking_clear' });
+  expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({
+    type: 'stream_error',
+    retryable: true,
+    reason: 'stream_network_error',
+  }));
+});
+
 test('subscribeSSE uses exponential reconnect for non-chat streams', async () => {
   global.fetch.mockResolvedValue(response(503));
   const onEvent = jest.fn();

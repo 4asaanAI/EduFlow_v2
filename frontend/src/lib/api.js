@@ -134,6 +134,9 @@ export function sendMessageStream(convId, text, user, onEvent, sessionId = null)
       onEvent({ type: 'thinking_clear' });
       onEvent({ type: 'stream_error', retryable: true, reason: 'stream_closed_without_done' });
     }
+  }).catch(() => {
+    onEvent({ type: 'thinking_clear' });
+    onEvent({ type: 'stream_error', retryable: true, reason: 'stream_network_error' });
   });
 }
 

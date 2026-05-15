@@ -55,6 +55,8 @@ async def list_audit_log(
 
     if changed_by:
         query["changed_by"] = changed_by
+    if is_principal and branch_id and branch_id != user.get("branch_id"):
+        raise HTTPException(403, "Forbidden")
     if branch_id:
         query["branch_id"] = branch_id
     elif is_principal and user.get("branch_id"):

@@ -30,37 +30,37 @@ async def get_notifications(request: Request, page: int = 1, limit: int = 20):
     if page == 1:
         role = user["role"]
         today = date.today().strftime("%Y-%m-%d")
-        ann_query = {"is_draft": {"$ne": True}}
+        ann_query = scoped_filter({"is_draft": {"$ne": True}}, get_school_id())
         recent_ann = await db.announcements.find(ann_query, {"_id": 0, "title": 1, "created_at": 1, "audience_roles": 1}).sort("created_at", -1).to_list(5)
 
         if role in ["owner", "admin"]:
-            pending = await db.leave_requests.count_documents({"status": "pending"})
+            pending = await db.leave_requests.count_documents(scoped_filter({"status": "pending"}, get_school_id()))
             if pending > 0:
                 digest.append({"type": "warning", "title": "Pending Leave Requests", "message": f"{pending} leave request(s) awaiting approval", "time": "Now", "read": True, "is_digest": True})
-            overdue = await db.fee_transactions.count_documents({"status": "overdue"})
+            overdue = await db.fee_transactions.count_documents(scoped_filter({"status": "overdue"}, get_school_id()))
             if overdue > 0:
                 digest.append({"type": "error", "title": "Fee Overdue", "message": f"{overdue} fee transaction(s) overdue", "time": "Today", "read": True, "is_digest": True})
-            open_facility = await db.facility_requests.count_documents({"status": {"$in": ["open", "in_progress"]}})
+            open_facility = await db.facility_requests.count_documents(scoped_filter({"status": {"$in": ["open", "in_progress"]}}, get_school_id()))
             if open_facility > 0:
                 digest.append({"type": "info", "title": "Open Facility Requests", "message": f"{open_facility} facility request(s) in progress", "time": "Today", "read": True, "is_digest": True})
 
         elif role == "teacher":
-            staff = await db.staff.find_one({"user_id": user["id"]})
+            staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()))
             if staff:
-                my_leaves = await db.leave_requests.count_documents({"staff_id": staff["id"], "status": "pending"})
+                my_leaves = await db.leave_requests.count_documents(scoped_filter({"staff_id": staff["id"], "status": "pending"}, get_school_id()))
                 if my_leaves > 0:
                     digest.append({"type": "info", "title": "Leave Status", "message": "Your leave request is pending approval", "time": "Now", "read": True, "is_digest": True})
 
         elif role == "student":
-            own = await db.students.find_one({"user_id": user["id"]})
+            own = await db.students.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()))
             if own:
-                records = await db.student_attendance.find({"student_id": own["id"]}).to_list(200)
+                records = await db.student_attendance.find(scoped_filter({"student_id": own["id"]}, get_school_id())).to_list(200)
                 if records:
                     present = sum(1 for r in records if r["status"] == "present")
                     rate = round(present / len(records) * 100, 1)
                     if rate < 75:
                         digest.append({"type": "error", "title": "Low Attendance", "message": f"Your attendance is {rate}% — below 75% threshold", "time": "Today", "read": True, "is_digest": True})
-                overdue = await db.fee_transactions.count_documents({"student_id": own["id"], "status": {"$in": ["overdue", "pending"]}})
+                overdue = await db.fee_transactions.count_documents(scoped_filter({"student_id": own["id"], "status": {"$in": ["overdue", "pending"]}}, get_school_id()))
                 if overdue > 0:
                     digest.append({"type": "warning", "title": "Fee Due", "message": f"{overdue} fee payment(s) pending", "time": "Today", "read": True, "is_digest": True})
 

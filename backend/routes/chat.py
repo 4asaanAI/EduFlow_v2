@@ -45,7 +45,7 @@ from services.confirm_tokens import (
     audit_ai_rate_limit_hit,
 )
 from services.ai_rate_limiter import increment_and_check as _ai_rate_check, decrement_count as _ai_rate_decrement
-from tenant import get_school_id
+from tenant import get_school_id, scoped_filter
 
 
 class RateLimitExceeded(Exception):
@@ -269,12 +269,23 @@ NAVIGATE_MAP = {
 # ─── CRUD routes (unchanged) ─────────────────────────────────────────────────
 # Note: get_current_user is imported from middleware.auth
 
+
+def _owned_conversation_filter(conv_id: str, user: dict) -> dict:
+    return scoped_filter({"id": conv_id, "user_id": user["id"]}, get_school_id())
+
+
+async def _require_owned_conversation(db, conv_id: str, user: dict) -> dict:
+    conv = await db.conversations.find_one(_owned_conversation_filter(conv_id, user))
+    if not conv:
+        raise HTTPException(404, "Conversation not found")
+    return conv
+
 @router.get("/conversations")
 async def list_conversations(request: Request):
     db = get_db()
     user = get_current_user(request)
     convs = await db.conversations.find(
-        {"user_id": user["id"]}, {"_id": 0}
+        scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0}
     ).sort("updated_at", -1).to_list(50)
     return {"success": True, "data": convs}
 
@@ -292,13 +303,10 @@ async def create_conversation(request: Request):
 async def update_conversation(conv_id: str, body: ConversationUpdate, request: Request):
     db = get_db()
     user = get_current_user(request)
-    conv = await db.conversations.find_one({"id": conv_id})
-    if not conv or conv.get("user_id") != user["id"]:
-        from fastapi import HTTPException
-        raise HTTPException(404, "Conversation not found")
+    await _require_owned_conversation(db, conv_id, user)
     update_data = {k: v for k, v in body.dict().items() if v is not None}
     update_data["updated_at"] = datetime.now().isoformat()
-    await db.conversations.update_one({"id": conv_id}, {"$set": update_data})
+    await db.conversations.update_one(_owned_conversation_filter(conv_id, user), {"$set": update_data})
     return {"success": True}
 
 
@@ -306,12 +314,9 @@ async def update_conversation(conv_id: str, body: ConversationUpdate, request: R
 async def delete_conversation(conv_id: str, request: Request):
     db = get_db()
     user = get_current_user(request)
-    conv = await db.conversations.find_one({"id": conv_id})
-    if not conv or conv.get("user_id") != user["id"]:
-        from fastapi import HTTPException
-        raise HTTPException(404, "Conversation not found")
-    await db.conversations.delete_one({"id": conv_id})
-    await db.messages.delete_many({"conversation_id": conv_id})
+    await _require_owned_conversation(db, conv_id, user)
+    await db.conversations.delete_one(_owned_conversation_filter(conv_id, user))
+    await db.messages.delete_many(scoped_filter({"conversation_id": conv_id}, get_school_id()))
     return {"success": True}
 
 
@@ -319,12 +324,9 @@ async def delete_conversation(conv_id: str, request: Request):
 async def get_messages(conv_id: str, request: Request):
     db = get_db()
     user = get_current_user(request)
-    conv = await db.conversations.find_one({"id": conv_id})
-    if not conv or conv.get("user_id") != user["id"]:
-        from fastapi import HTTPException
-        raise HTTPException(404, "Conversation not found")
+    await _require_owned_conversation(db, conv_id, user)
     msgs = await db.messages.find(
-        {"conversation_id": conv_id}, {"_id": 0}
+        scoped_filter({"conversation_id": conv_id}, get_school_id()), {"_id": 0}
     ).sort("created_at", 1).to_list(100)
     return {"success": True, "data": msgs}
 
@@ -1049,11 +1051,11 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         await db.messages.insert_one({**user_msg.dict(), "_id": user_msg.id})
 
         # Update conversation timestamp + auto-title
-        conv = await db.conversations.find_one({"id": conv_id})
+        conv = await db.conversations.find_one(_owned_conversation_filter(conv_id, user))
         update_fields = {"updated_at": datetime.now().isoformat()}
         if conv and conv.get("title") in ("New conversation", None, ""):
             update_fields["title"] = user_text[:50].strip()
-        await db.conversations.update_one({"id": conv_id}, {"$set": update_fields})
+        await db.conversations.update_one(_owned_conversation_filter(conv_id, user), {"$set": update_fields})
 
     except Exception as e:
         logger.error(f"Phase 1 (save user message) error: {e}")
@@ -1145,7 +1147,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
     # Fix: load first HISTORY_KEEP_FIRST anchors ASC + last HISTORY_KEEP_RECENT
     # by DESC and re-sort. Total messages == both ends, never the middle.
     try:
-        msg_filter = {"conversation_id": conv_id, "role": {"$in": ["user", "assistant"]}}
+        msg_filter = scoped_filter({"conversation_id": conv_id, "role": {"$in": ["user", "assistant"]}}, get_school_id())
         anchors = await db.messages.find(msg_filter, {"_id": 0}).sort("created_at", 1).to_list(HISTORY_KEEP_FIRST)
         anchor_ids = {a.get("id") for a in anchors if a.get("id")}
         recent = await db.messages.find(msg_filter, {"_id": 0}).sort("created_at", -1).to_list(HISTORY_KEEP_RECENT)
@@ -1794,7 +1796,9 @@ def _tool_accepts_scope(tool_def: dict) -> bool:
 
 @router.post("/conversations/{conv_id}/messages")
 async def send_message(conv_id: str, request: Request):
+    db = get_db()
     user = get_current_user(request)
+    await _require_owned_conversation(db, conv_id, user)
     body = await request.json()
     _raw_text = body.get("text", "") or ""
     # Strip zero-width and normal whitespace before empty-message check (P11 E7)
@@ -1825,6 +1829,7 @@ async def execute_action(conv_id: str, request: Request):
     """Execute an action button directly (not through LLM) and add result to chat."""
     db = get_db()
     user = get_current_user(request)
+    await _require_owned_conversation(db, conv_id, user)
     body = await request.json()
     action = body.get("action")
     params = body.get("params", {})
@@ -1863,7 +1868,7 @@ async def execute_action(conv_id: str, request: Request):
         )
         await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
         await db.conversations.update_one(
-            {"id": conv_id},
+            _owned_conversation_filter(conv_id, user),
             {"$set": {"updated_at": datetime.now().isoformat()}},
         )
 
@@ -1885,6 +1890,9 @@ async def execute_action(conv_id: str, request: Request):
 # ─── Confirm action endpoint ─────────────────────────────────────────────────
 
 async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, db, conv_id: str = None):
+    if conv_id:
+        await _require_owned_conversation(db, conv_id, user)
+
     # Validate token ownership BEFORE incrementing the rate-limit counter.
     # If we incremented first, an attacker (or a buggy client) firing
     # invalid/expired tokens could DoS a user's hourly budget. The peek call
@@ -2032,7 +2040,7 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
         )
         await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
         await db.conversations.update_one(
-            {"id": conv_id},
+            _owned_conversation_filter(conv_id, user),
             {"$set": {"updated_at": datetime.now().isoformat()}},
         )
         message_id = ai_msg.id
@@ -2088,6 +2096,7 @@ async def confirm_action(conv_id: str, request: Request):
     confirmed = body.get("confirmed", False) or decision == "confirm"
 
     if not confirmed:
+        await _require_owned_conversation(db, conv_id, user)
         cancel_msg = "Action cancelled. Let me know if you need anything else."
         ai_msg = Message(
             conversation_id=conv_id,

@@ -42,6 +42,20 @@ def test_principal_audit_log_auto_filters_to_own_branch(client, fake_db):
     assert [item["id"] for item in response.json()["data"]] == ["a2"]
 
 
+def test_principal_audit_log_cannot_override_branch_param(client, fake_db):
+    fake_db.audit_logs.docs[:] = [
+        {"id": "a1", "schoolId": "aaryans-joya", "branch_id": "branch-1", "collection": "students", "created_at": "2026-01-02"},
+        {"id": "a2", "schoolId": "aaryans-joya", "branch_id": "branch-2", "collection": "students", "created_at": "2026-01-01"},
+    ]
+
+    response = client.get(
+        "/api/audit-log?branch_id=branch-1",
+        headers=_headers("principal-1", "admin", sub_category="principal", branch_id="branch-2"),
+    )
+
+    assert response.status_code == 403
+
+
 def test_owner_audit_log_without_branch_param_sees_all_school_branches(client, fake_db):
     fake_db.audit_logs.docs[:] = [
         {"id": "a1", "schoolId": "aaryans-joya", "branch_id": "branch-1", "created_at": "2026-01-02"},

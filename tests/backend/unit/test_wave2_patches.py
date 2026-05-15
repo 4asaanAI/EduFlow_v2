@@ -450,10 +450,13 @@ def test_keepalive_event_is_data_event():
     assert event.startswith("data: ")
 
 
-def test_empty_message_rejection_strips_zero_width_whitespace(client):
+def test_empty_message_rejection_strips_zero_width_whitespace(client, fake_db):
     """Zero-width characters alone must be treated as an empty message."""
     from middleware.auth import create_jwt
-    token = create_jwt({"id": "u1", "role": "owner", "name": "O"})
+    fake_db.conversations.docs[:] = [
+        {"_id": "conv-1", "id": "conv-1", "schoolId": "aaryans-joya", "user_id": "u1"}
+    ]
+    token = create_jwt({"user_id": "u1", "role": "owner", "name": "O"})
     headers = {"Authorization": f"Bearer {token}"}
     # U+200B ZERO WIDTH SPACE, U+200C ZERO WIDTH NON-JOINER
     resp = client.post(

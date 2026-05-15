@@ -81,6 +81,28 @@ def test_get_notifications_all_good_fallback_meta(client, auth_headers, fake_db)
     assert body["data"][0]["title"] == "All Good"
 
 
+def test_get_notifications_digest_is_school_scoped(client, auth_headers, fake_db):
+    _reset_notification_state(fake_db)
+    fake_db.leave_requests.docs.append({"id": "foreign-leave", "schoolId": "other-school", "status": "pending"})
+    fake_db.fee_transactions.docs.append({"id": "foreign-fee", "schoolId": "other-school", "status": "overdue"})
+    fake_db.facility_requests.docs.append({"id": "foreign-facility", "schoolId": "other-school", "status": "open"})
+    fake_db.announcements.docs.append({
+        "id": "foreign-ann",
+        "schoolId": "other-school",
+        "title": "Foreign announcement",
+        "audience_roles": ["owner"],
+        "created_at": "2026-05-15T08:00:00",
+    })
+
+    resp = client.get("/api/notifications", headers=auth_headers)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["meta"]["digest_count"] == 0
+    assert body["meta"]["has_fallback"] is True
+    assert body["data"][0]["title"] == "All Good"
+
+
 def test_unread_count_only_counts_current_user(client, auth_headers, fake_db):
     _reset_notification_state(fake_db)
     fake_db.notifications.docs.extend([

@@ -132,3 +132,80 @@ def test_attendance_stream_emits_snapshot_with_session_header(client, fake_db):
     assert line.startswith("data: ")
     assert '"type": "snapshot"' in line
     assert '"channel": "attendance"' in line
+
+
+def test_chat_message_stream_rejects_unowned_conversation_before_insert(client, fake_db):
+    fake_db.conversations.docs[:] = [
+        {"_id": "victim-conv", "id": "victim-conv", "schoolId": "aaryans-joya", "user_id": "other-user"},
+    ]
+    fake_db.messages.docs[:] = []
+
+    response = client.post(
+        "/api/chat/conversations/victim-conv/messages",
+        json={"text": "hello", "session_id": "attacker-tab"},
+        headers=_headers(user_id="owner-1"),
+    )
+
+    assert response.status_code == 404
+    assert fake_db.messages.docs == []
+
+
+def test_chat_action_rejects_unowned_conversation_before_insert(client, fake_db):
+    fake_db.conversations.docs[:] = [
+        {"_id": "victim-conv", "id": "victim-conv", "schoolId": "aaryans-joya", "user_id": "other-user"},
+    ]
+    fake_db.messages.docs[:] = []
+
+    response = client.post(
+        "/api/chat/conversations/victim-conv/action",
+        json={"action": "get_school_pulse", "params": {}, "label": "Pulse"},
+        headers=_headers(user_id="owner-1"),
+    )
+
+    assert response.status_code == 404
+    assert fake_db.messages.docs == []
+
+
+def test_chat_confirm_cancel_rejects_unowned_conversation_before_insert(client, fake_db):
+    fake_db.conversations.docs[:] = [
+        {"_id": "victim-conv", "id": "victim-conv", "schoolId": "aaryans-joya", "user_id": "other-user"},
+    ]
+    fake_db.messages.docs[:] = []
+
+    response = client.post(
+        "/api/chat/conversations/victim-conv/confirm",
+        json={"confirmed": False, "decision": "cancel"},
+        headers=_headers(user_id="owner-1"),
+    )
+
+    assert response.status_code == 404
+    assert fake_db.messages.docs == []
+
+
+def test_standalone_confirm_rejects_unowned_conversation_id_before_token_use(client, fake_db):
+    token = "conv-pollution-token"
+    fake_db.conversations.docs[:] = [
+        {"_id": "owned-conv", "id": "owned-conv", "schoolId": "aaryans-joya", "user_id": "owner-1"},
+        {"_id": "victim-conv", "id": "victim-conv", "schoolId": "aaryans-joya", "user_id": "other-user"},
+    ]
+    fake_db.confirm_tokens.docs[:] = [
+        {
+            "_id": token,
+            "token": token,
+            "action": "record_fee_payment",
+            "params": {"student_id": "student-1", "amount": 1, "fee_head": "tuition", "mode": "cash"},
+            "user_id": "owner-1",
+            "session_id": "owned-conv",
+            "expires_at": datetime.now(timezone.utc) + timedelta(minutes=5),
+            "used": False,
+        }
+    ]
+
+    response = client.post(
+        "/api/chat/confirm",
+        json={"token": token, "session_id": "owned-conv", "conversation_id": "victim-conv", "confirmed": True},
+        headers=_headers(user_id="owner-1"),
+    )
+
+    assert response.status_code == 404
+    assert fake_db.confirm_tokens.docs[0]["used"] is False
