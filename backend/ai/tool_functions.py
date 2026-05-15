@@ -1,40 +1,79 @@
 """
 Tool functions executed when the LLM requests them.
 Each function queries MongoDB and returns structured data.
+
+Part 2 Patch P1 (tenancy): every v1 tool now accepts an optional ``scope``
+argument and routes every Mongo read through ``_tenant_query`` (which
+composes scope.branch_id with the env-canonical schoolId via
+``tenant.scoped_query``). Tests that still call these tools with the
+legacy two-arg signature get ``scope=None`` and therefore no branch
+filter — acceptable for unit tests that already isolate their fake DB to a
+single tenant. Production call sites in ``routes/chat.py`` always pass the
+resolved Scope.
 """
+from __future__ import annotations
+
 from datetime import datetime, date, timedelta
 from database import get_db
+from tenant import scoped_query
 import logging, re
 
 logger = logging.getLogger(__name__)
 
 
-async def tool_get_school_pulse(params: dict, user: dict) -> dict:
+def _scope_branch_id(scope):
+    """Return scope.branch_id whether scope is a Scope dataclass or a dict."""
+    if scope is None:
+        return None
+    if isinstance(scope, dict):
+        return scope.get("branch_id")
+    return getattr(scope, "branch_id", None)
+
+
+def _tenant_query(scope, base: dict | None = None) -> dict:
+    """Compose ``base`` with the requester's branch_id and schoolId.
+
+    This is the canonical helper used by every v1 tool. It deliberately
+    does NOT call ``scope.filter()`` — that helper is collection-aware and
+    would, for example, splice ``{"id": student_id}`` into a
+    ``student_attendance`` query for a self-only student. v1 tools already
+    hand-craft the right student/class restrictions; here we only need to
+    bolt on the cross-cutting tenancy axes (branch_id + schoolId).
+
+    Owner gets ``branch_id=None`` → no branch_id clause (cross-branch by
+    design); every other role gets the JWT-derived branch_id.
+    """
+    return scoped_query(dict(base or {}), branch_id=_scope_branch_id(scope))
+
+
+async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
     db = get_db()
     today = date.today().strftime("%Y-%m-%d")
     week_ago = (date.today() - timedelta(days=7)).strftime("%Y-%m-%d")
+    branch_id = _scope_branch_id(scope)
 
-    total_students = await db.students.count_documents({"is_active": True})
-    total_staff = await db.staff.count_documents({"is_active": True})
+    total_students = await db.students.count_documents(_tenant_query(scope, {"is_active": True}))
+    total_staff = await db.staff.count_documents(_tenant_query(scope, {"is_active": True}))
 
     # Student attendance today
-    att_today = await db.student_attendance.find({"date": today}).to_list(1000)
+    att_today = await db.student_attendance.find(_tenant_query(scope, {"date": today})).to_list(1000)
     total_marked = len(att_today)
     present = sum(1 for a in att_today if a["status"] == "present")
     absent = sum(1 for a in att_today if a["status"] == "absent")
     att_rate = round(present / total_marked * 100, 1) if total_marked > 0 else 0
 
     # Staff attendance today
-    staff_att = await db.staff_attendance.find({"date": today}).to_list(100)
+    staff_att = await db.staff_attendance.find(_tenant_query(scope, {"date": today})).to_list(100)
     staff_absent = [a for a in staff_att if a["status"] == "absent"]
     staff_absent_names = []
     for sa in staff_absent:
-        st = await db.staff.find_one({"id": sa["staff_id"]})
+        st = await db.staff.find_one(_tenant_query(scope, {"id": sa["staff_id"]}))
         if st:
             staff_absent_names.append(st["name"])
 
     # Fee stats
     fee_pipeline = [
+        {"$match": _tenant_query(scope, {})},
         {"$group": {"_id": "$status", "total": {"$sum": "$amount"}, "count": {"$sum": 1}}}
     ]
     fee_stats = await db.fee_transactions.aggregate(fee_pipeline).to_list(10)
@@ -44,10 +83,10 @@ async def tool_get_school_pulse(params: dict, user: dict) -> dict:
     total_pending = fee_dict.get("pending", {}).get("total", 0)
 
     # Pending leaves
-    pending_leaves = await db.leave_requests.find({"status": "pending"}).to_list(20)
+    pending_leaves = await db.leave_requests.find(_tenant_query(scope, {"status": "pending"})).to_list(20)
     leave_details = []
     for lr in pending_leaves:
-        staff = await db.staff.find_one({"id": lr["staff_id"]})
+        staff = await db.staff.find_one(_tenant_query(scope, {"id": lr["staff_id"]}))
         leave_details.append({
             "id": lr["id"],
             "staff_name": staff["name"] if staff else "Unknown",
@@ -59,13 +98,13 @@ async def tool_get_school_pulse(params: dict, user: dict) -> dict:
 
     # Students absent 3+ consecutive days
     chronic_absent = []
-    students_list = await db.students.find({"is_active": True}).to_list(500)
+    students_list = await db.students.find(_tenant_query(scope, {"is_active": True})).to_list(500)
     for st in students_list[:50]:  # limit for performance
         absent_count = 0
         check_date = date.today()
         for i in range(5):
             d = (check_date - timedelta(days=i)).strftime("%Y-%m-%d")
-            rec = await db.student_attendance.find_one({"student_id": st["id"], "date": d})
+            rec = await db.student_attendance.find_one(_tenant_query(scope, {"student_id": st["id"], "date": d}))
             if rec and rec["status"] == "absent":
                 absent_count += 1
             else:
@@ -102,12 +141,12 @@ async def tool_get_school_pulse(params: dict, user: dict) -> dict:
     }
 
 
-async def tool_get_fee_summary(params: dict, user: dict) -> dict:
+async def tool_get_fee_summary(params: dict, user: dict, scope=None) -> dict:
     db = get_db()
 
     # Defaulters - students with overdue fees
-    overdue_txns = await db.fee_transactions.find({"status": "overdue"}).to_list(200)
-    
+    overdue_txns = await db.fee_transactions.find(_tenant_query(scope, {"status": "overdue"})).to_list(200)
+
     # Group by student
     student_dues = {}
     for txn in overdue_txns:
@@ -125,11 +164,11 @@ async def tool_get_fee_summary(params: dict, user: dict) -> dict:
     # Enrich with student data
     defaulters = []
     for sid, dues in student_dues.items():
-        student = await db.students.find_one({"id": sid})
+        student = await db.students.find_one(_tenant_query(scope, {"id": sid}))
         if student:
-            cls = await db.classes.find_one({"id": student.get("class_id")})
+            cls = await db.classes.find_one(_tenant_query(scope, {"id": student.get("class_id")}))
             class_name = f"{cls.get('name', '')}-{cls.get('section', '')}" if cls else "N/A"
-            
+
             # Calculate days overdue
             if dues["oldest_due"]:
                 try:
@@ -153,6 +192,7 @@ async def tool_get_fee_summary(params: dict, user: dict) -> dict:
 
     # Overall stats
     pipeline = [
+        {"$match": _tenant_query(scope, {})},
         {"$group": {"_id": "$status", "total": {"$sum": "$amount"}, "count": {"$sum": 1}}}
     ]
     stats = await db.fee_transactions.aggregate(pipeline).to_list(10)
@@ -183,12 +223,12 @@ async def tool_get_fee_summary(params: dict, user: dict) -> dict:
     }
 
 
-async def tool_get_staff_status(params: dict, user: dict) -> dict:
+async def tool_get_staff_status(params: dict, user: dict, scope=None) -> dict:
     db = get_db()
     today = date.today().strftime("%Y-%m-%d")
 
-    all_staff = await db.staff.find({"is_active": True}).to_list(100)
-    staff_att = await db.staff_attendance.find({"date": today}).to_list(100)
+    all_staff = await db.staff.find(_tenant_query(scope, {"is_active": True})).to_list(100)
+    staff_att = await db.staff_attendance.find(_tenant_query(scope, {"date": today})).to_list(100)
     att_by_id = {a["staff_id"]: a for a in staff_att}
 
     staff_data = []
@@ -198,10 +238,12 @@ async def tool_get_staff_status(params: dict, user: dict) -> dict:
     for s in all_staff:
         att = att_by_id.get(s["id"])
         status = att["status"] if att else "not_marked"
-        
+
+        # tenancy: users collection is global identity; staff row was already
+        # scoped above, so the user_id lookup is safe.
         user_rec = await db.users.find_one({"id": s["user_id"]}) if s.get("user_id") else None
         role_label = user_rec["role"].capitalize() if user_rec else s["staff_type"].capitalize()
-        
+
         entry = {
             "id": s["id"],
             "name": s["name"],
@@ -221,17 +263,17 @@ async def tool_get_staff_status(params: dict, user: dict) -> dict:
         late_count = 0
         for i in range(5):
             d = (date.today() - timedelta(days=i)).strftime("%Y-%m-%d")
-            rec = await db.staff_attendance.find_one({"staff_id": s["id"], "date": d, "status": "late"})
+            rec = await db.staff_attendance.find_one(_tenant_query(scope, {"staff_id": s["id"], "date": d, "status": "late"}))
             if rec:
                 late_count += 1
         if late_count >= 3:
             late_patterns.append({"name": s["name"], "late_days": late_count})
 
     # Pending leaves
-    pending_leaves = await db.leave_requests.find({"status": "pending"}).to_list(20)
+    pending_leaves = await db.leave_requests.find(_tenant_query(scope, {"status": "pending"})).to_list(20)
     leave_details = []
     for lr in pending_leaves:
-        st = await db.staff.find_one({"id": lr["staff_id"]})
+        st = await db.staff.find_one(_tenant_query(scope, {"id": lr["staff_id"]}))
         leave_details.append({
             "id": lr["id"],
             "staff_name": st["name"] if st else "Unknown",
@@ -254,7 +296,7 @@ async def tool_get_staff_status(params: dict, user: dict) -> dict:
     }
 
 
-async def tool_get_attendance_overview(params: dict, user: dict) -> dict:
+async def tool_get_attendance_overview(params: dict, user: dict, scope=None) -> dict:
     db = get_db()
     days = params.get("days", 30)
     class_id = params.get("class_id")
@@ -271,7 +313,7 @@ async def tool_get_attendance_overview(params: dict, user: dict) -> dict:
     if class_id:
         query["class_id"] = class_id
 
-    records = await db.student_attendance.find(query).to_list(5000)
+    records = await db.student_attendance.find(_tenant_query(scope, query)).to_list(5000)
 
     # Daily stats
     daily = {}
@@ -295,10 +337,10 @@ async def tool_get_attendance_overview(params: dict, user: dict) -> dict:
 
     # Class-wise today
     today = end_date.strftime("%Y-%m-%d")
-    classes = await db.classes.find().to_list(20)
+    classes = await db.classes.find(_tenant_query(scope, {})).to_list(20)
     class_stats = []
     for cls in classes:
-        cls_records = await db.student_attendance.find({"date": today, "class_id": cls["id"]}).to_list(100)
+        cls_records = await db.student_attendance.find(_tenant_query(scope, {"date": today, "class_id": cls["id"]})).to_list(100)
         if cls_records:
             p = sum(1 for r in cls_records if r["status"] == "present")
             t = len(cls_records)
@@ -318,19 +360,19 @@ async def tool_get_attendance_overview(params: dict, user: dict) -> dict:
     }
 
 
-async def tool_get_smart_alerts(params: dict, user: dict) -> dict:
+async def tool_get_smart_alerts(params: dict, user: dict, scope=None) -> dict:
     db = get_db()
     today = date.today().strftime("%Y-%m-%d")
     alerts = []
 
     # Chronic absentees (3+ days)
-    students = await db.students.find({"is_active": True}).to_list(500)
+    students = await db.students.find(_tenant_query(scope, {"is_active": True})).to_list(500)
     chronic = 0
     for st in students[:100]:
         abs_count = 0
         for i in range(5):
             d = (date.today() - timedelta(days=i)).strftime("%Y-%m-%d")
-            rec = await db.student_attendance.find_one({"student_id": st["id"], "date": d})
+            rec = await db.student_attendance.find_one(_tenant_query(scope, {"student_id": st["id"], "date": d}))
             if rec and rec["status"] == "absent":
                 abs_count += 1
             else:
@@ -342,13 +384,13 @@ async def tool_get_smart_alerts(params: dict, user: dict) -> dict:
         alerts.append({"type": "warning", "category": "Attendance", "text": f"{chronic} students absent 3+ consecutive days", "priority": "high"})
 
     # Staff absent today
-    staff_absent = await db.staff_attendance.count_documents({"date": today, "status": "absent"})
+    staff_absent = await db.staff_attendance.count_documents(_tenant_query(scope, {"date": today, "status": "absent"}))
     if staff_absent > 0:
         alerts.append({"type": "warning", "category": "Staff", "text": f"{staff_absent} staff absent today", "priority": "medium"})
 
     # Overdue fees 60+ days
     overdue_60 = 0
-    overdue_txns = await db.fee_transactions.find({"status": "overdue"}).to_list(200)
+    overdue_txns = await db.fee_transactions.find(_tenant_query(scope, {"status": "overdue"})).to_list(200)
     for txn in overdue_txns:
         if txn.get("due_date"):
             try:
@@ -362,12 +404,15 @@ async def tool_get_smart_alerts(params: dict, user: dict) -> dict:
         alerts.append({"type": "critical", "category": "Fees", "text": f"{overdue_60} fee transactions overdue 60+ days", "priority": "high"})
 
     # Pending leave requests
-    pending_leaves = await db.leave_requests.count_documents({"status": "pending"})
+    pending_leaves = await db.leave_requests.count_documents(_tenant_query(scope, {"status": "pending"}))
     if pending_leaves > 0:
         alerts.append({"type": "info", "category": "Leaves", "text": f"{pending_leaves} leave requests pending approval", "priority": "low"})
 
     # Positive alerts
-    fee_pipeline = [{"$group": {"_id": "$status", "total": {"$sum": "$amount"}}}]
+    fee_pipeline = [
+        {"$match": _tenant_query(scope, {})},
+        {"$group": {"_id": "$status", "total": {"$sum": "$amount"}}},
+    ]
     fee_stats = await db.fee_transactions.aggregate(fee_pipeline).to_list(10)
     fee_dict = {f["_id"]: f["total"] for f in fee_stats}
     total = sum(fee_dict.values())
@@ -379,7 +424,7 @@ async def tool_get_smart_alerts(params: dict, user: dict) -> dict:
     return {"alerts": alerts, "total_alerts": len(alerts), "critical_count": sum(1 for a in alerts if a["type"] == "critical")}
 
 
-async def tool_search_students(params: dict, user: dict) -> dict:
+async def tool_search_students(params: dict, user: dict, scope=None) -> dict:
     db = get_db()
     query_str = params.get("query", "")
     class_name = params.get("class_name")
@@ -392,14 +437,14 @@ async def tool_search_students(params: dict, user: dict) -> dict:
             {"admission_number": {"$regex": safe_q, "$options": "i"}},
         ]
     if class_name:
-        cls = await db.classes.find_one({"name": {"$regex": re.escape(class_name), "$options": "i"}})
+        cls = await db.classes.find_one(_tenant_query(scope, {"name": {"$regex": re.escape(class_name), "$options": "i"}}))
         if cls:
             filter_q["class_id"] = cls["id"]
 
-    students = await db.students.find(filter_q).to_list(20)
+    students = await db.students.find(_tenant_query(scope, filter_q)).to_list(20)
     result = []
     for s in students:
-        cls = await db.classes.find_one({"id": s.get("class_id")})
+        cls = await db.classes.find_one(_tenant_query(scope, {"id": s.get("class_id")}))
         class_label = f"{cls['name']}-{cls['section']}" if cls else "N/A"
         result.append({
             "id": s["id"],
@@ -413,7 +458,7 @@ async def tool_search_students(params: dict, user: dict) -> dict:
     return {"students": result, "total": len(result), "query": query_str}
 
 
-async def tool_get_fee_transactions(params: dict, user: dict) -> dict:
+async def tool_get_fee_transactions(params: dict, user: dict, scope=None) -> dict:
     db = get_db()
     student_id = params.get("student_id")
     status_filter = params.get("status")
@@ -424,10 +469,10 @@ async def tool_get_fee_transactions(params: dict, user: dict) -> dict:
     if status_filter:
         query["status"] = status_filter
 
-    txns = await db.fee_transactions.find(query).to_list(50)
+    txns = await db.fee_transactions.find(_tenant_query(scope, query)).to_list(50)
     result = []
     for t in txns:
-        student = await db.students.find_one({"id": t["student_id"]})
+        student = await db.students.find_one(_tenant_query(scope, {"id": t["student_id"]}))
         result.append({
             "id": t["id"],
             "student_name": student["name"] if student else "Unknown",
@@ -442,7 +487,7 @@ async def tool_get_fee_transactions(params: dict, user: dict) -> dict:
     return {"transactions": result, "total": len(result)}
 
 
-async def tool_approve_leave(params: dict, user: dict) -> dict:
+async def tool_approve_leave(params: dict, user: dict, scope=None) -> dict:
     db = get_db()
     leave_id = params.get("leave_id")
     action = params.get("action", "approve")
@@ -451,9 +496,11 @@ async def tool_approve_leave(params: dict, user: dict) -> dict:
     if not leave_id:
         return {"error": "leave_id is required"}
 
-    leave = await db.leave_requests.find_one({"id": leave_id})
+    # Tenancy: a leave request from a different branch must look identical to
+    # a non-existent one — don't leak existence across tenants.
+    leave = await db.leave_requests.find_one(_tenant_query(scope, {"id": leave_id}))
     if not leave:
-        return {"error": f"Leave request {leave_id} not found"}
+        return {"success": False, "error": "Leave request not found"}
 
     new_status = "approved" if action == "approve" else "rejected"
     update = {
@@ -464,9 +511,9 @@ async def tool_approve_leave(params: dict, user: dict) -> dict:
     if action == "reject" and reason:
         update["rejection_reason"] = reason
 
-    await db.leave_requests.update_one({"id": leave_id}, {"$set": update})
+    await db.leave_requests.update_one(_tenant_query(scope, {"id": leave_id}), {"$set": update})
 
-    staff = await db.staff.find_one({"id": leave["staff_id"]})
+    staff = await db.staff.find_one(_tenant_query(scope, {"id": leave["staff_id"]}))
     return {
         "success": True,
         "message": f"Leave request {new_status} for {staff['name'] if staff else 'staff member'}",
@@ -475,17 +522,17 @@ async def tool_approve_leave(params: dict, user: dict) -> dict:
     }
 
 
-async def tool_get_enquiries(params: dict, user: dict) -> dict:
+async def tool_get_enquiries(params: dict, user: dict, scope=None) -> dict:
     db = get_db()
     status_filter = params.get("status")
     query = {}
     if status_filter:
         query["status"] = status_filter
 
-    enquiries = await db.enquiries.find(query).sort("created_at", -1).to_list(20)
+    enquiries = await db.enquiries.find(_tenant_query(scope, query)).sort("created_at", -1).to_list(20)
 
     status_counts = {}
-    all_enquiries = await db.enquiries.find().to_list(200)
+    all_enquiries = await db.enquiries.find(_tenant_query(scope, {})).to_list(200)
     for e in all_enquiries:
         s = e["status"]
         status_counts[s] = status_counts.get(s, 0) + 1
@@ -509,18 +556,19 @@ async def tool_get_enquiries(params: dict, user: dict) -> dict:
     }
 
 
-async def tool_get_my_attendance(params: dict, user: dict) -> dict:
+async def tool_get_my_attendance(params: dict, user: dict, scope=None) -> dict:
     db = get_db()
-    student = await db.students.find_one({"user_id": user["id"]})
+    # Tenancy: locate the student row in the requester's tenant.
+    student = await db.students.find_one(_tenant_query(scope, {"user_id": user["id"]}))
     if not student:
         return {"error": "Student record not found"}
 
     end_date = date.today()
     start_date = end_date - timedelta(days=30)
-    records = await db.student_attendance.find({
+    records = await db.student_attendance.find(_tenant_query(scope, {
         "student_id": student["id"],
         "date": {"$gte": start_date.strftime("%Y-%m-%d"), "$lte": end_date.strftime("%Y-%m-%d")},
-    }).to_list(100)
+    })).to_list(100)
 
     present = sum(1 for r in records if r["status"] == "present")
     total = len(records)
@@ -537,13 +585,13 @@ async def tool_get_my_attendance(params: dict, user: dict) -> dict:
     }
 
 
-async def tool_get_my_fees(params: dict, user: dict) -> dict:
+async def tool_get_my_fees(params: dict, user: dict, scope=None) -> dict:
     db = get_db()
-    student = await db.students.find_one({"user_id": user["id"]})
+    student = await db.students.find_one(_tenant_query(scope, {"user_id": user["id"]}))
     if not student:
         return {"error": "Student record not found"}
 
-    txns = await db.fee_transactions.find({"student_id": student["id"]}).to_list(50)
+    txns = await db.fee_transactions.find(_tenant_query(scope, {"student_id": student["id"]})).to_list(50)
     return {
         "student_name": student["name"],
         "transactions": [
@@ -556,17 +604,17 @@ async def tool_get_my_fees(params: dict, user: dict) -> dict:
     }
 
 
-async def tool_get_my_results(params: dict, user: dict) -> dict:
+async def tool_get_my_results(params: dict, user: dict, scope=None) -> dict:
     db = get_db()
-    student = await db.students.find_one({"user_id": user["id"]})
+    student = await db.students.find_one(_tenant_query(scope, {"user_id": user["id"]}))
     if not student:
         return {"error": "Student record not found"}
 
-    results = await db.exam_results.find({"student_id": student["id"]}).to_list(50)
+    results = await db.exam_results.find(_tenant_query(scope, {"student_id": student["id"]})).to_list(50)
     enriched = []
     for r in results:
-        subj = await db.subjects.find_one({"id": r.get("subject_id")})
-        exam = await db.exams.find_one({"id": r.get("exam_id")})
+        subj = await db.subjects.find_one(_tenant_query(scope, {"id": r.get("subject_id")}))
+        exam = await db.exams.find_one(_tenant_query(scope, {"id": r.get("exam_id")}))
         enriched.append({
             "exam": exam["name"] if exam else "N/A",
             "subject": subj["name"] if subj else "N/A",
@@ -577,13 +625,16 @@ async def tool_get_my_results(params: dict, user: dict) -> dict:
     return {"student_name": student["name"], "results": enriched, "total_exams": len(enriched)}
 
 
-async def tool_get_financial_report(params: dict, user: dict) -> dict:
+async def tool_get_financial_report(params: dict, user: dict, scope=None) -> dict:
     db = get_db()
-    fee_pipeline = [{"$group": {"_id": "$fee_type", "total": {"$sum": "$amount"}, "count": {"$sum": 1}}}]
+    fee_pipeline = [
+        {"$match": _tenant_query(scope, {})},
+        {"$group": {"_id": "$fee_type", "total": {"$sum": "$amount"}, "count": {"$sum": 1}}},
+    ]
     fee_by_type = await db.fee_transactions.aggregate(fee_pipeline).to_list(20)
 
     paid_pipeline = [
-        {"$match": {"status": "paid"}},
+        {"$match": _tenant_query(scope, {"status": "paid"})},
         {"$group": {"_id": "$fee_type", "total": {"$sum": "$amount"}}},
     ]
     paid_by_type = {f["_id"]: f["total"] for f in await db.fee_transactions.aggregate(paid_pipeline).to_list(20)}
@@ -607,19 +658,22 @@ async def tool_get_financial_report(params: dict, user: dict) -> dict:
     }
 
 
-async def tool_get_daily_brief(params: dict, user: dict) -> dict:
+async def tool_get_daily_brief(params: dict, user: dict, scope=None) -> dict:
     """Comprehensive daily brief combining school pulse, alerts, and fee summary."""
     db = get_db()
     today = date.today().strftime("%Y-%m-%d")
     day_name = date.today().strftime("%A, %d %B %Y")
 
-    # Get core data in parallel-style sequence
-    pulse = await tool_get_school_pulse({}, user)
-    alerts = await tool_get_smart_alerts({}, user)
-    fee = await tool_get_fee_summary({}, user)
+    # Get core data in parallel-style sequence — propagate scope to each sub-tool.
+    pulse = await tool_get_school_pulse({}, user, scope)
+    alerts = await tool_get_smart_alerts({}, user, scope)
+    fee = await tool_get_fee_summary({}, user, scope)
 
     # Upcoming events/announcements
-    upcoming = await db.announcements.find({"is_draft": False}, {"_id": 0, "title": 1, "created_at": 1}).sort("created_at", -1).to_list(3)
+    upcoming = await db.announcements.find(
+        _tenant_query(scope, {"is_draft": False}),
+        {"_id": 0, "title": 1, "created_at": 1},
+    ).sort("created_at", -1).to_list(3)
 
     return {
         "date": day_name,

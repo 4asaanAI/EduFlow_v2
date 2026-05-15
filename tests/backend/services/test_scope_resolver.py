@@ -482,3 +482,54 @@ def test_scope_can_see_personal_info_guards_empty_target_id():
     self_scope = rl.Scope(type="self_only", role="admin",
                           sub_category="support_staff", user_id="staff-1")
     assert self_scope.can_see_personal_info({"role": "student"}) is False
+
+
+# ─── Part 2 Patch P1 ────────────────────────────────────────────────────────
+
+@_async
+async def test_resolve_scope_propagates_branch_id_from_jwt():
+    """Non-owner users must get scope.branch_id populated from the JWT claim.
+
+    Prior to Patch P1 the field was declared but never set, making
+    `_apply_branch_filter` a permanent no-op across the v2 tool surface.
+    """
+    rl = _import_resolver()
+    db = _make_db(staff=[
+        {"id": "s-1", "user_id": "u-1", "is_active": True, "role": "teacher",
+         "sub_category": "class_teacher", "class_teacher_of": "c-1"},
+    ], classes=[{"id": "c-1", "name": "Class 1A"}])
+    scope = await rl.resolve_scope(
+        {"id": "u-1", "role": "teacher", "branch_id": "branch-A"}, db
+    )
+    assert scope.branch_id == "branch-A"
+
+
+@_async
+async def test_resolve_scope_owner_branch_id_is_none():
+    """Owner intentionally crosses branches — branch_id stays None."""
+    rl = _import_resolver()
+    db = _make_db()
+    scope = await rl.resolve_scope(
+        {"id": "u-owner", "role": "owner", "branch_id": "branch-A"}, db
+    )
+    assert scope.branch_id is None
+
+
+def test_scope_filter_injects_branch_id_for_type_all():
+    """type=all + branch_id should still emit branch_id (was a no-op pre-P1)."""
+    rl = _import_resolver()
+    s = rl.Scope(type="all", role="admin", sub_category="principal",
+                 user_id="p-1", branch_id="branch-A")
+    f = s.filter(collection="students")
+    assert "branch-A" in str(f), f"expected branch_id in filter, got {f!r}"
+
+
+def test_scope_filter_injects_branch_id_for_self_only():
+    rl = _import_resolver()
+    s = rl.Scope(type="self_only", role="admin", sub_category="support_staff",
+                 user_id="u-1", branch_id="branch-A")
+    f = s.filter(collection="students")
+    # Filter has user_id from self-only + branch_id from P1.
+    flat = str(f)
+    assert "branch-A" in flat
+    assert "u-1" in flat

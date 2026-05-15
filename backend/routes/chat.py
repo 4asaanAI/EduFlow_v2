@@ -26,7 +26,7 @@ from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from database import get_db
 from models.schemas import Conversation, Message, ConversationUpdate
-from ai.llm_client import llm_client
+from ai.llm_client import ai_unavailable_result, llm_client
 from ai.prompts import build_system_prompt
 from ai.context_builder import build_school_context, detect_language
 from ai.tool_functions_v2 import TOOL_REGISTRY, WRITE_TOOL_NAMES
@@ -39,6 +39,8 @@ from services.confirm_tokens import (
     consume_confirm_token,
     peek_confirm_token,
     audit_ai_dispatch,
+    audit_ai_dispatch_pending,
+    audit_ai_dispatch_finalize,
     audit_ai_rate_limit_hit,
 )
 from services.ai_rate_limiter import increment_and_check as _ai_rate_check
@@ -343,7 +345,7 @@ def _extract_rich_content(text: str):
 
 # ─── Tool call JSON parser (BUG FIX #3: strip markdown fences) ───────────────
 
-def _json_candidates(text: str) -> list[str]:
+def _json_candidates(text) -> list[str]:
     """
     Return balanced JSON object/array candidates from model text.
 
@@ -351,6 +353,12 @@ def _json_candidates(text: str) -> list[str]:
     may wrap JSON in fences or include prose. This scanner handles nested
     braces without relying on brittle regexes.
     """
+    # Part 2 Patch P3 defense-in-depth: tolerate non-string input. Also cap
+    # input size to avoid quadratic-ish scans on adversarial LLM output (H8).
+    if not isinstance(text, str):
+        return []
+    if len(text) > 32000:
+        text = text[:32000]
     cleaned = text.strip()
     fence_pattern = r"```(?:json)?\s*\n?(.*?)\n?\s*```"
     fenced = re.findall(fence_pattern, cleaned, re.DOTALL)
@@ -416,7 +424,7 @@ def _normalize_tool_call(data: Any) -> Optional[dict]:
     return None
 
 
-def _parse_tool_calls(text: str) -> list[dict]:
+def _parse_tool_calls(text) -> list[dict]:
     """
     Parse one or more model tool calls.
 
@@ -427,6 +435,10 @@ def _parse_tool_calls(text: str) -> list[dict]:
       - Markdown-fenced JSON
       - JSON embedded in prose
     """
+    # Part 2 Patch P3: defensive — if upstream slipped a non-string (e.g. an
+    # ai_unavailable dict from llm_client), do not raise inside json/regex code.
+    if not isinstance(text, str):
+        return []
     parsed_calls: list[dict] = []
     for candidate in _json_candidates(text):
         try:
@@ -453,8 +465,11 @@ def _parse_tool_call(text: str) -> Optional[dict]:
     return calls[0] if calls else None
 
 
-def _strip_tool_json_from_text(text: str) -> str:
+def _strip_tool_json_from_text(text) -> str:
     """Remove residual tool/navigation JSON from a natural-language response."""
+    # Part 2 Patch P3: bail out cleanly on non-string input.
+    if not isinstance(text, str):
+        return ""
     cleaned = text
     for candidate in _json_candidates(text):
         try:
@@ -555,6 +570,18 @@ def _trim_history(messages: list[dict]) -> list[dict]:
             break
         # Remove the message right after the preserved first messages
         trimmed.pop(HISTORY_KEEP_FIRST)
+
+    # Part 2 Patch P2: if two oversize anchors alone still blow the budget,
+    # truncate their content rather than shipping oversize to Azure (which
+    # returns 400 → llm_client mis-maps to the content-policy message).
+    total = sum(len(m.get("content", "") or "") for m in trimmed)
+    if total > CHAR_BUDGET:
+        anchor_budget = max(2000, CHAR_BUDGET // max(1, len(trimmed)))
+        for m in trimmed[:HISTORY_KEEP_FIRST]:
+            content = m.get("content", "") or ""
+            if len(content) > anchor_budget:
+                # Keep the tail — most recent context within the anchor.
+                m["content"] = "[…truncated…] " + content[-anchor_budget:]
 
     return trimmed
 
@@ -681,59 +708,114 @@ def _missing_param_message(tool_name: str, missing: list[str]) -> str:
 
 # ─── Parameter resolution ────────────────────────────────────────────────────
 
-async def _resolve_params(params: dict, db) -> dict:
+async def _resolve_params(params: dict, db, scope=None) -> dict:
     """
     Resolve human-readable parameters to database IDs.
     e.g. class_name "4B" → class_id, student_name "Rahul" → student_id,
          "last 7 days" → date range.
+
+    Part 2 Patch P1: name resolution is now scope-aware.
+    - Lookups respect ``scope.filter()`` so a teacher in branch A cannot
+      silently resolve a student name to a record in branch B.
+    - Substring/unanchored matches with 2+ hits return an explicit ambiguity
+      sentinel (``_resolution_error``) instead of picking arbitrarily; callers
+      surface this to the user as "please specify the admission number".
+    - The ``is_active`` filter is no longer applied at resolution time —
+      tools can decide for themselves. An inactive match adds
+      ``_resolved_inactive: True`` so the model can mention it.
     """
+    from tenant import scoped_query  # local to avoid circular at import time
+
     resolved = dict(params)
 
-    # Resolve class_name → class_id
+    def _scoped(collection: str, base: dict) -> dict:
+        """Compose base query with the user's scope.filter() + scoped_query."""
+        if scope is None:
+            return scoped_query(base)
+        f = scope.filter(collection=collection)
+        if not f:
+            return scoped_query(base, branch_id=scope.branch_id)
+        if "$and" in f:
+            merged = {"$and": [*f["$and"], base]}
+        else:
+            merged = {"$and": [f, base]}
+        return scoped_query(merged, branch_id=scope.branch_id)
+
+    # ---- class_name → class_id (exact match preferred; ambiguity = error) ----
     if "class_name" in resolved and "class_id" not in resolved:
         class_name = resolved["class_name"]
-        # Try exact match first, then regex
-        cls = await db.classes.find_one({
-            "$or": [
-                {"name": class_name},
-                {"name": {"$regex": f"^{re.escape(class_name)}$", "$options": "i"}},
-            ]
-        })
-        if not cls:
-            # Try splitting like "4B" into name="4" section="B"
+        # Exact match within scope first.
+        matches = await db.classes.find(
+            _scoped("classes", {"name": {"$regex": f"^{re.escape(class_name)}$", "$options": "i"}})
+        ).to_list(5)
+        if not matches:
             m = re.match(r"^(\d+)\s*([A-Za-z])$", class_name)
             if m:
-                cls = await db.classes.find_one({
+                matches = await db.classes.find(_scoped("classes", {
                     "name": {"$regex": f"^{re.escape(m.group(1))}$", "$options": "i"},
                     "section": {"$regex": f"^{re.escape(m.group(2))}$", "$options": "i"},
-                })
-        if cls:
+                })).to_list(5)
+        if len(matches) > 1:
+            resolved["_resolution_error"] = (
+                f"Multiple classes match '{class_name}' — please specify both class and section."
+            )
+        elif len(matches) == 1:
+            cls = matches[0]
             resolved["class_id"] = cls["id"]
             resolved["_resolved_class"] = f"{cls.get('name', '')}-{cls.get('section', '')}"
 
-    # Resolve student_name → student_id
-    if "student_name" in resolved and "student_id" not in resolved:
+    # ---- student_name → student_id (exact OR unique substring within scope) ----
+    if "student_name" in resolved and "student_id" not in resolved and "_resolution_error" not in resolved:
         student_name = resolved["student_name"]
-        student = await db.students.find_one({
-            "name": {"$regex": re.escape(student_name), "$options": "i"},
-            "is_active": True,
-        })
-        if student:
+        # Try exact match first (anchored).
+        exact = await db.students.find(_scoped("students", {
+            "name": {"$regex": f"^{re.escape(student_name)}$", "$options": "i"},
+        })).to_list(5)
+        if len(exact) == 1:
+            matches = exact
+        elif len(exact) > 1:
+            resolved["_resolution_error"] = (
+                f"Multiple students share the name '{student_name}' — "
+                f"please specify the admission number."
+            )
+            matches = []
+        else:
+            # Fall back to substring; require uniqueness within scope.
+            matches = await db.students.find(_scoped("students", {
+                "name": {"$regex": re.escape(student_name), "$options": "i"},
+            })).to_list(5)
+            if len(matches) > 1:
+                resolved["_resolution_error"] = (
+                    f"Multiple students match '{student_name}' — "
+                    f"please specify the admission number."
+                )
+                matches = []
+        if len(matches) == 1:
+            student = matches[0]
             resolved["student_id"] = student["id"]
             resolved["_resolved_student"] = student["name"]
+            if student.get("is_active") is False:
+                resolved["_resolved_inactive"] = True
 
-    if "search_term" in resolved and "student_id" not in resolved:
+    if "search_term" in resolved and "student_id" not in resolved and "_resolution_error" not in resolved:
         search_term = resolved["search_term"]
-        student = await db.students.find_one({
+        matches = await db.students.find(_scoped("students", {
             "$or": [
                 {"name": {"$regex": re.escape(search_term), "$options": "i"}},
                 {"admission_number": {"$regex": re.escape(search_term), "$options": "i"}},
             ],
-            "is_active": True,
-        })
-        if student:
+        })).to_list(5)
+        if len(matches) > 1:
+            resolved["_resolution_error"] = (
+                f"Multiple students match '{search_term}' — "
+                f"please specify the admission number."
+            )
+        elif len(matches) == 1:
+            student = matches[0]
             resolved["student_id"] = student["id"]
             resolved["_resolved_student"] = student.get("name", student["id"])
+            if student.get("is_active") is False:
+                resolved["_resolved_inactive"] = True
 
     # Resolve "days" or date descriptors → date range
     if "days" in resolved:
@@ -746,14 +828,30 @@ async def _resolve_params(params: dict, db) -> dict:
         except (ValueError, TypeError):
             pass
 
-    # Resolve staff_name → staff_id
-    if "staff_name" in resolved and "staff_id" not in resolved:
+    # ---- staff_name → staff_id (same ambiguity discipline) ----
+    if "staff_name" in resolved and "staff_id" not in resolved and "_resolution_error" not in resolved:
         staff_name = resolved["staff_name"]
-        staff = await db.staff.find_one({
-            "name": {"$regex": re.escape(staff_name), "$options": "i"},
-            "is_active": True,
-        })
-        if staff:
+        exact = await db.staff.find(_scoped("staff", {
+            "name": {"$regex": f"^{re.escape(staff_name)}$", "$options": "i"},
+        })).to_list(5)
+        if len(exact) == 1:
+            matches = exact
+        elif len(exact) > 1:
+            resolved["_resolution_error"] = (
+                f"Multiple staff members share the name '{staff_name}'."
+            )
+            matches = []
+        else:
+            matches = await db.staff.find(_scoped("staff", {
+                "name": {"$regex": re.escape(staff_name), "$options": "i"},
+            })).to_list(5)
+            if len(matches) > 1:
+                resolved["_resolution_error"] = (
+                    f"Multiple staff match '{staff_name}'."
+                )
+                matches = []
+        if len(matches) == 1:
+            staff = matches[0]
             resolved["staff_id"] = staff["id"]
             resolved["_resolved_staff"] = staff["name"]
 
@@ -840,7 +938,7 @@ async def _thinking_delay():
 
 # ─── SSE Generator (main pipeline) ───────────────────────────────────────────
 
-async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_id: str = None):
+async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_id: str = None, request=None):
     """
     SSE generator for chat streaming.
 
@@ -982,17 +1080,38 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
         return
 
-    # ── Phase 5: Load + trim conversation history (BUG FIX #2) ───────────
+    # ── Phase 5: Load + trim conversation history ────────────────────────
+    # Part 2 Patch P2: the prior implementation used `.sort("created_at", 1).to_list(HISTORY_LIMIT)`
+    # which loads the OLDEST 20 messages — defeating `HISTORY_KEEP_FIRST=2 + HISTORY_KEEP_RECENT=10`
+    # entirely. After 20 turns the AI silently lost all recent context.
+    # Fix: load first HISTORY_KEEP_FIRST anchors ASC + last HISTORY_KEEP_RECENT
+    # by DESC and re-sort. Total messages == both ends, never the middle.
     try:
-        history_raw = await db.messages.find(
-            {"conversation_id": conv_id, "role": {"$in": ["user", "assistant"]}},
-            {"_id": 0},
-        ).sort("created_at", 1).to_list(HISTORY_LIMIT)
+        msg_filter = {"conversation_id": conv_id, "role": {"$in": ["user", "assistant"]}}
+        anchors = await db.messages.find(msg_filter, {"_id": 0}).sort("created_at", 1).to_list(HISTORY_KEEP_FIRST)
+        anchor_ids = {a.get("id") for a in anchors if a.get("id")}
+        recent = await db.messages.find(msg_filter, {"_id": 0}).sort("created_at", -1).to_list(HISTORY_KEEP_RECENT)
+        # Drop anchors that overlap with recent (short conversations).
+        recent.reverse()
+        recent_clean = [m for m in recent if not (m.get("id") and m.get("id") in anchor_ids)]
+        history_raw = list(anchors) + recent_clean
+
+        # Total-message count for elision marker.
+        total_msgs = await db.messages.count_documents(msg_filter)
+        omitted = max(0, total_msgs - len(history_raw))
 
         messages_for_llm = [
             {"role": m["role"], "content": m.get("content", "") or ""}
             for m in history_raw
         ]
+        if omitted > 0 and len(anchors) >= 1:
+            # Splice elision marker between anchors and recent so the LLM
+            # knows context was elided rather than hallucinating continuity.
+            messages_for_llm.insert(
+                len(anchors),
+                {"role": "system",
+                 "content": f"[{omitted} earlier messages omitted for context length]"},
+            )
         messages_for_llm = _trim_history(messages_for_llm)
 
     except Exception as e:
@@ -1051,7 +1170,23 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                         params = extracted_call.get("params", {}) or {}
                 except Exception as e:
                     logger.warning(f"Write parameter extraction failed for {tool_name}: {e}")
-                resolved_params = await _resolve_params(params, db)
+                resolved_params = await _resolve_params(params, db, scope)
+                # Part 2 P1: surface ambiguous-name resolution as a user prompt
+                # before any confirm token is issued or rate slot consumed.
+                if resolved_params.get("_resolution_error"):
+                    err_text = resolved_params["_resolution_error"]
+                    yield thinking_event("composing", "Writing your answer...")
+                    await _thinking_delay()
+                    for i in range(0, len(err_text), 4):
+                        yield f"data: {json.dumps({'type': 'text_delta', 'delta': err_text[i:i + 4]})}\n\n"
+                        await asyncio.sleep(0.008)
+                    ai_msg = Message(
+                        conversation_id=conv_id, role="assistant",
+                        content=err_text, language_detected=lang,
+                    )
+                    await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
+                    yield f"data: {json.dumps({'type': 'done', 'message_id': ai_msg.id, 'tokens_used': 0})}\n\n"
+                    return
                 missing = _missing_required_params(tool_name, resolved_params)
 
                 if missing:
@@ -1135,9 +1270,13 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                 all_tool_calls.append({"tool": tool_name, "result": tool_result})
 
             except Exception as e:
-                logger.error(f"Tool execution error ({tool_name}): {e}")
-                tool_result = {"error": str(e)}
-                yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'error', 'error': str(e)})}\n\n"
+                # Part 2 Patch P3: never expose `str(e)` to the LLM / client —
+                # may contain Mongo URIs, collection names, stack frame paths.
+                # Log to server with a correlation_id; surface a generic token.
+                corr_id = str(uuid.uuid4())
+                logger.exception("Tool execution error (%s) [%s]", tool_name, corr_id)
+                tool_result = {"error": "data_unavailable", "correlation_id": corr_id}
+                yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'error', 'error': 'data_unavailable', 'correlation_id': corr_id})}\n\n"
                 all_tool_calls.append({"tool": tool_name, "result": tool_result})
 
     # ── Phase 8: First LLM call ───────────────────────────────────────────
@@ -1168,30 +1307,64 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         yield thinking_event("analyzing", "Processing the data..." if tool_result else "Thinking about your question...")
         await _thinking_delay()
 
-        # BUG FIX #4: keepalive during LLM call
+        # Part 2 Patch P5: keepalive + bounded wait + clean task lifecycle.
+        # Previously the LLM task was spawned via fire-and-forget
+        # `asyncio.create_task` and the keepalive loop spun forever if the
+        # task raised before setting the event. Now: track the task, finally-
+        # cancel it on any exit (including client disconnect), and cap the
+        # wallclock wait at LLM_WALLCLOCK_BUDGET so a hung Azure call cannot
+        # leak workers.
         llm_task_done = asyncio.Event()
         llm_response = ""
         llm_tokens = 0
+        LLM_WALLCLOCK_BUDGET = 90  # seconds; bounded ceiling above per-call 45s
 
         async def _llm_call():
             nonlocal llm_response, llm_tokens
-            session_id = f"{conv_id}-{uuid.uuid4()}"
-            result = await llm_client.chat(system_prompt, messages_for_llm_final, session_id)
-            if isinstance(result, tuple):
-                llm_response, llm_tokens = result
-            else:
-                llm_response = result
-                llm_tokens = 0
-            llm_task_done.set()
-
-        asyncio.create_task(_llm_call())
-
-        # Yield keepalive events while waiting for LLM (BUG FIX #4)
-        while not llm_task_done.is_set():
             try:
-                await asyncio.wait_for(llm_task_done.wait(), timeout=KEEPALIVE_INTERVAL)
-            except asyncio.TimeoutError:
-                yield keepalive_event()
+                session_id = f"{conv_id}-{uuid.uuid4()}"
+                result = await llm_client.chat(system_prompt, messages_for_llm_final, session_id)
+                if isinstance(result, tuple):
+                    llm_response, llm_tokens = result
+                else:
+                    llm_response = result
+                    llm_tokens = 0
+            except Exception:
+                logger.exception("LLM call raised unexpectedly in Phase 8")
+                llm_response = ai_unavailable_result("call_failed")
+                llm_tokens = 0
+            finally:
+                # ALWAYS set the event so the keepalive loop never spins.
+                llm_task_done.set()
+
+        llm_task = asyncio.create_task(_llm_call())
+
+        try:
+            elapsed = 0
+            while not llm_task_done.is_set():
+                try:
+                    await asyncio.wait_for(
+                        llm_task_done.wait(),
+                        timeout=KEEPALIVE_INTERVAL,
+                    )
+                except asyncio.TimeoutError:
+                    elapsed += KEEPALIVE_INTERVAL
+                    if elapsed >= LLM_WALLCLOCK_BUDGET:
+                        logger.warning("LLM wallclock budget exceeded (%ds) — bailing", elapsed)
+                        llm_response = ai_unavailable_result("timeout_wallclock")
+                        llm_tokens = 0
+                        break
+                    if request is not None:
+                        try:
+                            if await request.is_disconnected():
+                                logger.info("Client disconnected during LLM call; cancelling")
+                                break
+                        except Exception:
+                            pass
+                    yield keepalive_event()
+        finally:
+            if not llm_task.done():
+                llm_task.cancel()
 
         if _is_ai_unavailable(llm_response):
             yield _ai_unavailable_event(llm_response)
@@ -1215,10 +1388,14 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         return
 
     # ── Phase 9: LLM tool detection + multi-tool chaining ─────────────────
-    tool_rounds = 0
+    # Part 2 Patch P5 (E6/L4): treat the keyword-detected tool as round 1 so
+    # MAX_TOOL_ROUNDS is honored (was previously off-by-one: 4 effective rounds
+    # when a keyword tool fired). Loop condition is now `<` only — relying on
+    # the inner `break` to handle "no further tool requested".
+    tool_rounds = 1 if detected_tool else 0
 
     try:
-        while not tool_result or tool_rounds < MAX_TOOL_ROUNDS:
+        while tool_rounds < MAX_TOOL_ROUNDS:
             # Only enter the loop body if we haven't already executed a keyword tool
             # or if the LLM is requesting another tool after a previous result
             if tool_result and tool_rounds == 0:
@@ -1255,7 +1432,23 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                 await _thinking_delay()
 
             # Resolve parameters
-            resolved_params = await _resolve_params(llm_tool_params, db)
+            resolved_params = await _resolve_params(llm_tool_params, db, scope)
+            if resolved_params.get("_resolution_error"):
+                err_text = resolved_params["_resolution_error"]
+                yield thinking_event("composing", "Writing your answer...")
+                await _thinking_delay()
+                for i in range(0, len(err_text), 4):
+                    yield f"data: {json.dumps({'type': 'text_delta', 'delta': err_text[i:i + 4]})}\n\n"
+                    await asyncio.sleep(0.008)
+                ai_msg = Message(
+                    conversation_id=conv_id, role="assistant",
+                    content=err_text,
+                    tool_calls=all_tool_calls if all_tool_calls else None,
+                    language_detected=lang,
+                )
+                await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
+                yield f"data: {json.dumps({'type': 'done', 'message_id': ai_msg.id, 'tokens_used': total_tokens_used})}\n\n"
+                return
 
             # ── Write action confirmation ─────────────────────────────
             if tool_name in WRITE_ACTION_TOOLS:
@@ -1327,9 +1520,11 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                 all_tool_calls.append({"tool": tool_name, "params": resolved_params, "result": tool_result})
 
             except Exception as e:
-                logger.error(f"Tool execution error ({tool_name}): {e}")
-                tool_result = {"error": str(e)}
-                yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'error', 'error': str(e)})}\n\n"
+                # Part 2 Patch P3: opaque error to LLM/client, full exception logged.
+                corr_id = str(uuid.uuid4())
+                logger.exception("Tool execution error (%s) [%s]", tool_name, corr_id)
+                tool_result = {"error": "data_unavailable", "correlation_id": corr_id}
+                yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'error', 'error': 'data_unavailable', 'correlation_id': corr_id})}\n\n"
                 all_tool_calls.append({"tool": tool_name, "params": resolved_params, "result": tool_result})
                 break  # Stop chaining on error
 
@@ -1356,29 +1551,55 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                 {"role": "user", "content": tool_msg},
             ]
 
-            # LLM call with keepalive (BUG FIX #4)
+            # Part 2 Patch P5: bounded LLM call with cleanup (mirrors Phase 8).
             llm_task_done = asyncio.Event()
             llm_response = ""
             llm_tokens = 0
+            LLM_WALLCLOCK_BUDGET = 90
 
             async def _llm_followup():
                 nonlocal llm_response, llm_tokens
-                session_id = f"{conv_id}-{uuid.uuid4()}"
-                result = await llm_client.chat(system_prompt, messages_for_llm_final, session_id)
-                if isinstance(result, tuple):
-                    llm_response, llm_tokens = result
-                else:
-                    llm_response = result
-                    llm_tokens = 0
-                llm_task_done.set()
-
-            asyncio.create_task(_llm_followup())
-
-            while not llm_task_done.is_set():
                 try:
-                    await asyncio.wait_for(llm_task_done.wait(), timeout=KEEPALIVE_INTERVAL)
-                except asyncio.TimeoutError:
-                    yield keepalive_event()
+                    session_id = f"{conv_id}-{uuid.uuid4()}"
+                    result = await llm_client.chat(system_prompt, messages_for_llm_final, session_id)
+                    if isinstance(result, tuple):
+                        llm_response, llm_tokens = result
+                    else:
+                        llm_response = result
+                        llm_tokens = 0
+                except Exception:
+                    logger.exception("LLM follow-up call raised unexpectedly")
+                    llm_response = ai_unavailable_result("call_failed")
+                    llm_tokens = 0
+                finally:
+                    llm_task_done.set()
+
+            llm_task = asyncio.create_task(_llm_followup())
+
+            try:
+                elapsed = 0
+                while not llm_task_done.is_set():
+                    try:
+                        await asyncio.wait_for(
+                            llm_task_done.wait(),
+                            timeout=KEEPALIVE_INTERVAL,
+                        )
+                    except asyncio.TimeoutError:
+                        elapsed += KEEPALIVE_INTERVAL
+                        if elapsed >= LLM_WALLCLOCK_BUDGET:
+                            llm_response = ai_unavailable_result("timeout_wallclock")
+                            llm_tokens = 0
+                            break
+                        if request is not None:
+                            try:
+                                if await request.is_disconnected():
+                                    break
+                            except Exception:
+                                pass
+                        yield keepalive_event()
+            finally:
+                if not llm_task.done():
+                    llm_task.cancel()
 
             if _is_ai_unavailable(llm_response):
                 yield _ai_unavailable_event(llm_response)
@@ -1506,7 +1727,7 @@ async def send_message(conv_id: str, request: Request):
     session_id = body.get("session_id") or request.headers.get("x-session-id") or conv_id
 
     return StreamingResponse(
-        _generate_chat_sse(conv_id, user_text, user, session_id=session_id),
+        _generate_chat_sse(conv_id, user_text, user, session_id=session_id, request=request),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -1574,8 +1795,10 @@ async def execute_action(conv_id: str, request: Request):
             },
         }
     except Exception as e:
-        logger.error(f"Action execution error ({action}): {e}")
-        return {"success": False, "error": str(e)}
+        # Part 2 Patch P3: opaque error to client; correlation_id for log lookup.
+        corr_id = str(uuid.uuid4())
+        logger.exception("Action execution error (%s) [%s]", action, corr_id)
+        return {"success": False, "error": "internal_error", "correlation_id": corr_id}
 
 
 # ─── Confirm action endpoint ─────────────────────────────────────────────────
@@ -1648,24 +1871,53 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
     if user["role"] not in tool_def["roles"]:
         raise HTTPException(status_code=403, detail="Forbidden")
 
+    # Part 2 Patch P4: write-ahead audit row. If this insert fails, refuse to
+    # run the tool — we will not execute a write whose forensic record is gone.
+    try:
+        audit_id = await audit_ai_dispatch_pending(
+            tool_name=tool_name,
+            params=params,
+            user_id=user["id"],
+            session_id=session_id,
+            confirmed_at=token_doc.get("confirmed_at"),
+            school_id=get_school_id(),
+            branch_id=user.get("branch_id"),
+            db=db,
+        )
+    except Exception as exc:
+        logger.exception("Pre-execution audit insert failed for %s", tool_name)
+        raise HTTPException(
+            status_code=503,
+            detail="Audit log unavailable; please retry shortly.",
+        ) from exc
+
     try:
         scope = await resolve_scope(user, db)
         if _tool_accepts_scope(tool_def):
             result = await tool_def["fn"](params, user, scope)
         else:
             result = await tool_def["fn"](params, user)
-    except HTTPException:
+    except HTTPException as http_exc:
+        await audit_ai_dispatch_finalize(
+            audit_id=audit_id, result=None,
+            error=f"http_{http_exc.status_code}", db=db,
+        )
         raise
     except Exception as exc:
-        logger.error(f"Confirm action execution error ({tool_name}): {exc}")
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        # Part 2 Patch P3: opaque to client; full exception in server logs.
+        corr_id = str(uuid.uuid4())
+        logger.exception("Confirm action execution error (%s) [%s]", tool_name, corr_id)
+        await audit_ai_dispatch_finalize(
+            audit_id=audit_id, result=None,
+            error=f"internal:{corr_id}", db=db,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"An internal error occurred (id={corr_id})",
+        ) from exc
 
-    await audit_ai_dispatch(
-        tool_name=tool_name,
-        params=params,
-        user_id=user["id"],
-        session_id=session_id,
-        confirmed_at=token_doc.get("confirmed_at"),
+    await audit_ai_dispatch_finalize(
+        audit_id=audit_id,
         result=result if isinstance(result, dict) else None,
         db=db,
     )

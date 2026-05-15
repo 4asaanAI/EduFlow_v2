@@ -151,6 +151,90 @@ async def consume_confirm_token(
     raise HTTPException(status_code=400, detail="Confirmation token is invalid")
 
 
+def _infer_success(result: Any) -> bool:
+    """Part 2 Patch P4: previously defaulted to True when ``success`` was missing,
+    so a tool returning ``{}`` or ``{"error": "x"}`` recorded as a successful
+    write. New rule: a dispatch is successful iff the result explicitly says so.
+    """
+    if not isinstance(result, dict):
+        return False
+    if result.get("success") is True:
+        return True
+    status = result.get("status")
+    if isinstance(status, str) and status.lower() in ("ok", "success", "succeeded"):
+        return True
+    return False
+
+
+async def audit_ai_dispatch_pending(
+    *,
+    tool_name: str,
+    params: dict[str, Any],
+    user_id: str,
+    session_id: str,
+    confirmed_at: datetime | None,
+    school_id: str | None = None,
+    branch_id: str | None = None,
+    dispatch_id: str | None = None,
+    db=None,
+) -> str:
+    """Part 2 Patch P4: write-ahead audit row.
+
+    Insert a ``status='pending'`` row BEFORE the tool runs. The caller updates it
+    to success/failure after; if the pre-write fails the caller must NOT execute
+    the tool. Returns the audit row id so the caller can update it.
+    """
+    audit_db = db or get_db()
+    now = _now()
+    audit_id = dispatch_id or f"ai-dispatch-{uuid.uuid4()}"
+    document = {
+        "id": audit_id,
+        "tool_name": tool_name,
+        "params": params,
+        "user_id": user_id,
+        "session_id": session_id,
+        "confirmed_at": confirmed_at,
+        "started_at": now,
+        "executed_at": None,
+        "success": False,
+        "status": "pending",
+        "rate_limit_hit": False,
+        "school_id": school_id,
+        "branch_id": branch_id,
+    }
+    # Allow the insert to raise — caller must abort the tool if audit fails.
+    await audit_db.ai_dispatch_audit_log.insert_one({**document, "_id": audit_id})
+    return audit_id
+
+
+async def audit_ai_dispatch_finalize(
+    *,
+    audit_id: str,
+    result: dict[str, Any] | None = None,
+    error: str | None = None,
+    rate_limit_hit: bool = False,
+    db=None,
+) -> None:
+    """Part 2 Patch P4: update the write-ahead row with the dispatch outcome."""
+    audit_db = db or get_db()
+    now = _now()
+    success = _infer_success(result) if error is None else False
+    update = {
+        "executed_at": now,
+        "success": success,
+        "status": "success" if success else "failure",
+        "rate_limit_hit": rate_limit_hit,
+    }
+    if error is not None:
+        update["error"] = error
+    try:
+        await audit_db.ai_dispatch_audit_log.update_one(
+            {"id": audit_id}, {"$set": update}
+        )
+    except Exception:
+        logger.error("failed to finalize AI dispatch audit log id=%s", audit_id, exc_info=True)
+
+
 async def audit_ai_dispatch(
     *,
     tool_name: str,
@@ -160,8 +244,17 @@ async def audit_ai_dispatch(
     confirmed_at: datetime | None,
     result: dict[str, Any] | None = None,
     rate_limit_hit: bool = False,
+    school_id: str | None = None,
+    branch_id: str | None = None,
     db=None,
 ) -> None:
+    """Legacy single-shot audit insert.
+
+    Kept for callers (rate-limit-hit path) where there is no pre-execution
+    phase. New dispatch flow uses ``audit_ai_dispatch_pending`` +
+    ``audit_ai_dispatch_finalize`` so a Mongo failure does not silently drop
+    the forensic row of a successful write.
+    """
     audit_db = db or get_db()
     now = _now()
     document = {
@@ -172,8 +265,12 @@ async def audit_ai_dispatch(
         "session_id": session_id,
         "confirmed_at": confirmed_at,
         "executed_at": now,
-        "success": bool(result.get("success", True)) if isinstance(result, dict) else True,
+        # Part 2 Patch P4: missing-key now resolves to False (was True).
+        "success": _infer_success(result),
+        "status": "success" if _infer_success(result) else "failure",
         "rate_limit_hit": rate_limit_hit,
+        "school_id": school_id,
+        "branch_id": branch_id,
     }
 
     try:

@@ -62,9 +62,13 @@ class LLMClient:
                 "Azure LLM call | session=%s | deployment=%s | messages=%d",
                 session_id, self.deployment, len(az_messages),
             )
+            # Part 2 Patch P5: hard per-call timeout. The OpenAI SDK's
+            # synchronous client default is ~600s which is far too long for
+            # an SSE handler; long stalls leak workers and Azure tokens.
             response = self._client.chat.completions.create(
                 model=self.deployment,
                 messages=az_messages,
+                timeout=45,
             )
             text = response.choices[0].message.content or ""
             tokens = 0

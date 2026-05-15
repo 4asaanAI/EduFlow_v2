@@ -164,10 +164,32 @@ class Scope:
         -------
         dict
             A filter that can be spread into ``db.<col>.find(scope.filter())``.
+
+        Part 2 Patch P1: when ``self.branch_id`` is set, a ``branch_id``
+        clause is ALWAYS added to the returned filter (composed via ``$and``
+        when other clauses already exist) — even for ``type="all"`` and
+        ``type="domain"``. Previously only ``type="branch"`` consulted
+        branch_id, and that type was never produced; ``_apply_branch_filter``
+        in tool_functions_v2 was a permanent no-op.
         """
 
+        base = self._raw_filter(collection)
+        if not self.branch_id:
+            return base
+        # Compose with branch_id. Avoid double-clause if the inner filter
+        # already pinned branch_id (defensive — shouldn't happen).
+        if "branch_id" in base:
+            return base
+        if not base:
+            return {"branch_id": self.branch_id}
+        if "$and" in base:
+            return {"$and": [*base["$and"], {"branch_id": self.branch_id}]}
+        return {"$and": [base, {"branch_id": self.branch_id}]}
+
+    def _raw_filter(self, collection: str) -> Dict[str, Any]:
+        """Type-based filter, without the branch_id wrapper. See ``filter()``."""
+
         if self.type == "all":
-            # Owner or principal -- no restriction.
             return {}
 
         if self.type == "branch" and self.branch_id:
@@ -398,15 +420,20 @@ async def resolve_scope(user: Dict[str, Any], db: Any = None) -> Scope:
 
     user_id: str = user["id"]
     role: str = user["role"]
+    # Part 2 Patch P1: propagate branch_id from the JWT into every Scope so
+    # `_apply_branch_filter` (and any other consumer) is no longer a no-op.
+    # Owner intentionally stays None (cross-branch read is part of the role).
+    user_branch_id: Optional[str] = user.get("branch_id") if role != "owner" else None
 
-    logger.debug("resolve_scope: user_id=%s role=%s", user_id, role)
+    logger.debug("resolve_scope: user_id=%s role=%s branch_id=%s",
+                 user_id, role, user_branch_id)
 
     # ------------------------------------------------------------------
     # Owner -- unrestricted
     # ------------------------------------------------------------------
     if role == "owner":
         logger.debug("resolve_scope: owner -> scope type='all'")
-        return Scope(type="all", role="owner", user_id=user_id)
+        return Scope(type="all", role="owner", user_id=user_id, branch_id=None)
 
     # ------------------------------------------------------------------
     # Student -- self only
@@ -428,6 +455,7 @@ async def resolve_scope(user: Dict[str, Any], db: Any = None) -> Scope:
             role="student",
             user_id=user_id,
             student_id=student_id,
+            branch_id=user_branch_id,
         )
 
     # ------------------------------------------------------------------
@@ -442,7 +470,8 @@ async def resolve_scope(user: Dict[str, Any], db: Any = None) -> Scope:
             user_id,
             role,
         )
-        return Scope(type="self_only", role=role, user_id=user_id)
+        return Scope(type="self_only", role=role, user_id=user_id,
+                     branch_id=user_branch_id)
 
     sub_category: Optional[str] = staff.get("sub_category")
 
@@ -454,19 +483,22 @@ async def resolve_scope(user: Dict[str, Any], db: Any = None) -> Scope:
         # Previously a legacy admin row with designation="Principal" silently
         # got type=all even without sub_category. Migration 016 promotes known
         # designation values to sub_category before this resolver runs.
-        return _resolve_admin_scope(user_id, staff, sub_category)
+        return _resolve_admin_scope(user_id, staff, sub_category,
+                                    branch_id=user_branch_id)
 
     # ------------------------------------------------------------------
     # Teacher
     # ------------------------------------------------------------------
     if role == "teacher":
-        return await _resolve_teacher_scope(user_id, staff, sub_category, db)
+        return await _resolve_teacher_scope(user_id, staff, sub_category, db,
+                                            branch_id=user_branch_id)
 
     # ------------------------------------------------------------------
     # Unrecognised role -- self only
     # ------------------------------------------------------------------
     logger.warning("resolve_scope: unrecognised role=%r -> self-only", role)
-    return Scope(type="self_only", role=role, user_id=user_id, staff_record=staff)
+    return Scope(type="self_only", role=role, user_id=user_id,
+                 staff_record=staff, branch_id=user_branch_id)
 
 
 # ---------------------------------------------------------------------------
@@ -477,6 +509,7 @@ def _resolve_admin_scope(
     user_id: str,
     staff: Dict[str, Any],
     sub_category: Optional[str],
+    branch_id: Optional[str] = None,
 ) -> Scope:
     """Produce scope for an admin user based on sub_category ONLY.
 
@@ -485,6 +518,10 @@ def _resolve_admin_scope(
     (e.g. designation="Principal", sub_category=None) are promoted to
     sub_category at migration time (016). Any admin row that reaches this
     function without sub_category gets self-only (deny by default).
+
+    Part 2 Patch P1: `branch_id` is now threaded through every returned Scope
+    so consumers can enforce branch isolation. Principal staying type="all"
+    is intentional (operational visibility across branches within the school).
     """
 
     effective: str = (sub_category or "").strip().lower()
@@ -497,6 +534,7 @@ def _resolve_admin_scope(
             sub_category="principal",
             user_id=user_id,
             staff_record=staff,
+            branch_id=branch_id,
         )
 
     if effective in ("accountant", "accounts"):
@@ -508,6 +546,7 @@ def _resolve_admin_scope(
             user_id=user_id,
             domain="financial",
             staff_record=staff,
+            branch_id=branch_id,
         )
 
     if effective in ("transport_head", "transport"):
@@ -519,6 +558,7 @@ def _resolve_admin_scope(
             user_id=user_id,
             domain="transport",
             staff_record=staff,
+            branch_id=branch_id,
         )
 
     if effective in ("receptionist", "front_desk"):
@@ -530,6 +570,7 @@ def _resolve_admin_scope(
             user_id=user_id,
             domain="enquiries",
             staff_record=staff,
+            branch_id=branch_id,
         )
 
     if effective in ("support_staff", "support", "peon", "helper"):
@@ -540,6 +581,7 @@ def _resolve_admin_scope(
             sub_category="support_staff",
             user_id=user_id,
             staff_record=staff,
+            branch_id=branch_id,
         )
 
     # No sub_category at all -- DENY BY DEFAULT (Part 1 hardening).
@@ -558,6 +600,7 @@ def _resolve_admin_scope(
             sub_category=None,
             user_id=user_id,
             staff_record=staff,
+            branch_id=branch_id,
         )
 
     # Unrecognised sub_category -- deny-by-default.
@@ -571,6 +614,7 @@ def _resolve_admin_scope(
         sub_category=effective,
         user_id=user_id,
         staff_record=staff,
+        branch_id=branch_id,
     )
 
 
@@ -583,6 +627,7 @@ async def _resolve_teacher_scope(
     staff: Dict[str, Any],
     sub_category: Optional[str],
     db: Any,
+    branch_id: Optional[str] = None,
 ) -> Scope:
     """Produce scope for a teacher based on sub_category and staff fields.
 
@@ -627,6 +672,7 @@ async def _resolve_teacher_scope(
             class_ids=class_ids,
             subject=subject_name,
             staff_record=staff,
+            branch_id=branch_id,
         )
 
     # --- Coordinator (class range) ------------------------------------
@@ -657,6 +703,7 @@ async def _resolve_teacher_scope(
             user_id=user_id,
             class_ids=class_ids,
             staff_record=staff,
+            branch_id=branch_id,
         )
 
     # --- Class teacher (single class-section) -------------------------
@@ -683,6 +730,7 @@ async def _resolve_teacher_scope(
             user_id=user_id,
             class_ids=class_ids,
             staff_record=staff,
+            branch_id=branch_id,
         )
 
     # --- Subject teacher (assigned classes) ---------------------------
@@ -711,6 +759,7 @@ async def _resolve_teacher_scope(
             user_id=user_id,
             class_ids=class_ids,
             staff_record=staff,
+            branch_id=branch_id,
         )
 
     # --- KG in-charge -------------------------------------------------
@@ -738,6 +787,7 @@ async def _resolve_teacher_scope(
             user_id=user_id,
             class_ids=class_ids,
             staff_record=staff,
+            branch_id=branch_id,
         )
 
     # --- No sub_category (legacy teacher records) ---------------------
@@ -757,6 +807,7 @@ async def _resolve_teacher_scope(
             user_id=user_id,
             class_ids=class_ids,
             staff_record=staff,
+            branch_id=branch_id,
         )
 
     # --- Unrecognised teacher sub_category ----------------------------
@@ -770,6 +821,7 @@ async def _resolve_teacher_scope(
         sub_category=effective,
         user_id=user_id,
         staff_record=staff,
+        branch_id=branch_id,
     )
 
 
