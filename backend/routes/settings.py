@@ -95,6 +95,7 @@ async def get_token_usage_admin(request: Request, user: dict = Depends(require_o
         "success": True,
         "data": usage_records,
         "meta": {
+            "count": len(usage_records),
             "users_over_80_pct": users_over_80,
             "default_limit": DEFAULT_LIMIT,
         },
@@ -200,7 +201,7 @@ async def update_school_settings(request: Request, user: dict = Depends(require_
 async def list_branches(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
     branches = await db.branches.find(_settings_query(), {"_id": 0}).sort("name", 1).to_list(100)
-    return {"success": True, "data": branches}
+    return {"success": True, "data": branches, "meta": {"count": len(branches)}}
 
 
 @router.post("/branches")

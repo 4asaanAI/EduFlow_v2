@@ -649,17 +649,37 @@ export function CareerGuidance() {
 // 9. Fee Status Viewer
 export function FeeStatusViewer() {
   const { currentUser } = useUser();
-  const [data, setData] = useState(null);
+  const [transactions, setTransactions] = useState([]);
+  const [feeSummary, setFeeSummary] = useState(null);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { import('../../lib/api').then(({ executeTool }) => executeTool('get_my_fees', {}, currentUser).then(r => { if (r.success) setData(r.data); setLoading(false); })); }, []);
+  useEffect(() => {
+    fetch(`${API}/fees/my`, { headers: h(currentUser) })
+      .then(r => r.json())
+      .then(r => {
+        if (r.success) {
+          setTransactions(r.data || []);
+          setFeeSummary(r.summary || null);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
   return (
     <ToolPage title="My Fee Status" subtitle="View your payment history" loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16, maxWidth: 400 }}>
-        <StatCard value={data?.total_paid || '₹0'} label="TOTAL PAID" color="var(--tool-hex-34d399)" />
-        <StatCard value={data?.total_pending || '₹0'} label="PENDING" color="var(--tool-hex-f87171)" />
-      </div>
+      {feeSummary && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16, maxWidth: 400 }}>
+          <div style={{ background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.3)', borderRadius: 8, padding: 12 }}>
+            <p style={{ fontSize: 11, color: 'var(--tool-hex-34d399)', margin: '0 0 4px' }}>Total Paid</p>
+            <p style={{ fontSize: 18, fontWeight: 700, color: 'var(--tool-hex-34d399)', margin: 0 }}>Rs. {Number(feeSummary.total_paid || 0).toLocaleString('en-IN')}</p>
+          </div>
+          <div style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 8, padding: 12 }}>
+            <p style={{ fontSize: 11, color: 'var(--tool-hex-f87171)', margin: '0 0 4px' }}>Outstanding</p>
+            <p style={{ fontSize: 18, fontWeight: 700, color: 'var(--tool-hex-f87171)', margin: 0 }}>Rs. {Number(feeSummary.outstanding_balance || 0).toLocaleString('en-IN')}</p>
+          </div>
+        </div>
+      )}
       <DataTable headers={['Fee Type', 'Amount', 'Due Date', 'Status']}
-        rows={(data?.transactions || []).map(t => [t.fee_type, t.amount, t.due_date || 'N/A', <Badge text={t.status} color={{ paid: 'green', pending: 'yellow', overdue: 'red' }[t.status] || 'gray'} />])}
+        rows={transactions.map(t => [t.fee_type, t.amount, t.due_date || 'N/A', <Badge text={t.status} color={{ paid: 'green', pending: 'yellow', overdue: 'red' }[t.status] || 'gray'} />])}
         emptyMsg="No fee records"
       />
     </ToolPage>

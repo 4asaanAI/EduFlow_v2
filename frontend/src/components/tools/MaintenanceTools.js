@@ -354,6 +354,10 @@ export function MaintenanceDashboard() {
   const [stats, setStats] = useState({ open: 0, accepted: 0, in_progress: 0, pending: 0, closed: 0, urgent: 0, overdue: 0 });
   const [recentItems, setRecentItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [upcomingSchedule, setUpcomingSchedule] = useState([]);
+  const [loadingUpcoming, setLoadingUpcoming] = useState(true);
+  const [costSummary, setCostSummary] = useState(null);
+  const [loadingCost, setLoadingCost] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -377,7 +381,39 @@ export function MaintenanceDashboard() {
     setLoading(false);
   }, []);
 
+  const loadUpcoming = useCallback(async () => {
+    setLoadingUpcoming(true);
+    try {
+      const res = await fetch(`${API}/issues/maintenance/schedule/upcoming?days=14`, { headers: h() });
+      if (res.ok) {
+        const data = await res.json();
+        setUpcomingSchedule(data.data || []);
+      }
+    } catch (e) {
+      console.error('Failed to load upcoming schedule:', e);
+    } finally {
+      setLoadingUpcoming(false);
+    }
+  }, []);
+
+  const loadCostSummary = useCallback(async () => {
+    setLoadingCost(true);
+    try {
+      const res = await fetch(`${API}/issues/facility/cost-summary`, { headers: h() });
+      if (res.ok) {
+        const data = await res.json();
+        setCostSummary(data.data || null);
+      }
+    } catch (e) {
+      console.error('Failed to load cost summary:', e);
+    } finally {
+      setLoadingCost(false);
+    }
+  }, []);
+
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadUpcoming(); }, [loadUpcoming]);
+  useEffect(() => { loadCostSummary(); }, [loadCostSummary]);
 
   const bg = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-fff)';
   const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
@@ -405,6 +441,54 @@ export function MaintenanceDashboard() {
           </div>
         ))}
       </div>
+
+      {/* Upcoming Schedule (14 days) */}
+      <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 11, padding: 16, marginBottom: 16 }}>
+        <p style={{ fontSize: 11, fontWeight: 600, color: muted, letterSpacing: '0.06em', marginBottom: 10 }}>UPCOMING MAINTENANCE (14 DAYS)</p>
+        {loadingUpcoming ? (
+          <div style={{ color: muted, fontSize: 13 }}>Loading...</div>
+        ) : upcomingSchedule.length === 0 ? (
+          <div style={{ color: muted, fontSize: 13 }}>No upcoming scheduled maintenance.</div>
+        ) : (
+          upcomingSchedule.map(entry => (
+            <div key={entry.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: `1px solid ${border}` }}>
+              <div>
+                <span style={{ fontSize: 13, fontWeight: 600, color: text }}>{entry.title}</span>
+                {entry.category && <span style={{ fontSize: 11, color: muted, marginLeft: 8 }}>{entry.category}</span>}
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontSize: 11, color: muted }}>{entry.scheduled_date}</span>
+                <Badge label={entry.status} color={entry.status === 'done' ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-facc15)'} />
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Cost Summary by Category */}
+      {(loadingCost || costSummary) && (
+        <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 11, padding: 16, marginBottom: 16 }}>
+          <p style={{ fontSize: 11, fontWeight: 600, color: muted, letterSpacing: '0.06em', marginBottom: 10 }}>FACILITY COST SUMMARY</p>
+          {loadingCost ? (
+            <div style={{ color: muted, fontSize: 13 }}>Loading...</div>
+          ) : costSummary && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+              {Object.entries(costSummary.by_category || {}).map(([cat, amt]) => (
+                <div key={cat} style={{ background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', borderRadius: 8, padding: '10px 14px' }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--tool-hex-fb923c)' }}>Rs. {Number(amt || 0).toLocaleString('en-IN')}</div>
+                  <div style={{ fontSize: 11, color: muted, marginTop: 2, textTransform: 'capitalize' }}>{cat.replace(/_/g, ' ')}</div>
+                </div>
+              ))}
+              {costSummary.total !== undefined && (
+                <div style={{ background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', borderRadius: 8, padding: '10px 14px' }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--tool-hex-34d399)' }}>Rs. {Number(costSummary.total || 0).toLocaleString('en-IN')}</div>
+                  <div style={{ fontSize: 11, color: muted, marginTop: 2 }}>Total</div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {recentItems.length > 0 && (
         <>

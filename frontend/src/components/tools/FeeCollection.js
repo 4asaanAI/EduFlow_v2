@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle, Edit3, Percent, Phone, RefreshCw, Save, FileDown } from 'lucide-react';
 import { getAuthHeaders } from '../../lib/authSession';
+import { useUser } from '../../contexts/UserContext';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -40,7 +41,7 @@ async function exportFeeCSV(period) {
   URL.revokeObjectURL(url);
 }
 import {
-  applyFeeDiscount,
+  apiFetch,
   correctFeeTransaction,
   createFeeContactLog,
   createDiscountType,
@@ -75,6 +76,7 @@ function lastUpdatedLabel(value) {
 }
 
 export default function FeeCollection() {
+  const { currentUser } = useUser();
   const [summary, setSummary] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [students, setStudents] = useState([]);
@@ -99,6 +101,9 @@ export default function FeeCollection() {
   const [disbursements, setDisbursements] = useState([]);
   const [loadingPayroll, setLoadingPayroll] = useState(false);
 
+  // Pending discount approvals (owner only)
+  const [pendingApprovals, setPendingApprovals] = useState([]);
+
   const fetchPayroll = useCallback(async () => {
     setLoadingPayroll(true);
     try {
@@ -112,6 +117,41 @@ export default function FeeCollection() {
   }, []);
 
   useEffect(() => { fetchPayroll(); }, [fetchPayroll]);
+
+  const loadPendingApprovals = useCallback(async () => {
+    if (currentUser?.role !== 'owner') return;
+    try {
+      const res = await apiFetch(`${API}/fees/discounts/pending-approvals`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setPendingApprovals(data.data || []);
+      }
+    } catch (e) {
+      console.error('Failed to load pending approvals:', e);
+    }
+  }, [currentUser?.role]);
+
+  useEffect(() => { loadPendingApprovals(); }, [loadPendingApprovals]);
+
+  async function approveDiscount(id) {
+    try {
+      const res = await apiFetch(`${API}/fees/discounts/pending-approvals/${id}/approve`, {
+        method: 'PATCH', headers: getAuthHeaders(),
+      });
+      if (res.ok) { setNotice('Discount approved.'); loadPendingApprovals(); }
+      else { const d = await res.json(); setError(d.detail || 'Failed to approve discount'); }
+    } catch { setError('Failed to approve discount'); }
+  }
+
+  async function rejectDiscount(id) {
+    try {
+      const res = await apiFetch(`${API}/fees/discounts/pending-approvals/${id}/reject`, {
+        method: 'PATCH', headers: getAuthHeaders(),
+      });
+      if (res.ok) { setNotice('Discount rejected.'); loadPendingApprovals(); }
+      else { const d = await res.json(); setError(d.detail || 'Failed to reject discount'); }
+    } catch { setError('Failed to reject discount'); }
+  }
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -252,12 +292,27 @@ export default function FeeCollection() {
       if (!discountApply.student_id || !discountApply.discount_type_id || !discountApply.original_amount) {
         throw new Error('Discount application requires student, discount type, and original amount.');
       }
-      const res = await applyFeeDiscount({ ...discountApply, original_amount: Number(discountApply.original_amount) });
-      if (!res.success) throw new Error(res.detail || 'Discount could not be applied');
+      const res = await apiFetch(`${API}/fees/discounts/apply`, {
+        method: 'POST',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...discountApply, original_amount: Number(discountApply.original_amount) }),
+      });
+      if (res.status === 202) {
+        const data = await res.json();
+        setNotice(`Discount requires owner approval: ${data.message || 'Pending approval'}`);
+        loadPendingApprovals();
+        return;
+      }
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || 'Discount could not be applied');
+      }
+      const json = await res.json();
+      if (!json.success) throw new Error(json.detail || 'Discount could not be applied');
       setDiscountApply(initialDiscountApply);
       setNotice('Discount applied.');
       await loadData();
-      await loadDiscountBreakdown(res.data.student_id);
+      await loadDiscountBreakdown(json.data.student_id);
     } catch (err) {
       setError(err.message || 'Discount could not be applied.');
     } finally {
@@ -490,6 +545,27 @@ export default function FeeCollection() {
           </table>
         )}
       </div>
+
+      {currentUser?.role === 'owner' && (
+        <div style={{ background: 'rgba(251,191,36,0.07)', border: '1px solid rgba(251,191,36,0.35)', borderRadius: 8, padding: 14, marginBottom: 18 }}>
+          <h2 style={{ ...panelTitle, color: 'var(--tool-hex-fbbf24)' }}>Pending Discount Approvals</h2>
+          {pendingApprovals.length === 0 ? (
+            <div style={emptyStyle}>No pending discount approvals.</div>
+          ) : (
+            pendingApprovals.map(p => (
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid rgba(251,191,36,0.2)' }}>
+                <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>Student: {p.student_id} — {money(p.discount_amount)}</span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => approveDiscount(p.id)}
+                    style={{ ...primaryButton('var(--tool-hex-34d399)'), minHeight: 32, padding: '5px 12px', fontSize: 12 }}>Approve</button>
+                  <button onClick={() => rejectDiscount(p.id)}
+                    style={{ ...primaryButton('var(--tool-hex-f87171)'), minHeight: 32, padding: '5px 12px', fontSize: 12 }}>Reject</button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       <div style={panelStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>

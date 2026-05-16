@@ -119,7 +119,7 @@ async def export_attendance(request: Request, start_date: str = None, end_date: 
 @router.get("/staff")
 async def export_staff(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    staff = await db.staff.find(scoped_filter({"is_active": True}, get_school_id()), {"_id": 0, "salary": 0}).to_list(500)
+    staff = await db.staff.find(scoped_filter({"is_active": True}, get_school_id()), {"_id": 0, "salary": 0}).to_list(2000)
     headers = ["Name", "Type", "Employee ID", "Email", "Phone", "Join Date", "Department"]
     rows = [[s.get("name"), s.get("staff_type"), s.get("employee_id", ""), s.get("email", ""), s.get("phone", ""), s.get("join_date", ""), s.get("department", "")] for s in staff]
     return make_csv_response(rows, headers, f"staff_{date.today()}.csv")
@@ -146,10 +146,28 @@ async def export_enquiries(request: Request, user: dict = Depends(require_role("
 @router.get("/exam-results")
 async def export_results(request: Request, user: dict = Depends(require_role("owner", "admin", "teacher"))):
     db = get_db()
+    bid = user.get("branch_id")
     results = await db.exam_results.find(scoped_filter({}, get_school_id()), {"_id": 0}).to_list(10000)
+
+    # Pre-fetch all subjects in ONE query (no N+1)
+    subject_ids = list({r.get("subject_id") for r in results if r.get("subject_id")})
+    subjects_list = await db.subjects.find(
+        scoped_query({"id": {"$in": subject_ids}}, branch_id=bid),
+        {"_id": 0, "id": 1, "name": 1},
+    ).to_list(None) if subject_ids else []
+    subject_map = {s["id"]: s for s in subjects_list}
+
+    # Pre-fetch all classes in ONE query (no N+1)
+    class_ids = list({r.get("class_id") for r in results if r.get("class_id")})
+    classes_list = await db.classes.find(
+        scoped_query({"id": {"$in": class_ids}}, branch_id=bid),
+        {"_id": 0, "id": 1, "name": 1, "section": 1},
+    ).to_list(None) if class_ids else []
+    class_map = {c["id"]: f"{c.get('name', '')} {c.get('section', '')}".strip() for c in classes_list}
+
     headers = ["Student ID", "Exam ID", "Subject", "Marks", "Max Marks", "Grade"]
     rows = []
     for r in results:
-        subj = await db.subjects.find_one({"id": r.get("subject_id")}, {"_id": 0, "name": 1})
-        rows.append([r.get("student_id"), r.get("exam_id"), subj["name"] if subj else "Unknown", r.get("marks_obtained"), r.get("max_marks"), r.get("grade", "")])
+        subj_name = subject_map.get(r.get("subject_id"), {}).get("name", "Unknown")
+        rows.append([r.get("student_id"), r.get("exam_id"), subj_name, r.get("marks_obtained"), r.get("max_marks"), r.get("grade", "")])
     return make_csv_response(rows, headers, f"results_{date.today()}.csv")

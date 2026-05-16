@@ -12,7 +12,7 @@ from database import get_db
 from middleware.auth import get_current_user, require_owner, require_role, require_access, require_owner_or_principal
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
-from tenant import get_school_id, scoped_filter, add_school_id
+from tenant import get_school_id, scoped_filter, scoped_query, add_school_id
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +125,7 @@ async def _notification_targets(db, query: dict, projection: dict, limit: int = 
     users = getattr(db, "users", None)
     if users is None:
         return []
+    # branch-scope: intentional — user records are school-wide; notifications fan out to all admins/owners regardless of branch
     scoped_q = scoped_filter(query, get_school_id())
     return await users.find(scoped_q, projection).to_list(limit)
 
@@ -210,6 +211,7 @@ async def list_facility_requests(
 ):
     db = get_db()
     user = get_user(request)
+    bid = user.get("branch_id")
     is_maintenance = _is_maint(user)
     if user.get("role") == "admin" and user.get("sub_category") == "it_tech":
         raise HTTPException(403, "IT/Tech Admin cannot access facility requests")
@@ -232,8 +234,8 @@ async def list_facility_requests(
     # Maintenance admin sees ALL school facility requests (not filtered to self)
     limit = min(max(limit, 1), 100)
     skip = max(page - 1, 0) * limit
-    total = await db.facility_requests.count_documents(scoped_filter(query, get_school_id()))
-    items = await db.facility_requests.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort([("priority", 1), ("created_at", -1)]).skip(skip).limit(limit).to_list(limit)
+    total = await db.facility_requests.count_documents(scoped_query(query, branch_id=bid))
+    items = await db.facility_requests.find(scoped_query(query, branch_id=bid), {"_id": 0}).sort([("priority", 1), ("created_at", -1)]).skip(skip).limit(limit).to_list(limit)
     # Fix 12.8: rename overdue → is_overdue
     for item in items:
         item["is_overdue"] = _is_overdue(item)
@@ -249,9 +251,10 @@ async def list_facility_requests(
 async def get_facility_cost_summary(request: Request, user: dict = Depends(require_owner_or_principal)):
     """Cost summary by category using MongoDB $sum (null-safe). EC-12.4."""
     db = get_db()
+    bid = user.get("branch_id")
     today = _date.today()
     pipeline = [
-        {"$match": scoped_filter({}, get_school_id())},
+        {"$match": scoped_query({}, branch_id=bid)},
         {"$group": {
             "_id": "$category",
             "total_estimated": {"$sum": "$estimated_cost"},
@@ -267,7 +270,8 @@ async def get_facility_cost_summary(request: Request, user: dict = Depends(requi
 async def get_facility_request(request_id: str, request: Request, user: dict = Depends(get_current_user)):
     """Single facility request by ID. Fix 12.5."""
     db = get_db()
-    rec = await db.facility_requests.find_one(scoped_filter({"id": request_id}, get_school_id()))
+    bid = user.get("branch_id")
+    rec = await db.facility_requests.find_one(scoped_query({"id": request_id}, branch_id=bid))
     if not rec:
         raise HTTPException(404, "Facility request not found")
     rec["is_overdue"] = _is_overdue(rec)
@@ -278,11 +282,12 @@ async def get_facility_request(request_id: str, request: Request, user: dict = D
 async def update_facility_request(request_id: str, request: Request):
     db = get_db()
     user = get_user(request)
+    bid = user.get("branch_id")
     is_maint = _is_maint(user)
     if not is_maint and not _can_view_all(user):
         raise HTTPException(403, "Forbidden")
     body = await request.json()
-    existing = await db.facility_requests.find_one(scoped_filter({"id": request_id}, get_school_id()))
+    existing = await db.facility_requests.find_one(scoped_query({"id": request_id}, branch_id=bid))
     if not existing:
         raise HTTPException(404, "Facility request not found")
 
@@ -296,7 +301,7 @@ async def update_facility_request(request_id: str, request: Request):
             raise HTTPException(409, f"Maximum {PHOTO_LIMIT} photos allowed — limit reached")
         for photo in new_photos:
             await db.facility_requests.update_one(
-                scoped_filter({"id": request_id}, get_school_id()),
+                scoped_query({"id": request_id}, branch_id=bid),
                 {"$push": {"photos": photo}},
             )
         body = {k: v for k, v in body.items() if k != "photos_append"}
@@ -317,7 +322,7 @@ async def update_facility_request(request_id: str, request: Request):
             "content": body["note"],
             "timestamp": datetime.now().isoformat(),
         }
-        await db.facility_requests.update_one(scoped_filter({"id": request_id}, get_school_id()), {"$push": {"notes": note_entry}})
+        await db.facility_requests.update_one(scoped_query({"id": request_id}, branch_id=bid), {"$push": {"notes": note_entry}})
     for field in ("priority", "estimated_cost", "actual_cost", "vendor_id"):
         if field in body:
             updates[field] = body[field]
@@ -326,9 +331,9 @@ async def update_facility_request(request_id: str, request: Request):
             raise HTTPException(400, f"priority must be one of {sorted(VALID_PRIORITIES)}")
         updates["due_at"] = _sla_due(updates["priority"])  # Fix 12.8: due_at
     if updates:
-        await db.facility_requests.update_one(scoped_filter({"id": request_id}, get_school_id()), {"$set": updates})
+        await db.facility_requests.update_one(scoped_query({"id": request_id}, branch_id=bid), {"$set": updates})
     await _write_audit(db, "facility_request_update", "facility_requests", request_id, user, {"changes": updates})
-    updated = await db.facility_requests.find_one(scoped_filter({"id": request_id}, get_school_id()), {"_id": 0})
+    updated = await db.facility_requests.find_one(scoped_query({"id": request_id}, branch_id=bid), {"_id": 0})
     return {"success": True, "data": updated}
 
 
@@ -336,9 +341,10 @@ async def update_facility_request(request_id: str, request: Request):
 async def escalate_facility_request(request_id: str, request: Request):
     db = get_db()
     user = get_user(request)
+    bid = user.get("branch_id")
     if not _can_view_all(user) and not _is_maint(user):
         raise HTTPException(403, "Forbidden")
-    existing = await db.facility_requests.find_one(scoped_filter({"id": request_id}, get_school_id()), {"_id": 0})
+    existing = await db.facility_requests.find_one(scoped_query({"id": request_id}, branch_id=bid), {"_id": 0})
     if not existing:
         raise HTTPException(404, "Facility request not found")
 
@@ -373,7 +379,7 @@ async def escalate_facility_request(request_id: str, request: Request):
     }
     if update["priority"] not in VALID_PRIORITIES:
         raise HTTPException(400, f"priority must be one of {sorted(VALID_PRIORITIES)}")
-    await db.facility_requests.update_one(scoped_filter({"id": request_id}, get_school_id()), {"$set": update})
+    await db.facility_requests.update_one(scoped_query({"id": request_id}, branch_id=bid), {"$set": update})
     await _write_audit(db, "facility_request_escalate", "facility_requests", request_id, user, update)
 
     # Fix 12.2c: notify owner users after escalation
@@ -394,20 +400,21 @@ async def escalate_facility_request(request_id: str, request: Request):
     except Exception:
         logger.warning("Failed to notify owners after escalation of %s", request_id)
 
-    updated = await db.facility_requests.find_one(scoped_filter({"id": request_id}, get_school_id()), {"_id": 0})
+    updated = await db.facility_requests.find_one(scoped_query({"id": request_id}, branch_id=bid), {"_id": 0})
     return {"success": True, "data": updated}
 
 
 @router.post("/facility/{request_id}/confirm-resolution")
 async def confirm_facility_resolution(request_id: str, request: Request, user: dict = Depends(require_owner)):
     db = get_db()
-    existing = await db.facility_requests.find_one(scoped_filter({"id": request_id}, get_school_id()))
+    bid = user.get("branch_id")
+    existing = await db.facility_requests.find_one(scoped_query({"id": request_id}, branch_id=bid))
     if not existing:
         raise HTTPException(404, "Facility request not found")
     if existing.get("status") != "pending_owner_confirmation":
         raise HTTPException(400, "Request must be in pending_owner_confirmation status")
     await db.facility_requests.update_one(
-        scoped_filter({"id": request_id}, get_school_id()),
+        scoped_query({"id": request_id}, branch_id=bid),
         {"$set": {"status": "closed", "resolved_by": user["id"], "resolved_at": datetime.now().isoformat(), "updated_at": datetime.now().isoformat()}}
     )
     # Notify the maintenance admin who logged it
@@ -476,13 +483,14 @@ async def list_tech_requests(
 ):
     # rbac: intentional — only it_tech admin and owner can view tech tickets
     db = get_db()
+    bid = user.get("branch_id")
     query = {}
     if status:
         query["status"] = status
     limit = min(max(limit, 1), 50)
     skip = max(page - 1, 0) * limit
-    total = await db.tech_requests.count_documents(scoped_filter(query, get_school_id()))
-    items = await db.tech_requests.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    total = await db.tech_requests.count_documents(scoped_query(query, branch_id=bid))
+    items = await db.tech_requests.find(scoped_query(query, branch_id=bid), {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
 
 
@@ -490,11 +498,12 @@ async def list_tech_requests(
 async def update_tech_request(request_id: str, request: Request):
     db = get_db()
     user = get_user(request)
+    bid = user.get("branch_id")
     is_it = _is_it(user)
     if not is_it and not _can_view_all(user):
         raise HTTPException(403, "Forbidden")
     body = await request.json()
-    existing = await db.tech_requests.find_one(scoped_filter({"id": request_id}, get_school_id()))
+    existing = await db.tech_requests.find_one(scoped_query({"id": request_id}, branch_id=bid))
     if not existing:
         raise HTTPException(404, "Tech request not found")
     # Reassignment lock: once status advanced or note added, category is locked
@@ -516,11 +525,11 @@ async def update_tech_request(request_id: str, request: Request):
             "content": body["note"],
             "timestamp": datetime.now().isoformat(),
         }
-        await db.tech_requests.update_one(scoped_filter({"id": request_id}, get_school_id()), {"$push": {"notes": note_entry}})
+        await db.tech_requests.update_one(scoped_query({"id": request_id}, branch_id=bid), {"$push": {"notes": note_entry}})
     if updates:
-        await db.tech_requests.update_one(scoped_filter({"id": request_id}, get_school_id()), {"$set": updates})
+        await db.tech_requests.update_one(scoped_query({"id": request_id}, branch_id=bid), {"$set": updates})
     await _write_audit(db, "tech_request_update", "tech_requests", request_id, user, {"changes": updates})
-    updated = await db.tech_requests.find_one(scoped_filter({"id": request_id}, get_school_id()), {"_id": 0})
+    updated = await db.tech_requests.find_one(scoped_query({"id": request_id}, branch_id=bid), {"_id": 0})
     return {"success": True, "data": updated}
 
 
@@ -532,13 +541,15 @@ async def list_all_issues(request: Request, type: str = "all", status: str = Non
     user = get_user(request)
     if not _can_view_all(user):
         raise HTTPException(403, "Forbidden")
+    bid = user.get("branch_id")
     query = {}
     if status:
         query["status"] = status
     limit = min(max(limit, 1), 50)
     skip = max(page - 1, 0) * limit
     results = []
-    scoped = scoped_filter(query, get_school_id())
+    # branch-scope: intentional — owner has cross-branch visibility (bid=None falls back to school-only); principal is branch-scoped via bid
+    scoped = scoped_query(query, branch_id=bid)
     if type in ("all", "facility"):
         fac = await db.facility_requests.find(scoped, {"_id": 0}).sort("created_at", -1).to_list(200)
         for f in fac:
@@ -565,10 +576,11 @@ async def get_upcoming_schedule(
 ):
     """Upcoming maintenance tasks for the next N days. Fix 12.6."""
     db = get_db()
+    bid = user.get("branch_id")
     today = _date.today().isoformat()
     until = (_date.today() + timedelta(days=days)).isoformat()
     items = await db.maintenance_schedule.find(
-        scoped_filter({"scheduled_date": {"$gte": today, "$lte": until}}, get_school_id()),
+        scoped_query({"scheduled_date": {"$gte": today, "$lte": until}}, branch_id=bid),
         {"_id": 0},
     ).sort("scheduled_date", 1).to_list(100)
     return {"success": True, "data": items}
@@ -578,12 +590,13 @@ async def get_upcoming_schedule(
 async def list_maintenance_schedule(request: Request, page: int = 1, limit: int = 20):
     db = get_db()
     user = get_user(request)
+    bid = user.get("branch_id")
     if not _can_view_all(user) and not _is_maint(user):
         raise HTTPException(403, "Forbidden")
     limit = min(max(limit, 1), 100)
     skip = max(page - 1, 0) * limit
-    total = await db.maintenance_schedule.count_documents(scoped_filter({}, get_school_id()))
-    items = await db.maintenance_schedule.find(scoped_filter({}, get_school_id()), {"_id": 0}).sort("scheduled_date", 1).skip(skip).limit(limit).to_list(limit)
+    total = await db.maintenance_schedule.count_documents(scoped_query({}, branch_id=bid))
+    items = await db.maintenance_schedule.find(scoped_query({}, branch_id=bid), {"_id": 0}).sort("scheduled_date", 1).skip(skip).limit(limit).to_list(limit)
     for item in items:
         item["is_overdue"] = _is_overdue(item)  # Fix 12.8: renamed overdue → is_overdue
     return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
@@ -624,17 +637,18 @@ async def create_maintenance_schedule(request: Request):
 async def update_maintenance_schedule(entry_id: str, request: Request):
     db = get_db()
     user = get_user(request)
+    bid = user.get("branch_id")
     if not _can_view_all(user) and not _is_maint(user):
         raise HTTPException(403, "Forbidden")
     body = await request.json()
-    existing = await db.maintenance_schedule.find_one(scoped_filter({"id": entry_id}, get_school_id()))
+    existing = await db.maintenance_schedule.find_one(scoped_query({"id": entry_id}, branch_id=bid))
     if not existing:
         raise HTTPException(404, "Schedule entry not found")
     updates = {"updated_at": datetime.now().isoformat()}
     for field in ("title", "description", "scheduled_date", "recurrence", "category", "assigned_to", "vendor_id", "status"):
         if field in body:
             updates[field] = body[field]
-    await db.maintenance_schedule.update_one(scoped_filter({"id": entry_id}, get_school_id()), {"$set": updates})
+    await db.maintenance_schedule.update_one(scoped_query({"id": entry_id}, branch_id=bid), {"$set": updates})
     if updates.get("status") in {"done", "skipped"} and existing.get("recurrence") not in (None, "", "one_time"):
         next_date = _next_scheduled_date(existing.get("scheduled_date", ""), existing.get("recurrence", ""))
         if next_date:
@@ -650,7 +664,7 @@ async def update_maintenance_schedule(entry_id: str, request: Request):
             }
             await db.maintenance_schedule.insert_one(add_school_id(next_entry))
     await _write_audit(db, "maintenance_schedule_update", "maintenance_schedule", entry_id, user, {"changes": updates})
-    updated = await db.maintenance_schedule.find_one(scoped_filter({"id": entry_id}, get_school_id()), {"_id": 0})
+    updated = await db.maintenance_schedule.find_one(scoped_query({"id": entry_id}, branch_id=bid), {"_id": 0})
     return {"success": True, "data": updated}
 
 
@@ -660,12 +674,13 @@ async def update_maintenance_schedule(entry_id: str, request: Request):
 async def list_vendors(request: Request, page: int = 1, limit: int = 20):
     db = get_db()
     user = get_user(request)
+    bid = user.get("branch_id")
     if not _can_view_all(user) and not _is_maint(user):
         raise HTTPException(403, "Forbidden")
     limit = min(max(limit, 1), 100)
     skip = max(page - 1, 0) * limit
-    total = await db.maintenance_vendors.count_documents(scoped_filter({}, get_school_id()))
-    items = await db.maintenance_vendors.find(scoped_filter({}, get_school_id()), {"_id": 0}).sort("name", 1).skip(skip).limit(limit).to_list(limit)
+    total = await db.maintenance_vendors.count_documents(scoped_query({}, branch_id=bid))
+    items = await db.maintenance_vendors.find(scoped_query({}, branch_id=bid), {"_id": 0}).sort("name", 1).skip(skip).limit(limit).to_list(limit)
     return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
 
 
@@ -673,12 +688,13 @@ async def list_vendors(request: Request, page: int = 1, limit: int = 20):
 async def preferred_vendors(request: Request, category: str = None, limit: int = 5):
     db = get_db()
     user = get_user(request)
+    bid = user.get("branch_id")
     if not _can_view_all(user) and not _is_maint(user):
         raise HTTPException(403, "Forbidden")
     query = {"is_active": True}
     if category:
         query["category"] = category
-    vendors = await db.maintenance_vendors.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("rating", -1).limit(min(max(limit, 1), 20)).to_list(20)
+    vendors = await db.maintenance_vendors.find(scoped_query(query, branch_id=bid), {"_id": 0}).sort("rating", -1).limit(min(max(limit, 1), 20)).to_list(20)
     return {"success": True, "data": vendors}
 
 
@@ -718,17 +734,18 @@ async def create_vendor(request: Request):
 async def update_vendor(vendor_id: str, request: Request):
     db = get_db()
     user = get_user(request)
+    bid = user.get("branch_id")
     if not _can_view_all(user) and not _is_maint(user):
         raise HTTPException(403, "Forbidden")
     body = await request.json()
-    existing = await db.maintenance_vendors.find_one(scoped_filter({"id": vendor_id}, get_school_id()))
+    existing = await db.maintenance_vendors.find_one(scoped_query({"id": vendor_id}, branch_id=bid))
     if not existing:
         raise HTTPException(404, "Vendor not found")
     updates = {"updated_at": datetime.now().isoformat()}
     for field in ("name", "category", "contact_person", "phone", "email", "address", "gst_number", "rating", "tags", "is_active"):
         if field in body:
             updates[field] = body[field]
-    await db.maintenance_vendors.update_one(scoped_filter({"id": vendor_id}, get_school_id()), {"$set": updates})
+    await db.maintenance_vendors.update_one(scoped_query({"id": vendor_id}, branch_id=bid), {"$set": updates})
     await _write_audit(db, "vendor_update", "maintenance_vendors", vendor_id, user, {"changes": updates})
-    updated = await db.maintenance_vendors.find_one(scoped_filter({"id": vendor_id}, get_school_id()), {"_id": 0})
+    updated = await db.maintenance_vendors.find_one(scoped_query({"id": vendor_id}, branch_id=bid), {"_id": 0})
     return {"success": True, "data": updated}

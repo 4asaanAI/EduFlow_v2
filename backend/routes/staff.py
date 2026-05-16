@@ -188,6 +188,21 @@ async def create_staff(request: Request):
     staff_doc = {**_serialize(staff), "role": requested_role, "sub_category": requested_sub}
     await db.staff.insert_one({**staff_doc, "_id": staff.id})
     await _audit(db, action="create", staff_id=staff.id, user=user, changes={"created": staff_doc})
+    if temp_password:
+        # security: intentional — first-time credential delivery, no other channel.
+        # Password is returned once in plaintext so the creating admin can hand it to the
+        # new staff member. It is hashed in auth_users and is never stored or logged elsewhere.
+        await write_audit(
+            db=db,
+            action="credential_issued",
+            entity_id=staff.id,
+            collection="staff",
+            changed_by=user.get("id"),
+            changed_by_role=user.get("role", ""),
+            school_id=get_school_id(),
+            branch_id=user.get("branch_id", ""),
+            changes={"credential_type": "temporary_password", "issued_to_staff_id": staff.id},
+        )
     data = _public_staff(staff_doc)
     if temp_password:
         data["temporary_password"] = temp_password

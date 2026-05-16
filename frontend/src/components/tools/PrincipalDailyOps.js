@@ -16,6 +16,8 @@ export default function PrincipalDailyOps() {
   const [error, setError] = useState('');
   const [lessonCompletion, setLessonCompletion] = useState([]);
   const [loadingAcademics, setLoadingAcademics] = useState(true);
+  const [classSummary, setClassSummary] = useState([]);
+  const [loadingAttendance, setLoadingAttendance] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,6 +69,23 @@ export default function PrincipalDailyOps() {
   }, []);
 
   useEffect(() => { fetchAcademics(); }, [fetchAcademics]);
+
+  const fetchAttendanceSummary = useCallback(async () => {
+    setLoadingAttendance(true);
+    try {
+      const res = await fetch(`${API}/attendance/class-summary`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setClassSummary(data?.data || []);
+      }
+    } catch (e) {
+      console.error('Failed to load attendance summary:', e);
+    } finally {
+      setLoadingAttendance(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchAttendanceSummary(); }, [fetchAttendanceSummary]);
 
   const assign = async (item, teacherId) => {
     if (!teacherId) return;
@@ -187,6 +206,39 @@ export default function PrincipalDailyOps() {
       <button onClick={load} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none', color: 'var(--color-accent-blue)', cursor: 'pointer', fontSize: 12 }}>
         <RefreshCw size={13} /> Refresh coverage
       </button>
+
+      {/* Today's Class Attendance */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4" style={{ marginTop: 20 }}>
+        <h3 className="font-semibold text-gray-700 mb-3">Today's Class Attendance</h3>
+        {loadingAttendance ? (
+          <p className="text-sm text-gray-400">Loading...</p>
+        ) : classSummary.length === 0 ? (
+          <p className="text-sm text-gray-400">No attendance data yet today.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="text-left text-gray-500 border-b">
+                <th className="pb-2">Class</th><th className="pb-2">Present</th>
+                <th className="pb-2">Absent</th><th className="pb-2">%</th>
+              </tr></thead>
+              <tbody>
+                {classSummary.map(cls => (
+                  <tr key={cls.class_id} className="border-b border-gray-50">
+                    <td className="py-1.5 font-medium">{cls.class_name}</td>
+                    <td className="py-1.5 text-green-600">{cls.present}</td>
+                    <td className="py-1.5 text-red-500">{cls.absent}</td>
+                    <td className="py-1.5">
+                      <span className={`font-medium ${cls.attendance_pct >= 80 ? 'text-green-600' : 'text-red-500'}`}>
+                        {cls.attendance_pct}%
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* Lesson Plan Completion */}
       <div className="bg-white rounded-lg border border-gray-200 p-4" style={{ marginTop: 20 }}>
