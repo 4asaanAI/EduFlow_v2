@@ -36,7 +36,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-05-12"
-last_updated: "2026-05-15-p8-complete"
+last_updated: "2026-05-15-p16-complete"
 project: eduflow
 project_key: NOKEY
 tracking_system: file-system
@@ -300,36 +300,36 @@ development_status:
   # Quality Sweep Part 11 — Receptionist Role Vertical
   # Epics file: planning-artifacts/epic-part11-receptionist-vertical.md
   # ─────────────────────────────────────────────
-  epic-p11: backlog
-  p11-1-enquiry-stage-machine: backlog
-  p11-2-visitor-duplicate-detection: backlog
-  p11-3-query-ticket-scoping: backlog
-  p11-4-certificate-approval-gate: backlog
-  p11-5-complaint-routing: backlog
+  epic-p11: done
+  p11-1-enquiry-stage-machine: done
+  p11-2-visitor-duplicate-detection: done
+  p11-3-query-ticket-scoping: done
+  p11-4-certificate-approval-gate: done
+  p11-5-complaint-routing: done
   epic-p11-retrospective: optional
 
   # ─────────────────────────────────────────────
   # Quality Sweep Part 12 — Maintenance Admin Vertical
   # Epics file: planning-artifacts/epic-part12-maintenance-vertical.md
   # ─────────────────────────────────────────────
-  epic-p12: backlog
-  p12-1-facility-request-lifecycle: backlog
-  p12-2-maintenance-schedule-recurrence: backlog
-  p12-3-vendor-management-ui: backlog
-  p12-4-work-order-sla-tracking: backlog
-  p12-5-maintenance-escalation: backlog
+  epic-p12: done
+  p12-1-facility-request-lifecycle: done
+  p12-2-maintenance-schedule-recurrence: done
+  p12-3-vendor-management-ui: done
+  p12-4-work-order-sla-tracking: done
+  p12-5-maintenance-escalation: done
   epic-p12-retrospective: optional
 
   # ─────────────────────────────────────────────
   # Quality Sweep Part 13 — IT-Tech Admin Vertical
   # Epics file: planning-artifacts/epic-part13-ittech-vertical.md
   # ─────────────────────────────────────────────
-  epic-p13: backlog
-  p13-1-tech-issue-rbac-consistency: backlog
-  p13-2-system-health-dashboard: backlog
-  p13-3-password-reset-account-unlock: backlog
-  p13-4-token-usage-visibility: backlog
-  p13-5-import-tool-access: backlog
+  epic-p13: done
+  p13-1-tech-issue-rbac-consistency: done
+  p13-2-system-health-dashboard: done
+  p13-3-password-reset-account-unlock: done
+  p13-4-token-usage-visibility: done
+  p13-5-import-tool-access: done
   epic-p13-retrospective: optional
 
   # ─────────────────────────────────────────────
@@ -337,13 +337,13 @@ development_status:
   # ⚠️  GATED on Story 7-39 (teacher login activation)
   # Epics file: planning-artifacts/epic-part14-teacher-vertical.md
   # ─────────────────────────────────────────────
-  epic-p14: backlog
-  p14-1-assignment-ownership-check: backlog
-  p14-2-marks-ceiling-validation: backlog
-  p14-3-teacher-attendance-self-view: backlog
-  p14-4-student-class-scope: backlog
-  p14-5-results-publish-gate: backlog
-  p14-6-lesson-plan-principal-review: backlog
+  epic-p14: done
+  p14-1-assignment-ownership-check: done
+  p14-2-marks-ceiling-validation: done
+  p14-3-teacher-attendance-self-view: done
+  p14-4-student-class-scope: done
+  p14-5-results-publish-gate: done
+  p14-6-lesson-plan-principal-review: done
   epic-p14-retrospective: optional
 
   # ─────────────────────────────────────────────
@@ -351,23 +351,23 @@ development_status:
   # ⚠️  GATED on Story 7-39 + DPDP parental consent
   # Epics file: planning-artifacts/epic-part15-student-vertical.md
   # ─────────────────────────────────────────────
-  epic-p15: backlog
-  p15-1-dpdp-consent-model: backlog
-  p15-2-student-fee-summary: backlog
-  p15-3-attendance-self-view: backlog
-  p15-4-results-visibility-gate: backlog
-  p15-5-student-profile-update: backlog
+  epic-p15: done
+  p15-1-dpdp-consent-model: done
+  p15-2-student-fee-summary: done
+  p15-3-attendance-self-view: done
+  p15-4-results-visibility-gate: done
+  p15-5-student-profile-update: done
   epic-p15-retrospective: optional
 
   # ─────────────────────────────────────────────
   # Quality Sweep Part 16 — Platform Integration
   # Epics file: planning-artifacts/epic-part16-platform-integration.md
   # ─────────────────────────────────────────────
-  epic-p16: backlog
-  p16-1-cross-role-e2e-workflow: backlog
-  p16-2-jwt-expiry-mid-session: backlog
-  p16-3-concurrent-write-idempotency: backlog
+  epic-p16: done
+  p16-1-cross-role-e2e-workflow: done
+  p16-2-jwt-expiry-mid-session: done
+  p16-3-concurrent-write-idempotency: done
   p16-4-missing-mongodb-indexes: superseded  # ← moved to pre-p9-1-missing-mongodb-indexes (runs before Part 9)
-  p16-5-sms-integration-tests: backlog
-  p16-6-deployment-runbook: backlog
+  p16-5-sms-integration-tests: done
+  p16-6-deployment-runbook: done
   epic-p16-retrospective: optional

@@ -47,10 +47,10 @@ function RequestCard({ item, onUpdate, onConfirm, role, subCategory, isDark }) {
   const isIT = subCategory === 'it_tech';
   const type = item.issue_type || item.type;
   const statusOptions = isMaint
-    ? ['open', 'in_progress', 'pending_owner_confirmation']
+    ? ['open', 'accepted', 'in_progress', 'pending_parts', 'pending_owner_confirmation', 'done']
     : isIT
-    ? ['open', 'in_progress', 'closed']
-    : ['open', 'in_progress', 'pending_owner_confirmation', 'closed'];
+    ? ['open', 'accepted', 'in_progress', 'pending_parts', 'done', 'closed']
+    : ['open', 'accepted', 'in_progress', 'pending_parts', 'pending_owner_confirmation', 'done', 'closed'];
 
   const handleSave = async () => {
     setSaving(true);
@@ -66,6 +66,7 @@ function RequestCard({ item, onUpdate, onConfirm, role, subCategory, isDark }) {
         <div style={{ flex: 1 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: text }}>{item.description}</span>
           {item.location && <span style={{ fontSize: 11, color: muted, marginLeft: 8 }}>@ {item.location}</span>}
+          {item.overdue && <span style={{ marginLeft: 8 }}><Badge label="Overdue" color="var(--tool-hex-f87171)" /></span>}
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <Badge label={item.category?.replace(/_/g, ' ')} color="var(--tool-hex-6366f1)" />
@@ -75,6 +76,8 @@ function RequestCard({ item, onUpdate, onConfirm, role, subCategory, isDark }) {
 
       <div style={{ fontSize: 11, color: muted, marginBottom: 10 }}>
         Logged by {item.logged_by_name || 'Unknown'} · {item.created_at?.slice(0, 10)}
+        {item.sla_due_at ? ` · SLA ${item.sla_due_at.slice(0, 10)}` : ''}
+        {item.estimated_cost ? ` · Est. Rs. ${item.estimated_cost}` : ''}
       </div>
 
       {item.notes?.length > 0 && (
@@ -136,13 +139,14 @@ function IssuePanel({ type, title }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ description: '', location: '', category: type === 'facility' ? 'plumbing' : 'hardware' });
+  const [form, setForm] = useState({ description: '', location: '', category: type === 'facility' ? 'plumbing' : 'hardware', priority: 'medium' });
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
 
-  const facilityCategories = ['plumbing', 'electrical', 'civil', 'cleaning', 'security', 'other'];
+  const facilityCategories = ['plumbing', 'electrical', 'civil', 'cleaning', 'security', 'carpentry', 'painting', 'pest_control', 'hvac', 'fire_safety', 'landscaping', 'other'];
   const techCategories = ['hardware', 'software', 'network', 'printer', 'projector', 'other'];
+  const priorities = ['low', 'medium', 'high', 'urgent'];
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -172,7 +176,7 @@ function IssuePanel({ type, title }) {
         body: JSON.stringify(form),
       });
       const data = await res.json();
-      if (data.success) { setShowForm(false); setForm({ description: '', location: '', category: type === 'facility' ? 'plumbing' : 'hardware' }); load(); }
+      if (data.success) { setShowForm(false); setForm({ description: '', location: '', category: type === 'facility' ? 'plumbing' : 'hardware', priority: 'medium' }); load(); }
       else setFormError(data.detail || 'Failed to create');
     } catch { setFormError('Network error'); }
     setSaving(false);
@@ -195,8 +199,8 @@ function IssuePanel({ type, title }) {
   const canCreate = currentUser.role === 'owner'
     || (currentUser.role === 'admin' && currentUser.sub_category === (type === 'facility' ? 'maintenance' : 'it_tech'));
 
-  const open = items.filter(i => i.status !== 'closed');
-  const closed = items.filter(i => i.status === 'closed');
+  const open = items.filter(i => !['done', 'closed'].includes(i.status));
+  const closed = items.filter(i => ['done', 'closed'].includes(i.status));
 
   return (
     <ToolPage
@@ -221,6 +225,10 @@ function IssuePanel({ type, title }) {
               onChange={f('category')}
               options={(type === 'facility' ? facilityCategories : techCategories).map(c => ({ value: c, label: c.replace(/_/g, ' ').replace(/\b\w/g, x => x.toUpperCase()) }))}
             />
+            {type === 'facility' && (
+              <FormField label="Priority" type="select" value={form.priority} onChange={f('priority')}
+                options={priorities.map(p => ({ value: p, label: p.replace(/\b\w/g, x => x.toUpperCase()) }))} />
+            )}
             {formError && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 8 }}>{formError}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
               <ActionBtn label={saving ? 'Submitting...' : 'Submit Request'} type="submit" disabled={saving} />
@@ -343,7 +351,7 @@ function PhotoUploader({ photos, onChange, isDark }) {
 // ─── Maintenance Dashboard ────────────────────────────────────────────────────
 export function MaintenanceDashboard() {
   const { isDark } = useTheme();
-  const [stats, setStats] = useState({ open: 0, in_progress: 0, pending: 0, closed: 0, urgent: 0 });
+  const [stats, setStats] = useState({ open: 0, accepted: 0, in_progress: 0, pending: 0, closed: 0, urgent: 0, overdue: 0 });
   const [recentItems, setRecentItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -357,10 +365,12 @@ export function MaintenanceDashboard() {
         setRecentItems(items.slice(0, 5));
         setStats({
           open: items.filter(i => i.status === 'open').length,
+          accepted: items.filter(i => i.status === 'accepted').length,
           in_progress: items.filter(i => i.status === 'in_progress').length,
-          pending: items.filter(i => i.status === 'pending_owner_confirmation').length,
-          closed: items.filter(i => i.status === 'closed').length,
+          pending: items.filter(i => ['pending_parts', 'pending_owner_confirmation'].includes(i.status)).length,
+          closed: items.filter(i => ['done', 'closed'].includes(i.status)).length,
           urgent: items.filter(i => i.priority === 'urgent').length,
+          overdue: items.filter(i => i.overdue).length,
         });
       }
     } catch {}
@@ -376,9 +386,11 @@ export function MaintenanceDashboard() {
 
   const statCards = [
     { label: 'Open', value: stats.open, color: 'var(--tool-hex-fb923c)', Icon: AlertTriangle },
+    { label: 'Accepted', value: stats.accepted, color: 'var(--tool-hex-fbbf24)', Icon: ClipboardList },
     { label: 'In Progress', value: stats.in_progress, color: 'var(--tool-hex-facc15)', Icon: Wrench },
-    { label: 'Pending Confirm', value: stats.pending, color: 'var(--tool-hex-818cf8)', Icon: ClipboardList },
+    { label: 'Blocked/Pending', value: stats.pending, color: 'var(--tool-hex-818cf8)', Icon: ClipboardList },
     { label: 'Urgent', value: stats.urgent, color: 'var(--tool-hex-f87171)', Icon: AlertTriangle },
+    { label: 'Overdue', value: stats.overdue, color: 'var(--tool-hex-ef4444)', Icon: AlertTriangle },
     { label: 'Resolved', value: stats.closed, color: 'var(--tool-hex-34d399)', Icon: CheckCircle },
   ];
 
@@ -487,8 +499,8 @@ export function MaintenanceWorkOrders() {
   const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
   const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
 
-  const open = items.filter(i => i.status !== 'closed');
-  const closed = items.filter(i => i.status === 'closed');
+  const open = items.filter(i => !['done', 'closed'].includes(i.status));
+  const closed = items.filter(i => ['done', 'closed'].includes(i.status));
 
   return (
     <ToolPage
@@ -508,7 +520,7 @@ export function MaintenanceWorkOrders() {
           </button>
         ))}
         <span style={{ color: isDark ? 'var(--tool-hex-555)' : 'var(--tool-hex-ccc)', margin: '0 4px' }}>|</span>
-        {['all', 'open', 'in_progress', 'pending_owner_confirmation', 'closed'].map(s => (
+        {['all', 'open', 'accepted', 'in_progress', 'pending_parts', 'pending_owner_confirmation', 'done', 'closed'].map(s => (
           <button key={s} onClick={() => setFilterStatus(s)} style={{ padding: '4px 10px', borderRadius: 7, fontSize: 11, cursor: 'pointer', fontWeight: 500, border: `1px solid ${filterStatus === s ? 'var(--tool-hex-6366f1)' : (isDark ? 'var(--tool-hex-333)' : 'var(--tool-hex-e5e5e5)')}`, background: filterStatus === s ? 'var(--tool-hex-6366f1)' : (isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)'), color: filterStatus === s ? 'var(--tool-hex-fff)' : text }}>
             {s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
           </button>
@@ -574,7 +586,7 @@ export function MaintenanceSchedule() {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ title: '', description: '', scheduled_date: '', recurrence: 'one_time', category: 'other', assigned_to: '' });
+  const [form, setForm] = useState({ title: '', description: '', scheduled_date: '', recurrence: 'one_time', category: 'other', assigned_to: '', vendor_id: '' });
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
@@ -603,7 +615,7 @@ export function MaintenanceSchedule() {
         body: JSON.stringify(form),
       });
       const data = await res.json();
-      if (data.success) { setShowForm(false); setForm({ title: '', description: '', scheduled_date: '', recurrence: 'one_time', category: 'other', assigned_to: '' }); load(); }
+      if (data.success) { setShowForm(false); setForm({ title: '', description: '', scheduled_date: '', recurrence: 'one_time', category: 'other', assigned_to: '', vendor_id: '' }); load(); }
       else setFormError(data.detail || 'Failed to create');
     } catch { setFormError('Network error'); }
     setSaving(false);
@@ -639,6 +651,7 @@ export function MaintenanceSchedule() {
             <FormField label="Category" type="select" value={form.category} onChange={f('category')}
               options={['plumbing', 'electrical', 'civil', 'cleaning', 'security', 'hvac', 'fire_safety', 'other'].map(c => ({ value: c, label: c.replace(/_/g, ' ').replace(/\b\w/g, x => x.toUpperCase()) }))} />
             <FormField label="Assigned To" value={form.assigned_to} onChange={f('assigned_to')} placeholder="Staff name or vendor..." />
+            <FormField label="Vendor ID" value={form.vendor_id} onChange={f('vendor_id')} placeholder="Optional preferred vendor id" />
             {formError && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 8 }}>{formError}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
               <ActionBtn label={saving ? 'Saving...' : 'Save'} type="submit" disabled={saving} />
@@ -654,7 +667,7 @@ export function MaintenanceSchedule() {
         <div style={{ color: muted, textAlign: 'center', padding: 40 }}>No schedule entries yet.</div>
       ) : (
         <DataTable
-          headers={['Title', 'Date', 'Recurrence', 'Category', 'Assigned To', 'Status', 'Action']}
+          headers={['Title', 'Date', 'Recurrence', 'Category', 'Assigned To', 'Status', 'SLA', 'Action']}
           rows={entries.map(e => [
             <span style={{ color: text, fontSize: 12, fontWeight: 600 }}>{e.title}</span>,
             <span style={{ color: muted, fontSize: 11 }}>{e.scheduled_date}</span>,
@@ -662,6 +675,7 @@ export function MaintenanceSchedule() {
             <span style={{ color: muted, fontSize: 11 }}>{e.category}</span>,
             <span style={{ color: muted, fontSize: 11 }}>{e.assigned_to || '—'}</span>,
             <Badge label={e.status} color={e.status === 'done' ? 'var(--tool-hex-34d399)' : e.status === 'skipped' ? 'var(--tool-hex-888)' : 'var(--tool-hex-facc15)'} />,
+            e.overdue ? <Badge label="Overdue" color="var(--tool-hex-f87171)" /> : <span style={{ color: muted, fontSize: 11 }}>On track</span>,
             <select value={e.status} onChange={ev => handleStatusChange(e.id, ev.target.value)}
               style={{ background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 6, padding: '3px 8px', color: text, fontSize: 11, cursor: 'pointer' }}>
               {SCHEDULE_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
@@ -679,7 +693,7 @@ export function VendorLog() {
   const [vendors, setVendors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', category: 'general', contact_person: '', phone: '', email: '', address: '', gst_number: '' });
+  const [form, setForm] = useState({ name: '', category: 'general', contact_person: '', phone: '', email: '', address: '', gst_number: '', rating: 0 });
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
@@ -708,7 +722,7 @@ export function VendorLog() {
         body: JSON.stringify(form),
       });
       const data = await res.json();
-      if (data.success) { setShowForm(false); setForm({ name: '', category: 'general', contact_person: '', phone: '', email: '', address: '', gst_number: '' }); load(); }
+      if (data.success) { setShowForm(false); setForm({ name: '', category: 'general', contact_person: '', phone: '', email: '', address: '', gst_number: '', rating: 0 }); load(); }
       else setFormError(data.detail || 'Failed to add vendor');
     } catch { setFormError('Network error'); }
     setSaving(false);
@@ -744,6 +758,7 @@ export function VendorLog() {
             <FormField label="Email" value={form.email} onChange={f('email')} placeholder="vendor@email.com" />
             <FormField label="Address" value={form.address} onChange={f('address')} placeholder="Full address..." />
             <FormField label="GST Number" value={form.gst_number} onChange={f('gst_number')} placeholder="27XXXXX..." />
+            <FormField label="Rating" type="number" value={form.rating} onChange={f('rating')} placeholder="0 to 5" />
             {formError && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 8 }}>{formError}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
               <ActionBtn label={saving ? 'Saving...' : 'Add Vendor'} type="submit" disabled={saving} />
@@ -759,13 +774,14 @@ export function VendorLog() {
         <div style={{ color: muted, textAlign: 'center', padding: 40 }}>No vendors added yet.</div>
       ) : (
         <DataTable
-          headers={['Name', 'Category', 'Contact', 'Phone', 'GST', 'Status', 'Action']}
+          headers={['Name', 'Category', 'Contact', 'Phone', 'GST', 'Rating', 'Status', 'Action']}
           rows={vendors.map(v => [
             <span style={{ color: text, fontSize: 12, fontWeight: 600 }}>{v.name}</span>,
             <Badge label={v.category} color="var(--tool-hex-6366f1)" />,
             <span style={{ color: muted, fontSize: 11 }}>{v.contact_person || '—'}</span>,
             <span style={{ color: muted, fontSize: 11 }}>{v.phone || '—'}</span>,
             <span style={{ color: muted, fontSize: 11 }}>{v.gst_number || '—'}</span>,
+            <span style={{ color: muted, fontSize: 11 }}>{Number(v.rating || 0).toFixed(1)}</span>,
             <Badge label={v.is_active ? 'Active' : 'Inactive'} color={v.is_active ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-888)'} />,
             <ActionBtn label={v.is_active ? 'Deactivate' : 'Activate'} variant="secondary" onClick={() => toggleActive(v)} />,
           ])}
@@ -834,8 +850,8 @@ export function RaiseMaintenanceRequest() {
   const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
   const muted = isDark ? 'var(--tool-hex-888)' : 'var(--tool-hex-737373)';
 
-  const open = myRequests.filter(i => i.status !== 'closed');
-  const closed = myRequests.filter(i => i.status === 'closed');
+  const open = myRequests.filter(i => !['done', 'closed'].includes(i.status));
+  const closed = myRequests.filter(i => ['done', 'closed'].includes(i.status));
 
   return (
     <ToolPage

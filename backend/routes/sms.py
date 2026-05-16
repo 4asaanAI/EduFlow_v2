@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
 from middleware.auth import get_current_user, require_role
+from tenant import get_school_id, scoped_filter
 from datetime import datetime
 import os
 import uuid
@@ -66,6 +67,7 @@ async def send_fee_reminder(request: Request, user: dict = Depends(require_role(
 
     # Log every attempt regardless of outcome
     log = {
+        "schoolId": get_school_id(),
         "id": str(uuid.uuid4()),
         "student_id": student_id,
         "student_name": student_name,
@@ -78,6 +80,7 @@ async def send_fee_reminder(request: Request, user: dict = Depends(require_role(
         "sms_sid": sms_sid,
         "error": error_msg,
         "sent_at": datetime.now().isoformat(),
+        "created_at": datetime.now().isoformat(),
     }
     await db.sms_logs.insert_one({**log, "_id": log["id"]})
 
@@ -96,6 +99,8 @@ async def send_bulk_reminders(request: Request, user: dict = Depends(require_rol
 
     if not recipients:
         raise HTTPException(400, "No recipients provided")
+    if len(recipients) > 500:
+        raise HTTPException(400, "Bulk SMS is limited to 500 recipients per request")
 
     twilio_phone = os.environ.get("TWILIO_PHONE_NUMBER", "")
     client = get_twilio_client()
@@ -138,6 +143,7 @@ async def send_bulk_reminders(request: Request, user: dict = Depends(require_rol
             results["not_configured"] += 1
 
         log = {
+            "schoolId": get_school_id(),
             "id": str(uuid.uuid4()),
             "student_id": student_id,
             "student_name": student_name,
@@ -149,6 +155,7 @@ async def send_bulk_reminders(request: Request, user: dict = Depends(require_rol
             "sms_sid": sms_sid,
             "error": error_msg,
             "sent_at": datetime.now().isoformat(),
+            "created_at": datetime.now().isoformat(),
         }
         await db.sms_logs.insert_one({**log, "_id": log["id"]})
         results["logs"].append(log)
@@ -166,6 +173,8 @@ async def send_parent_message(request: Request, user: dict = Depends(require_rol
 
     if not student_ids:
         raise HTTPException(400, "No students selected")
+    if len(student_ids) > 500:
+        raise HTTPException(400, "Bulk SMS is limited to 500 students per request")
     if not message_text:
         raise HTTPException(400, "Message is required")
 
@@ -186,6 +195,7 @@ async def send_parent_message(request: Request, user: dict = Depends(require_rol
         if not phone:
             results["no_phone"] += 1
             log = {
+                "schoolId": get_school_id(),
                 "id": str(uuid.uuid4()),
                 "student_id": sid,
                 "student_name": student.get("name", ""),
@@ -196,6 +206,7 @@ async def send_parent_message(request: Request, user: dict = Depends(require_rol
                 "status": "no_phone",
                 "error": "No phone number on record",
                 "sent_at": datetime.now().isoformat(),
+                "created_at": datetime.now().isoformat(),
             }
             await db.sms_logs.insert_one({**log, "_id": log["id"]})
             results["logs"].append(log)
@@ -223,6 +234,7 @@ async def send_parent_message(request: Request, user: dict = Depends(require_rol
             results["not_configured"] += 1
 
         log = {
+            "schoolId": get_school_id(),
             "id": str(uuid.uuid4()),
             "student_id": sid,
             "student_name": student.get("name", ""),
@@ -234,6 +246,7 @@ async def send_parent_message(request: Request, user: dict = Depends(require_rol
             "sms_sid": sms_sid,
             "error": error_msg,
             "sent_at": datetime.now().isoformat(),
+            "created_at": datetime.now().isoformat(),
         }
         await db.sms_logs.insert_one({**log, "_id": log["id"]})
         results["logs"].append(log)
@@ -244,7 +257,7 @@ async def send_parent_message(request: Request, user: dict = Depends(require_rol
 @router.get("/logs")
 async def get_sms_logs(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    logs = await db.sms_logs.find({}, {"_id": 0}).sort("sent_at", -1).to_list(100)
+    logs = await db.sms_logs.find(scoped_filter({}, get_school_id()), {"_id": 0}).sort("sent_at", -1).to_list(100)
     return {"success": True, "data": logs}
 
 

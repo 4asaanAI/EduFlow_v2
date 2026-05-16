@@ -203,11 +203,14 @@ async def _create_indexes():
     await db.notifications.create_index(
         [("schoolId", 1), ("user_id", 1), ("read", 1), ("created_at", -1)]
     )
+    await db.notifications.create_index([("user_id", 1), ("read", 1), ("created_at", -1)])
     await db.audit_logs.create_index([("schoolId", 1), ("created_at", -1)])
     await db.audit_logs.create_index([("schoolId", 1), ("entity_id", 1), ("created_at", -1)])
     # Part 9 pre-infra: missing indexes for role-vertical queries
     await db.exam_results.create_index([("student_id", 1), ("exam_id", 1)])
+    await db.exam_results.create_index([("exam_id", 1), ("student_id", 1), ("subject_id", 1)])
     await db.audit_logs.create_index([("actor_id", 1), ("created_at", -1)])
+    await db.audit_logs.create_index([("entity_type", 1), ("entity_id", 1)])
     await db.lesson_plans.create_index([("class_id", 1), ("week", 1)])
     await db.sms_logs.create_index("created_at", expireAfterSeconds=7776000)
     await db.notifications.create_index([("user_id", 1), ("read", 1), ("created_at", -1)])

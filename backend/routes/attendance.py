@@ -36,6 +36,37 @@ def _can_admin_attendance(user: dict) -> bool:
     return user.get("role") == "owner" or (user.get("role") == "admin" and user.get("sub_category", "principal") == "principal")
 
 
+async def _teacher_staff(db, user: dict) -> dict | None:
+    if user.get("role") != "teacher":
+        return None
+    return await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})
+
+
+async def _teacher_can_access_class(db, user: dict, class_id: str | None) -> bool:
+    if user.get("role") != "teacher" or not class_id:
+        return True
+    staff = await _teacher_staff(db, user)
+    if not staff:
+        return False
+    direct_classes = {
+        staff.get("class_id"),
+        staff.get("class_teacher_id"),
+        staff.get("class_teacher_of"),
+    }
+    if class_id in direct_classes:
+        return True
+    slot = await db.timetable_slots.find_one(
+        scoped_filter({"teacher_id": staff.get("id"), "class_id": class_id}, get_school_id()),
+        {"_id": 0},
+    )
+    return bool(slot)
+
+
+async def _require_teacher_class_access(db, user: dict, class_id: str | None):
+    if not await _teacher_can_access_class(db, user, class_id):
+        raise HTTPException(403, "Teacher can access only assigned classes")
+
+
 async def _audit(db, *, action: str, attendance_id: str, user: dict, changes: dict, reason: str | None = None):
     await write_audit_doc(db, {
         "_id": str(uuid.uuid4()),
@@ -149,6 +180,12 @@ async def delete_attendance(attendance_id: str, request: Request):
 @router.post("/student/bulk")
 async def mark_student_attendance(body: AttendanceBulkRequest, request: Request, user: dict = Depends(require_role("owner", "admin", "teacher"))):
     db = get_db()
+    await _require_teacher_class_access(db, user, body.class_id)
+    key = request.headers.get("Idempotency-Key")
+    if key:
+        existing = await db.attendance_bulk_keys.find_one(scoped_filter({"key": key, "class_id": body.class_id, "date": body.date}, get_school_id()), {"_id": 0})
+        if existing:
+            return {"success": True, "data": existing.get("response", []), "idempotent": True}
     results = []
     for record in body.records:
         att = StudentAttendance(
@@ -168,6 +205,17 @@ async def mark_student_attendance(body: AttendanceBulkRequest, request: Request,
         except Exception as e:
             results.append({"student_id": record.student_id, "status": "error", "error": str(e)})
 
+    if key:
+        await db.attendance_bulk_keys.insert_one({
+            "_id": str(uuid.uuid4()),
+            "id": str(uuid.uuid4()),
+            "schoolId": get_school_id(),
+            "key": key,
+            "class_id": body.class_id,
+            "date": body.date,
+            "response": results,
+            "created_at": datetime.now().isoformat(),
+        })
     return {"success": True, "data": results}
 
 
@@ -178,14 +226,23 @@ async def get_student_attendance(request: Request, class_id: str = None, student
 
     query = {}
     if class_id:
+        await _require_teacher_class_access(db, user, class_id)
         query["class_id"] = class_id
     if student_id:
         # Students can only see own attendance
         if user["role"] == "student":
-            own_student = await db.students.find_one({"user_id": user["id"]})
+            own_student = await db.students.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})
             if not own_student or own_student["id"] != student_id:
                 raise HTTPException(403, "Forbidden")
+        elif user["role"] == "teacher":
+            student = await db.students.find_one(scoped_filter({"id": student_id}, get_school_id()), {"_id": 0})
+            await _require_teacher_class_access(db, user, (student or {}).get("class_id"))
         query["student_id"] = student_id
+    elif user["role"] == "student":
+        own_student = await db.students.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})
+        if not own_student:
+            return {"success": True, "data": []}
+        query["student_id"] = own_student["id"]
     if start_date:
         query["date"] = {"$gte": start_date}
     if end_date:
@@ -193,7 +250,7 @@ async def get_student_attendance(request: Request, class_id: str = None, student
         existing_date["$lte"] = end_date
         query["date"] = existing_date
 
-    records = await db.student_attendance.find(query, {"_id": 0}).sort("date", -1).to_list(200)
+    records = await db.student_attendance.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("date", -1).to_list(200)
     return {"success": True, "data": records}
 
 
@@ -204,6 +261,7 @@ async def get_today_attendance(class_id: str, request: Request, date: str = None
     from datetime import date as dt
     target_date = date if date else dt.today().strftime("%Y-%m-%d")
 
+    await _require_teacher_class_access(db, user, class_id)
     students = await db.students.find(scoped_filter({"class_id": class_id, "is_active": True}, get_school_id()), {"_id": 0}).to_list(100)
     attendance = await db.student_attendance.find(scoped_filter({"class_id": class_id, "date": target_date}, get_school_id()), {"_id": 0}).to_list(100)
     att_by_student = {a["student_id"]: a for a in attendance}
@@ -478,4 +536,21 @@ async def get_staff_attendance(request: Request, start_date: str = None, end_dat
         query["date"] = existing
 
     records = await db.staff_attendance.find(query, {"_id": 0}).sort("date", -1).to_list(200)
+    return {"success": True, "data": records}
+
+
+@router.get("/staff/me")
+async def get_my_staff_attendance(request: Request, start_date: str = None, end_date: str = None, user: dict = Depends(require_role("teacher", "admin", "owner"))):
+    db = get_db()
+    staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})
+    if not staff:
+        return {"success": True, "data": []}
+    query = {"staff_id": staff["id"]}
+    if start_date:
+        query["date"] = {"$gte": start_date}
+    if end_date:
+        existing = query.get("date", {})
+        existing["$lte"] = end_date
+        query["date"] = existing
+    records = await db.staff_attendance.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("date", -1).to_list(120)
     return {"success": True, "data": records}

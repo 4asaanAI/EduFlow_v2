@@ -3,11 +3,11 @@ from __future__ import annotations
 """Issue tracker — facility requests (Maintenance Admin) and tech requests (IT/Tech Admin)"""
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
-from middleware.auth import get_current_user, require_owner, require_access
+from middleware.auth import get_current_user, require_owner, require_role
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
 from tenant import get_school_id, scoped_filter, add_school_id
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
 
 router = APIRouter(prefix="/api/issues", tags=["issues"])
@@ -23,6 +23,8 @@ FACILITY_CATEGORIES = {
 }
 VALID_STATUSES = {"open", "accepted", "in_progress", "pending_parts", "pending_owner_confirmation", "done", "closed"}
 VALID_PRIORITIES = {"low", "medium", "high", "urgent"}
+PRIORITY_SLA_HOURS = {"low": 120, "medium": 72, "high": 24, "urgent": 6}
+RECURRENCE_DAYS = {"weekly": 7, "monthly": 30, "quarterly": 90, "annual": 365}
 
 
 def _can_view_all(user: dict) -> bool:
@@ -54,6 +56,30 @@ def _audit(action, entity_type, entity_id, user, changes):
         "changes": changes,
         "created_at": datetime.now().isoformat(),
     })
+
+
+def _sla_due(priority: str) -> str:
+    return (datetime.now() + timedelta(hours=PRIORITY_SLA_HOURS.get(priority, 72))).isoformat()
+
+
+def _is_overdue(doc: dict) -> bool:
+    due_at = doc.get("sla_due_at") or doc.get("scheduled_date")
+    if not due_at or doc.get("status") in {"done", "closed"}:
+        return False
+    try:
+        return datetime.fromisoformat(str(due_at)[:19]) < datetime.now()
+    except ValueError:
+        return False
+
+
+def _next_scheduled_date(scheduled_date: str, recurrence: str) -> str | None:
+    days = RECURRENCE_DAYS.get(recurrence)
+    if not days:
+        return None
+    try:
+        return (datetime.fromisoformat(scheduled_date[:10]) + timedelta(days=days)).date().isoformat()
+    except ValueError:
+        return None
 
 
 async def _write_audit(db, action, entity_type, entity_id, user, changes):
@@ -102,7 +128,11 @@ async def create_facility_request(request: Request):
         "location": body.get("location", ""),
         "category": cat,
         "priority": priority,
+        "sla_due_at": _sla_due(priority),
         "photos": [u for u in body.get("photos", []) if isinstance(u, str)][:3],
+        "estimated_cost": body.get("estimated_cost"),
+        "actual_cost": body.get("actual_cost"),
+        "vendor_id": body.get("vendor_id"),
         "status": "open",
         "logged_by": user["id"],
         "logged_by_name": user.get("name", ""),
@@ -166,6 +196,8 @@ async def list_facility_requests(request: Request, status: str = None, priority:
     skip = max(page - 1, 0) * limit
     total = await db.facility_requests.count_documents(scoped_filter(query, get_school_id()))
     items = await db.facility_requests.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort([("priority", 1), ("created_at", -1)]).skip(skip).limit(limit).to_list(limit)
+    for item in items:
+        item["overdue"] = _is_overdue(item)
     return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
 
 
@@ -197,9 +229,43 @@ async def update_facility_request(request_id: str, request: Request):
             "timestamp": datetime.now().isoformat(),
         }
         await db.facility_requests.update_one(scoped_filter({"id": request_id}, get_school_id()), {"$push": {"notes": note_entry}})
+    for field in ("priority", "estimated_cost", "actual_cost", "vendor_id"):
+        if field in body:
+            updates[field] = body[field]
+    if "priority" in updates and updates["priority"] != existing.get("priority"):
+        if updates["priority"] not in VALID_PRIORITIES:
+            raise HTTPException(400, f"priority must be one of {sorted(VALID_PRIORITIES)}")
+        updates["sla_due_at"] = _sla_due(updates["priority"])
     if updates:
         await db.facility_requests.update_one(scoped_filter({"id": request_id}, get_school_id()), {"$set": updates})
     await _write_audit(db, "facility_request_update", "facility_requests", request_id, user, {"changes": updates})
+    updated = await db.facility_requests.find_one(scoped_filter({"id": request_id}, get_school_id()), {"_id": 0})
+    return {"success": True, "data": updated}
+
+
+@router.post("/facility/{request_id}/escalate")
+async def escalate_facility_request(request_id: str, request: Request):
+    db = get_db()
+    user = get_user(request)
+    if not _can_view_all(user) and not _is_maint(user):
+        raise HTTPException(403, "Forbidden")
+    existing = await db.facility_requests.find_one(scoped_filter({"id": request_id}, get_school_id()), {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Facility request not found")
+    body = await request.json()
+    update = {
+        "priority": body.get("priority", "urgent"),
+        "escalated": True,
+        "escalated_by": user["id"],
+        "escalated_at": datetime.now().isoformat(),
+        "escalation_reason": body.get("reason", ""),
+        "sla_due_at": _sla_due(body.get("priority", "urgent")),
+        "updated_at": datetime.now().isoformat(),
+    }
+    if update["priority"] not in VALID_PRIORITIES:
+        raise HTTPException(400, f"priority must be one of {sorted(VALID_PRIORITIES)}")
+    await db.facility_requests.update_one(scoped_filter({"id": request_id}, get_school_id()), {"$set": update})
+    await _write_audit(db, "facility_request_escalate", "facility_requests", request_id, user, update)
     updated = await db.facility_requests.find_one(scoped_filter({"id": request_id}, get_school_id()), {"_id": 0})
     return {"success": True, "data": updated}
 
@@ -235,9 +301,11 @@ async def confirm_facility_resolution(request_id: str, request: Request, user: d
 @router.post("/tech")
 async def create_tech_request(
     request: Request,
-    user: dict = Depends(require_access("owner", "admin", sub_category="it_tech")),
+    user: dict = Depends(require_role("owner", "admin")),
 ):
     db = get_db()
+    if not (_is_it(user) or user.get("role") == "owner"):
+        raise HTTPException(403, "Forbidden")
     body = await request.json()
     if not body.get("description"):
         raise HTTPException(400, "description is required")
@@ -360,6 +428,8 @@ async def list_maintenance_schedule(request: Request, page: int = 1, limit: int 
     skip = max(page - 1, 0) * limit
     total = await db.maintenance_schedule.count_documents(scoped_filter({}, get_school_id()))
     items = await db.maintenance_schedule.find(scoped_filter({}, get_school_id()), {"_id": 0}).sort("scheduled_date", 1).skip(skip).limit(limit).to_list(limit)
+    for item in items:
+        item["overdue"] = _is_overdue(item)
     return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
 
 
@@ -409,6 +479,20 @@ async def update_maintenance_schedule(entry_id: str, request: Request):
         if field in body:
             updates[field] = body[field]
     await db.maintenance_schedule.update_one(scoped_filter({"id": entry_id}, get_school_id()), {"$set": updates})
+    if updates.get("status") in {"done", "skipped"} and existing.get("recurrence") not in (None, "", "one_time"):
+        next_date = _next_scheduled_date(existing.get("scheduled_date", ""), existing.get("recurrence", ""))
+        if next_date:
+            next_entry = {
+                **{k: v for k, v in existing.items() if k != "_id"},
+                "_id": str(uuid.uuid4()),
+                "id": str(uuid.uuid4()),
+                "scheduled_date": next_date,
+                "status": "scheduled",
+                "previous_entry_id": entry_id,
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+            }
+            await db.maintenance_schedule.insert_one(add_school_id(next_entry))
     await _write_audit(db, "maintenance_schedule_update", "maintenance_schedule", entry_id, user, {"changes": updates})
     updated = await db.maintenance_schedule.find_one(scoped_filter({"id": entry_id}, get_school_id()), {"_id": 0})
     return {"success": True, "data": updated}
@@ -427,6 +511,19 @@ async def list_vendors(request: Request, page: int = 1, limit: int = 20):
     total = await db.maintenance_vendors.count_documents(scoped_filter({}, get_school_id()))
     items = await db.maintenance_vendors.find(scoped_filter({}, get_school_id()), {"_id": 0}).sort("name", 1).skip(skip).limit(limit).to_list(limit)
     return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
+
+
+@router.get("/maintenance/vendors/preferred")
+async def preferred_vendors(request: Request, category: str = None, limit: int = 5):
+    db = get_db()
+    user = get_user(request)
+    if not _can_view_all(user) and not _is_maint(user):
+        raise HTTPException(403, "Forbidden")
+    query = {"is_active": True}
+    if category:
+        query["category"] = category
+    vendors = await db.maintenance_vendors.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("rating", -1).limit(min(max(limit, 1), 20)).to_list(20)
+    return {"success": True, "data": vendors}
 
 
 @router.post("/maintenance/vendors")

@@ -181,6 +181,7 @@ class FakeAggregateCursor:
 class FakeCollection:
     def __init__(self, docs=None):
         self.docs = docs or []
+        self.indexes = {}
 
     async def find_one(self, query=None, projection=None, sort=None):
         docs = [doc for doc in self.docs if _matches(doc, query or {})]
@@ -280,10 +281,12 @@ class FakeCollection:
         return type("Result", (), {"deleted_count": before - len(self.docs)})()
 
     async def create_index(self, *args, **kwargs):
-        return kwargs.get("name") or str(args[0] if args else "index")
+        name = kwargs.get("name") or str(args[0] if args else f"index_{len(self.indexes) + 1}")
+        self.indexes[name] = {"key": args[0] if args else None, **kwargs}
+        return name
 
     async def index_information(self):
-        return {}
+        return self.indexes
 
     def aggregate(self, pipeline):
         docs = [doc.copy() for doc in self.docs]
@@ -349,6 +352,8 @@ class FakeDb:
         ])
         self.login_attempts = FakeCollection()
         self.refresh_tokens = FakeCollection()
+        self.password_reset_tokens = FakeCollection()
+        self.password_reset_requests = FakeCollection()
         self.students = FakeCollection([
             {
                 "id": "student-1",
@@ -382,13 +387,16 @@ class FakeDb:
         self.school_settings = FakeCollection()
         self.custom_forms = FakeCollection()
         self.form_responses = FakeCollection()
+        self.branches = FakeCollection()
         self.expenses = FakeCollection()
+        self.expense_budgets = FakeCollection()
         self.visitor_log = FakeCollection()
         self.assets = FakeCollection()
         self.enquiries = FakeCollection()
         self.student_attendance = FakeCollection()
         self.staff_attendance = FakeCollection()
         self.attendance_corrections = FakeCollection()
+        self.attendance_bulk_keys = FakeCollection()
         self.incidents = FakeCollection()
         self.fee_transactions = FakeCollection()
         self.fee_idempotency_keys = FakeCollection()
@@ -398,10 +406,14 @@ class FakeDb:
         self.fee_discount_types = FakeCollection()
         self.fee_discounts = FakeCollection()
         self.pending_discount_approvals = FakeCollection()
+        self.fee_discount_approvals = FakeCollection()
         self.fee_sync_jobs = FakeCollection()
         self.receipt_counters = FakeCollection()
+        self.salary_structures = FakeCollection()
+        self.salary_disbursements = FakeCollection()
         self.facility_requests = FakeCollection()
         self.tech_requests = FakeCollection()
+        self.queries = FakeCollection()
         self.complaints = FakeCollection()
         self.maintenance_schedule = FakeCollection()
         self.maintenance_vendors = FakeCollection()
@@ -412,6 +424,7 @@ class FakeDb:
         self.subjects = FakeCollection()
         self.token_balances = FakeCollection()
         self.token_usage = FakeCollection()
+        self.token_limits = FakeCollection()
         self.token_purchases = FakeCollection()
         self.confirm_tokens = FakeCollection()
         self.ai_dispatch_audit_log = FakeCollection()
@@ -423,7 +436,14 @@ class FakeDb:
         self.announcements = FakeCollection()
         self.exam_results = FakeCollection()
         self.exams = FakeCollection()
+        self.assignments = FakeCollection()
         self.lesson_plans = FakeCollection()
+        self.question_papers = FakeCollection()
+        self.ptm_notes = FakeCollection()
+        self.worksheets = FakeCollection()
+        self.curriculum_progress = FakeCollection()
+        self.sms_logs = FakeCollection()
+        self.dpdp_consents = FakeCollection()
         self.houses = FakeCollection()
         self.house_points_log = FakeCollection()
         self.student_positions = FakeCollection()

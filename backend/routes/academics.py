@@ -14,6 +14,37 @@ def get_user(req: Request):
     return get_current_user(req)
 
 
+def _academic_query(extra: dict | None = None) -> dict:
+    return scoped_filter(extra or {}, get_school_id())
+
+
+async def _teacher_staff(db, user: dict) -> dict | None:
+    if user.get("role") != "teacher":
+        return None
+    return await db.staff.find_one(_academic_query({"user_id": user["id"]}), {"_id": 0})
+
+
+async def _teacher_can_access_class(db, user: dict, class_id: str | None) -> bool:
+    if user.get("role") != "teacher" or not class_id:
+        return True
+    staff = await _teacher_staff(db, user)
+    if not staff:
+        return False
+    if class_id in {staff.get("class_id"), staff.get("class_teacher_id"), staff.get("class_teacher_of")}:
+        return True
+    slot = await db.timetable_slots.find_one(_academic_query({"teacher_id": staff.get("id"), "class_id": class_id}), {"_id": 0})
+    return bool(slot)
+
+
+async def _require_teacher_class_access(db, user: dict, class_id: str | None):
+    if not await _teacher_can_access_class(db, user, class_id):
+        raise HTTPException(403, "Teacher can access only assigned classes")
+
+
+def _can_manage_all(user: dict) -> bool:
+    return user.get("role") in {"owner", "admin"}
+
+
 # --- Assignments ---
 @router.get("/assignments")
 async def list_assignments(request: Request, class_id: str = None):
@@ -25,14 +56,14 @@ async def list_assignments(request: Request, class_id: str = None):
     if user["role"] == "teacher":
         query["teacher_id"] = user["id"]
     elif user["role"] == "student":
-        student = await db.students.find_one({"user_id": user["id"]})
+        student = await db.students.find_one(_academic_query({"user_id": user["id"]}), {"_id": 0})
         if student:
             query["class_id"] = student["class_id"]
-    assignments = await db.assignments.find(query, {"_id": 0}).sort("created_at", -1).to_list(50)
+    assignments = await db.assignments.find(_academic_query(query), {"_id": 0}).sort("created_at", -1).to_list(50)
     for a in assignments:
-        subj = await db.subjects.find_one({"id": a.get("subject_id")}, {"_id": 0})
+        subj = await db.subjects.find_one(_academic_query({"id": a.get("subject_id")}), {"_id": 0})
         a["subject_name"] = subj["name"] if subj else "N/A"
-        cls = await db.classes.find_one({"id": a.get("class_id")}, {"_id": 0})
+        cls = await db.classes.find_one(_academic_query({"id": a.get("class_id")}), {"_id": 0})
         a["class_name"] = f"{cls['name']}-{cls['section']}" if cls else "N/A"
     return {"success": True, "data": assignments}
 
@@ -41,6 +72,7 @@ async def list_assignments(request: Request, class_id: str = None):
 async def create_assignment(request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     db = get_db()
     body = await request.json()
+    await _require_teacher_class_access(db, user, body.get("class_id"))
     assignment = {
         "id": str(uuid.uuid4()),
         "class_id": body.get("class_id"),
@@ -52,17 +84,24 @@ async def create_assignment(request: Request, user: dict = Depends(require_role(
         "is_ai_blocked": body.get("is_ai_blocked", True),
         "created_at": datetime.now().isoformat(),
     }
-    await db.assignments.insert_one({**assignment, "_id": assignment["id"]})
+    await db.assignments.insert_one({**assignment, "_id": assignment["id"], "schoolId": get_school_id()})
     return {"success": True, "data": assignment}
 
 
 @router.patch("/assignments/{assignment_id}")
 async def update_assignment(assignment_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     db = get_db()
+    existing = await db.assignments.find_one(_academic_query({"id": assignment_id}), {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Assignment not found")
+    if user["role"] == "teacher" and existing.get("teacher_id") != user["id"]:
+        raise HTTPException(403, "Forbidden")
     body = await request.json()
+    if "class_id" in body:
+        await _require_teacher_class_access(db, user, body.get("class_id"))
     update = {k: v for k, v in body.items() if k in ["title", "description", "due_date", "subject_id", "class_id"]}
     update["updated_at"] = datetime.now().isoformat()
-    result = await db.assignments.update_one({"id": assignment_id}, {"$set": update})
+    result = await db.assignments.update_one(_academic_query({"id": assignment_id}), {"$set": update})
     if result.matched_count == 0:
         raise HTTPException(404, "Assignment not found")
     return {"success": True}
@@ -71,7 +110,10 @@ async def update_assignment(assignment_id: str, request: Request, user: dict = D
 @router.delete("/assignments/{assignment_id}")
 async def delete_assignment(assignment_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     db = get_db()
-    result = await db.assignments.delete_one({"id": assignment_id})
+    existing = await db.assignments.find_one(_academic_query({"id": assignment_id}), {"_id": 0})
+    if existing and user["role"] == "teacher" and existing.get("teacher_id") != user["id"]:
+        raise HTTPException(403, "Forbidden")
+    result = await db.assignments.delete_one(_academic_query({"id": assignment_id}))
     if result.deleted_count == 0:
         raise HTTPException(404, "Assignment not found")
     return {"success": True}
@@ -81,7 +123,7 @@ async def delete_assignment(assignment_id: str, request: Request, user: dict = D
 @router.get("/exams")
 async def list_exams(request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff"))):
     db = get_db()
-    exams = await db.exams.find({}, {"_id": 0}).sort("created_at", -1).to_list(20)
+    exams = await db.exams.find(_academic_query(), {"_id": 0}).sort("created_at", -1).to_list(20)
     return {"success": True, "data": exams}
 
 
@@ -89,7 +131,7 @@ async def list_exams(request: Request, user: dict = Depends(require_role("admin"
 async def create_exam(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
     body = await request.json()
-    ay = await db.academic_years.find_one({"is_current": True})
+    ay = await db.academic_years.find_one(_academic_query({"is_current": True}), {"_id": 0})
     exam = {
         "id": str(uuid.uuid4()),
         "academic_year_id": ay["id"] if ay else None,
@@ -99,7 +141,7 @@ async def create_exam(request: Request, user: dict = Depends(require_role("admin
         "end_date": body.get("end_date"),
         "created_at": datetime.now().isoformat(),
     }
-    await db.exams.insert_one({**exam, "_id": exam["id"]})
+    await db.exams.insert_one({**exam, "_id": exam["id"], "schoolId": get_school_id()})
     return {"success": True, "data": exam}
 
 
@@ -112,23 +154,26 @@ async def get_results(request: Request, exam_id: str = None, student_id: str = N
     if exam_id:
         query["exam_id"] = exam_id
     if class_id:
-        class_students = await db.students.find({"class_id": class_id}, {"_id": 0, "id": 1}).to_list(200)
+        await _require_teacher_class_access(db, user, class_id)
+        class_students = await db.students.find(_academic_query({"class_id": class_id}), {"_id": 0, "id": 1}).to_list(200)
         query["student_id"] = {"$in": [s["id"] for s in class_students]}
     if student_id:
         if user["role"] == "student":
-            own = await db.students.find_one({"user_id": user["id"]})
+            own = await db.students.find_one(_academic_query({"user_id": user["id"]}), {"_id": 0})
             if not own or own["id"] != student_id:
                 raise HTTPException(403, "Forbidden")
         query["student_id"] = student_id
     elif user["role"] == "student" and not class_id:
-        own = await db.students.find_one({"user_id": user["id"]})
+        own = await db.students.find_one(_academic_query({"user_id": user["id"]}), {"_id": 0})
         if own:
             query["student_id"] = own["id"]
-    results = await db.exam_results.find(query, {"_id": 0}).to_list(500)
+    if user["role"] == "student":
+        query["published"] = True
+    results = await db.exam_results.find(_academic_query(query), {"_id": 0}).to_list(500)
     enriched = []
     for r in results:
-        subj = await db.subjects.find_one({"id": r.get("subject_id")}, {"_id": 0})
-        student = await db.students.find_one({"id": r.get("student_id")}, {"_id": 0})
+        subj = await db.subjects.find_one(_academic_query({"id": r.get("subject_id")}), {"_id": 0})
+        student = await db.students.find_one(_academic_query({"id": r.get("student_id")}), {"_id": 0})
         enriched.append({**r, "subject_name": subj["name"] if subj else "N/A", "student_name": student["name"] if student else "N/A"})
     return {"success": True, "data": enriched}
 
@@ -140,21 +185,28 @@ async def bulk_enter_results(request: Request, user: dict = Depends(require_role
     results = body.get("results", [])
     saved = 0
     for r in results:
+        max_marks = float(r.get("max_marks", 100) or 100)
+        marks = float(r.get("marks_obtained", 0) or 0)
+        if marks < 0 or marks > max_marks:
+            raise HTTPException(400, "marks_obtained must be between 0 and max_marks")
+        student = await db.students.find_one(_academic_query({"id": r.get("student_id")}), {"_id": 0})
+        await _require_teacher_class_access(db, user, (student or {}).get("class_id"))
         doc = {
             "id": str(uuid.uuid4()),
             "exam_id": r.get("exam_id"),
             "student_id": r.get("student_id"),
             "subject_id": r.get("subject_id"),
-            "marks_obtained": r.get("marks_obtained"),
-            "max_marks": r.get("max_marks", 100),
+            "marks_obtained": marks,
+            "max_marks": max_marks,
             "grade": r.get("grade"),
             "remarks": r.get("remarks", ""),
+            "published": bool(r.get("published")) if _can_manage_all(user) else False,
             "entered_by": user["id"],
             "created_at": datetime.now().isoformat(),
         }
         await db.exam_results.update_one(
-            {"exam_id": r.get("exam_id"), "student_id": r.get("student_id"), "subject_id": r.get("subject_id")},
-            {"$set": {**doc, "_id": doc["id"]}}, upsert=True
+            _academic_query({"exam_id": r.get("exam_id"), "student_id": r.get("student_id"), "subject_id": r.get("subject_id")}),
+            {"$set": {**doc, "schoolId": get_school_id()}, "$setOnInsert": {"_id": doc["id"]}}, upsert=True
         )
         saved += 1
     return {"success": True, "saved": saved}
@@ -171,9 +223,12 @@ async def create_lesson_plan(request: Request, user: dict = Depends(require_role
         "class_id": body.get("class_id"),
         "chapter": body.get("chapter"),
         "content": body.get("content", {}),
+        "week": body.get("week"),
+        "status": "pending_review" if user.get("role") == "teacher" else body.get("status", "approved"),
         "created_at": datetime.now().isoformat(),
     }
-    await db.lesson_plans.insert_one({**plan, "_id": plan["id"]})
+    await _require_teacher_class_access(db, user, plan.get("class_id"))
+    await db.lesson_plans.insert_one({**plan, "_id": plan["id"], "schoolId": get_school_id()})
     return {"success": True, "data": plan}
 
 
@@ -184,26 +239,68 @@ async def list_lesson_plans(request: Request):
     query = {}
     if user["role"] == "teacher":
         query["teacher_id"] = user["id"]
-    plans = await db.lesson_plans.find(query, {"_id": 0}).sort("created_at", -1).to_list(50)
+    plans = await db.lesson_plans.find(_academic_query(query), {"_id": 0}).sort("created_at", -1).to_list(50)
     return {"success": True, "data": plans}
 
 
 @router.patch("/lesson-plans/{plan_id}")
 async def update_lesson_plan(plan_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin"))):
     db = get_db()
+    existing = await db.lesson_plans.find_one(_academic_query({"id": plan_id}), {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    if user["role"] == "teacher" and existing.get("teacher_id") != user["id"]:
+        raise HTTPException(403, "Forbidden")
     body = await request.json()
-    update = {k: v for k, v in body.items() if k in ["chapter", "subject_id", "class_id", "content"]}
+    update = {k: v for k, v in body.items() if k in ["chapter", "subject_id", "class_id", "content", "week"]}
+    if user["role"] == "teacher":
+        update["status"] = "pending_review"
     update["updated_at"] = datetime.now().isoformat()
-    result = await db.lesson_plans.update_one({"id": plan_id}, {"$set": update})
+    result = await db.lesson_plans.update_one(_academic_query({"id": plan_id}), {"$set": update})
     if result.matched_count == 0:
         raise HTTPException(404, "Not found")
     return {"success": True}
 
 
+@router.patch("/lesson-plans/{plan_id}/review")
+async def review_lesson_plan(plan_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
+    db = get_db()
+    body = await request.json()
+    status = body.get("status")
+    if status not in {"approved", "rejected"}:
+        raise HTTPException(400, "status must be approved or rejected")
+    existing = await db.lesson_plans.find_one(_academic_query({"id": plan_id}), {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    update = {
+        "status": status,
+        "reviewed_by": user["id"],
+        "reviewed_at": datetime.now().isoformat(),
+        "review_note": body.get("note", ""),
+    }
+    await db.lesson_plans.update_one(_academic_query({"id": plan_id}), {"$set": update})
+    await write_audit_doc(db, {
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "schoolId": get_school_id(),
+        "entity_type": "lesson_plan",
+        "entity_id": plan_id,
+        "action": f"lesson_plan_{status}",
+        "changed_by": user.get("id"),
+        "changed_by_role": user.get("role"),
+        "changes": update,
+        "created_at": datetime.now().isoformat(),
+    }, school_id=get_school_id(), branch_id=user.get("branch_id"))
+    return {"success": True, "data": {**existing, **update}}
+
+
 @router.delete("/lesson-plans/{plan_id}")
 async def delete_lesson_plan(plan_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin"))):
     db = get_db()
-    result = await db.lesson_plans.delete_one({"id": plan_id})
+    existing = await db.lesson_plans.find_one(_academic_query({"id": plan_id}), {"_id": 0})
+    if existing and user["role"] == "teacher" and existing.get("teacher_id") != user["id"]:
+        raise HTTPException(403, "Forbidden")
+    result = await db.lesson_plans.delete_one(_academic_query({"id": plan_id}))
     if result.deleted_count == 0:
         raise HTTPException(404, "Not found")
     return {"success": True}
@@ -509,15 +606,18 @@ async def list_ptm_notes(request: Request, student_id: str = None):
     if student_id:
         query["student_id"] = student_id
     elif user["role"] == "student":
-        own = await db.students.find_one({"user_id": user["id"]})
+        own = await db.students.find_one(_academic_query({"user_id": user["id"]}), {"_id": 0})
         if own:
             query["student_id"] = own["id"]
+            query["shared_with_student"] = True
     elif user["role"] == "teacher":
         query["teacher_id"] = user["id"]
-    notes = await db.ptm_notes.find(query, {"_id": 0}).sort("created_at", -1).to_list(50)
+    notes = await db.ptm_notes.find(_academic_query(query), {"_id": 0}).sort("created_at", -1).to_list(50)
     for n in notes:
-        student = await db.students.find_one({"id": n.get("student_id")}, {"_id": 0})
+        student = await db.students.find_one(_academic_query({"id": n.get("student_id")}), {"_id": 0})
         n["student_name"] = student["name"] if student else "N/A"
+        if user["role"] == "student":
+            n["notes"] = n.get("student_summary") or n.get("notes")
     return {"success": True, "data": notes}
 
 
@@ -525,25 +625,34 @@ async def list_ptm_notes(request: Request, student_id: str = None):
 async def create_ptm_note(request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     db = get_db()
     body = await request.json()
+    student = await db.students.find_one(_academic_query({"id": body.get("student_id")}), {"_id": 0})
+    await _require_teacher_class_access(db, user, (student or {}).get("class_id"))
     note = {
         "id": str(uuid.uuid4()),
         "student_id": body.get("student_id"),
         "teacher_id": user["id"],
         "notes": body.get("notes"),
+        "student_summary": body.get("student_summary", ""),
+        "shared_with_student": bool(body.get("shared_with_student", False)),
         "summary_sent": False,
         "created_at": datetime.now().isoformat(),
     }
-    await db.ptm_notes.insert_one({**note, "_id": note["id"]})
+    await db.ptm_notes.insert_one({**note, "_id": note["id"], "schoolId": get_school_id()})
     return {"success": True, "data": note}
 
 
 @router.patch("/ptm-notes/{note_id}")
 async def update_ptm_note(note_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     db = get_db()
+    existing = await db.ptm_notes.find_one(_academic_query({"id": note_id}), {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    if user["role"] == "teacher" and existing.get("teacher_id") != user["id"]:
+        raise HTTPException(403, "Forbidden")
     body = await request.json()
-    update = {k: v for k, v in body.items() if k in ["notes", "student_id"]}
+    update = {k: v for k, v in body.items() if k in ["notes", "student_id", "student_summary", "shared_with_student"]}
     update["updated_at"] = datetime.now().isoformat()
-    result = await db.ptm_notes.update_one({"id": note_id}, {"$set": update})
+    result = await db.ptm_notes.update_one(_academic_query({"id": note_id}), {"$set": update})
     if result.matched_count == 0:
         raise HTTPException(404, "Not found")
     return {"success": True}
@@ -552,7 +661,10 @@ async def update_ptm_note(note_id: str, request: Request, user: dict = Depends(r
 @router.delete("/ptm-notes/{note_id}")
 async def delete_ptm_note(note_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     db = get_db()
-    result = await db.ptm_notes.delete_one({"id": note_id})
+    existing = await db.ptm_notes.find_one(_academic_query({"id": note_id}), {"_id": 0})
+    if existing and user["role"] == "teacher" and existing.get("teacher_id") != user["id"]:
+        raise HTTPException(403, "Forbidden")
+    result = await db.ptm_notes.delete_one(_academic_query({"id": note_id}))
     if result.deleted_count == 0:
         raise HTTPException(404, "Not found")
     return {"success": True}
@@ -566,10 +678,10 @@ async def list_worksheets(request: Request):
     if user["role"] == "teacher":
         query["teacher_id"] = user["id"]
     elif user["role"] == "student":
-        own = await db.students.find_one({"user_id": user["id"]})
+        own = await db.students.find_one(_academic_query({"user_id": user["id"]}), {"_id": 0})
         if own:
             query["class_id"] = own["class_id"]
-    worksheets = await db.worksheets.find(query, {"_id": 0}).sort("created_at", -1).to_list(50)
+    worksheets = await db.worksheets.find(_academic_query(query), {"_id": 0}).sort("created_at", -1).to_list(50)
     return {"success": True, "data": worksheets}
 
 
@@ -577,27 +689,34 @@ async def list_worksheets(request: Request):
 async def create_worksheet(request: Request, user: dict = Depends(require_role("teacher", "admin"))):
     db = get_db()
     body = await request.json()
+    await _require_teacher_class_access(db, user, body.get("class_id"))
     ws = {
         "id": str(uuid.uuid4()),
         "teacher_id": user["id"],
         "subject_id": body.get("subject_id"),
+        "class_id": body.get("class_id"),
         "topic": body.get("topic"),
         "type": body.get("type", "practice"),
         "content": body.get("content", ""),
         "is_ai_blocked": False,
         "created_at": datetime.now().isoformat(),
     }
-    await db.worksheets.insert_one({**ws, "_id": ws["id"]})
+    await db.worksheets.insert_one({**ws, "_id": ws["id"], "schoolId": get_school_id()})
     return {"success": True, "data": ws}
 
 
 @router.patch("/worksheets/{ws_id}")
 async def update_worksheet(ws_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin"))):
     db = get_db()
+    existing = await db.worksheets.find_one(_academic_query({"id": ws_id}), {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    if user["role"] == "teacher" and existing.get("teacher_id") != user["id"]:
+        raise HTTPException(403, "Forbidden")
     body = await request.json()
-    update = {k: v for k, v in body.items() if k in ["topic", "subject_id", "type", "content"]}
+    update = {k: v for k, v in body.items() if k in ["topic", "subject_id", "class_id", "type", "content"]}
     update["updated_at"] = datetime.now().isoformat()
-    result = await db.worksheets.update_one({"id": ws_id}, {"$set": update})
+    result = await db.worksheets.update_one(_academic_query({"id": ws_id}), {"$set": update})
     if result.matched_count == 0:
         raise HTTPException(404, "Not found")
     return {"success": True}
@@ -606,7 +725,10 @@ async def update_worksheet(ws_id: str, request: Request, user: dict = Depends(re
 @router.delete("/worksheets/{ws_id}")
 async def delete_worksheet(ws_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin"))):
     db = get_db()
-    result = await db.worksheets.delete_one({"id": ws_id})
+    existing = await db.worksheets.find_one(_academic_query({"id": ws_id}), {"_id": 0})
+    if existing and user["role"] == "teacher" and existing.get("teacher_id") != user["id"]:
+        raise HTTPException(403, "Forbidden")
+    result = await db.worksheets.delete_one(_academic_query({"id": ws_id}))
     if result.deleted_count == 0:
         raise HTTPException(404, "Not found")
     return {"success": True}

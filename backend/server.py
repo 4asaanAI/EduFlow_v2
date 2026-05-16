@@ -62,6 +62,7 @@ from services.idempotency import (
     store_response,
 )
 from services.sse import keepalive_loop as sse_keepalive_loop
+from middleware.auth import get_current_user
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -357,3 +358,28 @@ async def health_ready():
 
     response["overall"] = overall
     return response
+
+
+@app.get("/api/health/system")
+async def health_system(request: Request):
+    user = get_current_user(request)
+    if not (user.get("role") == "owner" or (user.get("role") == "admin" and user.get("sub_category") == "it_tech")):
+        return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    ready = await health_ready()
+    db = get_raw_db()
+    counts = {}
+    for name in ("auth_users", "students", "staff", "queries", "audit_logs"):
+        collection = getattr(db, name, None)
+        if collection is None:
+            continue
+        try:
+            counts[name] = await collection.count_documents({})
+        except Exception:
+            counts[name] = "unavailable"
+    return {
+        "success": True,
+        "status": ready.get("overall"),
+        "checks": ready,
+        "counts": counts,
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }

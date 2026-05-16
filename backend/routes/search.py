@@ -3,6 +3,7 @@ import re
 from fastapi import APIRouter, Request
 from database import get_db
 from middleware.auth import get_current_user
+from tenant import get_school_id, scoped_filter
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -53,6 +54,35 @@ def get_user(req: Request):
     return get_current_user(req)
 
 
+def _role_tools(user: dict) -> list[dict]:
+    tools = list(TOOLS_BY_ROLE.get(user.get("role"), []))
+    if user.get("role") == "admin":
+        sub = user.get("sub_category")
+        extra = {
+            "principal": [
+                {"id": "principal-daily-ops", "name": "Daily ops", "subtitle": "Leaves, substitutes, approvals", "type": "tool"},
+            ],
+            "receptionist": [
+                {"id": "sms-shortcuts", "name": "SMS shortcuts", "subtitle": "Parent and visitor messages", "type": "tool"},
+                {"id": "front-desk", "name": "Front desk", "subtitle": "Visitors, enquiries, complaints", "type": "tool"},
+            ],
+            "accounts": [
+                {"id": "payroll", "name": "Payroll", "subtitle": "Salary structures and disbursement", "type": "tool"},
+            ],
+            "accountant": [
+                {"id": "payroll", "name": "Payroll", "subtitle": "Salary structures and disbursement", "type": "tool"},
+            ],
+            "maintenance": [
+                {"id": "maintenance-tools", "name": "Maintenance", "subtitle": "Facility requests and vendors", "type": "tool"},
+            ],
+            "it_tech": [
+                {"id": "it-admin", "name": "IT admin", "subtitle": "Tickets, resets, system health", "type": "tool"},
+            ],
+        }
+        tools.extend(extra.get(sub, []))
+    return tools
+
+
 @router.get("")
 async def search(request: Request, q: str = "", type: str = "all"):
     db = get_db()
@@ -68,27 +98,36 @@ async def search(request: Request, q: str = "", type: str = "all"):
 
     # Search tools (all roles)
     if type in ["all", "tool"]:
-        for tool in TOOLS_BY_ROLE.get(role, []):
+        for tool in _role_tools(user):
             if q_lower in tool["name"].lower() or q_lower in tool["subtitle"].lower():
                 results.append({**tool})
 
     # Search persons (role-scoped)
     if type in ["all", "persons", "students"] and role in ["owner", "admin", "teacher"]:
         student_query = {"$or": [{"name": {"$regex": q_safe, "$options": "i"}}, {"admission_number": {"$regex": q_safe, "$options": "i"}}], "is_active": True}
+        digits = re.sub(r"\D+", "", q)
+        if len(digits) >= 4:
+            guardians = await db.guardians.find(
+                scoped_filter({"phone": {"$regex": re.escape(digits[-10:]), "$options": "i"}}, get_school_id()),
+                {"_id": 0, "student_id": 1},
+            ).to_list(10)
+            guardian_student_ids = [g["student_id"] for g in guardians if g.get("student_id")]
+            if guardian_student_ids:
+                student_query["$or"].append({"id": {"$in": guardian_student_ids}})
         # Teacher: only see their own class students
         if role == "teacher":
             import os
             # Get teacher's classes (via user_id → staff → class_teacher_id)
             pass  # For now show all (scope later with real auth)
-        students = await db.students.find(student_query, {"_id": 0, "id": 1, "name": 1, "admission_number": 1, "class_id": 1}).to_list(10)
+        students = await db.students.find(scoped_filter(student_query, get_school_id()), {"_id": 0, "id": 1, "name": 1, "admission_number": 1, "class_id": 1}).to_list(10)
         for s in students:
-            cls = await db.classes.find_one({"id": s.get("class_id")}, {"_id": 0})
+            cls = await db.classes.find_one(scoped_filter({"id": s.get("class_id")}, get_school_id()), {"_id": 0})
             sub_role = f"{cls['name']}-{cls['section']}" if cls else "Student"
             results.append({"id": s["id"], "name": s["name"], "subtitle": sub_role, "type": "student", "role": "student", "sub_role": sub_role})
 
     if type in ["all", "persons", "staff"] and role in ["owner", "admin"]:
         staff = await db.staff.find(
-            {"name": {"$regex": q_safe, "$options": "i"}, "is_active": True},
+            scoped_filter({"name": {"$regex": q_safe, "$options": "i"}, "is_active": True}, get_school_id()),
             {"_id": 0, "id": 1, "name": 1, "staff_type": 1, "department": 1, "specialization": 1}
         ).to_list(8)
         for s in staff:
@@ -113,7 +152,7 @@ async def search(request: Request, q: str = "", type: str = "all"):
     # Search announcements
     if type in ["all", "announcements"]:
         annts = await db.announcements.find(
-            {"$or": [{"title": {"$regex": q_safe, "$options": "i"}}, {"content": {"$regex": q_safe, "$options": "i"}}], "is_draft": False},
+            scoped_filter({"$or": [{"title": {"$regex": q_safe, "$options": "i"}}, {"content": {"$regex": q_safe, "$options": "i"}}], "is_draft": False}, get_school_id()),
             {"_id": 0, "id": 1, "title": 1, "created_at": 1}
         ).to_list(5)
         for a in annts:
@@ -121,7 +160,7 @@ async def search(request: Request, q: str = "", type: str = "all"):
 
     # For student role: search own data only
     if role == "student" and type in ["all", "students"]:
-        own = await db.students.find_one({"user_id": user["id"]}, {"_id": 0, "name": 1, "id": 1})
+        own = await db.students.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0, "name": 1, "id": 1})
         if own and q_lower in own.get("name", "").lower():
             results.append({"name": own["name"], "subtitle": "My profile", "type": "student"})
 

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { CalendarDays, RefreshCw, UserCheck } from 'lucide-react';
+import { CalendarDays, CheckCircle, IndianRupee, RefreshCw, UserCheck } from 'lucide-react';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ActionBtn, ErrorCard } from './ToolPage';
 
@@ -8,6 +8,9 @@ const API = process.env.REACT_APP_BACKEND_URL + '/api';
 export default function PrincipalDailyOps() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [items, setItems] = useState([]);
+  const [leaves, setLeaves] = useState([]);
+  const [certificates, setCertificates] = useState([]);
+  const [feeSummary, setFeeSummary] = useState([]);
   const [meta, setMeta] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -18,13 +21,29 @@ export default function PrincipalDailyOps() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API}/academics/substitutions?date=${date}`, { headers: getAuthHeaders() });
-      const json = await res.json();
-      if (!json.success) throw new Error(json.detail || 'Unable to load substitution plan');
-      setItems(json.data || []);
-      setMeta(json.meta || {});
+      const [subsRes, leavesRes, certsRes, feesRes] = await Promise.allSettled([
+        fetch(`${API}/academics/substitutions?date=${date}`, { headers: getAuthHeaders() }),
+        fetch(`${API}/staff/leaves/pending`, { headers: getAuthHeaders() }),
+        fetch(`${API}/operations/certificates`, { headers: getAuthHeaders() }),
+        fetch(`${API}/fees/summary`, { headers: getAuthHeaders() }),
+      ]);
+      const subsJson = subsRes.status === 'fulfilled' ? await subsRes.value.json() : { success: false };
+      if (!subsJson.success) throw new Error(subsJson.detail || 'Unable to load daily ops');
+      setItems(subsJson.data || []);
+      setMeta(subsJson.meta || {});
+      const leavesJson = leavesRes.status === 'fulfilled' ? await leavesRes.value.json() : { data: [] };
+      const certsJson = certsRes.status === 'fulfilled' ? await certsRes.value.json() : { data: [] };
+      const feesJson = feesRes.status === 'fulfilled' ? await feesRes.value.json() : { data: [] };
+      setLeaves((leavesJson.data || []).slice(0, 5));
+      setCertificates((certsJson.data || []).filter(c => c.status === 'pending_approval').slice(0, 5));
+      const summary = feesJson.data || {};
+      setFeeSummary(summary.period ? [{
+        month: summary.period,
+        collected: summary.total_collected || 0,
+        outstanding: summary.total_outstanding || 0,
+      }] : []);
     } catch (err) {
-      setError(err.message || 'Unable to load substitution plan');
+      setError(err.message || 'Unable to load daily ops');
     } finally {
       setLoading(false);
     }
@@ -66,6 +85,20 @@ export default function PrincipalDailyOps() {
     if (res.ok) load();
   };
 
+  const decideLeave = async (leaveId, status) => {
+    await fetch(`${API}/staff/leaves/${leaveId}`, {
+      method: 'PATCH',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, rejection_reason: status === 'rejected' ? 'Rejected by principal' : undefined }),
+    });
+    load();
+  };
+
+  const approveCert = async (certId) => {
+    await fetch(`${API}/operations/certificates/${certId}/approve`, { method: 'PATCH', headers: getAuthHeaders() });
+    load();
+  };
+
   const rows = items.map(item => {
     const assigned = item.assigned_substitute;
     const firstCandidate = item.candidate_substitutes?.[0];
@@ -100,6 +133,49 @@ export default function PrincipalDailyOps() {
         <StatCard value={meta.absent_teacher_count || 0} label="ABSENT TEACHERS" color="var(--color-danger)" />
         <StatCard value={items.length} label="AFFECTED PERIODS" color="var(--color-warning)" />
         <StatCard value={meta.uncovered_period_count || 0} label="NEEDS SUBSTITUTE" color="var(--color-accent-blue)" />
+        <StatCard value={leaves.length} label="PENDING LEAVES" color="var(--color-warning)" />
+        <StatCard value={certificates.length} label="CERT APPROVALS" color="var(--color-accent-blue)" />
+        <StatCard value={`Rs ${feeSummary.reduce((sum, row) => sum + Number(row.collected || 0), 0).toLocaleString('en-IN')}`} label="FEE COLLECTION" color="var(--color-success)" />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginBottom: 16 }}>
+        <DataTable
+          title="Leave Approvals"
+          headers={['Staff', 'Dates', 'Type', 'Action']}
+          rows={leaves.map(l => [
+            l.staff?.name || l.staff_name || l.staff_id,
+            `${l.start_date || ''} ${l.end_date ? `to ${l.end_date}` : ''}`,
+            l.leave_type || 'Leave',
+            <span style={{ display: 'inline-flex', gap: 6 }}>
+              <ActionBtn label="Approve" icon={<CheckCircle size={12} />} onClick={() => decideLeave(l.id, 'approved')} />
+              <ActionBtn label="Reject" onClick={() => decideLeave(l.id, 'rejected')} />
+            </span>,
+          ])}
+          emptyMsg="No pending leaves"
+          loading={loading}
+        />
+        <DataTable
+          title="Certificate Approvals"
+          headers={['Student', 'Type', 'Requested', 'Action']}
+          rows={certificates.map(c => [
+            c.student_name || c.student_id,
+            c.type,
+            c.created_at?.slice(0, 10),
+            <ActionBtn label="Approve" icon={<CheckCircle size={12} />} onClick={() => approveCert(c.id)} />,
+          ])}
+          emptyMsg="No pending certificates"
+          loading={loading}
+        />
+        <DataTable
+          title="Fee Trend"
+          headers={['Month', 'Collected', 'Outstanding']}
+          rows={feeSummary.map(row => [
+            row.month,
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><IndianRupee size={12} />{Number(row.collected || 0).toLocaleString('en-IN')}</span>,
+            Number(row.outstanding || 0).toLocaleString('en-IN'),
+          ])}
+          emptyMsg="No fee summary"
+          loading={loading}
+        />
       </div>
       <DataTable
         title="Substitution Plan"

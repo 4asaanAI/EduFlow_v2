@@ -32,9 +32,10 @@ async def list_audit_log(
     # auth: owner OR admin (with sub_category principal/None/"") — narrower
     # than require_owner_or_principal because legacy admins without a
     # sub_category were grandfathered in; canonical helper would lock them out.
+    is_it_tech = user.get("role") == "admin" and user.get("sub_category") == "it_tech"
     if user.get("role") == "admin":
         sub = user.get("sub_category", "")
-        if sub not in ("principal", None, ""):
+        if sub not in ("principal", "it_tech", None, ""):
             raise HTTPException(403, "Forbidden")
     elif user.get("role") != "owner":
         raise HTTPException(403, "Forbidden")
@@ -49,9 +50,13 @@ async def list_audit_log(
     if collection:
         if is_principal and collection in PRINCIPAL_BLOCKED:
             raise HTTPException(403, "Forbidden")
+        if is_it_tech and collection in FINANCIAL_COLLECTIONS:
+            raise HTTPException(403, "Forbidden")
         query["collection"] = collection
     elif is_principal:
         query["collection"] = {"$nin": list(PRINCIPAL_BLOCKED)}
+    elif is_it_tech:
+        query["collection"] = {"$nin": list(FINANCIAL_COLLECTIONS)}
 
     if changed_by:
         query["changed_by"] = changed_by
@@ -94,11 +99,14 @@ async def get_record_history(
     user: dict = Depends(require_role("owner", "admin")),
 ):
     db = get_db()
+    if user.get("role") == "admin" and user.get("sub_category", "") not in ("principal", "it_tech", None, ""):
+        raise HTTPException(403, "Forbidden")
     if page < 1:
         raise HTTPException(400, "page must be >= 1")
     if not 1 <= limit <= 100:
         raise HTTPException(400, "limit must be between 1 and 100")
     is_principal = user.get("role") == "admin" and user.get("sub_category") == "principal"
+    is_it_tech = user.get("role") == "admin" and user.get("sub_category") == "it_tech"
     query = {
         "$or": [
             {"entity_id": record_id},
@@ -109,6 +117,8 @@ async def get_record_history(
         query["collection"] = {"$nin": list(PRINCIPAL_BLOCKED)}
         if user.get("branch_id"):
             query["branch_id"] = user.get("branch_id")
+    elif is_it_tech:
+        query["collection"] = {"$nin": list(FINANCIAL_COLLECTIONS)}
     scoped = scoped_filter(query, get_school_id())
     skip = (page - 1) * limit
     async with TimedQuery(collection_name="audit_logs", operation="count_documents", query_shape="record_history"):

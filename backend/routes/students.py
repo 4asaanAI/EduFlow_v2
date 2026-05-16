@@ -54,6 +54,7 @@ GUARDIAN_UPDATABLE_FIELDS = {
     "name", "phone", "alt_phone", "whatsapp_phone",
     "email", "occupation", "annual_income", "is_primary",
 }
+SELF_UPDATABLE_FIELDS = {"phone", "email", "preferred_name", "emergency_contact"}
 PHOTO_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "heic"}
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
 
@@ -254,6 +255,66 @@ async def get_my_profile(request: Request, user: dict = Depends(require_role("st
     if not student:
         return {"success": True, "data": None}
     return {"success": True, "data": await _add_class_and_guardians(db, student, include_guardians=True)}
+
+
+@router.patch("/me")
+async def update_my_profile(request: Request, user: dict = Depends(require_role("student"))):
+    db = get_db()
+    student = await db.students.find_one(_student_query({"user_id": user["id"]}), {"_id": 0})
+    if not student:
+        raise HTTPException(404, "Student record not found")
+    body = await request.json()
+    update = {k: v for k, v in body.items() if k in SELF_UPDATABLE_FIELDS}
+    if not update:
+        raise HTTPException(400, "No self-service fields provided")
+    update["updated_at"] = datetime.now().isoformat()
+    await db.students.update_one(_student_query({"id": student["id"]}), {"$set": update})
+    await _audit(
+        db,
+        action="student_self_update",
+        student_id=student["id"],
+        user=user,
+        changes={k: {"previous": student.get(k), "new": v} for k, v in update.items() if k != "updated_at"},
+    )
+    updated = await db.students.find_one(_student_query({"id": student["id"]}), {"_id": 0})
+    return {"success": True, "data": updated}
+
+
+@router.post("/me/consent")
+async def record_my_consent(request: Request, user: dict = Depends(require_role("student"))):
+    db = get_db()
+    body = await request.json()
+    purpose = (body.get("purpose") or "").strip()
+    granted = body.get("granted")
+    if not purpose or granted is None:
+        raise HTTPException(400, "purpose and granted are required")
+    student = await db.students.find_one(_student_query({"user_id": user["id"]}), {"_id": 0})
+    if not student:
+        raise HTTPException(404, "Student record not found")
+    doc = {
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "schoolId": get_school_id(),
+        "student_id": student["id"],
+        "user_id": user["id"],
+        "purpose": purpose,
+        "granted": bool(granted),
+        "recorded_at": datetime.now().isoformat(),
+        "source": "student_self_service",
+    }
+    await db.dpdp_consents.insert_one(doc)
+    await _audit(db, action="dpdp_consent_recorded", student_id=student["id"], user=user, changes={"purpose": purpose, "granted": bool(granted)})
+    return {"success": True, "data": {k: v for k, v in doc.items() if k != "_id"}}
+
+
+@router.get("/me/consent")
+async def list_my_consents(request: Request, user: dict = Depends(require_role("student"))):
+    db = get_db()
+    student = await db.students.find_one(_student_query({"user_id": user["id"]}), {"_id": 0})
+    if not student:
+        return {"success": True, "data": []}
+    consents = await db.dpdp_consents.find(scoped_filter({"student_id": student["id"]}, get_school_id()), {"_id": 0}).sort("recorded_at", -1).to_list(50)
+    return {"success": True, "data": consents}
 
 
 @router.get("/classes/all")

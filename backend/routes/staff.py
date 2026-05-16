@@ -9,8 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from database import get_db
 from middleware.auth import get_current_user, hash_password, require_owner_or_principal, require_role
 from models.schemas import Staff
-from services.audit_service import write_audit_doc
-from services.audit_service import write_audit
+from services.audit_service import write_audit_doc, write_audit
 from services.notification_service import create_notification
 from tenant import get_school_id, scoped_filter, scoped_query
 
@@ -60,8 +59,20 @@ def _can_manage(user: dict) -> bool:
     return user.get("role") in ADMIN_ROLES
 
 
+def _is_owner(user: dict) -> bool:
+    return user.get("role") == "owner"
+
+
 def _is_owner_or_principal(user: dict) -> bool:
     return user.get("role") == "owner" or (user.get("role") == "admin" and user.get("sub_category", "principal") == "principal")
+
+
+def _is_accounts(user: dict) -> bool:
+    return user.get("role") == "admin" and user.get("sub_category") in ("accounts", "accountant")
+
+
+def _can_set_privileged_fields(user: dict) -> bool:
+    return _is_owner(user)
 
 
 def _default_username(body: dict) -> str:
@@ -152,6 +163,10 @@ async def create_staff(request: Request):
     body = await request.json()
     if not body.get("name") or not body.get("staff_type"):
         raise HTTPException(400, "name and staff_type are required")
+    requested_role = body.get("role") or ("teacher" if body.get("staff_type") == "teacher" else "admin")
+    requested_sub = body.get("sub_category")
+    if not _can_set_privileged_fields(user) and (requested_role in {"owner", "admin"} or requested_sub):
+        raise HTTPException(403, "Only owner can create privileged staff accounts")
 
     user_id, temp_password = await _create_or_link_user(db, body, user)
     staff = Staff(
@@ -170,7 +185,7 @@ async def create_staff(request: Request):
         medical_leave_balance=body.get("medical_leave_balance", 10),
         earned_leave_balance=body.get("earned_leave_balance", 15),
     )
-    staff_doc = {**_serialize(staff), "role": body.get("role") or ("teacher" if body["staff_type"] == "teacher" else "admin"), "sub_category": body.get("sub_category")}
+    staff_doc = {**_serialize(staff), "role": requested_role, "sub_category": requested_sub}
     await db.staff.insert_one({**staff_doc, "_id": staff.id})
     await _audit(db, action="create", staff_id=staff.id, user=user, changes={"created": staff_doc})
     data = _public_staff(staff_doc)
@@ -203,10 +218,18 @@ async def update_staff(staff_id: str, request: Request):
 
     body = await request.json()
     allowed = set(PROFILE_FIELDS)
+    if not _can_set_privileged_fields(user):
+        allowed -= {"role", "sub_category", "salary"}
     if _is_owner_or_principal(user):
         allowed |= LEAVE_BALANCE_FIELDS
-    elif any(field in body for field in LEAVE_BALANCE_FIELDS):
+    if _is_accounts(user) and not _is_owner(user):
+        allowed |= {"salary"}
+    if not _is_owner_or_principal(user) and any(field in body for field in LEAVE_BALANCE_FIELDS):
         raise HTTPException(403, "Forbidden")
+    if any(field in body for field in {"role", "sub_category"}) and not _can_set_privileged_fields(user):
+        raise HTTPException(403, "Only owner can update role assignments")
+    if "salary" in body and not (_can_set_privileged_fields(user) or _is_accounts(user)):
+        raise HTTPException(403, "Only owner or accounts admin can update salary")
 
     update = {k: v for k, v in body.items() if k in allowed}
 
@@ -301,6 +324,8 @@ async def update_leave(leave_id: str, request: Request, user: dict = Depends(req
     db = get_db()
     body = await request.json()
     new_status = body.get("status")
+    if new_status not in {"approved", "rejected"}:
+        raise HTTPException(400, "status must be approved or rejected")
 
     # EC-9.3: Idempotency guard — only update if still pending.
     # Prevents double-approval creating duplicate notifications and audit entries.
@@ -309,6 +334,8 @@ async def update_leave(leave_id: str, request: Request, user: dict = Depends(req
         "approved_by": user["id"],
         "approved_at": datetime.now(timezone.utc).isoformat(),
     }
+    if status == "rejected" and not body.get("rejection_reason"):
+        raise HTTPException(400, "rejection_reason is required when rejecting leave")
     if body.get("rejection_reason"):
         set_fields["rejection_reason"] = body["rejection_reason"]
 

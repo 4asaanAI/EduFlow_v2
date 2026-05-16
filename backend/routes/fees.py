@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from tenant import get_school_id, scoped_filter, scoped_query, add_school_id
 from services.audit_service import write_audit_doc
+from services.notification_service import fan_out_notifications
 from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, normalize_session_id, publish
 from pymongo import ReturnDocument
 import asyncio
@@ -41,9 +42,49 @@ def _parse_date(value: str | None):
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value[:10])
+        return datetime.fromisoformat(str(value)[:10])
     except ValueError:
         return None
+
+
+def _is_owner(user: dict) -> bool:
+    return user.get("role") == "owner"
+
+
+def _is_principal(user: dict) -> bool:
+    return user.get("role") == "admin" and user.get("sub_category") == "principal"
+
+
+def _is_accounts(user: dict) -> bool:
+    return user.get("role") == "admin" and user.get("sub_category") in ("accounts", "accountant")
+
+
+def _can_fee_write(user: dict) -> bool:
+    return _is_owner(user) or _is_accounts(user)
+
+
+def _require_fee_write(user: dict):
+    if not _can_fee_write(user):
+        raise HTTPException(403, "Only owner or accounts admin can change fee records")
+
+
+def _normalize_fee_key(student_id: str | None, fee_period: str | None, fee_head: str | None) -> str:
+    return f"{student_id}:{fee_period}:{(fee_head or '').strip().lower()}"
+
+
+def _discount_amount(dtype: dict, original_amount: float) -> float:
+    value = float(dtype.get("value", 0) or 0)
+    if dtype.get("value_type") == "percentage":
+        return min(original_amount, original_amount * value / 100)
+    return min(original_amount, value)
+
+
+def _discount_requires_approval(dtype: dict, original_amount: float) -> bool:
+    threshold_pct = float(os.environ.get("DISCOUNT_APPROVAL_THRESHOLD_PERCENT", "20"))
+    threshold_flat = float(os.environ.get("DISCOUNT_APPROVAL_THRESHOLD_AMOUNT", "5000"))
+    if dtype.get("value_type") == "percentage":
+        return float(dtype.get("value", 0) or 0) > threshold_pct
+    return _discount_amount(dtype, original_amount) > threshold_flat
 
 
 async def _audit(db, *, action: str, entity_id: str, user: dict, changes: dict, reason: str | None = None):
@@ -213,17 +254,24 @@ async def get_my_fees(request: Request, user: dict = Depends(require_role("stude
 @router.post("/transactions")
 async def record_payment(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
+    _require_fee_write(user)
     body = await request.json()
     key = request.headers.get("Idempotency-Key")
     fee_period = body.get("fee_period")
     fee_head = body.get("fee_head") or body.get("fee_type")
-    expected_key = f"{body.get('student_id')}:{fee_period}:{fee_head}"
-    if not key or key != expected_key:
+    expected_key = _normalize_fee_key(body.get("student_id"), fee_period, fee_head)
+    if not key or key.strip().lower() != expected_key:
         raise HTTPException(400, "Idempotency-Key must match student_id:fee_period:fee_head")
 
     now = datetime.now()
-    existing = await db.fee_idempotency_keys.find_one(_fee_query({"key": key}), {"_id": 0})
-    if existing and _parse_date(existing.get("expires_at")) and datetime.fromisoformat(existing["expires_at"]) > now:
+    existing = await db.fee_idempotency_keys.find_one(_fee_query({"key": expected_key}), {"_id": 0})
+    expires_at = None
+    if existing and existing.get("expires_at"):
+        try:
+            expires_at = datetime.fromisoformat(str(existing["expires_at"]))
+        except ValueError:
+            expires_at = None
+    if existing and (expires_at is None or expires_at > now):
         txn = await db.fee_transactions.find_one(_fee_query({"id": existing["transaction_id"]}), {"_id": 0})
         if txn:
             return {"success": True, "data": txn, "idempotent": True}
@@ -260,7 +308,7 @@ async def record_payment(request: Request, user: dict = Depends(require_role("ow
         "_id": str(uuid.uuid4()),
         "id": str(uuid.uuid4()),
         "schoolId": get_school_id(),
-        "key": key,
+        "key": expected_key,
         "transaction_id": txn.id,
         "created_at": now.isoformat(),
         "expires_at": (now + timedelta(hours=24)).isoformat(),
@@ -278,6 +326,7 @@ async def correct_fee_transaction(
     user: dict = Depends(require_role("owner", "admin")),
 ):
     db = get_db()
+    _require_fee_write(user)
     body = await request.json()
     reason = body.get("reason")
     if not reason:
@@ -352,6 +401,8 @@ async def correct_fee_transaction(
 @router.post("/contact-log")
 async def create_fee_contact_log(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
+    if not (_can_fee_write(user) or _is_principal(user)):
+        raise HTTPException(403, "Forbidden")
     body = await request.json()
     required = {"student_id", "fee_transaction_id", "date", "contact_type", "outcome", "notes"}
     if any(not body.get(field) for field in required):
@@ -443,6 +494,7 @@ async def delete_fee_transaction(transaction_id: str, request: Request):
 @router.post("/discount-types")
 async def create_discount_type(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
+    _require_fee_write(user)
     body = await request.json()
     required = {"name", "value", "value_type", "recurrence", "reason_note"}
     if any(body.get(field) in (None, "") for field in required):
@@ -478,6 +530,7 @@ async def get_discount_types(request: Request, include_inactive: bool = False, u
 @router.patch("/discount-types/{discount_type_id}")
 async def update_discount_type(discount_type_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
+    _require_fee_write(user)
     body = await request.json()
     allowed = {"name", "is_active", "reason_note"}
     changes = {k: v for k, v in body.items() if k in allowed}
@@ -495,6 +548,7 @@ async def update_discount_type(discount_type_id: str, request: Request, user: di
 @router.post("/discounts/apply")
 async def apply_discount(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
+    _require_fee_write(user)
     body = await request.json()
     bid = user.get("branch_id")
 
@@ -547,7 +601,6 @@ async def apply_discount(request: Request, user: dict = Depends(require_role("ow
     effective_from = body.get("effective_from")
     if original_amount is None or effective_from is None:
         raise HTTPException(400, "original_amount and effective_from are required for immediate discount application")
-
     application = {
         "_id": str(uuid.uuid4()),
         "id": str(uuid.uuid4()),
@@ -560,6 +613,21 @@ async def apply_discount(request: Request, user: dict = Depends(require_role("ow
         "applied_at": datetime.now().isoformat(),
         "note": note or body.get("note"),
     }
+    if needs_approval:
+        await db.fee_discount_approvals.insert_one(application)
+        users = await db.users.find(scoped_filter({"role": {"$in": ["owner", "admin"]}, "is_active": {"$ne": False}}, get_school_id()), {"_id": 0, "id": 1, "role": 1, "sub_category": 1}).to_list(50)
+        await fan_out_notifications(
+            db,
+            [u["id"] for u in users if u.get("id") and (u.get("role") == "owner" or u.get("sub_category") == "principal")],
+            notification_type="discount_approval_required",
+            title="Discount approval required",
+            message=f"A discount of {application['discount_amount']:.2f} needs approval.",
+            source_id=application["id"],
+            source_type="fee_discount_approval",
+        )
+        await _audit(db, action="discount_pending_approval", entity_id=application["id"], user=user, changes={"pending": {k: v for k, v in application.items() if k != "_id"}}, reason=body.get("note"))
+        return {"success": True, "data": {k: v for k, v in application.items() if k != "_id"}, "status": "pending_approval"}
+
     await db.fee_discounts.insert_one(application)
     await _audit(db, action="discount_apply", entity_id=application["id"], user=user, changes={"applied": {k: v for k, v in application.items() if k != "_id"}}, reason=note or body.get("note"))
     return {"success": True, "data": {k: v for k, v in application.items() if k != "_id"}}
@@ -675,6 +743,87 @@ async def get_discount_summary(request: Request, user: dict = Depends(require_ow
         "total_discount_value": total_discount,
         "discount_types": by_type,
     }}
+
+
+@router.get("/payroll/structures")
+async def list_salary_structures(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    if not _can_fee_write(user):
+        raise HTTPException(403, "Forbidden")
+    items = await get_db().salary_structures.find(_fee_query(), {"_id": 0}).sort("created_at", -1).to_list(500)
+    return {"success": True, "data": items}
+
+
+@router.post("/payroll/structures")
+async def upsert_salary_structure(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    if not _can_fee_write(user):
+        raise HTTPException(403, "Forbidden")
+    db = get_db()
+    body = await request.json()
+    staff_id = body.get("staff_id")
+    if not staff_id or body.get("base_salary") in (None, ""):
+        raise HTTPException(400, "staff_id and base_salary are required")
+    now = datetime.now().isoformat()
+    existing = await db.salary_structures.find_one(_fee_query({"staff_id": staff_id}), {"_id": 0})
+    doc = {
+        "id": (existing or {}).get("id") or body.get("id") or str(uuid.uuid4()),
+        "schoolId": get_school_id(),
+        "staff_id": staff_id,
+        "base_salary": float(body["base_salary"]),
+        "allowances": body.get("allowances", {}),
+        "deductions": body.get("deductions", {}),
+        "effective_from": body.get("effective_from") or now[:10],
+        "is_active": body.get("is_active", True),
+        "updated_by": user["id"],
+        "updated_at": now,
+        "created_at": body.get("created_at") or now,
+    }
+    await db.salary_structures.update_one(
+        _fee_query({"staff_id": staff_id}),
+        {"$set": doc, "$setOnInsert": {"_id": existing.get("id") if existing else doc["id"]}},
+        upsert=True,
+    )
+    await _audit(db, action="salary_structure_upsert", entity_id=staff_id, user=user, changes=doc)
+    return {"success": True, "data": {k: v for k, v in doc.items() if k != "_id"}}
+
+
+@router.post("/payroll/disbursements")
+async def create_salary_disbursement(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    if not _can_fee_write(user):
+        raise HTTPException(403, "Forbidden")
+    db = get_db()
+    body = await request.json()
+    staff_id = body.get("staff_id")
+    month = body.get("month")
+    if not staff_id or not month:
+        raise HTTPException(400, "staff_id and month are required")
+    structure = await db.salary_structures.find_one(_fee_query({"staff_id": staff_id, "is_active": {"$ne": False}}), {"_id": 0})
+    base = float(body.get("amount") or (structure or {}).get("base_salary") or 0)
+    if base <= 0:
+        raise HTTPException(400, "amount is required when no salary structure exists")
+    existing = await db.salary_disbursements.find_one(_fee_query({"staff_id": staff_id, "month": month}), {"_id": 0})
+    if existing:
+        return {"success": True, "data": existing, "idempotent": True}
+    allowances = sum(float(v or 0) for v in (structure or {}).get("allowances", {}).values()) if structure else 0
+    deductions = sum(float(v or 0) for v in (structure or {}).get("deductions", {}).values()) if structure else 0
+    doc = {
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "schoolId": get_school_id(),
+        "staff_id": staff_id,
+        "month": month,
+        "base_salary": base,
+        "allowances": allowances,
+        "deductions": deductions,
+        "net_amount": max(base + allowances - deductions, 0),
+        "payment_mode": body.get("payment_mode", "bank_transfer"),
+        "reference": body.get("reference"),
+        "status": body.get("status", "paid"),
+        "paid_by": user["id"],
+        "paid_at": datetime.now().isoformat(),
+    }
+    await db.salary_disbursements.insert_one(doc)
+    await _audit(db, action="salary_disbursement_create", entity_id=doc["id"], user=user, changes={"created": {k: v for k, v in doc.items() if k != "_id"}})
+    return {"success": True, "data": {k: v for k, v in doc.items() if k != "_id"}}
 
 
 def _fee_sync_config():

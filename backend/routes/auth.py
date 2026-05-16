@@ -15,13 +15,14 @@ import uuid
 import os
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel, validator
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from database import get_db
 from middleware.auth import (
     create_jwt,
     get_current_user,
     hash_password,
+    require_role,
     verify_password,
 )
 from services.email_service import send_password_reset_email
@@ -94,6 +95,24 @@ class ResetPasswordRequest(BaseModel):
         if len(v) > 128:
             raise ValueError("Password must be 8-128 characters")
         return v
+
+
+class AdminResetPasswordRequest(BaseModel):
+    new_password: str | None = None
+
+    @validator("new_password")
+    def validate_optional_password(cls, v):
+        if v is None:
+            return v
+        if len(v) < 8 or len(v) > 128:
+            raise ValueError("Password must be 8-128 characters")
+        return v
+
+
+def _can_administer_auth(user: dict) -> bool:
+    return user.get("role") == "owner" or (
+        user.get("role") == "admin" and user.get("sub_category") == "it_tech"
+    )
 
 # ─── POST /api/auth/login ───────────────────────────────────────────────────
 
@@ -354,6 +373,43 @@ async def reset_password(body: ResetPasswordRequest):
     password_hash = hash_password(body.new_password)
     await db.auth_users.update_one(_auth_user_filter(user_id), {"$set": {"password_hash": password_hash}})
     await revoke_user_refresh_tokens(db, user_id, reason="password_reset")
+    return {"success": True}
+
+
+@router.post("/admin/users/{user_id}/reset-password")
+async def admin_reset_password(user_id: str, body: AdminResetPasswordRequest, user: dict = Depends(require_role("owner", "admin"))):
+    if not _can_administer_auth(user):
+        raise HTTPException(403, "Only owner or IT tech admin can reset user passwords")
+    db = get_db()
+    auth = await db.auth_users.find_one(_auth_user_filter(user_id))
+    if not auth:
+        raise HTTPException(404, "User not found")
+    new_password = body.new_password or f"EduFlow-{uuid.uuid4().hex[:10]}"
+    await db.auth_users.update_one(
+        _auth_user_filter(user_id),
+        {"$set": {"password_hash": hash_password(new_password), "must_change_password": True, "password_reset_by": user["id"], "password_reset_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    await revoke_user_refresh_tokens(db, user_id, reason="admin_password_reset")
+    return {"success": True, "temporary_password": new_password}
+
+
+@router.post("/admin/users/{user_id}/unlock")
+async def admin_unlock_user(user_id: str, user: dict = Depends(require_role("owner", "admin"))):
+    if not _can_administer_auth(user):
+        raise HTTPException(403, "Only owner or IT tech admin can unlock users")
+    db = get_db()
+    auth = await db.auth_users.find_one(_auth_user_filter(user_id))
+    if not auth:
+        raise HTTPException(404, "User not found")
+    usernames = {
+        auth.get("username"),
+        auth.get("username_lower"),
+        auth.get("email"),
+        (auth.get("user_info") or {}).get("email"),
+    }
+    for value in [item for item in usernames if item]:
+        await db.login_attempts.delete_one({"key": f"login:{str(value).lower()}"})
+    await db.auth_users.update_one(_auth_user_filter(user_id), {"$set": {"is_active": True, "unlocked_by": user["id"], "unlocked_at": datetime.now(timezone.utc).isoformat()}})
     return {"success": True}
 
 

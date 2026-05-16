@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
 from middleware.auth import get_current_user, require_role, require_owner
-from tenant import get_school_id
+from tenant import get_school_id, scoped_filter
 from services.audit_service import write_audit
 from datetime import datetime
 import uuid
@@ -11,6 +11,18 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 def get_user(req: Request):
     return get_current_user(req)
+
+
+def _is_it_tech(user: dict) -> bool:
+    return user.get("role") == "admin" and user.get("sub_category") == "it_tech"
+
+
+def _can_manage_platform(user: dict) -> bool:
+    return user.get("role") == "owner" or _is_it_tech(user)
+
+
+def _settings_query(extra: dict | None = None) -> dict:
+    return scoped_filter(extra or {}, get_school_id())
 
 
 # --- Token Usage Tracking ---
@@ -23,8 +35,8 @@ async def track_token_usage(request: Request):
     tokens = int(body.get("tokens", 0))
     month = datetime.now().strftime("%Y-%m")
     await db.token_usage.update_one(
-        {"user_id": user["id"], "month": month},
-        {"$inc": {"tokens": tokens, "sessions": 1}, "$set": {"user_id": user["id"], "month": month}},
+        _settings_query({"user_id": user["id"], "month": month}),
+        {"$inc": {"tokens": tokens, "sessions": 1}, "$set": {"schoolId": get_school_id(), "user_id": user["id"], "month": month}},
         upsert=True
     )
     await write_audit(
@@ -47,11 +59,37 @@ async def get_token_usage(request: Request):
     db = get_db()
     user = get_user(request)
     month = datetime.now().strftime("%Y-%m")
-    usage = await db.token_usage.find_one({"user_id": user["id"], "month": month}, {"_id": 0})
+    usage = await db.token_usage.find_one(_settings_query({"user_id": user["id"], "month": month}), {"_id": 0})
     if not usage:
         return {"success": True, "data": {"tokens": 0, "sessions": 0, "month": month, "limit": 50000}}
     usage["limit"] = 50000
     return {"success": True, "data": usage}
+
+
+@router.get("/token-usage/aggregate")
+async def get_token_usage_aggregate(request: Request, month: str = None, user: dict = Depends(require_role("owner", "admin"))):
+    if not _can_manage_platform(user):
+        raise HTTPException(403, "Forbidden")
+    db = get_db()
+    target_month = month or datetime.now().strftime("%Y-%m")
+    rows = await db.token_usage.find(_settings_query({"month": target_month}), {"_id": 0}).to_list(5000)
+    total_tokens = sum(int(row.get("tokens", 0) or 0) for row in rows)
+    total_sessions = sum(int(row.get("sessions", 0) or 0) for row in rows)
+    return {"success": True, "data": {"month": target_month, "users": len(rows), "tokens": total_tokens, "sessions": total_sessions, "rows": rows}}
+
+
+@router.put("/token-limits/{user_id}")
+async def set_token_limit(user_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    if not _can_manage_platform(user):
+        raise HTTPException(403, "Forbidden")
+    db = get_db()
+    body = await request.json()
+    limit = int(body.get("limit", 0))
+    if limit <= 0:
+        raise HTTPException(400, "limit must be positive")
+    doc = {"user_id": user_id, "limit": limit, "updated_by": user["id"], "updated_at": datetime.now().isoformat()}
+    await db.token_limits.update_one(_settings_query({"user_id": user_id}), {"$set": doc, "$setOnInsert": {"_id": str(uuid.uuid4()), "schoolId": get_school_id()}}, upsert=True)
+    return {"success": True, "data": doc}
 
 
 # --- Year-end Session Transition ---
@@ -108,7 +146,7 @@ async def update_school_settings(request: Request, user: dict = Depends(require_
     allowed = {"attendance_threshold", "school_name", "board", "city", "ai_context"}
     update = {k: v for k, v in body.items() if k in allowed}
     from datetime import datetime as dt
-    await db.school_settings.update_one({"id": "main"}, {"$set": {**update, "updated_at": dt.now().isoformat()}}, upsert=True)
+    await db.school_settings.update_one(_settings_query({"id": "main"}), {"$set": {**update, "schoolId": get_school_id(), "updated_at": dt.now().isoformat()}}, upsert=True)
     await write_audit(
         db,
         action="school_settings_update",
@@ -121,6 +159,44 @@ async def update_school_settings(request: Request, user: dict = Depends(require_
         changes=update,
     )
     return {"success": True}
+
+
+@router.get("/branches")
+async def list_branches(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    db = get_db()
+    branches = await db.branches.find(_settings_query(), {"_id": 0}).sort("name", 1).to_list(100)
+    return {"success": True, "data": branches}
+
+
+@router.put("/branches/{branch_id}")
+async def upsert_branch(branch_id: str, request: Request, user: dict = Depends(require_owner)):
+    db = get_db()
+    body = await request.json()
+    if not body.get("name"):
+        raise HTTPException(400, "name is required")
+    doc = {
+        "id": branch_id,
+        "schoolId": get_school_id(),
+        "name": body["name"],
+        "address": body.get("address", ""),
+        "phone": body.get("phone", ""),
+        "is_active": body.get("is_active", True),
+        "updated_by": user["id"],
+        "updated_at": datetime.now().isoformat(),
+    }
+    await db.branches.update_one(_settings_query({"id": branch_id}), {"$set": doc, "$setOnInsert": {"_id": branch_id}}, upsert=True)
+    await write_audit(
+        db,
+        action="branch_upsert",
+        entity_id=branch_id,
+        collection="branches",
+        changed_by=user["id"],
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes=doc,
+    )
+    return {"success": True, "data": doc}
 
 
 @router.get("/me")
@@ -166,7 +242,7 @@ async def update_settings(request: Request):
 @router.get("/school")
 async def get_school_settings(request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff"))):
     db = get_db()
-    settings = await db.school_settings.find_one({"id": "main"}, {"_id": 0})
+    settings = await db.school_settings.find_one(_settings_query({"id": "main"}), {"_id": 0})
     if not settings:
         import os
         settings = {
@@ -181,14 +257,14 @@ async def get_school_settings(request: Request, user: dict = Depends(require_rol
 @router.get("/classes")
 async def get_classes(request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff"))):
     db = get_db()
-    classes = await db.classes.find({}, {"_id": 0}).to_list(50)
+    classes = await db.classes.find(_settings_query(), {"_id": 0}).to_list(50)
     return {"success": True, "data": classes}
 
 
 @router.get("/forms")
 async def list_forms(request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff"))):
     db = get_db()
-    forms = await db.custom_forms.find({}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    forms = await db.custom_forms.find(_settings_query(), {"_id": 0}).sort("created_at", -1).to_list(50)
     return {"success": True, "data": forms}
 
 
@@ -204,9 +280,12 @@ async def create_form(request: Request, user: dict = Depends(require_role("admin
 
         form = {
             "id": str(uuid.uuid4()),
+            "schoolId": get_school_id(),
             "title": body.get("title"),
             "fields": body.get("fields", []),
             "audience": body.get("audience", "all"),
+            "public_slug": body.get("public_slug") or str(uuid.uuid4())[:8],
+            "expires_at": body.get("expires_at"),
             "created_by": user["id"],
             "is_active": True,
             "created_at": datetime.now().isoformat(),
@@ -233,7 +312,7 @@ async def create_form(request: Request, user: dict = Depends(require_role("admin
 @router.get("/forms/{form_id}")
 async def get_form(form_id: str, request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff"))):
     db = get_db()
-    form = await db.custom_forms.find_one({"id": form_id}, {"_id": 0})
+    form = await db.custom_forms.find_one(_settings_query({"id": form_id}), {"_id": 0})
     if not form:
         raise HTTPException(404, "Form not found")
     return {"success": True, "data": form}
@@ -246,6 +325,7 @@ async def submit_form_response(form_id: str, request: Request):
     body = await request.json()
     response = {
         "id": str(uuid.uuid4()),
+        "schoolId": get_school_id(),
         "form_id": form_id,
         "submitted_by": user["id"],
         "submitted_by_name": user.get("name", "Anonymous"),
@@ -271,15 +351,15 @@ async def submit_form_response(form_id: str, request: Request):
 @router.get("/forms/{form_id}/responses")
 async def get_form_responses(form_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    responses = await db.form_responses.find({"form_id": form_id}, {"_id": 0}).sort("submitted_at", -1).to_list(500)
+    responses = await db.form_responses.find(_settings_query({"form_id": form_id}), {"_id": 0}).sort("submitted_at", -1).to_list(500)
     return {"success": True, "data": responses}
 
 
 @router.delete("/forms/{form_id}")
 async def delete_form(form_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    await db.custom_forms.delete_one({"id": form_id})
-    await db.form_responses.delete_many({"form_id": form_id})
+    await db.custom_forms.delete_one(_settings_query({"id": form_id}))
+    await db.form_responses.delete_many(_settings_query({"form_id": form_id}))
     await write_audit(
         db,
         action="custom_form_delete",
@@ -296,5 +376,5 @@ async def delete_form(form_id: str, request: Request, user: dict = Depends(requi
 
 async def get_academic_year(request: Request):
     db = get_db()
-    ay = await db.academic_years.find_one({"is_current": True}, {"_id": 0})
+    ay = await db.academic_years.find_one(_settings_query({"is_current": True}), {"_id": 0})
     return {"success": True, "data": ay}

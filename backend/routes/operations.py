@@ -5,7 +5,7 @@ from database import get_db
 from middleware.auth import get_current_user, require_owner_or_principal, require_role
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
-from datetime import datetime, date as _date
+from datetime import datetime, date as _date, timedelta
 from tenant import get_school_id, scoped_filter, scoped_query, add_school_id
 import uuid
 
@@ -98,6 +98,32 @@ async def _write_audit(db, action: str, entity_type: str, entity_id: str, user: 
         school_id=get_school_id(),
         branch_id=user.get("branch_id"),
     )
+
+
+def _is_principal(user: dict) -> bool:
+    return user.get("role") == "admin" and user.get("sub_category") == "principal"
+
+
+def _is_owner_or_principal_user(user: dict) -> bool:
+    return user.get("role") == "owner" or _is_principal(user)
+
+
+def _is_accounts(user: dict) -> bool:
+    return user.get("role") == "admin" and user.get("sub_category") in ("accounts", "accountant")
+
+
+def _is_receptionist(user: dict) -> bool:
+    return user.get("role") == "admin" and user.get("sub_category") == "receptionist"
+
+
+def _require_accounting(user: dict) -> None:
+    if user.get("role") != "owner" and not _is_accounts(user):
+        raise HTTPException(403, "Forbidden")
+
+
+def _require_frontdesk(user: dict) -> None:
+    if user.get("role") != "owner" and not _is_principal(user) and not _is_receptionist(user):
+        raise HTTPException(403, "Forbidden")
 
 
 @workflow_router.post("/leave-requests")
@@ -313,19 +339,97 @@ async def list_certs(request: Request, student_id: str = None, user: dict = Depe
 async def create_cert(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
     body = await request.json()
+    cert_type = body.get("cert_type", "bonafide")
+    requires_approval = cert_type in {"bonafide", "tc", "transfer_certificate"}
+    approved_actor = _is_owner_or_principal_user(user)
     cert = add_school_id({
         "id": str(uuid.uuid4()),
         "student_id": body.get("student_id"),
-        "cert_type": body.get("cert_type", "bonafide"),
+        "cert_type": cert_type,
         "serial_number": f"CERT{datetime.now().strftime('%Y%m%d')}{uuid.uuid4().hex[:6].upper()}",
         "content_data": body.get("content_data", {}),
-        "status": "generated",
-        "issued_date": datetime.now().strftime("%Y-%m-%d"),
-        "issued_by": user["id"],
+        "status": "generated" if (approved_actor or not requires_approval) else "pending_approval",
+        "issued_date": datetime.now().strftime("%Y-%m-%d") if (approved_actor or not requires_approval) else None,
+        "issued_by": user["id"] if (approved_actor or not requires_approval) else None,
+        "requested_by": user["id"],
         "created_at": datetime.now().isoformat(),
     })
     await db.certificates.insert_one({**cert, "_id": cert["id"]})
+    if cert["status"] == "pending_approval":
+        principals = await db.users.find(
+            scoped_filter({"role": "admin", "sub_category": "principal", "is_active": {"$ne": False}}, get_school_id()),
+            {"_id": 0, "id": 1},
+        ).to_list(20)
+        await fan_out_notifications(
+            db,
+            [p["id"] for p in principals if p.get("id")],
+            notification_type="certificate_approval_requested",
+            title="Certificate approval required",
+            message=f"{cert_type.replace('_', ' ').title()} certificate is waiting for approval.",
+            source_id=cert["id"],
+            source_type="certificate",
+        )
     return {"success": True, "data": cert}
+
+
+@router.patch("/certificates/{cert_id}/approve")
+async def approve_cert(cert_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
+    db = get_db()
+    cert = await db.certificates.find_one(scoped_filter({"id": cert_id}, get_school_id()), {"_id": 0})
+    if not cert:
+        raise HTTPException(404, "Certificate not found")
+    now = datetime.now().isoformat()
+    update = {
+        "status": "generated",
+        "issued_date": datetime.now().strftime("%Y-%m-%d"),
+        "issued_by": user["id"],
+        "approved_by": user["id"],
+        "approved_at": now,
+    }
+    await db.certificates.update_one(scoped_filter({"id": cert_id}, get_school_id()), {"$set": update})
+    if cert.get("requested_by"):
+        await create_notification(
+            db,
+            user_id=cert["requested_by"],
+            notification_type="certificate_approved",
+            title="Certificate approved",
+            message=f"{cert.get('cert_type', 'Certificate')} approved.",
+            source_id=cert_id,
+            source_type="certificate",
+        )
+    updated = await db.certificates.find_one(scoped_filter({"id": cert_id}, get_school_id()), {"_id": 0})
+    return {"success": True, "data": updated}
+
+
+@router.patch("/certificates/{cert_id}/reject")
+async def reject_cert(cert_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
+    db = get_db()
+    body = await request.json()
+    reason = (body.get("reason") or "").strip()
+    if not reason:
+        raise HTTPException(400, "reason is required")
+    cert = await db.certificates.find_one(scoped_filter({"id": cert_id}, get_school_id()), {"_id": 0})
+    if not cert:
+        raise HTTPException(404, "Certificate not found")
+    update = {
+        "status": "rejected",
+        "rejected_by": user["id"],
+        "rejected_at": datetime.now().isoformat(),
+        "rejection_reason": reason,
+    }
+    await db.certificates.update_one(scoped_filter({"id": cert_id}, get_school_id()), {"$set": update})
+    if cert.get("requested_by"):
+        await create_notification(
+            db,
+            user_id=cert["requested_by"],
+            notification_type="certificate_rejected",
+            title="Certificate rejected",
+            message=reason,
+            source_id=cert_id,
+            source_type="certificate",
+        )
+    updated = await db.certificates.find_one(scoped_filter({"id": cert_id}, get_school_id()), {"_id": 0})
+    return {"success": True, "data": updated}
 
 
 # --- Expenses ---
@@ -368,11 +472,17 @@ async def list_expenses(request: Request, user: dict = Depends(_require_owner_or
 async def create_expense(request: Request, user: dict = Depends(_require_owner_or_accountant)):
     db = get_db()
     body = await request.json()
+    amount = float(body.get("amount", 0))
+    category = body.get("category")
+    if category:
+        budget = await db.expense_budgets.find_one(scoped_filter({"category": category}, get_school_id()), {"_id": 0})
+        if budget and amount > float(budget.get("remaining_amount", budget.get("monthly_limit", 0)) or 0):
+            raise HTTPException(400, "Expense exceeds remaining category budget")
     expense = add_school_id({
         "id": str(uuid.uuid4()),
-        "category": body.get("category"),
+        "category": category,
         "description": body.get("description", ""),
-        "amount": float(body.get("amount", 0)),
+        "amount": amount,
         "date": body.get("date", datetime.now().strftime("%Y-%m-%d")),
         "vendor": body.get("vendor", ""),
         "approved_by": user["id"],
@@ -399,12 +509,28 @@ async def list_complaints(request: Request, user: dict = Depends(get_current_use
 async def create_complaint(request: Request, user: dict = Depends(get_current_user)):
     db = get_db()
     body = await request.json()
+    submitted_for = body.get("submitted_for") or {}
+    department = body.get("department")
+    if not department:
+        category = body.get("category", "other")
+        department = {
+            "fees": "accounts",
+            "transport": "transport",
+            "facility": "maintenance",
+            "academic": "principal",
+            "discipline": "principal",
+        }.get(category, "frontdesk")
     complaint = add_school_id({
         "id": str(uuid.uuid4()),
         "submitted_by": user["id"],
+        "submitted_by_role": user.get("role"),
+        "submitted_for": submitted_for,
+        "on_behalf_of": bool(submitted_for),
         "subject": body.get("subject"),
         "description": body.get("description"),
         "category": body.get("category", "other"),
+        "department": department,
+        "assigned_to": body.get("assigned_to"),
         "priority": body.get("priority", "normal"),
         "status": "open",
         "created_at": datetime.now().isoformat(),
@@ -417,8 +543,24 @@ async def create_complaint(request: Request, user: dict = Depends(get_current_us
 async def update_complaint(complaint_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
     body = await request.json()
-    await db.complaints.update_one(scoped_filter({"id": complaint_id}, get_school_id()), {"$set": body})
-    return {"success": True}
+    allowed_statuses = {"open", "in_progress", "waiting_on_parent", "resolved", "closed"}
+    if "status" in body and body["status"] not in allowed_statuses:
+        raise HTTPException(400, f"status must be one of {sorted(allowed_statuses)}")
+    update = {k: v for k, v in body.items() if k in {"status", "priority", "department", "assigned_to", "resolution", "category"}}
+    if body.get("note"):
+        await db.complaints.update_one(
+            scoped_filter({"id": complaint_id}, get_school_id()),
+            {"$push": {"timeline": {
+                "id": str(uuid.uuid4()),
+                "author_id": user["id"],
+                "note": body["note"],
+                "created_at": datetime.now().isoformat(),
+            }}},
+        )
+    update["updated_at"] = datetime.now().isoformat()
+    await db.complaints.update_one(scoped_filter({"id": complaint_id}, get_school_id()), {"$set": update})
+    updated = await db.complaints.find_one(scoped_filter({"id": complaint_id}, get_school_id()), {"_id": 0})
+    return {"success": True, "data": updated}
 
 
 # ─── Story 13: Incident Management (enhanced) ─────────────────────────────────
@@ -574,6 +716,7 @@ async def update_incident(incident_id: str, request: Request, user: dict = Depen
 # --- Visitors ---
 @router.get("/visitors")
 async def list_visitors(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    _require_frontdesk(user)
     db = get_db()
     visitors = await db.visitor_log.find(scoped_filter({}, get_school_id()), {"_id": 0}).sort("time_in", -1).to_list(50)
     return {"success": True, "data": visitors}
@@ -581,11 +724,25 @@ async def list_visitors(request: Request, user: dict = Depends(require_role("own
 
 @router.post("/visitors")
 async def log_visitor(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    _require_frontdesk(user)
     db = get_db()
     body = await request.json()
+    today_prefix = date.today().isoformat()
+    visitor_name = (body.get("visitor_name") or "").strip()
+    if visitor_name:
+        duplicate = await db.visitor_log.find_one(
+            scoped_filter({
+                "visitor_name": {"$regex": f"^{visitor_name}$", "$options": "i"},
+                "time_in": {"$regex": f"^{today_prefix}"},
+                "time_out": None,
+            }, get_school_id()),
+            {"_id": 0},
+        )
+        if duplicate:
+            raise HTTPException(409, "Visitor is already checked in today")
     visitor = add_school_id({
         "id": str(uuid.uuid4()),
-        "visitor_name": body.get("visitor_name"),
+        "visitor_name": visitor_name,
         "phone": body.get("phone", ""),
         "purpose": body.get("purpose"),
         "whom_to_meet": body.get("whom_to_meet", ""),
@@ -599,6 +756,7 @@ async def log_visitor(request: Request, user: dict = Depends(require_role("owner
 
 @router.patch("/visitors/{visitor_id}/checkout")
 async def checkout_visitor(visitor_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    _require_frontdesk(user)
     db = get_db()
     await db.visitor_log.update_one(scoped_filter({"id": visitor_id}, get_school_id()), {"$set": {"time_out": datetime.now().isoformat()}})
     return {"success": True}
@@ -768,6 +926,7 @@ async def save_study_plan(request: Request, user: dict = Depends(get_current_use
 
 @router.patch("/expenses/{expense_id}")
 async def update_expense(expense_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    _require_accounting(user)
     db = get_db()
     body = await request.json(); body.pop("id", None)
     await db.expenses.update_one(scoped_filter({"id": expense_id}, get_school_id()), {"$set": body})
@@ -776,6 +935,7 @@ async def update_expense(expense_id: str, request: Request, user: dict = Depends
 
 @router.delete("/expenses/{expense_id}")
 async def delete_expense(expense_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    _require_accounting(user)
     db = get_db()
     await db.expenses.delete_one(scoped_filter({"id": expense_id}, get_school_id()))
     return {"success": True}
@@ -797,6 +957,7 @@ async def delete_announcement(ann_id: str, request: Request, user: dict = Depend
 
 @router.delete("/visitors/{visitor_id}")
 async def delete_visitor(visitor_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
+    _require_frontdesk(user)
     db = get_db()
     await db.visitor_log.delete_one(scoped_filter({"id": visitor_id}, get_school_id()))
     return {"success": True}
@@ -1015,10 +1176,55 @@ async def create_enquiry(request: Request, user: dict = Depends(require_role("ow
 
 @router.patch("/enquiries/{enquiry_id}")
 async def update_enquiry(enquiry_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    _require_frontdesk(user)
     db = get_db()
     body = await request.json()
-    await db.enquiries.update_one(scoped_filter({"id": enquiry_id}, get_school_id()), {"$set": body})
-    return {"success": True}
+    existing = await db.enquiries.find_one(scoped_filter({"id": enquiry_id}, get_school_id()), {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Enquiry not found")
+    allowed_transitions = {
+        "new": {"contacted", "closed"},
+        "contacted": {"visited", "closed"},
+        "visited": {"applied", "closed"},
+        "applied": {"admitted", "closed"},
+        "admitted": {"enrolled", "closed"},
+        "enrolled": set(),
+        "closed": set(),
+    }
+    update = {k: v for k, v in body.items() if k in {"status", "assigned_to", "source", "class_applying", "phone", "parent_name"}}
+    new_status = update.get("status")
+    if new_status and new_status != existing.get("status"):
+        current = existing.get("status", "new")
+        if new_status not in allowed_transitions.get(current, set()):
+            raise HTTPException(400, f"Invalid enquiry transition from {current} to {new_status}")
+    if body.get("note") or new_status:
+        await db.enquiries.update_one(
+            scoped_filter({"id": enquiry_id}, get_school_id()),
+            {"$push": {"timeline": {
+                "id": str(uuid.uuid4()),
+                "author_id": user["id"],
+                "from_status": existing.get("status"),
+                "to_status": new_status or existing.get("status"),
+                "note": body.get("note", ""),
+                "created_at": datetime.now().isoformat(),
+            }}},
+        )
+    update["updated_at"] = datetime.now().isoformat()
+    await db.enquiries.update_one(scoped_filter({"id": enquiry_id}, get_school_id()), {"$set": update})
+    updated = await db.enquiries.find_one(scoped_filter({"id": enquiry_id}, get_school_id()), {"_id": 0})
+    return {"success": True, "data": updated}
+
+
+@router.get("/visitors/overdue")
+async def list_overdue_visitors(request: Request, hours: int = 4, user: dict = Depends(require_role("owner", "admin"))):
+    _require_frontdesk(user)
+    db = get_db()
+    cutoff = (datetime.now() - timedelta(hours=max(1, min(hours, 12)))).isoformat()
+    rows = await db.visitor_log.find(
+        scoped_filter({"time_out": None, "time_in": {"$lte": cutoff}}, get_school_id()),
+        {"_id": 0},
+    ).sort("time_in", 1).to_list(100)
+    return {"success": True, "data": rows, "meta": {"hours": hours, "count": len(rows)}}
 
 
 # --- Leave (teacher self-apply) ---

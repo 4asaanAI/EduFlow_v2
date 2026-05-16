@@ -406,6 +406,39 @@ export async function applyFeeDiscount(data) {
   return res.json();
 }
 
+export async function approveFeeDiscount(applicationId) {
+  const res = await apiFetch(`${API}/fees/discounts/${applicationId}/approve`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  return res.json();
+}
+
+export async function rejectFeeDiscount(applicationId, reason) {
+  const res = await apiFetch(`${API}/fees/discounts/${applicationId}/reject`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify({ reason }),
+  });
+  return res.json();
+}
+
+export async function getSalaryStructures() {
+  const res = await apiFetch(`${API}/fees/payroll/structures`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function upsertSalaryStructure(data) {
+  const res = await apiFetch(`${API}/fees/payroll/structures`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function createSalaryDisbursement(data) {
+  const res = await apiFetch(`${API}/fees/payroll/disbursements`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
 export async function getFeeDiscounts(studentId) {
   const res = await apiFetch(`${API}/fees/discounts/${studentId}`, { headers: getHeaders() });
   return res.json();
@@ -475,8 +508,9 @@ export async function getPendingLeaves() {
 }
 
 export async function updateLeave(leaveId, status, reason = 'Reviewed in staff tracker') {
-  const res = await apiFetch(`${API}/operations/leave-requests/${leaveId}/decide`, {
-    method: 'PATCH', headers: getHeaders(), body: JSON.stringify({ status, reason }),
+  const body = status === 'rejected' ? { status, rejection_reason: reason } : { status };
+  const res = await apiFetch(`${API}/staff/leaves/${leaveId}`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(body),
   });
   return res.json();
 }
