@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Token management routes for EduFlow.
 

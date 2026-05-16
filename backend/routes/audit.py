@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Audit Log UI — Story 33"""
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import TimedQuery, get_db

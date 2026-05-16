@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Optional
 
 import csv
 import io
@@ -21,7 +22,7 @@ OPTIONAL_COLUMNS = ["date_of_birth", "address", "route_zone_id"]
 SUPPORTED_EXTENSIONS = {".csv", ".xlsx"}
 
 
-def _import_user(request: Request | None = None, user: dict | None = None) -> dict:
+def _import_user(request: Optional[Request] = None, user: Optional[dict] = None) -> dict:
     user = user or get_current_user(request)
     if user.get("role") == "owner" or (user.get("role") == "admin" and user.get("sub_category") == "it_tech"):
         return user
@@ -211,7 +212,7 @@ def _guardian_update(row: dict) -> dict:
 
 
 @router.post("/validate")
-async def validate_import(request: Request = None, file: UploadFile = File(...), user: dict | None = None):
+async def validate_import(request: Request = None, file: UploadFile = File(...), user: Optional[dict] = None):
     if hasattr(request, "filename") and not hasattr(file, "filename"):
         file, request = request, None
     user = _import_user(request, user)
@@ -227,7 +228,7 @@ async def commit_import(
     request: Request = None,
     file: UploadFile = File(...),
     overwrite_duplicates: bool = Form(False),
-    user: dict | None = None,
+    user: Optional[dict] = None,
 ):
     if hasattr(request, "filename") and not hasattr(file, "filename"):
         file, request = request, None

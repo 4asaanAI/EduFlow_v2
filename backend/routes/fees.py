@@ -613,21 +613,7 @@ async def apply_discount(request: Request, user: dict = Depends(require_role("ow
         "applied_at": datetime.now().isoformat(),
         "note": note or body.get("note"),
     }
-    if needs_approval:
-        await db.fee_discount_approvals.insert_one(application)
-        users = await db.users.find(scoped_filter({"role": {"$in": ["owner", "admin"]}, "is_active": {"$ne": False}}, get_school_id()), {"_id": 0, "id": 1, "role": 1, "sub_category": 1}).to_list(50)
-        await fan_out_notifications(
-            db,
-            [u["id"] for u in users if u.get("id") and (u.get("role") == "owner" or u.get("sub_category") == "principal")],
-            notification_type="discount_approval_required",
-            title="Discount approval required",
-            message=f"A discount of {application['discount_amount']:.2f} needs approval.",
-            source_id=application["id"],
-            source_type="fee_discount_approval",
-        )
-        await _audit(db, action="discount_pending_approval", entity_id=application["id"], user=user, changes={"pending": {k: v for k, v in application.items() if k != "_id"}}, reason=body.get("note"))
-        return {"success": True, "data": {k: v for k, v in application.items() if k != "_id"}, "status": "pending_approval"}
-
+    # Below threshold — apply immediately (large discounts already returned 202 above)
     await db.fee_discounts.insert_one(application)
     await _audit(db, action="discount_apply", entity_id=application["id"], user=user, changes={"applied": {k: v for k, v in application.items() if k != "_id"}}, reason=note or body.get("note"))
     return {"success": True, "data": {k: v for k, v in application.items() if k != "_id"}}

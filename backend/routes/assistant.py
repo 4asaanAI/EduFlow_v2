@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Floating AI Assistant — EduFlow admin/teacher knowledge base Q&A
 Strictly scoped to EduFlow dashboard features only.

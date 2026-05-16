@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Support Ticket / Query routes — accessible by all roles.
 Tickets are visible across all users.

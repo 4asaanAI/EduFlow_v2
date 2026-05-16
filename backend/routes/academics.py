@@ -1,10 +1,11 @@
+from __future__ import annotations
 """Routes: assignments, exams, results, subjects, timetable"""
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
 from middleware.auth import get_current_user, require_role, require_owner_or_principal
 from datetime import datetime
 from services.audit_service import write_audit_doc
-from tenant import get_school_id, scoped_query
+from tenant import get_school_id, scoped_query, scoped_filter
 import uuid
 
 router = APIRouter(prefix="/api/academics", tags=["academics"])

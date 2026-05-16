@@ -1,3 +1,4 @@
+from __future__ import annotations
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
 from middleware.auth import get_current_user, require_role, require_owner

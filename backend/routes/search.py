@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Search API — role-scoped search across all data"""
 import re
 from fastapi import APIRouter, Request

@@ -226,27 +226,22 @@ async def update_staff(staff_id: str, request: Request):
         allowed |= {"salary"}
     if not _is_owner_or_principal(user) and any(field in body for field in LEAVE_BALANCE_FIELDS):
         raise HTTPException(403, "Forbidden")
-    if any(field in body for field in {"role", "sub_category"}) and not _can_set_privileged_fields(user):
-        raise HTTPException(403, "Only owner can update role assignments")
-    if "salary" in body and not (_can_set_privileged_fields(user) or _is_accounts(user)):
-        raise HTTPException(403, "Only owner or accounts admin can update salary")
+    # Note: role, sub_category, salary are handled by OWNER_ONLY_FIELDS silent-strip below (EC-9.4)
+    # Non-owner callers who send these fields have them silently removed — no 403
 
     update = {k: v for k, v in body.items() if k in allowed}
 
     # EC-9.4: OWNER_ONLY_FIELDS — principals cannot change role, sub_category, salary, or is_active.
     # Applies to ALL updates including self-updates (staff_id == user['id'] is NOT exempt).
     OWNER_ONLY_FIELDS = {"role", "sub_category", "salary", "is_active"}
-    stripped_owner_only = False
+    body_had_owner_only = any(f in body for f in OWNER_ONLY_FIELDS)
     if user.get("role") != "owner":
         for field in OWNER_ONLY_FIELDS:
-            if field in update:
-                update.pop(field)
-                stripped_owner_only = True  # track that we silently removed something
+            update.pop(field, None)  # silent strip — EC-9.4
 
     if not update:
-        # If the caller only sent owner-only fields and we stripped them all, return
-        # success with the existing doc (no-op, backwards compatible).
-        if stripped_owner_only:
+        # All submitted fields were owner-only and silently stripped — return no-op success.
+        if body_had_owner_only and user.get("role") != "owner":
             return {"success": True, "data": existing}
         raise HTTPException(400, "No updatable fields provided")
     update["updated_at"] = datetime.now().isoformat()
@@ -334,7 +329,7 @@ async def update_leave(leave_id: str, request: Request, user: dict = Depends(req
         "approved_by": user["id"],
         "approved_at": datetime.now(timezone.utc).isoformat(),
     }
-    if status == "rejected" and not body.get("rejection_reason"):
+    if new_status == "rejected" and not body.get("rejection_reason"):
         raise HTTPException(400, "rejection_reason is required when rejecting leave")
     if body.get("rejection_reason"):
         set_fields["rejection_reason"] = body["rejection_reason"]

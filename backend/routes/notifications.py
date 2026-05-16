@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Notifications API — Story 16: persistent in-app notifications + role-scoped digest"""
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db

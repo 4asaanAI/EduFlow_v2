@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Optional
 
 """
 Auth routes — Password login and JWT token management.
@@ -98,7 +99,7 @@ class ResetPasswordRequest(BaseModel):
 
 
 class AdminResetPasswordRequest(BaseModel):
-    new_password: str | None = None
+    new_password: Optional[str] = None
 
     @validator("new_password")
     def validate_optional_password(cls, v):
