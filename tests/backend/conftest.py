@@ -53,6 +53,7 @@ try:
     import routes.operator as operator_routes
     import routes.reports as reports_routes
     import routes.exports as exports_routes
+    import routes.payroll as payroll_routes
     from middleware.auth import hash_password
     APP_AVAILABLE = True
 except (ImportError, TypeError) as e:
@@ -396,6 +397,7 @@ class FakeDb:
         self.fee_structures = FakeCollection()
         self.fee_discount_types = FakeCollection()
         self.fee_discounts = FakeCollection()
+        self.pending_discount_approvals = FakeCollection()
         self.fee_sync_jobs = FakeCollection()
         self.receipt_counters = FakeCollection()
         self.facility_requests = FakeCollection()
@@ -426,6 +428,8 @@ class FakeDb:
         self.house_points_log = FakeCollection()
         self.student_positions = FakeCollection()
         self.sports_teams = FakeCollection()
+        self.salary_structures = FakeCollection()
+        self.salary_disbursements = FakeCollection()
 
     async def command(self, command_name):
         if command_name == "ping":
@@ -462,6 +466,7 @@ if APP_AVAILABLE:
     operator_routes.get_db = lambda: _fake_db
     reports_routes.get_db = lambda: _fake_db
     exports_routes.get_db = lambda: _fake_db
+    payroll_routes.get_db = lambda: _fake_db
     server.get_raw_db = lambda: _fake_db
 
 

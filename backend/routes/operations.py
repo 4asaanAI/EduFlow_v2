@@ -5,8 +5,8 @@ from database import get_db
 from middleware.auth import get_current_user, require_owner_or_principal, require_role
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
-from datetime import datetime
-from tenant import get_school_id, scoped_filter, add_school_id
+from datetime import datetime, date as _date
+from tenant import get_school_id, scoped_filter, scoped_query, add_school_id
 import uuid
 
 router = APIRouter(prefix="/api/ops", tags=["operations"])
@@ -23,6 +23,16 @@ def _can_decide(user: dict) -> bool:
     return user.get("role") == "owner" or (
         user.get("role") == "admin" and user.get("sub_category") == "principal"
     )
+
+
+def _require_owner_or_accountant(request: Request) -> dict:
+    """P10.6: Allow owner regardless of sub_category, OR admin with sub_category in accounts/accountant."""
+    user = get_current_user(request)
+    if user.get("role") == "owner":
+        return user
+    if user.get("role") == "admin" and user.get("sub_category") in ("accounts", "accountant"):
+        return user
+    raise HTTPException(status_code=403, detail="Forbidden")
 
 
 _ALL_ANNOUNCEMENT_ROLES = ["teacher", "student", "admin", "parent"]
@@ -319,15 +329,43 @@ async def create_cert(request: Request, user: dict = Depends(require_role("admin
 
 
 # --- Expenses ---
+@router.get("/expenses/summary")
+async def expense_summary(request: Request):
+    """P10.6: Monthly and YTD expense breakdown by category (owner or accountant only)."""
+    user = _require_owner_or_accountant(request)
+    db = get_db()
+    bid = user.get("branch_id")
+
+    today = _date.today()
+    month_start = today.strftime("%Y-%m-01")
+    year_start = f"{today.year}-01-01"
+
+    expenses = await db.expenses.find(
+        scoped_query({}, branch_id=bid)
+    ).to_list(1000)
+
+    monthly: dict = {}
+    ytd: dict = {}
+    for e in expenses:
+        cat = e.get("category", "Other")
+        amt = e.get("amount", 0)
+        if e.get("date", "") >= month_start:
+            monthly[cat] = monthly.get(cat, 0) + amt
+        if e.get("date", "") >= year_start:
+            ytd[cat] = ytd.get(cat, 0) + amt
+
+    return {"success": True, "data": {"monthly": monthly, "ytd": ytd}}
+
+
 @router.get("/expenses")
-async def list_expenses(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def list_expenses(request: Request, user: dict = Depends(_require_owner_or_accountant)):
     db = get_db()
     expenses = await db.expenses.find(scoped_filter({}, get_school_id()), {"_id": 0}).sort("date", -1).to_list(100)
     return {"success": True, "data": expenses}
 
 
 @router.post("/expenses")
-async def create_expense(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def create_expense(request: Request, user: dict = Depends(_require_owner_or_accountant)):
     db = get_db()
     body = await request.json()
     expense = add_school_id({

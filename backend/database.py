@@ -211,3 +211,10 @@ async def _create_indexes():
     await db.lesson_plans.create_index([("class_id", 1), ("week", 1)])
     await db.sms_logs.create_index("created_at", expireAfterSeconds=7776000)
     await db.notifications.create_index([("user_id", 1), ("read", 1), ("created_at", -1)])
+    # Part 10: Payroll disbursement unique index (EC-10.4 — prevents concurrent double-disbursement)
+    try:
+        await db.salary_disbursements.create_index(
+            [("schoolId", 1), ("staff_id", 1), ("month", 1)], unique=True
+        )
+    except Exception:
+        pass  # Index may already exist

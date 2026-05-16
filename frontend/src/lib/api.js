@@ -532,3 +532,36 @@ export async function uploadChatFile(file) {
   });
   return res.json();
 }
+
+// --- Payroll ---
+export async function listPayrollDisbursements(month) {
+  const qs = month ? `?month=${encodeURIComponent(month)}` : '';
+  const res = await apiFetch(`${API}/payroll/disbursements${qs}`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function listPayrollStructures() {
+  const res = await apiFetch(`${API}/payroll/structures`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function createPayrollStructure(data) {
+  const res = await apiFetch(`${API}/payroll/structures`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function createPayrollDisbursement(data) {
+  const res = await apiFetch(`${API}/payroll/disburse`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function markDisbursementProcessed(disbursementId) {
+  const res = await apiFetch(`${API}/payroll/disbursements/${disbursementId}/process`, {
+    method: 'PATCH', headers: getHeaders(),
+  });
+  return res.json();
+}

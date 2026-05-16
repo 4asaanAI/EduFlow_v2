@@ -1,23 +1,60 @@
 import React, { useState } from 'react';
 import { CheckCircle, RefreshCw } from 'lucide-react';
 import { getFeeSyncJob, resolveFeeSyncConflict, triggerFeeSync } from '../../lib/api';
+import { getAuthHeaders } from '../../lib/authSession';
 import { ErrorCard, LoadingCard } from './ToolPage';
+
+const API = process.env.REACT_APP_BACKEND_URL + '/api';
+const POLL_MAX = 10;
+const POLL_INTERVAL_MS = 3000;
 
 export default function FeeSync() {
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [syncStatus, setSyncStatus] = useState(null);
+
+  async function pollJobStatus(jobId) {
+    let attempts = 0;
+    while (attempts < POLL_MAX) {
+      await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+      attempts++;
+      try {
+        const res = await fetch(`${API}/fees/sync/${jobId}`, {
+          headers: getAuthHeaders(),
+        });
+        const data = await res.json();
+        const status = data.data?.status;
+        if (status === 'completed' || status === 'failed' || status === 'conflict') {
+          setJob(data.data);
+          setSyncStatus(status);
+          return;
+        }
+      } catch (_e) {
+        // continue polling on transient errors
+      }
+    }
+    setSyncStatus('timeout');
+    setNotice('Sync is taking longer than expected. Refresh to check status.');
+  }
 
   async function trigger() {
     setLoading(true);
     setError('');
     setNotice('');
+    setSyncStatus(null);
     try {
       const res = await triggerFeeSync();
       if (!res.success) throw new Error(res.detail || 'Fee sync could not start');
       setJob(res.data);
-      setNotice('Fee sync completed. Review conflicts before marking it done.');
+      const jobId = res.data?.sync_job_id || res.data?.id;
+      if (jobId && (res.data?.status === 'running' || res.data?.status === 'in_progress')) {
+        await pollJobStatus(jobId);
+      } else {
+        setSyncStatus(res.data?.status || 'completed');
+        setNotice('Fee sync completed. Review conflicts before marking it done.');
+      }
     } catch (err) {
       setError(err.message || 'Fee sync could not start. Check FEE_API_BASE_URL and FEE_API_KEY.');
     } finally {
@@ -102,15 +139,15 @@ export default function FeeSync() {
               return (
                 <div key={conflict.id} style={{ borderTop: '1px solid var(--color-border)', padding: '12px 0' }}>
                   <div style={{ color: 'var(--color-text-primary)', fontWeight: 700, fontSize: 13 }}>{conflict.student_id} / {conflict.period} / {conflict.fee_head}</div>
-                  <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 4 }}>Ours: Rs {conflict.ours?.amount} | Theirs: Rs {conflict.theirs?.amount}</div>
+                  <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 4 }}>EduFlow: Rs {conflict.ours?.amount} | External System: Rs {conflict.theirs?.amount}</div>
                   {resolvedFieldNames.length > 0 && (
                     <div style={{ color: 'var(--tool-hex-34d399)', fontSize: 12, marginTop: 6 }}>
                       Overwritten: {resolvedFieldNames.map(field => `${field}: ${resolvedFields[field] ?? '-'}`).join(', ')}
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                    <button onClick={() => resolve(conflict.id, 'keep_ours')} disabled={loading || conflict.status === 'resolved'} style={buttonStyle('var(--color-surface)', 'var(--color-text-primary)')}>Keep ours</button>
-                    <button onClick={() => resolve(conflict.id, 'use_theirs')} disabled={loading || conflict.status === 'resolved'} style={buttonStyle('var(--tool-hex-6366f1)', 'var(--tool-hex-fff)')}>Use theirs</button>
+                    <button onClick={() => resolve(conflict.id, 'keep_ours')} disabled={loading || conflict.status === 'resolved'} style={buttonStyle('var(--color-surface)', 'var(--color-text-primary)')}>Keep EduFlow</button>
+                    <button onClick={() => resolve(conflict.id, 'use_theirs')} disabled={loading || conflict.status === 'resolved'} style={buttonStyle('var(--tool-hex-6366f1)', 'var(--tool-hex-fff)')}>Use External System</button>
                   </div>
                 </div>
               );

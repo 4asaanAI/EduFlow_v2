@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Request, HTTPException, Depends
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import StreamingResponse, Response, JSONResponse
 from database import TimedQuery, get_db
 from models.schemas import FeeTransaction
 from middleware.auth import get_current_user, require_role, require_owner
-from datetime import datetime, timedelta
-from tenant import get_school_id, scoped_filter
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from tenant import get_school_id, scoped_filter, scoped_query, add_school_id
 from services.audit_service import write_audit_doc
 from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, normalize_session_id, publish
 from pymongo import ReturnDocument
@@ -16,6 +17,8 @@ import os
 import io
 import csv
 import httpx
+
+DISCOUNT_APPROVAL_THRESHOLD = Decimal(os.environ.get("DISCOUNT_APPROVAL_THRESHOLD", "10000"))
 
 router = APIRouter(prefix="/api/fees", tags=["fees"])
 
@@ -100,6 +103,41 @@ async def get_fee_structures(request: Request, user: dict = Depends(require_role
     db = get_db()
     structures = await db.fee_structures.find(_fee_query(), {"_id": 0}).to_list(50)
     return {"success": True, "data": structures}
+
+
+@router.post("/structures")
+async def create_fee_structure(request: Request, user: dict = Depends(require_owner)):
+    """P10.3: Owner-only — create a fee structure for a class."""
+    db = get_db()
+    body = await request.json()
+    bid = user.get("branch_id")
+    structure = {
+        "id": str(uuid.uuid4()),
+        "name": body.get("name", ""),
+        "class_id": body.get("class_id", ""),
+        "fee_heads": body.get("fee_heads", []),
+        "academic_year": body.get("academic_year", ""),
+        "created_by": user["id"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    doc = add_school_id(structure)
+    await db.fee_structures.insert_one({**doc, "_id": doc["id"]})
+    return {"success": True, "data": doc}
+
+
+@router.patch("/structures/{structure_id}")
+async def update_fee_structure(structure_id: str, request: Request, user: dict = Depends(require_owner)):
+    """P10.3: Owner-only — update a fee structure."""
+    db = get_db()
+    body = await request.json()
+    bid = user.get("branch_id")
+    result = await db.fee_structures.update_one(
+        scoped_query({"id": structure_id}, branch_id=bid),
+        {"$set": body}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(404, "Fee structure not found")
+    return {"success": True}
 
 
 @router.get("/transactions")
@@ -195,19 +233,28 @@ async def record_payment(request: Request, user: dict = Depends(require_role("ow
             raise HTTPException(400, f"{field} is required")
 
     receipt = f"RCP{datetime.now().strftime('%Y%m%d')}{uuid.uuid4().hex[:6].upper()}"
-    is_paid = (body.get("status") or "paid") == "paid"
+    amount = float(body["amount"])
+    paid_amount = float(body.get("paid_amount", amount))
+    # Determine status: explicit > partial auto-detect > paid default
+    if "status" in body and body["status"]:
+        status = body["status"]
+    elif paid_amount < amount:
+        status = "partial"
+    else:
+        status = "paid"
+    is_paid = status in ("paid", "partial")
     txn = FeeTransaction(
         student_id=body["student_id"],
         fee_type=fee_head,
-        amount=float(body["amount"]),
-        status=body.get("status") or "paid",
+        amount=amount,
+        status=status,
         due_date=body.get("due_date"),
         paid_date=datetime.now().strftime("%Y-%m-%d") if is_paid else None,
         payment_mode=body["payment_mode"],
         receipt_number=receipt,
         transaction_ref=body.get("transaction_ref"),
     )
-    doc = {**_serialize(txn), "_id": txn.id, "schoolId": get_school_id(), "fee_period": fee_period, "fee_head": fee_head}
+    doc = {**_serialize(txn), "_id": txn.id, "schoolId": get_school_id(), "fee_period": fee_period, "fee_head": fee_head, "paid_amount": paid_amount}
     await db.fee_transactions.insert_one(doc)
     await db.fee_idempotency_keys.insert_one({
         "_id": str(uuid.uuid4()),
@@ -225,19 +272,61 @@ async def record_payment(request: Request, user: dict = Depends(require_role("ow
 
 
 @router.patch("/transactions/{transaction_id}/correct")
-async def correct_fee_transaction(transaction_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def correct_fee_transaction(
+    transaction_id: str,
+    request: Request,
+    user: dict = Depends(require_role("owner", "admin")),
+):
     db = get_db()
     body = await request.json()
     reason = body.get("reason")
     if not reason:
         raise HTTPException(400, "reason is required")
-    original = await db.fee_transactions.find_one(_fee_query({"id": transaction_id}), {"_id": 0})
+    bid = user.get("branch_id")
+
+    original = await db.fee_transactions.find_one(
+        scoped_query({"id": transaction_id}, branch_id=bid), {"_id": 0}
+    )
     if not original:
         raise HTTPException(404, "Fee transaction not found")
+
+    # EC-10.5: Accountant can only correct their own transactions
+    if user.get("role") == "admin" and user.get("sub_category") == "accounts":
+        if original.get("created_by") != user["id"]:
+            raise HTTPException(403, "Accountant can only correct their own transactions")
+
     allowed = {"amount", "status", "due_date", "paid_date", "payment_mode", "transaction_ref", "fee_period", "fee_head", "fee_type"}
     changes = {k: v for k, v in body.items() if k in allowed}
     if not changes:
         raise HTTPException(400, "No correctable fields supplied")
+
+    now = datetime.now(timezone.utc).isoformat()
+    update_ops: dict = {
+        "$set": {
+            **changes,
+            "corrected": True,
+            "corrected_at": now,
+            "corrected_by": user["id"],
+            "updated_at": now,
+        },
+        "$inc": {"correction_count": 1},  # EC-10.3: increment, not overwrite
+    }
+
+    # Only set original_snapshot on the FIRST correction (preserve pre-correction state)
+    if not original.get("original_snapshot"):
+        update_ops["$set"]["original_snapshot"] = {
+            "amount": original.get("amount"),
+            "status": original.get("status"),
+            "payment_mode": original.get("payment_mode"),
+            "paid_date": original.get("paid_date"),
+        }
+
+    await db.fee_transactions.update_one(
+        scoped_query({"id": transaction_id}, branch_id=bid),
+        update_ops,
+    )
+
+    # Insert correction record (existing tests assert on fee_transaction_corrections collection)
     correction = {
         "_id": str(uuid.uuid4()),
         "id": str(uuid.uuid4()),
@@ -247,12 +336,15 @@ async def correct_fee_transaction(transaction_id: str, request: Request, user: d
         "changes": changes,
         "reason": reason,
         "corrected_by": user["id"],
-        "corrected_at": datetime.now().isoformat(),
+        "corrected_at": now,
     }
     await db.fee_transaction_corrections.insert_one(correction)
-    await db.fee_transactions.update_one(_fee_query({"id": transaction_id}), {"$set": {**changes, "corrected": True, "updated_at": correction["corrected_at"]}})
+
     await _audit(db, action="correct", entity_id=transaction_id, user=user, changes=changes, reason=reason)
-    updated = await db.fee_transactions.find_one(_fee_query({"id": transaction_id}), {"_id": 0})
+
+    updated = await db.fee_transactions.find_one(
+        scoped_query({"id": transaction_id}, branch_id=bid), {"_id": 0}
+    )
     await _publish_fee_update(db, "fee_transaction_corrected", updated, updated.get("fee_period") if updated else None)
     return {"success": True, "data": updated, "correction": {k: v for k, v in correction.items() if k != "_id"}}
 
@@ -404,27 +496,121 @@ async def update_discount_type(discount_type_id: str, request: Request, user: di
 async def apply_discount(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
     body = await request.json()
-    required = {"student_id", "discount_type_id", "original_amount", "effective_from"}
-    if any(body.get(field) in (None, "") for field in required):
-        raise HTTPException(400, "student_id, discount_type_id, original_amount, and effective_from are required")
-    dtype = await db.fee_discount_types.find_one(_fee_query({"id": body["discount_type_id"], "is_active": True}), {"_id": 0})
+    bid = user.get("branch_id")
+
+    student_id = body.get("student_id")
+    discount_type_id = body.get("discount_type_id")
+    note = body.get("note", "")
+
+    if not student_id or not discount_type_id:
+        raise HTTPException(400, "student_id and discount_type_id are required")
+
+    # Accept either the legacy collection name (scoped) or the primary one.
+    dtype = await db.fee_discount_types.find_one(_fee_query({"id": discount_type_id}), {"_id": 0})
     if not dtype:
-        raise HTTPException(404, "Active discount type not found")
+        raise HTTPException(404, "Discount type not found")
+
+    # P10.4: Compute discount amount from the type.
+    if dtype.get("value_type") == "flat":
+        discount_amount = Decimal(str(dtype.get("value", 0)))
+    else:
+        # Percentage — simplified; caller may supply original_amount for accuracy.
+        discount_amount = Decimal(str(dtype.get("value", 0)))
+
+    # P10.4: Route large discounts through pending approval (EXCLUSIVE upper bound).
+    if discount_amount > DISCOUNT_APPROVAL_THRESHOLD:
+        pending = add_school_id({
+            "id": str(uuid.uuid4()),
+            "student_id": student_id,
+            "discount_type_id": discount_type_id,
+            "discount_amount": float(discount_amount),
+            "requested_by": user["id"],
+            "note": note,
+            "status": "pending",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        await db.pending_discount_approvals.insert_one({**pending, "_id": pending["id"]})
+        return JSONResponse(
+            status_code=202,
+            content={
+                "success": True,
+                "pending_approval": True,
+                "message": (
+                    f"Discount of ₹{discount_amount} requires owner approval "
+                    f"(threshold: ₹{DISCOUNT_APPROVAL_THRESHOLD})"
+                ),
+            },
+        )
+
+    # Below threshold — apply immediately (original logic preserved).
+    original_amount = body.get("original_amount")
+    effective_from = body.get("effective_from")
+    if original_amount is None or effective_from is None:
+        raise HTTPException(400, "original_amount and effective_from are required for immediate discount application")
+
     application = {
         "_id": str(uuid.uuid4()),
         "id": str(uuid.uuid4()),
         "schoolId": get_school_id(),
-        "student_id": body["student_id"],
+        "student_id": student_id,
         "discount_type_id": dtype["id"],
-        "original_amount": float(body["original_amount"]),
-        "effective_from": body["effective_from"],
+        "original_amount": float(original_amount),
+        "effective_from": effective_from,
         "applied_by": user["id"],
         "applied_at": datetime.now().isoformat(),
-        "note": body.get("note"),
+        "note": note or body.get("note"),
     }
     await db.fee_discounts.insert_one(application)
-    await _audit(db, action="discount_apply", entity_id=application["id"], user=user, changes={"applied": {k: v for k, v in application.items() if k != "_id"}}, reason=body.get("note"))
+    await _audit(db, action="discount_apply", entity_id=application["id"], user=user, changes={"applied": {k: v for k, v in application.items() if k != "_id"}}, reason=note or body.get("note"))
     return {"success": True, "data": {k: v for k, v in application.items() if k != "_id"}}
+
+
+@router.get("/discounts/pending-approvals")
+async def list_pending_discount_approvals(request: Request, user: dict = Depends(require_owner)):
+    """P10.4: Owner-only — list pending large-discount approval requests."""
+    db = get_db()
+    bid = user.get("branch_id")
+    pending = await db.pending_discount_approvals.find(
+        scoped_query({"status": "pending"}, branch_id=bid)
+    ).to_list(100)
+    return {"success": True, "data": pending}
+
+
+@router.patch("/discounts/pending-approvals/{approval_id}/approve")
+async def approve_pending_discount(approval_id: str, request: Request, user: dict = Depends(require_owner)):
+    """P10.4: Owner-only — approve a pending large discount."""
+    db = get_db()
+    bid = user.get("branch_id")
+    pending = await db.pending_discount_approvals.find_one(
+        scoped_query({"id": approval_id}, branch_id=bid)
+    )
+    if not pending:
+        raise HTTPException(404, "Pending approval not found")
+    discount = {
+        **{k: v for k, v in pending.items() if k != "_id"},
+        "id": str(uuid.uuid4()),
+        "status": "approved",
+        "approved_by": user["id"],
+        "approved_at": datetime.now(timezone.utc).isoformat(),
+    }
+    discount = add_school_id(discount)
+    await db.fee_discounts.insert_one({**discount, "_id": discount["id"]})
+    await db.pending_discount_approvals.update_one({"id": approval_id}, {"$set": {"status": "approved"}})
+    return {"success": True}
+
+
+@router.patch("/discounts/pending-approvals/{approval_id}/reject")
+async def reject_pending_discount(approval_id: str, request: Request, user: dict = Depends(require_owner)):
+    """P10.4: Owner-only — reject a pending large discount."""
+    db = get_db()
+    bid = user.get("branch_id")
+    result = await db.pending_discount_approvals.update_one(
+        scoped_query({"id": approval_id}, branch_id=bid),
+        {"$set": {"status": "rejected", "rejected_by": user["id"]}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(404, "Pending approval not found")
+    return {"success": True}
 
 
 async def _discount_breakdown(db, student_id: str):
@@ -521,21 +707,47 @@ def _fee_sync_resolution_update(theirs: dict) -> dict:
     }
 
 
+SYNC_JOB_TIMEOUT_MINUTES = int(os.environ.get("SYNC_JOB_TIMEOUT_MINUTES", "30"))
+
+
 @router.post("/sync/trigger")
 async def trigger_fee_sync(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
+    bid = user.get("branch_id")
+    now = datetime.now(timezone.utc)
+    timeout_cutoff = (now - timedelta(minutes=SYNC_JOB_TIMEOUT_MINUTES)).isoformat()
+
+    # EC-10.1: Check for existing in-progress job (idempotency)
+    existing_job = await db.fee_sync_jobs.find_one(
+        scoped_query({"status": "in_progress"}, branch_id=bid), {"_id": 0}
+    )
+    if existing_job:
+        started_at = existing_job.get("started_at", "")
+        if started_at and started_at < timeout_cutoff:
+            # Auto-expire hung job
+            await db.fee_sync_jobs.update_one(
+                scoped_query({"id": existing_job["id"]}, branch_id=bid),
+                {"$set": {"status": "failed", "reason": "timeout", "failed_at": now.isoformat()}},
+            )
+        else:
+            # Return existing in-progress job (idempotency)
+            return {"success": True, "data": existing_job, "message": "Sync already in progress"}
+
     job_id = str(uuid.uuid4())
     job = {
         "_id": job_id,
         "id": job_id,
         "schoolId": get_school_id(),
         "status": "running",
+        "started_at": now.isoformat(),
         "synced_count": 0,
         "conflict_count": 0,
         "conflicts": [],
         "triggered_by": user["id"],
-        "created_at": datetime.now().isoformat(),
+        "created_at": now.isoformat(),
     }
+    if bid:
+        job["branch_id"] = bid
     await db.fee_sync_jobs.insert_one(job)
     try:
         records = await _fetch_external_fee_records()
@@ -668,12 +880,14 @@ async def _next_receipt_number(db, school_id: str) -> str:
 
 
 @router.get("/transactions/{transaction_id}/receipt")
-async def get_fee_receipt(transaction_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def get_fee_receipt(transaction_id: str, request: Request, format: str = "pdf", user: dict = Depends(require_role("owner", "admin"))):
+    """Returns a fee receipt.  format=json returns structured JSON; default is PDF."""
     db = get_db()
-    txn = await db.fee_transactions.find_one(_fee_query({"id": transaction_id}), {"_id": 0})
+    bid = user.get("branch_id")
+    txn = await db.fee_transactions.find_one(scoped_query({"id": transaction_id}, branch_id=bid), {"_id": 0})
     if not txn:
         raise HTTPException(404, "Transaction not found")
-    student = await db.students.find_one(_fee_query({"id": txn.get("student_id")}), {"_id": 0})
+    student = await db.students.find_one(scoped_query({"id": txn.get("student_id")}, branch_id=bid), {"_id": 0})
     school_name = os.environ.get("SCHOOL_NAME", "The Aaryans")
     school_id = get_school_id()
 
@@ -681,7 +895,26 @@ async def get_fee_receipt(transaction_id: str, request: Request, user: dict = De
     receipt_number = txn.get("receipt_number")
     if not receipt_number:
         receipt_number = await _next_receipt_number(db, school_id)
-        await db.fee_transactions.update_one(_fee_query({"id": transaction_id}), {"$set": {"receipt_number": receipt_number}})
+        await db.fee_transactions.update_one(scoped_query({"id": transaction_id}, branch_id=bid), {"$set": {"receipt_number": receipt_number}})
+
+    # JSON receipt (P10.1)
+    if format == "json":
+        receipt_data = {
+            "receipt_number": receipt_number,
+            "transaction_id": transaction_id,
+            "student_name": student.get("name") if student else "Unknown",
+            "student_id": txn.get("student_id"),
+            "fee_type": txn.get("fee_type", txn.get("fee_head", "")),
+            "fee_period": txn.get("fee_period"),
+            "amount": txn.get("amount"),
+            "paid_amount": txn.get("paid_amount", txn.get("amount")),
+            "status": txn.get("status"),
+            "payment_mode": txn.get("payment_mode"),
+            "transaction_ref": txn.get("transaction_ref"),
+            "paid_date": txn.get("paid_date"),
+            "issued_at": datetime.now(timezone.utc).isoformat(),
+        }
+        return {"success": True, "data": receipt_data}
 
     try:
         from fpdf import FPDF

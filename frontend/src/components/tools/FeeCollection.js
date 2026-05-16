@@ -9,15 +9,22 @@ async function downloadReceipt(transactionId) {
     alert('Receipt is unavailable for this record');
     return;
   }
-  const res = await fetch(`${API}/fees/transactions/${encodeURIComponent(transactionId)}/receipt`, { headers: getAuthHeaders() });
-  if (!res.ok) { alert('Receipt generation failed'); return; }
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `receipt-${transactionId.slice(0, 8)}.pdf`;
-  a.click();
-  URL.revokeObjectURL(url);
+  try {
+    const res = await fetch(
+      `${API}/fees/transactions/${encodeURIComponent(transactionId)}/receipt?format=json`,
+      { headers: getAuthHeaders() }
+    );
+    if (!res.ok) throw new Error('Receipt not available');
+    const data = await res.json();
+    const receipt = data.data;
+    const blob = new Blob([JSON.stringify(receipt, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('Receipt download failed:', err);
+    alert('Receipt generation failed');
+  }
 }
 
 async function exportFeeCSV(period) {
@@ -43,12 +50,13 @@ import {
   getFeeSummary,
   getFeeTransactions,
   getStudents,
+  listPayrollDisbursements,
   recordFeePayment,
   subscribeSSE,
 } from '../../lib/api';
 
 const today = new Date().toISOString().slice(0, 10);
-const initialPayment = { student_id: '', fee_period: '', fee_head: 'tuition', amount: '', payment_mode: 'upi', status: 'paid', due_date: today, transaction_ref: '' };
+const initialPayment = { student_id: '', fee_period: '', fee_head: 'tuition', amount: '', paid_amount: '', payment_mode: 'upi', status: 'paid', due_date: today, transaction_ref: '' };
 const initialCorrection = { transaction_id: '', amount: '', status: '', reason: '' };
 const initialContact = { fee_transaction_id: '', student_id: '', contact_type: 'call', outcome: '', notes: '', date: today };
 const initialDiscountType = { name: '', value: '', value_type: 'percentage', recurrence: 'per-term', reason_note: '' };
@@ -86,6 +94,24 @@ export default function FeeCollection() {
   const [feeStreamUpdatedAt, setFeeStreamUpdatedAt] = useState(null);
   const [, setClockTick] = useState(0);
   const liveUpdateLabel = lastUpdatedLabel(feeStreamUpdatedAt || summary?.generated_at);
+
+  // Payroll state
+  const [disbursements, setDisbursements] = useState([]);
+  const [loadingPayroll, setLoadingPayroll] = useState(false);
+
+  const fetchPayroll = useCallback(async () => {
+    setLoadingPayroll(true);
+    try {
+      const data = await listPayrollDisbursements();
+      setDisbursements(data.data || []);
+    } catch (e) {
+      console.error('Payroll load error:', e);
+    } finally {
+      setLoadingPayroll(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchPayroll(); }, [fetchPayroll]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -141,7 +167,9 @@ export default function FeeCollection() {
         throw new Error('Student, period, fee head, and amount are required.');
       }
       const key = `${payment.student_id}:${payment.fee_period}:${payment.fee_head}`;
-      const res = await recordFeePayment(null, { ...payment, amount: Number(payment.amount), fee_type: payment.fee_head }, key);
+      const payload = { ...payment, amount: Number(payment.amount), fee_type: payment.fee_head };
+      if (payment.paid_amount) payload.paid_amount = Number(payment.paid_amount);
+      const res = await recordFeePayment(null, payload, key);
       if (!res.success) throw new Error(res.detail || 'Payment could not be saved');
       setNotice(res.idempotent ? 'Duplicate submission recovered. Original payment returned.' : 'Payment saved.');
       setPayment(initialPayment);
@@ -303,6 +331,16 @@ export default function FeeCollection() {
               <option value="card">Card</option>
             </select>
           </div>
+          <div style={twoCol}>
+            <select value={payment.status} onChange={e => setPayment(prev => ({ ...prev, status: e.target.value, paid_amount: e.target.value !== 'partial' ? '' : prev.paid_amount }))} style={inputStyle}>
+              <option value="paid">Full payment</option>
+              <option value="partial">Partial payment</option>
+              <option value="pending">Pending</option>
+            </select>
+            {payment.status === 'partial' && (
+              <input value={payment.paid_amount} onChange={e => setPayment(prev => ({ ...prev, paid_amount: e.target.value }))} placeholder="Partial amount" type="number" style={inputStyle} />
+            )}
+          </div>
           <input value={payment.transaction_ref} onChange={e => setPayment(prev => ({ ...prev, transaction_ref: e.target.value }))} placeholder="Transaction reference" style={inputStyle} />
           <button onClick={savePayment} disabled={saving} style={primaryButton('var(--tool-hex-4f8ff7)')}>Save payment</button>
         </section>
@@ -409,6 +447,48 @@ export default function FeeCollection() {
             </div>
           )}
         </section>
+      </div>
+
+      {/* Payroll Disbursements */}
+      <div style={panelStyle}>
+        <h2 style={panelTitle}>Payroll — This Month</h2>
+        {loadingPayroll ? (
+          <div style={emptyStyle}>Loading payroll...</div>
+        ) : disbursements.length === 0 ? (
+          <div style={emptyStyle}>No disbursements recorded this month.</div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                {['Staff', 'Month', 'Gross', 'Net', 'Status'].map(h => (
+                  <th key={h} style={thStyle}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {disbursements.map((d, index) => (
+                <tr key={d.id} style={{ borderTop: index ? '1px solid var(--color-border)' : 'none' }}>
+                  <td style={tdStyle}>{d.staff_name || d.staff_id}</td>
+                  <td style={tdStyle}>{d.month}</td>
+                  <td style={tdStyle}>{money(d.gross)}</td>
+                  <td style={tdStyle}>{money(d.net)}</td>
+                  <td style={tdStyle}>
+                    <span style={{
+                      padding: '2px 8px',
+                      borderRadius: 4,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      background: d.status === 'processed' ? 'var(--tool-hex-34d399, #d1fae5)' : 'var(--tool-hex-fbbf24, #fef3c7)',
+                      color: d.status === 'processed' ? '#065f46' : '#92400e',
+                    }}>
+                      {d.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       <div style={panelStyle}>
