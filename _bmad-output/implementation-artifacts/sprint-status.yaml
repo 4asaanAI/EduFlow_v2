@@ -285,13 +285,15 @@ development_status:
   # Quality Sweep Part 10 — Accountant Role Vertical
   # Epics file: planning-artifacts/epic-part10-accountant-vertical.md
   # ─────────────────────────────────────────────
-  epic-p10: backlog
-  p10-1-receipt-endpoint: backlog
-  p10-2-fee-export-missing-fields: backlog
-  p10-3-discount-approval-gate: backlog
-  p10-4-expense-rbac-fix: backlog
-  p10-5-payroll-routes: backlog
-  p10-6-fee-correction-audit: backlog
+  epic-p10: done
+  p10-1-receipt-endpoint: done
+  p10-2-fee-export-missing-fields: done
+  p10-3-discount-approval-gate: done
+  p10-4-expense-rbac-fix: done
+  p10-5-payroll-routes: done
+  p10-6-fee-correction-audit: done
+  p10-7-export-completeness: done
+  p10-8-fee-sync-idempotency: done
   epic-p10-retrospective: optional
 
   # ─────────────────────────────────────────────
