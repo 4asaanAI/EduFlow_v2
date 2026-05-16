@@ -51,8 +51,35 @@ User-confirmed order: **3 → 1 → 2 → 4 → 5 → 6 → 7 → 8 → 9 → ..
 - **Per-part rigor: full ceremony** — slower but enterprise-grade.
 - **Teacher and Student verticals are gated** on Story 7-39 (auth activation) regardless of sweep order.
 
+## Final State (2026-05-16) — Quality Sweep COMPLETE
+
+**Backend tests: 699 passing, 0 skipped.** Commit: `c7630f8`
+
+**Branch isolation: 3 waves complete**
+- Wave 1 (Part 4): `tool_functions_v2.py` — 35 callsites
+- Wave 2 (Part 11 review): `issues.py` — 34 callsites  
+- Wave 3 (Round 2 review): `operations.py` — 19 callsites (expenses/incidents/transport/assets)
+- Remaining `scoped_filter` in `operations.py` are intentionally school-wide (leave_requests, announcements, users) with `# branch-scope: intentional` comments
+
+**Platform integrity review results:** Party-mode + adversarial + edge-case + architecture + UX + code quality all applied across 2 rounds. 50+ bugs found and fixed. 40 new tests added.
+
+**AI layer hardening:** LLM temp 0.2/0.7, max_tokens 1200, 4 new tools (timetable, exam analytics, upcoming events, parent message draft), Hindi content filter (16 patterns), it_tech/maintenance scope resolvers.
+
+**Frontend fully wired:** All 6 missing endpoint connections added (class-summary, cost-summary, upcoming schedule, 202 discount-pending, pending-approvals panel, fee/my summary).
+
 ## Outstanding cross-cutting risks (track here as discovered)
 
-- ~~Migration 014 (`014_ensure_maintenance_user`) is missing from `run_all.py`~~ **RESOLVED in Part 4** (commit d79f333, story p4-3) — 014 is now in run_all.py and verified by test_migrations.py CI guard.
-- ALLOWED_ROLES override may unlock students past their YAML floor — surface during Part 1 (Auth + RBAC).
-- Part 3 Owner role hardening follow-up closed on 2026-05-15: owner-exclusive role matrix, NFR2 test-count target, full backend pytest, and frontend build all completed. Remaining warnings are existing dependency/runtime warnings outside the Part 3 owner-role scope.
+- ~~Migration 014~~ **RESOLVED in Part 4**
+- ~~`db.otps` dead collection~~ **RESOLVED in Part 4** — dropped via migration 018
+- ALLOWED_ROLES override may unlock students past their YAML floor — tracked, low risk.
+- `_normalize_fee_key` now uses `|` separator — safe. Old `:` separator could cause collision with fee_heads containing colons.
+- `export_results` N+1 — **RESOLVED in Round 2 review**
+- `issues.py`/`operations.py` branch isolation — **RESOLVED via 3-wave migration**
+
+## Next Steps (Product Backlog)
+
+1. **NEXT: Story 7-39** — Teacher/student login activation (gates all teacher+student features)
+2. **6-34** — MongoDB Atlas M10 upgrade (production readiness)
+3. **6-35** — Azure OpenAI India region + DPA sign-off (compliance)
+4. Deploy → 4 clean pilot weeks → Phase 7 growth features
+5. **7-40** WhatsApp/Twilio → **7-42** Token billing → **7-43** Health dashboard → **7-44** School onboarding → **7-45** SaaS multi-tenancy → **7-46** Google Maps transport

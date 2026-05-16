@@ -2,7 +2,7 @@
 project_name: 'eduflow'
 user_name: 'Abhimanyu'
 date: '2026-05-15'
-last_refresh: '2026-05-15'
+last_refresh: '2026-05-16'
 sections_completed:
   - technology_stack
   - language_rules
@@ -18,7 +18,14 @@ sections_completed:
   - multi_tenancy
   - part3_owner_patterns
   - error_hygiene
-existing_patterns_found: 34
+  - notification_service_canonical
+  - audit_service_canonical
+  - branch_isolation_complete
+  - new_routes_parts9_to_16
+  - test_infrastructure
+  - ai_layer_hardening
+  - frontend_wiring_complete
+existing_patterns_found: 55
 ---
 
 # Project Context for AI Agents — EduFlow
@@ -383,13 +390,192 @@ Two tenancy axes coexist: `branch_id` (per-branch) and `schoolId` (per-school, S
 
 ## Dead Code / Documentation Debt
 
-- **`db.otps`** — legacy artifact, zero references. Drop during Part 4 (Multi-tenancy + Data Layer) audit.
+- **`db.otps`** — RESOLVED in Part 4. Collection dropped via migration 018. Zero references remain.
 
 ---
 
 ## Migration Discipline
 
 - Migrations: `backend/migrations/NNN_<slug>.py` — sequential prefix.
-- Every migration: `async def migrate(db=None)`, idempotent, registered in `run_all.py` MIGRATIONS list.
-- **Known landmine:** `014_ensure_maintenance_user` exists but is NOT in `run_all.py` — repair during Part 4.
+- Every migration: `async def migrate(db)`, idempotent, registered in `run_all.py` MIGRATIONS list.
+- **Current range:** 001–021 all present and in run_all.py. Migration 014 gap was fixed in Part 4.
 - TTL indexes: `expireAfterSeconds=0` + `expires_at` datetime field in the doc. Use `sparse=True` where TTL is conditional.
+- **`sms_logs.created_at`** must be stored as native `datetime` object (not ISO string) for TTL index to fire. Fixed in Part 16.
+
+---
+
+## Canonical Services (Parts 5–7) — ALWAYS USE THESE
+
+### Notification writes
+```python
+from services.notification_service import create_notification
+# NEVER call db.notifications.insert_one() directly
+await create_notification(db=db, user_id=user_id, title="...", body="...")
+```
+
+### Audit writes
+```python
+from services.audit_service import write_audit
+# NEVER call db.audit_log.insert_one() directly
+await write_audit(db=db, actor_id=user["id"], action="...", target_id=entity_id, changes={...})
+# write_audit is fail-open — exceptions logged but never re-raised
+```
+
+### Fan-out notifications (multiple recipients)
+```python
+from services.notification_service import fan_out_notifications
+await fan_out_notifications(db=db, user_ids=[...], title="...", body="...")
+```
+
+---
+
+## Branch Isolation — THREE WAVES COMPLETE (Parts 4, 11, 12+13)
+
+**Rule:** Every operational collection query must use `scoped_query(query, branch_id=bid)`, NOT bare `scoped_filter(query, get_school_id())`.
+
+```python
+bid = user.get("branch_id")  # always extract this first in every handler
+
+# CORRECT — enforces both schoolId AND branch_id
+db.students.find(scoped_query({"class_id": class_id}, branch_id=bid))
+
+# CORRECT intentional cross-branch (document it)
+db.classes.find(scoped_filter({}))  # branch-scope: intentional — class dropdown is school-wide
+
+# WRONG — only enforces schoolId, branch leaks
+db.students.find(scoped_filter({"class_id": class_id}, get_school_id()))
+```
+
+**Wave 1 (Part 4):** `tool_functions_v2.py` — 35 callsites migrated.
+**Wave 2 (Part 11 review):** `issues.py` — 34 callsites migrated (facility/tech/maintenance/vendor).
+**Wave 3 (Round 2 review):** `operations.py` — 19 callsites migrated (expenses/incidents/transport/assets/vehicles).
+
+Remaining `scoped_filter` calls in `operations.py` are intentionally school-wide: `leave_requests`, `approval_requests`, `announcements`, `users` (notification fan-out). Each has a `# branch-scope: intentional` comment.
+
+**Pre-merge CI check (mandatory for any route file change):**
+```bash
+grep -n "scoped_filter(" backend/routes/<file>.py
+# Every hit must have # branch-scope: intentional comment OR be migrated
+```
+
+---
+
+## New Routes Added (Parts 9–16) — Quick Reference
+
+### Part 9 — Principal vertical
+- `GET /api/attendance/class-summary` — per-class aggregation, `require_owner_or_principal`
+- `GET /api/attendance/staff/today` — absent staff list, `require_owner_or_principal`
+- `GET /api/academics/lesson-plan-completion?month=YYYY-MM` — per-class completion stats
+- `PATCH /api/academics/results/{id}/publish` — publish exam results, `require_owner_or_principal`
+
+### Part 10 — Accountant vertical
+- `GET /api/fees/transactions/{id}/receipt` — JSON receipt for a payment
+- `POST /api/fees/structures` / `PATCH /api/fees/structures/{id}` — owner-only
+- `GET /api/fees/discounts/pending-approvals` — large discounts awaiting owner approval
+- `PATCH /api/fees/discounts/pending-approvals/{id}/approve|reject` — owner-only
+- `GET/POST /api/payroll/structures` / `GET/POST /api/payroll/disburse` / `PATCH /api/payroll/disbursements/{id}/process`
+- `POST /api/fees/sync/trigger` — idempotent (returns existing in-progress job, times out hung jobs after 30min)
+
+### Part 11 — Receptionist vertical
+- `GET /api/ops/visitors/pending-checkout?stale_hours=N` — overdue visitor checkouts
+- `POST /api/ops/certificates/{id}/escalate` — escalate to owner when SLA exceeded
+- Certificate SLA: 48h → `is_overdue: true` flag on list
+
+### Part 12 — Maintenance vertical
+- `GET /api/issues/facility/cost-summary` — MongoDB `$sum` aggregation by category
+- `GET /api/issues/facility/{request_id}` — single record
+- `GET /api/issues/maintenance/schedule/upcoming?days=N` — upcoming tasks
+
+### Part 13 — IT-Tech vertical
+- `GET /api/settings/token-usage/admin` — per-user usage with `users_over_80_pct` meta
+- `POST /api/settings/branches` — create branch with unique `(schoolId, branch_code)` index
+- `POST /api/auth/admin/users/{id}/reset-password` — IT-tech blocked from resetting owner
+- `POST /api/auth/admin/users/{id}/unlock` — clears locked_at/failed_attempts/locked_until
+
+### Part 14 — Teacher vertical
+- `PATCH /api/academics/results/{id}/publish` — principal/owner publishes results
+
+### Parts 15–16 — Student + Integration
+- `/api/fees/my` now returns `summary: {total_paid, outstanding_balance, last_payment_date}`
+- `GET /api/health/ready` returns HTTP **503** (not 200) when `db_status == "error"`
+- `401` responses include `WWW-Authenticate: Bearer` header
+
+---
+
+## Test Infrastructure (Parts 8–16)
+
+### Locations
+- `tests/backend/unit/` — pure unit tests (FakeDB, no network)
+- `tests/backend/api/` — HTTP integration tests (TestClient)
+- `tests/backend/factories.py` — shared test data factories (**use for all new tests**)
+- `tests/load/locust_basic.py` — load test scaffold
+
+### Factories (always use these, never inline dicts)
+```python
+from tests.backend.factories import (
+    make_student, make_staff, make_fee_transaction,
+    make_audit_record, make_notification, make_leave_request
+)
+# All include schoolId="aaryans-joya", branch_id="branch-a" by default
+# All accept **kwargs to override any field
+```
+
+### Frontend test setup (Part 8)
+- Jest + RTL installed in `frontend/` — `yarn test` runs unit tests
+- `frontend/src/setupTests.js` configures RTL matchers
+- `frontend/src/components/__tests__/` for component tests
+
+### Current baseline: **699 backend tests, 0 skipped** (as of 2026-05-16)
+
+---
+
+## AI Layer Hardening (Parts 2 + AI Layer Hardening session)
+
+### LLM Config
+- **Temperature:** 0.2 for management roles (factual), 0.7 for student (conversational)
+- **max_tokens:** 1200 per call
+- **Model:** Azure OpenAI `gpt-5.3-chat` (env `AZURE_OPENAI_DEPLOYMENT`)
+
+### New AI Tools (53 total in TOOL_REGISTRY)
+- `get_timetable` — period-by-period schedule for a class
+- `get_exam_results_summary` — avg/pass-rate/highest/lowest per exam
+- `get_upcoming_events` — merged exam + announcement calendar (N days ahead)
+- `draft_parent_message` — WhatsApp/SMS draft (fee_reminder, absence, exam, general)
+
+### Content Filter (Hindi support added)
+- 16 Devanagari patterns for drugs/suicide/bullying/ragging
+- `get_blocked_response(message)` detects Devanagari and returns Hindi response
+
+### Scope Resolver (Parts 4 + AI Hardening)
+- `it_tech` → domain scope (`tech_issues`, `audit_log`, `system_health`)
+- `maintenance` → domain scope (`facility_requests`, `maintenance_schedule`, `vendors`)
+- `can_write: bool = True` field added to `Scope` dataclass (was dead guard)
+
+---
+
+## Fee Idempotency Key Format
+
+```python
+def _normalize_fee_key(student_id, fee_period, fee_head):
+    return f"{student_id}|{fee_period}|{(fee_head or '').strip().lower()}"
+    # Uses | not : — prevents collision when fee_head contains :
+    # Key is ephemeral (within-request dedup only, not stored in DB)
+```
+
+---
+
+## Payroll (Part 10) — Data Model
+
+Collections: `salary_structures`, `salary_disbursements` (both created by migration 009).
+Unique index: `(schoolId, staff_id, month)` on `salary_disbursements` — prevents double-disbursement.
+Routes in `backend/routes/payroll.py`. RBAC: writes = owner only, reads = owner or accountant.
+
+---
+
+## SCHOOL_ID Startup Guard (Part 4)
+
+`validate_school_id()` in `tenant.py` is called in `server.py` startup:
+- Non-dev environment + `SCHOOL_ID` unset → `ValueError` (hard fail)
+- Dev/test + `SCHOOL_ID` unset → warning log, continues with default `"aaryans-joya"`
+
+`SKIP_CONSENT_CHECK=true` guard (Part 16): startup `ValueError` if set in prod/staging.
