@@ -228,7 +228,7 @@ export default function PrincipalDailyOps() {
                     <td className="py-1.5 text-green-600">{cls.present}</td>
                     <td className="py-1.5 text-red-500">{cls.absent}</td>
                     <td className="py-1.5">
-                      <span className={`font-medium ${cls.attendance_pct >= 80 ? 'text-green-600' : 'text-red-500'}`}>
+                      <span className={`font-medium ${cls.attendance_pct >= 80 ? 'text-green-600' : cls.attendance_pct >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
                         {cls.attendance_pct}%
                       </span>
                     </td>

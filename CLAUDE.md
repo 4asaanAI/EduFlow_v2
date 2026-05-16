@@ -26,9 +26,8 @@ EduFlow is a **chat-first, multi-role school management SaaS** for The Aaryans (
 | 2 AI Layer | ✅ Done | — |
 | 3 Owner role | ✅ Done | — |
 | 4 Multi-tenancy | ✅ Done | 387→420 |
-| **Hotfixes** | **🔥 Ship first** | file-serve auth, receipt 404, leave-approval RBAC |
-| **5 SSE/Notifications** | **🔜 Next** | 420 baseline |
-| 6–16 | 🟦 Queued | — |
+| 5–16 | ✅ All Done | 699 tests, full party-mode + adversarial ceremony |
+| **Operations.py** | 🔧 Wave 3 in progress | expenses/incidents/transport branch isolation |
 
 **Epic files for all parts:** `_bmad-output/planning-artifacts/epic-part*.md`
 
@@ -100,8 +99,7 @@ Every hit must EITHER have a `# branch-scope: intentional — <reason>` comment 
 
 ### Notification utility (canonical — set in Part 5)
 ```python
-# ⚠️  NOT YET CREATED — do not import before Part 5 ships
-# After Part 5 ships, ALL notification writes use:
+# ✅ CANONICAL (Part 5 ✅ shipped) — ALL notification writes use:
 from services.notification_service import create_notification
 await create_notification(db=db, user_id=..., title=..., body=...)
 # NEVER call db.notifications.insert_one() directly in route handlers
@@ -202,8 +200,7 @@ def test_keepalive_sends_ping(monkeypatch):
 
 ### Shared test factories
 ```python
-# ⚠️  NOT YET CREATED — do not import before pre-p9 infra story ships
-# After pre-p9-2 ships, use for all test data creation (Parts 9+):
+# ✅ CANONICAL (pre-p9-2 ✅ shipped) — use for ALL test data creation (Parts 9+):
 from tests.backend.factories import make_student, make_staff, make_fee_transaction
 # Do NOT create one-off dicts inline — they fragment into 6 different formats by Part 13
 ```
@@ -226,7 +223,7 @@ backend/
 ├── routes/            # 27 route files — one per domain
 ├── ai/                # tool_functions_v2.py (active), context_builder.py, llm_client.py
 ├── services/          # s3_storage, sse, email_service, token_service, confirm_tokens
-│                      # notification_service.py (created in Part 5)
+│                      # notification_service.py ✅ (Part 5)
 └── migrations/        # 018 scripts, run via run_all.py
 
 frontend/src/
@@ -237,10 +234,10 @@ frontend/src/
 
 tests/backend/
 ├── conftest.py        # FakeCollection, FakeCursor (has __aiter__/__anext__)
-├── factories.py       # Shared test data factories (created in Part 9)
+├── factories.py       # Shared test data factories ✅ (pre-p9-2)
 ├── api/               # HTTP integration tests
 ├── unit/              # Unit tests
-└── test_unauthenticated_surface.py  # Enumerates all routes, asserts 401 (⚠️ NOT YET — created pre-p9-3)
+└── test_unauthenticated_surface.py  # Enumerates all routes, asserts 401 ✅ (pre-p9-3)
 
 _bmad-output/
 ├── project-context.md     # 34 critical patterns — load before implementing
@@ -261,7 +258,7 @@ _bmad-output/
 | Auth: one helper vs per-role | **`require_access()` canonical** | `middleware/auth.py` |
 | Notification utility | **`create_notification()` canonical** | set in Part 5 |
 | S3 key namespace | **`{school_id}/uploads/...`** | set in Part 6 |
-| Audit service | **`write_audit()` via `audit_service.py`** | set in Part 7 |
+| Audit service | **`write_audit()` via `audit_service.py`** | ✅ Part 7 shipped |
 
 ---
 

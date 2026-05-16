@@ -23,7 +23,7 @@ def test_partial_payment_creates_partial_status(client, fake_db):
             "paid_amount": 2000,
             "payment_mode": "cash",
         },
-        headers={**_owner_h(), "Idempotency-Key": "stu-1:2026-05:Tuition"},
+        headers={**_owner_h(), "Idempotency-Key": "stu-1|2026-05|tuition"},
     )
     assert resp.status_code in (200, 201)
     txn = next(
@@ -47,7 +47,7 @@ def test_full_payment_creates_paid_status(client, fake_db):
             "amount": 5000,
             "payment_mode": "online",
         },
-        headers={**_owner_h(), "Idempotency-Key": "stu-2:2026-06:Tuition"},
+        headers={**_owner_h(), "Idempotency-Key": "stu-2|2026-06|tuition"},
     )
     assert resp.status_code in (200, 201)
     data = resp.json().get("data", {})

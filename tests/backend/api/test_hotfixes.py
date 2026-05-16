@@ -56,7 +56,7 @@ def test_upload_serve_requires_auth_and_school_scopes_lookup(client, auth_header
 
 
 def test_fee_receipt_endpoint_exists_for_frontend_download(client, auth_headers):
-    headers = {**auth_headers, "Idempotency-Key": "student-1:2026-05:tuition"}
+    headers = {**auth_headers, "Idempotency-Key": "student-1|2026-05|tuition"}
     created = client.post(
         "/api/fees/transactions",
         json={

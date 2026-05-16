@@ -69,7 +69,7 @@ def _require_fee_write(user: dict):
 
 
 def _normalize_fee_key(student_id: str | None, fee_period: str | None, fee_head: str | None) -> str:
-    return f"{student_id}:{fee_period}:{(fee_head or '').strip().lower()}"
+    return f"{student_id}|{fee_period}|{(fee_head or '').strip().lower()}"
 
 
 def _discount_amount(dtype: dict, original_amount: float) -> float:
@@ -292,7 +292,7 @@ async def record_payment(request: Request, user: dict = Depends(require_role("ow
     fee_head = body.get("fee_head") or body.get("fee_type")
     expected_key = _normalize_fee_key(body.get("student_id"), fee_period, fee_head)
     if not key or key.strip().lower() != expected_key:
-        raise HTTPException(400, "Idempotency-Key must match student_id:fee_period:fee_head")
+        raise HTTPException(400, "Idempotency-Key must match student_id|fee_period|fee_head")
 
     now = datetime.now()
     existing = await db.fee_idempotency_keys.find_one(_fee_query({"key": expected_key}), {"_id": 0})

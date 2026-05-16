@@ -488,18 +488,20 @@ async def expense_summary(request: Request):
 @router.get("/expenses")
 async def list_expenses(request: Request, user: dict = Depends(_require_owner_or_accountant)):
     db = get_db()
-    expenses = await db.expenses.find(scoped_filter({}, get_school_id()), {"_id": 0}).sort("date", -1).to_list(100)
+    bid = user.get("branch_id")
+    expenses = await db.expenses.find(scoped_query({}, branch_id=bid), {"_id": 0}).sort("date", -1).to_list(100)
     return {"success": True, "data": expenses}
 
 
 @router.post("/expenses")
 async def create_expense(request: Request, user: dict = Depends(_require_owner_or_accountant)):
     db = get_db()
+    bid = user.get("branch_id")
     body = await request.json()
     amount = float(body.get("amount", 0))
     category = body.get("category")
     if category:
-        budget = await db.expense_budgets.find_one(scoped_filter({"category": category}, get_school_id()), {"_id": 0})
+        budget = await db.expense_budgets.find_one(scoped_query({"category": category}, branch_id=bid), {"_id": 0})
         if budget and amount > float(budget.get("remaining_amount", budget.get("monthly_limit", 0)) or 0):
             raise HTTPException(400, "Expense exceeds remaining category budget")
     expense = add_school_id({
@@ -609,6 +611,7 @@ async def update_complaint(complaint_id: str, request: Request, user: dict = Dep
 @router.get("/incidents")
 async def list_incidents(request: Request, status: str = None, q: str = None, page: int = 1, limit: int = 20, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
+    bid = user.get("branch_id")
     query = {}
     if status:
         query["status"] = status
@@ -622,8 +625,8 @@ async def list_incidents(request: Request, status: str = None, q: str = None, pa
         query["category"] = {"$ne": "financial"}
     limit = min(max(limit, 1), 50)
     skip = max(page - 1, 0) * limit
-    total = await db.incidents.count_documents(scoped_filter(query, get_school_id()))
-    items = await db.incidents.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    total = await db.incidents.count_documents(scoped_query(query, branch_id=bid))
+    items = await db.incidents.find(scoped_query(query, branch_id=bid), {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
 
 
@@ -681,7 +684,8 @@ async def create_incident(request: Request, user: dict = Depends(get_current_use
 @router.get("/incidents/{incident_id}")
 async def get_incident(incident_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    incident = await db.incidents.find_one(scoped_filter({"id": incident_id}, get_school_id()), {"_id": 0})
+    bid = user.get("branch_id")
+    incident = await db.incidents.find_one(scoped_query({"id": incident_id}, branch_id=bid), {"_id": 0})
     if not incident:
         raise HTTPException(404, "Incident not found")
     thread = sorted(incident.get("thread", []), key=lambda x: x.get("timestamp", ""), reverse=True)
@@ -703,8 +707,9 @@ async def add_incident_thread(incident_id: str, request: Request, user: dict = D
         "content": body["content"],
         "timestamp": datetime.now().isoformat(),
     }
+    bid = user.get("branch_id")
     result = await db.incidents.update_one(
-        scoped_filter({"id": incident_id}, get_school_id()),
+        scoped_query({"id": incident_id}, branch_id=bid),
         {"$push": {"thread": entry}, "$set": {"updated_at": datetime.now().isoformat()}}
     )
     if result.matched_count == 0:
@@ -715,6 +720,7 @@ async def add_incident_thread(incident_id: str, request: Request, user: dict = D
 @router.patch("/incidents/{incident_id}/assign")
 async def assign_incident(incident_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
+    bid = user.get("branch_id")
     body = await request.json()
     updates = {"updated_at": datetime.now().isoformat()}
     if body.get("assigned_to"):
@@ -723,7 +729,7 @@ async def assign_incident(incident_id: str, request: Request, user: dict = Depen
         updates["due_date"] = body["due_date"]
     if body.get("status"):
         updates["status"] = body["status"]
-    await db.incidents.update_one(scoped_filter({"id": incident_id}, get_school_id()), {"$set": updates})
+    await db.incidents.update_one(scoped_query({"id": incident_id}, branch_id=bid), {"$set": updates})
     return {"success": True}
 
 
@@ -746,7 +752,7 @@ async def update_incident(incident_id: str, request: Request, user: dict = Depen
         raise HTTPException(400, "No update fields provided")
 
     result = await db.incidents.update_one(
-        scoped_filter({"id": incident_id}, get_school_id()),
+        scoped_query({"id": incident_id}, branch_id=bid),
         {"$set": update},
     )
     if result.matched_count == 0:
@@ -834,7 +840,8 @@ async def checkout_visitor(visitor_id: str, request: Request, user: dict = Depen
 @router.get("/assets")
 async def list_assets(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    assets = await db.assets.find(scoped_filter({}, get_school_id()), {"_id": 0}).to_list(100)
+    bid = user.get("branch_id")
+    assets = await db.assets.find(scoped_query({}, branch_id=bid), {"_id": 0}).to_list(100)
     return {"success": True, "data": assets}
 
 
@@ -859,8 +866,9 @@ async def create_asset(request: Request, user: dict = Depends(require_role("admi
 @router.patch("/assets/{asset_id}")
 async def update_asset(asset_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
+    bid = user.get("branch_id")
     body = await request.json()
-    await db.assets.update_one(scoped_filter({"id": asset_id}, get_school_id()), {"$set": body})
+    await db.assets.update_one(scoped_query({"id": asset_id}, branch_id=bid), {"$set": body})
     return {"success": True}
 
 
@@ -869,10 +877,11 @@ async def update_asset(asset_id: str, request: Request, user: dict = Depends(req
 @transport_router.get("")
 async def list_transport(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    routes = await db.transport_routes.find(scoped_filter({}, get_school_id()), {"_id": 0}).to_list(50)
+    bid = user.get("branch_id")
+    routes = await db.transport_routes.find(scoped_query({}, branch_id=bid), {"_id": 0}).to_list(50)
     # Enrich with student count per zone
     for route in routes:
-        count = await db.students.count_documents(scoped_filter({"route_zone_id": route.get("id"), "is_active": {"$ne": False}}, get_school_id()))
+        count = await db.students.count_documents(scoped_query({"route_zone_id": route.get("id"), "is_active": {"$ne": False}}, branch_id=bid))
         route["student_count"] = count
     return {"success": True, "data": routes}
 
@@ -905,11 +914,12 @@ async def create_route(request: Request, user: dict = Depends(require_role("admi
 async def get_transport_roster(request: Request, zone_id: str = None, user: dict = Depends(require_role("owner", "admin"))):
     """Owner/Principal: full roster. Transport Head: zone-specific."""
     db = get_db()
+    bid = user.get("branch_id")
     query = {"is_active": {"$ne": False}}
     if zone_id:
         query["route_zone_id"] = zone_id
-    students = await db.students.find(scoped_filter(query, get_school_id()), {"_id": 0, "name": 1, "class_name": 1, "guardian_phone": 1, "route_zone_id": 1}).to_list(500)
-    zones = await db.transport_routes.find(scoped_filter({}, get_school_id()), {"_id": 0, "id": 1, "route_name": 1}).to_list(50)
+    students = await db.students.find(scoped_query(query, branch_id=bid), {"_id": 0, "name": 1, "class_name": 1, "guardian_phone": 1, "route_zone_id": 1}).to_list(500)
+    zones = await db.transport_routes.find(scoped_query({}, branch_id=bid), {"_id": 0, "id": 1, "route_name": 1}).to_list(50)
     zone_map = {z["id"]: z["route_name"] for z in zones}
     for s in students:
         s["zone_name"] = zone_map.get(s.get("route_zone_id", ""), "Not Assigned")
@@ -939,7 +949,8 @@ async def create_vehicle(request: Request, user: dict = Depends(require_role("ad
 @transport_router.get("/vehicles")
 async def list_vehicles(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    vehicles = await db.vehicles.find(scoped_filter({}, get_school_id()), {"_id": 0}).to_list(50)
+    bid = user.get("branch_id")
+    vehicles = await db.vehicles.find(scoped_query({}, branch_id=bid), {"_id": 0}).to_list(50)
     return {"success": True, "data": vehicles}
 
 
@@ -965,9 +976,10 @@ async def create_zone(request: Request, user: dict = Depends(require_role("admin
 @transport_router.patch("/{route_id}")
 async def update_route(route_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
+    bid = user.get("branch_id")
     body = await request.json()
-    await db.transport_routes.update_one(scoped_filter({"id": route_id}, get_school_id()), {"$set": body})
-    route = await db.transport_routes.find_one(scoped_filter({"id": route_id}, get_school_id()), {"_id": 0})
+    await db.transport_routes.update_one(scoped_query({"id": route_id}, branch_id=bid), {"$set": body})
+    route = await db.transport_routes.find_one(scoped_query({"id": route_id}, branch_id=bid), {"_id": 0})
     return {"success": True, "data": route}
 
 
@@ -975,7 +987,8 @@ async def update_route(route_id: str, request: Request, user: dict = Depends(req
 @transport_router.delete("/{route_id}")
 async def delete_route(route_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    await db.transport_routes.delete_one(scoped_filter({"id": route_id}, get_school_id()))
+    bid = user.get("branch_id")
+    await db.transport_routes.delete_one(scoped_query({"id": route_id}, branch_id=bid))
     return {"success": True}
 
 
@@ -996,8 +1009,9 @@ async def save_study_plan(request: Request, user: dict = Depends(get_current_use
 async def update_expense(expense_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     _require_accounting(user)
     db = get_db()
+    bid = user.get("branch_id")
     body = await request.json(); body.pop("id", None)
-    await db.expenses.update_one(scoped_filter({"id": expense_id}, get_school_id()), {"$set": body})
+    await db.expenses.update_one(scoped_query({"id": expense_id}, branch_id=bid), {"$set": body})
     return {"success": True}
 
 
@@ -1005,14 +1019,16 @@ async def update_expense(expense_id: str, request: Request, user: dict = Depends
 async def delete_expense(expense_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     _require_accounting(user)
     db = get_db()
-    await db.expenses.delete_one(scoped_filter({"id": expense_id}, get_school_id()))
+    bid = user.get("branch_id")
+    await db.expenses.delete_one(scoped_query({"id": expense_id}, branch_id=bid))
     return {"success": True}
 
 
 @router.delete("/assets/{asset_id}")
 async def delete_asset(asset_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    await db.assets.delete_one(scoped_filter({"id": asset_id}, get_school_id()))
+    bid = user.get("branch_id")
+    await db.assets.delete_one(scoped_query({"id": asset_id}, branch_id=bid))
     return {"success": True}
 
 

@@ -22,7 +22,7 @@ class TestFeeCrud:
     def test_payment_create_is_idempotent_for_twenty_four_hours(self, client, auth_headers, fake_db):
         fake_db.fee_transactions.docs.clear()
         fake_db.fee_idempotency_keys.docs.clear()
-        headers = {**auth_headers, "Idempotency-Key": "student-1:2026-05:tuition"}
+        headers = {**auth_headers, "Idempotency-Key": "student-1|2026-05|tuition"}
 
         first = client.post("/api/fees/transactions", json=_payment_payload(), headers=headers)
         second = client.post("/api/fees/transactions", json=_payment_payload(), headers=headers)
@@ -43,7 +43,7 @@ class TestFeeCrud:
         assert response.status_code == 400
 
     def test_fee_correction_preserves_original_and_requires_reason(self, client, auth_headers, fake_db):
-        headers = {**auth_headers, "Idempotency-Key": "student-1:2026-05:tuition"}
+        headers = {**auth_headers, "Idempotency-Key": "student-1|2026-05|tuition"}
         created = client.post("/api/fees/transactions", json=_payment_payload(), headers=headers).json()["data"]
 
         missing_reason = client.patch(f"/api/fees/transactions/{created['id']}/correct", json={"amount": 2600}, headers=auth_headers)
