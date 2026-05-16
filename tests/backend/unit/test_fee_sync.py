@@ -1,5 +1,6 @@
 from __future__ import annotations
 import pytest
+from datetime import datetime, timezone
 from middleware.auth import create_jwt
 
 
@@ -12,14 +13,15 @@ def test_sync_trigger_returns_existing_in_progress_job(client, fake_db):
     """Second sync trigger returns existing job (idempotency)."""
     from tests.backend.conftest import FakeCollection
 
+    # Use a timestamp 1 minute ago — well within the 30-min timeout window
+    recent_ts = datetime.now(timezone.utc).replace(second=0, microsecond=0)
     fake_db.fee_sync_jobs = FakeCollection(
         [
             {
                 "id": "job-1",
                 "schoolId": "aaryans-joya",
                 "status": "in_progress",
-                # Timestamp in the future relative to timeout — so NOT hung
-                "started_at": "2026-05-16T08:00:00+00:00",
+                "started_at": recent_ts.isoformat(),  # recent — NOT timed out
             }
         ]
     )
