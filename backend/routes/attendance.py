@@ -216,6 +216,25 @@ async def mark_student_attendance(body: AttendanceBulkRequest, request: Request,
             "response": results,
             "created_at": datetime.now().isoformat(),
         })
+
+    # EC-14.1: ONE audit entry per bulk call (not N per student)
+    await write_audit_doc(db, {
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "schoolId": get_school_id(),
+        "entity_type": "student_attendance",
+        "entity_id": body.class_id,
+        "action": "attendance_bulk",
+        "changed_by": user["id"],
+        "changed_by_role": user.get("role"),
+        "changes": {
+            "count_marked": len(results),
+            "date": body.date,
+            "class_id": body.class_id,
+        },
+        "created_at": datetime.now().isoformat(),
+    }, school_id=get_school_id(), branch_id=user.get("branch_id", ""))
+
     return {"success": True, "data": results}
 
 
@@ -524,21 +543,7 @@ async def get_staff_attendance_today(
     return {"success": True, "data": result, "meta": {"count": len(result), "date": today}}
 
 
-@router.get("/staff")
-async def get_staff_attendance(request: Request, start_date: str = None, end_date: str = None, user: dict = Depends(require_role("owner", "admin"))):
-    db = get_db()
-    query = {}
-    if start_date:
-        query["date"] = {"$gte": start_date}
-    if end_date:
-        existing = query.get("date", {})
-        existing["$lte"] = end_date
-        query["date"] = existing
-
-    records = await db.staff_attendance.find(query, {"_id": 0}).sort("date", -1).to_list(200)
-    return {"success": True, "data": records}
-
-
+# NOTE: /staff/me must be declared before /staff/{date} to avoid path parameter shadowing
 @router.get("/staff/me")
 async def get_my_staff_attendance(request: Request, start_date: str = None, end_date: str = None, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     db = get_db()
@@ -553,4 +558,19 @@ async def get_my_staff_attendance(request: Request, start_date: str = None, end_
         existing["$lte"] = end_date
         query["date"] = existing
     records = await db.staff_attendance.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("date", -1).to_list(120)
+    return {"success": True, "data": records}
+
+
+@router.get("/staff")
+async def get_staff_attendance(request: Request, start_date: str = None, end_date: str = None, user: dict = Depends(require_role("owner", "admin"))):
+    db = get_db()
+    query = {}
+    if start_date:
+        query["date"] = {"$gte": start_date}
+    if end_date:
+        existing = query.get("date", {})
+        existing["$lte"] = end_date
+        query["date"] = existing
+
+    records = await db.staff_attendance.find(query, {"_id": 0}).sort("date", -1).to_list(200)
     return {"success": True, "data": records}

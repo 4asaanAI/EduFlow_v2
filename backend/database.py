@@ -140,6 +140,8 @@ async def connect_db():
     client_options = {
         "serverSelectionTimeoutMS": 10000,
         "retryWrites": True,
+        "maxPoolSize": 50,    # EC-16.3: explicit pool limit before load tests
+        "minPoolSize": 5,
     }
 
     _client = AsyncIOMotorClient(mongo_url, **client_options)
@@ -221,3 +223,21 @@ async def _create_indexes():
         )
     except Exception:
         pass  # Index may already exist
+    # Part 13: Branch code unique index — prevents concurrent branch creation race condition (EC-13.2)
+    try:
+        await db.branches.create_index(
+            [("schoolId", 1), ("branch_code", 1)], unique=True
+        )
+    except Exception:
+        pass  # Index may already exist
+    # Part 16: Performance indexes for teacher-facing queries
+    await db.ptm_notes.create_index([("teacher_id", 1), ("student_id", 1)])
+    await db.question_papers.create_index([("teacher_id", 1), ("created_at", -1)])
+    await db.lesson_plans.create_index([("teacher_id", 1), ("created_at", -1)])
+    # curriculum_progress unique compound index
+    try:
+        await db.curriculum_progress.create_index(
+            [("class_id", 1), ("subject_id", 1), ("topic", 1)], unique=True
+        )
+    except Exception:
+        pass

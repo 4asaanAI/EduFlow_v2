@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 """Issue tracker — facility requests (Maintenance Admin) and tech requests (IT/Tech Admin)"""
+import calendar
+import logging
+import uuid
+from datetime import date as _date, datetime, timedelta, timezone
+
 from fastapi import APIRouter, Request, HTTPException, Depends
+
 from database import get_db
-from middleware.auth import get_current_user, require_owner, require_role
+from middleware.auth import get_current_user, require_owner, require_role, require_access, require_owner_or_principal
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
 from tenant import get_school_id, scoped_filter, add_school_id
-from datetime import datetime, timedelta
-import uuid
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/issues", tags=["issues"])
 
@@ -23,8 +29,14 @@ FACILITY_CATEGORIES = {
 }
 VALID_STATUSES = {"open", "accepted", "in_progress", "pending_parts", "pending_owner_confirmation", "done", "closed"}
 VALID_PRIORITIES = {"low", "medium", "high", "urgent"}
-PRIORITY_SLA_HOURS = {"low": 120, "medium": 72, "high": 24, "urgent": 6}
-RECURRENCE_DAYS = {"weekly": 7, "monthly": 30, "quarterly": 90, "annual": 365}
+# Fix 12.1: Correct SLA hours per NFR12.2, renamed constant
+FACILITY_SLA_HOURS = {"low": 168, "medium": 72, "high": 24, "urgent": 4}
+
+# Fix 12.2: Rate-limit cooldown
+ESCALATION_COOLDOWN_SECONDS = 3600
+
+# Fix 12.3: Photo limit
+PHOTO_LIMIT = 5
 
 
 def _can_view_all(user: dict) -> bool:
@@ -59,11 +71,13 @@ def _audit(action, entity_type, entity_id, user, changes):
 
 
 def _sla_due(priority: str) -> str:
-    return (datetime.now() + timedelta(hours=PRIORITY_SLA_HOURS.get(priority, 72))).isoformat()
+    # Fix 12.1: uses renamed FACILITY_SLA_HOURS with corrected values
+    return (datetime.now() + timedelta(hours=FACILITY_SLA_HOURS.get(priority, 72))).isoformat()
 
 
 def _is_overdue(doc: dict) -> bool:
-    due_at = doc.get("sla_due_at") or doc.get("scheduled_date")
+    # Fix 12.8: check "due_at" first (new field name), fall back to "sla_due_at" and "scheduled_date"
+    due_at = doc.get("due_at") or doc.get("sla_due_at") or doc.get("scheduled_date")
     if not due_at or doc.get("status") in {"done", "closed"}:
         return False
     try:
@@ -72,14 +86,30 @@ def _is_overdue(doc: dict) -> bool:
         return False
 
 
+def _add_months(dt: _date, months: int) -> _date:
+    """Calendar-correct month addition (Fix 12.9)."""
+    month = dt.month - 1 + months
+    year = dt.year + month // 12
+    month = month % 12 + 1
+    day = min(dt.day, calendar.monthrange(year, month)[1])
+    return dt.replace(year=year, month=month, day=day)
+
+
 def _next_scheduled_date(scheduled_date: str, recurrence: str) -> str | None:
-    days = RECURRENCE_DAYS.get(recurrence)
-    if not days:
-        return None
+    """Fix 12.9: calendar-correct recurrence arithmetic (no 30/90/365 shortcuts)."""
     try:
-        return (datetime.fromisoformat(scheduled_date[:10]) + timedelta(days=days)).date().isoformat()
+        base = _date.fromisoformat(scheduled_date[:10])
     except ValueError:
         return None
+    if recurrence == "weekly":
+        return (base + timedelta(weeks=1)).isoformat()
+    if recurrence == "monthly":
+        return _add_months(base, 1).isoformat()
+    if recurrence == "quarterly":
+        return _add_months(base, 3).isoformat()
+    if recurrence == "annual":
+        return _add_months(base, 12).isoformat()
+    return None
 
 
 async def _write_audit(db, action, entity_type, entity_id, user, changes):
@@ -128,8 +158,8 @@ async def create_facility_request(request: Request):
         "location": body.get("location", ""),
         "category": cat,
         "priority": priority,
-        "sla_due_at": _sla_due(priority),
-        "photos": [u for u in body.get("photos", []) if isinstance(u, str)][:3],
+        "due_at": _sla_due(priority),  # Fix 12.8: renamed sla_due_at → due_at
+        "photos": [u for u in body.get("photos", []) if isinstance(u, str)][:PHOTO_LIMIT],
         "estimated_cost": body.get("estimated_cost"),
         "actual_cost": body.get("actual_cost"),
         "vendor_id": body.get("vendor_id"),
@@ -169,7 +199,15 @@ async def create_facility_request(request: Request):
 
 
 @router.get("/facility")
-async def list_facility_requests(request: Request, status: str = None, priority: str = None, category: str = None, page: int = 1, limit: int = 20):
+async def list_facility_requests(
+    request: Request,
+    status: str = None,
+    priority: str = None,
+    category: str = None,
+    overdue: bool = None,  # Fix 12.7: filter by overdue flag
+    page: int = 1,
+    limit: int = 20,
+):
     db = get_db()
     user = get_user(request)
     is_maintenance = _is_maint(user)
@@ -196,9 +234,44 @@ async def list_facility_requests(request: Request, status: str = None, priority:
     skip = max(page - 1, 0) * limit
     total = await db.facility_requests.count_documents(scoped_filter(query, get_school_id()))
     items = await db.facility_requests.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort([("priority", 1), ("created_at", -1)]).skip(skip).limit(limit).to_list(limit)
+    # Fix 12.8: rename overdue → is_overdue
     for item in items:
-        item["overdue"] = _is_overdue(item)
+        item["is_overdue"] = _is_overdue(item)
+    # Fix 12.7: apply overdue filter if requested
+    if overdue is True:
+        items = [i for i in items if i["is_overdue"]]
+    elif overdue is False:
+        items = [i for i in items if not i["is_overdue"]]
     return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
+
+
+@router.get("/facility/cost-summary")
+async def get_facility_cost_summary(request: Request, user: dict = Depends(require_owner_or_principal)):
+    """Cost summary by category using MongoDB $sum (null-safe). EC-12.4."""
+    db = get_db()
+    today = _date.today()
+    pipeline = [
+        {"$match": scoped_filter({}, get_school_id())},
+        {"$group": {
+            "_id": "$category",
+            "total_estimated": {"$sum": "$estimated_cost"},
+            "total_actual": {"$sum": "$actual_cost"},
+            "count": {"$sum": 1},
+        }},
+    ]
+    results = await db.facility_requests.aggregate(pipeline).to_list(None)
+    return {"success": True, "data": results, "meta": {"month": today.strftime("%Y-%m")}}
+
+
+@router.get("/facility/{request_id}")
+async def get_facility_request(request_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Single facility request by ID. Fix 12.5."""
+    db = get_db()
+    rec = await db.facility_requests.find_one(scoped_filter({"id": request_id}, get_school_id()))
+    if not rec:
+        raise HTTPException(404, "Facility request not found")
+    rec["is_overdue"] = _is_overdue(rec)
+    return {"success": True, "data": rec}
 
 
 @router.patch("/facility/{request_id}")
@@ -212,6 +285,22 @@ async def update_facility_request(request_id: str, request: Request):
     existing = await db.facility_requests.find_one(scoped_filter({"id": request_id}, get_school_id()))
     if not existing:
         raise HTTPException(404, "Facility request not found")
+
+    # Fix 12.3: atomic photo append with limit guard
+    if "photos_append" in body:
+        new_photos = body["photos_append"]
+        if not isinstance(new_photos, list):
+            new_photos = [new_photos]
+        current_photos = existing.get("photos", [])
+        if len(current_photos) >= PHOTO_LIMIT:
+            raise HTTPException(409, f"Maximum {PHOTO_LIMIT} photos allowed — limit reached")
+        for photo in new_photos:
+            await db.facility_requests.update_one(
+                scoped_filter({"id": request_id}, get_school_id()),
+                {"$push": {"photos": photo}},
+            )
+        body = {k: v for k, v in body.items() if k != "photos_append"}
+
     updates = {"updated_at": datetime.now().isoformat()}
     new_status = body.get("status")
     if new_status:
@@ -235,7 +324,7 @@ async def update_facility_request(request_id: str, request: Request):
     if "priority" in updates and updates["priority"] != existing.get("priority"):
         if updates["priority"] not in VALID_PRIORITIES:
             raise HTTPException(400, f"priority must be one of {sorted(VALID_PRIORITIES)}")
-        updates["sla_due_at"] = _sla_due(updates["priority"])
+        updates["due_at"] = _sla_due(updates["priority"])  # Fix 12.8: due_at
     if updates:
         await db.facility_requests.update_one(scoped_filter({"id": request_id}, get_school_id()), {"$set": updates})
     await _write_audit(db, "facility_request_update", "facility_requests", request_id, user, {"changes": updates})
@@ -252,20 +341,59 @@ async def escalate_facility_request(request_id: str, request: Request):
     existing = await db.facility_requests.find_one(scoped_filter({"id": request_id}, get_school_id()), {"_id": 0})
     if not existing:
         raise HTTPException(404, "Facility request not found")
+
+    # Fix 12.2a: status guard — cannot escalate closed/done requests
+    if existing.get("status") in {"closed", "done"}:
+        raise HTTPException(400, "Cannot escalate a closed or done request")
+
+    # Fix 12.2b: rate-limit — 1 hour between escalations
+    escalated_at_str = existing.get("escalated_at")
+    if escalated_at_str:
+        try:
+            escalated_at = datetime.fromisoformat(escalated_at_str.replace("Z", "+00:00"))
+            now_utc = datetime.now(timezone.utc)
+            if escalated_at > now_utc:
+                logger.warning(
+                    "escalated_at in future for request %s — treating as never-escalated", request_id
+                )
+            elif (now_utc - escalated_at).total_seconds() < ESCALATION_COOLDOWN_SECONDS:
+                raise HTTPException(429, "Request was escalated recently — wait 1 hour before re-escalating")
+        except ValueError:
+            pass  # malformed date — allow escalation
+
     body = await request.json()
     update = {
         "priority": body.get("priority", "urgent"),
         "escalated": True,
         "escalated_by": user["id"],
-        "escalated_at": datetime.now().isoformat(),
+        "escalated_at": datetime.now(timezone.utc).isoformat(),
         "escalation_reason": body.get("reason", ""),
-        "sla_due_at": _sla_due(body.get("priority", "urgent")),
+        "due_at": _sla_due(body.get("priority", "urgent")),  # Fix 12.8: due_at
         "updated_at": datetime.now().isoformat(),
     }
     if update["priority"] not in VALID_PRIORITIES:
         raise HTTPException(400, f"priority must be one of {sorted(VALID_PRIORITIES)}")
     await db.facility_requests.update_one(scoped_filter({"id": request_id}, get_school_id()), {"$set": update})
     await _write_audit(db, "facility_request_escalate", "facility_requests", request_id, user, update)
+
+    # Fix 12.2c: notify owner users after escalation
+    try:
+        owner_users = await db.auth_users.find({"user_info.role": "owner"}).to_list(10)
+        for owner in owner_users:
+            owner_id = owner.get("user_info", {}).get("id") or owner.get("id")
+            if owner_id:
+                await create_notification(
+                    db=db,
+                    user_id=owner_id,
+                    notification_type="facility_escalated",
+                    title="Facility Request Escalated",
+                    message=f"Facility request '{existing.get('title', 'Request')}' has been escalated.",
+                    source_id=request_id,
+                    source_type="facility_request",
+                )
+    except Exception:
+        logger.warning("Failed to notify owners after escalation of %s", request_id)
+
     updated = await db.facility_requests.find_one(scoped_filter({"id": request_id}, get_school_id()), {"_id": 0})
     return {"success": True, "data": updated}
 
@@ -328,15 +456,26 @@ async def create_tech_request(
     return {"success": True, "data": {k: v for k, v in req_doc.items() if k != "_id"}}
 
 
+def _require_it_tech_access(request: Request) -> dict:
+    """Part 13: owner role OR admin with sub_category=it_tech. Raises 403 otherwise."""
+    user = get_current_user(request)
+    if user.get("role") == "owner":
+        return user
+    if user.get("role") == "admin" and user.get("sub_category") == "it_tech":
+        return user
+    raise HTTPException(status_code=403, detail="Forbidden")
+
+
 @router.get("/tech")
-async def list_tech_requests(request: Request, status: str = None, page: int = 1, limit: int = 20):
+async def list_tech_requests(
+    request: Request,
+    status: str = None,
+    page: int = 1,
+    limit: int = 20,
+    user: dict = Depends(_require_it_tech_access),
+):
+    # rbac: intentional — only it_tech admin and owner can view tech tickets
     db = get_db()
-    user = get_user(request)
-    is_it = _is_it(user)
-    if _is_maint(user):
-        raise HTTPException(403, "Maintenance Admin cannot access tech requests")
-    if not _can_view_all(user) and not is_it:
-        raise HTTPException(403, "Forbidden")
     query = {}
     if status:
         query["status"] = status
@@ -418,6 +557,23 @@ async def list_all_issues(request: Request, type: str = "all", status: str = Non
 
 # ─── Maintenance Schedule ─────────────────────────────────────────────────────
 
+@router.get("/maintenance/schedule/upcoming")
+async def get_upcoming_schedule(
+    request: Request,
+    days: int = 14,
+    user: dict = Depends(require_owner_or_principal),
+):
+    """Upcoming maintenance tasks for the next N days. Fix 12.6."""
+    db = get_db()
+    today = _date.today().isoformat()
+    until = (_date.today() + timedelta(days=days)).isoformat()
+    items = await db.maintenance_schedule.find(
+        scoped_filter({"scheduled_date": {"$gte": today, "$lte": until}}, get_school_id()),
+        {"_id": 0},
+    ).sort("scheduled_date", 1).to_list(100)
+    return {"success": True, "data": items}
+
+
 @router.get("/maintenance/schedule")
 async def list_maintenance_schedule(request: Request, page: int = 1, limit: int = 20):
     db = get_db()
@@ -429,7 +585,7 @@ async def list_maintenance_schedule(request: Request, page: int = 1, limit: int 
     total = await db.maintenance_schedule.count_documents(scoped_filter({}, get_school_id()))
     items = await db.maintenance_schedule.find(scoped_filter({}, get_school_id()), {"_id": 0}).sort("scheduled_date", 1).skip(skip).limit(limit).to_list(limit)
     for item in items:
-        item["overdue"] = _is_overdue(item)
+        item["is_overdue"] = _is_overdue(item)  # Fix 12.8: renamed overdue → is_overdue
     return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
 
 

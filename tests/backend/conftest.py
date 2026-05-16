@@ -54,6 +54,7 @@ try:
     import routes.reports as reports_routes
     import routes.exports as exports_routes
     import routes.payroll as payroll_routes
+    import routes.queries as queries_routes
     from middleware.auth import hash_password
     APP_AVAILABLE = True
 except (ImportError, TypeError) as e:
@@ -216,6 +217,15 @@ class FakeCollection:
                         current = [current]
                     current.append(value)
                     _set_nested(doc, key, current)
+                for key in update.get("$unset", {}):
+                    parts = key.split(".")
+                    target = doc
+                    for part in parts[:-1]:
+                        if not isinstance(target, dict):
+                            break
+                        target = target.get(part, {})
+                    if isinstance(target, dict):
+                        target.pop(parts[-1], None)
                 return type("Result", (), {"matched_count": 1, "modified_count": 1})()
         if upsert:
             doc = {**query, **update.get("$setOnInsert", {}), **update.get("$set", {})}
@@ -450,6 +460,9 @@ class FakeDb:
         self.sports_teams = FakeCollection()
         self.salary_structures = FakeCollection()
         self.salary_disbursements = FakeCollection()
+        self.certificates = FakeCollection()
+        self.study_plans = FakeCollection()
+        self.visitors = FakeCollection()
 
     async def command(self, command_name):
         if command_name == "ping":
@@ -487,6 +500,7 @@ if APP_AVAILABLE:
     reports_routes.get_db = lambda: _fake_db
     exports_routes.get_db = lambda: _fake_db
     payroll_routes.get_db = lambda: _fake_db
+    queries_routes.get_db = lambda: _fake_db
     server.get_raw_db = lambda: _fake_db
 
 

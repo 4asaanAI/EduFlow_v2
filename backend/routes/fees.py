@@ -244,11 +244,42 @@ async def get_class_fee_summary(request: Request, user: dict = Depends(require_r
 @router.get("/my")
 async def get_my_fees(request: Request, user: dict = Depends(require_role("student"))):
     db = get_db()
-    student = await db.students.find_one(_fee_query({"user_id": user["id"]}), {"_id": 0})
+    student = await db.students.find_one(
+        scoped_query({"user_id": user["id"]}, branch_id=user.get("branch_id"))
+    )
     if not student:
         raise HTTPException(404, "Student record not found")
-    txns = await db.fee_transactions.find(_fee_query({"student_id": student["id"]}), {"_id": 0}).to_list(50)
-    return {"success": True, "data": txns}
+
+    txns = await db.fee_transactions.find(
+        scoped_query({"student_id": student["id"]}, branch_id=user.get("branch_id"))
+    ).to_list(200)
+
+    # EC-15.2: Include paid_amount from partial-status transactions in total_paid
+    total_paid = (
+        sum(t.get("amount", 0) for t in txns if t.get("status") == "paid") +
+        sum(t.get("paid_amount", 0) for t in txns if t.get("status") == "partial")
+    )
+    total_pending = sum(t.get("amount", 0) for t in txns if t.get("status") == "pending")
+    outstanding = sum(
+        t.get("amount", 0) - t.get("paid_amount", 0)
+        for t in txns if t.get("status") == "partial"
+    ) + total_pending
+
+    last_payment = max(
+        (t.get("paid_date") for t in txns if t.get("paid_date")),
+        default=None,
+    )
+
+    return {
+        "success": True,
+        "data": txns,
+        "summary": {
+            "total_paid": total_paid,
+            "total_pending": total_pending,
+            "outstanding_balance": outstanding,
+            "last_payment_date": last_payment,
+        },
+    }
 
 
 @router.post("/transactions")
@@ -473,6 +504,13 @@ async def fee_stream(request: Request, user: dict = Depends(require_role("owner"
 @router.get("/status/{student_id}")
 async def get_student_fee_status(student_id: str, request: Request, user: dict = Depends(require_role("owner", "admin", "teacher", "parent", "student"))):
     db = get_db()
+    # Ownership check for student role — a student can only see their own fee status
+    if user.get("role") == "student":
+        student_record = await db.students.find_one(
+            scoped_query({"user_id": user["id"]}, branch_id=user.get("branch_id"))
+        )
+        if not student_record or student_record.get("id") != student_id:
+            raise HTTPException(403, "Students can only view their own fee status")
     txns = await db.fee_transactions.find(_fee_query({"student_id": student_id}), {"_id": 0}).to_list(200)
     today = datetime.now()
     status = "paid"

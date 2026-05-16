@@ -114,10 +114,10 @@ def decode_jwt(token: str) -> dict:
             user["phone"] = payload["phone"]
         return user
     except ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
+        raise HTTPException(status_code=401, detail="Token expired", headers={"WWW-Authenticate": "Bearer"})
     except JWTError as e:
         logger.warning(f"JWT decode error: {e}")
-        raise HTTPException(status_code=401, detail="Invalid token")
+        raise HTTPException(status_code=401, detail="Invalid token", headers={"WWW-Authenticate": "Bearer"})
 
 
 # ─── Password helpers ────────────────────────────────────────────────────────
@@ -149,7 +149,7 @@ def get_current_user(request: Request) -> dict:
         token = auth_header[7:]
         return decode_jwt(token)
 
-    raise HTTPException(status_code=401, detail="Not authenticated")
+    raise HTTPException(status_code=401, detail="Not authenticated", headers={"WWW-Authenticate": "Bearer"})
 
 
 # ─── Role-based access dependency ────────────────────────────────────────────

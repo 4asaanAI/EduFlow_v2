@@ -67,6 +67,40 @@ async def get_token_usage(request: Request):
     return {"success": True, "data": usage}
 
 
+@router.get("/token-usage/admin")
+async def get_token_usage_admin(request: Request, user: dict = Depends(require_owner)):
+    """Admin view of token usage with per-user custom limits and 80% threshold detection."""
+    db = get_db()
+    DEFAULT_LIMIT = 50000
+
+    usage_records = await db.token_usage.find(_settings_query()).to_list(None)
+    custom_limits = await db.token_limits.find(_settings_query()).to_list(None)
+    limit_map = {rec.get("user_id"): rec.get("limit", DEFAULT_LIMIT) for rec in custom_limits}
+
+    users_over_80: list[dict] = []
+    for rec in usage_records:
+        uid = rec.get("user_id")
+        tokens_used = int(rec.get("tokens", rec.get("tokens_used", 0)) or 0)
+        effective_limit = int(limit_map.get(uid, DEFAULT_LIMIT))
+        pct = (tokens_used / effective_limit * 100) if effective_limit > 0 else 0
+        if pct >= 80:
+            users_over_80.append({
+                "user_id": uid,
+                "tokens_used": tokens_used,
+                "effective_limit": effective_limit,
+                "percent_used": round(pct, 1),
+            })
+
+    return {
+        "success": True,
+        "data": usage_records,
+        "meta": {
+            "users_over_80_pct": users_over_80,
+            "default_limit": DEFAULT_LIMIT,
+        },
+    }
+
+
 @router.get("/token-usage/aggregate")
 async def get_token_usage_aggregate(request: Request, month: str = None, user: dict = Depends(require_role("owner", "admin"))):
     if not _can_manage_platform(user):
@@ -167,6 +201,42 @@ async def list_branches(request: Request, user: dict = Depends(require_role("own
     db = get_db()
     branches = await db.branches.find(_settings_query(), {"_id": 0}).sort("name", 1).to_list(100)
     return {"success": True, "data": branches}
+
+
+@router.post("/branches")
+async def create_branch(request: Request, user: dict = Depends(require_owner)):
+    """Owner-only: create a new school branch. Unique branch_code enforced by DB index."""
+    from pymongo.errors import DuplicateKeyError
+    from datetime import timezone
+    db = get_db()
+    body = await request.json()
+    if not body.get("name"):
+        raise HTTPException(400, "name is required")
+    branch = {
+        "id": str(uuid.uuid4()),
+        "name": body.get("name", ""),
+        "branch_code": body.get("branch_code", ""),
+        "location": body.get("location", ""),
+        "created_by": user["id"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "schoolId": get_school_id(),
+    }
+    try:
+        await db.branches.insert_one({**branch, "_id": branch["id"]})
+    except DuplicateKeyError:
+        raise HTTPException(409, "Branch code already exists for this school")
+    await write_audit(
+        db,
+        action="branch_create",
+        entity_id=branch["id"],
+        collection="branches",
+        changed_by=user["id"],
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes={"name": branch["name"], "branch_code": branch["branch_code"]},
+    )
+    return {"success": True, "data": branch}
 
 
 @router.put("/branches/{branch_id}")

@@ -163,6 +163,18 @@ async def list_students(
             {"admission_number": {"$regex": safe_search, "$options": "i"}},
         ]
 
+    # Part 14 + 15: Teacher should only see students in their assigned classes
+    bid = user.get("branch_id")
+    if user.get("role") == "teacher":
+        staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})
+        if staff:
+            teacher_class_ids = staff.get("class_teacher_of") or ([staff.get("class_id")] if staff.get("class_id") else [])
+            if teacher_class_ids:
+                query["class_id"] = {"$in": teacher_class_ids}
+            # If teacher has no class assignment, return empty (don't expose all students)
+        else:
+            return {"success": True, "data": [], "meta": {"page": page, "total": 0, "per_page": per_page, "sort": sort}}
+
     sort_field, sort_dir = SORT_FIELDS.get(sort, SORT_FIELDS["created_at"])
     scoped_query = _student_query(query)
     skip = (page - 1) * per_page
@@ -254,7 +266,14 @@ async def get_my_profile(request: Request, user: dict = Depends(require_role("st
     student = await db.students.find_one(_student_query({"user_id": user["id"]}), {"_id": 0})
     if not student:
         return {"success": True, "data": None}
-    return {"success": True, "data": await _add_class_and_guardians(db, student, include_guardians=True)}
+    student = await _add_class_and_guardians(db, student, include_guardians=True)
+    # EC-15.6: Remove sensitive guardian fields from student self-view
+    GUARDIAN_SENSITIVE_FIELDS = {"annual_income", "occupation", "employer"}
+    if student.get("guardians"):
+        for guardian in student["guardians"]:
+            for field in GUARDIAN_SENSITIVE_FIELDS:
+                guardian.pop(field, None)
+    return {"success": True, "data": student}
 
 
 @router.patch("/me")

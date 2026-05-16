@@ -101,6 +101,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     response = JSONResponse(
         status_code=exc.status_code,
         content={"detail": exc.detail},
+        headers=dict(exc.headers) if exc.headers else None,
     )
     return _add_cors(response, request.headers.get("origin"))
 
@@ -241,6 +242,18 @@ app.include_router(reports_router)
 @app.on_event("startup")
 async def startup():
     validate_school_id()
+
+    # EC-15.1: SKIP_CONSENT_CHECK cannot be enabled in production/staging
+    if os.getenv("SKIP_CONSENT_CHECK", "").lower() == "true":
+        env = os.getenv("ENVIRONMENT", "development").lower()
+        if env not in ("development", "test", "testing"):
+            raise ValueError(
+                "SKIP_CONSENT_CHECK cannot be true in production/staging environments. "
+                "This env var bypasses the DPDP parental consent gate and is development-only."
+            )
+        else:
+            logger.warning("SKIP_CONSENT_CHECK enabled — DPDP consent gate bypassed (dev mode only)")
+
     await connect_db()
     app.state.sse_keepalive_task = asyncio.create_task(sse_keepalive_loop())
     logger.info("EduFlow API started")
@@ -350,7 +363,9 @@ async def health_ready():
         response["biometric"] = await _check_biometric()
 
     if db_status == "error":
-        overall = "down"
+        response["overall"] = "down"
+        # EC-16.3: Return 503 when DB is down so AWS/monitoring detects outage
+        return JSONResponse(status_code=503, content=response)
     elif any(value == "degraded" for value in response.values()):
         overall = "degraded"
     else:

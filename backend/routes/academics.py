@@ -31,6 +31,9 @@ async def _teacher_can_access_class(db, user: dict, class_id: str | None) -> boo
     staff = await _teacher_staff(db, user)
     if not staff:
         return False
+    # HoD has cross-class subject authority — skip class_id validation
+    if staff.get("sub_category") == "hod":
+        return True  # rbac: intentional — HoD has cross-class subject authority
     if class_id in {staff.get("class_id"), staff.get("class_teacher_id"), staff.get("class_teacher_of")}:
         return True
     slot = await db.timetable_slots.find_one(_academic_query({"teacher_id": staff.get("id"), "class_id": class_id}), {"_id": 0})
@@ -183,34 +186,87 @@ async def get_results(request: Request, exam_id: str = None, student_id: str = N
 async def bulk_enter_results(request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     db = get_db()
     body = await request.json()
-    results = body.get("results", [])
+    results_data = body.get("results", [])
+    bid = user.get("branch_id")
+
     saved = 0
-    for r in results:
-        max_marks = float(r.get("max_marks", 100) or 100)
-        marks = float(r.get("marks_obtained", 0) or 0)
-        if marks < 0 or marks > max_marks:
-            raise HTTPException(400, "marks_obtained must be between 0 and max_marks")
-        student = await db.students.find_one(_academic_query({"id": r.get("student_id")}), {"_id": 0})
-        await _require_teacher_class_access(db, user, (student or {}).get("class_id"))
+    errors = []
+
+    for i, r in enumerate(results_data):
+        exam_id = r.get("exam_id")
+        student_id = r.get("student_id")
+        marks = r.get("marks_obtained") or r.get("marks", 0)
+
+        # Fetch exam to get max_marks
+        exam = await db.exams.find_one(scoped_query({"id": exam_id}, branch_id=bid))
+        max_marks = float((exam or {}).get("max_marks", r.get("max_marks", 100)) or 100)
+        if marks is not None:
+            marks = float(marks)
+
+        # Validate marks ceiling — collect error, don't abort
+        if marks is not None and (marks < 0 or marks > max_marks):
+            errors.append({
+                "row": i + 1,
+                "student_id": student_id,
+                "reason": f"marks {marks} exceeds max_marks {max_marks}",
+            })
+            continue  # Skip this row, continue processing others
+
+        student = await db.students.find_one(_academic_query({"id": student_id}), {"_id": 0})
+        try:
+            await _require_teacher_class_access(db, user, (student or {}).get("class_id"))
+        except HTTPException as exc:
+            errors.append({"row": i + 1, "student_id": student_id, "reason": exc.detail})
+            continue
+
         doc = {
             "id": str(uuid.uuid4()),
-            "exam_id": r.get("exam_id"),
-            "student_id": r.get("student_id"),
+            "exam_id": exam_id,
+            "student_id": student_id,
             "subject_id": r.get("subject_id"),
             "marks_obtained": marks,
             "max_marks": max_marks,
             "grade": r.get("grade"),
             "remarks": r.get("remarks", ""),
+            "is_published": False,  # Results require explicit publish (P14.6)
             "published": bool(r.get("published")) if _can_manage_all(user) else False,
             "entered_by": user["id"],
             "created_at": datetime.now().isoformat(),
         }
         await db.exam_results.update_one(
-            _academic_query({"exam_id": r.get("exam_id"), "student_id": r.get("student_id"), "subject_id": r.get("subject_id")}),
-            {"$set": {**doc, "schoolId": get_school_id()}, "$setOnInsert": {"_id": doc["id"]}}, upsert=True
+            _academic_query({"exam_id": exam_id, "student_id": student_id, "subject_id": r.get("subject_id")}),
+            {"$set": {**doc, "schoolId": get_school_id()}, "$setOnInsert": {"_id": doc["id"]}},
+            upsert=True,
         )
         saved += 1
-    return {"success": True, "saved": saved}
+
+    if errors and saved == 0:
+        return {"success": False, "saved": 0, "errors": errors}
+    elif errors:
+        return {"success": "partial", "saved": saved, "errors": errors}
+    else:
+        return {"success": True, "data": {"saved": saved}}
+
+
+@router.patch("/results/{result_id}/publish")
+async def publish_result(result_id: str, request: Request,
+                         user: dict = Depends(require_owner_or_principal)):
+    """Admin/owner can publish exam results — makes them visible to students."""
+    from datetime import timezone
+    db = get_db()
+    bid = user.get("branch_id")
+    result = await db.exam_results.update_one(
+        scoped_query({"id": result_id}, branch_id=bid),
+        {"$set": {
+            "is_published": True,
+            "published": True,
+            "published_by": user["id"],
+            "published_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(404, "Result not found")
+    return {"success": True}
 
 
 @router.post("/lesson-plans")
@@ -408,6 +464,7 @@ Make questions appropriate for Classes 9-12 CBSE standard."""
             "id": str(uuid.uuid4()),
             "teacher_id": user["id"],
             "subject_id": subj["id"] if subj else None,
+            "class_id": body.get("class_id"),
             "title": f"{subject} - {exam_type}",
             "chapters": [chapters] if isinstance(chapters, str) else chapters,
             "difficulty_mix": {"easy": easy_pct, "medium": medium_pct, "hard": hard_pct},
@@ -415,7 +472,7 @@ Make questions appropriate for Classes 9-12 CBSE standard."""
             "total_marks": total_marks,
             "created_at": datetime.now().isoformat(),
         }
-        await db.question_papers.insert_one({**qp, "_id": qp["id"]})
+        await db.question_papers.insert_one({**qp, "_id": qp["id"], "schoolId": get_school_id()})
         return {"success": True, "data": {"content": paper_text, "id": qp["id"]}}
     except Exception as e:
         raise HTTPException(500, f"Generation failed: {str(e)}")
@@ -425,10 +482,10 @@ Make questions appropriate for Classes 9-12 CBSE standard."""
 async def list_question_papers(request: Request):
     user = get_user(request)
     db = get_db()
-    query = {}
+    query: dict = {}
     if user["role"] == "teacher":
         query["teacher_id"] = user["id"]
-    papers = await db.question_papers.find(query, {"_id": 0, "generated_content": 0}).sort("created_at", -1).to_list(20)
+    papers = await db.question_papers.find(_academic_query(query), {"_id": 0, "generated_content": 0}).sort("created_at", -1).to_list(20)
     return {"success": True, "data": papers}
 
 
@@ -436,7 +493,7 @@ async def list_question_papers(request: Request):
 async def get_question_paper(paper_id: str, request: Request):
     user = get_user(request)
     db = get_db()
-    paper = await db.question_papers.find_one({"id": paper_id}, {"_id": 0})
+    paper = await db.question_papers.find_one(_academic_query({"id": paper_id}), {"_id": 0})
     if not paper:
         raise HTTPException(404, "Not found")
     return {"success": True, "data": paper}
@@ -445,10 +502,16 @@ async def get_question_paper(paper_id: str, request: Request):
 @router.patch("/question-papers/{paper_id}")
 async def update_question_paper(paper_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     db = get_db()
+    existing = await db.question_papers.find_one(_academic_query({"id": paper_id}), {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    # Teacher ownership check: teachers can only update their own papers
+    if user["role"] == "teacher" and existing.get("teacher_id") != user["id"]:
+        raise HTTPException(403, "Forbidden")
     body = await request.json()
     update = {k: v for k, v in body.items() if k in ["title", "generated_content"]}
     update["updated_at"] = datetime.now().isoformat()
-    result = await db.question_papers.update_one({"id": paper_id}, {"$set": update})
+    result = await db.question_papers.update_one(_academic_query({"id": paper_id}), {"$set": update})
     if result.matched_count == 0:
         raise HTTPException(404, "Not found")
     return {"success": True}
@@ -457,7 +520,13 @@ async def update_question_paper(paper_id: str, request: Request, user: dict = De
 @router.delete("/question-papers/{paper_id}")
 async def delete_question_paper(paper_id: str, request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     db = get_db()
-    result = await db.question_papers.delete_one({"id": paper_id})
+    existing = await db.question_papers.find_one(_academic_query({"id": paper_id}), {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    # Teacher ownership check: teachers can only delete their own papers
+    if user["role"] == "teacher" and existing.get("teacher_id") != user["id"]:
+        raise HTTPException(403, "Forbidden")
+    result = await db.question_papers.delete_one(_academic_query({"id": paper_id}))
     if result.deleted_count == 0:
         raise HTTPException(404, "Not found")
     return {"success": True}

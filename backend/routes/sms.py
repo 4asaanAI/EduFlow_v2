@@ -3,7 +3,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
 from middleware.auth import get_current_user, require_role
 from tenant import get_school_id, scoped_filter
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import uuid
 
@@ -81,7 +81,7 @@ async def send_fee_reminder(request: Request, user: dict = Depends(require_role(
         "sms_sid": sms_sid,
         "error": error_msg,
         "sent_at": datetime.now().isoformat(),
-        "created_at": datetime.now().isoformat(),
+        "created_at": datetime.now(timezone.utc),  # Native datetime for TTL index
     }
     await db.sms_logs.insert_one({**log, "_id": log["id"]})
 
@@ -156,7 +156,7 @@ async def send_bulk_reminders(request: Request, user: dict = Depends(require_rol
             "sms_sid": sms_sid,
             "error": error_msg,
             "sent_at": datetime.now().isoformat(),
-            "created_at": datetime.now().isoformat(),
+            "created_at": datetime.now(timezone.utc),  # Native datetime for TTL index
         }
         await db.sms_logs.insert_one({**log, "_id": log["id"]})
         results["logs"].append(log)
@@ -207,7 +207,7 @@ async def send_parent_message(request: Request, user: dict = Depends(require_rol
                 "status": "no_phone",
                 "error": "No phone number on record",
                 "sent_at": datetime.now().isoformat(),
-                "created_at": datetime.now().isoformat(),
+                "created_at": datetime.now(timezone.utc),  # Native datetime for TTL index
             }
             await db.sms_logs.insert_one({**log, "_id": log["id"]})
             results["logs"].append(log)
@@ -247,7 +247,7 @@ async def send_parent_message(request: Request, user: dict = Depends(require_rol
             "sms_sid": sms_sid,
             "error": error_msg,
             "sent_at": datetime.now().isoformat(),
-            "created_at": datetime.now().isoformat(),
+            "created_at": datetime.now(timezone.utc),  # Native datetime for TTL index
         }
         await db.sms_logs.insert_one({**log, "_id": log["id"]})
         results["logs"].append(log)

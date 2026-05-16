@@ -30,9 +30,12 @@ def _is_it_tech(user: dict) -> bool:
 
 
 def _is_support_admin(user: dict) -> bool:
-    return user.get("role") == "owner" or (
-        user.get("role") == "admin" and user.get("sub_category") in ("principal", "it_tech")
-    )
+    if user.get("role") == "owner":
+        return True
+    if user.get("role") == "admin" and user.get("sub_category") in ("principal", "it_tech", "receptionist"):
+        # rbac: intentional — receptionist is front-desk triage, sees all school tickets
+        return True
+    return False
 
 
 def _ticket_scope(user: dict, query: dict | None = None) -> dict:

@@ -26,6 +26,7 @@ from middleware.auth import (
     require_role,
     verify_password,
 )
+from services.audit_service import write_audit
 from services.email_service import send_password_reset_email
 from services.auth_tokens import (
     clear_legacy_refresh_cookie,
@@ -382,16 +383,35 @@ async def admin_reset_password(user_id: str, body: AdminResetPasswordRequest, us
     if not _can_administer_auth(user):
         raise HTTPException(403, "Only owner or IT tech admin can reset user passwords")
     db = get_db()
-    auth = await db.auth_users.find_one(_auth_user_filter(user_id))
-    if not auth:
+    auth_record = await db.auth_users.find_one(_auth_user_filter(user_id))
+    if not auth_record:
         raise HTTPException(404, "User not found")
+
+    target_role = (auth_record.get("user_info") or {}).get("role") or auth_record.get("role", "")
+
+    # IT-tech cannot reset owner passwords
+    if target_role == "owner" and user.get("role") != "owner":
+        raise HTTPException(403, "Cannot reset owner password — contact system administrator")
+
     new_password = body.new_password or f"EduFlow-{uuid.uuid4().hex[:10]}"
+    from tenant import get_school_id
     await db.auth_users.update_one(
         _auth_user_filter(user_id),
         {"$set": {"password_hash": hash_password(new_password), "must_change_password": True, "password_reset_by": user["id"], "password_reset_at": datetime.now(timezone.utc).isoformat()}},
     )
     await revoke_user_refresh_tokens(db, user_id, reason="admin_password_reset")
-    return {"success": True, "temporary_password": new_password}
+    await write_audit(
+        db,
+        action="admin_password_reset",
+        entity_id=user_id,
+        collection="auth_users",
+        changed_by=user["id"],
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes={"reset_for_role": target_role},
+    )
+    return {"success": True, "message": "Password reset successfully. Communicate new credentials securely."}
 
 
 @router.post("/admin/users/{user_id}/unlock")
@@ -410,7 +430,25 @@ async def admin_unlock_user(user_id: str, user: dict = Depends(require_role("own
     }
     for value in [item for item in usernames if item]:
         await db.login_attempts.delete_one({"key": f"login:{str(value).lower()}"})
-    await db.auth_users.update_one(_auth_user_filter(user_id), {"$set": {"is_active": True, "unlocked_by": user["id"], "unlocked_at": datetime.now(timezone.utc).isoformat()}})
+    await db.auth_users.update_one(
+        _auth_user_filter(user_id),
+        {
+            "$set": {"is_active": True, "unlocked_by": user["id"], "unlocked_at": datetime.now(timezone.utc).isoformat()},
+            "$unset": {"locked_at": "", "failed_attempts": "", "locked_until": ""},
+        },
+    )
+    from tenant import get_school_id
+    await write_audit(
+        db,
+        action="admin_unlock_user",
+        entity_id=user_id,
+        collection="auth_users",
+        changed_by=user["id"],
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes={"action": "unlock", "cleared_fields": ["locked_at", "failed_attempts", "locked_until"]},
+    )
     return {"success": True}
 
 
