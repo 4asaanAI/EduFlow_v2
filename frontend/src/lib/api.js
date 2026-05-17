@@ -599,3 +599,17 @@ export async function markDisbursementProcessed(disbursementId) {
   });
   return res.json();
 }
+
+export async function changePassword(currentPassword, newPassword) {
+  const res = await apiFetch(`${API}/auth/change-password`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+  return res.json();
+}
+
+export async function fetchPlatformHealth() {
+  const res = await apiFetch(`${API}/operator/platform-health`, { headers: getHeaders() });
+  return res.json();
+}

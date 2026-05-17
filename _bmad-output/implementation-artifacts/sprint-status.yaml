@@ -36,7 +36,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-05-12"
-last_updated: "2026-05-15-p16-complete"
+last_updated: "2026-05-18-story-7-43-review"
 project: eduflow
 project_key: NOKEY
 tracking_system: file-system
@@ -151,7 +151,7 @@ development_status:
   # Phase 6 — Deployment & Go-Live (5 stories)
   # ─────────────────────────────────────────────
   epic-6: in-progress
-  6-34-mongodb-atlas-m10-replica-set-confirmation: backlog
+  6-34-mongodb-atlas-m10-replica-set-confirmation: in-progress
   6-35-azure-openai-india-region-dpa-signed: backlog
   6-36-cloudfront-alb-sse-timeout-configuration: done
   6-37-production-deployment-to-aws-elastic-beanstalk: done
@@ -164,11 +164,11 @@ development_status:
   # ─────────────────────────────────────────────
   epic-7: in-progress
   # ⚠️  7-39 is the GATE for Parts 14 and 15 — teacher/student login must ship before those parts start
-  7-39-teacher-student-login-activation: backlog
+  7-39-teacher-student-login-activation: review
   7-40-whatsapp-twilio-integration-fee-reminders-attendance-alerts: backlog
   7-41-advanced-reporting-recharts-dashboard: done
-  7-42-token-recharge-subscription-billing: backlog
-  7-43-platform-health-dashboard-operator-view: backlog
+  7-42-token-recharge-subscription-billing: review
+  7-43-platform-health-dashboard-operator-view: review
   7-44-school-onboarding-flow: backlog
   7-45-multi-tenancy-schema-per-tenant-enforcement: backlog
   7-46-google-maps-transport-optimisation: backlog

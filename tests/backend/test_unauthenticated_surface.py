@@ -19,6 +19,8 @@ PUBLIC_PATHS = {
     "/api/auth/seed-status",
     "/api/docs",
     "/openapi.json",
+    # Stripe webhook: authenticated via Stripe-Signature header, not JWT
+    "/api/tokens/webhook",
 }
 
 pytestmark = pytest.mark.skipif(not APP_AVAILABLE, reason="app not available")

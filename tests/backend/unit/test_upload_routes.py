@@ -70,8 +70,13 @@ def test_upload_documents_double_extension_limitation(client):
     assert response.status_code == 200
 
 
-def test_role_size_limit_rejects_student_but_accepts_teacher(client):
-    content = b"%PDF-1.4\n" + (b"0" * (12 * 1024 * 1024))
+def test_role_size_limit_rejects_student_but_accepts_teacher(client, monkeypatch):
+    monkeypatch.setattr(
+        upload_routes,
+        "MAX_SIZE_BY_ROLE",
+        {"owner": 200, "admin": 200, "teacher": 200, "student": 50},
+    )
+    content = b"%PDF-1.4\n" + (b"0" * 100)  # 109 bytes — over student 50B, under teacher 200B
 
     student_response = _post_upload(client, _headers("student-1", "student"), "large.pdf", content)
     teacher_response = _post_upload(client, _headers("teacher-1", "teacher"), "large.pdf", content)

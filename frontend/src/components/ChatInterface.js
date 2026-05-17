@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { createConversation, getBrowserSseSessionId, getMessages, sendMessageStream } from '../lib/api';
+import { apiFetch, createConversation, getBrowserSseSessionId, getMessages, sendMessageStream } from '../lib/api';
 import MessageRenderer from './MessageRenderer';
 import InputBar from './InputBar';
 import TokenBudgetBar from './TokenBudgetBar';
@@ -283,24 +283,35 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     fetchTokenUsage();
   }, [fetchTokenUsage]);
 
-  const handleRecharge = async (packId) => {
-    // In production this would trigger Razorpay payment flow first.
-    // For now, record a placeholder purchase for demo purposes.
-    try {
-      const paymentId = 'pay_demo_' + Date.now();
-      const res = await fetch(`${API}/tokens/purchase`, {
-        method: 'POST',
-        headers: { ...getHeaders(currentUser), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pack_id: packId, payment_id: paymentId }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setTokenExhausted(false);
-        setTokenCanRecharge(false);
+  // Detect return from Stripe checkout and refresh token balance
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const rechargeParam = params.get('recharge');
+    if (rechargeParam) {
+      window.history.replaceState({}, '', window.location.pathname);
+      if (rechargeParam === 'success') {
         fetchTokenUsage();
       }
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleRecharge = async (packId) => {
+    try {
+      const res = await apiFetch(`${API}/tokens/create-checkout-session`, {
+        method: 'POST',
+        headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pack_id: packId,
+          success_url: `${window.location.origin}?recharge=success`,
+          cancel_url: `${window.location.origin}?recharge=cancel`,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.data && data.data.checkout_url) {
+        window.location.href = data.data.checkout_url;
+      }
     } catch {
-      // Payment flow error — silently ignore for now
+      // Payment initiation error — silently ignore (token bar stays visible)
     }
   };
 

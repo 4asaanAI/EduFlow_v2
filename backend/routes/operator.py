@@ -7,15 +7,19 @@ count read API used by Story 7-43 (operator health dashboard).
 from __future__ import annotations
 
 import logging
+import os
+import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from database import get_db
+from database import get_db, get_school_id
 from middleware.auth import require_owner
 from services.ai_rate_limiter import get_current_count, resolve_limit
+from tenant import scoped_filter
 
 logger = logging.getLogger(__name__)
 
@@ -154,5 +158,145 @@ async def get_ai_action_counts(
             "school_id": target_school,
             "limit": effective_limit,
             "queried_by": operator.get("id"),
+        },
+    }
+
+
+# ─── Platform Health helpers ──────────────────────────────────────────────────
+
+async def _ph_db_check(db) -> str:
+    try:
+        await db.command("ping")
+        return "ok"
+    except Exception:
+        logger.warning("platform_health db check failed", exc_info=True)
+        return "error"
+
+
+async def _ph_ai_check() -> str:
+    endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
+    if not endpoint:
+        return "degraded"
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            response = await client.get(endpoint.rstrip("/"))
+        return "ok" if response.status_code < 500 else "degraded"
+    except Exception:
+        logger.warning("platform_health ai check degraded", exc_info=True)
+        return "degraded"
+
+
+async def _ph_s3_check() -> str:
+    bucket = os.environ.get("S3_BUCKET_NAME") or os.environ.get("S3_BUCKET")
+    if not bucket:
+        return "not_configured"
+    try:
+        import asyncio
+
+        def _call():
+            from services.s3_storage import get_s3_client
+            get_s3_client().list_objects_v2(Bucket=bucket, MaxKeys=1)
+
+        await asyncio.wait_for(asyncio.to_thread(_call), timeout=3.0)
+        return "ok"
+    except Exception:
+        logger.warning("platform_health s3 check degraded", exc_info=True)
+        return "degraded"
+
+
+async def _ph_sms_check() -> str:
+    sid = os.environ.get("TWILIO_ACCOUNT_SID")
+    token = os.environ.get("TWILIO_AUTH_TOKEN")
+    if not sid:
+        return "not_configured"
+    if not token:
+        return "degraded"
+    try:
+        async with httpx.AsyncClient(timeout=3.0, auth=(sid, token)) as client:
+            response = await client.get(f"https://api.twilio.com/2010-04-01/Accounts/{sid}.json")
+        return "ok" if response.status_code < 500 else "degraded"
+    except Exception:
+        logger.warning("platform_health sms check degraded", exc_info=True)
+        return "degraded"
+
+
+@router.get("/platform-health")
+async def get_platform_health(user: dict = Depends(require_owner)):
+    """Aggregated platform health for the operator dashboard (owner-only)."""
+    db = get_db()
+    school_id = get_school_id()
+
+    # ── Service checks ──────────────────────────────────────────────────────
+    db_status = await _ph_db_check(db)
+    ai_status = await _ph_ai_check()
+    s3_status = await _ph_s3_check()
+    sms_status = await _ph_sms_check()
+
+    checks = {"db": db_status, "ai": ai_status, "s3": s3_status, "sms": sms_status}
+    if db_status == "error":
+        overall = "down"
+    elif any(v == "degraded" for v in checks.values()):
+        overall = "degraded"
+    else:
+        overall = "ok"
+
+    # ── Token pool ──────────────────────────────────────────────────────────
+    branch_id = user.get("branch_id")
+    balance_doc = await db.token_balances.find_one({"branch_id": branch_id}, {"_id": 0}) or {}
+    token_pool = {
+        "school_topup_pool": balance_doc.get("school_topup_pool", 0),
+        "subscription_status": balance_doc.get("subscription_status"),
+        "subscription_plan": balance_doc.get("subscription_plan"),
+    }
+
+    # ── Fee sync last job (school-wide, not branch-scoped) ──────────────────
+    # branch-scope: intentional — fee sync is a school-wide operation
+    jobs = await db.fee_sync_jobs.find(
+        scoped_filter({}, school_id),
+        {"_id": 0},
+    ).sort("started_at", -1).to_list(1)
+    job = jobs[0] if jobs else None
+    fee_sync_last = None
+    if job:
+        fee_sync_last = {
+            "job_id": job.get("id"),
+            "status": job.get("status"),
+            "started_at": job.get("started_at"),
+            "completed_at": job.get("completed_at"),
+        }
+
+    # ── Error rate (last 60 min, school-wide) ───────────────────────────────
+    # branch-scope: intentional — operator health is a school-wide aggregate view
+    sixty_min_ago = datetime.now(timezone.utc) - timedelta(minutes=60)
+    sixty_min_ago_iso = sixty_min_ago.isoformat()
+    error_pattern = re.compile(r"fail|error", re.IGNORECASE)
+    error_query = scoped_filter(
+        {
+            "created_at": {"$gte": sixty_min_ago_iso},
+            "action": {"$regex": "fail|error", "$options": "i"},
+        },
+        school_id,
+    )
+    error_count = await db.audit_logs.count_documents(error_query)
+
+    # ── Active user count (school-wide) ────────────────────────────────────
+    # branch-scope: intentional — operator health is a school-wide aggregate view
+    active_user_count = await db.auth_users.count_documents(
+        scoped_filter({"is_active": True}, school_id)
+    )
+
+    return {
+        "success": True,
+        "data": {
+            "service_checks": {**checks, "overall": overall},
+            "token_pool": token_pool,
+            "fee_sync_last": fee_sync_last,
+            "error_rate": {
+                "error_count": error_count,
+                "window_minutes": 60,
+                "since": sixty_min_ago_iso,
+            },
+            "active_user_count": active_user_count,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
         },
     }

@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
-import { executeTool, updateLeave, getStaff } from '../../lib/api';
+import { executeTool, updateLeave, getStaff, fetchPlatformHealth } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, useToolData, LineChartWidget, BarChartWidget, PieChartWidget } from './ToolPage';
-import { Activity, CheckCircle, XCircle, AlertTriangle, Plus, RefreshCw, Save, TrendingUp, Users, FileText, Send, Download, Upload } from 'lucide-react';
+import { Activity, CheckCircle, XCircle, AlertTriangle, Plus, RefreshCw, Save, TrendingUp, Users, FileText, Send, Download, Upload, Zap, Database, Cloud } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function h() { return getAuthHeaders(); }
@@ -1983,3 +1983,249 @@ export function AttendanceAlerts() {
 
 // Re-export SmartFeeDefaulter from AdminTools so owner can use it
 export { SmartFeeDefaulter } from './AdminTools';
+
+// Platform Health Dashboard (Story 7-43)
+const STATUS_COLOR = {
+  ok: 'var(--color-success, #22c55e)',
+  degraded: 'var(--color-warning, #f59e0b)',
+  not_configured: 'var(--text-muted, #6b7280)',
+  error: 'var(--color-error, #ef4444)',
+  down: 'var(--color-error, #ef4444)',
+};
+
+function StatusBadge({ status }) {
+  const color = STATUS_COLOR[status] || STATUS_COLOR.not_configured;
+  const label = status ? status.replace('_', ' ') : 'unknown';
+  return (
+    <span
+      data-testid={`status-badge-${label}`}
+      style={{
+        display: 'inline-block',
+        padding: '2px 10px',
+        borderRadius: 12,
+        fontSize: 12,
+        fontWeight: 600,
+        background: `color-mix(in srgb, ${color} 15%, transparent)`,
+        color,
+        border: `1px solid ${color}`,
+        textTransform: 'uppercase',
+        letterSpacing: '0.04em',
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+export function PlatformHealthDashboard() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [lastRefreshed, setLastRefreshed] = useState(null);
+  const intervalRef = useRef(null);
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetchPlatformHealth();
+      if (res.success) {
+        setData(res.data);
+        setLastRefreshed(new Date().toLocaleTimeString());
+      } else {
+        setError('Failed to load health data');
+      }
+    } catch {
+      setError('Could not reach platform health endpoint');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+    intervalRef.current = setInterval(load, 60000);
+    return () => clearInterval(intervalRef.current);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const panelStyle = {
+    background: 'var(--bg-card)',
+    border: '1px solid var(--border)',
+    borderRadius: 12,
+    padding: '20px 24px',
+    flex: '1 1 220px',
+    minWidth: 200,
+  };
+
+  const labelStyle = { fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, fontWeight: 500 };
+  const valueStyle = { fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 };
+  const sectionHeader = { fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 };
+
+  return (
+    <ToolPage
+      title="Platform Health"
+      subtitle="Live service status for EduFlow operator monitoring"
+    >
+      {/* Toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+        <button
+          data-testid="refresh-health-btn"
+          onClick={load}
+          disabled={loading}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)',
+            background: 'var(--bg-card)', color: 'var(--text-primary)', cursor: 'pointer',
+            fontSize: 13, fontWeight: 500,
+          }}
+        >
+          <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+          Refresh
+        </button>
+        {lastRefreshed && (
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            Last refreshed: {lastRefreshed}
+          </span>
+        )}
+      </div>
+
+      {/* Error state */}
+      {error && (
+        <div style={{ padding: 16, background: 'color-mix(in srgb, var(--color-error, #ef4444) 10%, transparent)', border: '1px solid var(--color-error, #ef4444)', borderRadius: 8, marginBottom: 24, color: 'var(--color-error, #ef4444)', fontSize: 13 }}>
+          <AlertTriangle size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
+          {error}
+        </div>
+      )}
+
+      {/* Loading state */}
+      {loading && !data && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, color: 'var(--text-muted)', fontSize: 13, padding: '32px 0' }}>
+          <div className="spinner" style={{ width: 18, height: 18 }} />
+          Loading platform health...
+        </div>
+      )}
+
+      {/* Data panels */}
+      {data && (
+        <>
+          {/* Service Health */}
+          <div style={panelStyle}>
+            <div style={sectionHeader}>
+              <Activity size={15} />
+              Service Health
+              <span style={{ marginLeft: 'auto' }}>
+                <StatusBadge status={data.service_checks?.overall} />
+              </span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              {['db', 'ai', 's3', 'sms'].map(svc => (
+                <div key={svc} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--bg-page, #0f0f1a)', borderRadius: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                    {svc === 'db' ? <Database size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} /> : <Cloud size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />}
+                    {svc}
+                  </span>
+                  <StatusBadge status={data.service_checks?.[svc]} />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Token Pool, Fee Sync, Error Rate row */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginTop: 16 }}>
+            {/* Token Pool */}
+            <div style={panelStyle}>
+              <div style={sectionHeader}>
+                <Zap size={15} />
+                Token Pool
+              </div>
+              <div style={labelStyle}>Remaining top-up tokens</div>
+              <div style={valueStyle}>
+                {(data.token_pool?.school_topup_pool ?? 0).toLocaleString()}
+              </div>
+              {data.token_pool?.subscription_status && (
+                <div style={{ marginTop: 10 }}>
+                  <StatusBadge status={data.token_pool.subscription_status} />
+                  {data.token_pool.subscription_plan && (
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>
+                      {data.token_pool.subscription_plan}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Fee Sync */}
+            <div style={panelStyle}>
+              <div style={sectionHeader}>
+                <RefreshCw size={15} />
+                Fee Sync
+              </div>
+              {data.fee_sync_last ? (
+                <>
+                  <div style={{ marginBottom: 8 }}>
+                    <StatusBadge status={data.fee_sync_last.status} />
+                  </div>
+                  <div style={labelStyle}>Last started</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace' }}>
+                    {data.fee_sync_last.started_at
+                      ? new Date(data.fee_sync_last.started_at).toLocaleString()
+                      : '—'}
+                  </div>
+                  {data.fee_sync_last.completed_at && (
+                    <>
+                      <div style={{ ...labelStyle, marginTop: 10 }}>Completed</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace' }}>
+                        {new Date(data.fee_sync_last.completed_at).toLocaleString()}
+                      </div>
+                    </>
+                  )}
+                </>
+              ) : (
+                <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No sync jobs found</div>
+              )}
+            </div>
+
+            {/* Error Rate */}
+            <div style={panelStyle}>
+              <div style={sectionHeader}>
+                <AlertTriangle size={15} />
+                Error Rate (last 60 min)
+              </div>
+              <div style={{
+                ...valueStyle,
+                color: data.error_rate?.error_count > 0
+                  ? STATUS_COLOR.degraded
+                  : STATUS_COLOR.ok,
+              }}>
+                {data.error_rate?.error_count ?? 0}
+              </div>
+              <div style={{ ...labelStyle, marginTop: 4 }}>
+                {data.error_rate?.error_count === 0 ? 'No errors detected' : 'errors in audit log'}
+              </div>
+              {data.error_rate?.since && (
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8, fontFamily: 'JetBrains Mono, monospace' }}>
+                  since {new Date(data.error_rate.since).toLocaleTimeString()}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Active Users */}
+          <div style={{ ...panelStyle, marginTop: 16, display: 'flex', alignItems: 'center', gap: 20 }}>
+            <Users size={28} style={{ color: 'var(--text-muted)' }} />
+            <div>
+              <div style={labelStyle}>Active Users (school-wide)</div>
+              <div style={valueStyle}>{data.active_user_count ?? 0}</div>
+            </div>
+            {data.generated_at && (
+              <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>
+                Generated at<br />
+                {new Date(data.generated_at).toLocaleString()}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </ToolPage>
+  );
+}

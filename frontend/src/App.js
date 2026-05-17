@@ -10,10 +10,11 @@ import Layout from './components/Layout';
 import Login from './components/Login';
 import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
+import ChangePassword from './components/ChangePassword';
 import { purgeExpiredAttendanceDrafts } from './lib/attendanceDrafts';
 
 function AppContent() {
-  const { isAuthenticated, loading } = useUser();
+  const { isAuthenticated, loading, mustChangePassword } = useUser();
   const path = window.location.pathname;
 
   useEffect(() => {
@@ -36,6 +37,11 @@ function AppContent() {
   if (!isAuthenticated && path !== '/login') {
     window.history.replaceState(null, '', '/login');
   }
+
+  if (isAuthenticated && mustChangePassword && path !== '/change-password') {
+    window.history.replaceState(null, '', '/change-password');
+  }
+  if (isAuthenticated && path === '/change-password') return <ChangePassword />;
 
   return isAuthenticated ? <Layout /> : <Login />;
 }

@@ -46,8 +46,11 @@ def test_chat_upload_blocks_shell_extension(client):
     assert response.json()["detail"] == "File type .sh is not permitted"
 
 
-def test_chat_upload_rejects_files_over_twenty_mb(client):
-    response = _post_chat_upload(client, "notes.txt", b"a" * (21 * 1024 * 1024))
+def test_chat_upload_rejects_files_over_twenty_mb(client, monkeypatch):
+    import routes.chat_upload as chat_upload_routes
+
+    monkeypatch.setattr(chat_upload_routes, "MAX_FILE_SIZE_BYTES", 100)
+    response = _post_chat_upload(client, "notes.txt", b"a" * 101)
 
     assert response.status_code == 413
 

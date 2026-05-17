@@ -296,6 +296,7 @@ async def seed():
             "username_lower": name.lower(),
             "password_hash": hash_pw(pw),
             "role": "teacher",
+            "must_change_password": True,
             "user_info": {"id": uid, "name": name, "role": "teacher", "sub_category": sub_cat, "initials": initials},
         })
     await db.auth_users.insert_many(teacher_auth_docs)
@@ -354,6 +355,7 @@ async def seed():
             "username_lower": adm.lower(),
             "password_hash": student_password_hash,
             "role": "student",
+            "must_change_password": True,
             "user_info": {"id": uid or sid, "name": sname, "role": "student", "initials": initials},
         })
     await db.auth_users.insert_many(student_auth_docs)

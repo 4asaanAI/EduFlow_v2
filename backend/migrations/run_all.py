@@ -52,6 +52,7 @@ MIGRATIONS = [
     ("019_notifications_index", "Add notifications compound index for unread count and list queries (Part 5)"),
     ("020_file_uploads_add_school_id", "Backfill file_uploads schoolId and add scoped indexes (Part 6)"),
     ("021_audit_log_indexes", "Add audit log scoped query indexes (Part 7)"),
+    ("022_stripe_fields", "Add Stripe subscription fields to token_balances (Story 7-42)"),
 ]
 
 

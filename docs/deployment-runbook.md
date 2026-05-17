@@ -127,6 +127,11 @@ Every variable from `backend/.env.example` must be reviewed for each environment
 | `TWILIO_ACCOUNT_SID` | Optional | SMS integration. |
 | `TWILIO_AUTH_TOKEN` | Optional | SMS integration. |
 | `TWILIO_PHONE_NUMBER` | Optional | SMS sender number. |
+| `STRIPE_SECRET_KEY` | Optional | Stripe secret key for token billing (Story 7-42). Use `sk_live_...` in production. |
+| `STRIPE_PUBLISHABLE_KEY` | Optional | Stripe publishable key (reference only, not used server-side). |
+| `STRIPE_WEBHOOK_SECRET` | Optional | Stripe webhook signing secret (`whsec_...`). Required for webhook endpoint security. |
+| `STRIPE_PRICE_MONTHLY_SCHOOL_STARTER` | Optional | Stripe Price ID for the Starter monthly plan (INR, created in Stripe Dashboard). |
+| `STRIPE_PRICE_MONTHLY_SCHOOL_PRO` | Optional | Stripe Price ID for the Pro monthly plan (INR, created in Stripe Dashboard). |
 
 `MONGODB_URI` is not used by this codebase; use `MONGO_URL`.
 

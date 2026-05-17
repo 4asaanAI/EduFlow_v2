@@ -190,7 +190,13 @@ async def _create_indexes():
     await db.token_balances.create_index("branch_id", unique=True)
     await db.token_usage.create_index([("branch_id", 1), ("user_id", 1), ("month", 1)])
     await db.token_usage.create_index("created_at")
-    await db.token_purchases.create_index("payment_id", unique=True)
+    await db.token_purchases.create_index("payment_id", unique=True, sparse=True)
+    await db.token_purchases.create_index(
+        [("stripe_session_id", 1)],
+        unique=True,
+        sparse=True,
+        name="token_purchases_stripe_session_id",
+    )
     await db.refresh_tokens.create_index("token_hash", unique=True)
     await db.refresh_tokens.create_index("user_id")
     await db.refresh_tokens.create_index("expires_at", expireAfterSeconds=0)

@@ -46,6 +46,7 @@ export function UserProvider({ children }) {
   const [token, setToken] = useState(() => getAccessToken());
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
 
   // Validate token on app load
   useEffect(() => {
@@ -99,6 +100,10 @@ export function UserProvider({ children }) {
     setToken(nextToken);
     setCurrentUser(data.user);
     setIsAuthenticated(true);
+    if (data.must_change_password) {
+      setMustChangePassword(true);
+      window.history.replaceState(null, '', '/change-password');
+    }
     return data;
   }, []);
 
@@ -112,6 +117,11 @@ export function UserProvider({ children }) {
     setCurrentUser(null);
     setToken(null);
     setIsAuthenticated(false);
+    setMustChangePassword(false);
+  }, []);
+
+  const clearMustChangePassword = useCallback(() => {
+    setMustChangePassword(false);
   }, []);
 
   return (
@@ -120,8 +130,10 @@ export function UserProvider({ children }) {
       token,
       loading,
       isAuthenticated,
+      mustChangePassword,
       loginPassword,
       logout,
+      clearMustChangePassword,
     }}>
       {children}
     </UserContext.Provider>

@@ -3,24 +3,38 @@ from __future__ import annotations
 Token management routes for EduFlow.
 
 Endpoints:
-  GET  /api/tokens/balance     — branch token balance (owner/admin)
-  GET  /api/tokens/usage       — branch usage stats (owner) or user stats (with ?user_id=)
-  GET  /api/tokens/usage/me    — current user's usage this month
-  POST /api/tokens/purchase    — record a top-up purchase (after Razorpay payment)
-  PUT  /api/tokens/limits      — update per-role limits (owner only)
-  GET  /api/tokens/packs       — available top-up packs with prices
+  GET  /api/tokens/balance                  — branch token balance (owner/admin)
+  GET  /api/tokens/usage                    — branch usage stats (owner) or user stats
+  GET  /api/tokens/usage/me                 — current user's usage this month
+  GET  /api/tokens/packs                    — available top-up packs + subscription plans
+  PUT  /api/tokens/limits                   — update per-role limits (owner only)
+  POST /api/tokens/create-checkout-session  — Stripe one-time payment checkout (owner only)
+  POST /api/tokens/create-subscription-session — Stripe subscription checkout (owner only)
+  POST /api/tokens/webhook                  — Stripe webhook receiver (no JWT auth)
 """
 
 import logging
-from fastapi import APIRouter, Request, HTTPException, Depends
+import os
+
+import stripe
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from middleware.auth import get_current_user, require_owner
+from services.stripe_service import (
+    SUBSCRIPTION_PLANS,
+    create_checkout_session,
+    create_subscription_session,
+    handle_checkout_completed,
+    handle_invoice_payment_succeeded,
+    handle_subscription_created,
+    handle_subscription_deleted,
+    verify_webhook,
+)
 from services.token_service import (
+    PACKS,
     get_balance,
     get_usage_stats,
-    purchase_topup,
     update_role_limits,
-    PACKS,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,10 +42,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/tokens", tags=["tokens"])
 
 
-# ─── Helpers ─────────────────────────────────────────────────────────────────
-
 def _resolve_branch(user: dict) -> str:
-    """Extract branch_id from the authenticated user, with dev fallback."""
     return user.get("branch_id") or "branch-aaryans-joya"
 
 
@@ -39,10 +50,8 @@ def _resolve_branch(user: dict) -> str:
 
 @router.get("/balance")
 async def balance_endpoint(request: Request):
-    """Get the current token balance and configuration for the branch."""
     user = get_current_user(request)
     branch_id = _resolve_branch(user)
-
     try:
         data = await get_balance(branch_id)
         return {"success": True, "data": data}
@@ -55,19 +64,11 @@ async def balance_endpoint(request: Request):
 
 @router.get("/usage")
 async def usage_endpoint(request: Request, user_id: str = None):
-    """
-    Get usage statistics.
-    - Without user_id: branch-level stats (owner/admin only)
-    - With ?user_id=...: that user's stats
-    """
     user = get_current_user(request)
     branch_id = _resolve_branch(user)
-
-    # auth: dynamic gate — only branch-wide stats require owner/admin;
-    # per-user stats are accessible to the caller themself.
+    # auth: dynamic gate — only branch-wide stats require owner/admin
     if not user_id and user["role"] not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Forbidden")
-
     try:
         data = await get_usage_stats(branch_id, user_id=user_id)
         return {"success": True, "data": data}
@@ -80,10 +81,8 @@ async def usage_endpoint(request: Request, user_id: str = None):
 
 @router.get("/usage/me")
 async def my_usage_endpoint(request: Request):
-    """Get the current user's token usage for this month."""
     user = get_current_user(request)
     branch_id = _resolve_branch(user)
-
     try:
         data = await get_usage_stats(branch_id, user_id=user["id"])
         return {"success": True, "data": data}
@@ -92,73 +91,10 @@ async def my_usage_endpoint(request: Request):
         raise HTTPException(status_code=500, detail="Failed to fetch your usage stats.")
 
 
-# ─── POST /api/tokens/purchase ───────────────────────────────────────────────
-
-@router.post("/purchase")
-async def purchase_endpoint(request: Request):
-    """
-    Record a token top-up purchase after Razorpay payment.
-    Body: {"pack_id": "basic", "payment_id": "pay_abc123"}
-    """
-    user = get_current_user(request)
-    branch_id = _resolve_branch(user)
-    body = await request.json()
-
-    pack_id = body.get("pack_id", "").strip()
-    payment_id = body.get("payment_id", "").strip()
-
-    if not pack_id:
-        raise HTTPException(status_code=400, detail="pack_id is required.")
-    if not payment_id:
-        raise HTTPException(status_code=400, detail="payment_id is required.")
-    if pack_id not in PACKS:
-        raise HTTPException(status_code=400, detail=f"Unknown pack: {pack_id}. Available: {', '.join(PACKS.keys())}")
-
-    try:
-        result = await purchase_topup(branch_id, user["id"], pack_id, payment_id)
-        if not result.get("success"):
-            raise HTTPException(status_code=400, detail=result.get("error", "Purchase failed."))
-        return {"success": True, "data": result}
-    except HTTPException:
-        raise
-    except Exception:
-        logger.error("token_purchase_failed", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to process purchase.")
-
-
-# ─── PUT /api/tokens/limits ──────────────────────────────────────────────────
-
-@router.put("/limits")
-async def limits_endpoint(request: Request, user: dict = Depends(require_owner)):
-    """
-    Update per-role token limits. Owner only.
-    Body: {"limits": {"owner": -1, "admin": 100000, "teacher": 50000, "student": 20000}}
-    """
-    branch_id = _resolve_branch(user)
-    body = await request.json()
-    limits = body.get("limits")
-
-    if not limits or not isinstance(limits, dict):
-        raise HTTPException(status_code=400, detail="'limits' object is required in the request body.")
-
-    try:
-        result = await update_role_limits(branch_id, limits)
-        if not result.get("success"):
-            raise HTTPException(status_code=400, detail=result.get("error", "Update failed."))
-        return {"success": True, "data": result}
-    except HTTPException:
-        raise
-    except Exception:
-        logger.error("token_limits_update_failed", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to update limits.")
-
-
 # ─── GET /api/tokens/packs ──────────────────────────────────────────────────
 
 @router.get("/packs")
 async def packs_endpoint(request: Request):
-    """Return available token packs with prices."""
-    # Auth check — any authenticated user can view packs
     get_current_user(request)
 
     packs_list = [
@@ -171,4 +107,153 @@ async def packs_endpoint(request: Request):
         for pack_id, info in PACKS.items()
     ]
 
-    return {"success": True, "data": packs_list}
+    subscriptions_list = [
+        {
+            "id": plan_id,
+            "tokens_per_month": info["tokens_per_month"],
+            "price_inr": info["price_inr"],
+            "label": info["label"],
+        }
+        for plan_id, info in SUBSCRIPTION_PLANS.items()
+    ]
+
+    return {"success": True, "data": {"packs": packs_list, "subscriptions": subscriptions_list}}
+
+
+# ─── PUT /api/tokens/limits ──────────────────────────────────────────────────
+
+@router.put("/limits")
+async def limits_endpoint(request: Request, user: dict = Depends(require_owner)):
+    branch_id = _resolve_branch(user)
+    body = await request.json()
+    limits = body.get("limits")
+    if not limits or not isinstance(limits, dict):
+        raise HTTPException(status_code=400, detail="'limits' object is required in the request body.")
+    try:
+        result = await update_role_limits(branch_id, limits)
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error", "Update failed."))
+        return {"success": True, "data": result}
+    except HTTPException:
+        raise
+    except Exception:
+        logger.error("token_limits_update_failed", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update limits.")
+
+
+# ─── POST /api/tokens/create-checkout-session ────────────────────────────────
+
+@router.post("/create-checkout-session")
+async def create_checkout_session_endpoint(
+    request: Request, user: dict = Depends(require_owner)
+):
+    branch_id = _resolve_branch(user)
+    body = await request.json()
+    pack_id = body.get("pack_id", "").strip()
+    success_url = body.get("success_url", "").strip()
+    cancel_url = body.get("cancel_url", "").strip()
+
+    if not pack_id:
+        raise HTTPException(status_code=400, detail="pack_id is required.")
+    if pack_id not in PACKS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown pack: {pack_id}. Available: {', '.join(PACKS.keys())}",
+        )
+    if not os.getenv("STRIPE_SECRET_KEY"):
+        raise HTTPException(status_code=400, detail="Stripe is not configured on this server.")
+
+    try:
+        result = await create_checkout_session(
+            pack_id=pack_id,
+            branch_id=branch_id,
+            user_id=user["id"],
+            success_url=success_url or "https://app.eduflow.in?recharge=success",
+            cancel_url=cancel_url or "https://app.eduflow.in?recharge=cancel",
+        )
+        return {"success": True, "data": result}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception:
+        logger.error("create_checkout_session_failed", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to create checkout session.")
+
+
+# ─── POST /api/tokens/create-subscription-session ────────────────────────────
+
+@router.post("/create-subscription-session")
+async def create_subscription_session_endpoint(
+    request: Request, user: dict = Depends(require_owner)
+):
+    branch_id = _resolve_branch(user)
+    body = await request.json()
+    plan_id = body.get("plan_id", "").strip()
+    success_url = body.get("success_url", "").strip()
+    cancel_url = body.get("cancel_url", "").strip()
+
+    if not plan_id:
+        raise HTTPException(status_code=400, detail="plan_id is required.")
+    if plan_id not in SUBSCRIPTION_PLANS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown plan: {plan_id}. Available: {', '.join(SUBSCRIPTION_PLANS.keys())}",
+        )
+    if not os.getenv("STRIPE_SECRET_KEY"):
+        raise HTTPException(status_code=400, detail="Stripe is not configured on this server.")
+
+    try:
+        result = await create_subscription_session(
+            plan_id=plan_id,
+            branch_id=branch_id,
+            owner_id=user["id"],
+            success_url=success_url or "https://app.eduflow.in?recharge=success",
+            cancel_url=cancel_url or "https://app.eduflow.in?recharge=cancel",
+        )
+        return {"success": True, "data": result}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception:
+        logger.error("create_subscription_session_failed", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to create subscription session.")
+
+
+# ─── POST /api/tokens/webhook ────────────────────────────────────────────────
+# No JWT auth — Stripe signature verification replaces it.
+
+@router.post("/webhook")
+async def stripe_webhook(request: Request):
+    raw_body = await request.body()
+    sig_header = request.headers.get("stripe-signature", "")
+
+    if not os.getenv("STRIPE_WEBHOOK_SECRET"):
+        raise HTTPException(status_code=400, detail="Webhook endpoint not configured.")
+
+    try:
+        event = verify_webhook(raw_body, sig_header)
+    except (stripe.error.SignatureVerificationError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid webhook signature.")
+
+    event_type = event.type
+    event_data = event.data.object
+
+    try:
+        if event_type == "checkout.session.completed":
+            await handle_checkout_completed(dict(event_data))
+        elif event_type == "customer.subscription.created":
+            await handle_subscription_created(dict(event_data))
+        elif event_type == "invoice.payment_succeeded":
+            await handle_invoice_payment_succeeded(dict(event_data))
+        elif event_type == "customer.subscription.deleted":
+            await handle_subscription_deleted(dict(event_data))
+        else:
+            logger.info("stripe_webhook_unhandled_event", extra={"event_type": event_type})
+    except Exception:
+        logger.error(
+            "stripe_webhook_handler_error",
+            extra={"event_type": event_type},
+            exc_info=True,
+        )
+        # Return 200 to prevent Stripe retry storm — log the error for investigation
+        return {"received": True, "error": "handler_failed"}
+
+    return {"received": True}

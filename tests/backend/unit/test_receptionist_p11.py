@@ -18,12 +18,14 @@ def _owner_h():
 
 def test_visitor_duplicate_returns_409_with_duplicate_field(client, fake_db):
     """Duplicate visitor same day returns 409 with duplicate:true."""
+    from datetime import datetime
+    today = datetime.now().strftime("%Y-%m-%d")
     fake_db.visitor_log.docs = [
         {
             "id": "v1",
             "schoolId": "aaryans-joya",
             "visitor_name": "Raj Kumar",
-            "time_in": "2026-05-16T09:00:00",
+            "time_in": f"{today}T09:00:00",
             "time_out": None,
         }
     ]

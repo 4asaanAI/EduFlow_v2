@@ -411,6 +411,10 @@ async def get_balance(branch_id: str) -> dict:
             "school_topup_pool": 0,
             "personal_topups": {},
             "self_recharge_enabled": True,
+            "subscription_status": None,
+            "subscription_plan": None,
+            "subscription_current_period_end": None,
+            "stripe_customer_id": None,
         }
 
     # Total usage this month across all users
@@ -430,6 +434,10 @@ async def get_balance(branch_id: str) -> dict:
         "self_recharge_enabled": balance_doc.get("self_recharge_enabled", True),
         "total_used_this_month": total_used_this_month,
         "warnings": balance_doc.get("warnings", {}),
+        "subscription_status": balance_doc.get("subscription_status"),
+        "subscription_plan": balance_doc.get("subscription_plan"),
+        "subscription_current_period_end": balance_doc.get("subscription_current_period_end"),
+        "stripe_customer_id": balance_doc.get("stripe_customer_id"),
     }
 
 

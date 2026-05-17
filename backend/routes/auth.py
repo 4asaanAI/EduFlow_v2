@@ -99,6 +99,19 @@ class ResetPasswordRequest(BaseModel):
         return v
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+    @validator("new_password")
+    def validate_new_password(cls, v):
+        if len(v or "") < 8:
+            raise ValueError("Password must be at least 8 characters")
+        if len(v) > 128:
+            raise ValueError("Password must be 8-128 characters")
+        return v
+
+
 class AdminResetPasswordRequest(BaseModel):
     new_password: Optional[str] = None
 
@@ -229,7 +242,7 @@ async def login(body: LoginRequest, request: Request, response: Response):
         },
     )
 
-    return {
+    response_data = {
         "success": True,
         "access_token": token,
         "token": token,
@@ -237,6 +250,9 @@ async def login(body: LoginRequest, request: Request, response: Response):
         "expires_in": 3600,
         "user": user_info,
     }
+    if auth.get("must_change_password"):
+        response_data["must_change_password"] = True
+    return response_data
 
 
 @router.post("/refresh")
@@ -274,6 +290,22 @@ async def logout(request: Request, response: Response):
     if raw_token:
         await revoke_refresh_token(db, raw_token)
     clear_refresh_cookie(response)
+    return {"success": True}
+
+
+@router.post("/change-password")
+async def change_password(body: ChangePasswordRequest, current_user: dict = Depends(get_current_user)):
+    db = get_db()
+    auth = await db.auth_users.find_one(_auth_user_filter(current_user["user_id"]))
+    if not auth:
+        raise HTTPException(404, "Auth record not found")
+    if not verify_password(body.current_password, auth.get("password_hash", "")):
+        raise HTTPException(400, "Current password is incorrect")
+    await db.auth_users.update_one(
+        _auth_user_filter(current_user["user_id"]),
+        {"$set": {"password_hash": hash_password(body.new_password), "must_change_password": False}},
+    )
+    await revoke_user_refresh_tokens(db, current_user["user_id"], reason="password_changed")
     return {"success": True}
 
 
