@@ -46,7 +46,7 @@ def _resolve_branch(user: dict) -> str:
     return user.get("branch_id") or "branch-aaryans-joya"
 
 
-def _validate_redirect_url(url: str, field: str) -> None:
+def _validate_redirect_url(url: str | None, field: str) -> None:
     if url and not url.startswith("https://"):
         raise HTTPException(status_code=400, detail=f"{field} must be a valid HTTPS URL.")
 
@@ -154,9 +154,9 @@ async def create_checkout_session_endpoint(
 ):
     branch_id = _resolve_branch(user)
     body = await request.json()
-    pack_id = body.get("pack_id", "").strip()
-    success_url = body.get("success_url", "").strip()
-    cancel_url = body.get("cancel_url", "").strip()
+    pack_id = (body.get("pack_id") or "").strip()
+    success_url = (body.get("success_url") or "").strip()
+    cancel_url = (body.get("cancel_url") or "").strip()
 
     if not pack_id:
         raise HTTPException(status_code=400, detail="pack_id is required.")
@@ -194,9 +194,9 @@ async def create_subscription_session_endpoint(
 ):
     branch_id = _resolve_branch(user)
     body = await request.json()
-    plan_id = body.get("plan_id", "").strip()
-    success_url = body.get("success_url", "").strip()
-    cancel_url = body.get("cancel_url", "").strip()
+    plan_id = (body.get("plan_id") or "").strip()
+    success_url = (body.get("success_url") or "").strip()
+    cancel_url = (body.get("cancel_url") or "").strip()
 
     if not plan_id:
         raise HTTPException(status_code=400, detail="plan_id is required.")

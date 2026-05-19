@@ -24,7 +24,7 @@ def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
         * math.cos(math.radians(lat2))
         * math.sin(dlng / 2) ** 2
     )
-    return R * 2 * math.asin(math.sqrt(a))
+    return R * 2 * math.asin(math.sqrt(min(1.0, a)))
 
 
 async def geocode(address: str, api_key: str) -> dict:
@@ -50,7 +50,10 @@ async def geocode(address: str, api_key: str) -> dict:
         raise RuntimeError("geocode_failed")
 
     result = data["results"][0]
-    loc = result["geometry"]["location"]
+    loc = ((result.get("geometry") or {}).get("location") or {})
+    if not loc.get("lat") or not loc.get("lng"):
+        logger.warning("geocode missing geometry.location address=%r", address)
+        raise RuntimeError("geocode_failed")
     return {
         "lat": loc["lat"],
         "lng": loc["lng"],

@@ -41,8 +41,15 @@ class SchoolContextMiddleware(BaseHTTPMiddleware):
 
         try:
             from jose import jwt as _jose_jwt
+            from jose.exceptions import ExpiredSignatureError
             token = auth_header[7:]
-            payload = _jose_jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            try:
+                payload = _jose_jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            except ExpiredSignatureError:
+                # Still extract school_id from expired token so context is correct for the 401 path
+                payload = _jose_jwt.decode(
+                    token, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_exp": False}
+                )
             school_id = payload.get("school_id")
         except Exception:
             return await call_next(request)

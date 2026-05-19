@@ -161,7 +161,7 @@ def _jwt_payload_from_auth(auth: dict) -> tuple[dict, dict]:
     if auth.get("phone"):
         jwt_payload["phone"] = auth["phone"]
     from tenant import get_school_id as _get_school_id
-    jwt_payload["school_id"] = auth.get("schoolId") or _get_school_id()
+    jwt_payload["school_id"] = (auth.get("schoolId") or "").strip() or _get_school_id()
 
     return jwt_payload, user_info
 
@@ -204,8 +204,10 @@ async def login(body: LoginRequest, request: Request, response: Response):
     auth = await db.auth_users.find_one(lookup_filter)
 
     if not auth:
-        # Backward compat: legacy single-tenant rows without schoolId — case-insensitive, no schoolId scope
-        auth = await db.auth_users.find_one({"username_lower": username_lower})
+        # Backward compat: legacy rows that predate multi-tenancy — scope to env-var or client-provided school
+        from tenant import get_school_id as _gs
+        fallback_filter = {"username_lower": username_lower, "schoolId": body.school_id or _gs()}
+        auth = await db.auth_users.find_one(fallback_filter)
 
     if not auth:
         await _record_failed_attempt(db, attempt_key)
@@ -324,8 +326,11 @@ async def change_password(
     )
     # Revoke old tokens first, then issue a fresh one so the client session survives the redirect
     await revoke_user_refresh_tokens(db, current_user["user_id"], reason="password_changed")
-    new_refresh = await issue_refresh_token(db, current_user["user_id"], request)
-    set_refresh_cookie(response, new_refresh)
+    try:
+        new_refresh = await issue_refresh_token(db, current_user["user_id"], request)
+        set_refresh_cookie(response, new_refresh)
+    except Exception:
+        logger.warning("issue_refresh_token failed after password change user_id=%s", current_user["user_id"], exc_info=True)
     return {"success": True}
 
 

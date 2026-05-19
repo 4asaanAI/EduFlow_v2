@@ -133,6 +133,7 @@ async def create_school(
         await raw_db.school_settings.insert_one(settings_doc)
     except Exception as exc:
         logger.exception("school_settings insert failed school_id=%s", school_id)
+        await raw_db.schools.delete_one({"school_id": school_id})
         raise HTTPException(status_code=500, detail="Failed to create school settings") from exc
 
     owner_auth_doc = {
@@ -156,6 +157,8 @@ async def create_school(
         await raw_db.auth_users.insert_one(owner_auth_doc)
     except Exception as exc:
         logger.exception("auth_users insert failed school_id=%s", school_id)
+        await raw_db.schools.delete_one({"school_id": school_id})
+        await raw_db.school_settings.delete_one({"schoolId": school_id})
         raise HTTPException(status_code=500, detail="Failed to create owner account") from exc
 
     try:
@@ -275,7 +278,7 @@ async def deactivate_school(
             len(user_ids),
         )
     await write_audit(
-        get_db(),
+        raw_db,
         action="school_deactivated",
         entity_id=school_id,
         collection="schools",

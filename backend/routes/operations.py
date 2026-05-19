@@ -1099,6 +1099,8 @@ async def suggest_route(
 
     ranked = []
     for z in zones:
+        if "id" not in z:
+            continue
         centroid = z.get("centroid")
         if not centroid or centroid.get("lat") is None or centroid.get("lng") is None:
             continue
@@ -1137,9 +1139,10 @@ async def cluster_analysis(
     ).to_list(500)
     zones_with_centroid = [
         z for z in zones
-        if z.get("centroid") and z["centroid"].get("lat") is not None and z["centroid"].get("lng") is not None
+        if "id" in z
+        and z.get("centroid") and z["centroid"].get("lat") is not None and z["centroid"].get("lng") is not None
     ]
-    zone_map = {z["id"]: z for z in zones}
+    zone_map = {z["id"]: z for z in zones if "id" in z}
 
     students = await db.students.find(
         scoped_query({"is_active": {"$ne": False}, "coordinates": {"$exists": True}}, branch_id=bid),

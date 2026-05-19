@@ -36,7 +36,7 @@ def get_school_id() -> str:
     ctx_val = _school_id_var.get()
     if ctx_val:
         return ctx_val
-    return os.environ.get("SCHOOL_ID", DEFAULT_SCHOOL_ID)
+    return os.environ.get("SCHOOL_ID") or DEFAULT_SCHOOL_ID
 
 
 def add_school_id(document: dict, school_id: str | None = None) -> dict:
