@@ -127,6 +127,9 @@ Every variable from `backend/.env.example` must be reviewed for each environment
 | `TWILIO_ACCOUNT_SID` | Optional | SMS integration. |
 | `TWILIO_AUTH_TOKEN` | Optional | SMS integration. |
 | `TWILIO_PHONE_NUMBER` | Optional | SMS sender number. |
+| `TWILIO_WHATSAPP_FROM` | Optional | WhatsApp-enabled Twilio number for template messages (Story 7-40). |
+| `TWILIO_WHATSAPP_FEE_TEMPLATE_SID` | Optional | Twilio Content Template SID for fee reminder WhatsApp messages (Story 7-40). |
+| `TWILIO_WHATSAPP_ATTENDANCE_TEMPLATE_SID` | Optional | Twilio Content Template SID for attendance alert WhatsApp messages (Story 7-40). |
 | `STRIPE_SECRET_KEY` | Optional | Stripe secret key for token billing (Story 7-42). Use `sk_live_...` in production. |
 | `STRIPE_PUBLISHABLE_KEY` | Optional | Stripe publishable key (reference only, not used server-side). |
 | `STRIPE_WEBHOOK_SECRET` | Optional | Stripe webhook signing secret (`whsec_...`). Required for webhook endpoint security. |

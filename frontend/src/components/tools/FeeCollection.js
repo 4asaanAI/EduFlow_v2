@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle, Edit3, Percent, Phone, RefreshCw, Save, FileDown } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Edit3, Percent, Phone, RefreshCw, Save, FileDown, MessageSquare } from 'lucide-react';
 import { getAuthHeaders } from '../../lib/authSession';
 import { useUser } from '../../contexts/UserContext';
 
@@ -51,8 +51,10 @@ import {
   getFeeSummary,
   getFeeTransactions,
   getStudents,
+  getWhatsappDefaulters,
   listPayrollDisbursements,
   recordFeePayment,
+  sendFeeReminders,
   subscribeSSE,
 } from '../../lib/api';
 
@@ -103,6 +105,11 @@ export default function FeeCollection() {
 
   // Pending discount approvals (owner only)
   const [pendingApprovals, setPendingApprovals] = useState([]);
+
+  // WhatsApp fee reminders
+  const [waDefaulters, setWaDefaulters] = useState(null);
+  const [waLoading, setWaLoading] = useState(false);
+  const [waSending, setWaSending] = useState(false);
 
   const fetchPayroll = useCallback(async () => {
     setLoadingPayroll(true);
@@ -328,6 +335,38 @@ export default function FeeCollection() {
       setDiscountBreakdown(res.data);
     } catch (err) {
       setError(err.message || 'Discount breakdown could not be loaded.');
+    }
+  }
+
+  async function loadWaDefaulters() {
+    setWaLoading(true);
+    try {
+      const res = await getWhatsappDefaulters();
+      if (res.success) setWaDefaulters(res.data);
+      else setError(res.detail || 'Could not load defaulters');
+    } catch (e) {
+      setError('WhatsApp defaulters load failed');
+    } finally {
+      setWaLoading(false);
+    }
+  }
+
+  async function sendFeeWaReminders() {
+    if (!waDefaulters?.fee_defaulters?.length) return;
+    setWaSending(true);
+    try {
+      const res = await sendFeeReminders(waDefaulters.fee_defaulters);
+      if (res.success) {
+        const { sent, failed, not_configured } = res.data;
+        setNotice(`WhatsApp sent: ${sent}, failed: ${failed}, not configured: ${not_configured}`);
+        setWaDefaulters(null);
+      } else {
+        setError(res.detail || 'Send failed');
+      }
+    } catch (e) {
+      setError('Failed to send WhatsApp reminders');
+    } finally {
+      setWaSending(false);
     }
   }
 
@@ -601,6 +640,38 @@ export default function FeeCollection() {
           </table>
         )}
       </div>
+
+      {/* WhatsApp fee reminders — owner/accountant only */}
+      {(currentUser?.role === 'owner' || currentUser?.sub_category === 'accountant') && (
+        <div style={{ ...panelStyle, marginTop: 18 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <h2 style={{ ...panelTitle, margin: 0 }}><MessageSquare size={16} />WhatsApp fee reminders</h2>
+            <button
+              onClick={loadWaDefaulters}
+              disabled={waLoading}
+              style={{ ...primaryButton('var(--tool-hex-4f8ff7)'), minHeight: 36, padding: '7px 14px', fontSize: 12 }}
+            >
+              {waLoading ? 'Loading…' : 'Load defaulters'}
+            </button>
+          </div>
+          {waDefaulters && (
+            <>
+              <p style={{ margin: '0 0 10px', color: 'var(--color-text-muted)', fontSize: 12 }}>
+                {waDefaulters.fee_defaulters.length} fee defaulter(s) with phone numbers found.
+              </p>
+              {waDefaulters.fee_defaulters.length > 0 && (
+                <button
+                  onClick={sendFeeWaReminders}
+                  disabled={waSending}
+                  style={{ ...primaryButton('var(--tool-hex-34d399)'), minHeight: 36, padding: '7px 14px', fontSize: 12 }}
+                >
+                  {waSending ? 'Sending…' : `Send reminders to ${waDefaulters.fee_defaulters.length} guardian(s)`}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

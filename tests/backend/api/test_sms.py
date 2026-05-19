@@ -128,4 +128,6 @@ def test_sms_config_status_reflects_environment(client, monkeypatch):
 
     configured = client.get("/api/sms/config-status", headers=_headers())
     assert configured.status_code == 200
-    assert configured.json()["data"] == {"configured": True, "phone_number": "+15551234567"}
+    data = configured.json()["data"]
+    assert data["configured"] is True
+    assert data["phone_number"] == "+15551234567"

@@ -3,10 +3,10 @@
  */
 import React, { useState, useEffect, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
-import { getStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, getPendingLeaves, updateLeave } from '../../lib/api';
+import { getStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, getPendingLeaves, updateLeave, getWhatsappDefaulters, sendAttendanceAlerts } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, LineChartWidget } from './ToolPage';
-import { Search, Plus, CheckCircle, XCircle, Save, RefreshCw, X, FileDown } from 'lucide-react';
+import { Search, Plus, CheckCircle, XCircle, Save, RefreshCw, X, FileDown, MessageSquare } from 'lucide-react';
 import FullStudentDatabase from './StudentDatabase';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
@@ -478,6 +478,78 @@ export function AttendanceRecorder() {
         {saved ? <CheckCircle size={14} /> : <Save size={14} />}
         {saved ? 'Saved!' : saving ? 'Saving...' : 'Save Attendance'}
       </button>}
+    </ToolPage>
+  );
+}
+
+// 3b. WhatsApp Attendance Alerts (owner/principal)
+export function AttendanceWhatsAppAlerts() {
+  const { currentUser } = useUser();
+  const [defaulters, setDefaulters] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [error, setError] = useState('');
+
+  const allowed = currentUser?.role === 'owner' || currentUser?.sub_category === 'principal';
+  if (!allowed) return null;
+
+  async function load() {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await getWhatsappDefaulters();
+      if (res.success) setDefaulters(res.data);
+      else setError(res.detail || 'Could not load');
+    } catch {
+      setError('Load failed');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function send() {
+    if (!defaulters?.attendance_defaulters?.length) return;
+    setSending(true);
+    setError('');
+    try {
+      const res = await sendAttendanceAlerts(defaulters.attendance_defaulters);
+      if (res.success) {
+        const { sent, failed, not_configured } = res.data;
+        setNotice(`Sent: ${sent}, failed: ${failed}, not configured: ${not_configured}`);
+        setDefaulters(null);
+      } else {
+        setError(res.detail || 'Send failed');
+      }
+    } catch {
+      setError('Send failed');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const btnStyle = (bg) => ({ display: 'inline-flex', alignItems: 'center', gap: 7, background: bg, border: 'none', borderRadius: 8, padding: '9px 16px', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' });
+
+  return (
+    <ToolPage title="WhatsApp attendance alerts" subtitle="Notify guardians of students below 75% attendance this month">
+      {error && <div style={{ color: 'var(--tool-hex-f87171)', marginBottom: 10, fontSize: 13 }}>{error}</div>}
+      {notice && <div style={{ color: 'var(--tool-hex-34d399)', marginBottom: 10, fontSize: 13 }}>{notice}</div>}
+      <button onClick={load} disabled={loading} style={btnStyle('var(--tool-hex-4f8ff7)')}>
+        <MessageSquare size={14} />
+        {loading ? 'Loading…' : 'Load attendance defaulters'}
+      </button>
+      {defaulters && (
+        <div style={{ marginTop: 14 }}>
+          <p style={{ margin: '0 0 10px', fontSize: 13 }}>
+            {defaulters.attendance_defaulters.length} student(s) below 75% attendance with guardian phone numbers.
+          </p>
+          {defaulters.attendance_defaulters.length > 0 && (
+            <button onClick={send} disabled={sending} style={{ ...btnStyle('var(--tool-hex-34d399)'), marginTop: 8 }}>
+              {sending ? 'Sending…' : `Send alerts to ${defaulters.attendance_defaulters.length} guardian(s)`}
+            </button>
+          )}
+        </div>
+      )}
     </ToolPage>
   );
 }

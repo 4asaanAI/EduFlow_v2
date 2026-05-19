@@ -55,6 +55,7 @@ try:
     import routes.exports as exports_routes
     import routes.payroll as payroll_routes
     import routes.queries as queries_routes
+    import routes.sms as sms_routes
     from middleware.auth import hash_password
     APP_AVAILABLE = True
 except (ImportError, TypeError) as e:
@@ -503,6 +504,7 @@ if APP_AVAILABLE:
     exports_routes.get_db = lambda: _fake_db
     payroll_routes.get_db = lambda: _fake_db
     queries_routes.get_db = lambda: _fake_db
+    sms_routes.get_db = lambda: _fake_db
     server.get_raw_db = lambda: _fake_db
     import middleware.school_context as school_context_module
     school_context_module.get_raw_db = lambda: _fake_db

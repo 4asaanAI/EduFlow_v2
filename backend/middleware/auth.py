@@ -244,3 +244,23 @@ def require_owner_or_principal(request: Request):
             user.get("role"), user.get("sub_category"), request.url.path,
         )
         raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def require_owner_or_accountant(request: Request):
+    """Owner or admin+accountant.
+
+    Semantics: owner role is allowed regardless of sub_category;
+    admin is allowed only when sub_category == 'accountant'.
+    Used for fee-related WhatsApp reminder endpoints.
+    """
+    user = get_current_user(request)
+    if user.get("role") == "owner":
+        return user
+    try:
+        return require_access("admin", sub_category="accountant")(request)
+    except HTTPException:
+        logger.info(
+            "owner/accountant gate failed: role=%s sub=%s path=%s",
+            user.get("role"), user.get("sub_category"), request.url.path,
+        )
+        raise HTTPException(status_code=403, detail="Forbidden")

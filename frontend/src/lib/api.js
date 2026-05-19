@@ -681,3 +681,31 @@ export async function fetchClusterAnalysis() {
   return res.json();
 }
 
+// ── WhatsApp reminders (Story 7-40) ──────────────────────────────────────────
+
+export async function getWhatsappDefaulters() {
+  const res = await apiFetch(`${API}/sms/whatsapp-defaulters`, {
+    headers: getHeaders(),
+  });
+  return res.json();
+}
+
+export async function sendFeeReminders(recipients) {
+  const res = await apiFetch(`${API}/sms/whatsapp-fee-reminders`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ recipients }),
+  });
+  return res.json();
+}
+
+export async function sendAttendanceAlerts(recipients) {
+  const res = await apiFetch(`${API}/sms/whatsapp-attendance-alerts`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ recipients }),
+  });
+  return res.json();
+}
+
+
