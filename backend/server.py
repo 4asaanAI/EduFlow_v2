@@ -87,6 +87,12 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Request-ID", "Idempotency-Key", "X-SSE-Session-ID"],
 )
 
+# Starlette middleware is LIFO — registered last = executes first.
+# SchoolContextMiddleware must run after CORS (registered before) so CORS preflight
+# is handled before school injection.
+from middleware.school_context import SchoolContextMiddleware
+app.add_middleware(SchoolContextMiddleware)
+
 
 def _add_cors(response: JSONResponse, origin: str | None) -> JSONResponse:
     """Inject CORS headers onto exception responses that bypass middleware."""

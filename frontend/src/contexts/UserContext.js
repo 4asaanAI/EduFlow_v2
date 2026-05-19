@@ -64,6 +64,10 @@ export function UserProvider({ children }) {
         setCurrentUser(data.user);
         setToken(data.access_token || data.token);
         setIsAuthenticated(true);
+        if (data.must_change_password) {
+          setMustChangePassword(true);
+          window.history.replaceState(null, '', '/change-password');
+        }
       } catch {
         clearAuthSession();
         setCurrentUser(null);

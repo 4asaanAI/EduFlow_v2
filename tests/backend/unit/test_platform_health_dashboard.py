@@ -167,7 +167,7 @@ def test_fee_sync_last_is_null_when_no_jobs(client):
 # ─── Error rate tests ─────────────────────────────────────────────────────────
 
 def test_error_rate_counts_failed_audit_actions(client):
-    recent = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+    recent = datetime.now(timezone.utc) - timedelta(minutes=10)
     _fake_db.audit_logs.docs[:] = [
         {"id": "a1", "schoolId": "aaryans-joya", "action": "fee_sync_failed", "created_at": recent},
         {"id": "a2", "schoolId": "aaryans-joya", "action": "import_error", "created_at": recent},
@@ -181,7 +181,7 @@ def test_error_rate_counts_failed_audit_actions(client):
 
 
 def test_error_rate_excludes_old_entries(client):
-    old = (datetime.now(timezone.utc) - timedelta(minutes=90)).isoformat()
+    old = datetime.now(timezone.utc) - timedelta(minutes=90)
     _fake_db.audit_logs.docs[:] = [
         {"id": "a1", "schoolId": "aaryans-joya", "action": "fee_sync_failed", "created_at": old},
     ]

@@ -6,19 +6,26 @@ count read API used by Story 7-43 (operator health dashboard).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
+import secrets
+import string
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
+from pymongo.errors import DuplicateKeyError
 
-from database import get_db, get_school_id
-from middleware.auth import require_owner
+from database import get_db, get_raw_db, get_school_id
+from middleware.auth import hash_password, require_owner
 from services.ai_rate_limiter import get_current_count, resolve_limit
+from services.audit_service import write_audit
+from services.email_service import send_operator_completion_email, send_welcome_email
 from tenant import scoped_filter
 
 logger = logging.getLogger(__name__)
@@ -32,6 +39,252 @@ router = APIRouter(prefix="/api/operator", tags=["operator"])
 # matches. If a school needs a sub_category-specific ceiling the schema needs
 # a new (role, sub_category) tuple — out of scope for Part 1.5.
 ALLOWED_ROLES = {"owner", "admin", "teacher", "student"}
+
+SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$")
+_ALPHANUM = string.ascii_letters + string.digits
+
+
+# ─── School onboarding helpers ─────────────────────────────────────────────────
+
+def _generate_temp_password(length: int = 12) -> str:
+    return "".join(secrets.choice(_ALPHANUM) for _ in range(length))
+
+
+def _make_initials(name: str) -> str:
+    words = name.strip().split()
+    return "".join(w[0].upper() for w in words[:2]) if words else "SC"
+
+
+async def _send_operator_slack(school_name: str) -> None:
+    webhook_url = os.environ.get("OPERATOR_SLACK_WEBHOOK_URL")
+    if not webhook_url:
+        return
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        await client.post(webhook_url, json={"text": f"School {school_name} onboarding complete."})
+
+
+class CreateSchoolRequest(BaseModel):
+    school_name: str
+    school_id: str
+    owner_email: str
+    plan_tier: Literal["starter", "pro"]
+
+
+# ─── School onboarding endpoints ───────────────────────────────────────────────
+
+@router.post("/schools")
+async def create_school(
+    body: CreateSchoolRequest,
+    user: dict = Depends(require_owner),
+):
+    """Create a new school with an isolated owner account. Owner-only."""
+    school_id = body.school_id.strip()
+    school_name = body.school_name.strip()
+    owner_email = body.owner_email.strip()
+    plan_tier = body.plan_tier.strip()
+
+    if not SLUG_RE.match(school_id):
+        raise HTTPException(
+            status_code=400,
+            detail="school_id must be 3-50 chars, lowercase alphanumeric and hyphens only",
+        )
+    if not school_name:
+        raise HTTPException(status_code=400, detail="school_name is required")
+    if not owner_email or "@" not in owner_email:
+        raise HTTPException(status_code=400, detail="owner_email must be a valid email address")
+
+    raw_db = get_raw_db()
+
+    existing = await raw_db.schools.find_one({"school_id": school_id})
+    if existing:
+        raise HTTPException(status_code=409, detail="school_id already exists")
+
+    now = datetime.now(timezone.utc)
+    school_doc_id = str(uuid.uuid4())
+    owner_user_id = str(uuid.uuid4())
+    owner_auth_id = str(uuid.uuid4())
+    temp_password = _generate_temp_password()
+
+    school_doc = {
+        "id": school_doc_id,
+        "school_name": school_name,
+        "school_id": school_id,
+        "owner_email": owner_email,
+        "plan_tier": plan_tier,
+        "status": "onboarding",
+        "created_at": now.isoformat(),
+        "created_by": user.get("id"),
+    }
+    try:
+        await raw_db.schools.insert_one({**school_doc, "_id": school_doc_id})
+    except DuplicateKeyError:
+        raise HTTPException(status_code=409, detail="school_id already exists")
+    except Exception as exc:
+        logger.exception("schools insert failed school_id=%s", school_id)
+        raise HTTPException(status_code=500, detail="Failed to create school") from exc
+
+    settings_doc = {
+        "id": "main",
+        "school_name": school_name,
+        "schoolId": school_id,
+        "created_at": now.isoformat(),
+    }
+    try:
+        await raw_db.school_settings.insert_one(settings_doc)
+    except Exception as exc:
+        logger.exception("school_settings insert failed school_id=%s", school_id)
+        raise HTTPException(status_code=500, detail="Failed to create school settings") from exc
+
+    owner_auth_doc = {
+        "id": owner_auth_id,
+        "username": owner_email,
+        "username_lower": owner_email.lower(),
+        "password_hash": hash_password(temp_password),
+        "role": "owner",
+        "schoolId": school_id,
+        "is_active": True,
+        "must_change_password": True,
+        "user_info": {
+            "id": owner_user_id,
+            "name": f"{school_name} Owner",
+            "role": "owner",
+            "initials": _make_initials(school_name),
+            "schoolId": school_id,
+        },
+    }
+    try:
+        await raw_db.auth_users.insert_one(owner_auth_doc)
+    except Exception as exc:
+        logger.exception("auth_users insert failed school_id=%s", school_id)
+        raise HTTPException(status_code=500, detail="Failed to create owner account") from exc
+
+    try:
+        await asyncio.to_thread(send_welcome_email, owner_email, owner_email, temp_password)
+    except Exception:
+        logger.warning("send_welcome_email failed school_id=%s email=%s", school_id, owner_email, exc_info=True)
+
+    return {
+        "success": True,
+        "data": {
+            "school_id": school_id,
+            "owner_username": owner_email,
+            "temporary_password": temp_password,
+        },
+    }
+
+
+@router.get("/schools/{school_id}/onboarding-status")
+async def get_onboarding_status(
+    school_id: str,
+    user: dict = Depends(require_owner),
+):
+    """Return per-step onboarding checklist for a school. Owner-only."""
+    if not SLUG_RE.match(school_id):
+        raise HTTPException(status_code=400, detail="Invalid school_id format")
+
+    raw_db = get_raw_db()
+
+    school_doc, staff_count, class_count, student_count, fee_count = await asyncio.gather(
+        raw_db.schools.find_one({"school_id": school_id}, {"_id": 0}),
+        raw_db.staff.count_documents({"schoolId": school_id}),
+        raw_db.classes.count_documents({"schoolId": school_id}),
+        raw_db.students.count_documents({"schoolId": school_id}),
+        raw_db.fee_structures.count_documents({"schoolId": school_id}),
+    )
+
+    if not school_doc:
+        raise HTTPException(status_code=404, detail="School not found")
+
+    steps = {
+        "profile_created": True,
+        "first_staff_added": staff_count > 0,
+        "first_class_configured": class_count > 0,
+        "first_student_imported": student_count > 0,
+        "first_fee_record_created": fee_count > 0,
+    }
+    completed = all(steps.values())
+    current_status = school_doc.get("status", "onboarding")
+
+    if completed and current_status == "onboarding":
+        try:
+            await raw_db.schools.update_one(
+                {"school_id": school_id},
+                {"$set": {"status": "active", "activated_at": datetime.now(timezone.utc).isoformat()}},
+            )
+            current_status = "active"
+        except Exception:
+            logger.warning("failed to update school status to active school_id=%s", school_id, exc_info=True)
+
+        if current_status == "active":
+            school_name = school_doc.get("school_name", school_id)
+            try:
+                await asyncio.to_thread(send_operator_completion_email, school_name)
+            except Exception:
+                logger.warning("operator completion email failed school_id=%s", school_id, exc_info=True)
+            try:
+                await _send_operator_slack(school_name)
+            except Exception:
+                logger.warning("operator slack notification failed school_id=%s", school_id, exc_info=True)
+
+    return {
+        "success": True,
+        "data": {
+            "school_id": school_id,
+            "school_name": school_doc.get("school_name"),
+            "status": current_status,
+            "steps": steps,
+            "completed": completed,
+        },
+    }
+
+
+@router.patch("/schools/{school_id}/deactivate")
+async def deactivate_school(
+    school_id: str,
+    user: dict = Depends(require_owner),
+):
+    """Deactivate a school. Owner-only. Full 402 enforcement is Story 7-45."""
+    if not SLUG_RE.match(school_id):
+        raise HTTPException(status_code=400, detail="Invalid school_id format")
+
+    raw_db = get_raw_db()
+
+    school_doc = await raw_db.schools.find_one({"school_id": school_id})
+    if not school_doc:
+        raise HTTPException(status_code=404, detail="School not found")
+
+    await raw_db.schools.update_one(
+        {"school_id": school_id},
+        {"$set": {"status": "deactivated", "deactivated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    # Invalidate refresh tokens for all users of this school so they can't re-authenticate.
+    # refresh_tokens has no schoolId — look up user_ids via auth_users first.
+    school_users = await raw_db.auth_users.find(
+        {"schoolId": school_id}, {"user_info": 1, "id": 1, "user_id": 1, "_id": 0}
+    ).to_list(5000)
+    user_ids = [
+        (u.get("user_info") or {}).get("id") or u.get("id") or u.get("user_id")
+        for u in school_users
+        if (u.get("user_info") or {}).get("id") or u.get("id") or u.get("user_id")
+    ]
+    if user_ids:
+        await raw_db.refresh_tokens.delete_many({"user_id": {"$in": user_ids}})
+        logger.info(
+            "refresh_tokens cleared for deactivated school school_id=%s users=%d",
+            school_id,
+            len(user_ids),
+        )
+    await write_audit(
+        get_db(),
+        action="school_deactivated",
+        entity_id=school_id,
+        collection="schools",
+        changed_by=user.get("id", ""),
+        changed_by_role=user.get("role", "owner"),
+        school_id=school_id,
+        changes={"status": "deactivated"},
+    )
+    return {"success": True, "data": {"school_id": school_id, "status": "deactivated"}}
 
 
 def _parse_iso(value: Any) -> datetime | None:
@@ -191,8 +444,6 @@ async def _ph_s3_check() -> str:
     if not bucket:
         return "not_configured"
     try:
-        import asyncio
-
         def _call():
             from services.s3_storage import get_s3_client
             get_s3_client().list_objects_v2(Bucket=bucket, MaxKeys=1)
@@ -226,11 +477,13 @@ async def get_platform_health(user: dict = Depends(require_owner)):
     db = get_db()
     school_id = get_school_id()
 
-    # ── Service checks ──────────────────────────────────────────────────────
-    db_status = await _ph_db_check(db)
-    ai_status = await _ph_ai_check()
-    s3_status = await _ph_s3_check()
-    sms_status = await _ph_sms_check()
+    # ── Service checks (run concurrently) ──────────────────────────────────
+    db_status, ai_status, s3_status, sms_status = await asyncio.gather(
+        _ph_db_check(db),
+        _ph_ai_check(),
+        _ph_s3_check(),
+        _ph_sms_check(),
+    )
 
     checks = {"db": db_status, "ai": ai_status, "s3": s3_status, "sms": sms_status}
     if db_status == "error":
@@ -267,12 +520,11 @@ async def get_platform_health(user: dict = Depends(require_owner)):
 
     # ── Error rate (last 60 min, school-wide) ───────────────────────────────
     # branch-scope: intentional — operator health is a school-wide aggregate view
-    sixty_min_ago = datetime.now(timezone.utc) - timedelta(minutes=60)
-    sixty_min_ago_iso = sixty_min_ago.isoformat()
-    error_pattern = re.compile(r"fail|error", re.IGNORECASE)
+    now = datetime.now(timezone.utc)
+    sixty_min_ago = now - timedelta(minutes=60)
     error_query = scoped_filter(
         {
-            "created_at": {"$gte": sixty_min_ago_iso},
+            "created_at": {"$gte": sixty_min_ago},
             "action": {"$regex": "fail|error", "$options": "i"},
         },
         school_id,
@@ -294,9 +546,9 @@ async def get_platform_health(user: dict = Depends(require_owner)):
             "error_rate": {
                 "error_count": error_count,
                 "window_minutes": 60,
-                "since": sixty_min_ago_iso,
+                "since": sixty_min_ago.isoformat(),
             },
             "active_user_count": active_user_count,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": now.isoformat(),
         },
     }

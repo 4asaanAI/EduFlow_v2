@@ -112,6 +112,8 @@ def decode_jwt(token: str) -> dict:
             user["initials"] = payload["initials"]
         if payload.get("phone"):
             user["phone"] = payload["phone"]
+        if payload.get("school_id"):
+            user["school_id"] = payload["school_id"]
         return user
     except ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired", headers={"WWW-Authenticate": "Bearer"})

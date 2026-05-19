@@ -6,8 +6,10 @@ from datetime import datetime, timezone
 
 import stripe
 
+from pymongo.errors import DuplicateKeyError
+
 from database import get_db
-from services.token_service import PACKS
+from services.token_service import DEFAULT_ROLE_LIMITS, PACKS
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +184,7 @@ async def handle_subscription_created(subscription: dict) -> None:
             },
             "$setOnInsert": {
                 "branch_id": branch_id,
-                "role_limits": {},
+                "role_limits": DEFAULT_ROLE_LIMITS,
                 "school_topup_pool": 0,
                 "self_recharge_enabled": True,
                 "personal_topups": {},
@@ -238,12 +240,29 @@ async def handle_invoice_payment_succeeded(invoice: dict) -> None:
 
     now_iso = datetime.now(timezone.utc).isoformat()
     lines_data = invoice.get("lines", {}).get("data", [])
-    current_period_end = lines_data[0].get("period", {}).get("end") if lines_data else None
+    current_period_end = (lines_data[0].get("period") or {}).get("end") if lines_data else None
     period_end_iso = (
         datetime.fromtimestamp(current_period_end, tz=timezone.utc).isoformat()
         if current_period_end
         else None
     )
+
+    try:
+        await db.token_purchases.insert_one(
+            {
+                "branch_id": branch_id,
+                "user_id": "subscription_renewal",
+                "pack_id": plan_id,
+                "tokens": tokens,
+                "price_inr": plan["price_inr"] if plan else 0,
+                "stripe_session_id": idempotency_key,
+                "payment_provider": "stripe",
+                "created_at": now_iso,
+            }
+        )
+    except DuplicateKeyError:
+        logger.info("invoice_already_processed_concurrent", extra={"invoice_id": invoice_id})
+        return
 
     await db.token_balances.update_one(
         {"branch_id": branch_id},
@@ -256,20 +275,6 @@ async def handle_invoice_payment_succeeded(invoice: dict) -> None:
         },
     )
 
-    await db.token_purchases.insert_one(
-        {
-            "branch_id": branch_id,
-            "user_id": "subscription_renewal",
-            "pack_id": plan_id,
-            "tokens": tokens,
-            "price_inr": plan["price_inr"] if plan else 0,
-            "stripe_session_id": idempotency_key,
-            "payment_provider": "stripe",
-            "payment_id": None,
-            "created_at": now_iso,
-        }
-    )
-
     logger.info(
         "subscription_renewal_credited",
         extra={"branch_id": branch_id, "tokens": tokens, "invoice_id": invoice_id},
@@ -280,9 +285,9 @@ async def handle_subscription_deleted(subscription: dict) -> None:
     meta = subscription.get("metadata") or {}
     branch_id = meta.get("branch_id")
     subscription_id = subscription.get("id")
+    db = get_db()
 
     if not branch_id and subscription_id:
-        db = get_db()
         balance_doc = await db.token_balances.find_one({"subscription_id": subscription_id})
         if balance_doc:
             branch_id = balance_doc.get("branch_id")
@@ -293,8 +298,6 @@ async def handle_subscription_deleted(subscription: dict) -> None:
             extra={"subscription_id": subscription_id},
         )
         return
-
-    db = get_db()
     now_iso = datetime.now(timezone.utc).isoformat()
     await db.token_balances.update_one(
         {"branch_id": branch_id},
@@ -317,19 +320,25 @@ async def purchase_topup_stripe(
     now_iso = datetime.now(timezone.utc).isoformat()
     pack = PACKS.get(pack_id, {})
 
-    await db.token_purchases.insert_one(
-        {
-            "branch_id": branch_id,
-            "user_id": user_id,
-            "pack_id": pack_id,
-            "tokens": tokens,
-            "price_inr": pack.get("price_inr", 0),
-            "stripe_session_id": stripe_session_id,
-            "payment_provider": "stripe",
-            "payment_id": None,
-            "created_at": now_iso,
-        }
-    )
+    try:
+        await db.token_purchases.insert_one(
+            {
+                "branch_id": branch_id,
+                "user_id": user_id,
+                "pack_id": pack_id,
+                "tokens": tokens,
+                "price_inr": pack.get("price_inr", 0),
+                "stripe_session_id": stripe_session_id,
+                "payment_provider": "stripe",
+                "created_at": now_iso,
+            }
+        )
+    except DuplicateKeyError:
+        logger.info(
+            "stripe_topup_already_processed",
+            extra={"session_id": stripe_session_id},
+        )
+        return
 
     await db.token_balances.update_one(
         {"branch_id": branch_id},
@@ -338,7 +347,7 @@ async def purchase_topup_stripe(
             "$set": {"updated_at": now_iso},
             "$setOnInsert": {
                 "branch_id": branch_id,
-                "role_limits": {},
+                "role_limits": DEFAULT_ROLE_LIMITS,
                 "school_topup_pool": 0,
                 "self_recharge_enabled": True,
                 "personal_topups": {},

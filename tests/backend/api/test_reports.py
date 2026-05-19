@@ -100,11 +100,11 @@ async def test_attendance_trends_calculates_monthly_pct(client, fake_db):
     now = datetime.utcnow()
     month = f"{now.year:04d}-{now.month:02d}"
     fake_db.student_attendance.docs.extend([
-        {"date": f"{month}-01", "status": "present", "class_id": "c1"},
-        {"date": f"{month}-02", "status": "present", "class_id": "c1"},
-        {"date": f"{month}-03", "status": "absent", "class_id": "c1"},
-        {"date": f"{month}-04", "status": "present", "class_id": "c2"},
-        {"date": f"{month}-05", "status": "absent", "class_id": "c2"},
+        {"schoolId": "aaryans-joya", "date": f"{month}-01", "status": "present", "class_id": "c1"},
+        {"schoolId": "aaryans-joya", "date": f"{month}-02", "status": "present", "class_id": "c1"},
+        {"schoolId": "aaryans-joya", "date": f"{month}-03", "status": "absent", "class_id": "c1"},
+        {"schoolId": "aaryans-joya", "date": f"{month}-04", "status": "present", "class_id": "c2"},
+        {"schoolId": "aaryans-joya", "date": f"{month}-05", "status": "absent", "class_id": "c2"},
     ])
     token = _login_owner(client)
     resp = client.get("/api/reports/attendance-trends?months=1", headers={"Authorization": f"Bearer {token}"})
@@ -141,11 +141,11 @@ async def test_fee_summary_groups_paid_and_outstanding(client, fake_db):
     now = datetime.utcnow()
     month = f"{now.year:04d}-{now.month:02d}"
     fake_db.fee_transactions.docs.extend([
-        {"amount": 5000, "status": "paid", "paid_date": f"{month}-05"},
-        {"amount": 3000, "status": "paid", "paid_date": f"{month}-15"},
-        {"amount": 2000, "status": "pending", "due_date": f"{month}-20"},
-        {"amount": 1500, "status": "overdue", "due_date": f"{month}-25"},
-        {"amount": 999, "status": "paid", "paid_date": "1999-01-01"},  # out of window
+        {"schoolId": "aaryans-joya", "amount": 5000, "status": "paid", "paid_date": f"{month}-05"},
+        {"schoolId": "aaryans-joya", "amount": 3000, "status": "paid", "paid_date": f"{month}-15"},
+        {"schoolId": "aaryans-joya", "amount": 2000, "status": "pending", "due_date": f"{month}-20"},
+        {"schoolId": "aaryans-joya", "amount": 1500, "status": "overdue", "due_date": f"{month}-25"},
+        {"schoolId": "aaryans-joya", "amount": 999, "status": "paid", "paid_date": "1999-01-01"},  # out of window
     ])
     token = _login_owner(client)
     resp = client.get("/api/reports/fee-collection-summary?months=1", headers={"Authorization": f"Bearer {token}"})

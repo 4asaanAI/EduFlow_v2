@@ -53,6 +53,7 @@ MIGRATIONS = [
     ("020_file_uploads_add_school_id", "Backfill file_uploads schoolId and add scoped indexes (Part 6)"),
     ("021_audit_log_indexes", "Add audit log scoped query indexes (Part 7)"),
     ("022_stripe_fields", "Add Stripe subscription fields to token_balances (Story 7-42)"),
+    ("023_transport_coordinates", "Add 2dsphere indexes for transport route centroids and student coordinates (Story 7-46)"),
 ]
 
 

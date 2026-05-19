@@ -167,12 +167,14 @@ async def test_change_password_clears_flag(monkeypatch):
     db = _FakeDb([doc])
     monkeypatch.setattr(auth_module, "get_db", lambda: db)
     monkeypatch.setattr(auth_module, "revoke_user_refresh_tokens", _noop_revoke)
+    monkeypatch.setattr(auth_module, "issue_refresh_token", _fake_issue_refresh_token)
+    monkeypatch.setattr(auth_module, "set_refresh_cookie", lambda res, tok: None)
 
     current_user = {"user_id": "user-teacher-001"}
     body = auth_module.ChangePasswordRequest(
         current_password="teacher@123", new_password="newpassword99"
     )
-    result = await auth_module.change_password(body, current_user)
+    result = await auth_module.change_password(body, _FakeRequest(), _FakeResponse(), current_user)
 
     assert result == {"success": True}
     assert db.auth_users.docs[0].get("must_change_password") is False
@@ -184,13 +186,15 @@ async def test_change_password_wrong_current_password_returns_400(monkeypatch):
     db = _FakeDb([_teacher_auth()])
     monkeypatch.setattr(auth_module, "get_db", lambda: db)
     monkeypatch.setattr(auth_module, "revoke_user_refresh_tokens", _noop_revoke)
+    monkeypatch.setattr(auth_module, "issue_refresh_token", _fake_issue_refresh_token)
+    monkeypatch.setattr(auth_module, "set_refresh_cookie", lambda res, tok: None)
 
     current_user = {"user_id": "user-teacher-001"}
     body = auth_module.ChangePasswordRequest(
         current_password="wrongpassword", new_password="newpassword99"
     )
     with pytest.raises(HTTPException) as exc:
-        await auth_module.change_password(body, current_user)
+        await auth_module.change_password(body, _FakeRequest(), _FakeResponse(), current_user)
 
     assert exc.value.status_code == 400
     assert "incorrect" in exc.value.detail.lower()

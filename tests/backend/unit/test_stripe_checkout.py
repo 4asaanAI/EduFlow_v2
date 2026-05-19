@@ -180,6 +180,16 @@ def test_create_subscription_session_unauthenticated_401(app_client, autouse_cle
     assert resp.status_code == 401
 
 
+def test_create_subscription_session_wrong_role_403(app_client, autouse_clean):
+    """Admin (non-owner) → 403."""
+    resp = app_client.post(
+        "/api/tokens/create-subscription-session",
+        json={"plan_id": "monthly_school_starter"},
+        headers=_admin_headers(),
+    )
+    assert resp.status_code == 403
+
+
 def test_create_subscription_session_unknown_plan_400(app_client, autouse_clean):
     """Unknown plan_id → 400."""
     resp = app_client.post(
@@ -215,7 +225,7 @@ async def test_webhook_checkout_completed_credits_tokens(token_db, monkeypatch):
     purchase = token_db.token_purchases.docs[0]
     assert purchase["stripe_session_id"] == "cs_unique_session_1"
     assert purchase["payment_provider"] == "stripe"
-    assert purchase["payment_id"] is None
+    assert "payment_id" not in purchase
 
 
 async def test_webhook_checkout_completed_idempotent(token_db, monkeypatch):

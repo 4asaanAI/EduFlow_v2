@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import os
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_SCHOOL_ID = "aaryans-joya"
+
+# Per-request school context — set by SchoolContextMiddleware for authenticated requests
+_school_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("school_id", default=None)
 
 
 def validate_school_id() -> None:
@@ -29,6 +33,9 @@ def validate_school_id() -> None:
 
 
 def get_school_id() -> str:
+    ctx_val = _school_id_var.get()
+    if ctx_val:
+        return ctx_val
     return os.environ.get("SCHOOL_ID", DEFAULT_SCHOOL_ID)
 
 
@@ -45,12 +52,8 @@ def scoped_filter(query: dict | None, school_id: str | None = None) -> dict:
     current_school_id = school_id or get_school_id()
     if "schoolId" in base:
         return base
-    school_clause = {
-        "$or": [
-            {"schoolId": current_school_id},
-            {"schoolId": {"$exists": False}},
-        ]
-    }
+    # Strict filter — no $exists:False fallback (Story 1-3 backfilled all docs)
+    school_clause = {"schoolId": current_school_id}
     if not base:
         return school_clause
     return {"$and": [base, school_clause]}
@@ -94,10 +97,9 @@ def scoped_query(
     branch_id explicitly (typically from `user["branch_id"]`); the school_id
     defaults to the env-canonical tenant.
 
-    The schoolId clause tolerates documents that predate the schoolId field
-    via `$exists: False` (backward compatible with pre-Story-1-3 rows).
-    branch_id is matched exactly — no exists-false fallback because every
-    operational doc has been backfilled.
+    The schoolId clause is strict (no $exists:False fallback) — Story 1-3
+    backfilled all documents. branch_id is matched exactly with the same
+    strict guarantee.
 
     Part 1.5 Patch M (defense in depth):
         * Treat empty-string branch_id the same as None (no clause applied).

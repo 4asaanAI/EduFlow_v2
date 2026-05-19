@@ -1,6 +1,6 @@
 # Story 7.43: Platform Health Dashboard — Operator View
 
-Status: review
+Status: done
 Epic: 7
 Priority: Medium (Phase 2 — Layaa AI internal monitoring)
 Effort: Medium
@@ -375,10 +375,10 @@ All 5 tasks complete. 8 new backend tests pass (auth: 401/403, shape, fee sync o
 
 ### Review Findings
 
-- [ ] [Review][Decision] Owner `branch_id` ambiguity in token pool — `user.get("branch_id")` is `None` for owner JWTs; `find_one({"branch_id": None})` matches only documents with `branch_id: null`. If token balances are always per-branch (never null), `token_pool` will always show zeros for the owner. Correct behavior is ambiguous: (a) a school-level document with `branch_id: null` exists by convention, (b) aggregate across all branches, or (c) accept zeros as intentional. [backend/routes/operator.py:244]
-- [ ] [Review][Patch] Dead code: `error_pattern = re.compile(r"fail|error", re.IGNORECASE)` compiled but never used; `import re` (line 11) also becomes unused [backend/routes/operator.py:11,272]
-- [ ] [Review][Patch] Sequential health checks — 4 awaits in series, up to 12s worst case with 3s timeouts each; replace with `asyncio.gather()` [backend/routes/operator.py:230-233]
-- [ ] [Review][Patch] Datetime issues — `datetime.now(timezone.utc)` called twice (lines 270 and 300); `$gte` uses `.isoformat()` string (type mismatch with BSON Date in `audit_logs.created_at` → `error_count` always 0). Fix: capture `now = datetime.now(timezone.utc)` once at top of handler, use `now - timedelta(minutes=60)` (datetime object, not ISO string) in the `$gte` query, and `now.isoformat()` for `generated_at` [backend/routes/operator.py:270-300]
+- [x] [Review][Decision] Owner `branch_id` ambiguity in token pool — `user.get("branch_id")` is `None` for owner JWTs; `find_one({"branch_id": None})` matches only documents with `branch_id: null`. If token balances are always per-branch (never null), `token_pool` will always show zeros for the owner. Correct behavior is ambiguous: (a) a school-level document with `branch_id: null` exists by convention, (b) aggregate across all branches, or (c) accept zeros as intentional. [backend/routes/operator.py:244]
+- [x] [Review][Patch] Dead code: `error_pattern = re.compile(r"fail|error", re.IGNORECASE)` compiled but never used; `import re` (line 11) also becomes unused [backend/routes/operator.py:11,272]
+- [x] [Review][Patch] Sequential health checks — 4 awaits in series, up to 12s worst case with 3s timeouts each; replace with `asyncio.gather()` [backend/routes/operator.py:230-233]
+- [x] [Review][Patch] Datetime issues — `datetime.now(timezone.utc)` called twice (lines 270 and 300); `$gte` uses `.isoformat()` string (type mismatch with BSON Date in `audit_logs.created_at` → `error_count` always 0). Fix: capture `now = datetime.now(timezone.utc)` once at top of handler, use `now - timedelta(minutes=60)` (datetime object, not ISO string) in the `$gte` query, and `now.isoformat()` for `generated_at` [backend/routes/operator.py:270-300]
 
 ### Change Log
 - 2026-05-18 — Story created. Status: ready-for-dev.

@@ -46,6 +46,11 @@ def _resolve_branch(user: dict) -> str:
     return user.get("branch_id") or "branch-aaryans-joya"
 
 
+def _validate_redirect_url(url: str, field: str) -> None:
+    if url and not url.startswith("https://"):
+        raise HTTPException(status_code=400, detail=f"{field} must be a valid HTTPS URL.")
+
+
 # ─── GET /api/tokens/balance ─────────────────────────────────────────────────
 
 @router.get("/balance")
@@ -160,6 +165,8 @@ async def create_checkout_session_endpoint(
             status_code=400,
             detail=f"Unknown pack: {pack_id}. Available: {', '.join(PACKS.keys())}",
         )
+    _validate_redirect_url(success_url, "success_url")
+    _validate_redirect_url(cancel_url, "cancel_url")
     if not os.getenv("STRIPE_SECRET_KEY"):
         raise HTTPException(status_code=400, detail="Stripe is not configured on this server.")
 
@@ -198,6 +205,8 @@ async def create_subscription_session_endpoint(
             status_code=400,
             detail=f"Unknown plan: {plan_id}. Available: {', '.join(SUBSCRIPTION_PLANS.keys())}",
         )
+    _validate_redirect_url(success_url, "success_url")
+    _validate_redirect_url(cancel_url, "cancel_url")
     if not os.getenv("STRIPE_SECRET_KEY"):
         raise HTTPException(status_code=400, detail="Stripe is not configured on this server.")
 
@@ -230,7 +239,7 @@ async def stripe_webhook(request: Request):
 
     try:
         event = verify_webhook(raw_body, sig_header)
-    except (stripe.error.SignatureVerificationError, ValueError):
+    except (stripe.error.StripeError, ValueError):
         raise HTTPException(status_code=400, detail="Invalid webhook signature.")
 
     event_type = event.type

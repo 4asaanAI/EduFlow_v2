@@ -56,6 +56,7 @@ PASSWORD_RESET_RATE_WINDOW_HOURS = 1
 class LoginRequest(BaseModel):
     username: str
     password: str
+    school_id: Optional[str] = None  # For multi-school login disambiguation
 
     @validator("username")
     def validate_username(cls, v):
@@ -159,6 +160,8 @@ def _jwt_payload_from_auth(auth: dict) -> tuple[dict, dict]:
         jwt_payload["branch_id"] = user_info["branch_id"]
     if auth.get("phone"):
         jwt_payload["phone"] = auth["phone"]
+    from tenant import get_school_id as _get_school_id
+    jwt_payload["school_id"] = auth.get("schoolId") or _get_school_id()
 
     return jwt_payload, user_info
 
@@ -195,11 +198,14 @@ async def login(body: LoginRequest, request: Request, response: Response):
 
     # Find user by username (case-insensitive, safe — no regex injection)
     username_lower = username.lower()
-    auth = await db.auth_users.find_one({"username_lower": username_lower})
+    lookup_filter = {"username_lower": username_lower}
+    if body.school_id:
+        lookup_filter["schoolId"] = body.school_id
+    auth = await db.auth_users.find_one(lookup_filter)
 
     if not auth:
-        # Also try exact match for backward compatibility
-        auth = await db.auth_users.find_one({"username": username})
+        # Backward compat: legacy single-tenant rows without schoolId — case-insensitive, no schoolId scope
+        auth = await db.auth_users.find_one({"username_lower": username_lower})
 
     if not auth:
         await _record_failed_attempt(db, attempt_key)
@@ -273,7 +279,7 @@ async def refresh(request: Request, response: Response):
     token = create_jwt(jwt_payload)
     refresh_token = await issue_refresh_token(db, jwt_payload["user_id"], request)
     set_refresh_cookie(response, refresh_token)
-    return {
+    refresh_response = {
         "success": True,
         "access_token": token,
         "token": token,
@@ -281,6 +287,9 @@ async def refresh(request: Request, response: Response):
         "expires_in": 3600,
         "user": user_info,
     }
+    if auth.get("must_change_password"):
+        refresh_response["must_change_password"] = True
+    return refresh_response
 
 
 @router.post("/logout")
@@ -294,18 +303,29 @@ async def logout(request: Request, response: Response):
 
 
 @router.post("/change-password")
-async def change_password(body: ChangePasswordRequest, current_user: dict = Depends(get_current_user)):
+async def change_password(
+    body: ChangePasswordRequest,
+    request: Request,
+    response: Response,
+    current_user: dict = Depends(get_current_user),
+):
     db = get_db()
     auth = await db.auth_users.find_one(_auth_user_filter(current_user["user_id"]))
     if not auth:
         raise HTTPException(404, "Auth record not found")
-    if not verify_password(body.current_password, auth.get("password_hash", "")):
+    stored_hash = auth.get("password_hash", "")
+    if not stored_hash:
+        raise HTTPException(400, "Current password is incorrect")
+    if not verify_password(body.current_password, stored_hash):
         raise HTTPException(400, "Current password is incorrect")
     await db.auth_users.update_one(
         _auth_user_filter(current_user["user_id"]),
         {"$set": {"password_hash": hash_password(body.new_password), "must_change_password": False}},
     )
+    # Revoke old tokens first, then issue a fresh one so the client session survives the redirect
     await revoke_user_refresh_tokens(db, current_user["user_id"], reason="password_changed")
+    new_refresh = await issue_refresh_token(db, current_user["user_id"], request)
+    set_refresh_cookie(response, new_refresh)
     return {"success": True}
 
 

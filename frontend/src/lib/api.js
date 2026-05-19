@@ -613,3 +613,71 @@ export async function fetchPlatformHealth() {
   const res = await apiFetch(`${API}/operator/platform-health`, { headers: getHeaders() });
   return res.json();
 }
+
+export async function createSchool(data) {
+  const res = await apiFetch(`${API}/operator/schools`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function fetchSchoolOnboardingStatus(schoolId) {
+  const res = await apiFetch(`${API}/operator/schools/${encodeURIComponent(schoolId)}/onboarding-status`, {
+    headers: getHeaders(),
+  });
+  return res.json();
+}
+
+export async function deactivateSchool(schoolId) {
+  const res = await apiFetch(`${API}/operator/schools/${encodeURIComponent(schoolId)}/deactivate`, {
+    method: 'PATCH',
+    headers: getHeaders(),
+  });
+  return res.json();
+}
+
+// Transport Optimisation (Story 7-46)
+
+export async function geocodeAddress(address) {
+  const res = await apiFetch(`${API}/transport/geocode`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ address }),
+  });
+  return res.json();
+}
+
+export async function setStudentCoordinates(studentId, lat, lng) {
+  const res = await apiFetch(`${API}/transport/students/${encodeURIComponent(studentId)}/coordinates`, {
+    method: 'PATCH',
+    headers: getHeaders(),
+    body: JSON.stringify({ lat, lng }),
+  });
+  return res.json();
+}
+
+export async function setZoneCentroid(zoneId, lat, lng) {
+  const res = await apiFetch(`${API}/transport/zones/${encodeURIComponent(zoneId)}/centroid`, {
+    method: 'PATCH',
+    headers: getHeaders(),
+    body: JSON.stringify({ lat, lng }),
+  });
+  return res.json();
+}
+
+export async function fetchRouteSuggestion(studentId) {
+  const res = await apiFetch(`${API}/transport/suggest-route?student_id=${encodeURIComponent(studentId)}`, {
+    headers: getHeaders(),
+  });
+  return res.json();
+}
+
+export async function fetchClusterAnalysis() {
+  const res = await apiFetch(`${API}/transport/cluster-analysis`, {
+    headers: getHeaders(),
+  });
+  return res.json();
+}
+

@@ -8,7 +8,7 @@ import {
   ClipboardList, Brain, PenTool, BarChart, UserCheck, Award, Truck,
   Package, Printer, FilePlus, HelpCircle, Target, Compass, FileCheck,
   Edit2, X, ChevronDown, ChevronRight, MessageCircle, Settings, User, LogOut, Sun, Moon,
-  LifeBuoy, Database, RefreshCw, Wrench, Monitor, AlertTriangle, ScrollText, Trophy,
+  LifeBuoy, Database, RefreshCw, Wrench, Monitor, AlertTriangle, ScrollText, Trophy, Building2,
 } from 'lucide-react';
 
 const TOOLS_BY_ROLE = {
@@ -45,6 +45,7 @@ const TOOLS_BY_ROLE = {
     { id: 'audit-log', name: 'Audit Log', subtitle: 'Who did what', icon: ScrollText, color: '#737373' },
     { id: 'fee-receipts', name: 'Fee Receipts', subtitle: 'PDF & export', icon: FileText, color: '#34d399' },
     { id: 'query-section', name: 'Query & Support', subtitle: 'Tickets & issues', icon: LifeBuoy, color: '#22d3ee' },
+    { id: 'school-onboarding', name: 'New School Setup', subtitle: 'Onboard a new school', icon: Building2, color: '#6366f1' },
   ],
   admin: [
     { id: 'student-database', name: 'Student Database', subtitle: 'Manage & search', icon: Users, color: '#4f8ff7' },
@@ -64,6 +65,7 @@ const TOOLS_BY_ROLE = {
     { id: 'timetable-builder', name: 'Timetable', subtitle: 'Build & manage', icon: CalendarDays, color: '#f472b6' },
     { id: 'asset-tracker', name: 'Asset Tracker', subtitle: 'Inventory & items', icon: Package, color: '#22d3ee' },
     { id: 'transport-manager', name: 'Transport', subtitle: 'Routes & buses', icon: Truck, color: '#fb923c' },
+    { id: 'transport-optimisation', name: 'Route Optimisation', subtitle: 'Geocode & cluster analysis', icon: Truck, color: '#22d3ee' },
     { id: 'facility-requests', name: 'Facility Requests', subtitle: 'Maintenance queue', icon: Wrench, color: '#fb923c' },
     { id: 'maintenance-dashboard', name: 'Maintenance Dashboard', subtitle: 'Facility overview', icon: Wrench, color: '#fb923c' },
     { id: 'maintenance-work-orders', name: 'Work Orders', subtitle: 'All work orders', icon: ClipboardList, color: '#fb923c' },
@@ -117,7 +119,7 @@ const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', teacher: 'Teacher', studen
 
 const ADMIN_SUBCATEGORY_TOOLS = {
   accountant: ['student-database', 'fee-tracker', 'smart-fee-defaulter', 'fee-receipts', 'custom-form-builder', 'query-section'],
-  transport_head: ['student-database', 'transport-manager', 'asset-tracker', 'custom-form-builder', 'query-section'],
+  transport_head: ['student-database', 'transport-manager', 'transport-optimisation', 'asset-tracker', 'custom-form-builder', 'query-section'],
   principal: [
     'student-database',
     'attendance-recorder',

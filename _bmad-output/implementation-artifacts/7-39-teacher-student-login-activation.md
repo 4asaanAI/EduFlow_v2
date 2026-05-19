@@ -1,6 +1,6 @@
 # Story 7-39: Teacher/Student Login Activation
 
-**Status:** review
+**Status:** done
 **Epic:** 7 — Growth Features
 **Priority:** High — gates Parts 14 & 15 going live in production
 **Effort:** Medium (backend + frontend, no new routes except one)
@@ -241,6 +241,16 @@ claude-sonnet-4-6
 - `frontend/src/components/ChangePassword.js` — T4
 - `tests/backend/unit/test_teacher_student_login.py` — T6
 
+### Review Findings
+
+- [x] [Review][Patch] Page-refresh bypasses must_change_password gate — `/api/auth/refresh` response never includes `must_change_password`; `validateToken` in `UserContext.js` never re-sets the flag on session restore, so reloading the page gives full app access to accounts that still require a forced password change [backend/routes/auth.py:refresh + frontend/src/contexts/UserContext.js:validateToken]
+- [x] [Review][Patch] Post-change logout loop — `revoke_user_refresh_tokens` invalidates ALL refresh tokens including the active browser cookie; subsequent `window.location.replace('/')` triggers `validateToken` → `POST /api/auth/refresh` with the revoked cookie → 401 → user ejected back to login immediately after a successful password change [backend/routes/auth.py:change_password + frontend/src/components/ChangePassword.js:handleSubmit]
+- [x] [Review][Patch] `verify_password` with absent `password_hash` may raise unhandled bcrypt exception (500) instead of a clean 400 — add guard: `if not stored_hash: raise HTTPException(400, "Current password is incorrect")` [backend/routes/auth.py:change_password:302]
+- [x] [Review][Patch] Teacher seed documents missing `is_active: True` — structurally inconsistent with student auth fixtures; if auth gate is later tightened from `is False` to a truthy check, all teacher logins break silently [backend/seed.py:teacher_auth_docs]
+- [x] [Review][Defer] No rate limiting on `POST /api/auth/change-password` — stolen JWT can brute-force current password at full throughput; pre-existing gap (no other JWT-gated endpoint has endpoint-specific rate limiting either) — deferred, pre-existing
+- [x] [Review][Defer] Access token remains valid up to 1h after password change — refresh tokens are revoked but the current JWT is not invalidated; accepted behavior for short-lived JWTs but worth a Phase 3 security hardening note — deferred, pre-existing
+
 ### Change Log
 - 2026-05-18 — Story file created by bmad-create-story
 - 2026-05-18 — All tasks implemented by claude-sonnet-4-6: backend endpoint + login flag (T1/T2), seed.py update (T3), ChangePassword.js + api.js helper (T4), UserContext.js + App.js gate (T5), 7 unit tests (T6). 706 tests passing.
+- 2026-05-18 — Code review complete. 0 decision-needed, 4 patch, 2 defer, 9 dismissed.

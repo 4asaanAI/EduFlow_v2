@@ -132,6 +132,9 @@ Every variable from `backend/.env.example` must be reviewed for each environment
 | `STRIPE_WEBHOOK_SECRET` | Optional | Stripe webhook signing secret (`whsec_...`). Required for webhook endpoint security. |
 | `STRIPE_PRICE_MONTHLY_SCHOOL_STARTER` | Optional | Stripe Price ID for the Starter monthly plan (INR, created in Stripe Dashboard). |
 | `STRIPE_PRICE_MONTHLY_SCHOOL_PRO` | Optional | Stripe Price ID for the Pro monthly plan (INR, created in Stripe Dashboard). |
+| `GOOGLE_MAPS_API_KEY` | Optional | Google Maps Geocoding API key for transport route optimisation (Story 7-46). Enable Geocoding API in Google Cloud Console; restrict to server IP. |
+| `OPERATOR_NOTIFY_EMAIL` | Optional | Email address that receives school onboarding completion notifications (Story 7-44). |
+| `OPERATOR_SLACK_WEBHOOK_URL` | Optional | Slack incoming webhook URL for school onboarding completion alerts (Story 7-44). |
 
 `MONGODB_URI` is not used by this codebase; use `MONGO_URL`.
 

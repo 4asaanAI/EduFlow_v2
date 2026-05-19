@@ -295,6 +295,7 @@ async def seed():
             "username": name,
             "username_lower": name.lower(),
             "password_hash": hash_pw(pw),
+            "is_active": True,
             "role": "teacher",
             "must_change_password": True,
             "user_info": {"id": uid, "name": name, "role": "teacher", "sub_category": sub_cat, "initials": initials},

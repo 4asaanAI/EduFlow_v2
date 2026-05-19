@@ -178,7 +178,7 @@ async def list_students(
     sort_field, sort_dir = SORT_FIELDS.get(sort, SORT_FIELDS["created_at"])
     scoped_query = _student_query(query)
     skip = (page - 1) * per_page
-    students = await db.students.find(scoped_query, {"_id": 0}).sort(sort_field, sort_dir).skip(skip).limit(per_page).to_list(per_page)
+    students = await db.students.find(scoped_query, {"_id": 0, "coordinates": 0}).sort(sort_field, sort_dir).skip(skip).limit(per_page).to_list(per_page)
     total = await db.students.count_documents(scoped_query)
 
     class_ids = list({s.get("class_id") for s in students if s.get("class_id")})
@@ -348,7 +348,7 @@ async def get_student(student_id: str, request: Request):
     db = get_db()
     user = get_user(request)
 
-    student = await db.students.find_one(_student_query({"id": student_id}), {"_id": 0})
+    student = await db.students.find_one(_student_query({"id": student_id}), {"_id": 0, "coordinates": 0})
     if not student:
         raise HTTPException(404, "Student not found")
 

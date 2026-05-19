@@ -1,6 +1,6 @@
 # Story 7.42: Token Recharge + Subscription Billing (Stripe)
 
-Status: review
+Status: done
 Epic: 7
 Priority: High (Phase 2 revenue trigger — The Aaryans converts from pilot to paying)
 Effort: Large
@@ -515,23 +515,24 @@ claude-sonnet-4-6
 ### Change Log
 - 2026-05-18 — Story created. Replaces Razorpay with Stripe across token recharge + subscription billing. 14 required tests specified.
 - 2026-05-18 — Implementation complete. 19 tests added. 725/725 backend tests pass. Stripe one-time checkout, subscription checkout, webhook handling (4 event types), and frontend redirect flow all implemented.
+- 2026-05-18 — Code review complete. 10 patch, 2 dismiss, 3 defer. Applied: removed payment_id:None (P1), swapped idempotency insert before credit in invoice handler (P2), DuplicateKeyError guard in purchase_topup_stripe (P3), broadened webhook catch to StripeError (P4), HTTPS URL validation on redirect URLs (P5), hoisted db=get_db() in subscription_deleted (P6), None-safe period access (P7), added subscription_id index (P11), DEFAULT_ROLE_LIMITS in $setOnInsert (P10), added missing 403 test (P9). 734 tests passing.
 
 ---
 
 ### Review Findings
 
-- [ ] [Review][Patch] payment_id=None inserted into token_purchases but sparse unique index indexes null values — all Stripe purchases after the first will fail with DuplicateKeyError [backend/services/stripe_service.py — purchase_topup_stripe + handle_invoice_payment_succeeded]
-- [ ] [Review][Patch] Invoice handler credits school_topup_pool BEFORE writing idempotency record — crash between the two awaits causes double-credit on retry [backend/services/stripe_service.py — handle_invoice_payment_succeeded]
-- [ ] [Review][Patch] TOCTOU race: find_one idempotency check then insert_one not atomic — concurrent webhook deliveries both pass the check before either inserts; fix by catching DuplicateKeyError in purchase_topup_stripe [backend/services/stripe_service.py]
-- [ ] [Review][Patch] Webhook sig verification only catches SignatureVerificationError+ValueError — other stripe.error.StripeError propagates to 500, triggering Stripe retry loop [backend/routes/tokens.py — stripe_webhook]
-- [ ] [Review][Patch] success_url and cancel_url not validated — owner-supplied URLs passed directly to Stripe, enabling open-redirect phishing after legitimate payment [backend/routes/tokens.py + backend/services/stripe_service.py]
-- [ ] [Review][Patch] handle_subscription_deleted calls get_db() twice — redundant second call; db variable from first call (in fallback if-block) is discarded [backend/services/stripe_service.py — handle_subscription_deleted]
-- [ ] [Review][Patch] lines_data[0].get("period") may return None causing AttributeError before token credit runs — None.get("end") crashes the entire invoice handler before $inc fires [backend/services/stripe_service.py — handle_invoice_payment_succeeded]
-- [ ] [Review][Patch] Wrong ESLint rule name — `react-hardy/exhaustive-deps` is not a real rule (should be `react-hooks/exhaustive-deps`); suppression is a no-op, warning fires in CI [frontend/src/components/ChatInterface.js]
-- [ ] [Review][Patch] Missing test_create_subscription_session_wrong_role_403 — mandatory security test convention requires wrong-role test for every new endpoint [tests/backend/unit/test_stripe_checkout.py]
-- [ ] [Review][Patch] $setOnInsert role_limits:{} creates branch with empty limits — new branch's first Stripe purchase displays 0 token limits for all roles instead of DEFAULT_ROLE_LIMITS [backend/services/stripe_service.py — purchase_topup_stripe]
-- [ ] [Review][Patch] No index on subscription_id — handle_invoice_payment_succeeded + handle_subscription_deleted both do find_one(subscription_id) causing collection scan on every renewal webhook [backend/database.py — _create_indexes]
-- [ ] [Review][Patch] handle_subscription_deleted fallback condition `not branch_id and subscription_id` silently skips cancellation when Stripe omits the subscription id field [backend/services/stripe_service.py — handle_subscription_deleted]
+- [x] [Review][Patch] payment_id=None inserted into token_purchases but sparse unique index indexes null values — all Stripe purchases after the first will fail with DuplicateKeyError [backend/services/stripe_service.py — purchase_topup_stripe + handle_invoice_payment_succeeded]
+- [x] [Review][Patch] Invoice handler credits school_topup_pool BEFORE writing idempotency record — crash between the two awaits causes double-credit on retry [backend/services/stripe_service.py — handle_invoice_payment_succeeded]
+- [x] [Review][Patch] TOCTOU race: find_one idempotency check then insert_one not atomic — concurrent webhook deliveries both pass the check before either inserts; fix by catching DuplicateKeyError in purchase_topup_stripe [backend/services/stripe_service.py]
+- [x] [Review][Patch] Webhook sig verification only catches SignatureVerificationError+ValueError — other stripe.error.StripeError propagates to 500, triggering Stripe retry loop [backend/routes/tokens.py — stripe_webhook]
+- [x] [Review][Patch] success_url and cancel_url not validated — owner-supplied URLs passed directly to Stripe, enabling open-redirect phishing after legitimate payment [backend/routes/tokens.py + backend/services/stripe_service.py]
+- [x] [Review][Patch] handle_subscription_deleted calls get_db() twice — redundant second call; db variable from first call (in fallback if-block) is discarded [backend/services/stripe_service.py — handle_subscription_deleted]
+- [x] [Review][Patch] lines_data[0].get("period") may return None causing AttributeError before token credit runs — None.get("end") crashes the entire invoice handler before $inc fires [backend/services/stripe_service.py — handle_invoice_payment_succeeded]
+- [x] [Review][Dismiss] Wrong ESLint rule name — confirmed false positive; ChatInterface.js line 296 already uses `react-hooks/exhaustive-deps` (correct rule). No change needed.
+- [x] [Review][Patch] Missing test_create_subscription_session_wrong_role_403 — mandatory security test convention requires wrong-role test for every new endpoint [tests/backend/unit/test_stripe_checkout.py]
+- [x] [Review][Patch] $setOnInsert role_limits:{} creates branch with empty limits — new branch's first Stripe purchase displays 0 token limits for all roles instead of DEFAULT_ROLE_LIMITS [backend/services/stripe_service.py — purchase_topup_stripe]
+- [x] [Review][Patch] No index on subscription_id — handle_invoice_payment_succeeded + handle_subscription_deleted both do find_one(subscription_id) causing collection scan on every renewal webhook [backend/database.py — _create_indexes]
+- [x] [Review][Dismiss] handle_subscription_deleted fallback condition `not branch_id and subscription_id` — logic is correct: only DB-lookup when branch_id is missing but subscription_id is present. No change needed.
 - [x] [Review][Defer] Frontend handleRecharge silently swallows all payment initiation errors — no toast or error state shown to user when Stripe is misconfigured or network fails [frontend/src/components/ChatInterface.js] — deferred, pre-existing UX gap; Phase 3 error handling
 - [x] [Review][Defer] customer.subscription.updated event not handled — subscription_status and period_end drift when Stripe fires plan-change or delinquency events [backend/routes/tokens.py] — deferred, pre-existing; out-of-scope per Scope Exclusions
 - [x] [Review][Defer] conftest.py does not monkeypatch routes.tokens for full-suite client — tokens endpoints hit real DB in integration surface test [tests/backend/conftest.py] — deferred, pre-existing test isolation gap

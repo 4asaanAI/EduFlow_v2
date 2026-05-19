@@ -144,9 +144,9 @@ async def test_pending_list_requires_owner_or_principal(client, fake_db):
 async def test_pending_list_returns_only_pending(client, fake_db):
     """AC2: returns rows in pending_approval only, sorted newest first."""
     fake_db.announcements.docs.extend([
-        {"_id": "a1", "id": "a1", "title": "A", "status": "pending_approval", "created_at": "2026-05-15T10:00:00"},
-        {"_id": "a2", "id": "a2", "title": "B", "status": "active", "created_at": "2026-05-15T11:00:00"},
-        {"_id": "a3", "id": "a3", "title": "C", "status": "pending_approval", "created_at": "2026-05-15T12:00:00"},
+        {"_id": "a1", "id": "a1", "title": "A", "schoolId": "aaryans-joya", "status": "pending_approval", "created_at": "2026-05-15T10:00:00"},
+        {"_id": "a2", "id": "a2", "title": "B", "schoolId": "aaryans-joya", "status": "active", "created_at": "2026-05-15T11:00:00"},
+        {"_id": "a3", "id": "a3", "title": "C", "schoolId": "aaryans-joya", "status": "pending_approval", "created_at": "2026-05-15T12:00:00"},
     ])
     token = _login_owner(client)
     resp = client.get("/api/ops/announcements/pending", headers={"Authorization": f"Bearer {token}"})
@@ -161,7 +161,7 @@ async def test_pending_list_returns_only_pending(client, fake_db):
 async def test_approve_transitions_to_active(client, fake_db):
     """AC3: pending → active with approved_by stamp; audit row written."""
     fake_db.announcements.docs.append({
-        "_id": "a1", "id": "a1", "title": "X", "status": "pending_approval",
+        "_id": "a1", "id": "a1", "title": "X", "schoolId": "aaryans-joya", "status": "pending_approval",
         "target_roles": ["teacher"], "created_by": "reception-1",
     })
     token = _login_owner(client)
@@ -180,7 +180,7 @@ async def test_approve_transitions_to_active(client, fake_db):
 
 
 async def test_approve_rejected_for_non_pending(client, fake_db):
-    fake_db.announcements.docs.append({"_id": "a1", "id": "a1", "status": "active"})
+    fake_db.announcements.docs.append({"_id": "a1", "id": "a1", "schoolId": "aaryans-joya", "status": "active"})
     token = _login_owner(client)
     resp = client.patch("/api/ops/announcements/a1/approve", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 400
@@ -198,7 +198,7 @@ async def test_approve_404_for_missing(client):
 async def test_reject_requires_reason(client, fake_db):
     """AC4: empty/missing reason → 400."""
     fake_db.announcements.docs.append({
-        "_id": "a1", "id": "a1", "status": "pending_approval", "title": "X", "created_by": "reception-1",
+        "_id": "a1", "id": "a1", "schoolId": "aaryans-joya", "status": "pending_approval", "title": "X", "created_by": "reception-1",
     })
     token = _login_owner(client)
     resp = client.patch(
@@ -213,7 +213,7 @@ async def test_reject_transitions_to_rejected_and_notifies_author(client, fake_d
     """AC4 + AC6: status→rejected, audit row written, author notified with reason."""
     _seed_receptionist(fake_db)
     fake_db.announcements.docs.append({
-        "_id": "a1", "id": "a1", "status": "pending_approval", "title": "Big bash",
+        "_id": "a1", "id": "a1", "schoolId": "aaryans-joya", "status": "pending_approval", "title": "Big bash",
         "target_roles": ["teacher"], "created_by": "reception-1",
     })
     token = _login_owner(client)
@@ -243,10 +243,10 @@ async def test_reject_transitions_to_rejected_and_notifies_author(client, fake_d
 async def test_list_announcements_filters_out_pending_and_rejected(client, fake_db):
     """AC5: GET /announcements returns active + legacy-no-status only."""
     fake_db.announcements.docs.extend([
-        {"_id": "a-act", "id": "a-act", "title": "Active", "status": "active", "audience_type": "all", "audience_roles": [], "is_draft": False, "created_at": "2026-05-15T10:00:00"},
-        {"_id": "a-pen", "id": "a-pen", "title": "Pending", "status": "pending_approval", "audience_type": "all", "audience_roles": [], "is_draft": False, "created_at": "2026-05-15T11:00:00"},
-        {"_id": "a-rej", "id": "a-rej", "title": "Rejected", "status": "rejected", "audience_type": "all", "audience_roles": [], "is_draft": False, "created_at": "2026-05-15T12:00:00"},
-        {"_id": "a-legacy", "id": "a-legacy", "title": "Legacy", "audience_type": "all", "audience_roles": [], "is_draft": False, "created_at": "2026-05-15T13:00:00"},
+        {"_id": "a-act", "id": "a-act", "title": "Active", "schoolId": "aaryans-joya", "status": "active", "audience_type": "all", "audience_roles": [], "is_draft": False, "created_at": "2026-05-15T10:00:00"},
+        {"_id": "a-pen", "id": "a-pen", "title": "Pending", "schoolId": "aaryans-joya", "status": "pending_approval", "audience_type": "all", "audience_roles": [], "is_draft": False, "created_at": "2026-05-15T11:00:00"},
+        {"_id": "a-rej", "id": "a-rej", "title": "Rejected", "schoolId": "aaryans-joya", "status": "rejected", "audience_type": "all", "audience_roles": [], "is_draft": False, "created_at": "2026-05-15T12:00:00"},
+        {"_id": "a-legacy", "id": "a-legacy", "title": "Legacy", "schoolId": "aaryans-joya", "audience_type": "all", "audience_roles": [], "is_draft": False, "created_at": "2026-05-15T13:00:00"},
     ])
     token = _login_owner(client)
     resp = client.get("/api/ops/announcements", headers={"Authorization": f"Bearer {token}"})

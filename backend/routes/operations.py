@@ -10,6 +10,7 @@ from tenant import get_school_id, scoped_filter, scoped_query, add_school_id
 import uuid
 import os
 import re
+from services.maps_service import geocode as _geocode_address, haversine_km as _haversine_km
 
 router = APIRouter(prefix="/api/ops", tags=["operations"])
 workflow_router = APIRouter(prefix="/api/operations", tags=["operations-workflow"])
@@ -990,6 +991,204 @@ async def delete_route(route_id: str, request: Request, user: dict = Depends(req
     bid = user.get("branch_id")
     await db.transport_routes.delete_one(scoped_query({"id": route_id}, branch_id=bid))
     return {"success": True}
+
+
+# --- Transport Optimisation (Story 7-46) ---
+
+def _parse_latlon(lat, lng):
+    """Parse and validate lat/lng from request body. Returns (float, float) or raises 422."""
+    if lat is None or lng is None:
+        raise HTTPException(status_code=422, detail="lat and lng are required")
+    try:
+        lat, lng = float(lat), float(lng)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="lat and lng must be numeric")
+    if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lng <= 180.0):
+        raise HTTPException(status_code=422, detail="lat must be -90..90 and lng must be -180..180")
+    return lat, lng
+
+
+@router.patch("/transport/students/{student_id}/coordinates")
+@transport_router.patch("/students/{student_id}/coordinates")
+async def set_student_coordinates(
+    student_id: str,
+    request: Request,
+    user: dict = Depends(require_role("owner", "admin")),
+):
+    """Store backend-only lat/lng on a student — never returned in list responses."""
+    db = get_db()
+    bid = user.get("branch_id")
+    body = await request.json()
+    lat, lng = _parse_latlon(body.get("lat"), body.get("lng"))
+    result = await db.students.update_one(
+        scoped_query({"id": student_id}, branch_id=bid),
+        {"$set": {"coordinates": {"lat": lat, "lng": lng}}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Student not found")
+    return {"success": True, "data": {"student_id": student_id, "coordinates": {"lat": lat, "lng": lng}}}
+
+
+@router.patch("/transport/zones/{zone_id}/centroid")
+@transport_router.patch("/zones/{zone_id}/centroid")
+async def set_zone_centroid(
+    zone_id: str,
+    request: Request,
+    user: dict = Depends(require_role("owner", "admin")),
+):
+    """Set the geographic centroid of a route zone."""
+    db = get_db()
+    bid = user.get("branch_id")
+    body = await request.json()
+    lat, lng = _parse_latlon(body.get("lat"), body.get("lng"))
+    result = await db.transport_routes.update_one(
+        scoped_query({"id": zone_id}, branch_id=bid),
+        {"$set": {"centroid": {"lat": lat, "lng": lng}}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Zone not found")
+    return {"success": True, "data": {"zone_id": zone_id, "centroid": {"lat": lat, "lng": lng}}}
+
+
+@router.post("/transport/geocode")
+@transport_router.post("/geocode")
+async def geocode_address(
+    request: Request,
+    user: dict = Depends(require_role("owner", "admin")),
+):
+    """Geocode an address string to lat/lng using Google Maps Geocoding API."""
+    api_key = os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=503, detail="Maps API not configured")
+    body = await request.json()
+    address = (body.get("address") or "").strip()
+    if not address:
+        raise HTTPException(status_code=422, detail="address is required")
+    try:
+        result = await _geocode_address(address, api_key)
+    except RuntimeError:
+        raise HTTPException(status_code=502, detail="Geocoding request failed")
+    return {"success": True, "data": result}
+
+
+@router.get("/transport/suggest-route")
+@transport_router.get("/suggest-route")
+async def suggest_route(
+    student_id: str,
+    request: Request,
+    user: dict = Depends(require_role("owner", "admin")),
+):
+    """Rank active route zones by proximity to a student's stored coordinates."""
+    db = get_db()
+    bid = user.get("branch_id")
+    student = await db.students.find_one(
+        scoped_query({"id": student_id}, branch_id=bid),
+        {"_id": 0, "id": 1, "name": 1, "coordinates": 1, "route_zone_id": 1},
+    )
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    coords = student.get("coordinates")
+    if not coords or coords.get("lat") is None or coords.get("lng") is None:
+        raise HTTPException(status_code=422, detail="Student has no coordinates set")
+    slat, slng = float(coords["lat"]), float(coords["lng"])
+
+    zones = await db.transport_routes.find(
+        scoped_query({"is_active": {"$ne": False}}, branch_id=bid),
+        {"_id": 0, "id": 1, "route_name": 1, "centroid": 1},
+    ).to_list(500)
+
+    ranked = []
+    for z in zones:
+        centroid = z.get("centroid")
+        if not centroid or centroid.get("lat") is None or centroid.get("lng") is None:
+            continue
+        dist = _haversine_km(slat, slng, float(centroid["lat"]), float(centroid["lng"]))
+        ranked.append({
+            "zone_id": z["id"],
+            "zone_name": z.get("route_name", ""),
+            "distance_km": round(dist, 2),
+            "is_current": z["id"] == student.get("route_zone_id"),
+        })
+    ranked.sort(key=lambda x: x["distance_km"])
+    return {
+        "success": True,
+        "data": ranked,
+        "meta": {
+            "student_id": student_id,
+            "student_name": student.get("name", ""),
+            "zones_loaded": len(zones),
+        },
+    }
+
+
+@router.get("/transport/cluster-analysis")
+@transport_router.get("/cluster-analysis")
+async def cluster_analysis(
+    request: Request,
+    user: dict = Depends(require_role("owner", "admin")),
+):
+    """Return students whose current zone is not the nearest zone."""
+    db = get_db()
+    bid = user.get("branch_id")
+
+    zones = await db.transport_routes.find(
+        scoped_query({"is_active": {"$ne": False}}, branch_id=bid),
+        {"_id": 0, "id": 1, "route_name": 1, "centroid": 1},
+    ).to_list(500)
+    zones_with_centroid = [
+        z for z in zones
+        if z.get("centroid") and z["centroid"].get("lat") is not None and z["centroid"].get("lng") is not None
+    ]
+    zone_map = {z["id"]: z for z in zones}
+
+    students = await db.students.find(
+        scoped_query({"is_active": {"$ne": False}, "coordinates": {"$exists": True}}, branch_id=bid),
+        {"_id": 0, "id": 1, "name": 1, "coordinates": 1, "route_zone_id": 1},
+    ).to_list(5000)
+
+    suboptimal = []
+    total_with_coords = 0
+    for s in students:
+        coords = s.get("coordinates")
+        if not coords or coords.get("lat") is None or coords.get("lng") is None:
+            continue
+        total_with_coords += 1
+        slat, slng = float(coords["lat"]), float(coords["lng"])
+        if not zones_with_centroid:
+            continue
+        distances = []
+        for z in zones_with_centroid:
+            c = z["centroid"]
+            dist = _haversine_km(slat, slng, float(c["lat"]), float(c["lng"]))
+            distances.append((dist, z))
+        distances.sort(key=lambda x: x[0])
+        nearest_dist, nearest_zone = distances[0]
+        current_zone_id = s.get("route_zone_id")
+        if current_zone_id and current_zone_id != nearest_zone["id"]:
+            current_dist = next((d for d, z in distances if z["id"] == current_zone_id), None)
+            if current_dist is not None:
+                suboptimal.append({
+                    "student_id": s["id"],
+                    "student_name": s.get("name", ""),
+                    "current_zone_id": current_zone_id,
+                    "current_zone_name": zone_map.get(current_zone_id, {}).get("route_name", ""),
+                    "nearest_zone_id": nearest_zone["id"],
+                    "nearest_zone_name": nearest_zone.get("route_name", ""),
+                    "current_distance_km": round(current_dist, 2),
+                    "nearest_distance_km": round(nearest_dist, 2),
+                    "savings_km": round(current_dist - nearest_dist, 2),
+                })
+    suboptimal.sort(key=lambda x: x["savings_km"], reverse=True)
+    return {
+        "success": True,
+        "data": suboptimal,
+        "meta": {
+            "total_suboptimal": len(suboptimal),
+            "total_with_coords": total_with_coords,
+            "zones_loaded": len(zones),
+            "students_loaded": len(students),
+        },
+    }
 
 
 @router.post("/study-plan")

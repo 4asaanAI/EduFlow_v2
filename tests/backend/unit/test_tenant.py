@@ -13,17 +13,13 @@ def test_add_school_id_preserves_existing_value(monkeypatch):
     assert add_school_id({"schoolId": "school-2"}) == {"schoolId": "school-2"}
 
 
-def test_scoped_filter_adds_school_clause_without_dropping_legacy_docs(monkeypatch):
+def test_scoped_filter_adds_strict_school_clause(monkeypatch):
+    """Story 7-45: scoped_filter uses strict schoolId match (no $exists:False fallback)."""
     monkeypatch.setenv("SCHOOL_ID", "school-1")
 
     scoped = scoped_filter({"is_active": True})
 
-    assert scoped == {
-        "$and": [
-            {"is_active": True},
-            {"$or": [{"schoolId": "school-1"}, {"schoolId": {"$exists": False}}]},
-        ]
-    }
+    assert scoped == {"$and": [{"is_active": True}, {"schoolId": "school-1"}]}
 
 
 def test_scoped_filter_does_not_wrap_existing_school_filter():

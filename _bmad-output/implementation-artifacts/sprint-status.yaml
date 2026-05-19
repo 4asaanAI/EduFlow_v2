@@ -36,7 +36,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-05-12"
-last_updated: "2026-05-18-story-7-43-review"
+last_updated: "2026-05-19"  # 7-46 code review patches applied; 796 tests passing
 project: eduflow
 project_key: NOKEY
 tracking_system: file-system
@@ -164,14 +164,14 @@ development_status:
   # ─────────────────────────────────────────────
   epic-7: in-progress
   # ⚠️  7-39 is the GATE for Parts 14 and 15 — teacher/student login must ship before those parts start
-  7-39-teacher-student-login-activation: review
+  7-39-teacher-student-login-activation: done
   7-40-whatsapp-twilio-integration-fee-reminders-attendance-alerts: backlog
   7-41-advanced-reporting-recharts-dashboard: done
-  7-42-token-recharge-subscription-billing: review
-  7-43-platform-health-dashboard-operator-view: review
-  7-44-school-onboarding-flow: backlog
-  7-45-multi-tenancy-schema-per-tenant-enforcement: backlog
-  7-46-google-maps-transport-optimisation: backlog
+  7-42-token-recharge-subscription-billing: done
+  7-43-platform-health-dashboard-operator-view: done
+  7-44-school-onboarding-flow: done
+  7-45-multi-tenancy-schema-per-tenant-enforcement: done
+  7-46-google-maps-transport-optimisation: done
   7-47-announcement-moderation-approval-gate: done
   7-48-ai-write-rate-limiting: done
   epic-7-retrospective: optional

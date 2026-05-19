@@ -463,6 +463,7 @@ class FakeDb:
         self.certificates = FakeCollection()
         self.study_plans = FakeCollection()
         self.visitors = FakeCollection()
+        self.schools = FakeCollection()
 
     async def command(self, command_name):
         if command_name == "ping":
@@ -497,11 +498,14 @@ if APP_AVAILABLE:
     image_gen_routes.get_db = lambda: _fake_db
     chat_routes.get_db = lambda: _fake_db
     operator_routes.get_db = lambda: _fake_db
+    operator_routes.get_raw_db = lambda: _fake_db
     reports_routes.get_db = lambda: _fake_db
     exports_routes.get_db = lambda: _fake_db
     payroll_routes.get_db = lambda: _fake_db
     queries_routes.get_db = lambda: _fake_db
     server.get_raw_db = lambda: _fake_db
+    import middleware.school_context as school_context_module
+    school_context_module.get_raw_db = lambda: _fake_db
 
 
 # ─── Event loop (for async tests) ─────────────────────────────────────────

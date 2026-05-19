@@ -188,6 +188,7 @@ async def _create_indexes():
     await db.enquiries.create_index("status")
     # Token budget indexes
     await db.token_balances.create_index("branch_id", unique=True)
+    await db.token_balances.create_index("subscription_id", sparse=True)
     await db.token_usage.create_index([("branch_id", 1), ("user_id", 1), ("month", 1)])
     await db.token_usage.create_index("created_at")
     await db.token_purchases.create_index("payment_id", unique=True, sparse=True)
@@ -247,3 +248,22 @@ async def _create_indexes():
         )
     except Exception:
         pass
+    # Story 7-44: School onboarding — unique index on school_id slug
+    try:
+        await db.schools.create_index("school_id", unique=True)
+    except Exception:
+        logger.warning("schools.school_id unique index creation failed", exc_info=True)
+    # Compound unique index so multiple schools can each have id="main" but not duplicate (schoolId, id)
+    try:
+        await db.school_settings.create_index([("id", 1), ("schoolId", 1)], unique=True)
+    except Exception:
+        logger.warning("school_settings compound index creation failed", exc_info=True)
+    # Story 7-45: same email can own multiple schools (different schoolId), but must be unique within one school
+    try:
+        await db.auth_users.create_index(
+            [("username_lower", 1), ("schoolId", 1)],
+            unique=True,
+            name="auth_users_username_school_unique",
+        )
+    except Exception:
+        logger.warning("auth_users compound unique index creation failed", exc_info=True)
