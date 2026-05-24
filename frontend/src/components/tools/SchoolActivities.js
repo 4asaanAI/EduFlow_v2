@@ -68,8 +68,10 @@ function HousesTab({ canManage }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await listHouses();
-    if (res.success) setHouses(res.data || []);
+    try {
+      const res = await listHouses();
+      if (res.success) setHouses(res.data || []);
+    } catch {}
     setLoading(false);
   }, []);
 
@@ -190,8 +192,10 @@ function PositionsTab({ canManage }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await listPositions();
-    if (res.success) setPositions(res.data || []);
+    try {
+      const res = await listPositions();
+      if (res.success) setPositions(res.data || []);
+    } catch {}
     setLoading(false);
   }, []);
 
@@ -316,8 +320,10 @@ function TeamsTab({ canManage }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await listTeams();
-    if (res.success) setTeams(res.data || []);
+    try {
+      const res = await listTeams();
+      if (res.success) setTeams(res.data || []);
+    } catch {}
     setLoading(false);
   }, []);
 

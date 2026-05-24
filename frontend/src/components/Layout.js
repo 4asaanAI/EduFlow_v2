@@ -152,11 +152,16 @@ export default function Layout() {
   }, []);
 
   useEffect(() => {
-    if (previousUserIdRef.current === currentUser.id) return;
-    previousUserIdRef.current = currentUser.id;
-    setActiveToolParam(null, { replace: true });
-    setActiveConvId(null);
-    setActiveConvTitle('');
+    const SESSION_KEY = 'eduflow_session_user';
+    const lastUserId = sessionStorage.getItem(SESSION_KEY);
+    const isNewUser = previousUserIdRef.current !== currentUser.id || lastUserId !== currentUser.id;
+    if (isNewUser) {
+      previousUserIdRef.current = currentUser.id;
+      sessionStorage.setItem(SESSION_KEY, currentUser.id);
+      setActiveToolParam(null, { replace: true });
+      setActiveConvId(null);
+      setActiveConvTitle('');
+    }
   }, [currentUser.id, setActiveToolParam]);
 
   useEffect(() => {
@@ -200,7 +205,7 @@ export default function Layout() {
         <Header
           activeTool={activeTool}
           activeConvTitle={activeConvTitle}
-          onBackToChat={() => setActiveTool(null)}
+          onBackToChat={() => setActiveToolParam(null)}
           onOpenProfile={() => setShowProfile(true)}
           onOpenSettings={() => setShowSettings(true)}
           onToggleSidebar={() => setSidebarOpen(v => !v)}
