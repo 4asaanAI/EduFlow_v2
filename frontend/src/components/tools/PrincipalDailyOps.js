@@ -1,49 +1,160 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { CalendarDays, CheckCircle, IndianRupee, RefreshCw, UserCheck } from 'lucide-react';
+import {
+  CalendarDays, CheckCircle, XCircle, UserCheck, IndianRupee,
+  BookOpen, Users, ClipboardList, Award, AlertCircle,
+} from 'lucide-react';
 import { getAuthHeaders } from '../../lib/authSession';
-import { ToolPage, StatCard, DataTable, Badge, ActionBtn, ErrorCard } from './ToolPage';
+import { ToolPage, ActionBtn } from './ToolPage';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
+const h = () => getAuthHeaders();
+const money = v => `₹${Number(v || 0).toLocaleString('en-IN')}`;
+
+// ─── Sub-components ────────────────────────────────────────────────────────────
+
+function SectionHeader({ title, count, color = 'var(--tool-hex-4f8ff7)', icon: Icon }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+      {Icon && <Icon size={15} color={color} />}
+      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--tool-hex-e5e5e5)', letterSpacing: '0.02em' }}>{title}</span>
+      {count !== undefined && (
+        <span style={{ background: color, color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '1px 7px', marginLeft: 2 }}>{count}</span>
+      )}
+    </div>
+  );
+}
+
+function KpiCard({ value, label, color, icon: Icon }) {
+  return (
+    <div style={{
+      background: 'var(--tool-hex-1e1e1e)', border: `1px solid var(--tool-hex-2e2e2e)`,
+      borderRadius: 12, padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 14,
+    }}>
+      <div style={{ width: 40, height: 40, borderRadius: 10, background: `color-mix(in srgb, ${color} 15%, transparent)`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <Icon size={18} color={color} />
+      </div>
+      <div>
+        <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--tool-hex-f5f5f5)', lineHeight: 1.1 }}>{value}</div>
+        <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--tool-hex-888)', letterSpacing: '0.07em', marginTop: 2, textTransform: 'uppercase' }}>{label}</div>
+      </div>
+    </div>
+  );
+}
+
+function LeaveCard({ leave, onApprove, onReject }) {
+  const [busy, setBusy] = useState(false);
+  const act = async fn => { setBusy(true); await fn(); setBusy(false); };
+  return (
+    <div style={{ background: 'var(--tool-hex-252525)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 10, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tool-hex-e5e5e5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {leave.staff?.name || leave.staff_name || leave.staff_id}
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--tool-hex-888)', marginTop: 3 }}>
+          {leave.leave_type || 'Leave'} · {leave.start_date || ''}{leave.end_date ? ` → ${leave.end_date}` : ''}
+        </div>
+        {leave.reason && <div style={{ fontSize: 10, color: 'var(--tool-hex-666)', marginTop: 2, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{leave.reason}</div>}
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+        <button disabled={busy} onClick={() => act(onApprove)} style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.35)', borderRadius: 7, padding: '5px 10px', color: '#22c55e', cursor: 'pointer', fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, opacity: busy ? 0.6 : 1 }}>
+          <CheckCircle size={11} />Approve
+        </button>
+        <button disabled={busy} onClick={() => act(onReject)} style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 7, padding: '5px 10px', color: '#f87171', cursor: 'pointer', fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, opacity: busy ? 0.6 : 1 }}>
+          <XCircle size={11} />Reject
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CertCard({ cert, onApprove }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <div style={{ background: 'var(--tool-hex-252525)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 10, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tool-hex-e5e5e5)' }}>{cert.student_name || cert.student_id}</div>
+        <div style={{ fontSize: 11, color: 'var(--tool-hex-888)', marginTop: 3 }}>{cert.type} · {cert.created_at?.slice(0, 10)}</div>
+      </div>
+      <button disabled={busy} onClick={async () => { setBusy(true); await onApprove(); setBusy(false); }} style={{ background: 'rgba(79,143,247,0.12)', border: '1px solid rgba(79,143,247,0.3)', borderRadius: 7, padding: '5px 10px', color: '#4f8ff7', cursor: 'pointer', fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, opacity: busy ? 0.6 : 1, flexShrink: 0 }}>
+        <CheckCircle size={11} />Approve
+      </button>
+    </div>
+  );
+}
+
+function AttendanceBar({ pct }) {
+  const color = pct >= 80 ? '#22c55e' : pct >= 60 ? '#fbbf24' : '#f87171';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ flex: 1, height: 5, background: 'var(--tool-hex-2e2e2e)', borderRadius: 3, overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 3, transition: 'width 0.4s ease' }} />
+      </div>
+      <span style={{ fontSize: 11, fontWeight: 700, color, width: 34, textAlign: 'right' }}>{pct}%</span>
+    </div>
+  );
+}
+
+function SubRow({ item, onAssign }) {
+  const assigned = item.assigned_substitute;
+  const candidate = item.candidate_substitutes?.[0];
+  return (
+    <tr style={{ borderBottom: '1px solid var(--tool-hex-2e2e2e)' }}>
+      <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--tool-hex-f87171)', fontWeight: 600 }}>{item.absent_teacher_name}</td>
+      <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--tool-hex-888)' }}>P{item.period_number}</td>
+      <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--tool-hex-e5e5e5)' }}>{item.class_name}</td>
+      <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--tool-hex-aaa)' }}>{item.subject_name}</td>
+      <td style={{ padding: '10px 12px' }}>
+        {assigned
+          ? <span style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>Assigned</span>
+          : <span style={{ background: 'rgba(248,113,113,0.12)', color: '#f87171', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>Open</span>
+        }
+      </td>
+      <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--tool-hex-aaa)' }}>
+        {assigned?.substitute_teacher_name || candidate?.name || '—'}
+      </td>
+      <td style={{ padding: '10px 12px' }}>
+        {!assigned && candidate && (
+          <ActionBtn label="Assign" icon={<UserCheck size={11} />} onClick={() => onAssign(item, candidate.id)} />
+        )}
+      </td>
+    </tr>
+  );
+}
+
+// ─── Main Component ────────────────────────────────────────────────────────────
 
 export default function PrincipalDailyOps() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [items, setItems] = useState([]);
   const [leaves, setLeaves] = useState([]);
   const [certificates, setCertificates] = useState([]);
-  const [feeSummary, setFeeSummary] = useState([]);
+  const [feeSummary, setFeeSummary] = useState(null);
   const [meta, setMeta] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [lessonCompletion, setLessonCompletion] = useState([]);
-  const [loadingAcademics, setLoadingAcademics] = useState(true);
   const [classSummary, setClassSummary] = useState([]);
-  const [loadingAttendance, setLoadingAttendance] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
       const [subsRes, leavesRes, certsRes, feesRes] = await Promise.allSettled([
-        fetch(`${API}/academics/substitutions?date=${date}`, { headers: getAuthHeaders() }),
-        fetch(`${API}/staff/leaves/pending`, { headers: getAuthHeaders() }),
-        fetch(`${API}/operations/certificates`, { headers: getAuthHeaders() }),
-        fetch(`${API}/fees/summary`, { headers: getAuthHeaders() }),
+        fetch(`${API}/academics/substitutions?date=${date}`, { headers: h() }),
+        fetch(`${API}/staff/leaves/pending`, { headers: h() }),
+        fetch(`${API}/operations/certificates`, { headers: h() }),
+        fetch(`${API}/fees/summary`, { headers: h() }),
       ]);
       const subsJson = subsRes.status === 'fulfilled' ? await subsRes.value.json() : { success: false };
-      if (!subsJson.success) throw new Error(subsJson.detail || 'Unable to load daily ops');
+      if (!subsJson.success) throw new Error(subsJson.detail || 'Unable to load substitution data');
       setItems(subsJson.data || []);
       setMeta(subsJson.meta || {});
-      const leavesJson = leavesRes.status === 'fulfilled' ? await leavesRes.value.json() : { data: [] };
-      const certsJson = certsRes.status === 'fulfilled' ? await certsRes.value.json() : { data: [] };
-      const feesJson = feesRes.status === 'fulfilled' ? await feesRes.value.json() : { data: [] };
-      setLeaves((leavesJson.data || []).slice(0, 5));
-      setCertificates((certsJson.data || []).filter(c => c.status === 'pending_approval').slice(0, 5));
-      const summary = feesJson.data || {};
-      setFeeSummary(summary.period ? [{
-        month: summary.period,
-        collected: summary.total_collected || 0,
-        outstanding: summary.total_outstanding || 0,
-      }] : []);
+      const leavesJson = leavesRes.status === 'fulfilled' ? await leavesRes.value.json() : {};
+      const certsJson = certsRes.status === 'fulfilled' ? await certsRes.value.json() : {};
+      const feesJson = feesRes.status === 'fulfilled' ? await feesRes.value.json() : {};
+      setLeaves((leavesJson.data || []).slice(0, 8));
+      setCertificates((certsJson.data || []).filter(c => c.status === 'pending_approval').slice(0, 8));
+      setFeeSummary(feesJson.data || null);
     } catch (err) {
       setError(err.message || 'Unable to load daily ops');
     } finally {
@@ -53,51 +164,33 @@ export default function PrincipalDailyOps() {
 
   useEffect(() => { load(); }, [load]);
 
-  const fetchAcademics = useCallback(async () => {
-    setLoadingAcademics(true);
-    try {
-      const res = await fetch(`${API}/academics/lesson-plan-completion`, { headers: getAuthHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        setLessonCompletion(data.data || []);
-      }
-    } catch (e) {
-      console.error('Failed to load academics:', e);
-    } finally {
-      setLoadingAcademics(false);
-    }
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API}/academics/lesson-plan-completion`, { headers: h() });
+        if (res.ok) { const d = await res.json(); setLessonCompletion(d.data || []); }
+      } catch {}
+    })();
   }, []);
 
-  useEffect(() => { fetchAcademics(); }, [fetchAcademics]);
-
-  const fetchAttendanceSummary = useCallback(async () => {
-    setLoadingAttendance(true);
-    try {
-      const res = await fetch(`${API}/attendance/class-summary`, { headers: getAuthHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        setClassSummary(data?.data || []);
-      }
-    } catch (e) {
-      console.error('Failed to load attendance summary:', e);
-    } finally {
-      setLoadingAttendance(false);
-    }
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API}/attendance/class-summary`, { headers: h() });
+        if (res.ok) { const d = await res.json(); setClassSummary(d?.data || []); }
+      } catch {}
+    })();
   }, []);
-
-  useEffect(() => { fetchAttendanceSummary(); }, [fetchAttendanceSummary]);
 
   const assign = async (item, teacherId) => {
     if (!teacherId) return;
     const res = await fetch(`${API}/academics/substitutions`, {
       method: 'POST',
-      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      headers: { ...h(), 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        date,
-        absent_teacher_id: item.absent_teacher_id,
+        date, absent_teacher_id: item.absent_teacher_id,
         substitute_teacher_id: teacherId,
-        class_id: item.class_id,
-        subject_id: item.subject_id,
+        class_id: item.class_id, subject_id: item.subject_id,
         period_number: item.period_number,
       }),
     });
@@ -107,176 +200,157 @@ export default function PrincipalDailyOps() {
   const decideLeave = async (leaveId, status) => {
     await fetch(`${API}/staff/leaves/${leaveId}`, {
       method: 'PATCH',
-      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      headers: { ...h(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ status, rejection_reason: status === 'rejected' ? 'Rejected by principal' : undefined }),
     });
     load();
   };
 
-  const approveCert = async (certId) => {
-    await fetch(`${API}/operations/certificates/${certId}/approve`, { method: 'PATCH', headers: getAuthHeaders() });
+  const approveCert = async certId => {
+    await fetch(`${API}/operations/certificates/${certId}/approve`, { method: 'PATCH', headers: h() });
     load();
   };
 
-  const rows = items.map(item => {
-    const assigned = item.assigned_substitute;
-    const firstCandidate = item.candidate_substitutes?.[0];
-    return [
-      item.absent_teacher_name,
-      item.period_number,
-      item.class_name,
-      item.subject_name,
-      assigned ? <Badge text="Assigned" color="green" /> : <Badge text="Open" color="red" />,
-      assigned?.substitute_teacher_id || firstCandidate?.name || 'No free teacher found',
-      !assigned && firstCandidate ? (
-        <ActionBtn label="Assign" icon={<UserCheck size={12} />} onClick={() => assign(item, firstCandidate.id)} />
-      ) : '',
-    ];
-  });
+  const uncovered = meta.uncovered_period_count || items.filter(i => !i.assigned_substitute).length;
 
   return (
     <ToolPage
       title="Principal Daily"
-      subtitle="Absent teachers and substitution coverage for the day"
+      subtitle="Today's school operations at a glance"
       loading={loading}
       onRefresh={load}
-      actions={(
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-text-muted)', fontSize: 12 }}>
-          <CalendarDays size={14} />
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, color: 'var(--color-text-primary)', padding: '7px 10px' }} />
+      actions={
+        <label style={{ display: 'flex', alignItems: 'center', gap: 7, color: 'var(--tool-hex-888)', fontSize: 12, cursor: 'pointer' }}>
+          <CalendarDays size={13} />
+          <input
+            type="date" value={date} onChange={e => setDate(e.target.value)}
+            style={{ background: 'var(--tool-hex-252525)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 8, color: 'var(--tool-hex-e5e5e5)', padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}
+          />
         </label>
-      )}
+      }
     >
-      {error && <ErrorCard message={error} onRetry={load} />}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(160px, 1fr))', gap: 12, marginBottom: 16, maxWidth: 780 }}>
-        <StatCard value={meta.absent_teacher_count || 0} label="ABSENT TEACHERS" color="var(--color-danger)" />
-        <StatCard value={items.length} label="AFFECTED PERIODS" color="var(--color-warning)" />
-        <StatCard value={meta.uncovered_period_count || 0} label="NEEDS SUBSTITUTE" color="var(--color-accent-blue)" />
-        <StatCard value={leaves.length} label="PENDING LEAVES" color="var(--color-warning)" />
-        <StatCard value={certificates.length} label="CERT APPROVALS" color="var(--color-accent-blue)" />
-        <StatCard value={`Rs ${feeSummary.reduce((sum, row) => sum + Number(row.collected || 0), 0).toLocaleString('en-IN')}`} label="FEE COLLECTION" color="var(--color-success)" />
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginBottom: 16 }}>
-        <DataTable
-          title="Leave Approvals"
-          headers={['Staff', 'Dates', 'Type', 'Action']}
-          rows={leaves.map(l => [
-            l.staff?.name || l.staff_name || l.staff_id,
-            `${l.start_date || ''} ${l.end_date ? `to ${l.end_date}` : ''}`,
-            l.leave_type || 'Leave',
-            <span style={{ display: 'inline-flex', gap: 6 }}>
-              <ActionBtn label="Approve" icon={<CheckCircle size={12} />} onClick={() => decideLeave(l.id, 'approved')} />
-              <ActionBtn label="Reject" onClick={() => decideLeave(l.id, 'rejected')} />
-            </span>,
-          ])}
-          emptyMsg="No pending leaves"
-          loading={loading}
-        />
-        <DataTable
-          title="Certificate Approvals"
-          headers={['Student', 'Type', 'Requested', 'Action']}
-          rows={certificates.map(c => [
-            c.student_name || c.student_id,
-            c.type,
-            c.created_at?.slice(0, 10),
-            <ActionBtn label="Approve" icon={<CheckCircle size={12} />} onClick={() => approveCert(c.id)} />,
-          ])}
-          emptyMsg="No pending certificates"
-          loading={loading}
-        />
-        <DataTable
-          title="Fee Trend"
-          headers={['Month', 'Collected', 'Outstanding']}
-          rows={feeSummary.map(row => [
-            row.month,
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><IndianRupee size={12} />{Number(row.collected || 0).toLocaleString('en-IN')}</span>,
-            Number(row.outstanding || 0).toLocaleString('en-IN'),
-          ])}
-          emptyMsg="No fee summary"
-          loading={loading}
-        />
-      </div>
-      <DataTable
-        title="Substitution Plan"
-        headers={['Absent Teacher', 'Period', 'Class', 'Subject', 'Status', 'Suggested Substitute', 'Action']}
-        rows={rows}
-        emptyMsg="No absent-teacher timetable conflicts for this date"
-        loading={loading}
-      />
-      <button onClick={load} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none', color: 'var(--color-accent-blue)', cursor: 'pointer', fontSize: 12 }}>
-        <RefreshCw size={13} /> Refresh coverage
-      </button>
+      {error && (
+        <div style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 10, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, color: '#f87171', fontSize: 12 }}>
+          <AlertCircle size={14} />{error}
+          <button onClick={load} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 11, textDecoration: 'underline' }}>Retry</button>
+        </div>
+      )}
 
-      {/* Today's Class Attendance */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4" style={{ marginTop: 20 }}>
-        <h3 className="font-semibold text-gray-700 mb-3">Today's Class Attendance</h3>
-        {loadingAttendance ? (
-          <p className="text-sm text-gray-400">Loading...</p>
-        ) : classSummary.length === 0 ? (
-          <p className="text-sm text-gray-400">No attendance data yet today.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="text-left text-gray-500 border-b">
-                <th className="pb-2">Class</th><th className="pb-2">Present</th>
-                <th className="pb-2">Absent</th><th className="pb-2">%</th>
-              </tr></thead>
-              <tbody>
-                {classSummary.map(cls => (
-                  <tr key={cls.class_id} className="border-b border-gray-50">
-                    <td className="py-1.5 font-medium">{cls.class_name}</td>
-                    <td className="py-1.5 text-green-600">{cls.present}</td>
-                    <td className="py-1.5 text-red-500">{cls.absent}</td>
-                    <td className="py-1.5">
-                      <span className={`font-medium ${cls.attendance_pct >= 80 ? 'text-green-600' : cls.attendance_pct >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
-                        {cls.attendance_pct}%
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* KPI Row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12, marginBottom: 24 }}>
+        <KpiCard value={meta.absent_teacher_count || 0} label="Absent Teachers" color="#f87171" icon={Users} />
+        <KpiCard value={items.length} label="Affected Periods" color="#fb923c" icon={CalendarDays} />
+        <KpiCard value={uncovered} label="Need Substitute" color={uncovered > 0 ? '#fbbf24' : '#22c55e'} icon={UserCheck} />
+        <KpiCard value={leaves.length} label="Pending Leaves" color="#a78bfa" icon={ClipboardList} />
+        <KpiCard value={certificates.length} label="Cert Approvals" color="#4f8ff7" icon={Award} />
+        <KpiCard value={feeSummary ? money(feeSummary.total_collected || 0) : '—'} label="Fee Collected" color="#22c55e" icon={IndianRupee} />
+      </div>
+
+      {/* Two-column: leaves + certs */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20, marginBottom: 24 }}>
+        {/* Leave Approvals */}
+        <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: '16px 18px' }}>
+          <SectionHeader title="Leave Approvals" count={leaves.length} color="#a78bfa" icon={ClipboardList} />
+          {leaves.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--tool-hex-555)', fontSize: 12 }}>No pending leave requests</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {leaves.map(l => (
+                <LeaveCard
+                  key={l.id}
+                  leave={l}
+                  onApprove={() => decideLeave(l.id, 'approved')}
+                  onReject={() => decideLeave(l.id, 'rejected')}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Certificate Approvals */}
+        <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: '16px 18px' }}>
+          <SectionHeader title="Certificate Approvals" count={certificates.length} color="#4f8ff7" icon={Award} />
+          {certificates.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--tool-hex-555)', fontSize: 12 }}>No pending certificate approvals</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {certificates.map(c => (
+                <CertCard key={c.id} cert={c} onApprove={() => approveCert(c.id)} />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Substitution Plan */}
+      <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: '16px 18px', marginBottom: 24 }}>
+        <SectionHeader title="Substitution Plan" count={items.length} color="#fb923c" icon={UserCheck} />
+        {items.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--tool-hex-555)', fontSize: 12 }}>
+            No absent-teacher conflicts for {date}
           </div>
-        )}
-      </div>
-
-      {/* Lesson Plan Completion */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4" style={{ marginTop: 20 }}>
-        <h3 className="font-semibold text-gray-700 mb-3">Lesson Plan Completion</h3>
-        {loadingAcademics ? (
-          <p className="text-sm text-gray-400">Loading...</p>
-        ) : lessonCompletion.length === 0 ? (
-          <p className="text-sm text-gray-400">No lesson plans found for this month.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
-                <tr className="text-left text-gray-500 border-b">
-                  <th className="pb-2">Class</th>
-                  <th className="pb-2">Teacher</th>
-                  <th className="pb-2">Completed</th>
-                  <th className="pb-2">Total</th>
-                  <th className="pb-2">%</th>
+                <tr style={{ borderBottom: '2px solid var(--tool-hex-2e2e2e)' }}>
+                  {['Absent Teacher', 'Period', 'Class', 'Subject', 'Status', 'Suggested Sub', 'Action'].map(h => (
+                    <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--tool-hex-666)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {lessonCompletion.map(cls => (
-                  <tr key={cls.class_id} className="border-b border-gray-50">
-                    <td className="py-1.5 font-medium">{cls.class_name}</td>
-                    <td className="py-1.5 text-gray-600">{cls.teacher_name}</td>
-                    <td className="py-1.5">{cls.completed}</td>
-                    <td className="py-1.5">{cls.total_plans}</td>
-                    <td className="py-1.5">
-                      <span className={`font-semibold ${cls.completion_pct >= 80 ? 'text-green-600' : cls.completion_pct >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
-                        {cls.completion_pct}%
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {items.map((item, i) => <SubRow key={i} item={item} onAssign={assign} />)}
               </tbody>
             </table>
           </div>
         )}
+      </div>
+
+      {/* Bottom row: Attendance + Lesson Plans */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
+        {/* Class Attendance */}
+        <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: '16px 18px' }}>
+          <SectionHeader title="Today's Attendance" color="#34d399" icon={Users} />
+          {classSummary.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--tool-hex-555)', fontSize: 12 }}>No attendance data yet</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {classSummary.map(cls => (
+                <div key={cls.class_id}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--tool-hex-e5e5e5)' }}>{cls.class_name}</span>
+                    <span style={{ fontSize: 11, color: 'var(--tool-hex-888)' }}>{cls.present}P / {cls.absent}A</span>
+                  </div>
+                  <AttendanceBar pct={cls.attendance_pct || 0} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Lesson Plan Completion */}
+        <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: '16px 18px' }}>
+          <SectionHeader title="Lesson Plan Completion" color="#4f8ff7" icon={BookOpen} />
+          {lessonCompletion.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--tool-hex-555)', fontSize: 12 }}>No lesson plans for this month</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {lessonCompletion.map(cls => (
+                <div key={cls.class_id}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <div>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--tool-hex-e5e5e5)' }}>{cls.class_name}</span>
+                      {cls.teacher_name && <span style={{ fontSize: 10, color: 'var(--tool-hex-666)', marginLeft: 6 }}>{cls.teacher_name}</span>}
+                    </div>
+                    <span style={{ fontSize: 11, color: 'var(--tool-hex-888)' }}>{cls.completed}/{cls.total_plans}</span>
+                  </div>
+                  <AttendanceBar pct={cls.completion_pct || 0} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </ToolPage>
   );

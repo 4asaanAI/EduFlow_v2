@@ -10,6 +10,92 @@ function h() { return getAuthHeaders(); }
 function money(value) { return `Rs ${Number(value || 0).toLocaleString('en-IN')}`; }
 const tint = (color, amount) => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
 
+// ─── WhatsApp Fee Reminder Modal ─────────────────────────────────────────────
+function WhatsAppReminderModal({ onClose }) {
+  const { currentUser } = useUser();
+  const [defaulters, setDefaulters] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [sent, setSent] = useState({});
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await executeTool('get_fee_defaulters', {}, currentUser);
+        setDefaulters(r.success ? (r.data || []) : []);
+      } catch {}
+      setLoading(false);
+    })();
+  }, [currentUser]);
+
+  const sendReminder = (d) => {
+    const phone = (d.parent_phone || d.whatsapp_phone || '').replace(/\D/g, '');
+    const isd = phone.startsWith('91') || phone.length < 10 ? phone : `91${phone}`;
+    const outstanding = money(d.outstanding_amount || d.amount_due || 0);
+    const msg = encodeURIComponent(
+      `Dear Parent of ${d.student_name || d.name},\n\nThis is a reminder that a fee of ${outstanding} is outstanding for your child at The Aaryans School. Kindly clear the dues at the earliest to avoid inconvenience.\n\nThank you.`
+    );
+    window.open(`https://wa.me/${isd}?text=${msg}`, '_blank');
+    setSent(p => ({ ...p, [d.student_id || d.id]: true }));
+  };
+
+  const sendAll = () => defaulters.forEach(d => sendReminder(d));
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 14, width: '100%', maxWidth: 580, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--tool-hex-2e2e2e)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--tool-hex-e5e5e5)' }}>WhatsApp Fee Reminders</div>
+            <div style={{ fontSize: 12, color: 'var(--tool-hex-888)', marginTop: 2 }}>{defaulters.length} defaulters — tap a row to open WhatsApp</div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {defaulters.length > 0 && (
+              <ActionBtn label="Send All" icon={<Send size={11} />} onClick={sendAll} />
+            )}
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--tool-hex-888)', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
+          </div>
+        </div>
+        <div style={{ overflowY: 'auto', flex: 1, padding: '12px 20px' }}>
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--tool-hex-888)', fontSize: 13 }}>Loading defaulters…</div>
+          ) : defaulters.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--tool-hex-888)', fontSize: 13 }}>No fee defaulters found.</div>
+          ) : defaulters.map((d, i) => {
+            const phone = (d.parent_phone || d.whatsapp_phone || '');
+            const isSent = sent[d.student_id || d.id];
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--tool-hex-2e2e2e)' }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tool-hex-e5e5e5)' }}>{d.student_name || d.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--tool-hex-888)', marginTop: 2 }}>
+                    {d.class_name || d.class || ''}
+                    {phone ? ` · 📱 ${phone}` : ' · No phone on file'}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--tool-hex-f87171)' }}>{money(d.outstanding_amount || d.amount_due || 0)}</span>
+                  {phone ? (
+                    <button onClick={() => sendReminder(d)} style={{
+                      background: isSent ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.12)',
+                      border: `1px solid ${isSent ? '#22c55e' : 'rgba(34,197,94,0.3)'}`,
+                      borderRadius: 8, padding: '5px 12px', cursor: 'pointer',
+                      color: '#22c55e', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
+                    }}>
+                      <Send size={11} />{isSent ? 'Sent ✓' : 'Send'}
+                    </button>
+                  ) : (
+                    <span style={{ fontSize: 11, color: 'var(--tool-hex-555)' }}>No phone</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // 1. School Pulse
 export function SchoolPulse() {
   const { currentUser } = useUser();
@@ -17,6 +103,7 @@ export function SchoolPulse() {
   const [feeSummary, setFeeSummary] = useState(null);
   const [openComplaints, setOpenComplaints] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showWaModal, setShowWaModal] = useState(false);
 
   useEffect(() => { load(); }, []);
 
@@ -67,7 +154,7 @@ export function SchoolPulse() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {[
               { icon: Users, label: "Mark Today's Attendance", color: 'var(--tool-hex-4f8ff7)', action: () => window.dispatchEvent(new CustomEvent('open-tool', { detail: 'attendance-recorder' })) },
-              { icon: Send, label: 'Send Fee Reminders', color: 'var(--tool-hex-34d399)', action: async () => { alert('Fee reminders will be sent via WhatsApp (Phase 2)'); } },
+              { icon: Send, label: 'Send Fee Reminders', color: 'var(--tool-hex-34d399)', action: () => setShowWaModal(true) },
               { icon: AlertTriangle, label: 'View Active Alerts', color: 'var(--tool-hex-f87171)', action: () => window.dispatchEvent(new CustomEvent('open-tool', { detail: 'smart-alerts' })) },
               { icon: FileText, label: 'Generate Daily Report', color: 'var(--tool-hex-a78bfa)', action: async () => {
                 try {
@@ -276,6 +363,7 @@ export function SchoolPulse() {
           ))}
         </div>
       )}
+      {showWaModal && <WhatsAppReminderModal onClose={() => setShowWaModal(false)} />}
     </ToolPage>
   );
 }

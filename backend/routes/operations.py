@@ -62,20 +62,20 @@ def _announcement_requires_approval(audience_type: str, target_roles: list[str])
 
 
 def _should_require_approval(user: dict, audience_roles: list) -> bool:
-    """EC-9.1: principal can broadcast directly.
+    """EC-9.1: owner and principal broadcast directly, all other roles need approval.
 
     Returns True  → go through the normal approval gate.
     Returns False → skip the gate (broadcast directly as active).
-
-    Owner still goes through the gate (unchanged legacy behaviour).
-    Principal (admin+sub_category=principal) bypasses the gate via P9.4.
     """
-    if user.get("role") == "admin" and user.get("sub_category") == "principal":
+    role = user.get("role")
+    if role == "owner":
+        return False  # owner broadcasts directly
+    if role == "admin" and user.get("sub_category") == "principal":
         # EC-9.1 injection guard: principal cannot target owner role
         if "owner" in (audience_roles or []):
             raise HTTPException(422, "Principal cannot target owner role in announcements")
         return False  # principal bypasses approval gate
-    return True  # owner and all other roles go through the normal gate
+    return True  # all other roles go through the normal gate
 
 
 def _audit_doc(action: str, entity_type: str, entity_id: str, user: dict, changes: dict, reason: str = None):
@@ -1261,21 +1261,30 @@ async def list_announcements(request: Request, page: int = 1, limit: int = 20, u
     skip = max(page - 1, 0) * limit
     # Story 7-47: only `active` rows (or legacy rows missing `status`) are visible
     # to recipients. Pending and rejected announcements are hidden.
-    query = {
-        "is_draft": {"$ne": True},
-        "$and": [
-            {"$or": [
-                {"audience_roles": {"$in": [role, "all"]}},
-                {"audience_roles": {"$exists": False}},
-                {"audience_roles": []},
-                {"audience_type": "all"},
-            ]},
-            {"$or": [
-                {"status": "active"},
-                {"status": {"$exists": False}},
-            ]},
-        ],
-    }
+    # Owners/admins also see announcements they created so they can review sent items.
+    audience_clause = {"$or": [
+        {"audience_roles": {"$in": [role, "all"]}},
+        {"audience_roles": {"$exists": False}},
+        {"audience_roles": []},
+        {"audience_type": "all"},
+    ]}
+    status_clause = {"$or": [
+        {"status": "active"},
+        {"status": {"$exists": False}},
+    ]}
+    if role in ("owner", "admin"):
+        query = {
+            "is_draft": {"$ne": True},
+            "$or": [
+                {"$and": [audience_clause, status_clause]},
+                {"created_by": user.get("id")},
+            ],
+        }
+    else:
+        query = {
+            "is_draft": {"$ne": True},
+            "$and": [audience_clause, status_clause],
+        }
     query = scoped_filter(query, get_school_id())
     total = await db.announcements.count_documents(query)
     announcements = await db.announcements.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)

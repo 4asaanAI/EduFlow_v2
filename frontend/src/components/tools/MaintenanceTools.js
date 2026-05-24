@@ -37,6 +37,7 @@ function RequestCard({ item, onUpdate, onConfirm, role, subCategory, isDark }) {
   const [note, setNote] = useState('');
   const [newStatus, setNewStatus] = useState(item.status);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const bg = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-fff)';
   const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
   const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
@@ -54,9 +55,14 @@ function RequestCard({ item, onUpdate, onConfirm, role, subCategory, isDark }) {
 
   const handleSave = async () => {
     setSaving(true);
-    await onUpdate(item.id, { status: newStatus, note: note.trim() || undefined }, type);
-    setNote('');
-    setShowNote(false);
+    setSaveError('');
+    const ok = await onUpdate(item.id, { status: newStatus, note: note.trim() || undefined }, type);
+    if (ok) {
+      setNote('');
+      setShowNote(false);
+    } else {
+      setSaveError('Failed to update. Check your permissions and try again.');
+    }
     setSaving(false);
   };
 
@@ -111,9 +117,10 @@ function RequestCard({ item, onUpdate, onConfirm, role, subCategory, isDark }) {
                 rows={2}
                 style={{ width: '100%', background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 7, padding: '8px 10px', color: text, fontSize: 12, resize: 'vertical', boxSizing: 'border-box' }}
               />
+              {saveError && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 11, marginBottom: 6 }}>{saveError}</div>}
               <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                 <ActionBtn label={saving ? 'Saving...' : 'Save'} onClick={handleSave} disabled={saving} />
-                <ActionBtn label="Cancel" variant="secondary" onClick={() => { setShowNote(false); setNote(''); setNewStatus(item.status); }} />
+                <ActionBtn label="Cancel" variant="secondary" onClick={() => { setShowNote(false); setNote(''); setNewStatus(item.status); setSaveError(''); }} />
               </div>
             </div>
           )}
@@ -183,12 +190,18 @@ function IssuePanel({ type, title }) {
   };
 
   const handleUpdate = async (id, updates, issueType) => {
-    await fetch(`${API}/issues/${issueType}/${id}`, {
-      method: 'PATCH',
-      headers: { ...h(), 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    });
-    load();
+    try {
+      const res = await fetch(`${API}/issues/${issueType}/${id}`, {
+        method: 'PATCH',
+        headers: { ...h(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      const data = await res.json();
+      load();
+      return data.success !== false;
+    } catch {
+      return false;
+    }
   };
 
   const handleConfirm = async (id) => {
@@ -566,12 +579,18 @@ export function MaintenanceWorkOrders() {
   };
 
   const handleUpdate = async (id, updates) => {
-    await fetch(`${API}/issues/facility/${id}`, {
-      method: 'PATCH',
-      headers: { ...h(), 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    });
-    load();
+    try {
+      const res = await fetch(`${API}/issues/facility/${id}`, {
+        method: 'PATCH',
+        headers: { ...h(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      const data = await res.json();
+      load();
+      return data.success !== false;
+    } catch {
+      return false;
+    }
   };
 
   const handleConfirm = async (id) => {
