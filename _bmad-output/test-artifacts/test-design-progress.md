@@ -1,5 +1,7 @@
 ---
 workflowStatus: 'completed'
+lastSaved: '2026-05-21'
+note: 'Manual data flow test plan generated — see test-design/manual-dataflow-test-plan.md'
 totalSteps: 5
 stepsCompleted:
   - step-01-detect-mode

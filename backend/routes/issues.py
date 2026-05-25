@@ -641,14 +641,15 @@ async def update_maintenance_schedule(entry_id: str, request: Request):
     if not _can_view_all(user) and not _is_maint(user):
         raise HTTPException(403, "Forbidden")
     body = await request.json()
-    existing = await db.maintenance_schedule.find_one(scoped_query({"id": entry_id}, branch_id=bid))
+    # branch-scope: intentional — schedule records are school-wide (branch_id may be None on seeded data)
+    existing = await db.maintenance_schedule.find_one(scoped_query({"id": entry_id}, branch_id=None))
     if not existing:
         raise HTTPException(404, "Schedule entry not found")
     updates = {"updated_at": datetime.now().isoformat()}
     for field in ("title", "description", "scheduled_date", "recurrence", "category", "assigned_to", "vendor_id", "status"):
         if field in body:
             updates[field] = body[field]
-    await db.maintenance_schedule.update_one(scoped_query({"id": entry_id}, branch_id=bid), {"$set": updates})
+    await db.maintenance_schedule.update_one(scoped_query({"id": entry_id}, branch_id=None), {"$set": updates})
     if updates.get("status") in {"done", "skipped"} and existing.get("recurrence") not in (None, "", "one_time"):
         next_date = _next_scheduled_date(existing.get("scheduled_date", ""), existing.get("recurrence", ""))
         if next_date:
@@ -664,7 +665,7 @@ async def update_maintenance_schedule(entry_id: str, request: Request):
             }
             await db.maintenance_schedule.insert_one(add_school_id(next_entry))
     await _write_audit(db, "maintenance_schedule_update", "maintenance_schedule", entry_id, user, {"changes": updates})
-    updated = await db.maintenance_schedule.find_one(scoped_query({"id": entry_id}, branch_id=bid), {"_id": 0})
+    updated = await db.maintenance_schedule.find_one(scoped_query({"id": entry_id}, branch_id=None), {"_id": 0})
     return {"success": True, "data": updated}
 
 
@@ -738,14 +739,15 @@ async def update_vendor(vendor_id: str, request: Request):
     if not _can_view_all(user) and not _is_maint(user):
         raise HTTPException(403, "Forbidden")
     body = await request.json()
-    existing = await db.maintenance_vendors.find_one(scoped_query({"id": vendor_id}, branch_id=bid))
+    # branch-scope: intentional — vendor records are school-wide (branch_id may be None on seeded data)
+    existing = await db.maintenance_vendors.find_one(scoped_query({"id": vendor_id}, branch_id=None))
     if not existing:
         raise HTTPException(404, "Vendor not found")
     updates = {"updated_at": datetime.now().isoformat()}
     for field in ("name", "category", "contact_person", "phone", "email", "address", "gst_number", "rating", "tags", "is_active"):
         if field in body:
             updates[field] = body[field]
-    await db.maintenance_vendors.update_one(scoped_query({"id": vendor_id}, branch_id=bid), {"$set": updates})
+    await db.maintenance_vendors.update_one(scoped_query({"id": vendor_id}, branch_id=None), {"$set": updates})
     await _write_audit(db, "vendor_update", "maintenance_vendors", vendor_id, user, {"changes": updates})
-    updated = await db.maintenance_vendors.find_one(scoped_query({"id": vendor_id}, branch_id=bid), {"_id": 0})
+    updated = await db.maintenance_vendors.find_one(scoped_query({"id": vendor_id}, branch_id=None), {"_id": 0})
     return {"success": True, "data": updated}

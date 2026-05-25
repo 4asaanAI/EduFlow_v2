@@ -614,22 +614,6 @@ export async function fetchPlatformHealth() {
   return res.json();
 }
 
-export async function createSchool(data) {
-  const res = await apiFetch(`${API}/operator/schools`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify(data),
-  });
-  return res.json();
-}
-
-export async function fetchSchoolOnboardingStatus(schoolId) {
-  const res = await apiFetch(`${API}/operator/schools/${encodeURIComponent(schoolId)}/onboarding-status`, {
-    headers: getHeaders(),
-  });
-  return res.json();
-}
-
 export async function deactivateSchool(schoolId) {
   const res = await apiFetch(`${API}/operator/schools/${encodeURIComponent(schoolId)}/deactivate`, {
     method: 'PATCH',

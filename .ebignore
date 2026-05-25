@@ -1,0 +1,45 @@
+# ── Dev/build artifacts ──────────────────────────────────────────────────────
+frontend/
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# ── Test infrastructure ──────────────────────────────────────────────────────
+tests/
+test_reports/
+playwright.config.js
+pytest.ini
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# ── Planning / docs ──────────────────────────────────────────────────────────
+_bmad/
+_bmad-output/
+docs/
+memory/
+scripts/
+*.md
+*.docx
+*.txt
+
+# ── Local uploads (S3 in prod) ───────────────────────────────────────────────
+backend/uploads/
+
+# ── Root JS tooling (frontend-only) ─────────────────────────────────────────
+package.json
+package-lock.json
+amplify.yml
+design_guidelines.json
+
+# ── Secrets / IDE ────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+.DS_Store
