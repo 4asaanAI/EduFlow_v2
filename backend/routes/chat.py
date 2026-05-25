@@ -1703,6 +1703,18 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         logger.error(f"Phase 11 (content filter) error: {e}")
         clean_response = llm_response
 
+    # Strip content-policy hallucination — the LLM occasionally generates this
+    # boilerplate from poisoned conversation history. Detect and remove it so
+    # it never reaches the user regardless of role.
+    _CONTENT_POLICY_MARKERS = [
+        "wasn't able to process that specific phrasing",
+        "content policy settings on the AI service",
+        "try rephrasing your question",
+    ]
+    if any(marker in clean_response for marker in _CONTENT_POLICY_MARKERS):
+        logger.warning("LLM generated content-policy boilerplate; stripping response | session=%s", session_id)
+        clean_response = "I had trouble generating a response. Please try your question again."
+
     # ── Phase 12: Parse rich content ──────────────────────────────────────
     clean_text, rich_content = _extract_rich_content(clean_response)
 
