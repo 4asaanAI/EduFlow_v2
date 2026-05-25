@@ -681,49 +681,222 @@ export function AttendanceOverview() {
 }
 
 // 5. Staff Attendance Tracker
+const STATUS_OPTIONS = ['present', 'absent', 'late', 'on-leave'];
+const STATUS_COLORS = { present: '#34d399', absent: '#f87171', late: '#fbbf24', 'on-leave': '#a78bfa', not_marked: '#737373' };
+const STATUS_BG = { present: 'rgba(52,211,153,0.12)', absent: 'rgba(248,113,113,0.12)', late: 'rgba(251,191,36,0.12)', 'on-leave': 'rgba(167,139,250,0.12)', not_marked: 'rgba(115,115,115,0.1)' };
+
 export function StaffAttendanceTracker({ title = 'Staff Tracker', subtitle = 'Attendance & leave management', defaultTab = 'attendance' }) {
   const { currentUser } = useUser();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(defaultTab);
+  const [markMode, setMarkMode] = useState(false);
+  const [markDate, setMarkDate] = useState(new Date().toISOString().slice(0, 10));
+  const [markData, setMarkData] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
+
   useEffect(() => { setActiveTab(defaultTab); }, [defaultTab]);
   useEffect(() => { load(); }, []);
-  const load = async () => { setLoading(true); try { const r = await executeTool('get_staff_status', {}, currentUser); if (r.success) setData(r.data); } catch {} setLoading(false); };
+
+  const load = async () => {
+    setLoading(true);
+    try { const r = await executeTool('get_staff_status', {}, currentUser); if (r.success) setData(r.data); } catch {}
+    setLoading(false);
+  };
+
   const staff = data?.staff_list || [];
   const leaves = data?.pending_leaves || [];
-  const statusColors = { present: 'var(--tool-hex-34d399)', absent: 'var(--tool-hex-f87171)', late: 'var(--tool-hex-fbbf24)', not_marked: 'var(--tool-hex-737373)', 'on-leave': 'var(--tool-hex-a78bfa)' };
+
+  const enterMarkMode = () => {
+    const initial = {};
+    staff.forEach(s => {
+      initial[s.id] = s.status === 'not_marked' ? 'present' : s.status;
+    });
+    setMarkData(initial);
+    setMarkMode(true);
+    setSaveMsg('');
+  };
+
+  const cancelMark = () => { setMarkMode(false); setSaveMsg(''); };
+
+  const setStaffStatus = (id, status) => setMarkData(p => ({ ...p, [id]: status }));
+
+  const markAll = (status) => {
+    const next = {};
+    staff.forEach(s => { next[s.id] = status; });
+    setMarkData(next);
+  };
+
+  const submitAttendance = async () => {
+    setSaving(true);
+    setSaveMsg('');
+    try {
+      const records = Object.entries(markData).map(([staff_id, status]) => ({ staff_id, status }));
+      const res = await fetch(`${API}/attendance/staff/bulk`, {
+        method: 'POST',
+        headers: { ...h(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: markDate, records }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setSaveMsg(`Attendance saved for ${records.length} staff members.`);
+        setMarkMode(false);
+        load();
+      } else {
+        setSaveMsg(result.detail || 'Failed to save attendance.');
+      }
+    } catch { setSaveMsg('Network error. Please try again.'); }
+    setSaving(false);
+  };
+
+  const markedCount = Object.values(markData).filter(s => s !== 'not_marked').length;
+  const presentCount = Object.values(markData).filter(s => s === 'present').length;
 
   return (
     <ToolPage title={title} subtitle={subtitle} onRefresh={load} loading={loading}>
+      {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18, maxWidth: 700 }}>
         <StatCard value={data?.total_staff || 0} label="TOTAL STAFF" color="var(--tool-hex-e5e5e5)" />
-        <StatCard value={data?.present_today || 0} label="PRESENT" color="var(--tool-hex-34d399)" />
-        <StatCard value={data?.absent_today || 0} label="ABSENT" color="var(--tool-hex-f87171)" />
+        <StatCard value={data?.present_today || 0} label="PRESENT TODAY" color="var(--tool-hex-34d399)" />
+        <StatCard value={data?.absent_today || 0} label="ABSENT TODAY" color="var(--tool-hex-f87171)" />
         <StatCard value={leaves.length} label="PENDING LEAVES" color="var(--tool-hex-fbbf24)" />
       </div>
+
+      {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--tool-hex-2e2e2e)', marginBottom: 14 }}>
         {['attendance', 'leaves'].map(t => (
-          <button key={t} onClick={() => setActiveTab(t)} data-testid={`tab-${t}`} style={{ background: 'none', border: 'none', padding: '8px 14px', borderBottom: activeTab === t ? '2px solid var(--tool-hex-4f8ff7)' : '2px solid transparent', color: activeTab === t ? 'var(--tool-hex-fff)' : 'var(--tool-hex-737373)', fontSize: 13, fontWeight: 500, cursor: 'pointer', marginBottom: -1 }}>
+          <button key={t} onClick={() => { setActiveTab(t); setMarkMode(false); }} data-testid={`tab-${t}`}
+            style={{ background: 'none', border: 'none', padding: '8px 14px', borderBottom: activeTab === t ? '2px solid var(--tool-hex-4f8ff7)' : '2px solid transparent', color: activeTab === t ? 'var(--tool-hex-fff)' : 'var(--tool-hex-737373)', fontSize: 13, fontWeight: 500, cursor: 'pointer', marginBottom: -1 }}>
             {t === 'attendance' ? "Today's Attendance" : `Pending Leaves (${leaves.length})`}
           </button>
         ))}
       </div>
+
+      {/* Attendance Tab */}
       {activeTab === 'attendance' && (
-        <DataTable headers={['Name', 'Type', 'Status']}
-          rows={staff.map(s => [s.name, s.staff_type, <Badge text={s.status.replace('_', ' ')} color={s.status === 'present' ? 'green' : s.status === 'absent' ? 'red' : s.status === 'late' ? 'yellow' : 'gray'} />])}
-        />
-      )}
-      {activeTab === 'leaves' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {leaves.length === 0 ? <div style={{ padding: 24, textAlign: 'center', color: 'var(--tool-hex-737373)', fontSize: 13, background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11 }}>No pending leave requests</div> : leaves.map((lr, i) => (
-            <div key={lr.id || i} style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div><div style={{ fontWeight: 600, color: 'var(--tool-hex-e5e5e5)', fontSize: 13 }}>{lr.staff_name}</div><div style={{ color: 'var(--tool-hex-737373)', fontSize: 11 }}>{lr.leave_type} · {lr.start_date} – {lr.end_date}</div><div style={{ color: 'var(--tool-hex-a3a3a3)', fontSize: 11, marginTop: 3, fontStyle: 'italic' }}>{lr.reason}</div></div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <ActionBtn label="Approve" variant="success" icon={<CheckCircle size={11} />} onClick={async () => { await updateLeave(lr.id, 'approved', currentUser); load(); }} />
-                <ActionBtn label="Reject" variant="danger" icon={<XCircle size={11} />} onClick={async () => { await updateLeave(lr.id, 'rejected', currentUser); load(); }} />
+        <>
+          {/* Mark Mode */}
+          {markMode ? (
+            <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: 16 }}>
+              {/* Mark Mode Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tool-hex-e5e5e5)', marginBottom: 4 }}>Mark Attendance</div>
+                    <input type="date" value={markDate} onChange={e => setMarkDate(e.target.value)}
+                      style={{ background: 'var(--tool-hex-252525)', border: '1px solid var(--tool-hex-333)', borderRadius: 7, padding: '5px 10px', color: 'var(--tool-hex-e5e5e5)', fontSize: 12, cursor: 'pointer' }} />
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--tool-hex-737373)', marginTop: 18 }}>
+                    {markedCount}/{staff.length} marked · {presentCount} present
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11, color: 'var(--tool-hex-737373)', alignSelf: 'center' }}>Mark all:</span>
+                  {STATUS_OPTIONS.map(s => (
+                    <button key={s} onClick={() => markAll(s)}
+                      style={{ padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: `1px solid ${STATUS_COLORS[s]}`, background: STATUS_BG[s], color: STATUS_COLORS[s], cursor: 'pointer' }}>
+                      {s.replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Staff Rows */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 420, overflowY: 'auto' }}>
+                {staff.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 24, color: 'var(--tool-hex-737373)', fontSize: 13 }}>No staff found.</div>
+                ) : staff.map(s => {
+                  const current = markData[s.id] || 'present';
+                  return (
+                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--tool-hex-252525)', borderRadius: 9, border: `1px solid ${STATUS_COLORS[current]}22` }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tool-hex-e5e5e5)' }}>{s.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--tool-hex-737373)', marginTop: 2, textTransform: 'capitalize' }}>{s.staff_type}</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {STATUS_OPTIONS.map(opt => (
+                          <button key={opt} onClick={() => setStaffStatus(s.id, opt)}
+                            style={{
+                              padding: '5px 10px', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                              border: `1px solid ${current === opt ? STATUS_COLORS[opt] : 'var(--tool-hex-333)'}`,
+                              background: current === opt ? STATUS_BG[opt] : 'transparent',
+                              color: current === opt ? STATUS_COLORS[opt] : 'var(--tool-hex-737373)',
+                              transition: 'all 0.15s',
+                            }}>
+                            {opt === 'on-leave' ? 'On Leave' : opt.replace(/\b\w/g, c => c.toUpperCase())}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Save / Cancel */}
+              {saveMsg && (
+                <div style={{ marginTop: 10, fontSize: 12, color: saveMsg.includes('saved') ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-f87171)' }}>{saveMsg}</div>
+              )}
+              <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+                <ActionBtn label={saving ? 'Saving...' : `Save Attendance (${staff.length})`} disabled={saving} onClick={submitAttendance} />
+                <ActionBtn label="Cancel" variant="secondary" onClick={cancelMark} />
               </div>
             </div>
-          ))}
+          ) : (
+            /* View Mode */
+            <>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+                <ActionBtn label="Mark Attendance" onClick={enterMarkMode} />
+              </div>
+              {saveMsg && (
+                <div style={{ marginBottom: 10, fontSize: 12, color: 'var(--tool-hex-34d399)', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.3)', borderRadius: 8, padding: '8px 12px' }}>{saveMsg}</div>
+              )}
+              {staff.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 32, color: 'var(--tool-hex-737373)', fontSize: 13 }}>No staff data. Add staff first.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {staff.map(s => (
+                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 9 }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tool-hex-e5e5e5)' }}>{s.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--tool-hex-737373)', marginTop: 2, textTransform: 'capitalize' }}>{s.staff_type}</div>
+                      </div>
+                      <span style={{
+                        padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                        background: STATUS_BG[s.status] || STATUS_BG.not_marked,
+                        color: STATUS_COLORS[s.status] || STATUS_COLORS.not_marked,
+                        border: `1px solid ${STATUS_COLORS[s.status] || STATUS_COLORS.not_marked}44`,
+                      }}>
+                        {s.status === 'not_marked' ? 'Not Marked' : s.status === 'on-leave' ? 'On Leave' : s.status.replace(/\b\w/g, c => c.toUpperCase())}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
+
+      {/* Leaves Tab */}
+      {activeTab === 'leaves' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {leaves.length === 0
+            ? <div style={{ padding: 24, textAlign: 'center', color: 'var(--tool-hex-737373)', fontSize: 13, background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11 }}>No pending leave requests</div>
+            : leaves.map((lr, i) => (
+              <div key={lr.id || i} style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontWeight: 600, color: 'var(--tool-hex-e5e5e5)', fontSize: 13 }}>{lr.staff_name}</div>
+                  <div style={{ color: 'var(--tool-hex-737373)', fontSize: 11 }}>{lr.leave_type} · {lr.start_date} – {lr.end_date}</div>
+                  <div style={{ color: 'var(--tool-hex-a3a3a3)', fontSize: 11, marginTop: 3, fontStyle: 'italic' }}>{lr.reason}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <ActionBtn label="Approve" variant="success" icon={<CheckCircle size={11} />} onClick={async () => { await updateLeave(lr.id, 'approved', currentUser); load(); }} />
+                  <ActionBtn label="Reject" variant="danger" icon={<XCircle size={11} />} onClick={async () => { await updateLeave(lr.id, 'rejected', currentUser); load(); }} />
+                </div>
+              </div>
+            ))
+          }
         </div>
       )}
     </ToolPage>
