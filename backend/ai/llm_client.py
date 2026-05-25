@@ -97,34 +97,16 @@ class LLMClient:
         except Exception as e:
             error_str = str(e).lower()
             error_name = e.__class__.__name__.lower()
-
-            # Azure content policy block — only trigger when Azure explicitly says so
             error_code = str(getattr(e, 'code', '') or '').lower()
-            is_content_filter = (
-                error_code == 'content_filter'
-                or "content_filter" in error_str
-                or "content management policy" in error_str
+            logger.error(
+                "Azure OpenAI error | class=%s | code=%s | msg=%.300s",
+                error_name, error_code, str(e),
             )
-            if is_content_filter:
-                logger.warning(f"Azure content filter triggered: {e}")
-                return (
-                    "I wasn't able to process that specific phrasing due to content policy settings on the AI service. "
-                    "Could you try rephrasing your question? For example, instead of mentioning specific complaint categories, "
-                    "try asking about 'open issues', 'pending cases', or 'unresolved grievances'. "
-                    "All your school management tools in the sidebar are fully available.",
-                    0,
-                )
-
-            if "badrequesterror" in error_name:
-                logger.error(f"Azure OpenAI bad request (check AZURE_OPENAI_DEPLOYMENT / API version): {e}")
-                return ai_unavailable_result("bad_request")
 
             if "timeout" in error_name or "connection" in error_name:
-                logger.warning(f"Azure OpenAI unavailable: {e}")
                 return ai_unavailable_result(error_name)
 
-            logger.error(f"Azure OpenAI error: {e}")
-            return ai_unavailable_result(error_name or "request_failed")
+            return ai_unavailable_result(error_code or error_name or "request_failed")
 
 
 llm_client = LLMClient()
