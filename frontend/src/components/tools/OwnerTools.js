@@ -21,7 +21,8 @@ function WhatsAppReminderModal({ onClose }) {
     (async () => {
       try {
         const r = await executeTool('get_fee_defaulters', {}, currentUser);
-        setDefaulters(r.success ? (r.data || []) : []);
+        const rawData = r.success ? (r.data?.data ?? r.data) : [];
+        setDefaulters(Array.isArray(rawData) ? rawData : []);
       } catch {}
       setLoading(false);
     })();
@@ -805,11 +806,11 @@ export function AnnouncementBroadcaster() {
   const load = async () => {
     setLoading(true);
     try {
-      const [annRes, classRes] = await Promise.all([
-        fetch(`${API}/ops/announcements`, { headers: h() }).then(r => r.json()),
-        fetch(`${API}/settings/classes`, { headers: h() }).then(r => r.json()),
-      ]);
+      const annRes = await fetch(`${API}/ops/announcements`, { headers: h() }).then(r => r.json());
       if (annRes.success) setAnnouncements(annRes.data || []);
+    } catch {}
+    try {
+      const classRes = await fetch(`${API}/settings/classes`, { headers: h() }).then(r => r.json());
       setClasses(classRes.data || []);
     } catch {}
     setLoading(false);
