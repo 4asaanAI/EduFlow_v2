@@ -1147,7 +1147,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
     # Fix: load first HISTORY_KEEP_FIRST anchors ASC + last HISTORY_KEEP_RECENT
     # by DESC and re-sort. Total messages == both ends, never the middle.
     try:
-        msg_filter = scoped_filter({"conversation_id": conv_id, "role": {"$in": ["user", "assistant"]}}, get_school_id())
+        msg_filter = scoped_filter({"conversation_id": conv_id, "role": {"$in": ["user", "assistant"]}, "is_flagged": {"$ne": True}}, get_school_id())
         anchors = await db.messages.find(msg_filter, {"_id": 0}).sort("created_at", 1).to_list(HISTORY_KEEP_FIRST)
         anchor_ids = {a.get("id") for a in anchors if a.get("id")}
         recent = await db.messages.find(msg_filter, {"_id": 0}).sort("created_at", -1).to_list(HISTORY_KEEP_RECENT)
