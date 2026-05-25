@@ -576,16 +576,38 @@ export function DataImport() {
             Required columns: name, class, section, parent_name, parent_phone. Optional: date_of_birth, address, route_zone_id.
           </div>
           {error && <div style={{ marginTop: 12, color: 'var(--tool-hex-f87171)', fontSize: 13 }}>{error}</div>}
-          {result && <div style={{ marginTop: 12, color: 'var(--tool-hex-34d399)', fontSize: 13 }}>Imported {result.imported_count} rows. Skipped {result.skipped_count} rows.</div>}
+          {result && (
+            <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.3)', borderRadius: 9 }}>
+              <div style={{ color: 'var(--tool-hex-34d399)', fontSize: 13, fontWeight: 600 }}>
+                ✓ Import complete — {result.imported_count} student{result.imported_count !== 1 ? 's' : ''} added to the database.
+              </div>
+              {result.skipped_count > 0 && <div style={{ color: 'var(--tool-hex-737373)', fontSize: 12, marginTop: 4 }}>{result.skipped_count} rows skipped (duplicates or errors).</div>}
+            </div>
+          )}
         </div>
 
-        {report && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
-            <StatCard value={report.valid_count || 0} label="VALID ROWS" color="var(--tool-hex-34d399)" />
-            <StatCard value={report.error_count || 0} label="ERRORS" color="var(--tool-hex-f87171)" />
-            <StatCard value={report.duplicate_count || 0} label="DUPLICATES" color="var(--tool-hex-fbbf24)" />
-            <StatCard value={file?.name || '—'} label="FILE" color="var(--tool-hex-4f8ff7)" />
-          </div>
+        {report && !result && (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 12 }}>
+              <StatCard value={report.valid_count || 0} label="VALID ROWS" color="var(--tool-hex-34d399)" />
+              <StatCard value={report.error_count || 0} label="ERRORS" color="var(--tool-hex-f87171)" />
+              <StatCard value={report.duplicate_count || 0} label="DUPLICATES" color="var(--tool-hex-fbbf24)" />
+              <StatCard value={file?.name || '—'} label="FILE" color="var(--tool-hex-4f8ff7)" />
+            </div>
+            {canCommit && (
+              <div style={{ marginBottom: 16, padding: '12px 16px', background: 'rgba(79,143,247,0.1)', border: '1px solid rgba(79,143,247,0.35)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tool-hex-4f8ff7)' }}>
+                    Validation passed — {report.valid_count} student{report.valid_count !== 1 ? 's' : ''} ready to import
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--tool-hex-737373)', marginTop: 3 }}>
+                    Students are NOT saved yet. Click "Commit Import" above to actually add them to the database.
+                  </div>
+                </div>
+                <ActionBtn label={loading ? 'Importing...' : `Commit ${report.valid_count} Students`} disabled={loading} onClick={() => upload('commit')} />
+              </div>
+            )}
+          </>
         )}
 
         {duplicates.length > 0 && (
