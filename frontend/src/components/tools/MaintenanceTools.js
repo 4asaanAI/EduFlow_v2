@@ -190,15 +190,16 @@ function IssuePanel({ type, title }) {
   };
 
   const handleUpdate = async (id, updates, issueType) => {
+    const resolvedType = issueType || type;
     try {
-      const res = await fetch(`${API}/issues/${issueType}/${id}`, {
+      const res = await fetch(`${API}/issues/${resolvedType}/${id}`, {
         method: 'PATCH',
         headers: { ...h(), 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       });
       const data = await res.json();
       load();
-      return data.success !== false;
+      return data.success === true;
     } catch {
       return false;
     }
@@ -587,7 +588,7 @@ export function MaintenanceWorkOrders() {
       });
       const data = await res.json();
       load();
-      return data.success !== false;
+      return data.success === true;
     } catch {
       return false;
     }

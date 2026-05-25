@@ -846,10 +846,11 @@ export function AnnouncementBroadcaster() {
         audience_classes: form.audience_type === 'class' ? form.audience_classes : [],
         is_draft: false,
       };
-      const r = await fetch(`${API}/ops/announcements`, { method: 'POST', headers: h(), body: JSON.stringify(payload) }).then(r => r.json());
+      const res = await fetch(`${API}/ops/announcements`, { method: 'POST', headers: { ...h(), 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const r = await res.json();
       if (r.success) { resetForm(); load(); }
-      else alert('Failed to send announcement. Please try again.');
-    } catch { alert('Network error. Please try again.'); }
+      else alert(`Failed to send announcement: ${r.detail || r.message || `HTTP ${res.status}`}`);
+    } catch (err) { alert(`Network error: ${err.message || 'Please try again.'}`); }
     setSaving(false);
   };
 
