@@ -405,18 +405,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           // Existing text_delta handling
           setCurrentStreamMsg(prev => {
             if (!prev) return prev;
-            const accumulated = (prev.content || '') + event.delta;
-            // Sanitize raw Azure API error strings before displaying
-            const isRawError = accumulated.includes("content management policy") ||
-              (accumulated.includes("Error code: 400") && accumulated.includes("error"));
-            if (isRawError) {
-              return {
-                ...prev, content:
-                  "I wasn't able to process that specific phrasing due to content policy settings on the AI service. " +
-                  "Could you try rephrasing your question? All your school management tools in the sidebar are fully available."
-              };
-            }
-            return { ...prev, content: accumulated };
+            return { ...prev, content: (prev.content || '') + event.delta };
           });
         } else if (event.type === 'tool_call') {
           setCurrentStreamMsg(prev => prev ? ({ ...prev, toolCall: { tool: event.tool, status: event.status } }) : prev);
