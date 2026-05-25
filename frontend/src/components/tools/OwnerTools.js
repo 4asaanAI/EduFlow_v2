@@ -102,7 +102,6 @@ export function SchoolPulse() {
   const { currentUser } = useUser();
   const [data, setData] = useState(null);
   const [feeSummary, setFeeSummary] = useState(null);
-  const [openComplaints, setOpenComplaints] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showWaModal, setShowWaModal] = useState(false);
 
@@ -111,14 +110,12 @@ export function SchoolPulse() {
   const load = async () => {
     setLoading(true);
     try {
-      const [pulseRes, feeRes, complaintsRes] = await Promise.all([
+      const [pulseRes, feeRes] = await Promise.all([
         executeTool('get_school_pulse', {}, currentUser),
         fetch(`${API}/fees/summary`, { headers: h() }).then(r => r.json()),
-        fetch(`${API}/ops/complaints`, { headers: h() }).then(r => r.json()),
       ]);
       if (pulseRes.success) setData(pulseRes.data);
       if (feeRes.success) setFeeSummary(feeRes.data);
-      if (complaintsRes.success) setOpenComplaints((complaintsRes.data || []).filter(c => !['resolved', 'closed'].includes(c.status)));
     } catch {}
     setLoading(false);
   };
@@ -130,25 +127,11 @@ export function SchoolPulse() {
   return (
     <ToolPage title="School Pulse" subtitle="Today's complete overview" onRefresh={load} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 1000 }}>
-        <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(4, minmax(160px, 1fr))', gap: 12 }}>
+        <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(160px, 1fr))', gap: 12 }}>
           <StatCard value={money(feeStats.total_collected || data?.fee_stats?.paid || 0)} label="FEE COLLECTED" color="var(--tool-hex-34d399)" />
           <StatCard value={money(feeStats.total_outstanding || data?.fee_stats?.overdue || 0)} label="FEE OVERDUE" color="var(--tool-hex-f87171)" />
           <StatCard value={feeStats.transactions ? `${Math.round((Number(feeStats.total_collected || 0) / Math.max(Number(feeStats.total_collected || 0) + Number(feeStats.total_outstanding || 0), 1)) * 100)}%` : '0%'} label="COLLECTION RATE" color="var(--tool-hex-4f8ff7)" />
-          <StatCard value={openComplaints.length} label="UNRESOLVED PARENT COMPLAINTS" color={openComplaints.length ? 'var(--tool-hex-fbbf24)' : 'var(--tool-hex-34d399)'} />
         </div>
-        {openComplaints.length > 0 && (
-          <div style={{ gridColumn: '1 / -1', background: 'var(--tool-hex-1e1e1e)', border: '1px solid rgba(251,191,36,0.28)', borderRadius: 12, padding: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 650, color: 'var(--tool-hex-fbbf24)', margin: 0 }}>Director Priority: Unresolved Parent Complaints</h3>
-              <ActionBtn label="Open Complaints" variant="secondary" onClick={() => window.dispatchEvent(new CustomEvent('open-tool', { detail: 'complaint-tracker' }))} />
-            </div>
-            <DataTable
-              headers={['Subject', 'Category', 'Priority', 'Status', 'Opened']}
-              rows={openComplaints.slice(0, 5).map(c => [c.subject, c.category, <Badge text={c.priority} color={c.priority === 'urgent' || c.priority === 'high' ? 'red' : 'yellow'} />, <Badge text={c.status} color="yellow" />, c.created_at?.slice(0, 10)])}
-              emptyMsg="No unresolved parent complaints"
-            />
-          </div>
-        )}
         {/* Quick Actions */}
         <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: 20 }}>
           <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 600, color: 'var(--tool-hex-e5e5e5)', marginBottom: 14 }}>Quick Actions</h3>
@@ -1212,28 +1195,6 @@ export function ExpenseTracker() {
   );
 }
 
-// 14. Complaint Tracker
-export function ComplaintTracker() {
-  const { currentUser } = useUser();
-  const [complaints, setComplaints] = useState([]);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => { load(); }, []);
-  const load = async () => { setLoading(true); try { const r = await fetch(`${API}/ops/complaints`, { headers: h() }).then(r => r.json()); if (r.success) setComplaints(r.data || []); } catch {} setLoading(false); };
-  const statusColors = { open: 'red', assigned: 'yellow', in_progress: 'blue', resolved: 'green', closed: 'gray' };
-  return (
-    <ToolPage title="Complaint & Grievance Tracker" subtitle="Manage and resolve complaints" onRefresh={load} loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16, maxWidth: 500 }}>
-        <StatCard value={complaints.filter(c => c.status === 'open').length} label="OPEN" color="var(--tool-hex-f87171)" />
-        <StatCard value={complaints.filter(c => c.status === 'resolved').length} label="RESOLVED" color="var(--tool-hex-34d399)" />
-        <StatCard value={complaints.length} label="TOTAL" color="var(--tool-hex-e5e5e5)" />
-      </div>
-      <DataTable headers={['Subject', 'Category', 'Priority', 'Status', 'Date']}
-        rows={complaints.map(c => [c.subject, c.category, <Badge text={c.priority} color={c.priority === 'urgent' ? 'red' : c.priority === 'high' ? 'yellow' : 'gray'} />, <Badge text={c.status} color={statusColors[c.status] || 'gray'} />, c.created_at?.slice(0, 10)])}
-        emptyMsg="No complaints filed"
-      />
-    </ToolPage>
-  );
-}
 
 // 15. Custom Report Builder
 export function CustomReportBuilder() {

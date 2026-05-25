@@ -63,15 +63,10 @@ class LLMClient:
                 msg_role = "assistant"
             az_messages.append({"role": msg_role, "content": msg.get("content", "")})
 
-        # Students get a slightly higher temperature for more natural, conversational
-        # responses (career advice, encouragement). All other roles use 0.2 to
-        # minimise hallucination of factual school-management data.
-        temperature = 0.7 if role == "student" else 0.2
-
         def _call():
             logger.debug(
-                "Azure LLM call | session=%s | deployment=%s | messages=%d | temperature=%.1f",
-                session_id, self.deployment, len(az_messages), temperature,
+                "Azure LLM call | session=%s | deployment=%s | messages=%d",
+                session_id, self.deployment, len(az_messages),
             )
             # Part 2 Patch P5: hard per-call timeout. The OpenAI SDK's
             # synchronous client default is ~600s which is far too long for
@@ -80,8 +75,7 @@ class LLMClient:
                 model=self.deployment,
                 messages=az_messages,
                 timeout=45,
-                temperature=temperature,
-                max_tokens=1200,
+                max_completion_tokens=1200,
             )
             text = response.choices[0].message.content or ""
             tokens = 0

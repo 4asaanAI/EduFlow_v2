@@ -17,8 +17,6 @@ const loadTool = async (toolId) => {
   if (toolId === 'facility-requests') return (await import('./tools/MaintenanceTools')).MaintenanceFacilityTracker;
   if (toolId === 'tech-issues') return (await import('./tools/MaintenanceTools')).ITTechIssueTracker;
   if (toolId === 'all-issues') return (await import('./tools/MaintenanceTools')).AllIssuesView;
-  if (toolId === 'maintenance-dashboard') return (await import('./tools/MaintenanceTools')).MaintenanceDashboard;
-  if (toolId === 'maintenance-work-orders') return (await import('./tools/MaintenanceTools')).MaintenanceWorkOrders;
   if (toolId === 'maintenance-schedule') return (await import('./tools/MaintenanceTools')).MaintenanceSchedule;
   if (toolId === 'vendor-log') return (await import('./tools/MaintenanceTools')).VendorLog;
   if (toolId === 'raise-maintenance') return (await import('./tools/MaintenanceTools')).RaiseMaintenanceRequest;
@@ -39,7 +37,7 @@ const loadTool = async (toolId) => {
   if (toolId === 'school-onboarding') return (await import('./tools/SchoolOnboarding')).default;
   if (toolId === 'transport-optimisation') return (await import('./tools/TransportOptimisation')).default;
 
-  const OWNERS = ['school-pulse','fee-collection','fee-sync','student-strength','data-import','attendance-overview','staff-tracker','staff-attendance-tracker','financial-reports','announcement-broadcaster','admission-funnel','staff-leave-manager','staff-performance','ai-health-report','smart-alerts','expense-tracker','complaint-tracker','custom-report-builder','board-report','smart-fee-defaulter','attendance-alerts','reports-trends','platform-health-dashboard'];
+  const OWNERS = ['school-pulse','fee-collection','fee-sync','student-strength','data-import','attendance-overview','staff-tracker','staff-attendance-tracker','financial-reports','announcement-broadcaster','admission-funnel','staff-leave-manager','staff-performance','ai-health-report','smart-alerts','expense-tracker','custom-report-builder','board-report','smart-fee-defaulter','attendance-alerts','reports-trends','platform-health-dashboard'];
   const ADMINS = ['fee-tracker','certificate-generator','circular-sender','enquiry-register','document-scanner','smart-fee-defaulter','admission-pipeline','parent-message','student-transfer','id-card-generator','asset-tracker','transport-manager','automated-report','custom-form-builder','report-card-builder','student-performance-viewer','attendance-alerts','reports-trends'];
   const TEACHERS = ['class-attendance-marker','assignment-generator','question-paper-creator','leave-application','lesson-plan-generator','worksheet-creator','class-performance-analytics','substitution-viewer','ptm-notes','curriculum-tracker','form-submissions'];
   const STUDENTS = ['ai-tutor','doubt-solver','homework-viewer','attendance-self-check','result-viewer','practice-test','study-planner','career-guidance','fee-status-viewer','ptm-summary-viewer','form-submissions'];

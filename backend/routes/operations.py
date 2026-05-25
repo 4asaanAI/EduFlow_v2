@@ -1,4 +1,4 @@
-"""Routes: certificates, expenses, complaints, visitors, assets, transport, announcements, incidents"""
+"""Routes: certificates, expenses, visitors, assets, transport, announcements, incidents"""
 from __future__ import annotations
 from fastapi import APIRouter, Depends, Request, HTTPException
 from database import get_db
@@ -518,93 +518,6 @@ async def create_expense(request: Request, user: dict = Depends(_require_owner_o
     })
     await db.expenses.insert_one({**expense, "_id": expense["id"]})
     return {"success": True, "data": expense}
-
-
-# Complaint routing map per spec (Fix 3)
-COMPLAINT_ROUTING = {
-    "academic": "principal",
-    "fees": "accountant",
-    "transport": "admin",
-    "facility": "maintenance",
-    "other": "principal",
-    "discipline": "principal",
-}
-
-# --- Complaints ---
-@router.get("/complaints")
-async def list_complaints(request: Request, user: dict = Depends(get_current_user)):
-    db = get_db()
-    bid = user.get("branch_id")
-    query = {}
-    # auth: scope-narrowing (own complaints only) for non-admin roles, not a gate.
-    if user["role"] not in ["owner", "admin"]:
-        query["submitted_by"] = user["id"]
-    complaints = await db.complaints.find(scoped_query(query, branch_id=bid), {"_id": 0}).sort("created_at", -1).to_list(50)
-    # Fix 3: mask on_behalf_of_phone for non-owner
-    for complaint in complaints:
-        if user.get("role") != "owner" and complaint.get("on_behalf_of_phone"):
-            phone = complaint["on_behalf_of_phone"]
-            complaint["on_behalf_of_phone"] = "***-***-" + phone[-4:]
-    return {"success": True, "data": complaints}
-
-
-@router.post("/complaints")
-async def create_complaint(request: Request, user: dict = Depends(get_current_user)):
-    db = get_db()
-    body = await request.json()
-    submitted_for = body.get("submitted_for") or {}
-    department = body.get("department")
-    if not department:
-        category = body.get("category", "other")
-        # Fix 3: updated routing map
-        department = COMPLAINT_ROUTING.get(category, "frontdesk")
-    # Fix 3: on_behalf_of_name and on_behalf_of_phone fields
-    on_behalf_of_name = body.get("on_behalf_of_name") or (submitted_for.get("name") if submitted_for else None)
-    on_behalf_of_phone = body.get("on_behalf_of_phone") or (submitted_for.get("phone") if submitted_for else None)
-    complaint = add_school_id({
-        "id": str(uuid.uuid4()),
-        "submitted_by": user["id"],
-        "submitted_by_role": user.get("role"),
-        "submitted_for": submitted_for,
-        "on_behalf_of": bool(submitted_for) or bool(on_behalf_of_name) or bool(on_behalf_of_phone),
-        "on_behalf_of_name": on_behalf_of_name,
-        "on_behalf_of_phone": on_behalf_of_phone,
-        "subject": body.get("subject"),
-        "description": body.get("description"),
-        "category": body.get("category", "other"),
-        "department": department,
-        "assigned_to": body.get("assigned_to"),
-        "priority": body.get("priority", "normal"),
-        "status": "open",
-        "created_at": datetime.now().isoformat(),
-    })
-    await db.complaints.insert_one({**complaint, "_id": complaint["id"]})
-    return {"success": True, "data": complaint}
-
-
-@router.patch("/complaints/{complaint_id}")
-async def update_complaint(complaint_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
-    db = get_db()
-    bid = user.get("branch_id")
-    body = await request.json()
-    allowed_statuses = {"open", "in_progress", "waiting_on_parent", "resolved", "closed"}
-    if "status" in body and body["status"] not in allowed_statuses:
-        raise HTTPException(400, f"status must be one of {sorted(allowed_statuses)}")
-    update = {k: v for k, v in body.items() if k in {"status", "priority", "department", "assigned_to", "resolution", "category"}}
-    if body.get("note"):
-        await db.complaints.update_one(
-            scoped_query({"id": complaint_id}, branch_id=bid),
-            {"$push": {"timeline": {
-                "id": str(uuid.uuid4()),
-                "author_id": user["id"],
-                "note": body["note"],
-                "created_at": datetime.now().isoformat(),
-            }}},
-        )
-    update["updated_at"] = datetime.now().isoformat()
-    await db.complaints.update_one(scoped_query({"id": complaint_id}, branch_id=bid), {"$set": update})
-    updated = await db.complaints.find_one(scoped_query({"id": complaint_id}, branch_id=bid), {"_id": 0})
-    return {"success": True, "data": updated}
 
 
 # ─── Story 13: Incident Management (enhanced) ─────────────────────────────────

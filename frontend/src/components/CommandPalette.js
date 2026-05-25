@@ -44,7 +44,6 @@ const ALL_TOOLS = [
   { id: 'staff-leave-manager',    name: 'Leave Manager',         subtitle: 'Approve & reject',         icon: CalendarDays,  roles: ['owner','admin'] },
   { id: 'staff-performance',      name: 'Staff Performance',     subtitle: 'Overview & analytics',     icon: BarChart2,     roles: ['owner','admin'] },
   { id: 'smart-alerts',           name: 'Smart Alerts',          subtitle: 'Exceptions & flags',       icon: Bell,          roles: ['owner','admin'] },
-  { id: 'complaint-tracker',      name: 'Complaints',            subtitle: 'Grievance tracker',        icon: AlertTriangle, roles: ['owner','admin'] },
 ];
 
 function scoreMatch(tool, query) {
