@@ -1707,13 +1707,15 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
     # boilerplate from poisoned conversation history. Detect and remove it so
     # it never reaches the user regardless of role.
     _CONTENT_POLICY_MARKERS = [
-        "wasn't able to process that specific phrasing",
         "content policy settings on the AI service",
+        "school management tools in the sidebar are fully available",
         "try rephrasing your question",
+        "wasn't able to process that",
+        "wasn’t able to process that",
     ]
-    if any(marker in clean_response for marker in _CONTENT_POLICY_MARKERS):
-        logger.warning("LLM generated content-policy boilerplate; stripping response | session=%s", session_id)
-        clean_response = "I had trouble generating a response. Please try your question again."
+    if any(marker.lower() in clean_response.lower() for marker in _CONTENT_POLICY_MARKERS):
+        logger.warning("LLM generated content-policy boilerplate; stripping | conv=%s", conv_id)
+        clean_response = ""
 
     # ── Phase 12: Parse rich content ──────────────────────────────────────
     clean_text, rich_content = _extract_rich_content(clean_response)
