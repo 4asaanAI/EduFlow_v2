@@ -67,30 +67,66 @@ function LeaveCard({ leave, onApprove, onReject }) {
   );
 }
 
-function CertCard({ cert, onApprove }) {
+function CertCard({ cert, onApprove, onReject }) {
   const [busy, setBusy] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState('');
   const isPending = cert.status === 'pending_approval';
   const isApproved = cert.status === 'approved';
   const statusColor = isApproved ? '#22c55e' : isPending ? '#fbbf24' : '#f87171';
-  const statusLabel = isApproved ? 'Approved' : isPending ? 'Pending' : cert.status || 'Unknown';
+  const statusLabel = isApproved ? 'Approved' : isPending ? 'Pending' : cert.status === 'rejected' ? 'Rejected' : cert.status || 'Unknown';
+
+  const handleReject = async () => {
+    if (!reason.trim()) return;
+    setBusy(true);
+    await onReject(reason.trim());
+    setBusy(false);
+    setRejecting(false);
+    setReason('');
+  };
+
   return (
-    <div style={{ background: 'var(--tool-hex-252525)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 10, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tool-hex-e5e5e5)' }}>{cert.student_name || cert.student_id}</div>
-        <div style={{ fontSize: 11, color: 'var(--tool-hex-888)', marginTop: 3 }}>
-          {cert.cert_type || cert.type} · {cert.created_at?.slice(0, 10)}
+    <div style={{ background: 'var(--tool-hex-252525)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 10, padding: '12px 14px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tool-hex-e5e5e5)' }}>{cert.student_name || cert.student_id}</div>
+          <div style={{ fontSize: 11, color: 'var(--tool-hex-888)', marginTop: 3 }}>
+            {cert.cert_type || cert.type} · {cert.created_at?.slice(0, 10)}
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
+          <span style={{ background: `color-mix(in srgb, ${statusColor} 15%, transparent)`, border: `1px solid color-mix(in srgb, ${statusColor} 35%, transparent)`, borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 700, color: statusColor }}>
+            {statusLabel}
+          </span>
+          {isPending && !rejecting && (
+            <>
+              <button disabled={busy} onClick={async () => { setBusy(true); await onApprove(); setBusy(false); }} style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.35)', borderRadius: 7, padding: '5px 10px', color: '#22c55e', cursor: 'pointer', fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, opacity: busy ? 0.6 : 1 }}>
+                <CheckCircle size={11} />Approve
+              </button>
+              <button disabled={busy} onClick={() => setRejecting(true)} style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 7, padding: '5px 10px', color: '#f87171', cursor: 'pointer', fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, opacity: busy ? 0.6 : 1 }}>
+                <XCircle size={11} />Reject
+              </button>
+            </>
+          )}
         </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
-        <span style={{ background: `color-mix(in srgb, ${statusColor} 15%, transparent)`, border: `1px solid color-mix(in srgb, ${statusColor} 35%, transparent)`, borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 700, color: statusColor }}>
-          {statusLabel}
-        </span>
-        {isPending && (
-          <button disabled={busy} onClick={async () => { setBusy(true); await onApprove(); setBusy(false); }} style={{ background: 'rgba(79,143,247,0.12)', border: '1px solid rgba(79,143,247,0.3)', borderRadius: 7, padding: '5px 10px', color: '#4f8ff7', cursor: 'pointer', fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, opacity: busy ? 0.6 : 1 }}>
-            <CheckCircle size={11} />Approve
+      {rejecting && (
+        <div style={{ marginTop: 10, display: 'flex', gap: 7, alignItems: 'center' }}>
+          <input
+            autoFocus
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            placeholder="Reason for rejection..."
+            style={{ flex: 1, background: 'var(--tool-hex-1a1a1a)', border: '1px solid var(--tool-hex-3e3e3e)', borderRadius: 6, padding: '6px 10px', color: 'var(--tool-hex-e5e5e5)', fontSize: 11, outline: 'none' }}
+          />
+          <button disabled={busy || !reason.trim()} onClick={handleReject} style={{ background: 'rgba(248,113,113,0.15)', border: '1px solid rgba(248,113,113,0.4)', borderRadius: 6, padding: '5px 10px', color: '#f87171', cursor: 'pointer', fontSize: 11, fontWeight: 600, opacity: (busy || !reason.trim()) ? 0.5 : 1 }}>
+            Confirm
           </button>
-        )}
-      </div>
+          <button onClick={() => { setRejecting(false); setReason(''); }} style={{ background: 'none', border: '1px solid var(--tool-hex-3e3e3e)', borderRadius: 6, padding: '5px 10px', color: 'var(--tool-hex-888)', cursor: 'pointer', fontSize: 11 }}>
+            Cancel
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -225,6 +261,15 @@ export default function PrincipalDailyOps() {
     load();
   };
 
+  const rejectCert = async (certId, reason) => {
+    await fetch(`${API}/ops/certificates/${certId}/reject`, {
+      method: 'PATCH',
+      headers: { ...h(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    });
+    load();
+  };
+
   const uncovered = meta.uncovered_period_count || items.filter(i => !i.assigned_substitute).length;
 
   return (
@@ -289,7 +334,7 @@ export default function PrincipalDailyOps() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {certificates.map(c => (
-                <CertCard key={c.id} cert={c} onApprove={() => approveCert(c.id)} />
+                <CertCard key={c.id} cert={c} onApprove={() => approveCert(c.id)} onReject={reason => rejectCert(c.id, reason)} />
               ))}
             </div>
           )}

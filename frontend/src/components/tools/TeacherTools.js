@@ -584,7 +584,7 @@ export function LessonPlanGenerator() {
   const [subjects, setSubjects] = useState([]);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ class_id: '', subject_id: '', chapter: '', content: '' });
+  const [form, setForm] = useState({ class_id: '', subject_id: '', week: '', chapter: '', content: '' });
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [classes, setClasses] = useState([]);
@@ -604,8 +604,8 @@ export function LessonPlanGenerator() {
     ]).finally(() => setLoading(false));
   }, []);
 
-  const openCreate = () => { setEditingId(null); setForm({ class_id: '', subject_id: '', chapter: '', content: '' }); setShowForm(true); };
-  const openEdit = (p) => { setEditingId(p.id); setForm({ class_id: p.class_id || '', subject_id: p.subject_id || '', chapter: p.chapter || '', content: typeof p.content === 'object' ? (p.content.description || '') : (p.content || '') }); setShowForm(true); };
+  const openCreate = () => { setEditingId(null); setForm({ class_id: '', subject_id: '', week: new Date().toISOString().slice(0, 10), chapter: '', content: '' }); setShowForm(true); };
+  const openEdit = (p) => { setEditingId(p.id); setForm({ class_id: p.class_id || '', subject_id: p.subject_id || '', week: p.week || '', chapter: p.chapter || '', content: typeof p.content === 'object' ? (p.content.description || '') : (p.content || '') }); setShowForm(true); };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -616,7 +616,7 @@ export function LessonPlanGenerator() {
       const url = editingId ? `${API}/academics/lesson-plans/${editingId}` : `${API}/academics/lesson-plans`;
       const method = editingId ? 'PATCH' : 'POST';
       const r = await fetch(url, { method, headers: h(currentUser), body: JSON.stringify(body) }).then(r => r.json());
-      if (r.success) { setShowForm(false); setEditingId(null); setForm({ class_id: '', subject_id: '', chapter: '', content: '' }); await load(); }
+      if (r.success) { setShowForm(false); setEditingId(null); setForm({ class_id: '', subject_id: '', week: '', chapter: '', content: '' }); await load(); }
     } catch {}
     setSaving(false);
   };
@@ -637,6 +637,7 @@ export function LessonPlanGenerator() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Class" type="select" value={form.class_id} onChange={f('class_id')} options={classes.map(c => ({ value: c.id, label: `${c.name}-${c.section}` }))} />
               <FormField label="Subject" type="select" value={form.subject_id} onChange={f('subject_id')} options={subjects.map(s => ({ value: s.id, label: s.name }))} />
+              <FormField label="Week (Date)" type="date" value={form.week} onChange={f('week')} required />
               <FormField label="Chapter / Topic" value={form.chapter} onChange={f('chapter')} placeholder="Chapter name/topic" required />
             </div>
             <FormField label="Lesson Notes / Content" type="textarea" value={form.content} onChange={f('content')} placeholder="Lesson plan details, objectives, activities..." />
@@ -650,7 +651,7 @@ export function LessonPlanGenerator() {
       <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead><tr style={{ borderBottom: '1px solid var(--c-border)' }}>
-            {['Chapter', 'Subject', 'Class', 'Created', 'Actions'].map(c => <th key={c} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase' }}>{c}</th>)}
+            {['Chapter', 'Subject', 'Class', 'Week', 'Actions'].map(c => <th key={c} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase' }}>{c}</th>)}
           </tr></thead>
           <tbody>
             {plans.length === 0 ? <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No lesson plans yet</td></tr>
@@ -662,7 +663,7 @@ export function LessonPlanGenerator() {
                     <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-text)' }}>{p.chapter}</td>
                     <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{subj?.name || 'N/A'}</td>
                     <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{cls ? `${cls.name}-${cls.section}` : 'N/A'}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{p.created_at?.slice(0, 10) || 'N/A'}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{p.week || p.created_at?.slice(0, 10) || 'N/A'}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button onClick={() => openEdit(p)} style={btnStyle('var(--tool-hex-4f8ff7)')}>Edit</button>

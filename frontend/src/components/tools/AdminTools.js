@@ -585,10 +585,27 @@ export function CertificateGenerator() {
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState(null);
   const [downloading, setDownloading] = useState(null);
+  const [rejectingId, setRejectingId] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   const loadCerts = async () => {
     const r = await fetch(`${API}/ops/certificates`, { headers: h(currentUser) }).then(r => r.json());
     if (r.success) setCerts(r.data || []);
+  };
+
+  const approveCert = async (certId) => {
+    await fetch(`${API}/ops/certificates/${certId}/approve`, { method: 'PATCH', headers: h(currentUser) });
+    await loadCerts();
+  };
+
+  const rejectCert = async (certId, reason) => {
+    await fetch(`${API}/ops/certificates/${certId}/reject`, {
+      method: 'PATCH', headers: h(currentUser),
+      body: JSON.stringify({ reason }),
+    });
+    setRejectingId(null);
+    setRejectReason('');
+    await loadCerts();
   };
 
   useEffect(() => {
@@ -687,27 +704,66 @@ export function CertificateGenerator() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['Student', 'Type', 'Serial No.', 'Date', ''].map((hd, i) => (
+                  {['Student', 'Type', 'Serial No.', 'Date', 'Status', 'Actions'].map((hd, i) => (
                     <th key={i} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{hd}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {certs.map((c, i) => (
-                  <tr key={c.id || i} style={{ borderBottom: i < certs.length - 1 ? '1px solid var(--tool-hex-242424)' : 'none' }}>
+                {certs.map((c, i) => {
+                  const isPending = c.status === 'pending_approval';
+                  const isApproved = c.status === 'approved';
+                  const statusColor = isApproved ? '#22c55e' : isPending ? '#fbbf24' : '#f87171';
+                  const statusLabel = isApproved ? 'Approved' : isPending ? 'Pending' : c.status === 'rejected' ? 'Rejected' : c.status || '—';
+                  return (
+                  <React.Fragment key={c.id || i}>
+                  <tr style={{ borderBottom: rejectingId === c.id ? 'none' : (i < certs.length - 1 ? '1px solid var(--tool-hex-242424)' : 'none') }}>
                     <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--c-text)' }}>{c.student_name || c.content_data?.student_name || 'N/A'}</td>
                     <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{CERT_LABELS[c.cert_type] || c.cert_type}</td>
                     <td style={{ padding: '9px 14px', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: 'var(--c-muted)' }}>{c.serial_number}</td>
                     <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{c.issued_date}</td>
                     <td style={{ padding: '9px 14px' }}>
-                      <button onClick={() => downloadPdf(c)} disabled={downloading === (c.id || c.serial_number)}
-                        style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '4px 9px', color: 'var(--tool-hex-93c5fd)', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
-                        <FileDown size={11} />
-                        {downloading === (c.id || c.serial_number) ? '...' : 'PDF'}
-                      </button>
+                      <span style={{ background: `color-mix(in srgb, ${statusColor} 15%, transparent)`, border: `1px solid color-mix(in srgb, ${statusColor} 35%, transparent)`, borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 700, color: statusColor }}>{statusLabel}</span>
+                    </td>
+                    <td style={{ padding: '9px 14px' }}>
+                      <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                        <button onClick={() => downloadPdf(c)} disabled={downloading === (c.id || c.serial_number)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '4px 9px', color: 'var(--tool-hex-93c5fd)', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
+                          <FileDown size={11} />
+                          {downloading === (c.id || c.serial_number) ? '...' : 'PDF'}
+                        </button>
+                        {isPending && (
+                          <>
+                            <button onClick={() => approveCert(c.id)} style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 5, padding: '4px 9px', color: '#22c55e', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
+                              Approve
+                            </button>
+                            <button onClick={() => { setRejectingId(c.id); setRejectReason(''); }} style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 5, padding: '4px 9px', color: '#f87171', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
+                              Reject
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
-                ))}
+                  {rejectingId === c.id && (
+                    <tr style={{ borderBottom: i < certs.length - 1 ? '1px solid var(--tool-hex-242424)' : 'none' }}>
+                      <td colSpan={6} style={{ padding: '8px 14px' }}>
+                        <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+                          <input autoFocus value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Reason for rejection..."
+                            style={{ flex: 1, background: 'var(--c-deep)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '6px 10px', color: 'var(--c-text)', fontSize: 11, outline: 'none' }} />
+                          <button disabled={!rejectReason.trim()} onClick={() => rejectCert(c.id, rejectReason)} style={{ background: 'rgba(248,113,113,0.15)', border: '1px solid rgba(248,113,113,0.4)', borderRadius: 6, padding: '5px 10px', color: '#f87171', cursor: 'pointer', fontSize: 11, fontWeight: 600, opacity: rejectReason.trim() ? 1 : 0.5 }}>
+                            Confirm Reject
+                          </button>
+                          <button onClick={() => setRejectingId(null)} style={{ background: 'none', border: '1px solid var(--c-border)', borderRadius: 6, padding: '5px 10px', color: 'var(--c-muted)', cursor: 'pointer', fontSize: 11 }}>
+                            Cancel
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           )}
