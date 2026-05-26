@@ -578,7 +578,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
               <button onClick={onOpenSettings}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', background: 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', color: secondary, fontSize: 13, fontWeight: 500, transition: 'var(--transition-fast)' }}
                 onMouseEnter={e => e.currentTarget.style.background = hover}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'>
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                 <Settings size={14} />
                 <span>Settings</span>
               </button>
