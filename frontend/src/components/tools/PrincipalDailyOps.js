@@ -142,7 +142,7 @@ export default function PrincipalDailyOps() {
       const [subsRes, leavesRes, certsRes, feesRes] = await Promise.allSettled([
         fetch(`${API}/academics/substitutions?date=${date}`, { headers: h() }),
         fetch(`${API}/staff/leaves/pending`, { headers: h() }),
-        fetch(`${API}/operations/certificates`, { headers: h() }),
+        fetch(`${API}/ops/certificates`, { headers: h() }),
         fetch(`${API}/fees/summary`, { headers: h() }),
       ]);
       const subsJson = subsRes.status === 'fulfilled' ? await subsRes.value.json() : { success: false };
@@ -207,7 +207,7 @@ export default function PrincipalDailyOps() {
   };
 
   const approveCert = async certId => {
-    await fetch(`${API}/operations/certificates/${certId}/approve`, { method: 'PATCH', headers: h() });
+    await fetch(`${API}/ops/certificates/${certId}/approve`, { method: 'PATCH', headers: h() });
     load();
   };
 
