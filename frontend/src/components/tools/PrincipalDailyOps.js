@@ -69,15 +69,28 @@ function LeaveCard({ leave, onApprove, onReject }) {
 
 function CertCard({ cert, onApprove }) {
   const [busy, setBusy] = useState(false);
+  const isPending = cert.status === 'pending_approval';
+  const isApproved = cert.status === 'approved';
+  const statusColor = isApproved ? '#22c55e' : isPending ? '#fbbf24' : '#f87171';
+  const statusLabel = isApproved ? 'Approved' : isPending ? 'Pending' : cert.status || 'Unknown';
   return (
     <div style={{ background: 'var(--tool-hex-252525)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 10, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-      <div>
+      <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tool-hex-e5e5e5)' }}>{cert.student_name || cert.student_id}</div>
-        <div style={{ fontSize: 11, color: 'var(--tool-hex-888)', marginTop: 3 }}>{cert.type} · {cert.created_at?.slice(0, 10)}</div>
+        <div style={{ fontSize: 11, color: 'var(--tool-hex-888)', marginTop: 3 }}>
+          {cert.cert_type || cert.type} · {cert.created_at?.slice(0, 10)}
+        </div>
       </div>
-      <button disabled={busy} onClick={async () => { setBusy(true); await onApprove(); setBusy(false); }} style={{ background: 'rgba(79,143,247,0.12)', border: '1px solid rgba(79,143,247,0.3)', borderRadius: 7, padding: '5px 10px', color: '#4f8ff7', cursor: 'pointer', fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, opacity: busy ? 0.6 : 1, flexShrink: 0 }}>
-        <CheckCircle size={11} />Approve
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
+        <span style={{ background: `color-mix(in srgb, ${statusColor} 15%, transparent)`, border: `1px solid color-mix(in srgb, ${statusColor} 35%, transparent)`, borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 700, color: statusColor }}>
+          {statusLabel}
+        </span>
+        {isPending && (
+          <button disabled={busy} onClick={async () => { setBusy(true); await onApprove(); setBusy(false); }} style={{ background: 'rgba(79,143,247,0.12)', border: '1px solid rgba(79,143,247,0.3)', borderRadius: 7, padding: '5px 10px', color: '#4f8ff7', cursor: 'pointer', fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, opacity: busy ? 0.6 : 1 }}>
+            <CheckCircle size={11} />Approve
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -153,7 +166,7 @@ export default function PrincipalDailyOps() {
       const certsJson = certsRes.status === 'fulfilled' ? await certsRes.value.json() : {};
       const feesJson = feesRes.status === 'fulfilled' ? await feesRes.value.json() : {};
       setLeaves((leavesJson.data || []).slice(0, 8));
-      setCertificates((certsJson.data || []).filter(c => c.status === 'pending_approval').slice(0, 8));
+      setCertificates((certsJson.data || []).slice(0, 10));
       setFeeSummary(feesJson.data || null);
     } catch (err) {
       setError(err.message || 'Unable to load daily ops');
@@ -167,7 +180,8 @@ export default function PrincipalDailyOps() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${API}/academics/lesson-plan-completion`, { headers: h() });
+        const month = new Date().toISOString().slice(0, 7);
+        const res = await fetch(`${API}/academics/lesson-plan-completion?month=${month}`, { headers: h() });
         if (res.ok) { const d = await res.json(); setLessonCompletion(d.data || []); }
       } catch {}
     })();
@@ -242,7 +256,7 @@ export default function PrincipalDailyOps() {
         <KpiCard value={items.length} label="Affected Periods" color="#fb923c" icon={CalendarDays} />
         <KpiCard value={uncovered} label="Need Substitute" color={uncovered > 0 ? '#fbbf24' : '#22c55e'} icon={UserCheck} />
         <KpiCard value={leaves.length} label="Pending Leaves" color="#a78bfa" icon={ClipboardList} />
-        <KpiCard value={certificates.length} label="Cert Approvals" color="#4f8ff7" icon={Award} />
+        <KpiCard value={certificates.filter(c => c.status === 'pending_approval').length} label="Cert Approvals" color="#4f8ff7" icon={Award} />
         <KpiCard value={feeSummary ? money(feeSummary.total_collected || 0) : '—'} label="Fee Collected" color="#22c55e" icon={IndianRupee} />
       </div>
 
@@ -269,9 +283,9 @@ export default function PrincipalDailyOps() {
 
         {/* Certificate Approvals */}
         <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: '16px 18px' }}>
-          <SectionHeader title="Certificate Approvals" count={certificates.length} color="#4f8ff7" icon={Award} />
+          <SectionHeader title="Certificates" count={certificates.length} color="#4f8ff7" icon={Award} />
           {certificates.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--tool-hex-555)', fontSize: 12 }}>No pending certificate approvals</div>
+            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--tool-hex-555)', fontSize: 12 }}>No certificates found</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {certificates.map(c => (
