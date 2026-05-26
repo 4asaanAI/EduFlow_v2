@@ -39,7 +39,7 @@ export default function TimetableBuilder() {
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API}/academics/classes`, { headers: h() }).then(r => r.json()),
+      fetch(`${API}/settings/classes`, { headers: h() }).then(r => r.json()),
       fetch(`${API}/staff?limit=100`, { headers: h() }).then(r => r.json()),
     ]).then(([clsRes, staffRes]) => {
       if (clsRes.success) setClasses(clsRes.data || []);
