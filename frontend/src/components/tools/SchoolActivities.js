@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { Award, Plus, RefreshCw, Shield, Star, Trash2, Trophy, Users, X } from 'lucide-react';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
+const API = process.env.REACT_APP_BACKEND_URL;
 
 function getHeaders() {
   const token = localStorage.getItem('eduflow_token');
