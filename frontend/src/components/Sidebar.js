@@ -73,6 +73,11 @@ const TOOLS_BY_ROLE = {
     { id: 'automated-report', name: 'Auto Reports', subtitle: 'Scheduled reports', icon: FileText, color: '#737373' },
     { id: 'custom-form-builder', name: 'Form Builder', subtitle: 'Dynamic forms', icon: FilePlus, color: '#737373' },
     { id: 'attendance-alerts', name: 'Attendance Alerts', subtitle: 'SMS below threshold', icon: MessageSquare, color: '#a78bfa' },
+    { id: 'attendance-overview', name: 'Attendance Overview', subtitle: 'Trends & patterns', icon: ClipboardList, color: '#a78bfa' },
+    { id: 'staff-tracker', name: 'Staff Tracker', subtitle: 'Profiles & roles', icon: UserCheck, color: '#4f8ff7' },
+    { id: 'staff-performance', name: 'Staff Performance', subtitle: 'Overview & analytics', icon: BarChart2, color: '#fb923c' },
+    { id: 'staff-leave-manager', name: 'Leave Manager', subtitle: 'Approve / reject', icon: CalendarDays, color: '#34d399' },
+    { id: 'smart-alerts', name: 'Smart Alerts', subtitle: 'Exceptions & flags', icon: Bell, color: '#f87171' },
     { id: 'query-section', name: 'Query & Support', subtitle: 'Tickets & issues', icon: LifeBuoy, color: '#22d3ee' },
   ],
   teacher: [
@@ -115,42 +120,97 @@ const ADMIN_SUBCATEGORY_TOOLS = {
   accountant: ['student-database', 'fee-tracker', 'smart-fee-defaulter', 'fee-receipts', 'custom-form-builder', 'query-section'],
   transport_head: ['student-database', 'transport-manager', 'transport-optimisation', 'asset-tracker', 'custom-form-builder', 'query-section'],
   principal: [
-    'student-database',
-    'attendance-recorder',
-    'attendance-overview',
-    'principal-daily',
-    'timetable-builder',
-    'certificate-generator',
-    'circular-sender',
-    'parent-message',
-    'enquiry-register',
-    'admission-pipeline',
-    'smart-fee-defaulter',
-    'staff-tracker',
-    'staff-performance',
-    'staff-leave-manager',
-    'incident-tracker',
-    'smart-alerts',
-    'transport-manager',
-    'school-activities',
-    'document-scanner',
-    'audit-log',
-    'facility-requests',
-    'raise-maintenance',
-    'custom-form-builder',
-    'query-section',
+    'student-database', 'attendance-recorder', 'attendance-overview', 'principal-daily',
+    'timetable-builder', 'certificate-generator', 'circular-sender', 'parent-message',
+    'enquiry-register', 'admission-pipeline', 'smart-fee-defaulter', 'staff-tracker',
+    'staff-performance', 'staff-leave-manager', 'incident-tracker', 'smart-alerts',
+    'transport-manager', 'school-activities', 'document-scanner', 'audit-log',
+    'facility-requests', 'raise-maintenance', 'custom-form-builder', 'query-section',
   ],
   receptionist: ['student-database', 'enquiry-register', 'admission-pipeline', 'parent-message', 'student-transfer', 'id-card-generator', 'asset-tracker', 'incident-tracker', 'raise-maintenance', 'custom-form-builder', 'query-section'],
   it_tech: ['tech-issues', 'raise-maintenance', 'query-section', 'custom-form-builder'],
   maintenance: ['maintenance-schedule', 'vendor-log', 'query-section'],
 };
 
+// ─── Grouped navigation config per role ──────────────────────────────────────
+const TOOL_GROUPS = {
+  owner: {
+    top: ['school-pulse'],
+    groups: [
+      { id: 'fee', name: 'Fee Summary', icon: IndianRupee, color: '#4f8ff7',
+        tools: ['fee-collection', 'fee-sync', 'financial-reports', 'expense-tracker', 'smart-fee-defaulter'] },
+      { id: 'database', name: 'Database', icon: Database, color: '#22d3ee',
+        tools: ['student-database', 'data-import', 'staff-tracker'] },
+      { id: 'attendance', name: 'Attendance', icon: ClipboardList, color: '#a78bfa',
+        tools: ['attendance-overview', 'staff-attendance-tracker', 'staff-performance', 'attendance-alerts'] },
+      { id: 'internals', name: 'School Internals', icon: Megaphone, color: '#fbbf24',
+        tools: ['announcement-broadcaster', 'staff-leave-manager', 'custom-report-builder', 'board-report', 'school-activities'] },
+      { id: 'ai', name: 'Smart AI', icon: Brain, color: '#f472b6',
+        tools: ['ai-health-report', 'smart-alerts'] },
+      { id: 'queries', name: 'Queries', icon: Wrench, color: '#fb923c',
+        tools: ['tech-issues', 'vendor-log', 'facility-requests', 'maintenance-schedule'] },
+    ],
+    bottom: ['audit-log', 'query-section'],
+  },
+  principal: {
+    top: ['principal-daily'],
+    groups: [
+      { id: 'students', name: 'Students', icon: Users, color: '#4f8ff7',
+        tools: ['student-database', 'certificate-generator', 'admission-pipeline', 'enquiry-register', 'document-scanner', 'id-card-generator'] },
+      { id: 'attendance', name: 'Attendance', icon: ClipboardList, color: '#a78bfa',
+        tools: ['attendance-recorder', 'attendance-overview'] },
+      { id: 'staff', name: 'Staff', icon: UserCheck, color: '#34d399',
+        tools: ['staff-tracker', 'staff-performance', 'staff-leave-manager'] },
+      { id: 'communication', name: 'Communication', icon: MessageSquare, color: '#fbbf24',
+        tools: ['circular-sender', 'parent-message'] },
+      { id: 'operations', name: 'Operations', icon: CalendarDays, color: '#f472b6',
+        tools: ['timetable-builder', 'transport-manager', 'school-activities', 'incident-tracker', 'smart-alerts'] },
+      { id: 'facilities', name: 'Facilities', icon: Wrench, color: '#fb923c',
+        tools: ['facility-requests', 'raise-maintenance', 'smart-fee-defaulter'] },
+    ],
+    bottom: ['audit-log', 'query-section'],
+  },
+  teacher: {
+    top: [],
+    groups: [
+      { id: 'classroom', name: 'Classroom', icon: BookOpen, color: '#fb923c',
+        tools: ['class-attendance-marker', 'assignment-generator', 'worksheet-creator', 'question-paper-creator'] },
+      { id: 'academics', name: 'Academics', icon: BarChart2, color: '#4f8ff7',
+        tools: ['report-card-builder', 'student-performance-viewer', 'curriculum-tracker', 'class-performance-analytics'] },
+      { id: 'planning', name: 'Planning', icon: CalendarDays, color: '#a78bfa',
+        tools: ['lesson-plan-generator', 'substitution-viewer', 'ptm-notes'] },
+      { id: 'personal', name: 'Personal', icon: User, color: '#34d399',
+        tools: ['leave-application'] },
+    ],
+    bottom: ['form-submissions', 'raise-maintenance', 'query-section'],
+  },
+  student: {
+    top: [],
+    groups: [
+      { id: 'learning', name: 'Learning', icon: Brain, color: '#a78bfa',
+        tools: ['ai-tutor', 'doubt-solver', 'homework-viewer', 'practice-test'] },
+      { id: 'records', name: 'My Records', icon: FileText, color: '#4f8ff7',
+        tools: ['attendance-self-check', 'result-viewer', 'ptm-summary-viewer', 'fee-status-viewer'] },
+      { id: 'planning', name: 'Planning', icon: Target, color: '#22d3ee',
+        tools: ['study-planner', 'career-guidance'] },
+    ],
+    bottom: ['form-submissions', 'query-section'],
+  },
+};
+
+function getGroupConfig(user) {
+  if (user.role === 'owner') return TOOL_GROUPS.owner;
+  if (user.role === 'admin' && user.sub_category === 'principal') return TOOL_GROUPS.principal;
+  if (user.role === 'teacher') return TOOL_GROUPS.teacher;
+  if (user.role === 'student') return TOOL_GROUPS.student;
+  return null;
+}
+
 function getSidebarTools(user) {
   const tools = TOOLS_BY_ROLE[user.role] || [];
   if (user.role !== 'admin') return tools;
   const allowed = ADMIN_SUBCATEGORY_TOOLS[user.sub_category];
   if (!allowed) return tools;
-  // Principal needs access to some owner-level tools (staff tracker, leave manager, etc.)
   const ownerTools = user.sub_category === 'principal' ? (TOOLS_BY_ROLE.owner || []) : [];
   const allTools = [...new Map([...tools, ...ownerTools].filter(t => t?.id).map(t => [t.id, t])).values()];
   return allowed.map(id => allTools.find(tool => tool.id === id)).filter(Boolean);
@@ -204,29 +264,32 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   const [renameVal, setRenameVal] = useState('');
   const [toolsExpanded, setToolsExpanded] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [toolActivity, setToolActivity] = useState([]);
+  const [openGroups, setOpenGroups] = useState(() => {
+    const cfg = getGroupConfig(currentUser);
+    if (!cfg) return new Set();
+    const active = cfg.groups.find(g => g.tools.includes(activeTool));
+    return active ? new Set([active.id]) : new Set();
+  });
   const userMenuRef = useRef(null);
 
   const tools = getSidebarTools(currentUser);
+  const groupConfig = getGroupConfig(currentUser);
 
   useEffect(() => {
     if (!isToolDashboardRole) loadConversations();
   }, [currentUser.id, convRefresh, isToolDashboardRole]);
 
+  // Auto-open the group that contains the currently active tool
   useEffect(() => {
-    if (!isToolDashboardRole) return;
-    const key = `eduflow_activity_${currentUser.id}`;
-    const items = JSON.parse(localStorage.getItem(key) || '[]');
-    setToolActivity(items.slice(0, 20));
-  }, [activeTool, currentUser.id, isToolDashboardRole]);
+    if (!groupConfig) return;
+    const active = groupConfig.groups.find(g => g.tools.includes(activeTool));
+    if (active) setOpenGroups(prev => new Set([...prev, active.id]));
+  }, [activeTool]);
 
-  // Listen for navigate events from chat (AI says "open fee collection" → switch tool panel)
   useEffect(() => {
     const handleNavigate = (e) => {
       const toolId = e.detail?.toolId;
-      if (toolId && onSelectTool) {
-        onSelectTool(toolId);
-      }
+      if (toolId && onSelectTool) onSelectTool(toolId);
     };
     window.addEventListener('eduflow-navigate', handleNavigate);
     return () => window.removeEventListener('eduflow-navigate', handleNavigate);
@@ -252,6 +315,14 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   const handleStar = async (conv) => { await updateConversation(conv.id, { is_starred: !conv.is_starred }); loadConversations(); };
   const handleDelete = async (id) => { await deleteConversation(id); loadConversations(); };
 
+  const toggleGroup = (id) => {
+    setOpenGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   const bg = isDark ? '#141414' : '#ffffff';
   const border = isDark ? '#2e2e2e' : '#e5e5e5';
   const tp = isDark ? '#f5f5f5' : '#171717';
@@ -259,6 +330,95 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   const secondary = isDark ? '#a0a0a0' : '#525252';
   const hover = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
   const activeBg = isDark ? 'rgba(79,143,247,0.1)' : 'rgba(79,143,247,0.06)';
+
+  const renderToolItem = (tool, indent = false) => {
+    if (!tool) return null;
+    const Icon = tool.icon;
+    const isActive = activeTool === tool.id;
+    return (
+      <button key={tool.id} data-testid={`tool-btn-${tool.id}`} onClick={() => onSelectTool(tool.id)} title={tool.name}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 9, width: '100%',
+          padding: indent ? '5px 10px 5px 14px' : '6px 10px',
+          background: isActive ? activeBg : 'transparent', border: 'none', borderRadius: 8,
+          cursor: 'pointer', transition: 'all var(--transition-fast)', textAlign: 'left',
+        }}
+        onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = hover; }}
+        onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+      >
+        <div style={{
+          width: 24, height: 24, borderRadius: 6, flexShrink: 0,
+          background: isActive ? `${tool.color}18` : (isDark ? '#252525' : '#f5f5f5'),
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Icon size={12} color={isActive ? tool.color : muted} />
+        </div>
+        <span style={{ fontSize: 12, fontWeight: isActive ? 600 : 500, color: isActive ? tp : secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+          {tool.name}
+        </span>
+      </button>
+    );
+  };
+
+  const renderGroup = (group) => {
+    const groupTools = group.tools.map(id => tools.find(t => t.id === id)).filter(Boolean);
+    if (groupTools.length === 0) return null;
+    const isOpen = openGroups.has(group.id);
+    const hasActive = groupTools.some(t => t.id === activeTool);
+    const GIcon = group.icon;
+    return (
+      <div key={group.id} style={{ marginBottom: 1 }}>
+        <button onClick={() => toggleGroup(group.id)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 9, width: '100%', padding: '7px 10px',
+            background: hasActive && !isOpen ? `${group.color}0f` : 'transparent',
+            border: 'none', borderRadius: 8, cursor: 'pointer', transition: 'all var(--transition-fast)',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = hover; }}
+          onMouseLeave={e => { e.currentTarget.style.background = hasActive && !isOpen ? `${group.color}0f` : 'transparent'; }}
+        >
+          <div style={{
+            width: 26, height: 26, borderRadius: 7, flexShrink: 0,
+            background: isOpen || hasActive ? `${group.color}18` : (isDark ? '#252525' : '#f5f5f5'),
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <GIcon size={13} color={isOpen || hasActive ? group.color : muted} />
+          </div>
+          <span style={{ fontSize: 12, fontWeight: 600, color: isOpen || hasActive ? tp : secondary, flex: 1, textAlign: 'left' }}>
+            {group.name}
+          </span>
+          <ChevronDown size={12} color={muted} style={{ transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s ease', flexShrink: 0 }} />
+        </button>
+        {isOpen && (
+          <div className="fade-in" style={{ paddingLeft: 8 }}>
+            {groupTools.map(t => renderToolItem(t, true))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderGroupedNav = () => {
+    if (!groupConfig) {
+      return (
+        <div style={{ paddingTop: 4, display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {tools.map(t => renderToolItem(t))}
+        </div>
+      );
+    }
+    return (
+      <div style={{ paddingTop: 4 }}>
+        {groupConfig.top.map(id => renderToolItem(tools.find(t => t.id === id)))}
+        {groupConfig.top.length > 0 && <div style={{ height: 6 }} />}
+        {groupConfig.groups.map(renderGroup)}
+      </div>
+    );
+  };
+
+  // Bottom pinned tools (audit log, query & support) — separate non-scrolling strip
+  const bottomTools = isToolDashboardRole && groupConfig
+    ? groupConfig.bottom.map(id => tools.find(t => t.id === id)).filter(Boolean)
+    : [];
 
   return (
     <>
@@ -275,9 +435,9 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
         width: 260, minWidth: 260, background: bg, borderRight: `1px solid ${border}`,
         display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', flexShrink: 0,
       }}>
-        {/* Logo + New Chat */}
+        {/* Logo */}
         <div style={{ padding: '16px 16px 12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isToolDashboardRole ? 4 : 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, #4f8ff7, #a78bfa)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <span style={{ fontSize: 14, fontWeight: 800, color: '#fff', fontFamily: 'Inter, sans-serif' }}>E</span>
@@ -307,50 +467,8 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
 
         {/* Scrollable area */}
         <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '0 8px' }}>
-            {isToolDashboardRole ? (
-            /* Tool Activity History for admin/teacher */
-            <div style={{ paddingTop: 4 }}>
-              <div style={{ padding: '8px 8px 6px', fontSize: 11, fontWeight: 600, color: muted, letterSpacing: '0.03em' }}>
-                RECENT ACTIVITY
-              </div>
-              {toolActivity.length === 0 ? (
-                <div style={{ padding: '20px 10px', textAlign: 'center', color: muted, fontSize: 12 }}>
-                  No tools opened yet
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  {toolActivity.map((entry, i) => {
-                    const tool = tools.find(t => t.id === entry.id);
-                    if (!tool) return null;
-                    const Icon = tool.icon;
-                    const isActive = activeTool === entry.id;
-                    return (
-                      <button key={`${entry.id}-${i}`} onClick={() => onSelectTool(entry.id)}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '7px 10px',
-                          background: isActive ? activeBg : 'transparent', border: 'none', borderRadius: 8,
-                          cursor: 'pointer', transition: 'all var(--transition-fast)', textAlign: 'left',
-                        }}
-                        onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = hover; }}
-                        onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}>
-                        <div style={{
-                          width: 28, height: 28, borderRadius: 7, flexShrink: 0,
-                          background: isActive ? `${tool.color}18` : (isDark ? '#252525' : '#f5f5f5'),
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          transition: 'var(--transition-fast)',
-                        }}>
-                          <Icon size={14} color={isActive ? tool.color : muted} />
-                        </div>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ fontSize: 13, fontWeight: 500, color: isActive ? tp : secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tool.name}</div>
-                          <div style={{ fontSize: 11, color: muted, marginTop: 1 }}>{timeAgo(entry.at)}</div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+          {isToolDashboardRole ? (
+            renderGroupedNav()
           ) : (
             <>
               {/* Chat History */}
@@ -404,7 +522,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
                 </div>
               )}
 
-              {/* Tools Section */}
+              {/* Grouped Tools Section */}
               <div style={{ borderTop: conversations.length > 0 ? `1px solid ${border}` : 'none', marginTop: 4, paddingTop: 4 }}>
                 <button
                   onClick={() => setToolsExpanded(v => !v)}
@@ -417,32 +535,17 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
                 </button>
                 {toolsExpanded && (
                   <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    {tools.map(tool => {
-                      const Icon = tool.icon;
-                      const isActive = activeTool === tool.id;
-                      return (
-                        <button key={tool.id} data-testid={`tool-btn-${tool.id}`} onClick={() => onSelectTool(tool.id)} title={tool.name}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '7px 10px',
-                            background: isActive ? activeBg : 'transparent', border: 'none', borderRadius: 8,
-                            cursor: 'pointer', transition: 'all var(--transition-fast)',
-                          }}
-                          onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = hover; }}
-                          onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}>
-                          <div style={{
-                            width: 28, height: 28, borderRadius: 7,
-                            background: isActive ? `${tool.color}18` : (isDark ? '#252525' : '#f5f5f5'),
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                            transition: 'var(--transition-fast)',
-                          }}>
-                            <Icon size={14} color={isActive ? tool.color : muted} />
-                          </div>
-                          <div style={{ textAlign: 'left', minWidth: 0, flex: 1 }}>
-                            <div style={{ fontSize: 13, fontWeight: 500, color: isActive ? tp : secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tool.name}</div>
-                          </div>
-                        </button>
-                      );
-                    })}
+                    {groupConfig ? (
+                      <>
+                        {groupConfig.top.map(id => renderToolItem(tools.find(t => t.id === id)))}
+                        {groupConfig.top.length > 0 && <div style={{ height: 4 }} />}
+                        {groupConfig.groups.map(renderGroup)}
+                        {groupConfig.bottom.length > 0 && <div style={{ borderTop: `1px solid ${border}`, margin: '4px 0' }} />}
+                        {groupConfig.bottom.map(id => renderToolItem(tools.find(t => t.id === id)))}
+                      </>
+                    ) : (
+                      tools.map(t => renderToolItem(t))
+                    )}
                   </div>
                 )}
               </div>
@@ -450,7 +553,14 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
           )}
         </div>
 
-        {/* Bottom user section — Claude-like */}
+        {/* Pinned bottom tools: Audit Log + Query & Support */}
+        {bottomTools.length > 0 && (
+          <div style={{ borderTop: `1px solid ${border}`, padding: '4px 8px 2px' }}>
+            {bottomTools.map(t => renderToolItem(t))}
+          </div>
+        )}
+
+        {/* Bottom user section */}
         <div style={{ borderTop: `1px solid ${border}`, padding: '8px' }} ref={userMenuRef}>
           {showUserMenu && (
             <div className="fade-in-scale" style={{
@@ -468,7 +578,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
               <button onClick={onOpenSettings}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', background: 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', color: secondary, fontSize: 13, fontWeight: 500, transition: 'var(--transition-fast)' }}
                 onMouseEnter={e => e.currentTarget.style.background = hover}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'>
                 <Settings size={14} />
                 <span>Settings</span>
               </button>
