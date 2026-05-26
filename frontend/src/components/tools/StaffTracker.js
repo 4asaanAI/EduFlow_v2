@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { createStaff, deactivateStaff, getPendingLeaves, getStaff, subscribeSSE, updateLeave, updateStaff } from '../../lib/api';
-import { CheckCircle, Edit3, Plus, RefreshCw, X, XCircle } from 'lucide-react';
+import { adminResetPassword, createStaff, deactivateStaff, getPendingLeaves, getStaff, subscribeSSE, updateLeave, updateStaff } from '../../lib/api';
+import { CheckCircle, Edit3, KeyRound, Plus, RefreshCw, X, XCircle } from 'lucide-react';
 import { useUser } from '../../contexts/UserContext';
 
 const blankForm = {
@@ -171,6 +171,64 @@ function StaffModal({ initialStaff, canEditLeaveBalances, onClose, onSaved }) {
   );
 }
 
+function ResetPasswordModal({ profile, onClose }) {
+  const [newPassword, setNewPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (newPassword.length < 6) { setError('Password must be at least 6 characters'); return; }
+    setSaving(true);
+    setError('');
+    const res = await adminResetPassword(profile.user_id || profile.id, newPassword);
+    setSaving(false);
+    if (res.success) {
+      setSuccess(`Password reset. The user will be asked to change it on next login.`);
+    } else {
+      setError(res.detail || 'Failed to reset password');
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 220, padding: 16 }}>
+      <div style={{ background: 'var(--c-input)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 24, width: 420, maxWidth: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+          <h3 style={{ margin: 0, color: 'var(--c-text)', fontSize: 16 }}>Reset Password — {profile.name}</h3>
+          <button aria-label="Close" onClick={onClose} style={{ width: 36, height: 36, border: 0, background: 'transparent', color: 'var(--c-faint)', cursor: 'pointer' }}><X size={18} /></button>
+        </div>
+        {success ? (
+          <div style={{ color: 'var(--tool-hex-34d399)', fontSize: 13, marginBottom: 16 }}>{success}</div>
+        ) : (
+          <form onSubmit={submit}>
+            <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700, display: 'block', marginBottom: 5 }}>New Password
+              <input
+                type="text"
+                value={newPassword}
+                onChange={e => { setNewPassword(e.target.value); setError(''); }}
+                placeholder="Enter new password..."
+                style={{ ...inputStyle, marginTop: 5 }}
+                autoFocus
+              />
+            </label>
+            {error && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginTop: 8 }}>{error}</div>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+              <ActionButton variant="secondary" onClick={onClose}>Cancel</ActionButton>
+              <ActionButton type="submit" disabled={saving}>{saving ? 'Resetting...' : 'Reset Password'}</ActionButton>
+            </div>
+          </form>
+        )}
+        {success && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+            <ActionButton onClick={onClose}>Close</ActionButton>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function StaffTracker() {
   const { currentUser } = useUser();
   const [staff, setStaff] = useState([]);
@@ -183,6 +241,8 @@ export default function StaffTracker() {
   const [total, setTotal] = useState(0);
   const [editing, setEditing] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [resetTarget, setResetTarget] = useState(null);
+  const canResetPassword = currentUser.role === 'owner' || (currentUser.role === 'admin' && currentUser.sub_category === 'principal');
   const [attendanceStreamUpdatedAt, setAttendanceStreamUpdatedAt] = useState(null);
   const [, setClockTick] = useState(0);
   const canEditLeaveBalances = currentUser.role === 'owner' || currentUser.sub_category === 'principal';
@@ -309,6 +369,7 @@ export default function StaffTracker() {
                       <td style={{ padding: '10px 14px' }}>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           <ActionButton variant="secondary" onClick={() => setEditing(profile)}><Edit3 size={13} /></ActionButton>
+                          {canResetPassword && <ActionButton variant="secondary" onClick={() => setResetTarget(profile)}><KeyRound size={13} /></ActionButton>}
                           {profile.is_active !== false && <ActionButton variant="danger" onClick={() => deactivate(profile)}>Deactivate</ActionButton>}
                         </div>
                       </td>
@@ -352,6 +413,7 @@ export default function StaffTracker() {
 
       {showAdd && <StaffModal canEditLeaveBalances={canEditLeaveBalances} onClose={() => setShowAdd(false)} onSaved={loadData} />}
       {editing && <StaffModal initialStaff={editing} canEditLeaveBalances={canEditLeaveBalances} onClose={() => setEditing(null)} onSaved={loadData} />}
+      {resetTarget && <ResetPasswordModal profile={resetTarget} onClose={() => setResetTarget(null)} />}
     </div>
   );
 }

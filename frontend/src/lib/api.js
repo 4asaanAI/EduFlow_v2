@@ -683,6 +683,15 @@ export async function sendFeeReminders(recipients) {
   return res.json();
 }
 
+export async function adminResetPassword(userId, newPassword) {
+  const res = await apiFetch(`${API}/auth/admin/users/${encodeURIComponent(userId)}/reset-password`, {
+    method: 'POST',
+    headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ new_password: newPassword }),
+  });
+  return res.json();
+}
+
 export async function sendAttendanceAlerts(recipients) {
   const res = await apiFetch(`${API}/sms/whatsapp-attendance-alerts`, {
     method: 'POST',

@@ -127,7 +127,7 @@ class AdminResetPasswordRequest(BaseModel):
 
 def _can_administer_auth(user: dict) -> bool:
     return user.get("role") == "owner" or (
-        user.get("role") == "admin" and user.get("sub_category") == "it_tech"
+        user.get("role") == "admin" and user.get("sub_category") == "principal"
     )
 
 # ─── POST /api/auth/login ───────────────────────────────────────────────────
@@ -438,7 +438,7 @@ async def reset_password(body: ResetPasswordRequest):
 @router.post("/admin/users/{user_id}/reset-password")
 async def admin_reset_password(user_id: str, body: AdminResetPasswordRequest, user: dict = Depends(require_role("owner", "admin"))):
     if not _can_administer_auth(user):
-        raise HTTPException(403, "Only owner or IT tech admin can reset user passwords")
+        raise HTTPException(403, "Only owner or principal admin can reset user passwords")
     db = get_db()
     auth_record = await db.auth_users.find_one(_auth_user_filter(user_id))
     if not auth_record:
