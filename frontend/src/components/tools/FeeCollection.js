@@ -213,7 +213,7 @@ export default function FeeCollection() {
       if (!payment.student_id || !payment.fee_period || !payment.fee_head || !payment.amount) {
         throw new Error('Student, period, fee head, and amount are required.');
       }
-      const key = `${payment.student_id}:${payment.fee_period}:${payment.fee_head}`;
+      const key = `${payment.student_id}|${payment.fee_period}|${(payment.fee_head || '').trim().toLowerCase()}`;
       const payload = { ...payment, amount: Number(payment.amount), fee_type: payment.fee_head };
       if (payment.paid_amount) payload.paid_amount = Number(payment.paid_amount);
       const res = await recordFeePayment(null, payload, key);
