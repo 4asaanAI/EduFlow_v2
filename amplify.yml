@@ -15,4 +15,19 @@ applications:
       cache:
         paths:
           - node_modules/**/*
+      customHeaders:
+        - pattern: index.html
+          headers:
+            - key: Cache-Control
+              value: no-cache, no-store, must-revalidate
+            - key: Pragma
+              value: no-cache
+        - pattern: static/js/*.js
+          headers:
+            - key: Cache-Control
+              value: public, max-age=31536000, immutable
+        - pattern: static/css/*.css
+          headers:
+            - key: Cache-Control
+              value: public, max-age=31536000, immutable
     appRoot: frontend

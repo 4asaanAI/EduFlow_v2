@@ -451,14 +451,11 @@ export function MaintenanceSchedule() {
         <div style={{ color: muted, textAlign: 'center', padding: 40 }}>No schedule entries yet.</div>
       ) : (
         <DataTable
-          headers={['Title', 'Date', 'Recurrence', 'Category', 'Assigned To', 'Status', 'SLA', 'Action']}
+          headers={['Title', 'Date', 'Assigned To', 'SLA', 'Action']}
           rows={entries.map(e => [
             <span style={{ color: text, fontSize: 12, fontWeight: 600 }}>{e.title}</span>,
             <span style={{ color: muted, fontSize: 11 }}>{e.scheduled_date}</span>,
-            <Badge label={e.recurrence?.replace(/_/g, ' ')} color="var(--tool-hex-818cf8)" />,
-            <span style={{ color: muted, fontSize: 11 }}>{e.category}</span>,
             <span style={{ color: muted, fontSize: 11 }}>{e.assigned_to || '—'}</span>,
-            <Badge label={e.status} color={e.status === 'done' ? 'var(--tool-hex-34d399)' : e.status === 'skipped' ? 'var(--tool-hex-888)' : 'var(--tool-hex-facc15)'} />,
             e.overdue ? <Badge label="Overdue" color="var(--tool-hex-f87171)" /> : <span style={{ color: muted, fontSize: 11 }}>On track</span>,
             <select value={e.status} onChange={ev => handleStatusChange(e.id, ev.target.value)}
               style={{ background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 6, padding: '3px 8px', color: text, fontSize: 11, cursor: 'pointer' }}>
@@ -558,15 +555,13 @@ export function VendorLog() {
         <div style={{ color: muted, textAlign: 'center', padding: 40 }}>No vendors added yet.</div>
       ) : (
         <DataTable
-          headers={['Name', 'Category', 'Contact', 'Phone', 'GST', 'Rating', 'Status', 'Action']}
+          headers={['Name', 'Contact', 'Phone', 'GST', 'Rating', 'Action']}
           rows={vendors.map(v => [
             <span style={{ color: text, fontSize: 12, fontWeight: 600 }}>{v.name}</span>,
-            <Badge label={v.category} color="var(--tool-hex-6366f1)" />,
             <span style={{ color: muted, fontSize: 11 }}>{v.contact_person || '—'}</span>,
             <span style={{ color: muted, fontSize: 11 }}>{v.phone || '—'}</span>,
             <span style={{ color: muted, fontSize: 11 }}>{v.gst_number || '—'}</span>,
             <span style={{ color: muted, fontSize: 11 }}>{Number(v.rating || 0).toFixed(1)}</span>,
-            <Badge label={v.is_active ? 'Active' : 'Inactive'} color={v.is_active ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-888)'} />,
             <ActionBtn label={v.is_active ? 'Deactivate' : 'Activate'} variant="secondary" onClick={() => toggleActive(v)} />,
           ])}
         />
