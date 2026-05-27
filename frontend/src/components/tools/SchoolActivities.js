@@ -1,13 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useUser } from '../../contexts/UserContext';
-import { Award, Plus, RefreshCw, Shield, Star, Trash2, Trophy, Users, X } from 'lucide-react';
+import { Award, Plus, Shield, Star, Trash2, Trophy, Users, X } from 'lucide-react';
+import { getAuthHeaders } from '../../lib/authSession';
 
 const API = process.env.REACT_APP_BACKEND_URL;
-
-function getHeaders() {
-  const token = localStorage.getItem('eduflow_token');
-  return { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
-}
 
 // Normalize FastAPI error shapes into a plain string.
 // FastAPI 422 returns {"detail": [{msg, loc, type}]} — not a string.
@@ -35,14 +31,14 @@ async function apiFetch(url, opts = {}) {
   return data;
 }
 
-const listHouses = () => apiFetch(`${API}/api/activities/houses`, { headers: getHeaders() });
-const awardPoints = (houseId, delta, reason) => apiFetch(`${API}/api/activities/houses/${houseId}/points`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ delta, reason }) });
-const listPositions = () => apiFetch(`${API}/api/activities/positions`, { headers: getHeaders() });
-const assignPosition = (data) => apiFetch(`${API}/api/activities/positions`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) });
-const removePosition = (id) => apiFetch(`${API}/api/activities/positions/${id}`, { method: 'DELETE', headers: getHeaders() });
-const listTeams = () => apiFetch(`${API}/api/activities/teams`, { headers: getHeaders() });
-const createTeam = (data) => apiFetch(`${API}/api/activities/teams`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) });
-const deleteTeam = (id) => apiFetch(`${API}/api/activities/teams/${id}`, { method: 'DELETE', headers: getHeaders() });
+const listHouses = () => apiFetch(`${API}/api/activities/houses`, { headers: getAuthHeaders() });
+const awardPoints = (houseId, delta, reason) => apiFetch(`${API}/api/activities/houses/${houseId}/points`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ delta, reason }) });
+const listPositions = () => apiFetch(`${API}/api/activities/positions`, { headers: getAuthHeaders() });
+const assignPosition = (data) => apiFetch(`${API}/api/activities/positions`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data) });
+const removePosition = (id) => apiFetch(`${API}/api/activities/positions/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
+const listTeams = () => apiFetch(`${API}/api/activities/teams`, { headers: getAuthHeaders() });
+const createTeam = (data) => apiFetch(`${API}/api/activities/teams`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data) });
+const deleteTeam = (id) => apiFetch(`${API}/api/activities/teams/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
 
 // ─── Shared UI ────────────────────────────────────────────────────────────────
 
