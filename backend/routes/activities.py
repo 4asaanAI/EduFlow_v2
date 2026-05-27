@@ -130,7 +130,7 @@ class PositionBody(BaseModel):
 
 
 @router.get("/positions")
-async def list_positions(request: Request, academic_year: str = None, user: dict = Depends(require_role("owner", "admin", "teacher"))):
+async def list_positions(request: Request, academic_year: Optional[str] = None, user: dict = Depends(require_role("owner", "admin", "teacher"))):
     db = get_db()
     query = {}
     if academic_year:
