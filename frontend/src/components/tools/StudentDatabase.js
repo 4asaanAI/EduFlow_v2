@@ -405,11 +405,7 @@ function StudentProfileModal({ classes, initialStudent, onClose, onSaved }) {
 
           {/* Footer */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--c-border)' }}>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {!editing && ALL_MODAL_TABS.filter(t => t.id !== activeTab).map(t => (
-                <Btn key={t.id} variant="secondary" onClick={() => setActiveTab(t.id)}>{t.label}</Btn>
-              ))}
-            </div>
+            <div />
             <div style={{ display: 'flex', gap: 8 }}>
               <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
               <Btn type="submit" disabled={saving}>{saving ? 'Saving…' : editing ? 'Save Changes' : 'Add Student'}</Btn>
