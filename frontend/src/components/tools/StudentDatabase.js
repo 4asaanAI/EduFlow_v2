@@ -258,7 +258,7 @@ function StudentProfileModal({ classes, initialStudent, onClose, onSaved }) {
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 2, padding: '12px 22px 0', borderBottom: '1px solid var(--c-border)', flexShrink: 0 }}>
-          {(editing ? ALL_MODAL_TABS.filter(t => t.id === 'personal') : ALL_MODAL_TABS).map(t => (
+          {ALL_MODAL_TABS.map(t => (
             <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
               padding: '7px 16px', fontSize: 12, fontWeight: activeTab === t.id ? 700 : 500,
               color: activeTab === t.id ? '#4f8ff7' : 'var(--c-muted)',
