@@ -125,6 +125,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
+    origin = request.headers.get("origin")
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -133,6 +134,12 @@ async def security_headers(request: Request, call_next):
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     if os.environ.get("ENVIRONMENT") == "production":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # Belt-and-suspenders: FastAPI dependency 4xx responses can bypass the
+    # CORSMiddleware send wrapper. Ensure CORS headers are always present on
+    # every response for allowed origins so the browser never blocks them.
+    if origin and origin in allowed_origins:
+        response.headers.setdefault("Access-Control-Allow-Origin", origin)
+        response.headers.setdefault("Access-Control-Allow-Credentials", "true")
     return response
 
 
