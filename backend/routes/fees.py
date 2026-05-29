@@ -313,7 +313,8 @@ async def record_payment(request: Request, user: dict = Depends(require_role("ow
 
     receipt = f"RCP{datetime.now().strftime('%Y%m%d')}{uuid.uuid4().hex[:6].upper()}"
     amount = float(body["amount"])
-    paid_amount = float(body.get("paid_amount", amount))
+    _paid_raw = body.get("paid_amount")
+    paid_amount = float(_paid_raw) if _paid_raw not in (None, "", " ") else amount
     # Determine status: explicit > partial auto-detect > paid default
     if "status" in body and body["status"]:
         status = body["status"]
@@ -432,8 +433,6 @@ async def correct_fee_transaction(
 @router.post("/contact-log")
 async def create_fee_contact_log(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    if not (_can_fee_write(user) or _is_principal(user)):
-        raise HTTPException(403, "Forbidden")
     body = await request.json()
     required = {"student_id", "fee_transaction_id", "date", "contact_type", "outcome", "notes"}
     if any(not body.get(field) for field in required):
