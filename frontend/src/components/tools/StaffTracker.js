@@ -234,6 +234,7 @@ export default function StaffTracker() {
   const [staff, setStaff] = useState([]);
   const [pendingLeaves, setPendingLeaves] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [leavesLoading, setLeavesLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('profiles');
   const [sort, setSort] = useState('name');
@@ -251,6 +252,7 @@ export default function StaffTracker() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setLeavesLoading(true);
     setError('');
     try {
       const [staffRes, leavesRes] = await Promise.all([
@@ -268,6 +270,7 @@ export default function StaffTracker() {
       setError(err.message || 'Unable to load staff profiles');
     }
     setLoading(false);
+    setLeavesLoading(false);
   }, [page, sort]);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -317,7 +320,10 @@ export default function StaffTracker() {
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 650, color: 'var(--c-text)', margin: 0 }}>Staff Tracker</h1>
           <div style={{ color: 'var(--c-faint)', fontSize: 12, marginTop: 3 }}>{total} staff profiles</div>
-          <div style={{ color: 'var(--c-muted)', fontSize: 11, marginTop: 3 }}>{attendanceLiveLabel}</div>
+          <div style={{ color: 'var(--c-muted)', fontSize: 11, marginTop: 3, display: 'flex', alignItems: 'center', gap: 5 }}>
+            {loading && <RefreshCw size={10} style={{ animation: 'spin 0.8s linear infinite' }} />}
+            {attendanceLiveLabel}
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <ActionButton variant="secondary" onClick={loadData}><RefreshCw size={13} />Refresh</ActionButton>
@@ -391,7 +397,12 @@ export default function StaffTracker() {
 
       {activeTab === 'leaves' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 840 }}>
-          {pendingLeaves.length === 0 ? (
+          {leavesLoading ? (
+            <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13 }}>
+              <RefreshCw size={18} style={{ animation: 'spin 0.8s linear infinite', marginBottom: 8 }} />
+              <div>Loading leave requests…</div>
+            </div>
+          ) : pendingLeaves.length === 0 ? (
             <div style={{ padding: 24, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13, background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8 }}>No pending leave requests</div>
           ) : pendingLeaves.map((leave) => (
             <div key={leave.id} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 14 }}>

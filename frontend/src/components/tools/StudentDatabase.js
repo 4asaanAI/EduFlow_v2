@@ -127,8 +127,10 @@ function StudentProfileModal({ classes, initialStudent, onClose, onSaved }) {
   });
 
   const getGuardianByRelation = (relation) => {
-    const g = initialStudent?.guardians?.find(g => g.relation?.toLowerCase() === relation.toLowerCase());
-    return g ? { relation: g.relation, name: g.name || '', phone: g.phone || '', occupation: g.occupation || '', email: g.email || '', photo_url: g.photo_url || null, id: g.id, _tmpPhotoFile: null } : blankGuardian(relation);
+    // First try exact match, then fall back to 'Parent' (created by bulk import)
+    const g = initialStudent?.guardians?.find(g => g.relation?.toLowerCase() === relation.toLowerCase())
+      || (relation.toLowerCase() === 'father' ? initialStudent?.guardians?.find(g => g.relation?.toLowerCase() === 'parent') : null);
+    return g ? { relation: relation, name: g.name || '', phone: g.phone || '', occupation: g.occupation || '', email: g.email || '', photo_url: g.photo_url || null, id: g.id, _tmpPhotoFile: null } : blankGuardian(relation);
   };
 
   const [father, setFather] = useState(() => getGuardianByRelation('Father'));

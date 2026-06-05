@@ -81,6 +81,9 @@ async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
     total_paid = fee_dict.get("paid", {}).get("total", 0)
     total_overdue = fee_dict.get("overdue", {}).get("total", 0)
     total_pending = fee_dict.get("pending", {}).get("total", 0)
+    total_unpaid = fee_dict.get("unpaid", {}).get("total", 0)
+    # total_outstanding = all non-paid fees (consistent with FeeCollection section)
+    total_outstanding = total_overdue + total_pending + total_unpaid
 
     # Pending leaves
     pending_leaves = await db.leave_requests.find(_tenant_query(scope, {"status": "pending"})).to_list(20)
@@ -127,7 +130,7 @@ async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
             "present_today": present,
             "absent_today": absent,
             "fee_collected": fmt_amount(total_paid),
-            "fee_overdue": fmt_amount(total_overdue),
+            "fee_overdue": fmt_amount(total_outstanding),
             "pending_leaves": len(pending_leaves),
         },
         "staff_absent_today": staff_absent_names,
@@ -135,7 +138,7 @@ async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
         "chronic_absent_students": chronic_absent,
         "fee_stats": {
             "paid": fmt_amount(total_paid),
-            "overdue": fmt_amount(total_overdue),
+            "overdue": fmt_amount(total_outstanding),
             "pending": fmt_amount(total_pending),
         }
     }
@@ -201,7 +204,10 @@ async def tool_get_fee_summary(params: dict, user: dict, scope=None) -> dict:
     total_collected = stats_dict.get("paid", {}).get("total", 0)
     total_overdue = stats_dict.get("overdue", {}).get("total", 0)
     total_pending = stats_dict.get("pending", {}).get("total", 0)
-    total_all = total_collected + total_overdue + total_pending
+    total_unpaid = stats_dict.get("unpaid", {}).get("total", 0)
+    # total_outstanding = all non-paid (consistent with FeeCollection "Outstanding" stat)
+    total_outstanding = total_overdue + total_pending + total_unpaid
+    total_all = total_collected + total_outstanding
     collection_rate = round(total_collected / total_all * 100, 1) if total_all > 0 else 0
 
     def fmt(a):
@@ -211,8 +217,8 @@ async def tool_get_fee_summary(params: dict, user: dict, scope=None) -> dict:
 
     return {
         "stats": {
-            "total_overdue": fmt(total_overdue),
-            "total_overdue_raw": total_overdue,
+            "total_overdue": fmt(total_outstanding),
+            "total_overdue_raw": total_outstanding,
             "students_with_dues": len(defaulters),
             "overdue_60_days": sum(1 for d in defaulters if d["days_overdue"] >= 60),
             "collection_rate": f"{collection_rate}%",

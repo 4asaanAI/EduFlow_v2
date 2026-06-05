@@ -189,7 +189,7 @@ def _guardian_doc(student_id: str, row: dict) -> dict:
         "schoolId": get_school_id(),
         "student_id": student_id,
         "name": row["parent_name"],
-        "relation": "Parent",
+        "relation": "Father",
         "phone": row["parent_phone"],
         "whatsapp_phone": row["parent_phone"],
         "is_primary": True,
@@ -203,7 +203,7 @@ def _guardian_update(row: dict) -> dict:
     return {
         "schoolId": get_school_id(),
         "name": row["parent_name"],
-        "relation": "Parent",
+        "relation": "Father",
         "phone": row["parent_phone"],
         "whatsapp_phone": row["parent_phone"],
         "is_primary": True,
@@ -252,14 +252,25 @@ async def commit_import(
             student_update.pop("created_at", None)
             student_update.pop("created_by", None)
             await db.students.update_one({"id": duplicate_id}, {"$set": student_update})
-            await db.guardians.update_one(
-                {"student_id": duplicate_id, "is_primary": True},
-                {
-                    "$set": _guardian_update(row),
-                    "$setOnInsert": {"id": str(uuid.uuid4()), "student_id": duplicate_id, "created_at": datetime.now().isoformat()},
-                },
-                upsert=True,
+            guardian_update_doc = _guardian_update(row)
+            # Try to update an existing Father or Parent guardian (from prior imports)
+            existing_g = await db.guardians.find_one(
+                {"student_id": duplicate_id, "is_primary": True, "relation": {"$in": ["Father", "Parent"]}}
             )
+            if existing_g:
+                await db.guardians.update_one(
+                    {"id": existing_g["id"]},
+                    {"$set": guardian_update_doc},
+                )
+            else:
+                await db.guardians.update_one(
+                    {"student_id": duplicate_id, "is_primary": True},
+                    {
+                        "$set": guardian_update_doc,
+                        "$setOnInsert": {"id": str(uuid.uuid4()), "student_id": duplicate_id, "created_at": datetime.now().isoformat()},
+                    },
+                    upsert=True,
+                )
         else:
             student = _student_doc(row, user)
             await db.students.insert_one({**student, "_id": student["id"]})

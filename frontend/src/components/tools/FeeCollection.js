@@ -371,7 +371,19 @@ export default function FeeCollection() {
   }
 
   return (
-    <div data-testid="fee-collection-tool" style={{ padding: '20px 16px', overflowY: 'auto', height: '100%' }}>
+    <div data-testid="fee-collection-tool" style={{ padding: '20px 16px', overflowY: 'auto', height: '100%', position: 'relative' }}>
+      {saving && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12,
+        }}>
+          <div style={{
+            width: 44, height: 44, border: '4px solid rgba(79,143,247,0.25)', borderTopColor: '#4f8ff7',
+            borderRadius: '50%', animation: 'spin 0.7s linear infinite',
+          }} />
+          <div style={{ color: '#fff', fontSize: 13, fontWeight: 600 }}>Saving…</div>
+        </div>
+      )}
       <style>{`
         @media (max-width: 640px) {
           .fee-twocol { grid-template-columns: 1fr !important; }
@@ -396,7 +408,7 @@ export default function FeeCollection() {
             <FileDown size={16} />
           </button>
           <button onClick={loadData} disabled={loading} title="Refresh fee data" style={iconButton}>
-            <RefreshCw size={16} />
+            <RefreshCw size={16} style={loading ? { animation: 'spin 0.8s linear infinite' } : {}} />
           </button>
         </div>
       </div>

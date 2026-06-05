@@ -424,7 +424,9 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           setTokenCanRecharge(!!event.can_recharge);
           fetchTokenUsage();
         } else if (event.type === 'ai_unavailable') {
-          const message = event.message || 'AI is temporarily unavailable. Core school tools remain available.';
+          // Defensive: ensure message is always a plain string (never an object)
+          const rawMsg = event.message;
+          const message = typeof rawMsg === 'string' ? rawMsg : (rawMsg ? String(rawMsg) : 'AI is temporarily unavailable. Core school tools remain available.');
           setAiUnavailable(true);
           setAiUnavailableMessage(message);
           setCurrentStreamMsg(prev =>
@@ -599,8 +601,13 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
               marginBottom: 16,
               fontSize: 13,
               lineHeight: 1.45,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
             }}>
-              {aiUnavailableMessage || 'AI is temporarily unavailable. Core school tools remain available.'}
+              <span>{typeof aiUnavailableMessage === 'string' && aiUnavailableMessage ? aiUnavailableMessage : 'AI is temporarily unavailable. Core school tools remain available.'}</span>
+              <button onClick={() => setAiUnavailable(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 16, lineHeight: 1, flexShrink: 0 }}>×</button>
             </div>
           )}
 

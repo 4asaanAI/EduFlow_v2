@@ -132,7 +132,7 @@ class PositionBody(BaseModel):
 @router.get("/positions")
 async def list_positions(request: Request, academic_year: Optional[str] = None, user: dict = Depends(require_role("owner", "admin", "teacher"))):
     db = get_db()
-    query = {}
+    query = {"is_active": True}
     if academic_year:
         query["academic_year"] = academic_year
     positions = await db.student_positions.find(_scope(query), {"_id": 0}).sort("position", 1).to_list(100)
