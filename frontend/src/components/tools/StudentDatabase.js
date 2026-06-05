@@ -774,7 +774,7 @@ export default function StudentDatabase() {
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
                 <thead>
                   <tr>
-                    {['Student', 'Class', 'Admission', 'Gender', 'Blood', 'Status', 'Actions'].map(h => (
+                    {['Student', 'Class', 'Phone', 'Admission', 'Gender', 'Blood', 'Status', 'Actions'].map(h => (
                       <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 750, color: 'var(--c-faint)', textTransform: 'uppercase', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{h}</th>
                     ))}
                   </tr>
@@ -798,6 +798,7 @@ export default function StudentDatabase() {
                         </div>
                       </td>
                       <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12 }}>{student.class_info ? `${student.class_info.name}-${student.class_info.section}` : 'N/A'}</td>
+                      <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12, fontFamily: 'monospace' }}>{student.primary_phone || '—'}</td>
                       <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12, fontFamily: 'monospace' }}>{student.admission_number || '—'}</td>
                       <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12, textTransform: 'capitalize' }}>{student.gender || '—'}</td>
                       <td style={{ padding: '10px 14px' }}>

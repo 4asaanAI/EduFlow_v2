@@ -184,8 +184,17 @@ async def list_students(
     class_ids = list({s.get("class_id") for s in students if s.get("class_id")})
     classes = await db.classes.find(scoped_filter({"id": {"$in": class_ids}}, get_school_id()), {"_id": 0}).to_list(len(class_ids)) if class_ids else []
     class_map = {c["id"]: {"name": c.get("name"), "section": c.get("section")} for c in classes}
+
+    student_ids = [s["id"] for s in students if s.get("id")]
+    primary_guardians = await db.guardians.find(
+        scoped_filter({"student_id": {"$in": student_ids}, "is_primary": True}, get_school_id()),
+        {"_id": 0, "student_id": 1, "phone": 1},
+    ).to_list(len(student_ids)) if student_ids else []
+    guardian_phone_map = {g["student_id"]: g.get("phone") for g in primary_guardians}
+
     for student in students:
         student["class_info"] = class_map.get(student.get("class_id"))
+        student["primary_phone"] = guardian_phone_map.get(student.get("id"))
         if student.get("photo_url") and student["photo_url"].startswith("s3://"):
             student["photo_url"] = None
 

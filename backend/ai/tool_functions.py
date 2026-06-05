@@ -217,8 +217,8 @@ async def tool_get_fee_summary(params: dict, user: dict, scope=None) -> dict:
 
     return {
         "stats": {
-            "total_overdue": fmt(total_outstanding),
-            "total_overdue_raw": total_outstanding,
+            "total_outstanding": fmt(total_outstanding),
+            "total_outstanding_raw": total_outstanding,
             "students_with_dues": len(defaulters),
             "overdue_60_days": sum(1 for d in defaulters if d["days_overdue"] >= 60),
             "collection_rate": f"{collection_rate}%",
@@ -696,7 +696,7 @@ async def tool_get_daily_brief(params: dict, user: dict, scope=None) -> dict:
         },
         "fees": {
             "collected": fee.get("stats", {}).get("total_collected", "N/A"),
-            "overdue": fee.get("stats", {}).get("total_overdue", "N/A"),
+            "overdue": fee.get("stats", {}).get("total_outstanding", "N/A"),
             "collection_rate": fee.get("stats", {}).get("collection_rate", "N/A"),
             "top_defaulters": fee.get("defaulters", [])[:3],
         },

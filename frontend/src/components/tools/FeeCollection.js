@@ -385,6 +385,7 @@ export default function FeeCollection() {
         </div>
       )}
       <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
         @media (max-width: 640px) {
           .fee-twocol { grid-template-columns: 1fr !important; }
           .fee-header { padding: 12px !important; }

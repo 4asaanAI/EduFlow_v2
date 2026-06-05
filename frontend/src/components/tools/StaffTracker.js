@@ -234,7 +234,7 @@ export default function StaffTracker() {
   const [staff, setStaff] = useState([]);
   const [pendingLeaves, setPendingLeaves] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [leavesLoading, setLeavesLoading] = useState(false);
+  const [leavesLoading, setLeavesLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('profiles');
   const [sort, setSort] = useState('name');

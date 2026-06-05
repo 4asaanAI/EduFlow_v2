@@ -225,7 +225,7 @@ export function SchoolPulse() {
                     sectionTitle('3. Fee Collection Summary');
                     const fs = feeData.stats || {};
                     line11('Total Collected:', fs.total_collected || 'N/A');
-                    line11('Total Overdue:', fs.total_overdue || 'N/A');
+                    line11('Total Overdue:', fs.total_outstanding || 'N/A');
                     line11('Collection Rate:', fs.collection_rate || 'N/A');
                     line11('Students with Dues:', fs.students_with_dues || 0);
                     line11('Overdue 60+ Days:', fs.overdue_60_days || 0);
@@ -431,7 +431,7 @@ export function FeeCollection() {
   return (
     <ToolPage title="Fee collection" subtitle="Revenue summary & defaulters" onRefresh={loadData} loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 18 }}>
-        <StatCard value={stats.total_overdue || '₹0'} label="TOTAL OVERDUE" color="var(--tool-hex-f87171)" />
+        <StatCard value={stats.total_outstanding || '₹0'} label="TOTAL OVERDUE" color="var(--tool-hex-f87171)" />
         <StatCard value={stats.students_with_dues || 0} label="STUDENTS WITH DUES" color="var(--tool-hex-fbbf24)" />
         <StatCard value={stats.overdue_60_days || 0} label="OVERDUE 60+ DAYS" color="var(--tool-hex-f87171)" />
         <StatCard value={stats.collection_rate || '0%'} label="COLLECTION RATE" color="var(--tool-hex-34d399)" />
@@ -1762,7 +1762,7 @@ export function BoardReport() {
       doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('2. Fee & Finance Summary', 15, y); y += 9;
       doc.setFontSize(10); doc.setTextColor(60, 60, 60);
       doc.text(`Total Fees Collected: ${fee.total_collected || '₹0'}`, 20, y); y += 7;
-      doc.text(`Total Overdue: ${fee.total_overdue || '₹0'}`, 20, y); y += 7;
+      doc.text(`Total Overdue: ${fee.total_outstanding || '₹0'}`, 20, y); y += 7;
       doc.text(`Collection Rate: ${fee.collection_rate || 'N/A'}`, 20, y); y += 7;
       doc.text(`Students with Dues: ${fee.students_with_dues || 0}`, 20, y); y += 7;
       doc.text(`Overdue 60+ Days: ${fee.overdue_60_days || 0} transactions`, 20, y); y += 7;
@@ -1880,7 +1880,7 @@ export function BoardReport() {
             <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Fee & Finance</h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: 12 }}>
               <StatCard value={fee.total_collected || '₹0'} label="TOTAL COLLECTED" color="var(--tool-hex-34d399)" small />
-              <StatCard value={fee.total_overdue || '₹0'} label="TOTAL OVERDUE" color="var(--tool-hex-f87171)" small />
+              <StatCard value={fee.total_outstanding || '₹0'} label="TOTAL OVERDUE" color="var(--tool-hex-f87171)" small />
               <StatCard value={fee.collection_rate || 'N/A'} label="COLLECTION RATE" color="var(--tool-hex-4f8ff7)" small />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
