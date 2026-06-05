@@ -23,3 +23,52 @@
 
 body { background: var(--c-app, #111111); }
 .App { height: 100vh; display: flex; }
+
+/* ─── Global responsive tool grid utilities ────────────── */
+@media (max-width: 640px) {
+  /* Tool page header stack on mobile */
+  .tool-header-row { flex-direction: column !important; align-items: flex-start !important; gap: 10px !important; }
+  /* Stat grids collapse to 2 columns on mobile */
+  .stat-grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
+  .stat-grid-3 { grid-template-columns: repeat(2, 1fr) !important; }
+  /* Mark mode buttons wrap */
+  .mark-mode-header { flex-direction: column !important; align-items: flex-start !important; }
+  /* Staff row status buttons wrap */
+  .status-btn-group { flex-wrap: wrap !important; gap: 4px !important; }
+  /* Custom report two-col becomes single col */
+  .report-twocol { grid-template-columns: 1fr !important; }
+  /* expense form grid */
+  .expense-form-grid { grid-template-columns: 1fr !important; }
+}
+
+@media (max-width: 480px) {
+  .stat-grid-4 { grid-template-columns: 1fr 1fr !important; }
+  .stat-grid-3 { grid-template-columns: 1fr 1fr !important; }
+}
+
+/* ─── White theme: tool hex overrides ──────────────────── */
+[data-theme="light"] {
+  --tool-hex-1e1e1e: #ffffff;
+  --tool-hex-252525: #f5f5f5;
+  --tool-hex-2e2e2e: #e5e5e5;
+  --tool-hex-333: #d4d4d4;
+  --tool-hex-161616: #f0f0f0;
+  --tool-hex-1a1a1a: #f5f5f5;
+  --tool-hex-141414: #eeeeee;
+  --tool-hex-111111: #e8e8e8;
+  --tool-hex-e5e5e5: #171717;
+  --tool-hex-f5f5f5: #171717;
+  --tool-hex-fff: #171717;
+  --tool-hex-ffffff: #171717;
+  --tool-hex-a3a3a3: #525252;
+  --tool-hex-a0a0a0: #525252;
+  --tool-hex-737373: #737373;
+  --tool-hex-666: #737373;
+  --tool-hex-555: #525252;
+  --tool-hex-bbb: #a3a3a3;
+  --tool-hex-ccc: #d4d4d4;
+  --tool-hex-d4d4d4: #cccccc;
+  --tool-hex-888: #737373;
+  --tool-hex-242424: #f5f5f5;
+  --tool-hex-525252: #525252;
+}

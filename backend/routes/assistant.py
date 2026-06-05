@@ -208,7 +208,7 @@ TIPS
 @router.post("")
 async def assistant_chat(
     request: Request,
-    user: dict = Depends(require_role("admin", "teacher")),
+    user: dict = Depends(require_role("owner", "admin", "teacher")),
 ):
     try:
         body = await request.json()

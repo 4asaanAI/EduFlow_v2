@@ -284,11 +284,22 @@ function PositionsTab({ canManage }) {
 
   const POSITION_ICONS = { 'Head Boy': '👑', 'Head Girl': '👑', 'Prefect': '⭐', 'House Captain': '🛡️', 'Sports Captain': '🏅', 'Class Monitor': '📋' };
 
+  const handleRemoveAll = async () => {
+    if (!window.confirm(`Remove all ${active.length} active position${active.length !== 1 ? 's' : ''}? This cannot be undone.`)) return;
+    for (const p of active) { await removePosition(p.id); }
+    load();
+  };
+
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>{active.length} active position{active.length !== 1 ? 's' : ''}</div>
-        {canManage && <Btn onClick={openModal}><Plus size={13} />Assign Position</Btn>}
+        <div style={{ display: 'flex', gap: 8 }}>
+          {canManage && active.length > 0 && (
+            <Btn variant="danger" small onClick={handleRemoveAll}><Trash2 size={12} />Remove All</Btn>
+          )}
+          {canManage && <Btn onClick={openModal}><Plus size={13} />Assign Position</Btn>}
+        </div>
       </div>
 
       {loading ? (
@@ -313,7 +324,7 @@ function PositionsTab({ canManage }) {
                     </div>
                   </div>
                   {canManage && (
-                    <button onClick={() => handleRemove(p)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--c-faint)', padding: 2 }}><Trash2 size={13} /></button>
+                    <button onClick={() => handleRemove(p)} title="Remove position" style={{ border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.07)', borderRadius: 6, cursor: 'pointer', color: '#ef4444', padding: '4px 6px', display: 'flex', alignItems: 'center' }}><Trash2 size={12} /></button>
                   )}
                 </div>
               );
@@ -329,7 +340,7 @@ function PositionsTab({ canManage }) {
               <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--c-text)' }}>Assign Position</h3>
               <button onClick={closeModal} style={{ border: 'none', background: 'none', color: 'var(--c-faint)', cursor: 'pointer' }}><X size={16} /></button>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
               <label style={{ display: 'block', fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Student Name
                 <input
                   value={form.student_name}

@@ -15,8 +15,8 @@ export function ToolPage({ title, subtitle, actions, children, onRefresh, loadin
   const btnBorder = isDark ? 'var(--color-border-strong)' : 'var(--color-border)';
 
   return (
-    <div style={{ padding: '24px 28px', overflowY: 'auto', height: '100%', background: bg }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+    <div style={{ padding: '20px 16px', overflowY: 'auto', height: '100%', background: bg }}>
+      <div className="tool-header-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 10 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: text, marginBottom: 4, letterSpacing: '-0.02em' }}>{title}</h1>
           {subtitle && <p style={{ fontSize: 13, color: muted }}>{subtitle}</p>}

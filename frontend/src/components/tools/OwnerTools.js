@@ -126,8 +126,8 @@ export function SchoolPulse() {
 
   return (
     <ToolPage title="School Pulse" subtitle="Today's complete overview" onRefresh={load} loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 1000 }}>
-        <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(160px, 1fr))', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
+        <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
           <StatCard value={money(feeStats.total_collected || data?.fee_stats?.paid || 0)} label="FEE COLLECTED" color="var(--tool-hex-34d399)" />
           <StatCard value={money(feeStats.total_outstanding || data?.fee_stats?.overdue || 0)} label="FEE OVERDUE" color="var(--tool-hex-f87171)" />
           <StatCard value={feeStats.transactions ? `${Math.round((Number(feeStats.total_collected || 0) / Math.max(Number(feeStats.total_collected || 0) + Number(feeStats.total_outstanding || 0), 1)) * 100)}%` : '0%'} label="COLLECTION RATE" color="var(--tool-hex-4f8ff7)" />
@@ -135,7 +135,7 @@ export function SchoolPulse() {
         {/* Quick Actions */}
         <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: 20 }}>
           <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 600, color: 'var(--tool-hex-e5e5e5)', marginBottom: 14 }}>Quick Actions</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8 }}>
             {[
               { icon: Users, label: "Mark Today's Attendance", color: 'var(--tool-hex-4f8ff7)', action: () => window.dispatchEvent(new CustomEvent('open-tool', { detail: 'attendance-recorder' })) },
               { icon: Send, label: 'Send Fee Reminders', color: 'var(--tool-hex-34d399)', action: () => setShowWaModal(true) },
@@ -430,7 +430,7 @@ export function FeeCollection() {
 
   return (
     <ToolPage title="Fee collection" subtitle="Revenue summary & defaulters" onRefresh={loadData} loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18, maxWidth: 900 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 18 }}>
         <StatCard value={stats.total_overdue || '₹0'} label="TOTAL OVERDUE" color="var(--tool-hex-f87171)" />
         <StatCard value={stats.students_with_dues || 0} label="STUDENTS WITH DUES" color="var(--tool-hex-fbbf24)" />
         <StatCard value={stats.overdue_60_days || 0} label="OVERDUE 60+ DAYS" color="var(--tool-hex-f87171)" />
@@ -495,7 +495,7 @@ export function StudentStrength() {
 
   return (
     <ToolPage title="Student Strength" subtitle="Class-wise enrollment overview" onRefresh={load} loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 20, maxWidth: 600 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 20 }}>
         <StatCard value={totalStudents} label="TOTAL STUDENTS" color="var(--tool-hex-4f8ff7)" />
         <StatCard value={totalClasses} label="TOTAL CLASSES" color="var(--tool-hex-34d399)" />
         <StatCard value={avgPerClass} label="AVG PER CLASS" color="var(--tool-hex-a78bfa)" />
@@ -588,7 +588,7 @@ export function DataImport() {
 
         {report && !result && (
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: 12 }}>
               <StatCard value={report.valid_count || 0} label="VALID ROWS" color="var(--tool-hex-34d399)" />
               <StatCard value={report.error_count || 0} label="ERRORS" color="var(--tool-hex-f87171)" />
               <StatCard value={report.duplicate_count || 0} label="DUPLICATES" color="var(--tool-hex-fbbf24)" />
@@ -686,7 +686,7 @@ export function AttendanceOverview() {
 
   return (
     <ToolPage title="Attendance Overview" subtitle="Trends and class-wise analysis" onRefresh={load} loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16, maxWidth: 500 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 16 }}>
         <StatCard value={data?.avg_attendance_rate || '0%'} label="AVG RATE (30 DAYS)" color="var(--tool-hex-34d399)" />
         <StatCard value={data?.total_records || 0} label="TOTAL RECORDS" color="var(--tool-hex-4f8ff7)" />
         <StatCard value="Last 30 days" label="PERIOD" color="var(--tool-hex-a78bfa)" />
@@ -707,18 +707,19 @@ const STATUS_OPTIONS = ['present', 'absent', 'late', 'on-leave'];
 const STATUS_COLORS = { present: '#34d399', absent: '#f87171', late: '#fbbf24', 'on-leave': '#a78bfa', not_marked: '#737373' };
 const STATUS_BG = { present: 'rgba(52,211,153,0.12)', absent: 'rgba(248,113,113,0.12)', late: 'rgba(251,191,36,0.12)', 'on-leave': 'rgba(167,139,250,0.12)', not_marked: 'rgba(115,115,115,0.1)' };
 
-export function StaffAttendanceTracker({ title = 'Staff Tracker', subtitle = 'Attendance & leave management', defaultTab = 'attendance' }) {
+// Exported as StaffAttendanceTracker — when loaded directly as a tool it shows only attendance tab
+export function StaffAttendanceTracker({ title = 'Staff Tracker', subtitle = 'Staff attendance tracking', defaultTab = 'attendance', singleTab = 'attendance' }) {
   const { currentUser } = useUser();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState(defaultTab);
+  const [activeTab, setActiveTab] = useState(singleTab || defaultTab);
   const [markMode, setMarkMode] = useState(false);
   const [markDate, setMarkDate] = useState(new Date().toISOString().slice(0, 10));
   const [markData, setMarkData] = useState({});
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
-  useEffect(() => { setActiveTab(defaultTab); }, [defaultTab]);
+  useEffect(() => { setActiveTab(singleTab || defaultTab); }, [singleTab, defaultTab]);
   useEffect(() => { load(); }, []);
 
   const load = async () => {
@@ -778,22 +779,24 @@ export function StaffAttendanceTracker({ title = 'Staff Tracker', subtitle = 'At
   return (
     <ToolPage title={title} subtitle={subtitle} onRefresh={load} loading={loading}>
       {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18, maxWidth: 700 }}>
-        <StatCard value={data?.total_staff || 0} label="TOTAL STAFF" color="var(--tool-hex-e5e5e5)" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 18 }}>
+        <StatCard value={data?.total_staff || 0} label="TOTAL STAFF" color="var(--color-text-secondary)" />
         <StatCard value={data?.present_today || 0} label="PRESENT TODAY" color="var(--tool-hex-34d399)" />
         <StatCard value={data?.absent_today || 0} label="ABSENT TODAY" color="var(--tool-hex-f87171)" />
         <StatCard value={leaves.length} label="PENDING LEAVES" color="var(--tool-hex-fbbf24)" />
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--tool-hex-2e2e2e)', marginBottom: 14 }}>
-        {['attendance', 'leaves'].map(t => (
-          <button key={t} onClick={() => { setActiveTab(t); setMarkMode(false); }} data-testid={`tab-${t}`}
-            style={{ background: 'none', border: 'none', padding: '8px 14px', borderBottom: activeTab === t ? '2px solid var(--tool-hex-4f8ff7)' : '2px solid transparent', color: activeTab === t ? 'var(--tool-hex-fff)' : 'var(--tool-hex-737373)', fontSize: 13, fontWeight: 500, cursor: 'pointer', marginBottom: -1 }}>
-            {t === 'attendance' ? "Today's Attendance" : `Pending Leaves (${leaves.length})`}
-          </button>
-        ))}
-      </div>
+      {/* Tabs — hidden when singleTab is set */}
+      {!singleTab && (
+        <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--c-border)', marginBottom: 14 }}>
+          {['attendance', 'leaves'].map(t => (
+            <button key={t} onClick={() => { setActiveTab(t); setMarkMode(false); }} data-testid={`tab-${t}`}
+              style={{ background: 'none', border: 'none', padding: '8px 14px', borderBottom: activeTab === t ? '2px solid var(--tool-hex-4f8ff7)' : '2px solid transparent', color: activeTab === t ? 'var(--c-text)' : 'var(--c-faint)', fontSize: 13, fontWeight: 500, cursor: 'pointer', marginBottom: -1 }}>
+              {t === 'attendance' ? "Today's Attendance" : `Pending Leaves (${leaves.length})`}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Attendance Tab */}
       {activeTab === 'attendance' && (
@@ -831,12 +834,12 @@ export function StaffAttendanceTracker({ title = 'Staff Tracker', subtitle = 'At
                 ) : staff.map(s => {
                   const current = markData[s.id] || 'present';
                   return (
-                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--tool-hex-252525)', borderRadius: 9, border: `1px solid ${STATUS_COLORS[current]}22` }}>
+                    <div key={s.id} className="status-btn-group-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--tool-hex-252525)', borderRadius: 9, border: `1px solid ${STATUS_COLORS[current]}22`, flexWrap: 'wrap', gap: 6 }}>
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tool-hex-e5e5e5)' }}>{s.name}</div>
                         <div style={{ fontSize: 11, color: 'var(--tool-hex-737373)', marginTop: 2, textTransform: 'capitalize' }}>{s.staff_type}</div>
                       </div>
-                      <div style={{ display: 'flex', gap: 6 }}>
+                      <div className="status-btn-group" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         {STATUS_OPTIONS.map(opt => (
                           <button key={opt} onClick={() => setStaffStatus(s.id, opt)}
                             style={{
@@ -950,7 +953,7 @@ export function FinancialReports() {
 
   return (
     <ToolPage title="Financial Reports" subtitle="Revenue, expenses & analysis" onRefresh={load} loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 18, maxWidth: 700 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 18 }}>
         <StatCard value={data?.total_collected || '₹0'} label="TOTAL COLLECTED" color="var(--tool-hex-34d399)" />
         <StatCard value={fmtExp || '₹0'} label="TOTAL EXPENSES" color="var(--tool-hex-f87171)" />
         <StatCard value={data?.collection_rate || '0%'} label="COLLECTION RATE" color="var(--tool-hex-4f8ff7)" />
@@ -1114,7 +1117,7 @@ export function AdmissionFunnel() {
 
   return (
     <ToolPage title="Admission Funnel" subtitle="Enquiries & conversion pipeline" onRefresh={load} loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18, maxWidth: 800 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 18 }}>
         <StatCard value={data?.total || 0} label="TOTAL ENQUIRIES" color="var(--tool-hex-4f8ff7)" />
         <StatCard value={funnel.enrolled || 0} label="ENROLLED" color="var(--tool-hex-34d399)" />
         <StatCard value={funnel.new || 0} label="NEW TODAY" color="var(--tool-hex-fbbf24)" />
@@ -1138,7 +1141,7 @@ export function AdmissionFunnel() {
 
 // 9. Staff Leave Manager
 export function StaffLeaveManager() {
-  return <StaffAttendanceTracker title="Leave Manager" subtitle="Pending leave requests & approvals" defaultTab="leaves" />;
+  return <StaffAttendanceTracker title="Leave Manager" subtitle="Pending leave requests & approvals" defaultTab="leaves" singleTab="leaves" />;
 }
 
 // 10. Staff Performance Overview
@@ -1193,7 +1196,7 @@ export function StaffPerformance() {
   return (
     <ToolPage title="Staff Performance" subtitle="Individual staff stats & attendance analytics" onRefresh={load} loading={loading}>
       {/* Summary Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 20, maxWidth: 800 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 20 }}>
         <StatCard value={staff.length} label="TOTAL STAFF" color="var(--tool-hex-e5e5e5)" />
         <StatCard value={staff.filter(s => s.staff_type === 'teacher').length} label="TEACHERS" color="var(--tool-hex-4f8ff7)" />
         <StatCard value={staff.filter(s => s.staff_type !== 'teacher').length} label="NON-TEACHING" color="var(--tool-hex-a78bfa)" />
@@ -1231,12 +1234,12 @@ export function StaffPerformance() {
             </div>
             <button onClick={() => setSelectedStaff(null)} style={{ background: 'none', border: 'none', color: 'var(--tool-hex-737373)', cursor: 'pointer', fontSize: 18 }}>×</button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: 12 }}>
             <StatCard value={selectedStaff.email || '—'} label="EMAIL" color="var(--tool-hex-4f8ff7)" small />
             <StatCard value={selectedStaff.phone || '—'} label="PHONE" color="var(--tool-hex-a78bfa)" small />
             <StatCard value={selectedStaff.join_date || '—'} label="JOIN DATE" color="var(--tool-hex-34d399)" small />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 10 }}>
             <StatCard value={staffStats[selectedStaff.id]?.present ?? '—'} label="DAYS PRESENT" color="var(--tool-hex-34d399)" small />
             <StatCard value={staffStats[selectedStaff.id]?.absent ?? '—'} label="DAYS ABSENT" color="var(--tool-hex-f87171)" small />
             <StatCard value={staffStats[selectedStaff.id]?.late ?? '—'} label="LATE ARRIVALS" color="var(--tool-hex-fbbf24)" small />
@@ -1286,7 +1289,7 @@ export function AiHealthReport() {
         </div>
       ) : (
         <div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 18 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 18 }}>
             <StatCard value={`${report.score}/100`} label="HEALTH SCORE" color="var(--tool-hex-34d399)" />
             <StatCard value={report.generated} label="GENERATED" color="var(--tool-hex-4f8ff7)" />
             <StatCard value={report.alerts.length} label="ACTION ITEMS" color="var(--tool-hex-f87171)" />
@@ -1316,7 +1319,7 @@ export function SmartAlerts() {
   const colors = { critical: 'red', warning: 'yellow', success: 'green', info: 'blue' };
   return (
     <ToolPage title="Smart Alerts" subtitle="Active exceptions & flags" onRefresh={load} loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 18, maxWidth: 500 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 18 }}>
         <StatCard value={data?.total_alerts || 0} label="TOTAL ALERTS" color="var(--tool-hex-fbbf24)" />
         <StatCard value={data?.critical_count || 0} label="CRITICAL" color="var(--tool-hex-f87171)" />
       </div>
@@ -1341,50 +1344,89 @@ export function ExpenseTracker() {
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ category: '', description: '', amount: '', date: new Date().toISOString().slice(0, 10), vendor: '' });
+  const [editExpense, setEditExpense] = useState(null);
+  const emptyForm = { category: '', description: '', amount: '', date: new Date().toISOString().slice(0, 10), vendor: '' };
+  const [form, setForm] = useState(emptyForm);
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
   useEffect(() => { load(); }, []);
   const load = async () => { setLoading(true); try { const r = await fetch(`${API}/ops/expenses`, { headers: h() }).then(r => r.json()); if (r.success) setExpenses(r.data || []); } catch {} setLoading(false); };
-  const handleAdd = async (e) => {
-    e.preventDefault();
+
+  const openAdd = () => { setEditExpense(null); setForm(emptyForm); setShowForm(true); };
+  const openEdit = (e) => { setEditExpense(e); setForm({ category: e.category || '', description: e.description || '', amount: String(e.amount || ''), date: e.date || new Date().toISOString().slice(0, 10), vendor: e.vendor || '' }); setShowForm(true); };
+  const closeForm = () => { setShowForm(false); setEditExpense(null); setForm(emptyForm); };
+
+  const handleSave = async (evt) => {
+    evt.preventDefault();
     if (!form.category || !form.amount) { alert('Category and Amount are required.'); return; }
+    const payload = { ...form, amount: parseFloat(form.amount) };
     try {
-      const r = await fetch(`${API}/ops/expenses`, {
-        method: 'POST', headers: h(),
-        body: JSON.stringify({ ...form, amount: parseFloat(form.amount) }),
-      }).then(res => res.json());
-      if (r.success) {
-        setShowForm(false);
-        setForm({ category: '', description: '', amount: '', date: new Date().toISOString().slice(0, 10), vendor: '' });
-        load();
-      } else { alert('Failed to save expense. Please try again.'); }
+      let r;
+      if (editExpense) {
+        r = await fetch(`${API}/ops/expenses/${editExpense.id}`, {
+          method: 'PATCH', headers: h(),
+          body: JSON.stringify(payload),
+        }).then(res => res.json());
+      } else {
+        r = await fetch(`${API}/ops/expenses`, {
+          method: 'POST', headers: h(),
+          body: JSON.stringify(payload),
+        }).then(res => res.json());
+      }
+      if (r.success) { closeForm(); load(); }
+      else { alert(`Failed to ${editExpense ? 'update' : 'save'} expense. Please try again.`); }
     } catch { alert('Network error. Please try again.'); }
   };
+
+  const handleDelete = async (e) => {
+    if (!window.confirm(`Delete expense: ${e.description || e.category}?`)) return;
+    try {
+      const r = await fetch(`${API}/ops/expenses/${e.id}`, { method: 'DELETE', headers: h() }).then(res => res.json());
+      if (r.success) load();
+      else alert('Failed to delete expense.');
+    } catch { alert('Network error.'); }
+  };
+
   const total = expenses.reduce((s, e) => s + (e.amount || 0), 0);
+  const CATS = ['utilities', 'maintenance', 'salary', 'events', 'stationery', 'transport', 'other'];
 
   return (
     <ToolPage title="Expense Tracker" subtitle="Track & manage school expenses" onRefresh={load} loading={loading}
-      actions={<ActionBtn label="Add Expense" onClick={() => setShowForm(true)} icon={<Plus size={11} />} />}>
+      actions={<ActionBtn label="Add Expense" onClick={openAdd} icon={<Plus size={11} />} />}>
       {showForm && (
-        <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
-          <form onSubmit={handleAdd}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <FormField label="Category" type="select" value={form.category} onChange={f('category')} options={['utilities', 'maintenance', 'salary', 'events', 'stationery', 'transport', 'other'].map(v => ({ value: v, label: v }))} required />
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
+          <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editExpense ? 'Edit Expense' : 'Add Expense'}</h3>
+          <form onSubmit={handleSave}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+              <FormField label="Category" type="select" value={form.category} onChange={f('category')} options={CATS.map(v => ({ value: v, label: v[0].toUpperCase() + v.slice(1) }))} required />
               <FormField label="Amount (₹)" type="number" value={form.amount} onChange={f('amount')} placeholder="0.00" required />
               <FormField label="Date" type="date" value={form.date} onChange={f('date')} />
               <FormField label="Vendor" value={form.vendor} onChange={f('vendor')} placeholder="Vendor name" />
             </div>
             <FormField label="Description" type="textarea" value={form.description} onChange={f('description')} placeholder="Expense description" />
-            <div style={{ display: 'flex', gap: 8 }}><ActionBtn label="Save Expense" type="submit" icon={<Save size={11} />} /><ActionBtn label="Cancel" variant="secondary" onClick={() => setShowForm(false)} /></div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <ActionBtn label={editExpense ? 'Update Expense' : 'Save Expense'} type="submit" icon={<Save size={11} />} />
+              <ActionBtn label="Cancel" variant="secondary" onClick={closeForm} />
+            </div>
           </form>
         </div>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16, maxWidth: 400 }}>
-        <StatCard value={`₹${(total / 1000).toFixed(1)}K`} label="TOTAL EXPENSES" color="var(--tool-hex-f87171)" />
-        <StatCard value={expenses.length} label="RECORDS" color="var(--tool-hex-e5e5e5)" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 16, maxWidth: 500 }}>
+        <StatCard value={`₹${total >= 100000 ? (total / 100000).toFixed(1) + 'L' : (total / 1000).toFixed(1) + 'K'}`} label="TOTAL EXPENSES" color="var(--tool-hex-f87171)" />
+        <StatCard value={expenses.length} label="RECORDS" color="var(--color-text-secondary)" />
       </div>
-      <DataTable headers={['Date', 'Category', 'Description', 'Vendor', 'Amount']}
-        rows={expenses.map(e => [e.date, e.category, e.description, e.vendor || 'N/A', <span style={{ color: 'var(--tool-hex-f87171)' }}>₹{(e.amount || 0).toLocaleString('en-IN')}</span>])}
+      <DataTable headers={['Date', 'Category', 'Description', 'Vendor', 'Amount', 'Actions']}
+        rows={expenses.map(e => [
+          e.date,
+          e.category ? e.category[0].toUpperCase() + e.category.slice(1) : '—',
+          e.description || '—',
+          e.vendor || 'N/A',
+          <span style={{ color: 'var(--tool-hex-f87171)', fontWeight: 600 }}>₹{(e.amount || 0).toLocaleString('en-IN')}</span>,
+          <div style={{ display: 'flex', gap: 6 }}>
+            <ActionBtn label="Edit" variant="secondary" onClick={() => openEdit(e)} icon={<Save size={10} />} />
+            <ActionBtn label="Del" variant="danger" onClick={() => handleDelete(e)} />
+          </div>,
+        ])}
+        emptyMsg="No expenses recorded"
       />
     </ToolPage>
   );
@@ -1421,13 +1463,36 @@ export function CustomReportBuilder() {
     return url;
   };
 
+  // Download a single CSV with auth headers and trigger browser download
+  const downloadCSV = async (src) => {
+    try {
+      const res = await fetch(buildUrl(src.endpoint), { headers: h() });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`Export failed for ${src.label}: ${err.detail || res.status}`);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${src.endpoint}-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(`Download failed: ${err.message}`);
+    }
+  };
+
   // Prepare CSV download links
   const generateReport = async () => {
     if (selectedSources.length === 0) return;
     setLoading(true);
     const links = selectedSources.map(srcId => {
       const src = dataSources.find(d => d.id === srcId);
-      return { source: srcId, url: buildUrl(src.endpoint), label: src.label };
+      return { source: srcId, src, label: src.label };
     });
     setReport({ links, generated: new Date().toLocaleString('en-IN') });
     setLoading(false);
@@ -1572,7 +1637,7 @@ export function CustomReportBuilder() {
 
   return (
     <ToolPage title="Custom Report Builder" subtitle="Select data sources, download CSV or generate PDF">
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 960 }}>
+      <div className="report-twocol" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
         {/* Source selector */}
         <div>
           <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Select Data Sources</h3>
@@ -1611,14 +1676,14 @@ export function CustomReportBuilder() {
 
           {report && (
             <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 11, color: 'var(--tool-hex-34d399)', marginBottom: 10 }}>CSV files ready — click to download:</div>
+              <div style={{ fontSize: 11, color: 'var(--tool-hex-34d399)', marginBottom: 10 }}>Click to download CSV (with authentication):</div>
               {report.links.map((link, i) => (
-                <a key={i} href={link.url} download target="_blank" rel="noreferrer"
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 7, color: 'var(--tool-hex-34d399)', fontSize: 12, marginBottom: 6, textDecoration: 'none' }}>
+                <button key={i} onClick={() => downloadCSV(link.src)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, color: 'var(--tool-hex-34d399)', fontSize: 12, marginBottom: 6, cursor: 'pointer', textAlign: 'left' }}>
                   <Download size={12} /> {link.label} (CSV)
-                </a>
+                </button>
               ))}
-              <div style={{ marginTop: 8, fontSize: 11, color: 'var(--tool-hex-737373)' }}>
+              <div style={{ marginTop: 8, fontSize: 11, color: 'var(--c-faint)' }}>
                 Or click "Generate PDF Report" for a formatted PDF summary.
               </div>
             </div>
@@ -1802,7 +1867,7 @@ export function BoardReport() {
           {/* Section 1 — School Overview */}
           <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: 18, marginBottom: 14 }}>
             <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 13, fontWeight: 700, marginBottom: 12 }}>School Overview</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
               <StatCard value={s.total_students || 0} label="ENROLLED STUDENTS" color="var(--tool-hex-4f8ff7)" small />
               <StatCard value={s.total_staff || 0} label="TOTAL STAFF" color="var(--tool-hex-e5e5e5)" small />
               <StatCard value={s.attendance_rate || 'N/A'} label="TODAY'S ATT." color="var(--tool-hex-34d399)" small />
@@ -1813,12 +1878,12 @@ export function BoardReport() {
           {/* Section 2 — Fee & Finance */}
           <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: 18, marginBottom: 14 }}>
             <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Fee & Finance</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: 12 }}>
               <StatCard value={fee.total_collected || '₹0'} label="TOTAL COLLECTED" color="var(--tool-hex-34d399)" small />
               <StatCard value={fee.total_overdue || '₹0'} label="TOTAL OVERDUE" color="var(--tool-hex-f87171)" small />
               <StatCard value={fee.collection_rate || 'N/A'} label="COLLECTION RATE" color="var(--tool-hex-4f8ff7)" small />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
               <StatCard value={fee.students_with_dues || 0} label="STUDENTS WITH DUES" color="var(--tool-hex-fbbf24)" small />
               <StatCard value={fee.overdue_60_days || 0} label="OVERDUE 60+ DAYS" color="var(--tool-hex-f87171)" small />
               <StatCard value={data.totalExp >= 100000 ? `₹${(data.totalExp / 100000).toFixed(1)}L` : `₹${(data.totalExp || 0).toLocaleString('en-IN')}`} label="TOTAL EXPENSES" color="var(--tool-hex-f87171)" small />
@@ -1828,7 +1893,7 @@ export function BoardReport() {
           {/* Section 3 — Staff */}
           <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: 18, marginBottom: 14 }}>
             <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Staff Summary</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
               <StatCard value={(data.staff || []).filter(st => st.staff_type === 'teacher').length} label="TEACHERS" color="var(--tool-hex-4f8ff7)" small />
               <StatCard value={(data.staff || []).filter(st => st.staff_type !== 'teacher').length} label="NON-TEACHING" color="var(--tool-hex-a78bfa)" small />
               <StatCard value={(data.pulse?.staff_absent_today || []).length} label="ABSENT TODAY" color="var(--tool-hex-f87171)" small />
@@ -1912,7 +1977,7 @@ export function YearEndTransition() {
               ⚠️ This will archive the current academic year (2025-26) and create a new one. All existing students and data are preserved.
             </div>
             <FormField label="New Academic Year Name" value={newYear} onChange={setNewYear} placeholder="e.g. 2026-27" required />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
               <FormField label="Start Date" type="date" value={startDate} onChange={setStartDate} />
               <FormField label="End Date" type="date" value={endDate} onChange={setEndDate} />
             </div>
@@ -1986,13 +2051,27 @@ export function AttendanceAlerts() {
     if (r.success) setSmsLogs(r.data || []);
   };
 
-  const openSmsForm = (s) => {
+  const openSmsForm = async (s) => {
     setSelectedStudent(s);
     setSmsResult(null);
+    // Start with cached phone, then fetch fresh guardian data
     setSmsForm({
       phone: s.phone || '',
       message: `Dear ${s.guardian_name || "Parent"}, your child ${s.student_name}'s attendance is ${s.attendance_rate}% which is below the required ${threshold}%. Please ensure regular attendance. Contact school for more info.`,
     });
+    // Fetch fresh guardian/student data to get the latest phone number
+    try {
+      const r = await fetch(`${API}/students/${s.student_id}/guardians`, { headers: h() }).then(r => r.json());
+      if (r.success && r.data?.length > 0) {
+        const primaryG = r.data.find(g => g.is_primary) || r.data[0];
+        const freshPhone = primaryG?.phone || primaryG?.whatsapp_phone || s.phone || '';
+        const guardianName = primaryG?.name || s.guardian_name || 'Parent';
+        setSmsForm(prev => ({
+          phone: freshPhone,
+          message: `Dear ${guardianName}, your child ${s.student_name}'s attendance is ${s.attendance_rate}% which is below the required ${threshold}%. Please ensure regular attendance. Contact school for more info.`,
+        }));
+      }
+    } catch {}
   };
 
   const handleSendSingle = async (e) => {
@@ -2092,7 +2171,7 @@ export function AttendanceAlerts() {
 
       {fetched && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16, maxWidth: 500 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 16 }}>
             <StatCard value={students.length} label="BELOW THRESHOLD" color="var(--tool-hex-f87171)" />
             <StatCard value={`${threshold}%`} label="THRESHOLD" color="var(--tool-hex-fbbf24)" />
             <StatCard value={`${days}d`} label="PERIOD" color="var(--tool-hex-a78bfa)" />
@@ -2363,7 +2442,7 @@ export function PlatformHealthDashboard() {
                 <StatusBadge status={data.service_checks?.overall} />
               </span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
               {['db', 'ai', 's3', 'sms'].map(svc => (
                 <div key={svc} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--bg-page, #0f0f1a)', borderRadius: 8 }}>
                   <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>

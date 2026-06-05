@@ -371,7 +371,20 @@ export default function FeeCollection() {
   }
 
   return (
-    <div data-testid="fee-collection-tool" style={{ padding: 24, overflowY: 'auto', height: '100%' }}>
+    <div data-testid="fee-collection-tool" style={{ padding: '20px 16px', overflowY: 'auto', height: '100%' }}>
+      <style>{`
+        @media (max-width: 640px) {
+          .fee-twocol { grid-template-columns: 1fr !important; }
+          .fee-header { padding: 12px !important; }
+          .fee-section-grid { grid-template-columns: 1fr !important; }
+          .fee-txn-table { font-size: 11px !important; }
+          .fee-txn-table th, .fee-txn-table td { padding: 6px 8px !important; }
+          .fee-stat-grid { grid-template-columns: repeat(2, 1fr) !important; }
+        }
+        @media (max-width: 400px) {
+          .fee-stat-grid { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 650, margin: 0, color: 'var(--color-text-primary)' }}>Fee collection</h1>
@@ -391,7 +404,7 @@ export default function FeeCollection() {
       {error && <div role="alert" style={alertStyle('var(--tool-hex-f87171)')}><AlertTriangle size={16} />{error}</div>}
       {notice && <div style={alertStyle('var(--tool-hex-34d399)')}><CheckCircle size={16} />{notice}</div>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 18 }}>
+      <div className="fee-stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 18 }}>
         {[
           ['Collected', money(summary?.total_collected), 'var(--tool-hex-34d399)'],
           ['Outstanding', money(summary?.total_outstanding), 'var(--tool-hex-f87171)'],
@@ -405,7 +418,7 @@ export default function FeeCollection() {
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: 14, marginBottom: 18 }}>
+      <div className="fee-section-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, marginBottom: 18 }}>
         <section style={panelStyle}>
           <h2 style={panelTitle}><Save size={16} />Record payment</h2>
           <select value={payment.student_id} onChange={e => setPayment(prev => ({ ...prev, student_id: e.target.value }))} style={inputStyle}>
@@ -482,7 +495,7 @@ export default function FeeCollection() {
         </section>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: 14, marginBottom: 18 }}>
+      <div className="fee-section-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, marginBottom: 18 }}>
         <section style={panelStyle}>
           <h2 style={panelTitle}><Percent size={16} />Discount type</h2>
           <input value={discountTypeForm.name} onChange={e => setDiscountTypeForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Discount name" style={inputStyle} />
@@ -551,7 +564,8 @@ export default function FeeCollection() {
         ) : disbursements.length === 0 ? (
           <div style={emptyStyle}>No disbursements recorded this month.</div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div style={{ overflowX: 'auto' }}>
+        <table className="fee-txn-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 400 }}>
             <thead>
               <tr>
                 {['Staff', 'Month', 'Gross', 'Net', 'Status'].map(h => (
@@ -582,6 +596,7 @@ export default function FeeCollection() {
               ))}
             </tbody>
           </table>
+        </div>
         )}
       </div>
 
@@ -616,7 +631,8 @@ export default function FeeCollection() {
         ) : overdue.length === 0 ? (
           <div style={emptyStyle}>No overdue records at this threshold.</div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div style={{ overflowX: 'auto' }}>
+          <table className="fee-txn-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 500 }}>
             <thead><tr>{['Student', 'Class', 'Head', 'Amount', 'Due', 'Status', 'Receipt'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
             <tbody>
               {overdue.map((txn, index) => (
@@ -638,6 +654,7 @@ export default function FeeCollection() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -680,7 +697,7 @@ const panelStyle = { background: 'var(--color-surface)', border: '1px solid var(
 const panelTitle = { display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 10px', color: 'var(--color-text-primary)', fontSize: 13, fontWeight: 750 };
 const inputStyle = { minHeight: 40, width: '100%', boxSizing: 'border-box', background: 'var(--color-surface-raised)', border: '1px solid var(--color-border)', borderRadius: 7, padding: '8px 10px', color: 'var(--color-text-primary)', fontSize: 13, outline: 'none', marginBottom: 8 };
 const textareaStyle = { ...inputStyle, minHeight: 76, resize: 'vertical' };
-const twoCol = { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 };
+const twoCol = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8 };
 const primaryButton = background => ({ minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, background, border: 'none', borderRadius: 8, padding: '11px 18px', color: 'var(--tool-hex-fff)', fontSize: 13, fontWeight: 750, cursor: 'pointer' });
 const iconButton = { minHeight: 44, minWidth: 44, display: 'grid', placeItems: 'center', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, color: 'var(--color-text-primary)', cursor: 'pointer' };
 const alertStyle = color => ({ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: 12, border: `1px solid color-mix(in srgb, ${color} 33%, transparent)`, borderRadius: 8, background: `color-mix(in srgb, ${color} 7%, transparent)`, color, fontSize: 13 });

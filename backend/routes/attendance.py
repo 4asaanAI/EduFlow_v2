@@ -399,14 +399,15 @@ async def get_low_attendance_students(request: Request, threshold: float = 75.0,
             student = await db.students.find_one({"id": a["_id"], "is_active": True}, {"_id": 0})
             if not student:
                 continue
-            # Resolve parent phone: try guardian first, then student record
-            guardian = await db.guardians.find_one({"student_id": a["_id"]}, {"_id": 0})
-            phone = (guardian or {}).get("phone") or student.get("guardian_phone") or student.get("phone") or ""
+            # Resolve parent phone: prefer primary guardian, fall back to any guardian, then student fields
+            primary_guardian = await db.guardians.find_one({"student_id": a["_id"], "is_primary": True}, {"_id": 0})
+            guardian = primary_guardian or await db.guardians.find_one({"student_id": a["_id"]}, {"_id": 0})
+            phone = (guardian or {}).get("phone") or (guardian or {}).get("whatsapp_phone") or student.get("guardian_phone") or student.get("phone") or ""
             class_obj = await db.classes.find_one({"id": student.get("class_id")}, {"_id": 0})
             results.append({
                 "student_id": a["_id"],
                 "student_name": student.get("name", ""),
-                "class": class_obj.get("name", "") + (" " + class_obj.get("section", "") if class_obj else "") if class_obj else student.get("class_id", ""),
+                "class": (class_obj.get("name", "") + (" " + class_obj.get("section", "") if class_obj.get("section") else "")) if class_obj else student.get("class_id", ""),
                 "attendance_rate": rate,
                 "present_days": a["present"],
                 "total_days": a["total"],
