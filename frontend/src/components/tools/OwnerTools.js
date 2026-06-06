@@ -1281,41 +1281,115 @@ export function AiHealthReport() {
   const { currentUser } = useUser();
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState(null);
+  const [error, setError] = useState(null);
+
   const generate = async () => {
     setLoading(true);
-    setTimeout(() => {
+    setError(null);
+    try {
+      const r = await executeTool('get_school_pulse', {}, currentUser);
+      if (!r.success) throw new Error(r.detail || 'Failed to load health data');
+      const d = r.data;
+      const s = d.summary || {};
+
+      const feeRate = parseFloat(s.fee_collection_rate) || 0;
+      const attRate = parseFloat(s.attendance_rate) || 0;
+      const pendingLeaves = s.pending_leaves || 0;
+      const staffAbsent = (d.staff_absent_today || []).length;
+      const chronicCount = (d.chronic_absent_students || []).length;
+
+      // Health score: start at 100, deduct for each problem
+      let score = 100;
+      if (feeRate < 60) score -= 20;
+      else if (feeRate < 80) score -= 10;
+      if (attRate < 70) score -= 20;
+      else if (attRate < 85) score -= 10;
+      if (chronicCount >= 5) score -= 10;
+      else if (chronicCount > 0) score -= 5;
+      if (pendingLeaves >= 5) score -= 5;
+      if (staffAbsent >= 3) score -= 5;
+      score = Math.max(0, score);
+
+      const highlights = [];
+      const feeLabel = feeRate >= 80 ? 'above average' : feeRate >= 60 ? 'average' : 'needs attention';
+      highlights.push(`Fee collection at ${feeRate}% — ${feeLabel}`);
+      const attLabel = attRate >= 85 ? 'on track' : attRate >= 70 ? 'moderate' : 'low';
+      highlights.push(`Student attendance at ${attRate}% — ${attLabel}`);
+      if (staffAbsent === 0) highlights.push('All staff present today');
+      else highlights.push(`${staffAbsent} staff member${staffAbsent > 1 ? 's' : ''} absent today`);
+      if (pendingLeaves === 0) highlights.push('No pending leave requests');
+
+      const alerts = [];
+      if (chronicCount > 0) {
+        const names = (d.chronic_absent_students || []).map(x => x.name).slice(0, 3).join(', ');
+        alerts.push(`${chronicCount} student${chronicCount > 1 ? 's' : ''} with chronic absence — ${names}${chronicCount > 3 ? ' & more' : ''}`);
+      }
+      if (s.fee_overdue && s.fee_overdue !== '₹0') {
+        alerts.push(`Overdue fees: ${s.fee_overdue} needs follow-up`);
+      }
+      if (pendingLeaves > 0) {
+        alerts.push(`${pendingLeaves} leave request${pendingLeaves > 1 ? 's' : ''} pending approval`);
+      }
+      if (staffAbsent > 0) {
+        alerts.push(`Staff absent: ${(d.staff_absent_today || []).join(', ')}`);
+      }
+
       setReport({
         generated: new Date().toLocaleDateString('en-IN'),
-        score: 78,
-        highlights: ['Fee collection at 86% — above average', 'Attendance trending up 3% this month', '2 staff punctuality concerns flagged'],
-        alerts: ['3 students with chronic absence need follow-up', 'Overdue fees: ₹70K needs escalation'],
+        score,
+        highlights,
+        alerts,
+        stats: {
+          students: s.total_students,
+          staff: s.total_staff,
+          feeCollected: s.fee_collected,
+          feeOverdue: s.fee_overdue,
+          feeRate: s.fee_collection_rate,
+          attRate: s.attendance_rate,
+        },
       });
-      setLoading(false);
-    }, 2000);
+    } catch (e) {
+      setError(e.message || 'Failed to generate report');
+    }
+    setLoading(false);
   };
   return (
-    <ToolPage title="AI Health Report" subtitle="Weekly auto-generated school health summary">
+    <ToolPage title="AI Health Report" subtitle="Live school health analysis from real data">
       {!report ? (
         <div style={{ textAlign: 'center', padding: '40px 0' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🏥</div>
           <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 16, marginBottom: 8 }}>AI School Health Report</h3>
-          <p style={{ color: 'var(--tool-hex-737373)', fontSize: 12, marginBottom: 20 }}>Generate a comprehensive AI-powered analysis of your school's current health status</p>
+          <p style={{ color: 'var(--tool-hex-737373)', fontSize: 12, marginBottom: 20 }}>Generate a comprehensive analysis of your school's current health status</p>
+          {error && <p style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 16 }}>{error}</p>}
           <ActionBtn label={loading ? 'Generating...' : 'Generate Report'} onClick={generate} disabled={loading} />
         </div>
       ) : (
         <div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 18 }}>
-            <StatCard value={`${report.score}/100`} label="HEALTH SCORE" color="var(--tool-hex-34d399)" />
-            <StatCard value={report.generated} label="GENERATED" color="var(--tool-hex-4f8ff7)" />
+            <StatCard value={`${report.score}/100`} label="HEALTH SCORE" color={report.score >= 80 ? 'var(--tool-hex-34d399)' : report.score >= 60 ? 'var(--tool-hex-fbbf24)' : 'var(--tool-hex-f87171)'} />
+            <StatCard value={report.stats.feeRate} label="FEE COLLECTED" color="var(--tool-hex-4f8ff7)" />
+            <StatCard value={report.stats.attRate} label="ATTENDANCE" color="var(--tool-hex-a78bfa)" />
             <StatCard value={report.alerts.length} label="ACTION ITEMS" color="var(--tool-hex-f87171)" />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 18 }}>
+            <StatCard value={report.stats.students} label="STUDENTS" color="var(--tool-hex-e5e5e5)" />
+            <StatCard value={report.stats.staff} label="STAFF" color="var(--tool-hex-e5e5e5)" />
+            <StatCard value={report.stats.feeCollected} label="FEES COLLECTED" color="var(--tool-hex-34d399)" />
+            <StatCard value={report.stats.feeOverdue} label="FEES OVERDUE" color="var(--tool-hex-f87171)" />
           </div>
           <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11, padding: 20, marginBottom: 14 }}>
             <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-34d399)', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Highlights</h3>
             {report.highlights.map((h, i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 13, color: 'var(--tool-hex-a3a3a3)' }}><CheckCircle size={12} color="var(--tool-hex-34d399)" />{h}</div>)}
           </div>
-          <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11, padding: 20 }}>
-            <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-f87171)', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Action Items</h3>
-            {report.alerts.map((a, i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 13, color: 'var(--tool-hex-a3a3a3)' }}><AlertTriangle size={12} color="var(--tool-hex-f87171)" />{a}</div>)}
+          {report.alerts.length > 0 && (
+            <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11, padding: 20, marginBottom: 14 }}>
+              <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-f87171)', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Action Items</h3>
+              {report.alerts.map((a, i) => <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 13, color: 'var(--tool-hex-a3a3a3)' }}><AlertTriangle size={12} color="var(--tool-hex-f87171)" />{a}</div>)}
+            </div>
+          )}
+          <div style={{ textAlign: 'right' }}>
+            <span style={{ fontSize: 11, color: 'var(--tool-hex-737373)', marginRight: 12 }}>Generated {report.generated}</span>
+            <ActionBtn label="Refresh" onClick={() => { setReport(null); generate(); }} />
           </div>
         </div>
       )}
