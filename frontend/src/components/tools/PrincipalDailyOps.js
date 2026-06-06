@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   CalendarDays, CheckCircle, XCircle, UserCheck, IndianRupee,
-  BookOpen, Users, ClipboardList, Award, AlertCircle,
+  BookOpen, Users, ClipboardList, Award, AlertCircle, RefreshCw,
 } from 'lucide-react';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, ActionBtn } from './ToolPage';
@@ -182,7 +182,9 @@ export default function PrincipalDailyOps() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [lessonCompletion, setLessonCompletion] = useState([]);
+  const [lessonLoading, setLessonLoading] = useState(true);
   const [classSummary, setClassSummary] = useState([]);
+  const [classSummaryLoading, setClassSummaryLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -215,20 +217,24 @@ export default function PrincipalDailyOps() {
 
   useEffect(() => {
     (async () => {
+      setLessonLoading(true);
       try {
         const month = new Date().toISOString().slice(0, 7);
         const res = await fetch(`${API}/academics/lesson-plan-completion?month=${month}`, { headers: h() });
         if (res.ok) { const d = await res.json(); setLessonCompletion(d.data || []); }
       } catch {}
+      setLessonLoading(false);
     })();
   }, []);
 
   useEffect(() => {
     (async () => {
+      setClassSummaryLoading(true);
       try {
         const res = await fetch(`${API}/attendance/class-summary`, { headers: h() });
         if (res.ok) { const d = await res.json(); setClassSummary(d?.data || []); }
       } catch {}
+      setClassSummaryLoading(false);
     })();
   }, []);
 
@@ -310,7 +316,12 @@ export default function PrincipalDailyOps() {
         {/* Leave Approvals */}
         <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: '16px 18px' }}>
           <SectionHeader title="Leave Approvals" count={leaves.length} color="#a78bfa" icon={ClipboardList} />
-          {leaves.length === 0 ? (
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--tool-hex-555)', fontSize: 12 }}>
+              <RefreshCw size={14} style={{ animation: 'spin 0.8s linear infinite', display: 'block', margin: '0 auto 6px' }} />
+              Loading...
+            </div>
+          ) : leaves.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--tool-hex-555)', fontSize: 12 }}>No pending leave requests</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -329,7 +340,12 @@ export default function PrincipalDailyOps() {
         {/* Certificate Approvals */}
         <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: '16px 18px' }}>
           <SectionHeader title="Certificates" count={certificates.length} color="#4f8ff7" icon={Award} />
-          {certificates.length === 0 ? (
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--tool-hex-555)', fontSize: 12 }}>
+              <RefreshCw size={14} style={{ animation: 'spin 0.8s linear infinite', display: 'block', margin: '0 auto 6px' }} />
+              Loading...
+            </div>
+          ) : certificates.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--tool-hex-555)', fontSize: 12 }}>No certificates found</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -344,7 +360,12 @@ export default function PrincipalDailyOps() {
       {/* Substitution Plan */}
       <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: '16px 18px', marginBottom: 24 }}>
         <SectionHeader title="Substitution Plan" count={items.length} color="#fb923c" icon={UserCheck} />
-        {items.length === 0 ? (
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--tool-hex-555)', fontSize: 12 }}>
+            <RefreshCw size={14} style={{ animation: 'spin 0.8s linear infinite', display: 'block', margin: '0 auto 6px' }} />
+            Loading...
+          </div>
+        ) : items.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--tool-hex-555)', fontSize: 12 }}>
             No absent-teacher conflicts for {date}
           </div>
@@ -371,7 +392,12 @@ export default function PrincipalDailyOps() {
         {/* Class Attendance */}
         <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: '16px 18px' }}>
           <SectionHeader title="Today's Attendance" color="#34d399" icon={Users} />
-          {classSummary.length === 0 ? (
+          {classSummaryLoading ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--tool-hex-555)', fontSize: 12 }}>
+              <RefreshCw size={14} style={{ animation: 'spin 0.8s linear infinite', display: 'block', margin: '0 auto 6px' }} />
+              Loading...
+            </div>
+          ) : classSummary.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--tool-hex-555)', fontSize: 12 }}>No attendance data yet</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -391,7 +417,12 @@ export default function PrincipalDailyOps() {
         {/* Lesson Plan Completion */}
         <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: '16px 18px' }}>
           <SectionHeader title="Lesson Plan Completion" color="#4f8ff7" icon={BookOpen} />
-          {lessonCompletion.length === 0 ? (
+          {lessonLoading ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--tool-hex-555)', fontSize: 12 }}>
+              <RefreshCw size={14} style={{ animation: 'spin 0.8s linear infinite', display: 'block', margin: '0 auto 6px' }} />
+              Loading...
+            </div>
+          ) : lessonCompletion.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--tool-hex-555)', fontSize: 12 }}>No lesson plans for this month</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

@@ -829,7 +829,12 @@ export function StaffAttendanceTracker({ title = 'Staff Tracker', subtitle = 'St
 
               {/* Staff Rows */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 420, overflowY: 'auto' }}>
-                {staff.length === 0 ? (
+                {loading ? (
+                  <div style={{ textAlign: 'center', padding: 24, color: 'var(--tool-hex-737373)', fontSize: 13 }}>
+                    <RefreshCw size={16} style={{ animation: 'spin 0.8s linear infinite', display: 'block', margin: '0 auto 6px' }} />
+                    Loading staff...
+                  </div>
+                ) : staff.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: 24, color: 'var(--tool-hex-737373)', fontSize: 13 }}>No staff found.</div>
                 ) : staff.map(s => {
                   const current = markData[s.id] || 'present';
@@ -876,7 +881,12 @@ export function StaffAttendanceTracker({ title = 'Staff Tracker', subtitle = 'St
               {saveMsg && (
                 <div style={{ marginBottom: 10, fontSize: 12, color: 'var(--tool-hex-34d399)', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.3)', borderRadius: 8, padding: '8px 12px' }}>{saveMsg}</div>
               )}
-              {staff.length === 0 ? (
+              {loading ? (
+                <div style={{ textAlign: 'center', padding: 32, color: 'var(--tool-hex-737373)', fontSize: 13 }}>
+                  <RefreshCw size={18} style={{ animation: 'spin 0.8s linear infinite', display: 'block', margin: '0 auto 8px' }} />
+                  Loading staff...
+                </div>
+              ) : staff.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: 32, color: 'var(--tool-hex-737373)', fontSize: 13 }}>No staff data. Add staff first.</div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -906,9 +916,14 @@ export function StaffAttendanceTracker({ title = 'Staff Tracker', subtitle = 'St
       {/* Leaves Tab */}
       {activeTab === 'leaves' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {leaves.length === 0
-            ? <div style={{ padding: 24, textAlign: 'center', color: 'var(--tool-hex-737373)', fontSize: 13, background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11 }}>No pending leave requests</div>
-            : leaves.map((lr, i) => (
+          {loading ? (
+            <div style={{ padding: 28, textAlign: 'center', color: 'var(--tool-hex-737373)', fontSize: 13, background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11 }}>
+              <RefreshCw size={16} style={{ animation: 'spin 0.8s linear infinite', display: 'block', margin: '0 auto 8px' }} />
+              Loading leave requests...
+            </div>
+          ) : leaves.length === 0 ? (
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--tool-hex-737373)', fontSize: 13, background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11 }}>No pending leave requests</div>
+          ) : leaves.map((lr, i) => (
               <div key={lr.id || i} style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <div style={{ fontWeight: 600, color: 'var(--tool-hex-e5e5e5)', fontSize: 13 }}>{lr.staff_name}</div>
@@ -1323,7 +1338,11 @@ export function SmartAlerts() {
         <StatCard value={data?.total_alerts || 0} label="TOTAL ALERTS" color="var(--tool-hex-fbbf24)" />
         <StatCard value={data?.critical_count || 0} label="CRITICAL" color="var(--tool-hex-f87171)" />
       </div>
-      {alerts.length === 0 ? <div style={{ padding: 32, textAlign: 'center', color: 'var(--tool-hex-737373)', background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11, fontSize: 13 }}>No active alerts — all good!</div> : (
+      {loading ? (
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--tool-hex-737373)', background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11, fontSize: 13 }}>
+          Loading alerts...
+        </div>
+      ) : alerts.length === 0 ? <div style={{ padding: 32, textAlign: 'center', color: 'var(--tool-hex-737373)', background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11, fontSize: 13 }}>No active alerts — all good!</div> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {alerts.map((a, i) => (
             <div key={i} style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
