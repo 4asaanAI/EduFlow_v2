@@ -102,6 +102,12 @@ const ALL_MODAL_TABS = [
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 const HOUSES = ['Blue', 'Green', 'Red', 'Yellow'];
+const HOUSE_COLORS = {
+  Blue:   { bg: 'rgba(59,130,246,0.12)',  color: '#3b82f6' },
+  Green:  { bg: 'rgba(34,197,94,0.12)',   color: '#22c55e' },
+  Red:    { bg: 'rgba(239,68,68,0.12)',   color: '#ef4444' },
+  Yellow: { bg: 'rgba(234,179,8,0.12)',   color: '#eab308' },
+};
 
 function blankGuardian(relation) {
   return { relation, name: '', phone: '', occupation: '', email: '', photo_url: null, _tmpPhotoFile: null };
@@ -462,7 +468,7 @@ function DetailPanel({ studentId, onClose, onEdit, canManage }) {
                 </div>
                 <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: data.is_active ? 'rgba(52,211,153,0.12)' : 'rgba(100,116,139,0.12)', color: data.is_active ? '#34d399' : 'var(--c-faint)' }}>{data.status || 'active'}</span>
-                  {data.house && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: 'rgba(79,143,247,0.12)', color: '#4f8ff7' }}>{data.house} House</span>}
+                  {data.house && (() => { const hc = HOUSE_COLORS[data.house] || { bg: 'rgba(79,143,247,0.12)', color: '#4f8ff7' }; return <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: hc.bg, color: hc.color }}>{data.house} House</span>; })()}
                   {data.blood_group && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: 'rgba(251,113,133,0.12)', color: '#fb7185' }}>{data.blood_group}</span>}
                 </div>
               </div>

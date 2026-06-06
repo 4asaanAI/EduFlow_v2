@@ -391,7 +391,7 @@ async def update_student(student_id: str, request: Request):
         blocked = set(update) - allowed_transport_fields
         if blocked:
             raise HTTPException(403, "Transport Head can only update transport assignment fields")
-    if "class_id" in update:
+    if "class_id" in update and update["class_id"] != existing.get("class_id"):
         await _validate_class(db, update["class_id"])
     if "admission_number" in update and update["admission_number"] != existing.get("admission_number"):
         duplicate = await db.students.find_one(_student_query({"admission_number": update["admission_number"]}), {"_id": 0})
