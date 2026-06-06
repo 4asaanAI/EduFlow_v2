@@ -331,7 +331,20 @@ class FakeCollection:
                                 condition, true_value, false_value = sum_expr["$cond"]
                                 left, right = condition.get("$eq", [None, None])
                                 left_value = _get_nested(doc, left[1:]) if isinstance(left, str) and left.startswith("$") else left
-                                bucket[out_key] = bucket.get(out_key, 0) + (true_value if left_value == right else false_value)
+                                # Resolve true/false as field refs if they start with "$"
+                                def _rv(v):
+                                    if isinstance(v, str) and v.startswith("$"):
+                                        return _get_nested(doc, v[1:]) or 0
+                                    if isinstance(v, dict) and "$ifNull" in v:
+                                        fref, default = v["$ifNull"]
+                                        got = _get_nested(doc, fref[1:]) if isinstance(fref, str) and fref.startswith("$") else fref
+                                        return got if got is not None else default
+                                    return v
+                                bucket[out_key] = bucket.get(out_key, 0) + _rv(true_value if left_value == right else false_value)
+                            elif isinstance(sum_expr, dict) and "$ifNull" in sum_expr:
+                                fref, default = sum_expr["$ifNull"]
+                                got = _get_nested(doc, fref[1:]) if isinstance(fref, str) and fref.startswith("$") else fref
+                                bucket[out_key] = bucket.get(out_key, 0) + (got if got is not None else default)
                             else:
                                 bucket[out_key] = bucket.get(out_key, 0) + sum_expr
                         elif "$addToSet" in expr:

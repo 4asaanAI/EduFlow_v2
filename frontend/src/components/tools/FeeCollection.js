@@ -421,6 +421,7 @@ export default function FeeCollection() {
         {[
           ['Collected', money(summary?.total_collected), 'var(--tool-hex-34d399)'],
           ['Outstanding', money(summary?.total_outstanding), 'var(--tool-hex-f87171)'],
+          ['Collection Rate', summary?.collection_rate || '0%', 'var(--tool-hex-4f8ff7)'],
           ['Defaulters', summary?.defaulters || 0, 'var(--tool-hex-fbbf24)'],
           ['Discounts', money(discountSummary?.total_discount_value), 'var(--tool-hex-a78bfa)'],
         ].map(([label, value, color]) => (

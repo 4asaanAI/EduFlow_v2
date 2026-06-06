@@ -100,7 +100,7 @@ export default function SchoolPulse() {
         <div className="pulse-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
           <StatCard value={summary.total_students || 0} label="Enrolled Students" color="var(--color-accent-blue)" />
           <StatCard value={summary.attendance_rate || 'N/A'} label="Today's Attendance" color="var(--color-success)" />
-          <StatCard value={data?.fee_stats?.paid || '₹0'} label="Fees Collected" color="var(--color-accent-blue)" />
+          <StatCard value={data?.fee_stats?.paid || '₹0'} label="Fees Collected" color="var(--color-accent-blue)" sublabel={data?.fee_stats?.collection_rate ? `${data.fee_stats.collection_rate} collected` : undefined} />
           <StatCard value={data?.fee_stats?.overdue || '₹0'} label="Overdue Fees" color="var(--color-danger)" />
         </div>
 

@@ -114,17 +114,55 @@ async def _student_map(db, txns):
 
 
 async def _fee_summary_payload(db, fee_period: str | None = None) -> dict:
+    """Canonical fee summary using aggregation (no row limit) + partial-payment handling.
+
+    Formula (same as tool_get_fee_summary for consistency):
+      collected   = SUM(amount WHERE paid) + SUM(paid_amount WHERE partial)
+      outstanding = SUM(amount WHERE overdue/pending/unpaid) + SUM(amount-paid_amount WHERE partial)
+      rate        = collected / (collected + outstanding) * 100
+      defaulters  = distinct student_ids with any outstanding balance
+    """
     query = _fee_query({"fee_period": fee_period}) if fee_period else _fee_query()
-    txns = await db.fee_transactions.find(query, {"_id": 0}).to_list(2000)
-    total_collected = sum(float(t.get("amount", 0)) for t in txns if t.get("status") == "paid")
-    outstanding_txns = [t for t in txns if t.get("status") in ("pending", "overdue", "unpaid")]
-    total_outstanding = sum(float(t.get("amount", 0)) for t in outstanding_txns)
-    defaulters = len(set(t.get("student_id") for t in outstanding_txns if t.get("student_id")))
+    pipeline = [
+        {"$match": query},
+        {
+            "$group": {
+                "_id": "$status",
+                "total_amount": {"$sum": "$amount"},
+                "total_paid_amount": {"$sum": {"$ifNull": ["$paid_amount", 0]}},
+                "count": {"$sum": 1},
+                "student_ids": {"$addToSet": "$student_id"},
+            }
+        },
+    ]
+    rows = await db.fee_transactions.aggregate(pipeline).to_list(20)
+    s = {r["_id"]: r for r in rows}
+
+    def _amount(status: str) -> float:
+        return float(s.get(status, {}).get("total_amount", 0))
+
+    def _paid_amt(status: str) -> float:
+        return float(s.get(status, {}).get("total_paid_amount", 0))
+
+    def _sids(status: str) -> set:
+        return {sid for sid in s.get(status, {}).get("student_ids", []) if sid}
+
+    total_collected = _amount("paid") + _paid_amt("partial")
+    partial_remaining = max(0.0, _amount("partial") - _paid_amt("partial"))
+    total_outstanding = _amount("overdue") + _amount("pending") + _amount("unpaid") + partial_remaining
+    total_all = total_collected + total_outstanding
+    collection_rate = round(total_collected / total_all * 100, 1) if total_all > 0 else 0.0
+
+    defaulter_ids = _sids("overdue") | _sids("pending") | _sids("unpaid") | _sids("partial")
+    defaulters = len(defaulter_ids)
+    transactions = sum(r.get("count", 0) for r in rows)
+
     return {
         "total_collected": total_collected,
         "total_outstanding": total_outstanding,
         "defaulters": defaulters,
-        "transactions": len(txns),
+        "transactions": transactions,
+        "collection_rate": f"{collection_rate}%",
         "period": fee_period,
         "generated_at": datetime.now().isoformat(),
     }
