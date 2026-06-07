@@ -68,7 +68,7 @@ Tracker row for this initiative: `_bmad-output/platform-quality-sweep.md` (row 1
 
 **Destructive-action rule (Shubham):** any AI deletion requires a **two-step confirmation** + an **actor-tagged deletion log** ("who deleted what, when") — Story F.10. Student delete/erase is excluded from the AI entirely.
 
-**🔒 Phase-1 role scope (user):** every NEW capability (agentic chaining, self-learning, all CRUD tools J/K, destructive actions) is enabled for **Owner + Principal ONLY** in Phase 1 — even where the REST route permits other roles. Other roles come in **Phase 2 (Epic H)**. Existing tools keep their current roles (no regression).
+**🔒 Phase-1 role LOCKDOWN (user):** the **entire AI write/action surface** — agentic chaining, self-learning, all CRUD tools (J/K), destructive actions, **and the existing write tools** — is locked to **Owner + Principal ONLY** during Phase 1 (Story F.11), even where the REST route permits other roles. So during the pilot, other staff (incl. teachers' current attendance-marking) temporarily have no AI write access; it's restored/expanded to **staff roles** in **Phase 2 (Epic H)**. **Students are exempt and unchanged** — their read-only experience stays exactly as-is and is permanently excluded from the write/action/self-learning expansion ("good as they are").
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 stepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics', 'step-03-create-stories', 'step-04-final-validation']
 status: 'complete — awaiting Shubham review before implementation'
-storyCount: 53
+storyCount: 54
 epicCount: 11
 inputDocuments:
   - '_bmad-output/planning-artifacts/prd-ai-layer-hardening.md'
@@ -17,13 +17,15 @@ initiative: 'ai-layer-hardening'
 
 This document decomposes the PRD and Architecture for the AI Layer Hardening initiative into implementable, vertical-slice stories. Brownfield discipline: no new UI, plan-then-confirm-once, Owner/Principal-first, preserve Part 2 invariants + the existing 699 backend tests.
 
-> **🔒 Phase-1 role scope (user, 2026-06-07):** Every NEW capability this initiative adds — agentic planner/chaining (E), self-learning (G), and all CRUD tools (Epics J/K) + the destructive-action policy (F.10) — is enabled for **Owner and Principal profiles ONLY** in Phase 1. Other roles (other admin sub-categories, teacher, student) are deferred to **Phase 2 (Epic H)**, *even where the underlying REST route permits them* (new AI tools are gated to owner+principal regardless). **Nuance — no regression:** the existing read/write tools hardened in Epics A–C keep their CURRENT role assignments (e.g., teacher attendance, student reads); the owner/principal-only rule applies to the NEW surface, not to stripping access from already-shipped tools.
+> **🔒 Phase-1 role LOCKDOWN (user, 2026-06-07):** The ENTIRE AI write/action surface — the agentic engine (E), self-learning (G), CRUD tools (J/K), the destructive-action policy (F.10), **and the existing write tools hardened in Epics A–C** — is locked to **Owner + Principal ONLY** during Phase 1 (a deliberate, reversible pilot scope; Story **F.11** implements the gate). During the pilot, other staff (teacher, accountant, other admin sub-categories) do **not** get AI write/action access even if some had it before (e.g., teacher `mark_attendance`); it is restored/expanded in **Phase 2 (Epic H)** — for **staff roles only**.
+>
+> **Students are unchanged and permanently excluded from the write/action expansion** ("good as they currently are"): they keep their CURRENT read-only, content-filtered tools exactly as-is — not locked out, not expanded, now or in Phase 2.
 
 ## Requirements Inventory
 
 ### Functional Requirements
 
-FR1–FR6 (Agentic Planning & Multi-Step Execution); FR7–FR12 (Confirmation & Atomic Write Safety); FR13–FR15 (Action–UI Data Parity); FR16–FR18 (Authorization & Multi-Tenant Scoping); FR19–FR23 (Data Protection & DPDP); FR24–FR26, FR30 (Safety Operations & Observability); FR27–FR29 (Role Coverage & Phased Rollout); FR31–FR36 (AI Self-Learning); **FR37–FR42 (CRUD Coverage — student/fee/academic/org/staff + destructive-action policy)**. _Full text in `prd-ai-layer-hardening.md`._
+FR1–FR6 (Agentic Planning & Multi-Step Execution); FR7–FR12 (Confirmation & Atomic Write Safety); FR13–FR15 (Action–UI Data Parity); FR16–FR18 (Authorization & Multi-Tenant Scoping); FR19–FR23 (Data Protection & DPDP); FR24–FR26, FR30 (Safety Operations & Observability); FR27–FR29 (Role Coverage & Phased Rollout); FR31–FR36 (AI Self-Learning); **FR37–FR42 (CRUD Coverage — student/fee/academic/org/staff + destructive-action policy); FR43 (Phase-1 Owner/Principal-only action lockdown)**. _Full text in `prd-ai-layer-hardening.md`._
 
 ### NonFunctional Requirements
 
@@ -50,13 +52,13 @@ NFR1–NFR4 (Performance); NFR5–NFR9 (Security & Privacy); NFR10–NFR14, NFR2
 - **Epic D:** FR9, FR10, FR11, FR26
 - **Epic E:** FR1, FR2, FR3, FR4, FR5, FR6, FR7, FR8, FR12, FR30
 - **Epic F:** FR15, FR19, FR20, FR21, FR23, FR24, FR25
-- **Epic F (also):** FR42 (destructive-action two-step + deletion audit — Story F.10)
+- **Epic F (also):** FR42 (destructive-action two-step + deletion audit — Story F.10); FR43 (Phase-1 Owner/Principal-only action lockdown — Story F.11)
 - **Epic G:** FR31, FR32, FR33, FR34, FR35, FR36 (self-learning addendum)
 - **Epic J:** FR37 (student create/update), FR41 (staff create/edit)
 - **Epic K:** FR38 (fee config), FR39 (academic structure), FR40 (org config)
 - **Epic H (Phase 2):** FR28 (+ all of A–K extended to other roles)
 
-_Every FR1–FR42 mapped. NFRs are covered within the epic whose ADs they quantify (e.g., NFR10/11/21/22 in Epic D; NFR5–9 in Epic F; NFR18–19/23–25 across D/F). CRUD epics (J/K) reuse the same engine + DPDP + parity + audit; no new UI (they wrap existing REST capabilities)._
+_Every FR1–FR43 mapped. NFRs are covered within the epic whose ADs they quantify (e.g., NFR10/11/21/22 in Epic D; NFR5–9 in Epic F; NFR18–19/23–25 across D/F). CRUD epics (J/K) reuse the same engine + DPDP + parity + audit; no new UI (they wrap existing REST capabilities)._
 
 ## Epic List
 
@@ -552,6 +554,19 @@ So that destructive changes to the school database are deliberate and fully trac
 **And** student hard-delete and DPDP-erase are rejected by the assistant entirely (UI-only)
 **And** the two-step destructive flow is enabled for Owner + Principal only in Phase 1 (other roles deferred to Epic H).
 
+### Story F.11: Phase-1 action-authorization lockdown (Owner + Principal only)
+As an Owner/Principal piloting the assistant,
+I want only Owner and Principal to have AI write/action access during the pilot,
+So that the live trial is contained to the two acceptance-gate profiles while everyone else's experience is untouched.
+
+**Acceptance Criteria:**
+**Given** a Phase-1 action-scope policy,
+**When** any AI write/action tool is dispatched (existing Epic A–C tools, CRUD tools J/K, destructive ops),
+**Then** it is permitted only for `role=owner` OR (`role=admin` AND `sub_category=principal`) — all other staff roles are refused at `_is_tool_authorized` (before any token/rate slot), even where the REST route permits them
+**And** the policy is a single, clearly-documented switch that Phase 2 (Epic H) widens to other staff roles without engine changes
+**And** **student read tools are unaffected** (students keep their current read-only, content-filtered experience; they are never granted write/action access)
+**And** a regression test asserts a teacher/accountant AI write attempt is refused in Phase 1, while their reads and the owner/principal writes still work.
+
 ---
 
 ## Epic I: Frontend — multi-step plan card & status messaging
@@ -766,15 +781,16 @@ So that high-level org config is doable from chat, safely.
 
 ### Story H.1: Extend the hardened pattern to remaining roles
 As a school,
-I want every profile (accountant, receptionist, maintenance, IT-tech, teacher, student) to get the same hardened, parity-checked, self-learning assistant,
-So that the whole school benefits after the Owner/Principal pilot succeeds.
+I want the hardened, parity-checked, self-learning assistant extended to the other STAFF profiles (accountant, receptionist, maintenance, IT-tech, teacher),
+So that the whole staff benefits after the Owner/Principal pilot succeeds.
 
 **Acceptance Criteria:**
 **Given** Owner + Principal have signed off on the pilot,
-**When** Phase 2 planning breaks this epic into per-role stories reusing Epics A–K's engine (no engine changes),
-**Then** each role's write tools get a shared service + parity test, role-scoped self-learning, and DPDP controls
-**And** the new CRUD tools (Epics J/K) are opened to the appropriate additional roles (e.g., fee config → accountant, staff → admin) — they were Owner/Principal-only in Phase 1
-**And** student-facing self-learning gets an explicit DPDP re-review (minors as data principals).
+**When** Phase 2 widens the F.11 action-scope policy and breaks this epic into per-role stories reusing Epics A–K's engine (no engine changes),
+**Then** each STAFF role's write tools get a shared service + parity test, role-scoped self-learning, and DPDP controls
+**And** the new CRUD tools (Epics J/K) are opened to the appropriate additional staff roles (e.g., fee config → accountant, staff → admin) — they were Owner/Principal-only in Phase 1
+**And** the existing write tools temporarily locked by F.11 (e.g., teacher attendance) are restored to their appropriate roles
+**And** **Students are explicitly OUT OF SCOPE** — their current read-only, content-filtered experience is left unchanged ("good as they are"); no write/action or self-learning capability is added for students in Phase 2 or later.
 
 > **Found Defects (resolved in Epic B):** (1) `award_house_points` wrong data model + no audit → B.3; (2) `apply_discount` owner-approval bypass → B.2; (3) `record_fee_payment` no idempotency (double-charge) → B.1. Each has a permanent regression test (B.4).
 
@@ -782,7 +798,7 @@ So that the whole school benefits after the Owner/Principal pilot succeeds.
 
 ## Final Validation Summary
 
-- **Epics:** 11 (A–G + I/J/K Phase 1, H Phase 2). **Stories:** 53. **Execution order:** A→B→C→D→E→I→F→J→K→G→H.
+- **Epics:** 11 (A–G + I/J/K Phase 1, H Phase 2). **Stories:** 54. **Execution order:** A→B→C→D→E→I→F→J→K→G→H.
 - **FR coverage:** FR1–FR36 all mapped to ≥1 story (see FR Coverage Map + per-story references).
 - **Coverage caveats (intentional):** FR23 (student content-filter) preserved as a regression guard in Phase 1; full student-facing verification in Epic H (students = Phase 2). FR26 (per-write write-ahead audit) covered implicitly by executor stories D.3/D.5 (extends the existing Part-2 audit).
 - **Dependencies:** no forward dependencies within or across epics; each epic standalone, requiring only prior epics. Test substrate (D.1) precedes transaction stories; plan-token (E.1) precedes plan execution (E.5).
@@ -812,6 +828,6 @@ A cynical gap-audit found 15 issues; all are now addressed in the plan:
 | 14 | No data-remediation if pilot writes bad data | **Story F.9** (revert-dispatch runbook) |
 | 15 | `actor_ctx` underspecified | **AD14** + Story A.1 (pinned contract) |
 
-**Final totals:** 11 epics (A–K), 53 stories, FR1–FR42 + UX-DR1–5 covered.
+**Final totals:** 11 epics (A–K), 54 stories, FR1–FR43 + UX-DR1–5 covered.
 
 > **Shubham review changes (2026-06-07):** Story A.0 removed (its `actor_ctx` contract folded into A.1; cutover safety via sequencing + shadow + kill-switch). Added CRUD coverage per Shubham: **Epic J** (student & staff create/update — NO AI student delete/erase), **Epic K** (fee/academic/org-config CRUD), and **Story F.10** (two-step destructive-action confirm + actor-tagged deletion audit). New requirements FR37–FR42 + architecture AD15.
