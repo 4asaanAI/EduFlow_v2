@@ -103,6 +103,10 @@ Each gets a permanent regression test (B.4).
 
 ---
 
+## Execution model — one Epic per context window
+
+Implementation runs **one Epic per fresh context window**, per **`_bmad-output/EPIC-EXECUTION-PROTOCOL.md`**. Each session reloads the plan, implements exactly one epic's stories (create-story → dev-story → tests → code-review), updates the tracker + commits, then **emits a handoff prompt for the next epic using a fixed template** (verbatim, only the epic IDs change, so the prompt never drifts). Order: A → B → C → D → E → I → F → J → K → G → (Phase 2, gated) H.
+
 ## How to resume (concrete)
 
 ```
