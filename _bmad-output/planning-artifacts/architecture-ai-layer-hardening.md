@@ -131,6 +131,13 @@ FakeDb (`tests/backend/conftest.py`) has no sessions/transactions/unique-index e
 - **Partial-plan authorization = reject whole plan.** If ANY step is outside the user's role/sub_category, the entire plan is rejected with which-step feedback — never silently truncated to the allowed steps.
 - **`actor_ctx` contract is pinned** to exactly what services consume: `{user_id, role, sub_category, school_id, branch_id, actor_name}` (+ `now_fn` injection for testability). Services needing more must extend the dataclass, not read `Request`.
 
+### AD15 — CRUD tool exposure + destructive-action policy (Shubham review, 2026-06-07)
+Expose existing UI/REST capabilities to the assistant as **new AI registry tools that wrap the same services** (no new UI). They reuse the whole engine: AD7 shared services (extract where a service doesn't exist yet), AD3/AD4 plan-confirm + atomic executor, AD8 DPDP redaction/scoping, AD10 parity tests, AD6 idempotency.
+- **In scope (Owner/Principal, Phase 1):** student create/update (+ guardians/photo/soft-deactivate), fee structures + discount types, classes/sections/houses, branches + school settings + year-end transition, staff create/edit.
+- **Excluded from the assistant (UI-only):** student **hard-delete** (`DELETE /students/{id}`) and **DPDP-erase** (`/students/{id}/erase`) — irreversible on a minor's record.
+- **Destructive-action policy:** any assistant-reachable destructive op (delete fee structure/class/house/discount-type/branch, etc.) requires a **two-step confirmation** — the normal plan-confirm **plus** an explicit destructive re-acknowledgment (the confirm card flags destructive steps and requires a distinct confirm) — and writes an **actor-tagged deletion audit** (`actor, target, action=delete, when`) queryable as "who deleted what." Destructive steps are never auto-batched silently into a multi-step plan without that second gate.
+- Authorization unchanged: each new tool is gated by `_is_tool_authorized` to the same role/sub_category the REST route requires (e.g., branches/settings = owner-level).
+
 ### Decision Impact & Cross-Component Contract
 The `(db, actor_ctx, validated_params, session=, idempotency_key=)` service signature (AD7) is the contract tying AD4 (session), AD6 (idempotency_key), AD8 (scope in actor_ctx), and parity (AD10) together. Build order A→B→C→D; AD12 inside B is the test gate for the integrity guarantees.
 

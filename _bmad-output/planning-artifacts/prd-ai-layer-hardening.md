@@ -332,6 +332,17 @@ A server-owned agentic layer over an existing FastAPI monolith: the LLM **propos
 
 > **Note:** FR31–FR36 are a deliberate scope **addition** beyond pure hardening (user decision, 2026-06-07), delivered by cloning Odysseus's Memory/Skills subsystem and customizing for EduFlow's multi-tenant + DPDP context. Phase 1 = Owner/Principal only; other profiles deferred to Phase 2.
 
+### CRUD Coverage (Addendum — Shubham review, 2026-06-07)
+These expose **existing UI/REST capabilities** to the assistant (no new UI surface — consistent with FR29) and run through the same shared-service + plan-then-confirm-once + parity + audit engine as every other write tool.
+- **FR37:** The assistant can **create and update student records** (personal fields, guardians, photo, status/soft-deactivate). **Hard-delete and DPDP-erase of a student are NOT assistant-reachable — UI-only** (irreversible action on a minor's record).
+- **FR38:** The assistant can manage **fee structures and discount types** (create/update; destructive variants per FR42).
+- **FR39:** The assistant can manage **classes, sections, and houses** (create/update; destructive variants per FR42).
+- **FR40:** The assistant can manage **branches and school settings** (incl. year-end transition), within the acting user's authority.
+- **FR41:** The assistant can **create and edit staff records** (distinct from the existing leave/attendance tools).
+- **FR42:** **Destructive-action policy.** Any destructive operation performed via the assistant (e.g., deleting a fee structure, class, discount type, branch) requires a **two-step confirmation** (beyond the normal plan-confirm) AND writes an **actor-tagged deletion audit** capturing who deleted what and when. Student hard-delete/erase is excluded from the assistant entirely (FR37).
+
+> **Note:** FR37–FR42 cover "the actions a profile owner performs day-to-day." Phase 1 = Owner/Principal; other roles in Phase 2 (Epic H). All inherit DPDP controls (FR19–23, redaction, audited minor access) and least-privilege scoping (FR16–18).
+
 ## Non-Functional Requirements
 
 ### Performance

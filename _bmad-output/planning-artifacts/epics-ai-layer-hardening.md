@@ -1,8 +1,8 @@
 ---
 stepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics', 'step-03-create-stories', 'step-04-final-validation']
 status: 'complete — awaiting Shubham review before implementation'
-storyCount: 48
-epicCount: 9
+storyCount: 53
+epicCount: 11
 inputDocuments:
   - '_bmad-output/planning-artifacts/prd-ai-layer-hardening.md'
   - '_bmad-output/planning-artifacts/architecture-ai-layer-hardening.md'
@@ -21,7 +21,7 @@ This document decomposes the PRD (30 FRs / 25 NFRs) and Architecture (13 ADs / 8
 
 ### Functional Requirements
 
-FR1–FR6 (Agentic Planning & Multi-Step Execution); FR7–FR12 (Confirmation & Atomic Write Safety); FR13–FR15 (Action–UI Data Parity); FR16–FR18 (Authorization & Multi-Tenant Scoping); FR19–FR23 (Data Protection & DPDP); FR24–FR26, FR30 (Safety Operations & Observability); FR27–FR29 (Role Coverage & Phased Rollout). _Full text in `prd-ai-layer-hardening.md`._
+FR1–FR6 (Agentic Planning & Multi-Step Execution); FR7–FR12 (Confirmation & Atomic Write Safety); FR13–FR15 (Action–UI Data Parity); FR16–FR18 (Authorization & Multi-Tenant Scoping); FR19–FR23 (Data Protection & DPDP); FR24–FR26, FR30 (Safety Operations & Observability); FR27–FR29 (Role Coverage & Phased Rollout); FR31–FR36 (AI Self-Learning); **FR37–FR42 (CRUD Coverage — student/fee/academic/org/staff + destructive-action policy)**. _Full text in `prd-ai-layer-hardening.md`._
 
 ### NonFunctional Requirements
 
@@ -48,10 +48,13 @@ NFR1–NFR4 (Performance); NFR5–NFR9 (Security & Privacy); NFR10–NFR14, NFR2
 - **Epic D:** FR9, FR10, FR11, FR26
 - **Epic E:** FR1, FR2, FR3, FR4, FR5, FR6, FR7, FR8, FR12, FR30
 - **Epic F:** FR15, FR19, FR20, FR21, FR23, FR24, FR25
+- **Epic F (also):** FR42 (destructive-action two-step + deletion audit — Story F.10)
 - **Epic G:** FR31, FR32, FR33, FR34, FR35, FR36 (self-learning addendum)
-- **Epic H (Phase 2):** FR28 (+ all of A–G extended to other roles)
+- **Epic J:** FR37 (student create/update), FR41 (staff create/edit)
+- **Epic K:** FR38 (fee config), FR39 (academic structure), FR40 (org config)
+- **Epic H (Phase 2):** FR28 (+ all of A–K extended to other roles)
 
-_Every FR1–FR36 mapped. NFRs are covered within the epic whose ADs they quantify (e.g., NFR10/11/21/22 in Epic D; NFR5–9 in Epic F; NFR18–19/23–25 across D/F)._
+_Every FR1–FR42 mapped. NFRs are covered within the epic whose ADs they quantify (e.g., NFR10/11/21/22 in Epic D; NFR5–9 in Epic F; NFR18–19/23–25 across D/F). CRUD epics (J/K) reuse the same engine + DPDP + parity + audit; no new UI (they wrap existing REST capabilities)._
 
 ## Epic List
 
@@ -87,11 +90,19 @@ _Every FR1–FR36 mapped. NFRs are covered within the epic whose ADs they quanti
 **Goal:** Give the headline UX an owner — evolve `ConfirmActionCard.js`/`ChatInterface.js` to render the multi-step plan, the 409 taxonomy/reconciliation messaging, disambiguation, and the deep-link fallback. No new pages/tools. Depends on Epic E's backend SSE plan event.
 **UX-DRs covered:** UX-DR1–UX-DR5.
 
+### Epic J: Owner/Principal CRUD — student & staff records (hardened AI tools)
+**Goal:** Expose existing student & staff CRUD to the assistant as hardened tools (create+update for students — **no AI delete/erase**; staff create/edit). Wraps existing REST via shared services; no new UI.
+**FRs covered:** FR37, FR41.
+
+### Epic K: Owner/Principal CRUD — school internals (hardened AI tools)
+**Goal:** Expose fee structures/discount types, classes/sections/houses, and branches/school-settings to the assistant as hardened tools. Destructive ops route through F.10. Owner authority for org config.
+**FRs covered:** FR38, FR39, FR40.
+
 ### Epic H (Phase 2 — deferred, post Owner/Principal sign-off): Role extension
-**Goal:** Extend the *identical* hardened pattern (A–G, including self-learning) to remaining roles (accountant, receptionist, maintenance, IT-tech, teacher, student). No engine changes. Gated on the pilot acceptance gate.
+**Goal:** Extend the *identical* hardened pattern (A–K, including self-learning) to remaining roles (accountant, receptionist, maintenance, IT-tech, teacher, student). No engine changes. Gated on the pilot acceptance gate.
 **FRs covered:** FR28.
 
-**Execution order:** A → B → C → D → E → I → F → G (Phase 1) → H (Phase 2). Service extraction (A–C) precedes the executor (D), which precedes the planner (E); the frontend plan card (I) follows E's SSE event; F and G cross-cut/append. Each epic is standalone and requires only prior epics, never a later one. **Epic A starts with A.0 (per-domain cutover flag), so every domain switches over only after its parity is proven.**
+**Execution order:** A → B → C → D → E → I → F → J → K → G (Phase 1) → H (Phase 2). Service extraction (A–C) precedes the executor (D), which precedes the planner (E); the frontend plan card (I) follows E's SSE event; F and G cross-cut/append. Each epic is standalone and requires only prior epics, never a later one. Per-domain cutover safety is provided by the story sequencing + characterization tests + shadow mode (F.5) + kill-switch (F.4).
 
 **Clone-from-Odysseus note:** Epic G clones Odysseus Memory/Skills (`src/memory.py`, `memory_vector.py`, `services/memory/skills.py`, `skill_format.py`, `skill_extractor.py`, `routes/memory_routes.py`, `skills_routes.py`). Epic E borrows Odysseus patterns (`ask_user`, plan-mode, tool dispatcher) but does not clone wholesale. Epics A–D, F are EduFlow-custom (Odysseus lacks shared-service/transaction/saga/redaction/parity).
 
@@ -100,18 +111,6 @@ _Every FR1–FR36 mapped. NFRs are covered within the epic whose ADs they quanti
 ## Epic A: Trustworthy single-writer foundation — aligned domains
 
 Every AI write for low-divergence Owner/Principal domains goes through the same service-layer path as the UI. Zero change to the REST/UI path; the AI path is corrected to match (case-by-case where a minor divergence exists). Establishes the `actor_ctx` contract and the service + characterization-test pattern.
-
-### Story A.0: Per-domain cutover flag + pinned actor_ctx contract (foundation)
-As a maintainer,
-I want a per-domain feature flag that routes the AI tool to the new shared service, and a pinned `actor_ctx` contract,
-So that each domain can be switched over safely only after its parity is proven, with zero ambiguity for devs.
-
-**Acceptance Criteria:**
-**Given** the service-extraction work will touch both REST and AI paths per domain,
-**When** a per-domain flag (e.g., `db.system_flags.ai_service_route.<domain>`, default OFF) gates whether the AI tool calls the new service vs its current inline path, and `actor_ctx` is defined as `{user_id, role, sub_category, school_id, branch_id, actor_name}` (+ injectable `now_fn`),
-**Then** flipping a domain's flag ON routes that AI tool through the service; OFF preserves current behavior (safe incremental cutover)
-**And** both REST and AI adapters synthesize the identical `actor_ctx`
-**And** no service reads `Request`/`Depends`/raises `HTTPException`.
 
 ### Story A.1: Attendance service as the reference shared-write-path
 As an Owner/Principal,
@@ -123,7 +122,8 @@ So that the chat and the UI are interchangeable and trustworthy.
 **When** `services/attendance_service.py` is extracted with signature `mark_attendance(db, actor_ctx, params, *, session=None, idempotency_key=None)` and both the REST route and `tool_functions_v2.mark_attendance` are refactored to call it,
 **Then** the REST characterization test still passes unchanged
 **And** a dual-entrypoint state-diff test shows the AI tool and REST route produce byte-identical DB blast radius (records + audit + scoping) except the timestamp/request-id allowlist
-**And** `actor_ctx` dataclass `{user_id, role, sub_category, school_id, branch_id}` is defined in `services/actor_context.py` and synthesized identically by both adapters
+**And** `actor_ctx` dataclass `{user_id, role, sub_category, school_id, branch_id, actor_name}` (+ injectable `now_fn`) is defined in `services/actor_context.py` and synthesized identically by both adapters (this is the pinned contract — services needing more must extend the dataclass, never read `Request`)
+**And** no service reads `Request`/`Depends` or raises `HTTPException`
 **And** `scoped_query(branch_id=...)` is preserved (verified by the CLAUDE.md `scoped_filter` grep audit).
 
 ### Story A.2: Leave-approval service parity
@@ -537,6 +537,18 @@ So that the kill-switch (stops new writes) is paired with a way to undo a bad pa
 **Then** a documented remediation path exists to reverse that dispatch's writes (manual runbook + the audit data needed), scoped and audited
 **And** the runbook is captured in the deployment docs.
 
+### Story F.10: Two-step destructive-action confirmation + actor-tagged deletion audit
+As an Owner/Principal,
+I want any AI deletion to require a second explicit confirmation and to be permanently logged with who did it,
+So that destructive changes to the school database are deliberate and fully traceable.
+
+**Acceptance Criteria:**
+**Given** a plan contains a destructive step (delete fee structure/class/house/discount-type/branch, etc.),
+**When** the plan is confirmed,
+**Then** the destructive step requires a SECOND explicit acknowledgment beyond the plan-confirm (the card flags it as destructive; it is never silently auto-batched)
+**And** on execution an actor-tagged deletion audit row is written (`actor, actor_name, target, action=delete, timestamp`) queryable as "who deleted what, when"
+**And** student hard-delete and DPDP-erase are rejected by the assistant entirely (UI-only).
+
 ---
 
 ## Epic I: Frontend — multi-step plan card & status messaging
@@ -678,6 +690,75 @@ So that one bad auto-saved fact doesn't silently bias every future answer.
 
 ---
 
+## Epic J: Owner/Principal CRUD — student & staff records (hardened AI tools)
+
+Exposes existing student/staff CRUD (REST) to the assistant as hardened tools through the engine. Create + update only for students; hard-delete/erase stay UI-only (FR37). Depends on the engine (A-pattern + D + E) and F.10 for any destructive step.
+
+### Story J.1: Student create & update tools
+As an Owner/Principal,
+I want to create and edit student records by instruction,
+So that I can do day-to-day student-database work from chat, identically to the panel.
+
+**Acceptance Criteria:**
+**Given** `POST /api/students/`, `PATCH /api/students/{id}`, `PUT /api/students/{id}/guardians`, photo, and status/deactivate are characterized,
+**When** `services/student_service.py` is extracted and new AI tools (`create_student`, `update_student`, manage-guardians, set-status) call it,
+**Then** an AI-created/edited student is byte-identical to the panel result (dual-entrypoint parity test), DPDP-redacted to the LLM, branch/school-scoped, and audited
+**And** there is **no** `delete_student`/`erase_student` AI tool (UI-only; the assistant refuses and offers the panel deep-link)
+**And** the tools are gated to the same roles the REST routes require.
+
+### Story J.2: Staff create & edit tools
+As an Owner/Principal,
+I want to create and edit staff records by instruction,
+So that staff onboarding/updates can be done from chat like the panel.
+
+**Acceptance Criteria:**
+**Given** the staff create/edit REST routes are characterized,
+**When** `services/staff_service.py` is extracted (or extended) and `create_staff`/`update_staff` AI tools call it,
+**Then** the dual-entrypoint parity test passes, OWNER_ONLY_FIELDS protections are preserved, scoping/audit match
+**And** any destructive staff op routes through F.10 (two-step + deletion audit).
+
+---
+
+## Epic K: Owner/Principal CRUD — school internals (hardened AI tools)
+
+Exposes fee config, academic structure, and org config (REST) to the assistant as hardened tools. Destructive variants go through F.10.
+
+### Story K.1: Fee structures & discount types CRUD tools
+As an Owner/Principal,
+I want to manage fee structures and discount types by instruction,
+So that "all the fee-summary tools" are usable from chat with full parity.
+
+**Acceptance Criteria:**
+**Given** `POST/PATCH /api/fees/structures` and `/api/fees/discount-types` are characterized,
+**When** `services/fee_config_service.py` is extracted and AI tools call it,
+**Then** create/update parity holds (dual-entrypoint), owner-only gating preserved, audited
+**And** any delete (e.g., remove a discount type) requires F.10's two-step confirm + deletion audit.
+
+### Story K.2: Classes, sections & houses CRUD tools
+As an Owner/Principal,
+I want to manage classes, sections, and houses by instruction,
+So that academic-structure upkeep is doable from chat.
+
+**Acceptance Criteria:**
+**Given** the class/section/house REST routes are characterized,
+**When** `services/academic_structure_service.py` is extracted and AI tools call it,
+**Then** create/update parity holds, scoping/audit match
+**And** deletes route through F.10.
+
+### Story K.3: Branches & school settings tools (owner authority)
+As an Owner,
+I want to manage branches and school settings (incl. year-end transition) by instruction,
+So that high-level org config is doable from chat, safely.
+
+**Acceptance Criteria:**
+**Given** `POST/PUT /api/settings/branches`, `PATCH /api/settings/school`, and year-end transition are characterized,
+**When** `services/org_config_service.py` is extracted and AI tools call it,
+**Then** these tools are gated to **owner** authority (parity with REST), audited, and parity-tested
+**And** destructive/high-impact ops (e.g., delete branch, year-end transition) route through F.10's two-step confirm + audit
+**And** these are confirmed to add **no new UI** — they wrap existing capabilities.
+
+---
+
 ## Epic H (Phase 2 — deferred): Role extension
 
 ### Story H.1: Extend the hardened pattern to remaining roles
@@ -697,7 +778,7 @@ So that the whole school benefits after the Owner/Principal pilot succeeds.
 
 ## Final Validation Summary
 
-- **Epics:** 8 (A–G Phase 1, H Phase 2). **Stories:** 39. **Execution order:** A→B→C→D→E→F→G→H.
+- **Epics:** 11 (A–G + I/J/K Phase 1, H Phase 2). **Stories:** 53. **Execution order:** A→B→C→D→E→I→F→J→K→G→H.
 - **FR coverage:** FR1–FR36 all mapped to ≥1 story (see FR Coverage Map + per-story references).
 - **Coverage caveats (intentional):** FR23 (student content-filter) preserved as a regression guard in Phase 1; full student-facing verification in Epic H (students = Phase 2). FR26 (per-write write-ahead audit) covered implicitly by executor stories D.3/D.5 (extends the existing Part-2 audit).
 - **Dependencies:** no forward dependencies within or across epics; each epic standalone, requiring only prior epics. Test substrate (D.1) precedes transaction stories; plan-token (E.1) precedes plan execution (E.5).
@@ -713,7 +794,7 @@ A cynical gap-audit found 15 issues; all are now addressed in the plan:
 |---|---|---|
 | 1 | No frontend story for the plan card | **Epic I** (I.1–I.3) |
 | 2 | Nothing instruments success metrics | **Story F.7** (pilot observability) |
-| 3 | No per-domain cutover mechanism | **Story A.0** (per-domain feature flag) |
+| 3 | No per-domain cutover mechanism | Per-domain story sequencing + characterization tests + shadow mode (F.5) + kill-switch (F.4) — _the A.0 per-domain feature flag was removed per Shubham's review; cutover safety relies on these instead_ |
 | 4 | Rate-limit per plan undefined | **AD14** + Story E.5 (one dispatch per plan) |
 | 5 | Notification vs transaction ambiguity | **AD14** + Story E.5/D.5 (fire after commit) |
 | 6 | No memory erasure/retention (DPDP) | **Story G.7** |
@@ -725,6 +806,8 @@ A cynical gap-audit found 15 issues; all are now addressed in the plan:
 | 12 | Recall authorization reuse hand-waved | **Story G.5** (reuse read-tool authz path) |
 | 13 | Real-Mongo CI cost/runtime undecided | **Story D.1** (nightly + AI-path, documented) |
 | 14 | No data-remediation if pilot writes bad data | **Story F.9** (revert-dispatch runbook) |
-| 15 | `actor_ctx` underspecified | **AD14** + Story A.0 (pinned contract) |
+| 15 | `actor_ctx` underspecified | **AD14** + Story A.1 (pinned contract) |
 
-**Final totals:** 9 epics (A–I), 48 stories, FR1–FR36 + UX-DR1–5 covered.
+**Final totals:** 11 epics (A–K), 53 stories, FR1–FR42 + UX-DR1–5 covered.
+
+> **Shubham review changes (2026-06-07):** Story A.0 removed (its `actor_ctx` contract folded into A.1; cutover safety via sequencing + shadow + kill-switch). Added CRUD coverage per Shubham: **Epic J** (student & staff create/update — NO AI student delete/erase), **Epic K** (fee/academic/org-config CRUD), and **Story F.10** (two-step destructive-action confirm + actor-tagged deletion audit). New requirements FR37–FR42 + architecture AD15.

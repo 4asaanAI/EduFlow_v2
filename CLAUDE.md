@@ -11,7 +11,7 @@
 > Planning is **complete and adversarially audited**; implementation is **paused, awaiting Shubham's review**. If a user asks what to work on / what's next / for an overview of the current effort, **open and present [`AI-LAYER-HARDENING-HANDOFF.md`](./AI-LAYER-HARDENING-HANDOFF.md)** (repo root) in plain language — lead with its TL;DR and "THE NEXT STEP", and surface the "Important — don't miss" section (3 found defects, key decisions, clone-from-Odysseus directive, DPDP/Azure-residency note).
 >
 > Plan artifacts: `_bmad-output/planning-artifacts/{prd,architecture,epics}-ai-layer-hardening.md` + the readiness report. Tracker: `_bmad-output/platform-quality-sweep.md` row 17.
-> **Do not begin implementing any epic/story until the review gate clears.** Build order when resuming: Epic A (A.0 → A.1) → B → C → D → E → I → F → G → (Phase 2) H.
+> **Do not begin implementing any epic/story until the review gate clears.** Build order when resuming: Epic A (A.1 first) → B → C → D → E → I → F → J → K → G → (Phase 2) H. (Shubham review applied 2026-06-07: A.0 dropped; added Epics J/K for student/fee/school-internals CRUD + Story F.10 destructive two-step confirm; 11 epics / 53 stories.)
 
 ---
 

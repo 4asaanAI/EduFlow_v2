@@ -18,8 +18,8 @@ Nothing has been coded yet. Four planning documents exist (PRD, readiness report
 
 1. **Review the plan** (this file + the 4 artifacts in `_bmad-output/planning-artifacts/`, listed below). Decide on any changes.
 2. When ready to build, **re-run the BMAD implementation-readiness check** — now *with* the epics present (the first run was before epics existed): it validates epic coverage + quality for real.
-3. **Start implementation at Epic A, Story A.0** (per-domain cutover feature flag + `actor_ctx` contract), then **A.1** (attendance service as the reference shared-write-path). Use the per-story loop the rest of the platform uses: create-story → dev-story → tests → code-review.
-4. **Sequence is fixed:** A → B → C → D → E → I → F → G (Phase 1), then H (Phase 2). Each epic only depends on earlier ones.
+3. **Start implementation at Epic A, Story A.1** (attendance service as the reference shared-write-path; it also pins the `actor_ctx` contract). Use the per-story loop the rest of the platform uses: create-story → dev-story → tests → code-review.
+4. **Sequence is fixed:** A → B → C → D → E → I → F → J → K → G (Phase 1), then H (Phase 2). Each epic only depends on earlier ones.
 5. **Roll out behind the kill-switch + shadow/dry-run mode**, prove parity, enable live writes, get **Owner + Principal sign-off** on the 7 pilot jobs, then Phase 2 (all other roles).
 
 ---
@@ -62,7 +62,11 @@ Tracker row for this initiative: `_bmad-output/platform-quality-sweep.md` (row 1
 - **Epic I — Frontend.** Evolve the existing confirm card to show the multi-step plan + clear status/error messages. (No new pages.)
 - **Epic F — Compliant & operable.** DPDP redaction (don't send children's PII to the LLM), audited reads of minors' records, the **kill-switch**, **shadow/dry-run** mode, the **parity test harness + CI gate**, pilot **metrics**, a **closeout** doc-update, and an AI-write **remediation runbook**.
 - **Epic G — AI self-learning (cloned from Odysseus).** Memory + skills for Owner/Principal, **no UI** (the AI auto-saves important info, asks in chat only when unsure), on-demand recall/synthesis, plus erasure/retention and correction. **Starts with an infra spike (G.1)** to prove the vector-DB dependencies run on our stack before building.
-- **Epic H — Phase 2 (deferred).** Extend everything to the other roles after Owner/Principal sign off.
+- **Epic J — Student & staff CRUD (added per Shubham).** Lets the AI create/edit student records (fields, guardians, photo, deactivate) and create/edit staff — through the same hardened engine. **Student hard-delete & DPDP-erase stay UI-only (never AI).**
+- **Epic K — School-internals CRUD (added per Shubham).** Lets the AI manage fee structures/discount types, classes/sections/houses, and branches/school-settings (owner authority). All wraps existing REST — no new UI.
+- **Epic H — Phase 2 (deferred).** Extend everything (A–K) to the other roles after Owner/Principal sign off.
+
+**Destructive-action rule (Shubham):** any AI deletion requires a **two-step confirmation** + an **actor-tagged deletion log** ("who deleted what, when") — Story F.10. Student delete/erase is excluded from the AI entirely.
 
 ---
 
