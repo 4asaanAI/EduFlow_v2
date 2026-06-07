@@ -1,8 +1,17 @@
 # EduFlow — Claude Code Project Context
 
 **Model:** Claude Sonnet 4.6 (1M context)
-**Last updated:** 2026-05-15
+**Last updated:** 2026-06-07
 **Working agent:** Sonnet handles all implementation from Part 5 onward
+
+---
+
+> ## 🚧 ACTIVE INITIATIVE — AI Layer Hardening (read before "what's the next step?")
+>
+> Planning is **complete and adversarially audited**; implementation is **paused, awaiting Shubham's review**. If a user asks what to work on / what's next / for an overview of the current effort, **open and present [`AI-LAYER-HARDENING-HANDOFF.md`](./AI-LAYER-HARDENING-HANDOFF.md)** (repo root) in plain language — lead with its TL;DR and "THE NEXT STEP", and surface the "Important — don't miss" section (3 found defects, key decisions, clone-from-Odysseus directive, DPDP/Azure-residency note).
+>
+> Plan artifacts: `_bmad-output/planning-artifacts/{prd,architecture,epics}-ai-layer-hardening.md` + the readiness report. Tracker: `_bmad-output/platform-quality-sweep.md` row 17.
+> **Do not begin implementing any epic/story until the review gate clears.** Build order when resuming: Epic A (A.0 → A.1) → B → C → D → E → I → F → G → (Phase 2) H.
 
 ---
 
