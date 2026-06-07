@@ -68,6 +68,8 @@ Tracker row for this initiative: `_bmad-output/platform-quality-sweep.md` (row 1
 
 **Destructive-action rule (Shubham):** any AI deletion requires a **two-step confirmation** + an **actor-tagged deletion log** ("who deleted what, when") — Story F.10. Student delete/erase is excluded from the AI entirely.
 
+**🔒 Phase-1 role scope (user):** every NEW capability (agentic chaining, self-learning, all CRUD tools J/K, destructive actions) is enabled for **Owner + Principal ONLY** in Phase 1 — even where the REST route permits other roles. Other roles come in **Phase 2 (Epic H)**. Existing tools keep their current roles (no regression).
+
 ---
 
 ## Important — don't miss these

@@ -15,7 +15,9 @@ initiative: 'ai-layer-hardening'
 
 ## Overview
 
-This document decomposes the PRD (30 FRs / 25 NFRs) and Architecture (13 ADs / 8 patterns) for the AI Layer Hardening initiative into implementable, vertical-slice stories. Brownfield discipline: no new tools/UI, plan-then-confirm-once, Owner/Principal-first, preserve Part 2 invariants + the existing 699 backend tests. Epic sequence follows AD13: A → B → C → D.
+This document decomposes the PRD and Architecture for the AI Layer Hardening initiative into implementable, vertical-slice stories. Brownfield discipline: no new UI, plan-then-confirm-once, Owner/Principal-first, preserve Part 2 invariants + the existing 699 backend tests.
+
+> **🔒 Phase-1 role scope (user, 2026-06-07):** Every NEW capability this initiative adds — agentic planner/chaining (E), self-learning (G), and all CRUD tools (Epics J/K) + the destructive-action policy (F.10) — is enabled for **Owner and Principal profiles ONLY** in Phase 1. Other roles (other admin sub-categories, teacher, student) are deferred to **Phase 2 (Epic H)**, *even where the underlying REST route permits them* (new AI tools are gated to owner+principal regardless). **Nuance — no regression:** the existing read/write tools hardened in Epics A–C keep their CURRENT role assignments (e.g., teacher attendance, student reads); the owner/principal-only rule applies to the NEW surface, not to stripping access from already-shipped tools.
 
 ## Requirements Inventory
 
@@ -547,7 +549,8 @@ So that destructive changes to the school database are deliberate and fully trac
 **When** the plan is confirmed,
 **Then** the destructive step requires a SECOND explicit acknowledgment beyond the plan-confirm (the card flags it as destructive; it is never silently auto-batched)
 **And** on execution an actor-tagged deletion audit row is written (`actor, actor_name, target, action=delete, timestamp`) queryable as "who deleted what, when"
-**And** student hard-delete and DPDP-erase are rejected by the assistant entirely (UI-only).
+**And** student hard-delete and DPDP-erase are rejected by the assistant entirely (UI-only)
+**And** the two-step destructive flow is enabled for Owner + Principal only in Phase 1 (other roles deferred to Epic H).
 
 ---
 
@@ -692,7 +695,7 @@ So that one bad auto-saved fact doesn't silently bias every future answer.
 
 ## Epic J: Owner/Principal CRUD — student & staff records (hardened AI tools)
 
-Exposes existing student/staff CRUD (REST) to the assistant as hardened tools through the engine. Create + update only for students; hard-delete/erase stay UI-only (FR37). Depends on the engine (A-pattern + D + E) and F.10 for any destructive step.
+Exposes existing student/staff CRUD (REST) to the assistant as hardened tools through the engine. Create + update only for students; hard-delete/erase stay UI-only (FR37). Depends on the engine (A-pattern + D + E) and F.10 for any destructive step. **Phase-1 role gate: every tool in this epic is registered for Owner + Principal ONLY** (`roles=["owner","admin"], sub_categories=["principal"]`), even though some REST routes (e.g., staff) permit broader admins — other roles come in Phase 2 (Epic H).
 
 ### Story J.1: Student create & update tools
 As an Owner/Principal,
@@ -721,7 +724,7 @@ So that staff onboarding/updates can be done from chat like the panel.
 
 ## Epic K: Owner/Principal CRUD — school internals (hardened AI tools)
 
-Exposes fee config, academic structure, and org config (REST) to the assistant as hardened tools. Destructive variants go through F.10.
+Exposes fee config, academic structure, and org config (REST) to the assistant as hardened tools. Destructive variants go through F.10. **Phase-1 role gate: every tool in this epic is registered for Owner + Principal ONLY** (even though fee config normally permits accountant) — other roles come in Phase 2 (Epic H).
 
 ### Story K.1: Fee structures & discount types CRUD tools
 As an Owner/Principal,
@@ -768,8 +771,9 @@ So that the whole school benefits after the Owner/Principal pilot succeeds.
 
 **Acceptance Criteria:**
 **Given** Owner + Principal have signed off on the pilot,
-**When** Phase 2 planning breaks this epic into per-role stories reusing Epics A–G's engine (no engine changes),
+**When** Phase 2 planning breaks this epic into per-role stories reusing Epics A–K's engine (no engine changes),
 **Then** each role's write tools get a shared service + parity test, role-scoped self-learning, and DPDP controls
+**And** the new CRUD tools (Epics J/K) are opened to the appropriate additional roles (e.g., fee config → accountant, staff → admin) — they were Owner/Principal-only in Phase 1
 **And** student-facing self-learning gets an explicit DPDP re-review (minors as data principals).
 
 > **Found Defects (resolved in Epic B):** (1) `award_house_points` wrong data model + no audit → B.3; (2) `apply_discount` owner-approval bypass → B.2; (3) `record_fee_payment` no idempotency (double-charge) → B.1. Each has a permanent regression test (B.4).
