@@ -70,6 +70,8 @@ Tracker row for this initiative: `_bmad-output/platform-quality-sweep.md` (row 1
 
 **🔒 Phase-1 role LOCKDOWN (user):** the **entire AI write/action surface** — agentic chaining, self-learning, all CRUD tools (J/K), destructive actions, **and the existing write tools** — is locked to **Owner + Principal ONLY** during Phase 1 (Story F.11), even where the REST route permits other roles. So during the pilot, other staff (incl. teachers' current attendance-marking) temporarily have no AI write access; it's restored/expanded to **staff roles** in **Phase 2 (Epic H)**. **Students are exempt and unchanged** — their read-only experience stays exactly as-is and is permanently excluded from the write/action/self-learning expansion ("good as they are").
 
+**📚 Phase-1 data scope = the whole school database (user):** the lockdown is on *who* (Owner + Principal), not *how much data*. These two act across the entire school DB they're authorized over (students, fees, academics, staff, branches, settings, …). Reach follows existing tenancy: Owner = cross-branch/school-wide; Principal = their authorized scope. Don't mis-scope Phase 1 to a narrow data slice.
+
 ---
 
 ## Important — don't miss these
