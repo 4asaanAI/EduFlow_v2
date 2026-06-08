@@ -36,7 +36,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-05-12"
-last_updated: "2026-05-19"  # 7-40 implemented; 818 tests passing
+last_updated: "2026-06-08"  # AI Layer Hardening Phase 1 (A–G) complete; Phase-1 retro done; 1148 tests passing
 project: eduflow
 project_key: NOKEY
 tracking_system: file-system
@@ -371,3 +371,11 @@ development_status:
   p16-5-sms-integration-tests: done
   p16-6-deployment-runbook: done
   epic-p16-retrospective: optional
+
+  # ─────────────────────────────────────────────
+  # AI Layer Hardening — Phase 1 (Epics A–G, 54 stories)
+  # Tracked in platform-quality-sweep.md row 17 + EPIC-EXECUTION-PROTOCOL.md
+  # Phase 2 (Epic H) GATED on Owner+Principal pilot sign-off
+  # ─────────────────────────────────────────────
+  ai-hardening-phase1: done
+  ai-hardening-phase1-retrospective: done  # phase1-retro-2026-06-08.md
