@@ -8,7 +8,7 @@ from jose import JWTError, jwt
 
 from database import get_raw_db
 
-_PRODUCT_ID = "the-aaryans"
+_PRODUCT_ID = "ebf33922-9d96-46f8-9f18-c7d9849d0e7b"
 
 router = APIRouter(prefix="/api/federation", tags=["federation"])
 
@@ -52,7 +52,7 @@ async def federation_products(_: dict = Depends(require_federation_auth)):
     return [
         {
             "source_product_id": _PRODUCT_ID,
-            "slug": _PRODUCT_ID,
+            "slug": "the-aaryans",
             "name": "The Aaryans",
             "stage": "production",
             "tenant_id": None,
