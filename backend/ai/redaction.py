@@ -120,6 +120,27 @@ def redact_for_llm(value: Any) -> Any:
 # trace scanner to catch raw PII that slipped past key-based redaction.
 _AADHAAR_RE = re.compile(r"\b\d{4}\s?\d{4}\s?\d{4}\b")
 _RAW_PHONE_RE = re.compile(r"(?<!\d)(?:\+?91[\-\s]?)?[6-9]\d{9}(?!\d)")
+_EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
+
+
+def redact_text_for_memory(text: str) -> str:
+    """Scrub raw special-category / contact PII from a FREE-TEXT memory before it
+    is persisted (Story G.2, FR34/DPDP).
+
+    `redact_for_llm()` masks STRUCTURED tool results by key name; a learned memory
+    is a single free-text string, so key-based masking can't apply. This scrubs the
+    two raw-PII shapes the trace scanner flags (Aadhaar-shaped 12-digit groups and
+    10-digit Indian phone numbers) plus emails — surgically, so the memory keeps its
+    useful, non-special-category content (names, amounts, intents). Calibration note
+    (DPDP guardrails): deliberately NARROW — never blanket-redact the text into
+    uselessness, only the raw identifiers.
+    """
+    if not isinstance(text, str) or not text:
+        return text
+    out = _AADHAAR_RE.sub(REDACTED, text)
+    out = _RAW_PHONE_RE.sub(REDACTED, out)
+    out = _EMAIL_RE.sub(REDACTED, out)
+    return out
 
 
 def contains_unredacted_pii(text: str) -> list[str]:

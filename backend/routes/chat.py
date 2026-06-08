@@ -47,6 +47,7 @@ from services.confirm_tokens import (
 )
 from services.ai_rate_limiter import increment_and_check as _ai_rate_check, decrement_count as _ai_rate_decrement
 from services.ai_action_policy import is_action_authorized_phase1
+from services.memory import chat_integration as chat_memory
 from services.ai_kill_switch import ai_writes_enabled
 from services.ai_shadow_mode import ai_dry_run_enabled
 from services.ai_metrics import record_ai_metric
@@ -787,6 +788,7 @@ MINOR_READ_TOOLS = {
     "get_my_class_students",
     "query_student_record",
     "draft_parent_message",
+    "recall_history",
 }
 
 
@@ -1384,6 +1386,20 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
         return
 
+    # ── Phase 1b: Memory commands / confirmations (Epic G — Owner/Principal) ──
+    # Inline "remember:"/"forget", an affirmative reply to a pending memory, or a
+    # correction are handled BEFORE the LLM. A returned string short-circuits the
+    # turn. Best-effort: any failure falls through to the normal flow.
+    try:
+        conv_for_memory = await db.conversations.find_one(_owned_conversation_filter(conv_id, user))
+        pre_turn_reply = await chat_memory.handle_pre_turn(db, user, user_text, conv_for_memory)
+        if pre_turn_reply:
+            async for _ev in _stream_text_message(pre_turn_reply, conv_id, user, db, lang, 0):
+                yield _ev
+            return
+    except Exception as e:
+        logger.error(f"Phase 1b (memory pre-turn) error: {e}")
+
     # ── Thinking: understanding ───────────────────────────────────────────
     yield thinking_event("understanding", "Reading your question...")
     await _thinking_delay()
@@ -1454,6 +1470,15 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
     try:
         school_context = await build_school_context(user["role"], user["id"])
         system_prompt = build_system_prompt(user, school_context, lang)
+
+        # Epic G (G.3): inject recalled memories/skills for Owner/Principal. Hybrid
+        # recall degrades to keyword-only when the vector store is unavailable.
+        try:
+            recall_block = await chat_memory.recall_context_block(db, user, user_text)
+            if recall_block:
+                system_prompt += recall_block
+        except Exception as e:
+            logger.warning(f"Phase 4 (memory recall) non-fatal: {e}")
 
     except Exception as e:
         logger.error(f"Phase 4 (build context) error: {e}")
@@ -2027,6 +2052,25 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         logger.error(f"Phase 9 (multi-tool chaining) error: {e}")
         # Continue with whatever llm_response we have
 
+    # ── Phase 9b: Memory auto-save + skill distillation (Epic G) ──────────
+    # Owner/Principal only. Auto-saves clearly-durable info, distills a skill from
+    # complex runs, and returns an in-chat yes/no question for uncertain items that
+    # is appended to the reply (no UI). Best-effort; never blocks the answer.
+    memory_followup_question = None
+    try:
+        _history_for_skill = list(messages_for_llm) + [{"role": "assistant", "content": llm_response or ""}]
+        memory_followup_question = await chat_memory.finalize_turn(
+            db, user,
+            user_text=user_text,
+            assistant_text=llm_response or "",
+            conv_id=conv_id,
+            history=_history_for_skill,
+            round_count=tool_rounds,
+            tool_count=len(all_tool_calls),
+        )
+    except Exception as e:
+        logger.warning(f"Phase 9b (memory finalize) non-fatal: {e}")
+
     # ── Phase 10: Strip residual JSON tool patterns from final response ───
     try:
         llm_response = _strip_tool_json_from_text(llm_response)
@@ -2057,6 +2101,12 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
 
     # ── Phase 12: Parse rich content ──────────────────────────────────────
     clean_text, rich_content = _extract_rich_content(clean_response)
+
+    # Epic G (G.4): append the in-chat "remember that?" question to the reply when
+    # the assistant is genuinely uncertain (never a UI control). Only when there is
+    # already some answer text, so we don't surface a bare question.
+    if memory_followup_question and clean_text and clean_text.strip():
+        clean_text = clean_text + memory_followup_question
 
     # ── Phase 13: Stream text response ────────────────────────────────────
     yield thinking_event("composing", "Writing your answer...")

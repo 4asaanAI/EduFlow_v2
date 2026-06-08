@@ -538,4 +538,15 @@ async def erase_student(student_id: str, request: Request, reason: str = Form(de
     await db.guardians.delete_many(scoped_filter({"student_id": student_id}, get_school_id()))
     await db.file_uploads.delete_many(scoped_filter({"linked_table": "students", "linked_id": student_id}, get_school_id()))
     await db.students.delete_one(_student_query({"id": student_id}))
+    # Epic G (G.7 / DPDP §12): purge any AI memory that references this student so
+    # the right-to-erasure also covers what the assistant "learned" about them.
+    try:
+        from services.memory.store import purge_student_references
+
+        await purge_student_references(
+            db, school_id=get_school_id(), student_id=student_id, changed_by=user.get("id", "system")
+        )
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning("ai_memory purge on student erase failed", exc_info=True)
     return {"success": True, "data": {"erasure_token": token}}

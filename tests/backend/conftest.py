@@ -510,6 +510,8 @@ class FakeDb:
         # AI Layer Hardening — Epic F
         self.system_flags = FakeCollection()
         self.ai_metrics = FakeCollection()
+        self.ai_memories = FakeCollection()
+        self.ai_skills = FakeCollection()
 
     async def command(self, command_name):
         if command_name == "ping":

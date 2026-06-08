@@ -2196,6 +2196,90 @@ async def tool_create_announcement(params: dict, user: dict, scope: dict = None)
 
 
 # =========================================================================
+#  G.5 — On-demand recall & synthesis (the pre-meeting briefing)
+# =========================================================================
+
+async def tool_recall_history(params: dict, user: dict, scope: dict = None) -> dict:
+    """Synthesize a briefing on a subject from the assistant's MEMORY + the
+    role-scoped operational records the caller may already read (Story G.5, FR35).
+
+    Authorization parity (hard AC): this tool performs NO direct DB reads of
+    operational records. It delegates to the EXACT existing read tools
+    (`tool_get_student_profile`, `tool_get_fee_transactions`, `tool_get_enquiries`),
+    passing the SAME `(user, scope)` — so the assistant can never see anything here
+    it couldn't see by calling those tools directly. Memory recall is additionally
+    `(user_id, schoolId)`-isolated. Minor-record reads are audited by chat.py's
+    `_audit_minor_read` because `recall_history` is in `MINOR_READ_TOOLS` and this
+    result carries `student_id` refs.
+    """
+    t0 = time.time()
+    from services.actor_context import actor_ctx_from_user
+    from services.memory import is_memory_subject, store as memory_store
+
+    subject = (params.get("subject") or params.get("query") or params.get("search_term") or "").strip()
+    if not subject and not params.get("student_id"):
+        return _empty_result("Tell me who or what to brief you on (a student, family, or topic).", (time.time() - t0) * 1000)
+
+    sections: dict = {}
+    student_ids: list = []
+
+    # 1) Memory recall (owner-scoped; only for Owner/Principal per Phase-1 lockdown).
+    if is_memory_subject(user):
+        try:
+            ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+            mems = await memory_store.recall(get_db(), ctx, subject or params.get("student_id", ""))
+            if mems:
+                sections["remembered"] = [
+                    {"text": m.get("text"), "category": m.get("category"), "uses": m.get("uses", 0)}
+                    for m in mems
+                ]
+        except Exception as e:  # never fail the briefing on memory issues
+            logger.warning("recall_history memory recall failed: %s", e)
+
+    # 2) Student profile (reuses tool_get_student_profile authz/scope path verbatim).
+    prof_params = {}
+    if params.get("student_id"):
+        prof_params["student_id"] = params["student_id"]
+    elif subject:
+        prof_params["search_term"] = subject
+    profile = await tool_get_student_profile(prof_params, user, scope)
+    student_id = None
+    if profile.get("success") and profile.get("data"):
+        rec = profile["data"][0]
+        student_id = rec.get("id")
+        if student_id:
+            student_ids.append(student_id)
+        sections["student"] = rec
+
+    # 3) Fee history for that student (reuses tool_get_fee_transactions verbatim).
+    if student_id:
+        fees = await tool_get_fee_transactions({"student_id": student_id}, user, scope)
+        if fees.get("success") and fees.get("data"):
+            sections["fees"] = fees["data"]
+
+    # 4) Related admission enquiries (reuses tool_get_enquiries verbatim).
+    enquiries = await tool_get_enquiries({}, user, scope)
+    if enquiries.get("success") and enquiries.get("data"):
+        subj_low = subject.lower()
+        related = [
+            e for e in enquiries["data"]
+            if isinstance(e, dict) and subj_low and subj_low in json.dumps(e, default=str).lower()
+        ]
+        if related:
+            sections["enquiries"] = related
+
+    elapsed = (time.time() - t0) * 1000
+    if not sections:
+        return _empty_result(f"I found no related history for '{subject}'.", elapsed)
+    return {
+        "success": True,
+        "data": {"subject": subject or student_id, "student_id": student_id, "sections": sections},
+        "meta": {"count": len(sections), "student_refs": student_ids, "query_time_ms": round(elapsed, 2)},
+        "message": "",
+    }
+
+
+# =========================================================================
 #  COMBINED TOOL_REGISTRY
 # =========================================================================
 
@@ -2282,6 +2366,20 @@ TOOL_REGISTRY = {
         "description": "Admission enquiries with funnel stats.",
         "params_schema": {
             "status": {"type": "string", "description": "Filter by status"},
+        },
+    },
+    "recall_history": {
+        "fn": tool_recall_history,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": (
+            "Synthesize a briefing on a student/family/topic from what you remember "
+            "PLUS the records the user may already read (e.g. before a meeting). "
+            "Read-only; reuses existing read-tool scoping."
+        ),
+        "params_schema": {
+            "subject": {"type": "string", "description": "Who/what to brief on (name, family, or topic)"},
+            "student_id": {"type": "string", "description": "Optional exact student ID"},
         },
     },
     "get_my_attendance": {

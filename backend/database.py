@@ -281,6 +281,19 @@ async def _create_indexes():
     # two concurrent confirms of the same plan produce exactly one effect — the
     # loser's in-transaction claim insert hits DuplicateKey and aborts.
     await db.ai_write_idempotency.create_index("idempotency_key", unique=True)
+    # Epic G (AI self-learning): per-owner memory + skills indexes. Scoped by
+    # (schoolId, user_id) for tenant + owner isolation; a TTL index on
+    # updated_at enforces retention (G.7) server-side as the primary bound.
+    await db.ai_memories.create_index([("schoolId", 1), ("user_id", 1), ("updated_at_ts", -1)])
+    await db.ai_memories.create_index([("schoolId", 1), ("student_refs", 1)])
+    try:
+        # Retention (G.7): a Date `expire_at` field set RETENTION_DAYS ahead is the
+        # TTL anchor (TTL needs a real BSON Date — our other timestamps are ISO
+        # strings). expireAfterSeconds=0 → Mongo deletes once `expire_at` passes.
+        await db.ai_memories.create_index("expire_at", expireAfterSeconds=0)
+    except Exception:
+        logger.warning("ai_memories TTL index creation failed", exc_info=True)
+    await db.ai_skills.create_index([("schoolId", 1), ("user_id", 1), ("updated_at_ts", -1)])
     await db.notifications.create_index(
         [("schoolId", 1), ("user_id", 1), ("read", 1), ("created_at", -1)]
     )
