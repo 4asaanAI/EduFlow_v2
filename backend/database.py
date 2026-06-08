@@ -58,6 +58,11 @@ class TimedQuery:
 
 
 class ScopedCollection:
+    # AI Layer Hardening D.2: every op forwards arbitrary *args/**kwargs (notably
+    # `session=`) through to the underlying Motor collection AFTER injecting the
+    # tenant filter/`schoolId`. So a write performed inside the plan executor's
+    # transaction still gets `schoolId` scoping — there is no tenant-leaking
+    # "raw" write path inside a txn (the executor never uses get_raw_db()).
     def __init__(self, collection, school_id: str):
         self._collection = collection
         self._school_id = school_id
@@ -169,6 +174,68 @@ def get_raw_db():
     return _db
 
 
+class _NoopTransaction:
+    """No-op async-context transaction for environments without a replica set
+    (FakeDb test tier, single-node dev Mongo). Asserts nothing about atomicity —
+    real all-or-nothing is verified only on the @pytest.mark.mongo_real tier."""
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        # Never swallow the exception — the executor relies on it propagating so it
+        # can run saga compensation / report failure exactly as with a real abort.
+        return False
+
+
+class _NoopSession:
+    """Stand-in for a Motor client session when no replica set is available.
+
+    Mirrors the slice of the Motor session API the executor uses
+    (`start_transaction()` context manager, `end_session()`), and is accepted by
+    `ScopedCollection`/`FakeCollection` as an inert `session=` value.
+    """
+
+    in_transaction = False
+
+    def start_transaction(self, *args, **kwargs):
+        return _NoopTransaction()
+
+    async def commit_transaction(self):
+        return None
+
+    async def abort_transaction(self):
+        return None
+
+    async def end_session(self):
+        return None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
+async def get_txn_session():
+    """Return a client session for a multi-document transaction (AD4 / Story D.2).
+
+    On a real replica set this is ``_client.start_session()`` — a genuine session
+    whose `session=` is forwarded through `ScopedCollection` so tenant scoping is
+    preserved inside the transaction. When no replica-set client is configured
+    (FakeDb test tier / single-node dev), returns a `_NoopSession` so the executor
+    has ONE code path and never branches on environment. Never use `get_raw_db()`
+    inside a transaction — that would bypass `schoolId` injection.
+    """
+    if _client is None:
+        return _NoopSession()
+    try:
+        return await _client.start_session()
+    except Exception:
+        logger.warning("start_session unavailable; falling back to no-op session", exc_info=True)
+        return _NoopSession()
+
+
 async def _create_indexes():
     db = _db
     await db.students.create_index("class_id")
@@ -209,6 +276,11 @@ async def _create_indexes():
     await db.confirm_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.idempotency_keys.create_index("key", unique=True)
     await db.idempotency_keys.create_index("expires_at", expireAfterSeconds=0)
+    # AI Layer Hardening D.4 (AD6): per-step idempotency for confirmed AI plan
+    # execution. Key = f"{plan_token}:{step_idx}". The UNIQUE index is what makes
+    # two concurrent confirms of the same plan produce exactly one effect — the
+    # loser's in-transaction claim insert hits DuplicateKey and aborts.
+    await db.ai_write_idempotency.create_index("idempotency_key", unique=True)
     await db.notifications.create_index(
         [("schoolId", 1), ("user_id", 1), ("read", 1), ("created_at", -1)]
     )

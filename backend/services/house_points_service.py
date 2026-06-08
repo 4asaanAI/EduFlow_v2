@@ -16,6 +16,8 @@ Services raise domain exceptions, never `HTTPException`. The adapters map them.
 
 from __future__ import annotations
 
+from services.txn_context import session_kwargs as _txn_session_kwargs
+
 import uuid
 from typing import Optional
 
@@ -33,7 +35,10 @@ class HouseNotFoundError(Exception):
 
 
 def _session_kwargs(session) -> dict:
-    return {"session": session} if session is not None else {}
+    # AI Layer Hardening D.2: resolve the AMBIENT transaction session when the
+    # caller passes none, so a service invoked inside the plan executor's txn
+    # auto-enlists. Outside a txn this is {} (identical to pre-D.2 behavior).
+    return _txn_session_kwargs(session)
 
 
 async def award_points(db, actor_ctx: ActorContext, params: dict, *, session=None) -> dict:

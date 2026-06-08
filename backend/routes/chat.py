@@ -46,6 +46,9 @@ from services.confirm_tokens import (
 )
 from services.ai_rate_limiter import increment_and_check as _ai_rate_check, decrement_count as _ai_rate_decrement
 from tenant import get_school_id, scoped_filter
+from ai import plan_executor
+from ai.plan_executor import PlanStaleError, NeedsManualReconciliationError, SagaCompensatedError
+from ai.plan_schema import single_write_plan
 
 
 class RateLimitExceeded(Exception):
@@ -2009,10 +2012,59 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
 
     try:
         scope = await resolve_scope(user, db)
-        if _tool_accepts_scope(tool_def):
-            result = await tool_def["fn"](params, user, scope)
+        accepts_scope = _tool_accepts_scope(tool_def)
+
+        async def _runner():
+            # The forward write action. Runs inside the executor's transaction; the
+            # tool's services enlist via the ambient txn-session contextvar (D.2).
+            if accepts_scope:
+                return await tool_def["fn"](params, user, scope)
+            return await tool_def["fn"](params, user)
+
+        # AD4/D.3: one execution path — even a single confirmed write runs through
+        # the atomic executor as a length-1 plan (no len==1 fork). The confirm token
+        # is the plan token, so idempotency keys derive as f"{token}:{step_idx}" (D.4).
+        plan = single_write_plan(
+            tool=tool_name,
+            params=params,
+            runner=_runner,
+            school_id=get_school_id(),
+            branch_id=user.get("branch_id"),
+            plan_token=token,
+        )
+        exec_result = await plan_executor.run(plan, db=db)
+        if exec_result.status == "already_applied":
+            # Idempotent replay (concurrent/duplicate confirm) — nothing re-applied.
+            result = {
+                "success": True,
+                "idempotent_replay": True,
+                "message": "This action was already applied.",
+            }
+        elif exec_result.step_results:
+            result = exec_result.step_results[0].get("result")
         else:
-            result = await tool_def["fn"](params, user)
+            result = None
+    except PlanStaleError as stale:
+        await audit_ai_dispatch_finalize(
+            audit_id=audit_id, result=None, error="plan_stale", db=db,
+        )
+        raise HTTPException(
+            status_code=409,
+            detail={"code": stale.code, "message": str(stale)},
+        )
+    except NeedsManualReconciliationError as recon:
+        await audit_ai_dispatch_finalize(
+            audit_id=audit_id, result=None, error="needs_manual_reconciliation", db=db,
+        )
+        raise HTTPException(
+            status_code=409,
+            detail={"code": recon.code, "message": str(recon)},
+        )
+    except SagaCompensatedError as saga:
+        await audit_ai_dispatch_finalize(
+            audit_id=audit_id, result=None, error="saga_compensated", db=db,
+        )
+        raise HTTPException(status_code=502, detail={"code": "side_effect_failed", "message": str(saga)})
     except HTTPException as http_exc:
         await audit_ai_dispatch_finalize(
             audit_id=audit_id, result=None,

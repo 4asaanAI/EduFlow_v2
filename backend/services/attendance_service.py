@@ -11,6 +11,8 @@ Services raise domain exceptions, never `HTTPException`, and never read
 
 from __future__ import annotations
 
+from services.txn_context import session_kwargs as _txn_session_kwargs
+
 import logging
 import uuid
 from typing import Optional
@@ -24,9 +26,10 @@ logger = logging.getLogger(__name__)
 
 
 def _session_kwargs(session) -> dict:
-    # Pass session= to Mongo ops only when set (always None until Epic D).
-    # FakeCollection in tests has no session= param, so omit it when None.
-    return {"session": session} if session is not None else {}
+    # AI Layer Hardening D.2: resolve the AMBIENT transaction session when the
+    # caller passes none, so a service invoked inside the plan executor's txn
+    # auto-enlists. Outside a txn this is {} (identical to pre-D.2 behavior).
+    return _txn_session_kwargs(session)
 
 
 async def mark_attendance(
