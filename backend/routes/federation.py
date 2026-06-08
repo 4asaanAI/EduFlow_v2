@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from jose import JWTError, jwt
 
 from database import get_raw_db
+
+_PRODUCT_ID = "the-aaryans"
 
 router = APIRouter(prefix="/api/federation", tags=["federation"])
 
@@ -44,21 +45,20 @@ async def require_federation_auth(request: Request) -> dict:
 
 
 # GET /api/federation/products
+# EduFlow is a single-workspace app — the school itself is the product
 @router.get("/products")
 async def federation_products(_: dict = Depends(require_federation_auth)):
-    db = get_raw_db()
-    products = await db["products"].find({}, {"_id": 1, "slug": 1, "name": 1, "stage": 1, "tenantId": 1, "createdAt": 1, "updatedAt": 1}).to_list(5000)
+    now = datetime.now(timezone.utc).isoformat()
     return [
         {
-            "source_product_id": str(p["_id"]),
-            "slug": p.get("slug"),
-            "name": p.get("name"),
-            "stage": p.get("stage"),
-            "tenant_id": str(p["tenantId"]) if p.get("tenantId") else None,
-            "created_at": p["createdAt"].isoformat() if isinstance(p.get("createdAt"), datetime) else p.get("createdAt"),
-            "updated_at": p["updatedAt"].isoformat() if isinstance(p.get("updatedAt"), datetime) else p.get("updatedAt"),
+            "source_product_id": _PRODUCT_ID,
+            "slug": _PRODUCT_ID,
+            "name": "The Aaryans",
+            "stage": "production",
+            "tenant_id": None,
+            "created_at": now,
+            "updated_at": now,
         }
-        for p in products
     ]
 
 
@@ -106,7 +106,7 @@ async def federation_cost(
     rows = await db["token_usage"].aggregate(pipeline).to_list(10000)
     return [
         {
-            "product_workspace_id": str(r["_id"]) if r.get("_id") else None,
+            "product_workspace_id": _PRODUCT_ID,
             "event_count": r["event_count"],
             "tokens_in": r["tokens_in"],
             "tokens_out": r["tokens_out"],
@@ -138,7 +138,7 @@ async def federation_incidents(
             "severity": i.get("severity"),
             "status": i.get("status"),
             "source": i.get("source"),
-            "product_workspace_id": str(i["productId"]) if i.get("productId") else None,
+            "product_workspace_id": _PRODUCT_ID,
             "detected_at": i["detectedAt"].isoformat() if isinstance(i.get("detectedAt"), datetime) else i.get("detectedAt"),
             "resolved_at": i["resolvedAt"].isoformat() if isinstance(i.get("resolvedAt"), datetime) else None,
         }
@@ -156,7 +156,7 @@ async def federation_eval_quality(_: dict = Depends(require_federation_auth)):
     ).to_list(10000)
     return [
         {
-            "product_workspace_id": str(e["productId"]) if e.get("productId") else None,
+            "product_workspace_id": _PRODUCT_ID,
             "eval_run_id": str(e["_id"]),
             "pass_rate": (e["casesPassed"] / e["casesTotal"]) if e.get("casesTotal") else None,
             "cases_total": e.get("casesTotal"),
