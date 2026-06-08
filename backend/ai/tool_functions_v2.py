@@ -14,6 +14,17 @@ from services.audit_service import write_audit_doc
 from services.notification_service import create_notification
 from services.actor_context import actor_ctx_from_user
 from services.attendance_service import mark_attendance
+from services.fees_service import record_payment, FeeValidationError
+from services.discount_service import (
+    apply_discount as svc_apply_discount,
+    DiscountValidationError,
+    DiscountNotFoundError,
+)
+from services.house_points_service import (
+    award_points,
+    HouseNotFoundError,
+    HousePointsValidationError,
+)
 from services.approvals_service import (
     decide_approval_request,
     ApprovalValidationError,
@@ -833,23 +844,20 @@ async def tool_award_house_points(params: dict, user: dict, scope: dict = None) 
         elapsed = (time.time() - t0) * 1000
         return _empty_result(f"Student '{student['name']}' is not assigned to any house.", elapsed)
 
-    house = await db.houses.find_one({"id": house_id})
-    house_name = house["name"] if house else "Unknown"
+    # Story B.3: route through the shared house-points service so the AI award updates
+    # the real standings (houses.points + house_points_log + audit) exactly like the
+    # panel — replacing the old un-audited `house_points`-only write.
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    service_params = {"house_id": house_id, "delta": points, "reason": reason}
+    try:
+        result = await award_points(db, actor_ctx, service_params)
+    except HouseNotFoundError:
+        elapsed = (time.time() - t0) * 1000
+        return _empty_result("House not found.", elapsed)
+    except HousePointsValidationError as e:
+        return {"success": False, "message": str(e)}
 
-    # Insert the points record
-    import uuid
-    point_record = {
-        "id": f"hp-{uuid.uuid4()}",
-        "house_id": house_id,
-        "student_id": student["id"],
-        "points": points,
-        "category": category,
-        "reason": reason,
-        "awarded_by": user.get("id", ""),
-        "created_at": datetime.now().isoformat(),
-    }
-    await db.house_points.insert_one({**point_record, "_id": point_record["id"]})
-
+    house_name = result["house_name"] or "Unknown"
     elapsed = (time.time() - t0) * 1000
     return {
         "success": True,
@@ -860,6 +868,7 @@ async def tool_award_house_points(params: dict, user: dict, scope: dict = None) 
             "points_awarded": points,
             "category": category,
             "reason": reason,
+            "new_total": result["points"],
         }],
         "meta": {"count": 1, "query_time_ms": round(elapsed, 2)},
         "message": f"Awarded {points} points to {student['name']} ({house_name}) for {category}.",
@@ -1243,32 +1252,38 @@ async def tool_log_contact_event(params: dict, user: dict, scope: dict = None) -
 
 
 async def tool_apply_discount(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.discount_service.apply_discount — the SAME write path
+    # as POST /api/fees/discounts/apply. Story B.2: the AI path now honours the owner
+    # approval threshold (large discounts park in pending_discount_approvals instead of
+    # applying directly — closing the bypass on children's fees).
     required = ("student_id", "discount_type_id", "effective_from")
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "student_id, discount_type_id, and effective_from are required."}
     db = get_db()
     bid = _branch_id(user, scope)
-    dtype = await db.fee_discount_types.find_one(scoped_query({"id": params["discount_type_id"], "is_active": True}, branch_id=bid), {"_id": 0})
-    if not dtype:
-        return _empty_result("Active discount type not found.")
+    # AI convenience: derive original_amount from outstanding fees when the caller omits
+    # it (the REST route requires it in the body; the assistant resolves it).
     original_amount = params.get("original_amount")
     if original_amount in (None, ""):
         txns = await db.fee_transactions.find(scoped_query({"student_id": params["student_id"]}, branch_id=bid), {"_id": 0}).to_list(200)
         original_amount = sum(float(txn.get("amount", 0)) for txn in txns if txn.get("status") in ("pending", "overdue", "unpaid"))
-    application = add_school_id({
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
+    actor_ctx = actor_ctx_from_user(user, branch_id=bid)
+    service_params = {
         "student_id": params["student_id"],
-        "discount_type_id": dtype["id"],
+        "discount_type_id": params["discount_type_id"],
         "original_amount": float(original_amount or 0),
         "effective_from": params["effective_from"],
-        "applied_by": user.get("id"),
-        "applied_at": datetime.now().isoformat(),
-        "note": params.get("note"),
-    })
-    await db.fee_discounts.insert_one(application)
-    await _write_audit(db, "apply_discount", "fee_discounts", application["id"], user, {"applied": {k: v for k, v in application.items() if k != "_id"}}, params.get("note"), scope=scope)
-    return {"success": True, "data": {k: v for k, v in application.items() if k != "_id"}, "message": "Discount applied."}
+        "note": params.get("note") or "",
+    }
+    try:
+        result = await svc_apply_discount(db, actor_ctx, service_params)
+    except DiscountNotFoundError:
+        return _empty_result("Discount type not found.")
+    except DiscountValidationError as e:
+        return {"success": False, "message": str(e)}
+    if result["status"] == "pending":
+        return {"success": True, "pending_approval": True, "data": result["data"], "message": result["message"]}
+    return {"success": True, "data": result["data"], "message": "Discount applied."}
 
 
 async def tool_decide_approval_request(params: dict, user: dict, scope: dict = None) -> dict:
@@ -1327,31 +1342,32 @@ async def tool_confirm_resolution(params: dict, user: dict, scope: dict = None) 
 
 
 async def tool_record_fee_payment(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.fees_service.record_payment — the SAME write path as
+    # POST /api/fees/transactions. Story B.1: the AI path now supports partial payments,
+    # is idempotent (no double-charge on confirm retry), and emits the SSE update.
     required = ("student_id", "amount", "fee_head", "mode")
     if any(params.get(field) in (None, "") for field in required):
         return {"success": False, "message": "student_id, amount, fee_head, and mode are required."}
+    from routes.fees import _publish_fee_update
+
     db = get_db()
-    txn_id = str(uuid.uuid4())
-    receipt_number = f"RCP{datetime.now().strftime('%Y%m%d')}{uuid.uuid4().hex[:6].upper()}"
-    txn = add_school_id({
-        "_id": txn_id,
-        "id": txn_id,
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    service_params = {
         "student_id": params["student_id"],
+        "amount": params["amount"],
+        "payment_mode": params["mode"],
         "fee_period": params.get("fee_period", date.today().strftime("%Y-%m")),
         "fee_head": params["fee_head"],
-        "fee_type": params.get("fee_type", params["fee_head"]),
-        "amount": float(params["amount"]),
-        "payment_mode": params["mode"],
-        "receipt_number": receipt_number,
-        "status": "paid",
-        "paid_date": params.get("paid_date", date.today().isoformat()),
-        "recorded_by": user.get("id"),
-        "note": params.get("receipt_note"),
-        "created_at": datetime.now().isoformat(),
-    })
-    await db.fee_transactions.insert_one(txn)
-    await _write_audit(db, "record_fee_payment", "fee_transactions", txn_id, user, {"created": {k: v for k, v in txn.items() if k != "_id"}}, scope=scope)
-    return {"success": True, "data": {k: v for k, v in txn.items() if k != "_id"}, "message": "Fee payment recorded."}
+        "paid_amount": params.get("paid_amount"),
+        "due_date": params.get("due_date"),
+        "transaction_ref": params.get("transaction_ref"),
+        "status": params.get("status"),
+    }
+    try:
+        result = await record_payment(db, actor_ctx, service_params, publish_fn=_publish_fee_update)
+    except FeeValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["data"], "message": "Fee payment recorded."}
 
 
 async def tool_mark_attendance(params: dict, user: dict, scope: dict = None) -> dict:

@@ -794,7 +794,10 @@ So that the whole staff benefits after the Owner/Principal pilot succeeds.
 **And** the existing write tools temporarily locked by F.11 (e.g., teacher attendance) are restored to their appropriate roles
 **And** **Students are explicitly OUT OF SCOPE** — their current read-only, content-filtered experience is left unchanged ("good as they are"); no write/action or self-learning capability is added for students in Phase 2 or later.
 
-> **Found Defects (resolved in Epic B):** (1) `award_house_points` wrong data model + no audit → B.3; (2) `apply_discount` owner-approval bypass → B.2; (3) `record_fee_payment` no idempotency (double-charge) → B.1. Each has a permanent regression test (B.4).
+> **Found Defects (RESOLVED in Epic B, 2026-06-08):** Each defect now has a permanent regression test (B.4):
+> 1. `award_house_points` wrote an un-audited `house_points`-only model that never updated standings → **B.3**, fixed via `services/house_points_service.py`. Regression test: `tests/backend/parity/house_points_parity_test.py::test_ai_and_rest_house_points_identical` (asserts standings updated + audited + old collection no longer written).
+> 2. `apply_discount` bypassed owner approval on large discounts → **B.2**, fixed via `services/discount_service.py` (threshold gate centralized). Regression test: `tests/backend/parity/discount_parity_test.py::test_above_threshold_ai_discount_routes_to_approval` (asserts bypass closed — parks in `pending_discount_approvals`).
+> 3. `record_fee_payment` had no idempotency (confirm retry double-charged) → **B.1**, fixed via `services/fees_service.py`. Regression test: `tests/backend/parity/fees_parity_test.py::test_ai_fee_payment_idempotent_no_double_charge` (asserts a repeated confirm yields exactly one transaction).
 
 ---
 
