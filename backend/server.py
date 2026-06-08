@@ -252,6 +252,37 @@ app.include_router(payroll_router)
 app.include_router(reports_router)
 
 
+async def _layaastat_heartbeat_loop():
+    """Periodically push a PII-free health heartbeat to LayaaStat (env-gated).
+
+    Lets the live platform watch EduFlow's backend. A lightweight DB ping drives the
+    overall status; nothing here ever raises (telemetry must not affect the app).
+    """
+    from services import layaastat
+
+    interval = max(15, layaastat.heartbeat_seconds())
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            try:
+                from database import get_db
+
+                await get_db().command("ping")
+                db_ok = True
+            except Exception:
+                db_ok = False
+            await layaastat.record_health_heartbeat(
+                status="ok" if db_ok else "degraded",
+                checks={"db": "ok" if db_ok else "error"},
+                score=100 if db_ok else 50,
+            )
+            await layaastat.flush()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.debug("layaastat heartbeat tick failed", exc_info=True)
+
+
 @app.on_event("startup")
 async def startup():
     validate_school_id()
@@ -269,6 +300,16 @@ async def startup():
 
     await connect_db()
     app.state.sse_keepalive_task = asyncio.create_task(sse_keepalive_loop())
+
+    # LayaaStat health heartbeat — only when the integration is configured AND the
+    # heartbeat interval is non-zero. Dormant (no task) otherwise.
+    from services import layaastat
+
+    app.state.layaastat_heartbeat_task = None
+    if layaastat.is_enabled() and layaastat.heartbeat_seconds() > 0:
+        app.state.layaastat_heartbeat_task = asyncio.create_task(_layaastat_heartbeat_loop())
+        logger.info("LayaaStat heartbeat task started")
+
     logger.info("EduFlow API started")
 
 
@@ -281,6 +322,19 @@ async def shutdown():
             await task
         except asyncio.CancelledError:
             pass
+
+    hb_task = getattr(app.state, "layaastat_heartbeat_task", None)
+    if hb_task is not None:
+        hb_task.cancel()
+        try:
+            await hb_task
+        except asyncio.CancelledError:
+            pass
+    # Final flush so buffered telemetry isn't lost on a clean shutdown.
+    from services import layaastat
+
+    await layaastat.aclose()
+
     await disconnect_db()
 
 

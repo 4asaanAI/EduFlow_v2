@@ -77,12 +77,16 @@ def test_whatsapp_defaulters_owner_returns_ok():
     _fake_db.fee_transactions.docs = [
         {"student_id": "stu-1", "amount": 5000, "status": "pending", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
     ]
+    # Endpoint scopes attendance to the CURRENT month — generate dates within it
+    # so the test is not fragile across month boundaries.
+    from datetime import datetime, timezone
+    _m = datetime.now(timezone.utc).strftime("%Y-%m")
     _fake_db.student_attendance.docs = [
-        {"student_id": "stu-2", "status": "absent", "date": "2026-05-01", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
-        {"student_id": "stu-2", "status": "absent", "date": "2026-05-02", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
-        {"student_id": "stu-2", "status": "absent", "date": "2026-05-03", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
-        {"student_id": "stu-2", "status": "absent", "date": "2026-05-04", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
-        {"student_id": "stu-2", "status": "present", "date": "2026-05-05", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
+        {"student_id": "stu-2", "status": "absent", "date": f"{_m}-01", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
+        {"student_id": "stu-2", "status": "absent", "date": f"{_m}-02", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
+        {"student_id": "stu-2", "status": "absent", "date": f"{_m}-03", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
+        {"student_id": "stu-2", "status": "absent", "date": f"{_m}-04", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
+        {"student_id": "stu-2", "status": "present", "date": f"{_m}-05", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
     ]
     _fake_db.students.docs = [
         {"id": "stu-1", "name": "Aryan", "class_id": "X", "section": "A", "phone": "+919000000001", "schoolId": "aaryans-joya", "branch_id": "branch-a"},

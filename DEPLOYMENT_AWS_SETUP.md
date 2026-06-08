@@ -160,7 +160,7 @@ eb status
 Create a file `.env.production` with your secrets:
 
 ```bash
-MONGO_URL=mongodb+srv://user:password@cluster.mongodb.net/eduflow
+MONGO_URL=mongodb+srv://<DB_USER>:<DB_PASSWORD>@<CLUSTER_HOST>/eduflow
 DB_NAME=eduflow
 CORS_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
 ENVIRONMENT=production

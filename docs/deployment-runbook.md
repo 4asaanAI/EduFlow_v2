@@ -53,7 +53,7 @@ Migrations must be idempotent and must run against the explicit production Atlas
 
 ```bash
 cd backend
-set MONGO_URL=mongodb+srv://prod-user:prod-password@cluster.example.mongodb.net/
+set MONGO_URL=mongodb+srv://<DB_USER>:<DB_PASSWORD>@<CLUSTER_HOST>/
 set DB_NAME=eduflow
 set SCHOOL_ID=aaryans-joya
 python migrations/run_all.py
@@ -62,7 +62,7 @@ python migrations/run_all.py
 For PowerShell, prefer process-scoped variables:
 
 ```powershell
-$env:MONGO_URL = "mongodb+srv://prod-user:prod-password@cluster.example.mongodb.net/"
+$env:MONGO_URL = "mongodb+srv://<DB_USER>:<DB_PASSWORD>@<CLUSTER_HOST>/"
 $env:DB_NAME = "eduflow"
 $env:SCHOOL_ID = "aaryans-joya"
 python backend\migrations\run_all.py
@@ -244,3 +244,27 @@ emits a row in `db.audit_logs`. To reverse a specific bad AI write:
 Pilot metrics for the acceptance review live in `db.ai_metrics` (Story F.7):
 `event ∈ {plan_executed, confirmation, step_outcome, ai_action, torn_state,
 kill_switch_blocked, parity_diff}`. These rows are PII-free by construction.
+
+## 9. LayaaStat health-check integration (push telemetry)
+
+EduFlow pushes telemetry to **LayaaStat** (the Layaa AI health-check platform) so the
+backend can be watched live. EduFlow's portfolio path is **push/ingest** — custom
+product events to `POST /api/ingest` and GenAI/LLM spans to `POST /api/otel`, plus a
+periodic `service_health` heartbeat — authenticated by a tenant-scoped ingest key.
+
+**The integration is fully dormant until both env vars below are set** — no buffering,
+no network, no heartbeat task. All call sites are no-ops when disabled, and telemetry
+failures never affect a request (best-effort, fail-open).
+
+| Env var | Required | Where it comes from |
+|---|---|---|
+| `LAYAASTAT_URL` | yes | Your deployed LayaaStat dashboard base URL (the Vercel deployment). |
+| `LAYAASTAT_INGEST_KEY` | yes | LayaaStat `/registry` → Add Product (EduFlow) → Add Tenant → Add Environment → **Generate Ingest Key** (`lsk_live_…`). Tenant-scoped; never commit it. |
+| `LAYAASTAT_SERVICE_NAME` | no | Service label (default `eduflow-api`). |
+| `LAYAASTAT_FLUSH_AT` | no | Buffer size that triggers a flush (default `20`). |
+| `LAYAASTAT_HEARTBEAT_SECONDS` | no | Heartbeat interval (default `60`; `0` disables the heartbeat task). |
+
+**To turn it on:** register EduFlow in the deployed LayaaStat dashboard, generate the
+ingest key, set `LAYAASTAT_URL` + `LAYAASTAT_INGEST_KEY` in the EB environment, and
+redeploy. Verify on LayaaStat: `/platform-health` ingest rate rises and the EduFlow tile
+appears on `/portfolio` within ~15 min (next rollup tick). To turn it off, unset either var.

@@ -81,3 +81,26 @@ async def record_ai_metric(
         await db.ai_metrics.insert_one(doc, **kwargs)
     except Exception:
         logger.warning("ai_metric_write_failed event=%s", event, exc_info=True)
+
+    # Best-effort forward to LayaaStat (no-op when the integration is disabled). The
+    # forwarded payload is the SAME PII-free shape persisted above — only event/tool/
+    # status/ids/counts, never params or values.
+    try:
+        from services import layaastat
+
+        if layaastat.is_enabled():
+            await layaastat.track_event(
+                f"ai_{event}",
+                distinct_id=user_id or None,
+                properties={
+                    "tool_name": tool_name,
+                    "status": status,
+                    "schoolId": school_id,
+                    "branch_id": branch_id,
+                    "count": count,
+                    **safe_extra,
+                },
+                source="ai_metrics",
+            )
+    except Exception:
+        logger.debug("layaastat ai_metric forward failed event=%s", event, exc_info=True)
