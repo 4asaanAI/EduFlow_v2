@@ -290,12 +290,7 @@ Two tenancy axes coexist: `branch_id` (per-branch) and `schoolId` (per-school, S
 ## Announcement Moderation (Story 7-47)
 
 - `announcements` documents have `status`: `"active" | "pending_approval" | "rejected"`.
-- **Canonical gate function**: `_announcement_requires_approval(audience_type, target_roles)` in `routes/operations.py`:
-  ```python
-  def _announcement_requires_approval(audience_type: str, target_roles: list[str]) -> bool:
-      return audience_type in ("all", "class") or any(r in ("teacher", "student") for r in target_roles)
-  ```
-  The REST route calls this function directly. The AI tool (`tool_create_announcement`) mirrors this logic inline — if the gate condition changes, **update both places** and add a test. A shared import is not currently used due to circular import risk.
+- **Canonical gate function (since AI-Layer-Hardening A.4)**: `decide_announcement_status(actor_ctx, audience_type, target_roles, *, raw_audience_roles=None)` in `services/announcement_service.py`. **Both** the REST route (`POST /api/ops/announcements`) **and** the AI tool (`tool_create_announcement`) call it — the previous inline duplication in the AI tool (and the `_should_require_approval`/`_announcement_requires_approval` helpers in `routes/operations.py`) were removed. EC-9.1 (owner/principal broadcast directly) + Story 7-47 (teacher/student/all/class held for approval) live here. It raises `AnnouncementValidationError` (principal targeting owner → route maps to 422).
 - Endpoints: `GET /api/ops/announcements/pending`, `PATCH .../approve`, `PATCH .../reject` (requires non-empty `reason`) — all gated with `Depends(require_owner_or_principal)`.
 - All approve/reject decisions write to `db.audit_logs`.
 

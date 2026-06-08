@@ -10,6 +10,8 @@ from decimal import Decimal
 from tenant import get_school_id, scoped_filter, scoped_query, add_school_id
 from services.audit_service import write_audit_doc
 from services.notification_service import fan_out_notifications
+from services.actor_context import actor_ctx_from_user
+from services.contact_log_service import log_contact_event, ContactLogValidationError
 from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, normalize_session_id, publish
 from pymongo import ReturnDocument
 import asyncio
@@ -472,25 +474,13 @@ async def correct_fee_transaction(
 async def create_fee_contact_log(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
     body = await request.json()
-    required = {"student_id", "fee_transaction_id", "date", "contact_type", "outcome", "notes"}
-    if any(not body.get(field) for field in required):
-        raise HTTPException(400, "student_id, fee_transaction_id, date, contact_type, outcome, and notes are required")
-    record = {
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
-        "schoolId": get_school_id(),
-        "student_id": body["student_id"],
-        "fee_transaction_id": body["fee_transaction_id"],
-        "date": body["date"],
-        "contact_type": body["contact_type"],
-        "outcome": body["outcome"],
-        "notes": body["notes"],
-        "created_by": user["id"],
-        "created_at": datetime.now().isoformat(),
-    }
-    await db.fee_contact_logs.insert_one(record)
-    await _audit(db, action="contact_log", entity_id=body["fee_transaction_id"], user=user, changes={"contact": {k: v for k, v in record.items() if k != "_id"}})
-    return {"success": True, "data": {k: v for k, v in record.items() if k != "_id"}}
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    params = {f: body.get(f) for f in ("student_id", "fee_transaction_id", "date", "contact_type", "outcome", "notes")}
+    try:
+        result = await log_contact_event(db, actor_ctx, params)
+    except ContactLogValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["record"]}
 
 
 @router.get("/summary")

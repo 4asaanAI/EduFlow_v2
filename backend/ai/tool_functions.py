@@ -16,6 +16,13 @@ from __future__ import annotations
 from datetime import datetime, date, timedelta
 from database import get_db
 from tenant import scoped_query
+from services.actor_context import actor_ctx_from_user
+from services.leave_service import (
+    decide_leave,
+    LeaveValidationError,
+    LeaveNotFoundError,
+    LeaveConflictError,
+)
 import logging, re
 
 logger = logging.getLogger(__name__)
@@ -553,32 +560,34 @@ async def tool_get_fee_transactions(params: dict, user: dict, scope=None) -> dic
 
 
 async def tool_approve_leave(params: dict, user: dict, scope=None) -> dict:
-    db = get_db()
+    # Thin adapter over services.leave_service.decide_leave — the SAME write path
+    # as PATCH /api/staff/leaves/{id}. Story A.2: the AI decision now notifies the
+    # staff member, writes the audit row, enforces the pending-only guard, requires
+    # a rejection reason, and stamps a UTC approved_at — identical to the panel.
     leave_id = params.get("leave_id")
-    action = params.get("action", "approve")
-    reason = params.get("reason", "")
-
     if not leave_id:
         return {"error": "leave_id is required"}
-
-    # Tenancy: a leave request from a different branch must look identical to
-    # a non-existent one — don't leak existence across tenants.
-    leave = await db.leave_requests.find_one(_tenant_query(scope, {"id": leave_id}))
-    if not leave:
-        return {"success": False, "error": "Leave request not found"}
-
+    action = params.get("action", "approve")
+    reason = params.get("reason", "")
     new_status = "approved" if action == "approve" else "rejected"
-    update = {
-        "status": new_status,
-        "approved_by": user["id"],
-        "approved_at": datetime.now().isoformat(),
-    }
-    if action == "reject" and reason:
-        update["rejection_reason"] = reason
 
-    await db.leave_requests.update_one(_tenant_query(scope, {"id": leave_id}), {"$set": update})
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_scope_branch_id(scope))
+    service_params = {"leave_id": leave_id, "status": new_status}
+    if reason:
+        service_params["rejection_reason"] = reason
 
-    staff = await db.staff.find_one(_tenant_query(scope, {"id": leave["staff_id"]}))
+    try:
+        result = await decide_leave(db, actor_ctx, service_params)
+    except LeaveNotFoundError:
+        return {"success": False, "error": "Leave request not found"}
+    except (LeaveValidationError, LeaveConflictError) as e:
+        return {"success": False, "error": str(e)}
+
+    leave = result["leave"]
+    staff = None
+    if leave and leave.get("staff_id"):
+        staff = await db.staff.find_one(_tenant_query(scope, {"id": leave["staff_id"]}))
     return {
         "success": True,
         "message": f"Leave request {new_status} for {staff['name'] if staff else 'staff member'}",

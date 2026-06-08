@@ -123,9 +123,14 @@ def test_accountant_blocked_from_non_accountant_tool():
 
 @pytest.mark.asyncio
 async def test_create_announcement_staff_audience_sets_pending_approval():
-    """'staff' audience_type includes teachers → must be pending_approval."""
+    """'staff' audience_type includes teachers → must be pending_approval.
+
+    Story A.4: the moderation gate now exempts owner/principal (EC-9.1, matching the
+    REST route). This test uses a non-exempt role (reception) so it still exercises the
+    content gate (staff audience → pending). An owner/principal would broadcast directly.
+    """
     from ai.tool_functions_v2 import tool_create_announcement
-    user = _make_user("owner", name="Owner")
+    user = _make_user("admin", "reception", name="Reception")
     params = {"title": "Staff Notice", "content": "All staff meeting at 3pm.", "audience_type": "staff"}
 
     fake_announcements: list[dict] = []
@@ -157,8 +162,10 @@ async def test_create_announcement_staff_audience_sets_pending_approval():
 
 @pytest.mark.asyncio
 async def test_create_announcement_students_audience_sets_pending_approval():
+    # Story A.4: non-exempt role (reception) so the content gate still applies
+    # (owner/principal now broadcast directly, matching the REST route).
     from ai.tool_functions_v2 import tool_create_announcement
-    user = _make_user("owner", name="Owner")
+    user = _make_user("admin", "reception", name="Reception")
     params = {"title": "Result Notice", "content": "Results published.", "audience_type": "students"}
 
     inserted = []

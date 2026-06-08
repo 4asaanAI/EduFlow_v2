@@ -11,6 +11,13 @@ from middleware.auth import get_current_user, hash_password, require_owner_or_pr
 from models.schemas import Staff
 from services.audit_service import write_audit_doc, write_audit
 from services.notification_service import create_notification
+from services.actor_context import actor_ctx_from_user
+from services.leave_service import (
+    decide_leave,
+    LeaveValidationError,
+    LeaveNotFoundError,
+    LeaveConflictError,
+)
 from tenant import get_school_id, scoped_filter, scoped_query
 
 
@@ -333,63 +340,19 @@ async def get_pending_leaves(request: Request, user: dict = Depends(require_role
 async def update_leave(leave_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
     db = get_db()
     body = await request.json()
-    new_status = body.get("status")
-    if new_status not in {"approved", "rejected"}:
-        raise HTTPException(400, "status must be approved or rejected")
-
-    # EC-9.3: Idempotency guard — only update if still pending.
-    # Prevents double-approval creating duplicate notifications and audit entries.
-    set_fields: dict = {
-        "status": new_status,
-        "approved_by": user["id"],
-        "approved_at": datetime.now(timezone.utc).isoformat(),
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    params = {
+        "leave_id": leave_id,
+        "status": body.get("status"),
+        "rejection_reason": body.get("rejection_reason"),
     }
-    if new_status == "rejected" and not body.get("rejection_reason"):
-        raise HTTPException(400, "rejection_reason is required when rejecting leave")
-    if body.get("rejection_reason"):
-        set_fields["rejection_reason"] = body["rejection_reason"]
+    try:
+        result = await decide_leave(db, actor_ctx, params)
+    except LeaveValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except LeaveConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except LeaveNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
-    result = await db.leave_requests.update_one(
-        scoped_query({"id": leave_id, "status": "pending"}, branch_id=user.get("branch_id")),
-        {"$set": set_fields},
-    )
-
-    if result.matched_count == 0:
-        # Either already approved/rejected, or not found — distinguish the two cases.
-        existing = await db.leave_requests.find_one(
-            scoped_query({"id": leave_id}, branch_id=user.get("branch_id"))
-        )
-        if existing and existing.get("status") != "pending":
-            raise HTTPException(status_code=409, detail=f"Leave already {existing['status']}")
-        raise HTTPException(status_code=404, detail="Leave request not found")
-
-    # Fetch the updated leave request for notification details.
-    leave = await db.leave_requests.find_one(
-        scoped_query({"id": leave_id}, branch_id=user.get("branch_id"))
-    )
-
-    # Notify the staff member.
-    if leave and leave.get("user_id"):
-        action_word = "approved" if new_status == "approved" else "rejected"
-        await create_notification(
-            db=db,
-            user_id=leave["user_id"],
-            notification_type="leave_decision",
-            title=f"Leave Request {action_word.title()}",
-            message=f"Your leave from {leave.get('start_date')} to {leave.get('end_date')} has been {action_word}.",
-        )
-
-    # Audit trail.
-    await write_audit(
-        db=db,
-        action=f"leave_{new_status}",
-        entity_id=leave_id,
-        collection="leave_requests",
-        changed_by=user["id"],
-        changed_by_role=user.get("role", ""),
-        school_id=get_school_id(),
-        branch_id=user.get("branch_id", ""),
-        changes={"status": new_status, "approved_by": user["id"]},
-    )
-
-    return {"success": True, "status": new_status}
+    return {"success": True, "status": result["status"]}

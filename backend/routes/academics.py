@@ -5,6 +5,8 @@ from database import get_db
 from middleware.auth import get_current_user, require_role, require_owner_or_principal
 from datetime import datetime
 from services.audit_service import write_audit_doc
+from services.actor_context import actor_ctx_from_user
+from services.substitution_service import initiate_substitution
 from tenant import get_school_id, scoped_query, scoped_filter
 import uuid
 
@@ -888,37 +890,17 @@ async def create_substitution(request: Request, user: dict = Depends(require_rol
     required = ["date", "absent_teacher_id", "substitute_teacher_id", "class_id", "period_number"]
     if any(not body.get(field) for field in required):
         raise HTTPException(400, "date, absent_teacher_id, substitute_teacher_id, class_id, and period_number are required")
-    substitution = {
-        "id": str(uuid.uuid4()),
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    params = {
         "date": body["date"],
         "absent_teacher_id": body["absent_teacher_id"],
         "substitute_teacher_id": body["substitute_teacher_id"],
         "class_id": body["class_id"],
         "subject_id": body.get("subject_id", ""),
         "period_number": body["period_number"],
-        "status": "assigned",
-        "created_by": user["id"],
-        "created_at": datetime.now().isoformat(),
     }
-    await db.substitutions.update_one(
-        {"date": substitution["date"], "absent_teacher_id": substitution["absent_teacher_id"], "class_id": substitution["class_id"], "period_number": substitution["period_number"]},
-        {"$set": {**substitution, "_id": substitution["id"]}},
-        upsert=True,
-    )
-    await write_audit_doc(db, {
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
-        "schoolId": get_school_id(),
-        "entity_type": "substitution",
-        "entity_id": substitution["id"],
-        "collection": "substitutions",
-        "action": "assign",
-        "changed_by": user.get("id"),
-        "changed_by_role": user.get("role"),
-        "changes": {"created": substitution},
-        "created_at": datetime.now().isoformat(),
-    }, school_id=get_school_id(), branch_id=user.get("branch_id"))
-    return {"success": True, "data": substitution}
+    result = await initiate_substitution(db, actor_ctx, params)
+    return {"success": True, "data": result["substitution"]}
 
 
 # --- Curriculum Progress ---

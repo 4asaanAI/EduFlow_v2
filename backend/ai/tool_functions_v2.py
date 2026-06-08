@@ -12,6 +12,25 @@ import logging
 from tenant import add_school_id, get_school_id, scoped_filter, scoped_query
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification
+from services.actor_context import actor_ctx_from_user
+from services.attendance_service import mark_attendance
+from services.approvals_service import (
+    decide_approval_request,
+    ApprovalValidationError,
+    ApprovalNotFoundError,
+    ApprovalAuthorizationError,
+)
+from services.announcement_service import (
+    decide_announcement_status,
+    AnnouncementValidationError,
+)
+from services.contact_log_service import log_contact_event, ContactLogValidationError
+from services.substitution_service import initiate_substitution
+from services.attendance_correction_service import (
+    correct_attendance,
+    AttendanceCorrectionValidationError,
+    AttendanceCorrectionNotFoundError,
+)
 
 # ----- Re-export all 14 original tools and their registry -----
 from ai.tool_functions import (
@@ -1153,61 +1172,44 @@ async def tool_initiate_substitution(params: dict, user: dict, scope: dict = Non
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "absent_staff_id, substitute_staff_id, class_id, and period_id are required."}
     db = get_db()
+    # Resolve the timetable slot (AI-only convenience) to derive subject/period, then
+    # delegate to the shared service — the SAME write path as the REST route (Story A.6).
     slot = await db.timetable_slots.find_one({"id": params["period_id"]}, {"_id": 0})
-    record = add_school_id({
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    service_params = {
         "date": params.get("date", date.today().isoformat()),
         "absent_teacher_id": params["absent_staff_id"],
         "substitute_teacher_id": params["substitute_staff_id"],
         "class_id": params["class_id"],
-        "subject_id": (slot or {}).get("subject_id", params.get("subject_id")),
-        "period_id": params["period_id"],
+        "subject_id": (slot or {}).get("subject_id", params.get("subject_id")) or "",
         "period_number": (slot or {}).get("period_number"),
-        "created_by": user.get("id"),
-        "created_at": datetime.now().isoformat(),
-    })
-    await db.substitutions.insert_one(record)
-    await _write_audit(db, "initiate_substitution", "substitutions", record["id"], user, {"created": {k: v for k, v in record.items() if k != "_id"}}, scope=scope)
-    substitute = await db.staff.find_one(scoped_query({"id": params["substitute_staff_id"]}, branch_id=_branch_id(user, scope)), {"_id": 0})
-    await create_notification(
-        db,
-        user_id=(substitute or {}).get("user_id"),
-        notification_type="substitution_assigned",
-        title="Substitution assigned",
-        message="You have been assigned as a substitute teacher.",
-        source_id=record["id"],
-        source_type="substitution",
-    )
-    return {"success": True, "data": {k: v for k, v in record.items() if k != "_id"}, "message": "Substitution initiated."}
+    }
+    result = await initiate_substitution(db, actor_ctx, service_params)
+    return {"success": True, "data": result["substitution"], "message": "Substitution initiated."}
 
 
 async def tool_correct_attendance(params: dict, user: dict, scope: dict = None) -> dict:
     required = ("record_id", "correction_type", "reason")
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "record_id, correction_type, and reason are required."}
+    # Thin adapter over services.attendance_correction_service — the SAME write path
+    # as the REST correct route (Story A.7): snapshot + status update + canonical
+    # 'correct' audit. School-wide scoping fixes the prior branch_id mismatch.
     db = get_db()
-    bid = _branch_id(user, scope)
-    original = await db.student_attendance.find_one(scoped_query({"id": params["record_id"]}, branch_id=bid), {"_id": 0})
-    if not original:
-        return _empty_result("Attendance record not found.")
-    new_status = params.get("status") or params["correction_type"]
-    correction = add_school_id({
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    service_params = {
         "attendance_id": params["record_id"],
-        "original_record": original,
-        "previous_status": original.get("status"),
-        "new_status": new_status,
         "correction_type": params["correction_type"],
         "reason": params["reason"],
-        "corrected_by": user.get("id"),
-        "corrected_at": datetime.now().isoformat(),
-    })
-    await db.attendance_corrections.insert_one(correction)
-    await db.student_attendance.update_one(scoped_query({"id": params["record_id"]}, branch_id=bid), {"$set": {"status": new_status, "corrected": True, "updated_at": correction["corrected_at"]}})
-    await _write_audit(db, "correct_attendance", "student_attendance", params["record_id"], user, {"status": {"previous": original.get("status"), "new": new_status}}, params["reason"], scope=scope)
-    return {"success": True, "data": {k: v for k, v in correction.items() if k != "_id"}, "message": "Attendance correction applied."}
+        "status": params.get("status"),
+    }
+    try:
+        result = await correct_attendance(db, actor_ctx, service_params)
+    except AttendanceCorrectionNotFoundError:
+        return _empty_result("Attendance record not found.")
+    except AttendanceCorrectionValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["correction"], "message": "Attendance correction applied."}
 
 
 async def tool_log_contact_event(params: dict, user: dict, scope: dict = None) -> dict:
@@ -1224,21 +1226,20 @@ async def tool_log_contact_event(params: dict, user: dict, scope: dict = None) -
         txn = txns[0] if txns else None
     if not txn:
         return _empty_result("No fee transaction found for this student.")
-    record = add_school_id({
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
+    # Thin adapter over services.contact_log_service — the SAME write path as the REST
+    # contact-log route (Story A.5). Txn resolution above is AI-only convenience; the
+    # service writes an identical record + canonical 'contact_log' audit.
+    actor_ctx = actor_ctx_from_user(user, branch_id=bid)
+    service_params = {
         "student_id": params["student_id"],
         "fee_transaction_id": txn["id"],
         "date": params.get("date", date.today().isoformat()),
         "contact_type": params["contact_type"],
         "outcome": params["outcome"],
         "notes": params["note"],
-        "created_by": user.get("id"),
-        "created_at": datetime.now().isoformat(),
-    })
-    await db.fee_contact_logs.insert_one(record)
-    await _write_audit(db, "log_contact_event", "fee_transactions", txn["id"], user, {"contact": {k: v for k, v in record.items() if k != "_id"}}, scope=scope)
-    return {"success": True, "data": {k: v for k, v in record.items() if k != "_id"}, "message": "Contact event logged."}
+    }
+    result = await log_contact_event(db, actor_ctx, service_params)
+    return {"success": True, "data": result["record"], "message": "Contact event logged."}
 
 
 async def tool_apply_discount(params: dict, user: dict, scope: dict = None) -> dict:
@@ -1271,6 +1272,10 @@ async def tool_apply_discount(params: dict, user: dict, scope: dict = None) -> d
 
 
 async def tool_decide_approval_request(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.approvals_service.decide_approval_request — the SAME
+    # write path as the REST decide route. Story A.3: the routing-dependent authority
+    # check (owner decides any; principal only owner_and_principal) is now enforced in
+    # the service for the AI path too (it was previously skipped — a real hole).
     required = ("request_id", "decision", "reason")
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "request_id, decision, and reason are required."}
@@ -1278,24 +1283,20 @@ async def tool_decide_approval_request(params: dict, user: dict, scope: dict = N
     status = decision_map.get(str(params["decision"]).lower())
     if not status:
         return {"success": False, "message": "decision must be approve or reject."}
+
     db = get_db()
-    bid = _branch_id(user, scope)
-    approval = await db.approval_requests.find_one(scoped_query({"id": params["request_id"]}, branch_id=bid), {"_id": 0})
-    if not approval:
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    service_params = {"approval_id": params["request_id"], "status": status, "reason": params["reason"]}
+    try:
+        result = await decide_approval_request(db, actor_ctx, service_params)
+    except ApprovalNotFoundError:
         return _empty_result("Approval request not found.")
-    # auth: enforcement is at the registry gate (_is_tool_authorized); body check removed (P6)
-    update = {"status": status, "decision_reason": params["reason"], "decided_by": user.get("id"), "decided_at": datetime.now().isoformat(), "unread_for": []}
-    await db.approval_requests.update_one(scoped_query({"id": params["request_id"]}, branch_id=bid), {"$set": update})
-    await _write_audit(db, "decide_approval_request", "approval_requests", params["request_id"], user, update, params["reason"], scope=scope)
-    await create_notification(
-        db,
-        user_id=approval.get("submitted_by"),
-        notification_type="approval_decision",
-        title="Approval decision",
-        message=f"{approval.get('title', 'Approval request')} {status}",
-        source_id=params["request_id"],
-        source_type="approval_request",
-    )
+    except ApprovalAuthorizationError:
+        return {"success": False, "message": "You are not authorized to decide this approval request."}
+    except ApprovalValidationError as e:
+        return {"success": False, "message": str(e)}
+
+    update = {k: v for k, v in (result["approval"] or {}).items() if k in ("status", "decision_reason", "decided_by", "decided_at", "unread_for")}
     return {"success": True, "data": {"request_id": params["request_id"], **update}, "message": f"Approval request {status}."}
 
 
@@ -1366,28 +1367,14 @@ async def tool_mark_attendance(params: dict, user: dict, scope: dict = None) -> 
     if not class_id:
         return _empty_result("Class not found.")
     target_date = params.get("date", date.today().isoformat())
-    saved = []
-    for item in params["attendance"]:
-        att_id = str(uuid.uuid4())
-        doc = add_school_id({
-            "_id": att_id,
-            "id": att_id,
-            "student_id": item["student_id"],
-            "class_id": class_id,
-            "date": target_date,
-            "status": item["status"],
-            "marked_by": user.get("id"),
-            "source": "ai_dispatch",
-            "created_at": datetime.now().isoformat(),
-        })
-        await db.student_attendance.update_one(
-            scoped_query({"student_id": item["student_id"], "class_id": class_id, "date": target_date}, branch_id=_branch_id(user, scope)),
-            {"$set": doc},
-            upsert=True,
-        )
-        saved.append({"student_id": item["student_id"], "status": item["status"]})
-    await _write_audit(db, "mark_attendance", "student_attendance", class_id, user, {"date": target_date, "records": saved}, scope=scope)
-    return {"success": True, "data": saved, "message": "Attendance marked."}
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    service_params = {
+        "class_id": class_id,
+        "date": target_date,
+        "records": [{"student_id": item["student_id"], "status": item["status"]} for item in params["attendance"]],
+    }
+    result = await mark_attendance(db, actor_ctx, service_params)
+    return {"success": True, "data": result["results"], "message": "Attendance marked."}
 
 
 async def tool_query_dashboard_summary(params: dict, user: dict, scope: dict = None) -> dict:
@@ -1743,10 +1730,15 @@ async def tool_create_announcement(params: dict, user: dict, scope: dict = None)
         audience_type = "all"
     audience_roles = _AUDIENCE_ROLE_MAP[audience_type]
 
-    # P7: Story 7-47 moderation gate — mirrors _announcement_requires_approval() in routes/operations.py.
-    # audience_type "all"/"class" fast-path added to match REST gate defensively.
-    requires_approval = audience_type in ("all", "class") or any(r in ("teacher", "student") for r in audience_roles)
-    initial_status = "pending_approval" if requires_approval else "active"
+    # Story A.4: moderation gate centralized in services.announcement_service — the SAME
+    # decision the REST route makes (EC-9.1 owner/principal broadcast directly; others gated).
+    # This replaces the previously-duplicated inline gate, which over-moderated owner/principal.
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        initial_status = decide_announcement_status(actor_ctx, audience_type, audience_roles)
+    except AnnouncementValidationError as e:
+        return {"success": False, "message": str(e)}
+    requires_approval = initial_status == "pending_approval"
 
     db = get_db()
     ann_id = str(uuid.uuid4())
