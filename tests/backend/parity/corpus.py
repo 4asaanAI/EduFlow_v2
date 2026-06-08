@@ -27,4 +27,11 @@ PARITY_CORPUS = {
     "add_thread_entry": "incident_parity_test.py",
     "update_incident_status": "incident_parity_test.py",
     "confirm_resolution": "incident_resolution_test.py",
+    # Epic J — student & staff CRUD
+    "create_student": "student_parity_test.py",
+    "update_student": "student_parity_test.py",
+    "set_student_status": "student_parity_test.py",
+    "manage_student_guardians": "student_parity_test.py",
+    "create_staff": "staff_parity_test.py",
+    "update_staff": "staff_parity_test.py",
 }

@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from database import get_db
-from middleware.auth import get_current_user, hash_password, require_owner_or_principal, require_role
-from models.schemas import Staff
-from services.audit_service import write_audit_doc, write_audit
+from middleware.auth import get_current_user, require_owner_or_principal, require_role
+from services.audit_service import write_audit_doc
 from services.notification_service import create_notification
 from services.actor_context import actor_ctx_from_user
 from services.leave_service import (
@@ -17,6 +15,14 @@ from services.leave_service import (
     LeaveValidationError,
     LeaveNotFoundError,
     LeaveConflictError,
+)
+from services.staff_service import (
+    create_staff as create_staff_service,
+    update_staff as update_staff_service,
+    StaffValidationError,
+    StaffNotFoundError,
+    StaffAuthorizationError,
+    LinkedUserNotFoundError,
 )
 from tenant import get_school_id, scoped_filter, scoped_query
 
@@ -52,39 +58,12 @@ def get_user(req: Request):
     return get_current_user(req)
 
 
-def _serialize(model) -> dict:
-    if hasattr(model, "model_dump"):
-        return model.model_dump()
-    return model.dict()
-
-
 def _staff_query(extra: dict | None = None) -> dict:
     return scoped_filter(extra or {}, get_school_id())
 
 
 def _can_manage(user: dict) -> bool:
     return user.get("role") in ADMIN_ROLES
-
-
-def _is_owner(user: dict) -> bool:
-    return user.get("role") == "owner"
-
-
-def _is_owner_or_principal(user: dict) -> bool:
-    return user.get("role") == "owner" or (user.get("role") == "admin" and user.get("sub_category", "principal") == "principal")
-
-
-def _is_accounts(user: dict) -> bool:
-    return user.get("role") == "admin" and user.get("sub_category") in ("accounts", "accountant")
-
-
-def _can_set_privileged_fields(user: dict) -> bool:
-    return _is_owner(user)
-
-
-def _default_username(body: dict) -> str:
-    source = body.get("username") or body.get("email") or body.get("phone") or body.get("employee_id") or body.get("name", "staff")
-    return re.sub(r"[^a-zA-Z0-9._-]+", ".", source.lower()).strip(".")[:48] or f"staff.{uuid.uuid4().hex[:8]}"
 
 
 def _public_staff(staff: dict) -> dict:
@@ -105,42 +84,6 @@ async def _audit(db, *, action: str, staff_id: str, user: dict, changes: dict | 
         "changes": changes or {},
         "created_at": datetime.now().isoformat(),
     }, school_id=get_school_id(), branch_id=user.get("branch_id"))
-
-
-async def _create_or_link_user(db, body: dict, actor: dict) -> tuple[str, str | None]:
-    if body.get("user_id"):
-        existing = await db.auth_users.find_one({"id": body["user_id"]}, {"_id": 0})
-        if not existing:
-            raise HTTPException(404, "Linked user account not found")
-        return body["user_id"], None
-
-    username = _default_username(body)
-    existing = await db.auth_users.find_one({"username_lower": username.lower()}, {"_id": 0})
-    if existing:
-        return existing["id"], None
-
-    temp_password = body.get("password") or f"EduFlow-{uuid.uuid4().hex[:8]}"
-    role = body.get("role") or ("teacher" if body.get("staff_type") == "teacher" else "admin")
-    user_id = str(uuid.uuid4())
-    await db.auth_users.insert_one({
-        "_id": user_id,
-        "id": user_id,
-        "schoolId": get_school_id(),
-        "username": username,
-        "username_lower": username.lower(),
-        "password_hash": hash_password(temp_password),
-        "is_active": True,
-        "user_info": {
-            "id": user_id,
-            "role": role,
-            "name": body.get("name"),
-            "phone": body.get("phone"),
-            "sub_category": body.get("sub_category"),
-        },
-        "created_by": actor.get("id"),
-        "created_at": datetime.now().isoformat(),
-    })
-    return user_id, temp_password
 
 
 @router.get("/")
@@ -167,52 +110,22 @@ async def create_staff(request: Request):
     if not _can_manage(user):
         raise HTTPException(403, "Forbidden")
 
+    # Thin adapter over services.staff_service.create_staff — the SAME write path
+    # as the AI `create_staff` tool (Story J.2 / AD7). Privileged-field gating and
+    # the credential-issued audit live in the service.
     body = await request.json()
-    if not body.get("name") or not body.get("staff_type"):
-        raise HTTPException(400, "name and staff_type are required")
-    requested_role = body.get("role") or ("teacher" if body.get("staff_type") == "teacher" else "admin")
-    requested_sub = body.get("sub_category")
-    if not _can_set_privileged_fields(user) and (requested_role in {"owner", "admin"} or requested_sub):
-        raise HTTPException(403, "Only owner can create privileged staff accounts")
-
-    user_id, temp_password = await _create_or_link_user(db, body, user)
-    staff = Staff(
-        user_id=user_id,
-        name=body["name"],
-        staff_type=body["staff_type"],
-        employee_id=body.get("employee_id"),
-        phone=body.get("phone"),
-        email=body.get("email"),
-        qualification=body.get("qualification"),
-        specialization=body.get("specialization"),
-        department=body.get("department"),
-        join_date=body.get("join_date"),
-        salary=body.get("salary"),
-        casual_leave_balance=body.get("casual_leave_balance", 12),
-        medical_leave_balance=body.get("medical_leave_balance", 10),
-        earned_leave_balance=body.get("earned_leave_balance", 15),
-    )
-    staff_doc = {**_serialize(staff), "role": requested_role, "sub_category": requested_sub}
-    await db.staff.insert_one({**staff_doc, "_id": staff.id})
-    await _audit(db, action="create", staff_id=staff.id, user=user, changes={"created": staff_doc})
-    if temp_password:
-        # security: intentional — first-time credential delivery, no other channel.
-        # Password is returned once in plaintext so the creating admin can hand it to the
-        # new staff member. It is hashed in auth_users and is never stored or logged elsewhere.
-        await write_audit(
-            db=db,
-            action="credential_issued",
-            entity_id=staff.id,
-            collection="staff",
-            changed_by=user.get("id"),
-            changed_by_role=user.get("role", ""),
-            school_id=get_school_id(),
-            branch_id=user.get("branch_id", ""),
-            changes={"credential_type": "temporary_password", "issued_to_staff_id": staff.id},
-        )
-    data = _public_staff(staff_doc)
-    if temp_password:
-        data["temporary_password"] = temp_password
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await create_staff_service(db, actor_ctx, body)
+    except StaffValidationError as e:
+        raise HTTPException(400, str(e))
+    except StaffAuthorizationError as e:
+        raise HTTPException(403, str(e))
+    except LinkedUserNotFoundError as e:
+        raise HTTPException(404, str(e))
+    data = _public_staff(result["staff"])
+    if result.get("temporary_password"):
+        data["temporary_password"] = result["temporary_password"]
     return {"success": True, "data": data}
 
 
@@ -234,57 +147,20 @@ async def update_staff(staff_id: str, request: Request):
     user = get_user(request)
     if not _can_manage(user):
         raise HTTPException(403, "Forbidden")
-    existing = await db.staff.find_one(_staff_query({"id": staff_id}), {"_id": 0})
-    if not existing:
-        raise HTTPException(404, "Staff not found")
-
+    # Thin adapter over services.staff_service.update_staff — the SAME write path
+    # as the AI `update_staff` tool (Story J.2 / AD7). OWNER_ONLY_FIELDS silent-strip,
+    # leave-balance/accounts authority, and the auth_users user_info sync live there.
     body = await request.json()
-    allowed = set(PROFILE_FIELDS)
-    if not _can_set_privileged_fields(user):
-        allowed -= {"role", "sub_category", "salary"}
-    if _is_owner_or_principal(user):
-        allowed |= LEAVE_BALANCE_FIELDS
-    if _is_accounts(user) and not _is_owner(user):
-        allowed |= {"salary"}
-    if not _is_owner_or_principal(user) and any(field in body for field in LEAVE_BALANCE_FIELDS):
-        raise HTTPException(403, "Forbidden")
-    # Note: role, sub_category, salary are handled by OWNER_ONLY_FIELDS silent-strip below (EC-9.4)
-    # Non-owner callers who send these fields have them silently removed — no 403
-
-    update = {k: v for k, v in body.items() if k in allowed}
-
-    # EC-9.4: OWNER_ONLY_FIELDS — principals cannot change role, sub_category, salary, or is_active.
-    # Applies to ALL updates including self-updates (staff_id == user['id'] is NOT exempt).
-    OWNER_ONLY_FIELDS = {"role", "sub_category", "salary", "is_active"}
-    body_had_owner_only = any(f in body for f in OWNER_ONLY_FIELDS)
-    if user.get("role") != "owner":
-        for field in OWNER_ONLY_FIELDS:
-            update.pop(field, None)  # silent strip — EC-9.4
-
-    if not update:
-        # All submitted fields were owner-only and silently stripped — return no-op success.
-        if body_had_owner_only and user.get("role") != "owner":
-            return {"success": True, "data": existing}
-        raise HTTPException(400, "No updatable fields provided")
-    update["updated_at"] = datetime.now().isoformat()
-    changes = {k: {"previous": existing.get(k), "new": v} for k, v in update.items() if k != "updated_at" and existing.get(k) != v}
-    if not changes:
-        return {"success": True, "data": existing}
-
-    await db.staff.update_one(_staff_query({"id": staff_id}), {"$set": update})
-    if existing.get("user_id") and any(k in update for k in {"name", "phone", "role", "sub_category"}):
-        user_info = {
-            **(await db.auth_users.find_one({"id": existing["user_id"]}, {"_id": 0}) or {}).get("user_info", {}),
-            "id": existing["user_id"],
-            "name": update.get("name", existing.get("name")),
-            "phone": update.get("phone", existing.get("phone")),
-            "role": update.get("role", existing.get("role")),
-            "sub_category": update.get("sub_category", existing.get("sub_category")),
-        }
-        await db.auth_users.update_one({"id": existing["user_id"]}, {"$set": {"user_info": user_info}})
-    await _audit(db, action="update", staff_id=staff_id, user=user, changes=changes)
-    updated = await db.staff.find_one(_staff_query({"id": staff_id}), {"_id": 0})
-    return {"success": True, "data": _public_staff(updated)}
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await update_staff_service(db, actor_ctx, {**body, "staff_id": staff_id})
+    except StaffNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except StaffAuthorizationError as e:
+        raise HTTPException(403, str(e))
+    except StaffValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": _public_staff(result["staff"])}
 
 
 @router.delete("/{staff_id}")

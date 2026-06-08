@@ -36,6 +36,25 @@ from services.announcement_service import (
     AnnouncementValidationError,
 )
 from services.contact_log_service import log_contact_event, ContactLogValidationError
+from services.student_service import (
+    create_student as svc_create_student,
+    update_student as svc_update_student,
+    set_student_status as svc_set_student_status,
+    upsert_guardians as svc_upsert_guardians,
+    StudentValidationError,
+    StudentNotFoundError,
+    StudentConflictError,
+    ClassNotFoundError,
+    ClassValidationError,
+)
+from services.staff_service import (
+    create_staff as svc_create_staff,
+    update_staff as svc_update_staff,
+    StaffValidationError,
+    StaffNotFoundError,
+    StaffAuthorizationError,
+    LinkedUserNotFoundError,
+)
 from services.incident_service import (
     resolve_record_type,
     assign_followup as svc_assign_followup,
@@ -1365,6 +1384,124 @@ async def tool_record_fee_payment(params: dict, user: dict, scope: dict = None) 
     return {"success": True, "data": result["data"], "message": "Fee payment recorded."}
 
 
+async def tool_create_student(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.student_service.create_student — the SAME write path
+    # as POST /api/students/ (Story J.1 / AD7). School-scoped (no branch); the
+    # student result is DPDP-redacted by _safe_tool_result_for_chat before re-entering the LLM.
+    if not (params.get("name") and params.get("class_id")):
+        return {"success": False, "message": "name and class_id are required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_create_student(db, actor_ctx, params)
+    except StudentConflictError as e:
+        return {"success": False, "message": str(e)}
+    except (StudentNotFoundError, ClassNotFoundError):
+        return _empty_result("Class not found.")
+    except (StudentValidationError, ClassValidationError) as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["student"], "message": "Student created."}
+
+
+async def tool_update_student(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.student_service.update_student — the SAME write path
+    # as PATCH /api/students/{id} (Story J.1 / AD7).
+    if not params.get("student_id"):
+        return {"success": False, "message": "student_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_update_student(db, actor_ctx, params)
+    except StudentNotFoundError:
+        return _empty_result("Student not found.")
+    except ClassNotFoundError:
+        return _empty_result("Class not found.")
+    except StudentConflictError as e:
+        return {"success": False, "message": str(e)}
+    except (StudentValidationError, ClassValidationError) as e:
+        return {"success": False, "message": str(e)}
+    msg = "No changes to apply." if result.get("noop") else "Student updated."
+    return {"success": True, "data": result["student"], "message": msg}
+
+
+async def tool_set_student_status(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.student_service.set_student_status — a soft status
+    # change (e.g. active → withdrawn) via the update path. NOT a delete/erase: those
+    # stay UI-only (AD15) and have no AI tool.
+    if not params.get("student_id") or not params.get("status"):
+        return {"success": False, "message": "student_id and status are required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_set_student_status(db, actor_ctx, params)
+    except StudentNotFoundError:
+        return _empty_result("Student not found.")
+    except StudentValidationError as e:
+        return {"success": False, "message": str(e)}
+    msg = "No changes to apply." if result.get("noop") else f"Student status set to {params['status']}."
+    return {"success": True, "data": result["student"], "message": msg}
+
+
+async def tool_manage_student_guardians(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.student_service.upsert_guardians — the SAME write path
+    # as PUT /api/students/{id}/guardians (Story J.1 / AD7). Replaces all guardians.
+    if not params.get("student_id"):
+        return {"success": False, "message": "student_id is required."}
+    guardians = params.get("guardians")
+    if not isinstance(guardians, list):
+        return {"success": False, "message": "guardians must be a list of guardian objects."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_upsert_guardians(db, actor_ctx, params)
+    except StudentNotFoundError:
+        return _empty_result("Student not found.")
+    except StudentValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["guardians"], "message": "Guardians updated."}
+
+
+async def tool_create_staff(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.staff_service.create_staff — the SAME write path as
+    # POST /api/staff/ (Story J.2 / AD7). The plaintext temporary password is NEVER
+    # surfaced to the LLM/chat — it is delivered out-of-band via the panel.
+    if not (params.get("name") and params.get("staff_type")):
+        return {"success": False, "message": "name and staff_type are required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_create_staff(db, actor_ctx, params)
+    except StaffAuthorizationError as e:
+        return {"success": False, "message": str(e)}
+    except LinkedUserNotFoundError:
+        return _empty_result("Linked user account not found.")
+    except StaffValidationError as e:
+        return {"success": False, "message": str(e)}
+    message = "Staff created."
+    if result.get("temporary_password"):
+        message += " A temporary password was issued; deliver it to the staff member via the staff panel."
+    return {"success": True, "data": result["staff"], "message": message}
+
+
+async def tool_update_staff(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.staff_service.update_staff — the SAME write path as
+    # PATCH /api/staff/{id} (Story J.2 / AD7). OWNER_ONLY_FIELDS protections preserved.
+    if not params.get("staff_id"):
+        return {"success": False, "message": "staff_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_update_staff(db, actor_ctx, params)
+    except StaffNotFoundError:
+        return _empty_result("Staff not found.")
+    except StaffAuthorizationError as e:
+        return {"success": False, "message": str(e)}
+    except StaffValidationError as e:
+        return {"success": False, "message": str(e)}
+    msg = "No changes to apply." if result.get("noop") else "Staff updated."
+    return {"success": True, "data": result["staff"], "message": msg}
+
+
 async def tool_mark_attendance(params: dict, user: dict, scope: dict = None) -> dict:
     if not params.get("class_id") and not params.get("class_name"):
         return {"success": False, "message": "class_id or class_name is required."}
@@ -2144,6 +2281,102 @@ TOOL_REGISTRY = {
             "amount": {"type": "number", "description": "Payment amount"},
             "fee_head": {"type": "string", "description": "Fee head"},
             "mode": {"type": "string", "description": "cash, upi, cheque, or bank_transfer"},
+        },
+    },
+    # ---- Epic J: student CRUD (Owner + Principal only; Phase-1 lockdown applies) ----
+    "create_student": {
+        "fn": tool_create_student,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Create a new student record (with optional guardians) in the school database.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "name": {"type": "string", "description": "Student full name (required)"},
+            "class_id": {"type": "string", "description": "Class ID the student joins (required)"},
+            "admission_number": {"type": "string", "description": "Admission number (auto-generated if omitted)"},
+            "roll_number": {"type": "string", "description": "Roll number"},
+            "dob": {"type": "string", "description": "Date of birth YYYY-MM-DD"},
+            "gender": {"type": "string", "description": "Gender"},
+            "father_name": {"type": "string", "description": "Father name (with father_phone creates a guardian)"},
+            "father_phone": {"type": "string", "description": "Father phone"},
+            "mother_name": {"type": "string", "description": "Mother name (with mother_phone creates a guardian)"},
+            "mother_phone": {"type": "string", "description": "Mother phone"},
+        },
+    },
+    "update_student": {
+        "fn": tool_update_student,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Update fields on an existing student record. Does NOT delete or erase students (UI-only).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "student_id": {"type": "string", "description": "Student ID (required)"},
+            "name": {"type": "string", "description": "Updated name"},
+            "class_id": {"type": "string", "description": "Move to class ID"},
+            "roll_number": {"type": "string", "description": "Roll number"},
+            "house": {"type": "string", "description": "House assignment"},
+            "photo_url": {"type": "string", "description": "Photo URL"},
+        },
+    },
+    "set_student_status": {
+        "fn": tool_set_student_status,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Set a student's status (e.g. active, withdrawn). Soft status change only — never a delete or DPDP-erase.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "student_id": {"type": "string", "description": "Student ID (required)"},
+            "status": {"type": "string", "description": "New status, e.g. active or withdrawn (required)"},
+        },
+    },
+    "manage_student_guardians": {
+        "fn": tool_manage_student_guardians,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Replace the guardian list for a student (each guardian needs name + phone).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "student_id": {"type": "string", "description": "Student ID (required)"},
+            "guardians": {"type": "array", "description": "List of {name, phone, relation, email, occupation, is_primary}"},
+        },
+    },
+    # ---- Epic J: staff CRUD (Owner + Principal only; Phase-1 lockdown applies) ----
+    "create_staff": {
+        "fn": tool_create_staff,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Create a new staff member (auto-creates a login account). Only an owner may create privileged (owner/admin) accounts.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "name": {"type": "string", "description": "Staff full name (required)"},
+            "staff_type": {"type": "string", "description": "e.g. teacher, accountant, receptionist (required)"},
+            "role": {"type": "string", "description": "Login role (owner-only for owner/admin)"},
+            "sub_category": {"type": "string", "description": "Admin sub-category (owner-only)"},
+            "employee_id": {"type": "string", "description": "Employee ID"},
+            "phone": {"type": "string", "description": "Phone"},
+            "email": {"type": "string", "description": "Email"},
+            "department": {"type": "string", "description": "Department"},
+        },
+    },
+    "update_staff": {
+        "fn": tool_update_staff,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Update an existing staff member's profile. role/sub_category/salary are owner-only and silently ignored otherwise.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "staff_id": {"type": "string", "description": "Staff ID (required)"},
+            "name": {"type": "string", "description": "Updated name"},
+            "phone": {"type": "string", "description": "Phone"},
+            "email": {"type": "string", "description": "Email"},
+            "department": {"type": "string", "description": "Department"},
+            "qualification": {"type": "string", "description": "Qualification"},
         },
     },
     "mark_attendance": {

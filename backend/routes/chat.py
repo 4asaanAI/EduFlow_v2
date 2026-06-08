@@ -146,6 +146,13 @@ WRITE_TOOL_REQUIRED_PARAMS = {
     "approve_leave": ("leave_id", "action"),
     "award_house_points": ("student_name", "points"),
     "create_announcement": ("title", "content"),
+    # Epic J — student & staff CRUD
+    "create_student": ("name", "class_id"),
+    "update_student": ("student_id",),
+    "set_student_status": ("student_id", "status"),
+    "manage_student_guardians": ("student_id", "guardians"),
+    "create_staff": ("name", "staff_type"),
+    "update_staff": ("staff_id",),
 }
 
 WRITE_TOOL_PARAM_LABELS = {
@@ -180,6 +187,12 @@ WRITE_TOOL_PARAM_LABELS = {
     "reason": "reason",
     "title": "announcement title",
     "content": "announcement content",
+    # Epic J — student & staff CRUD
+    "name": "name",
+    "status": "status",
+    "guardians": "guardians",
+    "staff_type": "staff type",
+    "staff_id": "staff member",
 }
 
 # ─── Keyword → Tool Map ──────────────────────────────────────────────────────
