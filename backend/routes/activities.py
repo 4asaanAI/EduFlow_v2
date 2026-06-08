@@ -9,9 +9,23 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 from database import get_db
-from middleware.auth import require_role
+from middleware.auth import require_role, require_owner_or_principal
 from tenant import get_school_id, scoped_filter
 from services.audit_service import write_audit
+from services.actor_context import actor_ctx_from_user
+from services.house_points_service import (
+    award_points as svc_award_points,
+    HouseNotFoundError,
+    HousePointsValidationError,
+)
+from services.academic_structure_service import (
+    create_house as svc_create_house,
+    update_house as svc_update_house,
+    delete_house as svc_delete_house,
+    AcademicStructureValidationError,
+    AcademicStructureNotFoundError,
+    AcademicStructureConflictError,
+)
 
 router = APIRouter(prefix="/api/activities", tags=["activities"])
 
@@ -66,6 +80,48 @@ async def list_houses(request: Request, user: dict = Depends(require_role("owner
     return {"success": True, "data": houses}
 
 
+# ── House CRUD (Story K.2) — service-backed parity reference for the AI tools ──
+# No new UI: these wrap the academic_structure_service single write path. Points
+# changes stay on the dedicated audited award_house_points path, not here.
+@router.post("/houses")
+async def create_house(request: Request, user: dict = Depends(require_owner_or_principal)):
+    db = get_db()
+    body = await request.json()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_create_house(db, actor_ctx, body)
+    except AcademicStructureValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["house"]}
+
+
+@router.patch("/houses/{house_id}")
+async def update_house(house_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
+    db = get_db()
+    body = await request.json()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_update_house(db, actor_ctx, {**body, "house_id": house_id})
+    except AcademicStructureNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except AcademicStructureValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["house"]}
+
+
+@router.delete("/houses/{house_id}")
+async def delete_house(house_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_delete_house(db, actor_ctx, {"house_id": house_id})
+    except AcademicStructureNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except AcademicStructureConflictError as e:
+        raise HTTPException(409, str(e))
+    return {"success": True, "data": result}
+
+
 class HousePointsBody(BaseModel):
     delta: int
     reason: Optional[str] = None
@@ -74,39 +130,15 @@ class HousePointsBody(BaseModel):
 @router.post("/houses/{house_id}/points")
 async def award_points(house_id: str, body: HousePointsBody, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    house = await db.houses.find_one(_scope({"id": house_id}), {"_id": 0})
-    if not house:
-        raise HTTPException(404, "House not found")
-    new_points = max(0, house.get("points", 0) + body.delta)
-    await db.houses.update_one(
-        _scope({"id": house_id}),
-        {"$set": {"points": new_points, "updated_at": datetime.now().isoformat()}},
-    )
-    log = {
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
-        "schoolId": get_school_id(),
-        "house_id": house_id,
-        "house_name": house.get("name"),
-        "delta": body.delta,
-        "new_total": new_points,
-        "reason": body.reason,
-        "awarded_by": user.get("id"),
-        "created_at": datetime.now().isoformat(),
-    }
-    await db.house_points_log.insert_one(log)
-    await write_audit(
-        db,
-        action="house_points_award",
-        entity_id=house_id,
-        collection="houses",
-        changed_by=user.get("id"),
-        changed_by_role=user.get("role", ""),
-        school_id=get_school_id(),
-        branch_id=user.get("branch_id", ""),
-        changes={"delta": body.delta, "new_total": new_points, "reason": body.reason},
-    )
-    return {"success": True, "data": {"points": new_points}}
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    params = {"house_id": house_id, "delta": body.delta, "reason": body.reason}
+    try:
+        result = await svc_award_points(db, actor_ctx, params)
+    except HouseNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except HousePointsValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": {"points": result["points"]}}
 
 
 @router.get("/houses/{house_id}/points-log")

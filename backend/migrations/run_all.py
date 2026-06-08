@@ -54,6 +54,9 @@ MIGRATIONS = [
     ("021_audit_log_indexes", "Add audit log scoped query indexes (Part 7)"),
     ("022_stripe_fields", "Add Stripe subscription fields to token_balances (Story 7-42)"),
     ("023_transport_coordinates", "Add 2dsphere indexes for transport route centroids and student coordinates (Story 7-46)"),
+    ("024_razorpay_fields", "Vendor change Stripe→Razorpay: rename token_balances.stripe_customer_id and token_purchases.stripe_session_id (2026-06-08)"),
+    ("025_ai_write_idempotency_index", "AI Layer Hardening D.4: unique index on ai_write_idempotency.idempotency_key for exactly-once AI plan execution (AD6)"),
+    ("026_ai_memory_skills", "AI Layer Hardening Epic G: ai_memories + ai_skills indexes ((schoolId,user_id) isolation + expire_at TTL retention)"),
 ]
 
 

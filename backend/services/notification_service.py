@@ -8,6 +8,7 @@ import logging
 import uuid
 
 from tenant import add_school_id, get_school_id
+from services.txn_context import session_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,11 @@ async def create_notification(
     }, school_id or get_school_id())
 
     try:
-        await db.notifications.insert_one(doc)
+        # AI Layer Hardening D-review: enlist in the AI plan executor's transaction
+        # when one is active (ambient txn_context session) so a notification for a
+        # write that gets rolled back is itself rolled back (AD14 — "a rolled-back
+        # plan sends nothing"). Outside the executor this is {} → unchanged behavior.
+        await db.notifications.insert_one(doc, **session_kwargs())
     except Exception:
         logger.warning(
             "notification_write_failed",

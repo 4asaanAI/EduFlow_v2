@@ -69,6 +69,7 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 | google-generativeai | ≥0.8.0 | Secondary LLM / image tasks |
 | boto3 | ≥1.34 | S3 file storage |
 | twilio | ≥9.2.0 | SMS |
+| razorpay | ≥1.4.0 | **Billing vendor (token recharge + subscriptions)** — `services/razorpay_service.py` + `routes/tokens.py`. Migrated from Stripe 2026-06-08. Payment Links (one-time) + Subscriptions (recurring); webhook verifies `X-Razorpay-Signature`. |
 
 ### Infrastructure
 - **Frontend hosting**: AWS Amplify — build command `yarn build`, output `build/`
@@ -290,12 +291,7 @@ Two tenancy axes coexist: `branch_id` (per-branch) and `schoolId` (per-school, S
 ## Announcement Moderation (Story 7-47)
 
 - `announcements` documents have `status`: `"active" | "pending_approval" | "rejected"`.
-- **Canonical gate function**: `_announcement_requires_approval(audience_type, target_roles)` in `routes/operations.py`:
-  ```python
-  def _announcement_requires_approval(audience_type: str, target_roles: list[str]) -> bool:
-      return audience_type in ("all", "class") or any(r in ("teacher", "student") for r in target_roles)
-  ```
-  The REST route calls this function directly. The AI tool (`tool_create_announcement`) mirrors this logic inline — if the gate condition changes, **update both places** and add a test. A shared import is not currently used due to circular import risk.
+- **Canonical gate function (since AI-Layer-Hardening A.4)**: `decide_announcement_status(actor_ctx, audience_type, target_roles, *, raw_audience_roles=None)` in `services/announcement_service.py`. **Both** the REST route (`POST /api/ops/announcements`) **and** the AI tool (`tool_create_announcement`) call it — the previous inline duplication in the AI tool (and the `_should_require_approval`/`_announcement_requires_approval` helpers in `routes/operations.py`) were removed. EC-9.1 (owner/principal broadcast directly) + Story 7-47 (teacher/student/all/class held for approval) live here. It raises `AnnouncementValidationError` (principal targeting owner → route maps to 422).
 - Endpoints: `GET /api/ops/announcements/pending`, `PATCH .../approve`, `PATCH .../reject` (requires non-empty `reason`) — all gated with `Depends(require_owner_or_principal)`.
 - All approve/reject decisions write to `db.audit_logs`.
 
@@ -579,3 +575,23 @@ Routes in `backend/routes/payroll.py`. RBAC: writes = owner only, reads = owner 
 - Dev/test + `SCHOOL_ID` unset → warning log, continues with default `"aaryans-joya"`
 
 `SKIP_CONSENT_CHECK=true` guard (Part 16): startup `ValueError` if set in prod/staging.
+
+---
+
+## AI Layer Hardening — Epic F Invariants (Compliance & Safety-Ops)
+
+These are the new invariants the hardening initiative added. Each has a single enforcement point — do not duplicate or bypass.
+
+| Invariant | Enforcement point | Notes |
+|---|---|---|
+| **PII minimization to LLM** (F.1) | `ai/redaction.py:redact_for_llm` | THE canonical redactor. `routes/chat.py:_safe_tool_result_for_chat` delegates to it. Masks special-category keys only (DOB/contact/health/full-address/Aadhaar + secrets); names/ids/counts/amounts pass through. **Do not over-redact** — it would break normal answers. |
+| **Audited minor reads** (F.2) | `routes/chat.py:_audit_minor_read` + `MINOR_READ_TOOLS` | Every assistant read through a student-record read tool writes a `minor_record_read` audit row (ids/counts only, no PII). Fail-open. |
+| **Per-step re-scoping** (F.3) | `ai/plan_executor.py:_assert_step_scope` | Each write step re-checked against the plan's `(school_id, branch_id)`; a step naming a foreign branch/school aborts the whole plan (`PlanScopeViolationError` → 403). |
+| **AI-write kill-switch** (F.4) | `services/ai_kill_switch.py` + check in `_execute_confirmed_dispatch` | `db.system_flags.ai_writes_enabled`. Fails OPEN. ≤30s staleness (cache TTL). Checked before token consume; reads never gated. |
+| **Shadow / dry-run** (F.5) | `services/ai_shadow_mode.py` + `plan_executor.run(dry_run=)` | `db.system_flags.ai_dry_run` (default OFF). Aborted txn, reports `would_change`, no side-effects. True no-commit proven on `@pytest.mark.mongo_real`. |
+| **Parity corpus CI gate** (F.6) | `tests/backend/parity/{normalizer.py,corpus.py,test_parity_corpus.py}` | Every tool in `WRITE_TOOL_NAMES` MUST have a `PARITY_CORPUS` entry, else CI fails. New write tool → add a parity test + corpus entry in the same PR. |
+| **Pilot metrics, PII-free** (F.7) | `services/ai_metrics.py:record_ai_metric` → `db.ai_metrics` | Fail-open. `_FORBIDDEN_KEYS` strips PII from `extra`. |
+| **Two-step destructive + deletion audit** (F.10) | `routes/chat.py`: `DESTRUCTIVE_TOOL_NAMES`, `FORBIDDEN_AI_TOOLS`, `_token_meta_destructive_steps`, `_audit_destructive_step` | A destructive step needs `destructive_ack=True` on the 2nd confirm (else 409 `destructive_confirmation_required`). Deletion writes actor-tagged `action="delete"` audit. Student hard-delete/erase tools are refused outright. |
+| **Phase-1 action lockdown** (F.11/FR43) | `services/ai_action_policy.py` (single switch `LOCKDOWN_ENABLED`) applied in `routes/chat.py:_is_tool_authorized` | AI write/action tools = Owner + Principal only during Phase 1; reads (incl. all student tools) unaffected. Phase 2 (Epic H) widens by editing the one policy — no engine change. |
+
+**Operator runbook** (kill-switch, shadow mode, reverting a bad AI write): `docs/deployment-runbook.md` §8.

@@ -12,6 +12,12 @@ from database import get_db
 from middleware.auth import get_current_user, require_owner, require_role, require_access, require_owner_or_principal
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
+from services.actor_context import actor_ctx_from_user
+from services.incident_service import (
+    confirm_resolution as svc_confirm_resolution,
+    IncidentValidationError,
+    IncidentNotFoundError,
+)
 from tenant import get_school_id, scoped_filter, scoped_query, add_school_id
 
 logger = logging.getLogger(__name__)
@@ -406,28 +412,23 @@ async def escalate_facility_request(request_id: str, request: Request):
 
 @router.post("/facility/{request_id}/confirm-resolution")
 async def confirm_facility_resolution(request_id: str, request: Request, user: dict = Depends(require_owner)):
+    # Story C.3: delegate to services.incident_service.confirm_resolution — the SAME
+    # write path as the AI `confirm_resolution` tool (close + audit + submitter notify).
     db = get_db()
-    bid = user.get("branch_id")
-    existing = await db.facility_requests.find_one(scoped_query({"id": request_id}, branch_id=bid))
-    if not existing:
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        await svc_confirm_resolution(db, actor_ctx, {
+            "request_id": request_id,
+            "confirmation_note": body.get("confirmation_note"),
+        })
+    except IncidentNotFoundError:
         raise HTTPException(404, "Facility request not found")
-    if existing.get("status") != "pending_owner_confirmation":
+    except IncidentValidationError:
         raise HTTPException(400, "Request must be in pending_owner_confirmation status")
-    await db.facility_requests.update_one(
-        scoped_query({"id": request_id}, branch_id=bid),
-        {"$set": {"status": "closed", "resolved_by": user["id"], "resolved_at": datetime.now().isoformat(), "updated_at": datetime.now().isoformat()}}
-    )
-    # Notify the maintenance admin who logged it
-    await create_notification(
-        db,
-        user_id=existing["logged_by"],
-        notification_type="facility_resolved",
-        title="Facility request resolved",
-        message=f"Your facility request has been resolved and closed by the Owner.",
-        source_id=request_id,
-        source_type="facility_request",
-    )
-    await _write_audit(db, "facility_request_close", "facility_requests", request_id, user, {"status": "closed"})
     return {"success": True, "message": "Facility request closed and maintenance admin notified"}
 
 

@@ -257,7 +257,7 @@ import pytest
 pytestmark = pytest.mark.asyncio
 ```
 
-**Auth helper pattern** (copy from test_stripe_checkout.py or test_teacher_student_login.py):
+**Auth helper pattern** (copy from test_razorpay_checkout.py or test_teacher_student_login.py):
 ```python
 import jwt, os
 def _bearer(claims):

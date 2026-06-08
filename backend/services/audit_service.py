@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime
 
 from tenant import add_school_id
+from services.txn_context import session_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,13 @@ async def write_audit_doc(
 ) -> bool:
     global _audit_failure_count
     try:
-        await db.audit_logs.insert_one(_normalise_doc(doc, school_id=school_id, branch_id=branch_id))
+        # AI Layer Hardening D-review: enlist in the AI plan executor's transaction
+        # (ambient txn_context session) so a domain-audit row for a write that gets
+        # rolled back is rolled back too. Outside the executor this is {} → unchanged.
+        await db.audit_logs.insert_one(
+            _normalise_doc(doc, school_id=school_id, branch_id=branch_id),
+            **session_kwargs(),
+        )
         _audit_failure_count = 0
         return True
     except Exception:

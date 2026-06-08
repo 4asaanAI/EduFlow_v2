@@ -1,6 +1,20 @@
-# Story 7.42: Token Recharge + Subscription Billing (Stripe)
+# Story 7.42: Token Recharge + Subscription Billing
 
 Status: done
+
+> **⚠️ VENDOR CHANGE — Stripe → Razorpay (2026-06-08).** This story was originally
+> built on Stripe; the payment vendor has since been migrated to **Razorpay**. The
+> sections below are retained as the historical record and still read "Stripe" inline.
+> The CURRENT implementation is:
+> - Service: `backend/services/razorpay_service.py` (Razorpay Payment Links for one-time
+>   top-ups, Razorpay Subscriptions for plans; webhook signature via `X-Razorpay-Signature`).
+> - Route: `backend/routes/tokens.py` (same endpoints/response shapes: `{checkout_url, session_id}`).
+> - Webhook events: `payment_link.paid`, `subscription.activated`, `subscription.charged`, `subscription.cancelled`.
+> - DB fields: `token_purchases.razorpay_reference_id` (idempotency, unique-indexed),
+>   `token_balances.razorpay_customer_id`. Migration `024_razorpay_fields.py`.
+> - Env: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`,
+>   `RAZORPAY_PLAN_MONTHLY_SCHOOL_STARTER`, `RAZORPAY_PLAN_MONTHLY_SCHOOL_PRO`.
+> - Tests: `tests/backend/unit/test_razorpay_checkout.py` (replaces `test_stripe_checkout.py`).
 Epic: 7
 Priority: High (Phase 2 revenue trigger — The Aaryans converts from pilot to paying)
 Effort: Large

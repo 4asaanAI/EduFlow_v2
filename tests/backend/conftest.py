@@ -16,6 +16,7 @@ import asyncio
 import pytest
 import pytest_asyncio
 from typing import AsyncGenerator, Generator
+from pymongo.errors import DuplicateKeyError
 
 # ─── Override environment before importing app ─────────────────────────────
 # Set test environment variables before any app import
@@ -181,11 +182,16 @@ class FakeAggregateCursor:
 
 
 class FakeCollection:
+    # AI Layer Hardening D.1: every mutating/read method accepts `**kwargs` so the
+    # transaction executor can pass `session=` through the shared service layer.
+    # The FakeDb shim is deliberately session-AGNOSTIC — it accepts `session=` and
+    # ignores it, asserting NOTHING about atomicity (real transaction/rollback
+    # guarantees are verified only on the @pytest.mark.mongo_real tier, never here).
     def __init__(self, docs=None):
         self.docs = docs or []
         self.indexes = {}
 
-    async def find_one(self, query=None, projection=None, sort=None):
+    async def find_one(self, query=None, projection=None, sort=None, **kwargs):
         docs = [doc for doc in self.docs if _matches(doc, query or {})]
         if sort:
             for key, direction in reversed(sort):
@@ -195,17 +201,39 @@ class FakeCollection:
                 return {k: v for k, v in doc.items() if k != "_id"} if projection else doc
         return None
 
-    def find(self, query=None, projection=None):
+    def find(self, query=None, projection=None, **kwargs):
         return FakeCursor([doc for doc in self.docs if _matches(doc, query or {})])
 
-    async def count_documents(self, query=None):
+    async def count_documents(self, query=None, **kwargs):
         return sum(1 for doc in self.docs if _matches(doc, query or {}))
 
-    async def insert_one(self, doc):
+    async def insert_one(self, doc, **kwargs):
+        # Honor unique indexes so idempotency/dedup tests can exercise DuplicateKey
+        # on the FakeDb tier too (the real-Mongo tier remains authoritative).
+        self._enforce_unique(doc)
         self.docs.append(doc)
         return type("Result", (), {"inserted_id": doc.get("_id")})()
 
-    async def update_one(self, query, update, upsert=False):
+    def _enforce_unique(self, doc):
+        for spec in self.indexes.values():
+            if not spec.get("unique"):
+                continue
+            key = spec.get("key")
+            if isinstance(key, (list, tuple)):
+                fields = [k for k, _ in key]
+            elif isinstance(key, str):
+                fields = [key]
+            else:
+                continue
+            if spec.get("sparse") and any(_get_nested(doc, f) is None for f in fields):
+                continue
+            for existing in self.docs:
+                if all(_get_nested(existing, f) == _get_nested(doc, f) for f in fields):
+                    raise DuplicateKeyError(
+                        f"E11000 duplicate key error: {fields}"
+                    )
+
+    async def update_one(self, query, update, upsert=False, **kwargs):
         for doc in self.docs:
             if _matches(doc, query):
                 for key, value in update.get("$set", {}).items():
@@ -242,7 +270,7 @@ class FakeCollection:
             return type("Result", (), {"matched_count": 1, "modified_count": 1})()
         return type("Result", (), {"matched_count": 0, "modified_count": 0})()
 
-    async def find_one_and_update(self, query, update, upsert=False, return_document=None, sort=None):
+    async def find_one_and_update(self, query, update, upsert=False, return_document=None, sort=None, **kwargs):
         # Minimal stand-in for Motor's find_one_and_update covering the cases
         # the rate limiter exercises: upsert + $inc + $setOnInsert.
         matched_doc = None
@@ -264,7 +292,7 @@ class FakeCollection:
             _inc_nested(matched_doc, key, value)
         return {k: v for k, v in matched_doc.items() if k != "_id"}
 
-    async def update_many(self, query, update):
+    async def update_many(self, query, update, **kwargs):
         count = 0
         for doc in self.docs:
             if _matches(doc, query):
@@ -281,12 +309,12 @@ class FakeCollection:
                 count += 1
         return type("Result", (), {"modified_count": count})()
 
-    async def delete_one(self, query):
+    async def delete_one(self, query, **kwargs):
         before = len(self.docs)
         self.docs[:] = [doc for doc in self.docs if not _matches(doc, query)]
         return type("Result", (), {"deleted_count": before - len(self.docs)})()
 
-    async def delete_many(self, query):
+    async def delete_many(self, query, **kwargs):
         before = len(self.docs)
         self.docs[:] = [doc for doc in self.docs if not _matches(doc, query)]
         return type("Result", (), {"deleted_count": before - len(self.docs)})()
@@ -299,7 +327,7 @@ class FakeCollection:
     async def index_information(self):
         return self.indexes
 
-    def aggregate(self, pipeline):
+    def aggregate(self, pipeline, **kwargs):
         docs = [doc.copy() for doc in self.docs]
         for stage in pipeline:
             if "$match" in stage:
@@ -453,6 +481,7 @@ class FakeDb:
         self.confirm_tokens = FakeCollection()
         self.ai_dispatch_audit_log = FakeCollection()
         self.idempotency_keys = FakeCollection()
+        self.ai_write_idempotency = FakeCollection()
         self.ai_rate_limit_counters = FakeCollection()
         self.ai_rate_limit_overrides = FakeCollection()
         self.messages = FakeCollection()
@@ -478,6 +507,11 @@ class FakeDb:
         self.study_plans = FakeCollection()
         self.visitors = FakeCollection()
         self.schools = FakeCollection()
+        # AI Layer Hardening — Epic F
+        self.system_flags = FakeCollection()
+        self.ai_metrics = FakeCollection()
+        self.ai_memories = FakeCollection()
+        self.ai_skills = FakeCollection()
 
     async def command(self, command_name):
         if command_name == "ping":

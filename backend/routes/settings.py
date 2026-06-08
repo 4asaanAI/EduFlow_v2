@@ -1,9 +1,28 @@
 from __future__ import annotations
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
-from middleware.auth import get_current_user, require_role, require_owner
+from middleware.auth import get_current_user, require_role, require_owner, require_owner_or_principal
 from tenant import get_school_id, scoped_filter
 from services.audit_service import write_audit
+from services.actor_context import actor_ctx_from_user
+from services.academic_structure_service import (
+    create_class as svc_create_class,
+    update_class as svc_update_class,
+    delete_class as svc_delete_class,
+    AcademicStructureValidationError,
+    AcademicStructureNotFoundError,
+    AcademicStructureConflictError,
+)
+from services.org_config_service import (
+    create_branch as svc_create_branch,
+    upsert_branch as svc_upsert_branch,
+    delete_branch as svc_delete_branch,
+    update_school_settings as svc_update_school_settings,
+    year_end_transition as svc_year_end_transition,
+    OrgConfigValidationError,
+    OrgConfigNotFoundError,
+    OrgConfigConflictError,
+)
 from datetime import datetime
 import uuid
 
@@ -131,69 +150,26 @@ async def set_token_limit(user_id: str, request: Request, user: dict = Depends(r
 # --- Year-end Session Transition ---
 @router.post("/year-end-transition")
 async def year_end_transition(request: Request, user: dict = Depends(require_role("owner", "admin"))):
-    """Transition to new academic year: create new year, promote students, archive old data."""
+    """Transition to new academic year: create new year, promote students, archive old data.
+
+    Thin adapter over services.org_config_service.year_end_transition (Story K.3 / AD7)."""
     db = get_db()
     body = await request.json()
-    new_year_name = body.get("new_year_name")  # e.g. "2026-27"
-    if not new_year_name:
-        raise HTTPException(400, "new_year_name required")
-
-    import uuid
-    # Create new academic year
-    new_ay = {
-        "id": str(uuid.uuid4()),
-        "name": new_year_name,
-        "start_date": body.get("start_date", f"{new_year_name[:4]}-04-01"),
-        "end_date": body.get("end_date", f"{new_year_name[5:]}-03-31"),
-        "is_current": True,
-    }
-    # Set all current years to not current
-    await db.academic_years.update_many({"is_current": True}, {"$set": {"is_current": False}})
-    await db.academic_years.insert_one({**new_ay, "_id": new_ay["id"]})
-    await write_audit(
-        db,
-        action="academic_year_transition",
-        entity_id=new_ay["id"],
-        collection="academic_years",
-        changed_by=user["id"],
-        changed_by_role=user.get("role", ""),
-        school_id=get_school_id(),
-        branch_id=user.get("branch_id", ""),
-        changes={"new_year": new_ay},
-    )
-
-    # Count students promoted
-    student_count = await db.students.count_documents({"is_active": True})
-
-    return {
-        "success": True,
-        "data": {
-            "new_year": new_ay,
-            "students_carried_forward": student_count,
-            "message": f"Transitioned to {new_year_name}. {student_count} students carried forward. Previous year archived.",
-        }
-    }
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        data = await svc_year_end_transition(db, actor_ctx, body)
+    except OrgConfigValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": data}
 
 
 @router.patch("/school")
 async def update_school_settings(request: Request, user: dict = Depends(require_owner)):
+    """Thin adapter over services.org_config_service.update_school_settings (Story K.3 / AD7)."""
     db = get_db()
     body = await request.json()
-    allowed = {"attendance_threshold", "school_name", "board", "city", "ai_context"}
-    update = {k: v for k, v in body.items() if k in allowed}
-    from datetime import datetime as dt
-    await db.school_settings.update_one(_settings_query({"id": "main"}), {"$set": {**update, "schoolId": get_school_id(), "updated_at": dt.now().isoformat()}}, upsert=True)
-    await write_audit(
-        db,
-        action="school_settings_update",
-        entity_id="main",
-        collection="school_settings",
-        changed_by=user["id"],
-        changed_by_role=user.get("role", ""),
-        school_id=get_school_id(),
-        branch_id=user.get("branch_id", ""),
-        changes=update,
-    )
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    await svc_update_school_settings(db, actor_ctx, body)
     return {"success": True}
 
 
@@ -206,69 +182,47 @@ async def list_branches(request: Request, user: dict = Depends(require_role("own
 
 @router.post("/branches")
 async def create_branch(request: Request, user: dict = Depends(require_owner)):
-    """Owner-only: create a new school branch. Unique branch_code enforced by DB index."""
-    from pymongo.errors import DuplicateKeyError
-    from datetime import timezone
+    """Owner-only: create a new school branch. Unique branch_code enforced by DB index.
+
+    Thin adapter over services.org_config_service.create_branch (Story K.3 / AD7)."""
     db = get_db()
     body = await request.json()
-    if not body.get("name"):
-        raise HTTPException(400, "name is required")
-    branch = {
-        "id": str(uuid.uuid4()),
-        "name": body.get("name", ""),
-        "branch_code": body.get("branch_code", ""),
-        "location": body.get("location", ""),
-        "created_by": user["id"],
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "schoolId": get_school_id(),
-    }
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
     try:
-        await db.branches.insert_one({**branch, "_id": branch["id"]})
-    except DuplicateKeyError:
-        raise HTTPException(409, "Branch code already exists for this school")
-    await write_audit(
-        db,
-        action="branch_create",
-        entity_id=branch["id"],
-        collection="branches",
-        changed_by=user["id"],
-        changed_by_role=user.get("role", ""),
-        school_id=get_school_id(),
-        branch_id=user.get("branch_id", ""),
-        changes={"name": branch["name"], "branch_code": branch["branch_code"]},
-    )
-    return {"success": True, "data": branch}
+        result = await svc_create_branch(db, actor_ctx, body)
+    except OrgConfigValidationError as e:
+        raise HTTPException(400, str(e))
+    except OrgConfigConflictError as e:
+        raise HTTPException(409, str(e))
+    return {"success": True, "data": result["branch"]}
 
 
 @router.put("/branches/{branch_id}")
 async def upsert_branch(branch_id: str, request: Request, user: dict = Depends(require_owner)):
+    """Thin adapter over services.org_config_service.upsert_branch (Story K.3 / AD7)."""
     db = get_db()
     body = await request.json()
-    if not body.get("name"):
-        raise HTTPException(400, "name is required")
-    doc = {
-        "id": branch_id,
-        "schoolId": get_school_id(),
-        "name": body["name"],
-        "address": body.get("address", ""),
-        "phone": body.get("phone", ""),
-        "is_active": body.get("is_active", True),
-        "updated_by": user["id"],
-        "updated_at": datetime.now().isoformat(),
-    }
-    await db.branches.update_one(_settings_query({"id": branch_id}), {"$set": doc, "$setOnInsert": {"_id": branch_id}}, upsert=True)
-    await write_audit(
-        db,
-        action="branch_upsert",
-        entity_id=branch_id,
-        collection="branches",
-        changed_by=user["id"],
-        changed_by_role=user.get("role", ""),
-        school_id=get_school_id(),
-        branch_id=user.get("branch_id", ""),
-        changes=doc,
-    )
-    return {"success": True, "data": doc}
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_upsert_branch(db, actor_ctx, {**body, "branch_id": branch_id})
+    except OrgConfigValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["branch"]}
+
+
+@router.delete("/branches/{branch_id}")
+async def delete_branch(branch_id: str, request: Request, user: dict = Depends(require_owner)):
+    """Owner-only: delete a branch. Parity reference for the AI `delete_branch`
+    tool (destructive — F.10 two-step at the chat layer)."""
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_delete_branch(db, actor_ctx, {"branch_id": branch_id})
+    except OrgConfigNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except OrgConfigConflictError as e:
+        raise HTTPException(409, str(e))
+    return {"success": True, "data": result}
 
 
 @router.get("/me")
@@ -331,6 +285,47 @@ async def get_classes(request: Request, user: dict = Depends(require_role("admin
     db = get_db()
     classes = await db.classes.find(_settings_query(), {"_id": 0}).to_list(50)
     return {"success": True, "data": classes}
+
+
+# ── Class CRUD (Story K.2) — service-backed parity reference for the AI tools ──
+# No new UI: these wrap the academic_structure_service single write path.
+@router.post("/classes")
+async def create_class(request: Request, user: dict = Depends(require_owner_or_principal)):
+    db = get_db()
+    body = await request.json()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_create_class(db, actor_ctx, body)
+    except AcademicStructureValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["class"]}
+
+
+@router.patch("/classes/{class_id}")
+async def update_class(class_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
+    db = get_db()
+    body = await request.json()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_update_class(db, actor_ctx, {**body, "class_id": class_id})
+    except AcademicStructureNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except AcademicStructureValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["class"]}
+
+
+@router.delete("/classes/{class_id}")
+async def delete_class(class_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_delete_class(db, actor_ctx, {"class_id": class_id})
+    except AcademicStructureNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except AcademicStructureConflictError as e:
+        raise HTTPException(409, str(e))
+    return {"success": True, "data": result}
 
 
 @router.get("/forms")

@@ -1,8 +1,18 @@
 # EduFlow — Claude Code Project Context
 
 **Model:** Claude Sonnet 4.6 (1M context)
-**Last updated:** 2026-05-15
+**Last updated:** 2026-06-07
 **Working agent:** Sonnet handles all implementation from Part 5 onward
+
+---
+
+> ## 🚧 ACTIVE INITIATIVE — AI Layer Hardening (read before "what's the next step?")
+>
+> Planning is **complete and adversarially audited**; implementation is **paused, awaiting Shubham's review**. If a user asks what to work on / what's next / for an overview of the current effort, **open and present [`AI-LAYER-HARDENING-HANDOFF.md`](./AI-LAYER-HARDENING-HANDOFF.md)** (repo root) in plain language — lead with its TL;DR and "THE NEXT STEP", and surface the "Important — don't miss" section (3 found defects, key decisions, clone-from-Odysseus directive, DPDP/Azure-residency note).
+>
+> Plan artifacts: `_bmad-output/planning-artifacts/{prd,architecture,epics}-ai-layer-hardening.md` + the readiness reports. Tracker: `_bmad-output/platform-quality-sweep.md` row 17.
+> Review gate is CLEARED and readiness is **GO** (report dated 2026-06-08). Build order: Epic A (A.1 first) → B → C → D → E → I → F → J → K → G → (Phase 2, gated) H.
+> **Execution is ONE EPIC PER CONTEXT WINDOW.** Follow [`_bmad-output/EPIC-EXECUTION-PROTOCOL.md`](./_bmad-output/EPIC-EXECUTION-PROTOCOL.md): implement one epic, then emit the next-epic handoff prompt using its **fixed template** (verbatim, only the epic IDs change — prevents drift). Still requires the user's explicit greenlight before each epic's coding begins. (Shubham review applied 2026-06-07: A.0 dropped; added Epics J/K for student/fee/school-internals CRUD + Story F.10 destructive two-step confirm; 11 epics / 53 stories.)
 
 ---
 
@@ -259,6 +269,10 @@ _bmad-output/
 | Notification utility | **`create_notification()` canonical** | set in Part 5 |
 | S3 key namespace | **`{school_id}/uploads/...`** | set in Part 6 |
 | Audit service | **`write_audit()` via `audit_service.py`** | ✅ Part 7 shipped |
+| AI PII redaction | **`ai/redaction.py:redact_for_llm()`** — surgical (special-category keys only; never over-block the LLM) | ✅ AI-Hardening F.1 |
+| AI-write kill-switch | **`services/ai_kill_switch.py`** (`db.system_flags.ai_writes_enabled`, fails open) | ✅ F.4 — runbook `docs/deployment-runbook.md` §8 |
+| Phase-1 action lockdown | **`services/ai_action_policy.py`** single switch `LOCKDOWN_ENABLED` (Owner+Principal-only AI writes) | ✅ F.11/FR43 — Phase 2 widens it, no engine change |
+| AI write-tool parity gate | **`tests/backend/parity/` corpus + CI drift gate** | ✅ F.6 — new write tool ⇒ add parity test + corpus entry |
 
 ---
 

@@ -12,6 +12,95 @@ import logging
 from tenant import add_school_id, get_school_id, scoped_filter, scoped_query
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification
+from services.actor_context import actor_ctx_from_user
+from services.attendance_service import mark_attendance
+from services.fees_service import record_payment, FeeValidationError
+from services.discount_service import (
+    apply_discount as svc_apply_discount,
+    DiscountValidationError,
+    DiscountNotFoundError,
+)
+from services.house_points_service import (
+    award_points,
+    HouseNotFoundError,
+    HousePointsValidationError,
+)
+from services.approvals_service import (
+    decide_approval_request,
+    ApprovalValidationError,
+    ApprovalNotFoundError,
+    ApprovalAuthorizationError,
+)
+from services.announcement_service import (
+    decide_announcement_status,
+    AnnouncementValidationError,
+)
+from services.contact_log_service import log_contact_event, ContactLogValidationError
+from services.student_service import (
+    create_student as svc_create_student,
+    update_student as svc_update_student,
+    set_student_status as svc_set_student_status,
+    upsert_guardians as svc_upsert_guardians,
+    StudentValidationError,
+    StudentNotFoundError,
+    StudentConflictError,
+    ClassNotFoundError,
+    ClassValidationError,
+)
+from services.staff_service import (
+    create_staff as svc_create_staff,
+    update_staff as svc_update_staff,
+    StaffValidationError,
+    StaffNotFoundError,
+    StaffAuthorizationError,
+    LinkedUserNotFoundError,
+)
+from services.fee_config_service import (
+    create_fee_structure as svc_create_fee_structure,
+    update_fee_structure as svc_update_fee_structure,
+    create_discount_type as svc_create_discount_type,
+    update_discount_type as svc_update_discount_type,
+    delete_discount_type as svc_delete_discount_type,
+    FeeConfigValidationError,
+    FeeConfigNotFoundError,
+)
+from services.academic_structure_service import (
+    create_class as svc_create_class,
+    update_class as svc_update_class,
+    delete_class as svc_delete_class,
+    create_house as svc_create_house,
+    update_house as svc_update_house,
+    delete_house as svc_delete_house,
+    AcademicStructureValidationError,
+    AcademicStructureNotFoundError,
+    AcademicStructureConflictError,
+)
+from services.org_config_service import (
+    create_branch as svc_create_branch,
+    upsert_branch as svc_upsert_branch,
+    delete_branch as svc_delete_branch,
+    update_school_settings as svc_update_school_settings,
+    year_end_transition as svc_year_end_transition,
+    OrgConfigValidationError,
+    OrgConfigNotFoundError,
+    OrgConfigConflictError,
+)
+from services.incident_service import (
+    resolve_record_type,
+    assign_followup as svc_assign_followup,
+    add_thread_entry as svc_add_thread_entry,
+    update_incident_status as svc_update_incident_status,
+    confirm_resolution as svc_confirm_resolution,
+    IncidentValidationError,
+    IncidentNotFoundError,
+    IncidentAmbiguousError,
+)
+from services.substitution_service import initiate_substitution
+from services.attendance_correction_service import (
+    correct_attendance,
+    AttendanceCorrectionValidationError,
+    AttendanceCorrectionNotFoundError,
+)
 
 # ----- Re-export all 14 original tools and their registry -----
 from ai.tool_functions import (
@@ -814,23 +903,20 @@ async def tool_award_house_points(params: dict, user: dict, scope: dict = None) 
         elapsed = (time.time() - t0) * 1000
         return _empty_result(f"Student '{student['name']}' is not assigned to any house.", elapsed)
 
-    house = await db.houses.find_one({"id": house_id})
-    house_name = house["name"] if house else "Unknown"
+    # Story B.3: route through the shared house-points service so the AI award updates
+    # the real standings (houses.points + house_points_log + audit) exactly like the
+    # panel — replacing the old un-audited `house_points`-only write.
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    service_params = {"house_id": house_id, "delta": points, "reason": reason}
+    try:
+        result = await award_points(db, actor_ctx, service_params)
+    except HouseNotFoundError:
+        elapsed = (time.time() - t0) * 1000
+        return _empty_result("House not found.", elapsed)
+    except HousePointsValidationError as e:
+        return {"success": False, "message": str(e)}
 
-    # Insert the points record
-    import uuid
-    point_record = {
-        "id": f"hp-{uuid.uuid4()}",
-        "house_id": house_id,
-        "student_id": student["id"],
-        "points": points,
-        "category": category,
-        "reason": reason,
-        "awarded_by": user.get("id", ""),
-        "created_at": datetime.now().isoformat(),
-    }
-    await db.house_points.insert_one({**point_record, "_id": point_record["id"]})
-
+    house_name = result["house_name"] or "Unknown"
     elapsed = (time.time() - t0) * 1000
     return {
         "success": True,
@@ -841,6 +927,7 @@ async def tool_award_house_points(params: dict, user: dict, scope: dict = None) 
             "points_awarded": points,
             "category": category,
             "reason": reason,
+            "new_total": result["points"],
         }],
         "meta": {"count": 1, "query_time_ms": round(elapsed, 2)},
         "message": f"Awarded {points} points to {student['name']} ({house_name}) for {category}.",
@@ -1054,37 +1141,18 @@ async def _write_audit(
     )
 
 
-async def _find_mutable_record(db, record_id: str, *, include_tech: bool = True, branch_id: str | None = None):
-    candidates = [
-        ("incidents", db.incidents, {"id": record_id}),
-        ("complaints", db.complaints, {"id": record_id}),
-        ("facility_requests", db.facility_requests, {"id": record_id}),
-    ]
-    if include_tech:
-        candidates.append(("tech_requests", db.tech_requests, {"id": record_id}))
-    for collection, handle, query in candidates:
-        doc = await handle.find_one(scoped_query(query, branch_id=branch_id), {"_id": 0})
-        if doc:
-            return collection, handle, doc
-    return None, None, None
-
-
-async def _append_record_note(handle, record_id: str, existing: dict, user: dict, content: str, field: str, branch_id: str | None = None):
-    entry = {
-        "id": str(uuid.uuid4()),
-        "author_id": user.get("id"),
-        "author_name": user.get("name", ""),
-        "author_role": user.get("role", ""),
-        "content": content,
-        "timestamp": datetime.now().isoformat(),
-    }
-    current = list(existing.get(field) or [])
-    current.append(entry)
-    await handle.update_one(
-        scoped_query({"id": record_id}, branch_id=branch_id),
-        {"$set": {field: current, "updated_at": datetime.now().isoformat()}},
-    )
-    return entry
+async def _resolve_record_type_or_result(db, record_id: str, *, branch_id: str | None, not_found_msg: str):
+    """AI-adapter helper: resolve the target collection EXPLICITLY up front (Story C.1)
+    so the shared service writes to a known surface (no blind multi-collection scan at
+    write). Returns ``(record_type, doc, None)`` on success, else ``(None, None, result)``
+    where ``result`` is the tool envelope to return."""
+    try:
+        record_type, doc = await resolve_record_type(db, record_id, branch_id=branch_id)
+        return record_type, doc, None
+    except IncidentNotFoundError:
+        return None, None, _empty_result(not_found_msg)
+    except IncidentAmbiguousError as e:
+        return None, None, {"success": False, "message": str(e)}
 
 
 async def tool_assign_followup(params: dict, user: dict, scope: dict = None) -> dict:
@@ -1093,25 +1161,23 @@ async def tool_assign_followup(params: dict, user: dict, scope: dict = None) -> 
         return {"success": False, "message": "record_id, assignee_staff_id, due_date, and note are required."}
     db = get_db()
     bid = _branch_id(user, scope)
-    collection, handle, existing = await _find_mutable_record(db, params["record_id"], branch_id=bid)
-    if not existing:
+    record_type, _doc, err = await _resolve_record_type_or_result(db, params["record_id"], branch_id=bid, not_found_msg="Record not found for follow-up assignment.")
+    if err:
+        return err
+    actor_ctx = actor_ctx_from_user(user, branch_id=bid)
+    try:
+        result = await svc_assign_followup(db, actor_ctx, {
+            "record_type": record_type,
+            "record_id": params["record_id"],
+            "assignee_staff_id": params["assignee_staff_id"],
+            "due_date": params["due_date"],
+            "note": params["note"],
+        })
+    except IncidentNotFoundError:
         return _empty_result("Record not found for follow-up assignment.")
-    staff = await db.staff.find_one(scoped_query({"id": params["assignee_staff_id"]}, branch_id=bid), {"_id": 0})
-    updates = {"assigned_to": params["assignee_staff_id"], "due_date": params["due_date"], "updated_at": datetime.now().isoformat()}
-    await handle.update_one(scoped_query({"id": params["record_id"]}, branch_id=bid), {"$set": updates})
-    field = "thread" if collection in ("incidents", "complaints") else "notes"
-    await _append_record_note(handle, params["record_id"], existing, user, params["note"], field, branch_id=bid)
-    await _write_audit(db, "assign_followup", collection, params["record_id"], user, updates, params["note"], scope=scope)
-    await create_notification(
-        db,
-        user_id=(staff or {}).get("user_id"),
-        notification_type="followup_assigned",
-        title="Follow-up assigned",
-        message=params["note"],
-        source_id=params["record_id"],
-        source_type=collection,
-    )
-    return {"success": True, "data": {"record_id": params["record_id"], **updates}, "message": "Follow-up assigned."}
+    except IncidentValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": {"record_id": params["record_id"], **result["updates"]}, "message": "Follow-up assigned."}
 
 
 async def tool_update_incident_status(params: dict, user: dict, scope: dict = None) -> dict:
@@ -1120,18 +1186,22 @@ async def tool_update_incident_status(params: dict, user: dict, scope: dict = No
         return {"success": False, "message": "record_id, new_status, and note are required."}
     db = get_db()
     bid = _branch_id(user, scope)
-    collection, handle, existing = await _find_mutable_record(db, params["record_id"], branch_id=bid)
-    if not existing:
+    record_type, _doc, err = await _resolve_record_type_or_result(db, params["record_id"], branch_id=bid, not_found_msg="Incident, complaint, or request not found.")
+    if err:
+        return err
+    actor_ctx = actor_ctx_from_user(user, branch_id=bid)
+    try:
+        result = await svc_update_incident_status(db, actor_ctx, {
+            "record_type": record_type,
+            "record_id": params["record_id"],
+            "new_status": params["new_status"],
+            "note": params["note"],
+        })
+    except IncidentNotFoundError:
         return _empty_result("Incident, complaint, or request not found.")
-    # auth: enforcement is at the registry gate (_is_tool_authorized); body check removed (P6)
-    if _is_maintenance(user) and params["new_status"] == "closed":
-        return {"success": False, "message": "Maintenance Admin cannot close a facility request directly."}
-    updates = {"status": params["new_status"], "updated_at": datetime.now().isoformat()}
-    await handle.update_one(scoped_query({"id": params["record_id"]}, branch_id=bid), {"$set": updates})
-    field = "thread" if collection in ("incidents", "complaints") else "notes"
-    await _append_record_note(handle, params["record_id"], existing, user, params["note"], field, branch_id=bid)
-    await _write_audit(db, "update_incident_status", collection, params["record_id"], user, {"previous_status": existing.get("status"), **updates}, params["note"], scope=scope)
-    return {"success": True, "data": {"record_id": params["record_id"], **updates}, "message": "Status updated."}
+    except IncidentValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": {"record_id": params["record_id"], **result["updates"]}, "message": "Status updated."}
 
 
 async def tool_add_thread_entry(params: dict, user: dict, scope: dict = None) -> dict:
@@ -1139,13 +1209,21 @@ async def tool_add_thread_entry(params: dict, user: dict, scope: dict = None) ->
         return {"success": False, "message": "record_id and content are required."}
     db = get_db()
     bid = _branch_id(user, scope)
-    collection, handle, existing = await _find_mutable_record(db, params["record_id"], branch_id=bid)
-    if not existing:
+    record_type, _doc, err = await _resolve_record_type_or_result(db, params["record_id"], branch_id=bid, not_found_msg="Record not found for thread entry.")
+    if err:
+        return err
+    actor_ctx = actor_ctx_from_user(user, branch_id=bid)
+    try:
+        result = await svc_add_thread_entry(db, actor_ctx, {
+            "record_type": record_type,
+            "record_id": params["record_id"],
+            "content": params["content"],
+        })
+    except IncidentNotFoundError:
         return _empty_result("Record not found for thread entry.")
-    field = "thread" if collection in ("incidents", "complaints") else "notes"
-    entry = await _append_record_note(handle, params["record_id"], existing, user, params["content"], field, branch_id=bid)
-    await _write_audit(db, "add_thread_entry", collection, params["record_id"], user, {"entry": entry}, scope=scope)
-    return {"success": True, "data": entry, "message": "Thread entry added."}
+    except IncidentValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["entry"], "message": "Thread entry added."}
 
 
 async def tool_initiate_substitution(params: dict, user: dict, scope: dict = None) -> dict:
@@ -1153,61 +1231,44 @@ async def tool_initiate_substitution(params: dict, user: dict, scope: dict = Non
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "absent_staff_id, substitute_staff_id, class_id, and period_id are required."}
     db = get_db()
+    # Resolve the timetable slot (AI-only convenience) to derive subject/period, then
+    # delegate to the shared service — the SAME write path as the REST route (Story A.6).
     slot = await db.timetable_slots.find_one({"id": params["period_id"]}, {"_id": 0})
-    record = add_school_id({
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    service_params = {
         "date": params.get("date", date.today().isoformat()),
         "absent_teacher_id": params["absent_staff_id"],
         "substitute_teacher_id": params["substitute_staff_id"],
         "class_id": params["class_id"],
-        "subject_id": (slot or {}).get("subject_id", params.get("subject_id")),
-        "period_id": params["period_id"],
+        "subject_id": (slot or {}).get("subject_id", params.get("subject_id")) or "",
         "period_number": (slot or {}).get("period_number"),
-        "created_by": user.get("id"),
-        "created_at": datetime.now().isoformat(),
-    })
-    await db.substitutions.insert_one(record)
-    await _write_audit(db, "initiate_substitution", "substitutions", record["id"], user, {"created": {k: v for k, v in record.items() if k != "_id"}}, scope=scope)
-    substitute = await db.staff.find_one(scoped_query({"id": params["substitute_staff_id"]}, branch_id=_branch_id(user, scope)), {"_id": 0})
-    await create_notification(
-        db,
-        user_id=(substitute or {}).get("user_id"),
-        notification_type="substitution_assigned",
-        title="Substitution assigned",
-        message="You have been assigned as a substitute teacher.",
-        source_id=record["id"],
-        source_type="substitution",
-    )
-    return {"success": True, "data": {k: v for k, v in record.items() if k != "_id"}, "message": "Substitution initiated."}
+    }
+    result = await initiate_substitution(db, actor_ctx, service_params)
+    return {"success": True, "data": result["substitution"], "message": "Substitution initiated."}
 
 
 async def tool_correct_attendance(params: dict, user: dict, scope: dict = None) -> dict:
     required = ("record_id", "correction_type", "reason")
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "record_id, correction_type, and reason are required."}
+    # Thin adapter over services.attendance_correction_service — the SAME write path
+    # as the REST correct route (Story A.7): snapshot + status update + canonical
+    # 'correct' audit. School-wide scoping fixes the prior branch_id mismatch.
     db = get_db()
-    bid = _branch_id(user, scope)
-    original = await db.student_attendance.find_one(scoped_query({"id": params["record_id"]}, branch_id=bid), {"_id": 0})
-    if not original:
-        return _empty_result("Attendance record not found.")
-    new_status = params.get("status") or params["correction_type"]
-    correction = add_school_id({
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    service_params = {
         "attendance_id": params["record_id"],
-        "original_record": original,
-        "previous_status": original.get("status"),
-        "new_status": new_status,
         "correction_type": params["correction_type"],
         "reason": params["reason"],
-        "corrected_by": user.get("id"),
-        "corrected_at": datetime.now().isoformat(),
-    })
-    await db.attendance_corrections.insert_one(correction)
-    await db.student_attendance.update_one(scoped_query({"id": params["record_id"]}, branch_id=bid), {"$set": {"status": new_status, "corrected": True, "updated_at": correction["corrected_at"]}})
-    await _write_audit(db, "correct_attendance", "student_attendance", params["record_id"], user, {"status": {"previous": original.get("status"), "new": new_status}}, params["reason"], scope=scope)
-    return {"success": True, "data": {k: v for k, v in correction.items() if k != "_id"}, "message": "Attendance correction applied."}
+        "status": params.get("status"),
+    }
+    try:
+        result = await correct_attendance(db, actor_ctx, service_params)
+    except AttendanceCorrectionNotFoundError:
+        return _empty_result("Attendance record not found.")
+    except AttendanceCorrectionValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["correction"], "message": "Attendance correction applied."}
 
 
 async def tool_log_contact_event(params: dict, user: dict, scope: dict = None) -> dict:
@@ -1224,53 +1285,62 @@ async def tool_log_contact_event(params: dict, user: dict, scope: dict = None) -
         txn = txns[0] if txns else None
     if not txn:
         return _empty_result("No fee transaction found for this student.")
-    record = add_school_id({
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
+    # Thin adapter over services.contact_log_service — the SAME write path as the REST
+    # contact-log route (Story A.5). Txn resolution above is AI-only convenience; the
+    # service writes an identical record + canonical 'contact_log' audit.
+    actor_ctx = actor_ctx_from_user(user, branch_id=bid)
+    service_params = {
         "student_id": params["student_id"],
         "fee_transaction_id": txn["id"],
         "date": params.get("date", date.today().isoformat()),
         "contact_type": params["contact_type"],
         "outcome": params["outcome"],
         "notes": params["note"],
-        "created_by": user.get("id"),
-        "created_at": datetime.now().isoformat(),
-    })
-    await db.fee_contact_logs.insert_one(record)
-    await _write_audit(db, "log_contact_event", "fee_transactions", txn["id"], user, {"contact": {k: v for k, v in record.items() if k != "_id"}}, scope=scope)
-    return {"success": True, "data": {k: v for k, v in record.items() if k != "_id"}, "message": "Contact event logged."}
+    }
+    result = await log_contact_event(db, actor_ctx, service_params)
+    return {"success": True, "data": result["record"], "message": "Contact event logged."}
 
 
 async def tool_apply_discount(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.discount_service.apply_discount — the SAME write path
+    # as POST /api/fees/discounts/apply. Story B.2: the AI path now honours the owner
+    # approval threshold (large discounts park in pending_discount_approvals instead of
+    # applying directly — closing the bypass on children's fees).
     required = ("student_id", "discount_type_id", "effective_from")
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "student_id, discount_type_id, and effective_from are required."}
     db = get_db()
     bid = _branch_id(user, scope)
-    dtype = await db.fee_discount_types.find_one(scoped_query({"id": params["discount_type_id"], "is_active": True}, branch_id=bid), {"_id": 0})
-    if not dtype:
-        return _empty_result("Active discount type not found.")
+    # AI convenience: derive original_amount from outstanding fees when the caller omits
+    # it (the REST route requires it in the body; the assistant resolves it).
     original_amount = params.get("original_amount")
     if original_amount in (None, ""):
         txns = await db.fee_transactions.find(scoped_query({"student_id": params["student_id"]}, branch_id=bid), {"_id": 0}).to_list(200)
         original_amount = sum(float(txn.get("amount", 0)) for txn in txns if txn.get("status") in ("pending", "overdue", "unpaid"))
-    application = add_school_id({
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
+    actor_ctx = actor_ctx_from_user(user, branch_id=bid)
+    service_params = {
         "student_id": params["student_id"],
-        "discount_type_id": dtype["id"],
+        "discount_type_id": params["discount_type_id"],
         "original_amount": float(original_amount or 0),
         "effective_from": params["effective_from"],
-        "applied_by": user.get("id"),
-        "applied_at": datetime.now().isoformat(),
-        "note": params.get("note"),
-    })
-    await db.fee_discounts.insert_one(application)
-    await _write_audit(db, "apply_discount", "fee_discounts", application["id"], user, {"applied": {k: v for k, v in application.items() if k != "_id"}}, params.get("note"), scope=scope)
-    return {"success": True, "data": {k: v for k, v in application.items() if k != "_id"}, "message": "Discount applied."}
+        "note": params.get("note") or "",
+    }
+    try:
+        result = await svc_apply_discount(db, actor_ctx, service_params)
+    except DiscountNotFoundError:
+        return _empty_result("Discount type not found.")
+    except DiscountValidationError as e:
+        return {"success": False, "message": str(e)}
+    if result["status"] == "pending":
+        return {"success": True, "pending_approval": True, "data": result["data"], "message": result["message"]}
+    return {"success": True, "data": result["data"], "message": "Discount applied."}
 
 
 async def tool_decide_approval_request(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.approvals_service.decide_approval_request — the SAME
+    # write path as the REST decide route. Story A.3: the routing-dependent authority
+    # check (owner decides any; principal only owner_and_principal) is now enforced in
+    # the service for the AI path too (it was previously skipped — a real hole).
     required = ("request_id", "decision", "reason")
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "request_id, decision, and reason are required."}
@@ -1278,79 +1348,431 @@ async def tool_decide_approval_request(params: dict, user: dict, scope: dict = N
     status = decision_map.get(str(params["decision"]).lower())
     if not status:
         return {"success": False, "message": "decision must be approve or reject."}
+
     db = get_db()
-    bid = _branch_id(user, scope)
-    approval = await db.approval_requests.find_one(scoped_query({"id": params["request_id"]}, branch_id=bid), {"_id": 0})
-    if not approval:
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    service_params = {"approval_id": params["request_id"], "status": status, "reason": params["reason"]}
+    try:
+        result = await decide_approval_request(db, actor_ctx, service_params)
+    except ApprovalNotFoundError:
         return _empty_result("Approval request not found.")
-    # auth: enforcement is at the registry gate (_is_tool_authorized); body check removed (P6)
-    update = {"status": status, "decision_reason": params["reason"], "decided_by": user.get("id"), "decided_at": datetime.now().isoformat(), "unread_for": []}
-    await db.approval_requests.update_one(scoped_query({"id": params["request_id"]}, branch_id=bid), {"$set": update})
-    await _write_audit(db, "decide_approval_request", "approval_requests", params["request_id"], user, update, params["reason"], scope=scope)
-    await create_notification(
-        db,
-        user_id=approval.get("submitted_by"),
-        notification_type="approval_decision",
-        title="Approval decision",
-        message=f"{approval.get('title', 'Approval request')} {status}",
-        source_id=params["request_id"],
-        source_type="approval_request",
-    )
+    except ApprovalAuthorizationError:
+        return {"success": False, "message": "You are not authorized to decide this approval request."}
+    except ApprovalValidationError as e:
+        return {"success": False, "message": str(e)}
+
+    update = {k: v for k, v in (result["approval"] or {}).items() if k in ("status", "decision_reason", "decided_by", "decided_at", "unread_for")}
     return {"success": True, "data": {"request_id": params["request_id"], **update}, "message": f"Approval request {status}."}
 
 
 async def tool_confirm_resolution(params: dict, user: dict, scope: dict = None) -> dict:
     if not params.get("request_id") or not params.get("confirmation_note"):
         return {"success": False, "message": "request_id and confirmation_note are required."}
+    # Thin adapter over services.incident_service.confirm_resolution — the SAME write
+    # path as POST /api/issues/facility/{id}/confirm-resolution (Story C.3).
     db = get_db()
     bid = _branch_id(user, scope)
-    existing = await db.facility_requests.find_one(scoped_query({"id": params["request_id"]}, branch_id=bid), {"_id": 0})
-    if not existing:
+    actor_ctx = actor_ctx_from_user(user, branch_id=bid)
+    try:
+        result = await svc_confirm_resolution(db, actor_ctx, {
+            "request_id": params["request_id"],
+            "confirmation_note": params["confirmation_note"],
+        })
+    except IncidentNotFoundError:
         return _empty_result("Facility request not found.")
-    if existing.get("status") != "pending_owner_confirmation":
-        return {"success": False, "message": "Request must be pending Owner confirmation before it can be closed."}
-    update = {"status": "closed", "resolved_by": user.get("id"), "resolved_at": datetime.now().isoformat(), "updated_at": datetime.now().isoformat()}
-    await db.facility_requests.update_one(scoped_query({"id": params["request_id"]}, branch_id=bid), {"$set": update})
-    await _append_record_note(db.facility_requests, params["request_id"], existing, user, params["confirmation_note"], "notes", branch_id=bid)
-    await _write_audit(db, "confirm_resolution", "facility_requests", params["request_id"], user, update, params["confirmation_note"], scope=scope)
-    await create_notification(
-        db,
-        user_id=existing.get("logged_by"),
-        notification_type="facility_resolved",
-        title="Facility request resolved",
-        message="Facility request resolved and closed by Owner.",
-        source_id=params["request_id"],
-        source_type="facility_request",
-    )
-    return {"success": True, "data": {"request_id": params["request_id"], **update}, "message": "Resolution confirmed."}
+    except IncidentValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": {"request_id": params["request_id"], **result["update"]}, "message": "Resolution confirmed."}
 
 
 async def tool_record_fee_payment(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.fees_service.record_payment — the SAME write path as
+    # POST /api/fees/transactions. Story B.1: the AI path now supports partial payments,
+    # is idempotent (no double-charge on confirm retry), and emits the SSE update.
     required = ("student_id", "amount", "fee_head", "mode")
     if any(params.get(field) in (None, "") for field in required):
         return {"success": False, "message": "student_id, amount, fee_head, and mode are required."}
+    from routes.fees import _publish_fee_update
+
     db = get_db()
-    txn_id = str(uuid.uuid4())
-    receipt_number = f"RCP{datetime.now().strftime('%Y%m%d')}{uuid.uuid4().hex[:6].upper()}"
-    txn = add_school_id({
-        "_id": txn_id,
-        "id": txn_id,
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    service_params = {
         "student_id": params["student_id"],
+        "amount": params["amount"],
+        "payment_mode": params["mode"],
         "fee_period": params.get("fee_period", date.today().strftime("%Y-%m")),
         "fee_head": params["fee_head"],
-        "fee_type": params.get("fee_type", params["fee_head"]),
-        "amount": float(params["amount"]),
-        "payment_mode": params["mode"],
-        "receipt_number": receipt_number,
-        "status": "paid",
-        "paid_date": params.get("paid_date", date.today().isoformat()),
-        "recorded_by": user.get("id"),
-        "note": params.get("receipt_note"),
-        "created_at": datetime.now().isoformat(),
-    })
-    await db.fee_transactions.insert_one(txn)
-    await _write_audit(db, "record_fee_payment", "fee_transactions", txn_id, user, {"created": {k: v for k, v in txn.items() if k != "_id"}}, scope=scope)
-    return {"success": True, "data": {k: v for k, v in txn.items() if k != "_id"}, "message": "Fee payment recorded."}
+        "paid_amount": params.get("paid_amount"),
+        "due_date": params.get("due_date"),
+        "transaction_ref": params.get("transaction_ref"),
+        "status": params.get("status"),
+    }
+    try:
+        result = await record_payment(db, actor_ctx, service_params, publish_fn=_publish_fee_update)
+    except FeeValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["data"], "message": "Fee payment recorded."}
+
+
+async def tool_create_student(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.student_service.create_student — the SAME write path
+    # as POST /api/students/ (Story J.1 / AD7). School-scoped (no branch); the
+    # student result is DPDP-redacted by _safe_tool_result_for_chat before re-entering the LLM.
+    if not (params.get("name") and params.get("class_id")):
+        return {"success": False, "message": "name and class_id are required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_create_student(db, actor_ctx, params)
+    except StudentConflictError as e:
+        return {"success": False, "message": str(e)}
+    except (StudentNotFoundError, ClassNotFoundError):
+        return _empty_result("Class not found.")
+    except (StudentValidationError, ClassValidationError) as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["student"], "message": "Student created."}
+
+
+async def tool_update_student(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.student_service.update_student — the SAME write path
+    # as PATCH /api/students/{id} (Story J.1 / AD7).
+    if not params.get("student_id"):
+        return {"success": False, "message": "student_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_update_student(db, actor_ctx, params)
+    except StudentNotFoundError:
+        return _empty_result("Student not found.")
+    except ClassNotFoundError:
+        return _empty_result("Class not found.")
+    except StudentConflictError as e:
+        return {"success": False, "message": str(e)}
+    except (StudentValidationError, ClassValidationError) as e:
+        return {"success": False, "message": str(e)}
+    msg = "No changes to apply." if result.get("noop") else "Student updated."
+    return {"success": True, "data": result["student"], "message": msg}
+
+
+async def tool_set_student_status(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.student_service.set_student_status — a soft status
+    # change (e.g. active → withdrawn) via the update path. NOT a delete/erase: those
+    # stay UI-only (AD15) and have no AI tool.
+    if not params.get("student_id") or not params.get("status"):
+        return {"success": False, "message": "student_id and status are required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_set_student_status(db, actor_ctx, params)
+    except StudentNotFoundError:
+        return _empty_result("Student not found.")
+    except StudentValidationError as e:
+        return {"success": False, "message": str(e)}
+    msg = "No changes to apply." if result.get("noop") else f"Student status set to {params['status']}."
+    return {"success": True, "data": result["student"], "message": msg}
+
+
+async def tool_manage_student_guardians(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.student_service.upsert_guardians — the SAME write path
+    # as PUT /api/students/{id}/guardians (Story J.1 / AD7). Replaces all guardians.
+    if not params.get("student_id"):
+        return {"success": False, "message": "student_id is required."}
+    guardians = params.get("guardians")
+    if not isinstance(guardians, list):
+        return {"success": False, "message": "guardians must be a list of guardian objects."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_upsert_guardians(db, actor_ctx, params)
+    except StudentNotFoundError:
+        return _empty_result("Student not found.")
+    except StudentValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["guardians"], "message": "Guardians updated."}
+
+
+async def tool_create_staff(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.staff_service.create_staff — the SAME write path as
+    # POST /api/staff/ (Story J.2 / AD7). The plaintext temporary password is NEVER
+    # surfaced to the LLM/chat — it is delivered out-of-band via the panel.
+    if not (params.get("name") and params.get("staff_type")):
+        return {"success": False, "message": "name and staff_type are required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_create_staff(db, actor_ctx, params)
+    except StaffAuthorizationError as e:
+        return {"success": False, "message": str(e)}
+    except LinkedUserNotFoundError:
+        return _empty_result("Linked user account not found.")
+    except StaffValidationError as e:
+        return {"success": False, "message": str(e)}
+    message = "Staff created."
+    if result.get("temporary_password"):
+        message += " A temporary password was issued; deliver it to the staff member via the staff panel."
+    return {"success": True, "data": result["staff"], "message": message}
+
+
+async def tool_update_staff(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.staff_service.update_staff — the SAME write path as
+    # PATCH /api/staff/{id} (Story J.2 / AD7). OWNER_ONLY_FIELDS protections preserved.
+    if not params.get("staff_id"):
+        return {"success": False, "message": "staff_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_update_staff(db, actor_ctx, params)
+    except StaffNotFoundError:
+        return _empty_result("Staff not found.")
+    except StaffAuthorizationError as e:
+        return {"success": False, "message": str(e)}
+    except StaffValidationError as e:
+        return {"success": False, "message": str(e)}
+    msg = "No changes to apply." if result.get("noop") else "Staff updated."
+    return {"success": True, "data": result["staff"], "message": msg}
+
+
+# ──────────────── Epic K.1: fee-config CRUD (Owner + Principal only) ─────────────
+
+
+async def tool_create_fee_structure(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.fee_config_service.create_fee_structure — the SAME
+    # write path as POST /api/fees/structures (Story K.1 / AD7). School-scoped.
+    if not params.get("name"):
+        return {"success": False, "message": "name is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_create_fee_structure(db, actor_ctx, params)
+    except FeeConfigValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["structure"], "message": "Fee structure created."}
+
+
+async def tool_update_fee_structure(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.fee_config_service.update_fee_structure (Story K.1 / AD7).
+    if not params.get("structure_id"):
+        return {"success": False, "message": "structure_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_update_fee_structure(db, actor_ctx, params)
+    except FeeConfigNotFoundError:
+        return _empty_result("Fee structure not found.")
+    except FeeConfigValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "Fee structure updated."}
+
+
+async def tool_create_discount_type(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.fee_config_service.create_discount_type (Story K.1 / AD7).
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_create_discount_type(db, actor_ctx, params)
+    except FeeConfigValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["discount_type"], "message": "Discount type created."}
+
+
+async def tool_update_discount_type(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.fee_config_service.update_discount_type (Story K.1 / AD7).
+    if not params.get("discount_type_id"):
+        return {"success": False, "message": "discount_type_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_update_discount_type(db, actor_ctx, params)
+    except FeeConfigNotFoundError:
+        return _empty_result("Discount type not found.")
+    except FeeConfigValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["discount_type"], "message": "Discount type updated."}
+
+
+async def tool_delete_discount_type(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.fee_config_service.delete_discount_type (Story K.1 / AD7).
+    # DESTRUCTIVE: routed through F.10 two-step confirm + deletion audit at the chat layer.
+    if not params.get("discount_type_id"):
+        return {"success": False, "message": "discount_type_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_delete_discount_type(db, actor_ctx, params)
+    except FeeConfigNotFoundError:
+        return _empty_result("Discount type not found.")
+    except FeeConfigValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "Discount type deleted."}
+
+
+# ──────────── Epic K.2: academic-structure CRUD (Owner + Principal only) ─────────
+
+
+async def tool_create_class(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over academic_structure_service.create_class (Story K.2 / AD7).
+    # Branch-scoped: owner = cross-branch, principal = own branch.
+    if not params.get("name"):
+        return {"success": False, "message": "name is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_create_class(db, actor_ctx, params)
+    except AcademicStructureValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["class"], "message": "Class created."}
+
+
+async def tool_update_class(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over academic_structure_service.update_class (Story K.2 / AD7).
+    if not params.get("class_id"):
+        return {"success": False, "message": "class_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_update_class(db, actor_ctx, params)
+    except AcademicStructureNotFoundError:
+        return _empty_result("Class not found.")
+    except AcademicStructureValidationError as e:
+        return {"success": False, "message": str(e)}
+    msg = "No changes to apply." if result.get("noop") else "Class updated."
+    return {"success": True, "data": result["class"], "message": msg}
+
+
+async def tool_delete_class(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over academic_structure_service.delete_class (Story K.2 / AD7).
+    # DESTRUCTIVE: F.10 two-step confirm + deletion audit at the chat layer.
+    if not params.get("class_id"):
+        return {"success": False, "message": "class_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_delete_class(db, actor_ctx, params)
+    except AcademicStructureNotFoundError:
+        return _empty_result("Class not found.")
+    except AcademicStructureConflictError as e:
+        return {"success": False, "message": str(e)}
+    except AcademicStructureValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "Class deleted."}
+
+
+async def tool_create_house(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over academic_structure_service.create_house (Story K.2 / AD7).
+    if not params.get("name"):
+        return {"success": False, "message": "name is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_create_house(db, actor_ctx, params)
+    except AcademicStructureValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["house"], "message": "House created."}
+
+
+async def tool_update_house(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over academic_structure_service.update_house (Story K.2 / AD7).
+    if not params.get("house_id"):
+        return {"success": False, "message": "house_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_update_house(db, actor_ctx, params)
+    except AcademicStructureNotFoundError:
+        return _empty_result("House not found.")
+    except AcademicStructureValidationError as e:
+        return {"success": False, "message": str(e)}
+    msg = "No changes to apply." if result.get("noop") else "House updated."
+    return {"success": True, "data": result["house"], "message": msg}
+
+
+async def tool_delete_house(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over academic_structure_service.delete_house (Story K.2 / AD7).
+    # DESTRUCTIVE: F.10 two-step confirm + deletion audit at the chat layer.
+    if not params.get("house_id"):
+        return {"success": False, "message": "house_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_delete_house(db, actor_ctx, params)
+    except AcademicStructureNotFoundError:
+        return _empty_result("House not found.")
+    except AcademicStructureConflictError as e:
+        return {"success": False, "message": str(e)}
+    except AcademicStructureValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "House deleted."}
+
+
+# ──────────── Epic K.3: org-config CRUD (Owner authority only) ───────────────────
+
+
+async def tool_create_branch(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over org_config_service.create_branch (Story K.3 / AD7). Owner-only.
+    if not params.get("name"):
+        return {"success": False, "message": "name is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_create_branch(db, actor_ctx, params)
+    except OrgConfigConflictError as e:
+        return {"success": False, "message": str(e)}
+    except OrgConfigValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["branch"], "message": "Branch created."}
+
+
+async def tool_update_branch(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over org_config_service.upsert_branch (Story K.3 / AD7). Owner-only.
+    if not params.get("branch_id"):
+        return {"success": False, "message": "branch_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_upsert_branch(db, actor_ctx, params)
+    except OrgConfigValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["branch"], "message": "Branch updated."}
+
+
+async def tool_delete_branch(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over org_config_service.delete_branch (Story K.3 / AD7). Owner-only.
+    # DESTRUCTIVE: F.10 two-step confirm + deletion audit at the chat layer.
+    if not params.get("branch_id"):
+        return {"success": False, "message": "branch_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_delete_branch(db, actor_ctx, params)
+    except OrgConfigNotFoundError:
+        return _empty_result("Branch not found.")
+    except OrgConfigConflictError as e:
+        return {"success": False, "message": str(e)}
+    except OrgConfigValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "Branch deleted."}
+
+
+async def tool_update_school_settings(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over org_config_service.update_school_settings (Story K.3 / AD7). Owner-only.
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    result = await svc_update_school_settings(db, actor_ctx, params)
+    return {"success": True, "data": result, "message": "School settings updated."}
+
+
+async def tool_year_end_transition(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over org_config_service.year_end_transition (Story K.3 / AD7). Owner-only.
+    # HIGH-IMPACT: F.10 two-step confirm at the chat layer.
+    if not params.get("new_year_name"):
+        return {"success": False, "message": "new_year_name is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        data = await svc_year_end_transition(db, actor_ctx, params)
+    except OrgConfigValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": data, "message": data["message"]}
 
 
 async def tool_mark_attendance(params: dict, user: dict, scope: dict = None) -> dict:
@@ -1366,28 +1788,14 @@ async def tool_mark_attendance(params: dict, user: dict, scope: dict = None) -> 
     if not class_id:
         return _empty_result("Class not found.")
     target_date = params.get("date", date.today().isoformat())
-    saved = []
-    for item in params["attendance"]:
-        att_id = str(uuid.uuid4())
-        doc = add_school_id({
-            "_id": att_id,
-            "id": att_id,
-            "student_id": item["student_id"],
-            "class_id": class_id,
-            "date": target_date,
-            "status": item["status"],
-            "marked_by": user.get("id"),
-            "source": "ai_dispatch",
-            "created_at": datetime.now().isoformat(),
-        })
-        await db.student_attendance.update_one(
-            scoped_query({"student_id": item["student_id"], "class_id": class_id, "date": target_date}, branch_id=_branch_id(user, scope)),
-            {"$set": doc},
-            upsert=True,
-        )
-        saved.append({"student_id": item["student_id"], "status": item["status"]})
-    await _write_audit(db, "mark_attendance", "student_attendance", class_id, user, {"date": target_date, "records": saved}, scope=scope)
-    return {"success": True, "data": saved, "message": "Attendance marked."}
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    service_params = {
+        "class_id": class_id,
+        "date": target_date,
+        "records": [{"student_id": item["student_id"], "status": item["status"]} for item in params["attendance"]],
+    }
+    result = await mark_attendance(db, actor_ctx, service_params)
+    return {"success": True, "data": result["results"], "message": "Attendance marked."}
 
 
 async def tool_query_dashboard_summary(params: dict, user: dict, scope: dict = None) -> dict:
@@ -1743,10 +2151,15 @@ async def tool_create_announcement(params: dict, user: dict, scope: dict = None)
         audience_type = "all"
     audience_roles = _AUDIENCE_ROLE_MAP[audience_type]
 
-    # P7: Story 7-47 moderation gate — mirrors _announcement_requires_approval() in routes/operations.py.
-    # audience_type "all"/"class" fast-path added to match REST gate defensively.
-    requires_approval = audience_type in ("all", "class") or any(r in ("teacher", "student") for r in audience_roles)
-    initial_status = "pending_approval" if requires_approval else "active"
+    # Story A.4: moderation gate centralized in services.announcement_service — the SAME
+    # decision the REST route makes (EC-9.1 owner/principal broadcast directly; others gated).
+    # This replaces the previously-duplicated inline gate, which over-moderated owner/principal.
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        initial_status = decide_announcement_status(actor_ctx, audience_type, audience_roles)
+    except AnnouncementValidationError as e:
+        return {"success": False, "message": str(e)}
+    requires_approval = initial_status == "pending_approval"
 
     db = get_db()
     ann_id = str(uuid.uuid4())
@@ -1780,6 +2193,90 @@ async def tool_create_announcement(params: dict, user: dict, scope: dict = None)
             "message": f"Announcement '{title}' submitted for principal approval (id: {ann_id}). It will be sent once approved.",
         }
     return {"success": True, "data": {k: v for k, v in announcement.items() if k != "_id"}, "message": f"Announcement '{title}' published successfully to {audience_type}."}
+
+
+# =========================================================================
+#  G.5 — On-demand recall & synthesis (the pre-meeting briefing)
+# =========================================================================
+
+async def tool_recall_history(params: dict, user: dict, scope: dict = None) -> dict:
+    """Synthesize a briefing on a subject from the assistant's MEMORY + the
+    role-scoped operational records the caller may already read (Story G.5, FR35).
+
+    Authorization parity (hard AC): this tool performs NO direct DB reads of
+    operational records. It delegates to the EXACT existing read tools
+    (`tool_get_student_profile`, `tool_get_fee_transactions`, `tool_get_enquiries`),
+    passing the SAME `(user, scope)` — so the assistant can never see anything here
+    it couldn't see by calling those tools directly. Memory recall is additionally
+    `(user_id, schoolId)`-isolated. Minor-record reads are audited by chat.py's
+    `_audit_minor_read` because `recall_history` is in `MINOR_READ_TOOLS` and this
+    result carries `student_id` refs.
+    """
+    t0 = time.time()
+    from services.actor_context import actor_ctx_from_user
+    from services.memory import is_memory_subject, store as memory_store
+
+    subject = (params.get("subject") or params.get("query") or params.get("search_term") or "").strip()
+    if not subject and not params.get("student_id"):
+        return _empty_result("Tell me who or what to brief you on (a student, family, or topic).", (time.time() - t0) * 1000)
+
+    sections: dict = {}
+    student_ids: list = []
+
+    # 1) Memory recall (owner-scoped; only for Owner/Principal per Phase-1 lockdown).
+    if is_memory_subject(user):
+        try:
+            ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+            mems = await memory_store.recall(get_db(), ctx, subject or params.get("student_id", ""))
+            if mems:
+                sections["remembered"] = [
+                    {"text": m.get("text"), "category": m.get("category"), "uses": m.get("uses", 0)}
+                    for m in mems
+                ]
+        except Exception as e:  # never fail the briefing on memory issues
+            logger.warning("recall_history memory recall failed: %s", e)
+
+    # 2) Student profile (reuses tool_get_student_profile authz/scope path verbatim).
+    prof_params = {}
+    if params.get("student_id"):
+        prof_params["student_id"] = params["student_id"]
+    elif subject:
+        prof_params["search_term"] = subject
+    profile = await tool_get_student_profile(prof_params, user, scope)
+    student_id = None
+    if profile.get("success") and profile.get("data"):
+        rec = profile["data"][0]
+        student_id = rec.get("id")
+        if student_id:
+            student_ids.append(student_id)
+        sections["student"] = rec
+
+    # 3) Fee history for that student (reuses tool_get_fee_transactions verbatim).
+    if student_id:
+        fees = await tool_get_fee_transactions({"student_id": student_id}, user, scope)
+        if fees.get("success") and fees.get("data"):
+            sections["fees"] = fees["data"]
+
+    # 4) Related admission enquiries (reuses tool_get_enquiries verbatim).
+    enquiries = await tool_get_enquiries({}, user, scope)
+    if enquiries.get("success") and enquiries.get("data"):
+        subj_low = subject.lower()
+        related = [
+            e for e in enquiries["data"]
+            if isinstance(e, dict) and subj_low and subj_low in json.dumps(e, default=str).lower()
+        ]
+        if related:
+            sections["enquiries"] = related
+
+    elapsed = (time.time() - t0) * 1000
+    if not sections:
+        return _empty_result(f"I found no related history for '{subject}'.", elapsed)
+    return {
+        "success": True,
+        "data": {"subject": subject or student_id, "student_id": student_id, "sections": sections},
+        "meta": {"count": len(sections), "student_refs": student_ids, "query_time_ms": round(elapsed, 2)},
+        "message": "",
+    }
 
 
 # =========================================================================
@@ -1869,6 +2366,20 @@ TOOL_REGISTRY = {
         "description": "Admission enquiries with funnel stats.",
         "params_schema": {
             "status": {"type": "string", "description": "Filter by status"},
+        },
+    },
+    "recall_history": {
+        "fn": tool_recall_history,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": (
+            "Synthesize a briefing on a student/family/topic from what you remember "
+            "PLUS the records the user may already read (e.g. before a meeting). "
+            "Read-only; reuses existing read-tool scoping."
+        ),
+        "params_schema": {
+            "subject": {"type": "string", "description": "Who/what to brief on (name, family, or topic)"},
+            "student_id": {"type": "string", "description": "Optional exact student ID"},
         },
     },
     "get_my_attendance": {
@@ -2141,6 +2652,317 @@ TOOL_REGISTRY = {
             "amount": {"type": "number", "description": "Payment amount"},
             "fee_head": {"type": "string", "description": "Fee head"},
             "mode": {"type": "string", "description": "cash, upi, cheque, or bank_transfer"},
+        },
+    },
+    # ---- Epic J: student CRUD (Owner + Principal only; Phase-1 lockdown applies) ----
+    "create_student": {
+        "fn": tool_create_student,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Create a new student record (with optional guardians) in the school database.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "name": {"type": "string", "description": "Student full name (required)"},
+            "class_id": {"type": "string", "description": "Class ID the student joins (required)"},
+            "admission_number": {"type": "string", "description": "Admission number (auto-generated if omitted)"},
+            "roll_number": {"type": "string", "description": "Roll number"},
+            "dob": {"type": "string", "description": "Date of birth YYYY-MM-DD"},
+            "gender": {"type": "string", "description": "Gender"},
+            "father_name": {"type": "string", "description": "Father name (with father_phone creates a guardian)"},
+            "father_phone": {"type": "string", "description": "Father phone"},
+            "mother_name": {"type": "string", "description": "Mother name (with mother_phone creates a guardian)"},
+            "mother_phone": {"type": "string", "description": "Mother phone"},
+        },
+    },
+    "update_student": {
+        "fn": tool_update_student,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Update fields on an existing student record. Does NOT delete or erase students (UI-only).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "student_id": {"type": "string", "description": "Student ID (required)"},
+            "name": {"type": "string", "description": "Updated name"},
+            "class_id": {"type": "string", "description": "Move to class ID"},
+            "roll_number": {"type": "string", "description": "Roll number"},
+            "house": {"type": "string", "description": "House assignment"},
+            "photo_url": {"type": "string", "description": "Photo URL"},
+        },
+    },
+    "set_student_status": {
+        "fn": tool_set_student_status,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Set a student's status (e.g. active, withdrawn). Soft status change only — never a delete or DPDP-erase.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "student_id": {"type": "string", "description": "Student ID (required)"},
+            "status": {"type": "string", "description": "New status, e.g. active or withdrawn (required)"},
+        },
+    },
+    "manage_student_guardians": {
+        "fn": tool_manage_student_guardians,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Replace the guardian list for a student (each guardian needs name + phone).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "student_id": {"type": "string", "description": "Student ID (required)"},
+            "guardians": {"type": "array", "description": "List of {name, phone, relation, email, occupation, is_primary}"},
+        },
+    },
+    # ---- Epic J: staff CRUD (Owner + Principal only; Phase-1 lockdown applies) ----
+    "create_staff": {
+        "fn": tool_create_staff,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Create a new staff member (auto-creates a login account). Only an owner may create privileged (owner/admin) accounts.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "name": {"type": "string", "description": "Staff full name (required)"},
+            "staff_type": {"type": "string", "description": "e.g. teacher, accountant, receptionist (required)"},
+            "role": {"type": "string", "description": "Login role (owner-only for owner/admin)"},
+            "sub_category": {"type": "string", "description": "Admin sub-category (owner-only)"},
+            "employee_id": {"type": "string", "description": "Employee ID"},
+            "phone": {"type": "string", "description": "Phone"},
+            "email": {"type": "string", "description": "Email"},
+            "department": {"type": "string", "description": "Department"},
+        },
+    },
+    "update_staff": {
+        "fn": tool_update_staff,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Update an existing staff member's profile. role/sub_category/salary are owner-only and silently ignored otherwise.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "staff_id": {"type": "string", "description": "Staff ID (required)"},
+            "name": {"type": "string", "description": "Updated name"},
+            "phone": {"type": "string", "description": "Phone"},
+            "email": {"type": "string", "description": "Email"},
+            "department": {"type": "string", "description": "Department"},
+            "qualification": {"type": "string", "description": "Qualification"},
+        },
+    },
+    # ---- Epic K.1: fee-config CRUD (Owner + Principal only; Phase-1 lockdown) ----
+    "create_fee_structure": {
+        "fn": tool_create_fee_structure,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Create a fee structure (fee heads) for a class.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "name": {"type": "string", "description": "Structure name (required)"},
+            "class_id": {"type": "string", "description": "Class ID this structure applies to"},
+            "fee_heads": {"type": "array", "description": "List of {name, amount, frequency} fee heads"},
+            "academic_year": {"type": "string", "description": "Academic year, e.g. 2026-27"},
+        },
+    },
+    "update_fee_structure": {
+        "fn": tool_update_fee_structure,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Update an existing fee structure's fields.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "structure_id": {"type": "string", "description": "Fee structure ID (required)"},
+            "name": {"type": "string", "description": "Updated name"},
+            "fee_heads": {"type": "array", "description": "Updated fee heads list"},
+            "academic_year": {"type": "string", "description": "Academic year"},
+        },
+    },
+    "create_discount_type": {
+        "fn": tool_create_discount_type,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Create a fee discount type (e.g. sibling, staff-ward).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "name": {"type": "string", "description": "Discount name (required)"},
+            "value": {"type": "number", "description": "Discount value (required)"},
+            "value_type": {"type": "string", "description": "flat or percentage (required)"},
+            "recurrence": {"type": "string", "description": "e.g. one-time or recurring (required)"},
+            "reason_note": {"type": "string", "description": "Reason for the discount type (required)"},
+        },
+    },
+    "update_discount_type": {
+        "fn": tool_update_discount_type,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Update a discount type (name, active state, or reason note).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "discount_type_id": {"type": "string", "description": "Discount type ID (required)"},
+            "name": {"type": "string", "description": "Updated name"},
+            "is_active": {"type": "boolean", "description": "Activate/deactivate the discount type"},
+            "reason_note": {"type": "string", "description": "Updated reason note"},
+        },
+    },
+    "delete_discount_type": {
+        "fn": tool_delete_discount_type,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Permanently delete a discount type. Destructive — requires a second confirmation.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "discount_type_id": {"type": "string", "description": "Discount type ID to delete (required)"},
+        },
+    },
+    # ---- Epic K.2: academic-structure CRUD (Owner + Principal only; lockdown) ----
+    "create_class": {
+        "fn": tool_create_class,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Create a class (with an optional section).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "name": {"type": "string", "description": "Class name, e.g. 'Class 5' (required)"},
+            "section": {"type": "string", "description": "Section, e.g. 'A'"},
+            "academic_year_id": {"type": "string", "description": "Academic year ID"},
+            "class_teacher_id": {"type": "string", "description": "Class teacher staff ID"},
+            "room_number": {"type": "string", "description": "Room number"},
+        },
+    },
+    "update_class": {
+        "fn": tool_update_class,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Update a class's fields (name, section, teacher, room).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "class_id": {"type": "string", "description": "Class ID (required)"},
+            "name": {"type": "string", "description": "Updated class name"},
+            "section": {"type": "string", "description": "Updated section"},
+            "class_teacher_id": {"type": "string", "description": "Class teacher staff ID"},
+            "room_number": {"type": "string", "description": "Room number"},
+        },
+    },
+    "delete_class": {
+        "fn": tool_delete_class,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Permanently delete a class. Destructive — requires a second confirmation. Blocked if active students are assigned.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "class_id": {"type": "string", "description": "Class ID to delete (required)"},
+        },
+    },
+    "create_house": {
+        "fn": tool_create_house,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Create a house.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "name": {"type": "string", "description": "House name (required)"},
+            "colour": {"type": "string", "description": "House colour"},
+        },
+    },
+    "update_house": {
+        "fn": tool_update_house,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Update a house's name or colour (not its points).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "house_id": {"type": "string", "description": "House ID (required)"},
+            "name": {"type": "string", "description": "Updated name"},
+            "colour": {"type": "string", "description": "Updated colour"},
+        },
+    },
+    "delete_house": {
+        "fn": tool_delete_house,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Permanently delete a house. Destructive — requires a second confirmation. Blocked if active students are assigned.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "house_id": {"type": "string", "description": "House ID to delete (required)"},
+        },
+    },
+    # ---- Epic K.3: org-config CRUD (Owner authority only — even in Phase 2) ----
+    "create_branch": {
+        "fn": tool_create_branch,
+        "roles": ["owner"],
+        "description": "Create a new school branch (owner only).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "name": {"type": "string", "description": "Branch name (required)"},
+            "branch_code": {"type": "string", "description": "Unique branch code"},
+            "location": {"type": "string", "description": "Branch location"},
+        },
+    },
+    "update_branch": {
+        "fn": tool_update_branch,
+        "roles": ["owner"],
+        "description": "Update (or create-by-id) a school branch (owner only).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "branch_id": {"type": "string", "description": "Branch ID (required)"},
+            "name": {"type": "string", "description": "Branch name (required)"},
+            "address": {"type": "string", "description": "Address"},
+            "phone": {"type": "string", "description": "Phone"},
+            "is_active": {"type": "boolean", "description": "Active state"},
+        },
+    },
+    "delete_branch": {
+        "fn": tool_delete_branch,
+        "roles": ["owner"],
+        "description": "Permanently delete a branch (owner only). Destructive — requires a second confirmation. Blocked if active students are assigned.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "branch_id": {"type": "string", "description": "Branch ID to delete (required)"},
+        },
+    },
+    "update_school_settings": {
+        "fn": tool_update_school_settings,
+        "roles": ["owner"],
+        "description": "Update school-level settings (name, board, city, attendance threshold, AI context) — owner only.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "school_name": {"type": "string", "description": "School name"},
+            "board": {"type": "string", "description": "Board, e.g. CBSE"},
+            "city": {"type": "string", "description": "City"},
+            "attendance_threshold": {"type": "number", "description": "Attendance % threshold"},
+            "ai_context": {"type": "string", "description": "AI assistant context note"},
+        },
+    },
+    "year_end_transition": {
+        "fn": tool_year_end_transition,
+        "roles": ["owner"],
+        "description": "Transition the school to a new academic year (owner only). High-impact — requires a second confirmation.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "new_year_name": {"type": "string", "description": "New academic year, e.g. 2026-27 (required)"},
+            "start_date": {"type": "string", "description": "Start date YYYY-MM-DD"},
+            "end_date": {"type": "string", "description": "End date YYYY-MM-DD"},
         },
     },
     "mark_attendance": {

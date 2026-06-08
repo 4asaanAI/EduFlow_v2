@@ -8,6 +8,13 @@ from middleware.auth import get_current_user, require_role, require_owner_or_pri
 from datetime import date, datetime
 from tenant import get_school_id, scoped_filter, scoped_query
 from services.audit_service import write_audit_doc
+from services.actor_context import actor_ctx_from_user
+from services.attendance_service import mark_attendance
+from services.attendance_correction_service import (
+    correct_attendance as correct_attendance_service,
+    AttendanceCorrectionValidationError,
+    AttendanceCorrectionNotFoundError,
+)
 from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, normalize_session_id, publish
 import asyncio
 import csv
@@ -116,43 +123,20 @@ async def manual_student_attendance(request: Request):
 async def correct_attendance(attendance_id: str, request: Request, user: dict = Depends(require_role("owner", "admin", "teacher"))):
     db = get_db()
     body = await request.json()
-    correction_type = body.get("correction_type")
-    reason = body.get("reason")
-    if not correction_type or not reason:
-        raise HTTPException(400, "correction_type and reason are required")
-
-    original = await db.student_attendance.find_one(_attendance_query({"id": attendance_id}), {"_id": 0})
-    if not original:
-        raise HTTPException(404, "Attendance record not found")
-
-    new_status = body.get("status") or correction_type
-    correction = {
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
-        "schoolId": get_school_id(),
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    params = {
         "attendance_id": attendance_id,
-        "original_record": original,
-        "previous_status": original.get("status"),
-        "new_status": new_status,
-        "correction_type": correction_type,
-        "reason": reason,
-        "corrected_by": user["id"],
-        "corrected_at": datetime.now().isoformat(),
+        "correction_type": body.get("correction_type"),
+        "reason": body.get("reason"),
+        "status": body.get("status"),
     }
-    await db.attendance_corrections.insert_one(correction)
-    await db.student_attendance.update_one(
-        _attendance_query({"id": attendance_id}),
-        {"$set": {"status": new_status, "corrected": True, "updated_at": correction["corrected_at"]}},
-    )
-    await _audit(
-        db,
-        action="correct",
-        attendance_id=attendance_id,
-        user=user,
-        changes={"status": {"previous": original.get("status"), "new": new_status}},
-        reason=reason,
-    )
-    return {"success": True, "data": {k: v for k, v in correction.items() if k != "_id"}}
+    try:
+        result = await correct_attendance_service(db, actor_ctx, params)
+    except AttendanceCorrectionValidationError as e:
+        raise HTTPException(400, str(e))
+    except AttendanceCorrectionNotFoundError as e:
+        raise HTTPException(404, str(e))
+    return {"success": True, "data": result["correction"]}
 
 
 @router.get("/{attendance_id}/history")
@@ -181,61 +165,16 @@ async def delete_attendance(attendance_id: str, request: Request):
 async def mark_student_attendance(body: AttendanceBulkRequest, request: Request, user: dict = Depends(require_role("owner", "admin", "teacher"))):
     db = get_db()
     await _require_teacher_class_access(db, user, body.class_id)
-    key = request.headers.get("Idempotency-Key")
-    if key:
-        existing = await db.attendance_bulk_keys.find_one(scoped_filter({"key": key, "class_id": body.class_id, "date": body.date}, get_school_id()), {"_id": 0})
-        if existing:
-            return {"success": True, "data": existing.get("response", []), "idempotent": True}
-    results = []
-    for record in body.records:
-        att = StudentAttendance(
-            student_id=record.student_id,
-            class_id=body.class_id,
-            date=body.date,
-            status=record.status,
-            marked_by=user["id"],
-        )
-        try:
-            await db.student_attendance.update_one(
-                _attendance_query({"student_id": record.student_id, "date": body.date}),
-                {"$set": {**_serialize(att), "_id": att.id, "schoolId": get_school_id(), "source": "bulk"}},
-                upsert=True,
-            )
-            results.append({"student_id": record.student_id, "status": "saved"})
-        except Exception as e:
-            results.append({"student_id": record.student_id, "status": "error", "error": str(e)})
-
-    if key:
-        await db.attendance_bulk_keys.insert_one({
-            "_id": str(uuid.uuid4()),
-            "id": str(uuid.uuid4()),
-            "schoolId": get_school_id(),
-            "key": key,
-            "class_id": body.class_id,
-            "date": body.date,
-            "response": results,
-            "created_at": datetime.now().isoformat(),
-        })
-
-    # EC-14.1: ONE audit entry per bulk call (not N per student)
-    await write_audit_doc(db, {
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
-        "schoolId": get_school_id(),
-        "entity_type": "student_attendance",
-        "entity_id": body.class_id,
-        "action": "attendance_bulk",
-        "changed_by": user["id"],
-        "changed_by_role": user.get("role"),
-        "changes": {
-            "count_marked": len(results),
-            "date": body.date,
-            "class_id": body.class_id,
-        },
-        "created_at": datetime.now().isoformat(),
-    }, school_id=get_school_id(), branch_id=user.get("branch_id", ""))
-
-    return {"success": True, "data": results}
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    params = {
+        "class_id": body.class_id,
+        "date": body.date,
+        "records": [{"student_id": r.student_id, "status": r.status} for r in body.records],
+    }
+    result = await mark_attendance(db, actor_ctx, params, idempotency_key=request.headers.get("Idempotency-Key"))
+    if result.get("idempotent"):
+        return {"success": True, "data": result["results"], "idempotent": True}
+    return {"success": True, "data": result["results"]}
 
 
 @router.get("/student")

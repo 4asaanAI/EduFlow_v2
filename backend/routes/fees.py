@@ -10,6 +10,23 @@ from decimal import Decimal
 from tenant import get_school_id, scoped_filter, scoped_query, add_school_id
 from services.audit_service import write_audit_doc
 from services.notification_service import fan_out_notifications
+from services.actor_context import actor_ctx_from_user
+from services.fees_service import record_payment as svc_record_payment, FeeValidationError
+from services.discount_service import (
+    apply_discount as svc_apply_discount,
+    DiscountValidationError,
+    DiscountNotFoundError,
+)
+from services.fee_config_service import (
+    create_fee_structure as svc_create_fee_structure,
+    update_fee_structure as svc_update_fee_structure,
+    create_discount_type as svc_create_discount_type,
+    update_discount_type as svc_update_discount_type,
+    delete_discount_type as svc_delete_discount_type,
+    FeeConfigValidationError,
+    FeeConfigNotFoundError,
+)
+from services.contact_log_service import log_contact_event, ContactLogValidationError
 from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, normalize_session_id, publish
 from pymongo import ReturnDocument
 import asyncio
@@ -69,7 +86,11 @@ def _require_fee_write(user: dict):
 
 
 def _normalize_fee_key(student_id: str | None, fee_period: str | None, fee_head: str | None) -> str:
-    return f"{student_id}|{fee_period}|{(fee_head or '').strip().lower()}"
+    # D-review fix: single source of truth — AI path (fees_service.normalize_fee_key)
+    # and REST must derive the IDENTICAL content idempotency key (AD14). Delegate
+    # rather than duplicate the f-string so the two can never silently drift.
+    from services.fees_service import normalize_fee_key
+    return normalize_fee_key(student_id, fee_period, fee_head)
 
 
 def _discount_amount(dtype: dict, original_amount: float) -> float:
@@ -186,36 +207,31 @@ async def get_fee_structures(request: Request, user: dict = Depends(require_role
 
 @router.post("/structures")
 async def create_fee_structure(request: Request, user: dict = Depends(require_owner)):
-    """P10.3: Owner-only — create a fee structure for a class."""
+    """P10.3: Owner-only — create a fee structure for a class.
+
+    Thin adapter over services.fee_config_service.create_fee_structure — the SAME
+    write path as the AI `create_fee_structure` tool (Story K.1 / AD7)."""
     db = get_db()
     body = await request.json()
-    bid = user.get("branch_id")
-    structure = {
-        "id": str(uuid.uuid4()),
-        "name": body.get("name", ""),
-        "class_id": body.get("class_id", ""),
-        "fee_heads": body.get("fee_heads", []),
-        "academic_year": body.get("academic_year", ""),
-        "created_by": user["id"],
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    doc = add_school_id(structure)
-    await db.fee_structures.insert_one({**doc, "_id": doc["id"]})
-    return {"success": True, "data": doc}
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    result = await svc_create_fee_structure(db, actor_ctx, body)
+    return {"success": True, "data": result["structure"]}
 
 
 @router.patch("/structures/{structure_id}")
 async def update_fee_structure(structure_id: str, request: Request, user: dict = Depends(require_owner)):
-    """P10.3: Owner-only — update a fee structure."""
+    """P10.3: Owner-only — update a fee structure.
+
+    Thin adapter over services.fee_config_service.update_fee_structure (Story K.1 / AD7)."""
     db = get_db()
     body = await request.json()
-    bid = user.get("branch_id")
-    result = await db.fee_structures.update_one(
-        scoped_query({"id": structure_id}, branch_id=bid),
-        {"$set": body}
-    )
-    if result.matched_count == 0:
-        raise HTTPException(404, "Fee structure not found")
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        await svc_update_fee_structure(db, actor_ctx, {**body, "structure_id": structure_id})
+    except FeeConfigNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except FeeConfigValidationError as e:
+        raise HTTPException(400, str(e))
     return {"success": True}
 
 
@@ -332,61 +348,25 @@ async def record_payment(request: Request, user: dict = Depends(require_role("ow
     if not key or key.strip().lower() != expected_key:
         raise HTTPException(400, "Idempotency-Key must match student_id|fee_period|fee_head")
 
-    now = datetime.now()
-    existing = await db.fee_idempotency_keys.find_one(_fee_query({"key": expected_key}), {"_id": 0})
-    expires_at = None
-    if existing and existing.get("expires_at"):
-        try:
-            expires_at = datetime.fromisoformat(str(existing["expires_at"]))
-        except ValueError:
-            expires_at = None
-    if existing and (expires_at is None or expires_at > now):
-        txn = await db.fee_transactions.find_one(_fee_query({"id": existing["transaction_id"]}), {"_id": 0})
-        if txn:
-            return {"success": True, "data": txn, "idempotent": True}
-
-    for field in ("student_id", "amount", "payment_mode", "fee_period"):
-        if body.get(field) in (None, ""):
-            raise HTTPException(400, f"{field} is required")
-
-    receipt = f"RCP{datetime.now().strftime('%Y%m%d')}{uuid.uuid4().hex[:6].upper()}"
-    amount = float(body["amount"])
-    _paid_raw = body.get("paid_amount")
-    paid_amount = float(_paid_raw) if _paid_raw not in (None, "", " ") else amount
-    # Determine status: explicit > partial auto-detect > paid default
-    if "status" in body and body["status"]:
-        status = body["status"]
-    elif paid_amount < amount:
-        status = "partial"
-    else:
-        status = "paid"
-    is_paid = status in ("paid", "partial")
-    txn = FeeTransaction(
-        student_id=body["student_id"],
-        fee_type=fee_head,
-        amount=amount,
-        status=status,
-        due_date=body.get("due_date"),
-        paid_date=datetime.now().strftime("%Y-%m-%d") if is_paid else None,
-        payment_mode=body["payment_mode"],
-        receipt_number=receipt,
-        transaction_ref=body.get("transaction_ref"),
-    )
-    doc = {**_serialize(txn), "_id": txn.id, "schoolId": get_school_id(), "fee_period": fee_period, "fee_head": fee_head, "paid_amount": paid_amount}
-    await db.fee_transactions.insert_one(doc)
-    await db.fee_idempotency_keys.insert_one({
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
-        "schoolId": get_school_id(),
-        "key": expected_key,
-        "transaction_id": txn.id,
-        "created_at": now.isoformat(),
-        "expires_at": (now + timedelta(hours=24)).isoformat(),
-    })
-    await _audit(db, action="create", entity_id=txn.id, user=user, changes={"created": {k: v for k, v in doc.items() if k != "_id"}})
-    data = {k: v for k, v in doc.items() if k != "_id"}
-    await _publish_fee_update(db, "fee_payment_recorded", data, fee_period)
-    return {"success": True, "data": data}
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    params = {
+        "student_id": body.get("student_id"),
+        "amount": body.get("amount"),
+        "payment_mode": body.get("payment_mode"),
+        "fee_period": fee_period,
+        "fee_head": fee_head,
+        "paid_amount": body.get("paid_amount"),
+        "due_date": body.get("due_date"),
+        "transaction_ref": body.get("transaction_ref"),
+        "status": body.get("status"),
+    }
+    try:
+        result = await svc_record_payment(db, actor_ctx, params, publish_fn=_publish_fee_update)
+    except FeeValidationError as e:
+        raise HTTPException(400, str(e))
+    if result["idempotent"]:
+        return {"success": True, "data": result["data"], "idempotent": True}
+    return {"success": True, "data": result["data"]}
 
 
 @router.patch("/transactions/{transaction_id}/correct")
@@ -472,25 +452,13 @@ async def correct_fee_transaction(
 async def create_fee_contact_log(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
     body = await request.json()
-    required = {"student_id", "fee_transaction_id", "date", "contact_type", "outcome", "notes"}
-    if any(not body.get(field) for field in required):
-        raise HTTPException(400, "student_id, fee_transaction_id, date, contact_type, outcome, and notes are required")
-    record = {
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
-        "schoolId": get_school_id(),
-        "student_id": body["student_id"],
-        "fee_transaction_id": body["fee_transaction_id"],
-        "date": body["date"],
-        "contact_type": body["contact_type"],
-        "outcome": body["outcome"],
-        "notes": body["notes"],
-        "created_by": user["id"],
-        "created_at": datetime.now().isoformat(),
-    }
-    await db.fee_contact_logs.insert_one(record)
-    await _audit(db, action="contact_log", entity_id=body["fee_transaction_id"], user=user, changes={"contact": {k: v for k, v in record.items() if k != "_id"}})
-    return {"success": True, "data": {k: v for k, v in record.items() if k != "_id"}}
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    params = {f: body.get(f) for f in ("student_id", "fee_transaction_id", "date", "contact_type", "outcome", "notes")}
+    try:
+        result = await log_contact_event(db, actor_ctx, params)
+    except ContactLogValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["record"]}
 
 
 @router.get("/summary")
@@ -568,30 +536,16 @@ async def delete_fee_transaction(transaction_id: str, request: Request):
 
 @router.post("/discount-types")
 async def create_discount_type(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    """Thin adapter over services.fee_config_service.create_discount_type (Story K.1 / AD7)."""
     db = get_db()
     _require_fee_write(user)
     body = await request.json()
-    required = {"name", "value", "value_type", "recurrence", "reason_note"}
-    if any(body.get(field) in (None, "") for field in required):
-        raise HTTPException(400, "name, value, value_type, recurrence, and reason_note are required")
-    if body["value_type"] not in ("flat", "percentage"):
-        raise HTTPException(400, "value_type must be flat or percentage")
-    doc = {
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
-        "schoolId": get_school_id(),
-        "name": body["name"],
-        "value": float(body["value"]),
-        "value_type": body["value_type"],
-        "recurrence": body["recurrence"],
-        "reason_note": body["reason_note"],
-        "is_active": True,
-        "created_by": user["id"],
-        "created_at": datetime.now().isoformat(),
-    }
-    await db.fee_discount_types.insert_one(doc)
-    await _audit(db, action="discount_type_create", entity_id=doc["id"], user=user, changes={"created": {k: v for k, v in doc.items() if k != "_id"}})
-    return {"success": True, "data": {k: v for k, v in doc.items() if k != "_id"}}
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_create_discount_type(db, actor_ctx, body)
+    except FeeConfigValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["discount_type"]}
 
 
 @router.get("/discount-types")
@@ -604,20 +558,31 @@ async def get_discount_types(request: Request, include_inactive: bool = False, u
 
 @router.patch("/discount-types/{discount_type_id}")
 async def update_discount_type(discount_type_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    """Thin adapter over services.fee_config_service.update_discount_type (Story K.1 / AD7)."""
     db = get_db()
     _require_fee_write(user)
     body = await request.json()
-    allowed = {"name", "is_active", "reason_note"}
-    changes = {k: v for k, v in body.items() if k in allowed}
-    if not changes:
-        raise HTTPException(400, "No editable fields supplied")
-    existing = await db.fee_discount_types.find_one(_fee_query({"id": discount_type_id}), {"_id": 0})
-    if not existing:
-        raise HTTPException(404, "Discount type not found")
-    await db.fee_discount_types.update_one(_fee_query({"id": discount_type_id}), {"$set": {**changes, "updated_at": datetime.now().isoformat()}})
-    await _audit(db, action="discount_type_update", entity_id=discount_type_id, user=user, changes=changes, reason=body.get("reason_note"))
-    updated = await db.fee_discount_types.find_one(_fee_query({"id": discount_type_id}), {"_id": 0})
-    return {"success": True, "data": updated}
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_update_discount_type(db, actor_ctx, {**body, "discount_type_id": discount_type_id})
+    except FeeConfigNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except FeeConfigValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["discount_type"]}
+
+
+@router.delete("/discount-types/{discount_type_id}")
+async def delete_discount_type(discount_type_id: str, request: Request, user: dict = Depends(require_owner)):
+    """Owner-only: hard-delete a discount type. Parity reference for the AI
+    `delete_discount_type` tool (destructive — F.10 two-step at the chat layer)."""
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_delete_discount_type(db, actor_ctx, {"discount_type_id": discount_type_id})
+    except FeeConfigNotFoundError as e:
+        raise HTTPException(404, str(e))
+    return {"success": True, "data": result}
 
 
 @router.post("/discounts/apply")
@@ -627,71 +592,27 @@ async def apply_discount(request: Request, user: dict = Depends(require_role("ow
     body = await request.json()
     bid = user.get("branch_id")
 
-    student_id = body.get("student_id")
-    discount_type_id = body.get("discount_type_id")
-    note = body.get("note", "")
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    params = {
+        "student_id": body.get("student_id"),
+        "discount_type_id": body.get("discount_type_id"),
+        "original_amount": body.get("original_amount"),
+        "effective_from": body.get("effective_from"),
+        "note": body.get("note", ""),
+    }
+    try:
+        result = await svc_apply_discount(db, actor_ctx, params)
+    except DiscountNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except DiscountValidationError as e:
+        raise HTTPException(400, str(e))
 
-    if not student_id or not discount_type_id:
-        raise HTTPException(400, "student_id and discount_type_id are required")
-
-    # Accept either the legacy collection name (scoped) or the primary one.
-    dtype = await db.fee_discount_types.find_one(_fee_query({"id": discount_type_id}), {"_id": 0})
-    if not dtype:
-        raise HTTPException(404, "Discount type not found")
-
-    # P10.4: Compute discount amount from the type.
-    if dtype.get("value_type") == "flat":
-        discount_amount = Decimal(str(dtype.get("value", 0)))
-    else:
-        # Percentage — simplified; caller may supply original_amount for accuracy.
-        discount_amount = Decimal(str(dtype.get("value", 0)))
-
-    # P10.4: Route large discounts through pending approval (EXCLUSIVE upper bound).
-    if discount_amount > DISCOUNT_APPROVAL_THRESHOLD:
-        pending = add_school_id({
-            "id": str(uuid.uuid4()),
-            "student_id": student_id,
-            "discount_type_id": discount_type_id,
-            "discount_amount": float(discount_amount),
-            "requested_by": user["id"],
-            "note": note,
-            "status": "pending",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        })
-        await db.pending_discount_approvals.insert_one({**pending, "_id": pending["id"]})
+    if result["status"] == "pending":
         return JSONResponse(
             status_code=202,
-            content={
-                "success": True,
-                "pending_approval": True,
-                "message": (
-                    f"Discount of ₹{discount_amount} requires owner approval "
-                    f"(threshold: ₹{DISCOUNT_APPROVAL_THRESHOLD})"
-                ),
-            },
+            content={"success": True, "pending_approval": True, "message": result["message"]},
         )
-
-    # Below threshold — apply immediately (original logic preserved).
-    original_amount = body.get("original_amount")
-    effective_from = body.get("effective_from")
-    if original_amount is None or effective_from is None:
-        raise HTTPException(400, "original_amount and effective_from are required for immediate discount application")
-    application = {
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
-        "schoolId": get_school_id(),
-        "student_id": student_id,
-        "discount_type_id": dtype["id"],
-        "original_amount": float(original_amount),
-        "effective_from": effective_from,
-        "applied_by": user["id"],
-        "applied_at": datetime.now().isoformat(),
-        "note": note or body.get("note"),
-    }
-    # Below threshold — apply immediately (large discounts already returned 202 above)
-    await db.fee_discounts.insert_one(application)
-    await _audit(db, action="discount_apply", entity_id=application["id"], user=user, changes={"applied": {k: v for k, v in application.items() if k != "_id"}}, reason=note or body.get("note"))
-    return {"success": True, "data": {k: v for k, v in application.items() if k != "_id"}}
+    return {"success": True, "data": result["data"]}
 
 
 @router.get("/discounts/pending-approvals")

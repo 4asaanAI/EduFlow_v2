@@ -1,0 +1,34 @@
+# Pinned pre-existing test baseline for Epic A (AI Layer Hardening)
+# Captured 2026-06-08 on branch ai-layer-hardening-plan, clean working tree, BEFORE any Epic A code.
+# Environment fix applied: `pip install stripe` (routes/tokens.py imports it; suite would not collect otherwise).
+# Result: 793 passed, 25 failed, 0 errors after collection fix.
+# These 25 are DETERMINISTIC pre-existing failures (identical in isolation), NOT caused by Epic A.
+# Epic A DONE-criterion is interpreted as: add ZERO new failures vs this set; all 793 currently-green tests stay green.
+#
+# NOTE: test_announcement_moderation.py (5) is in Story A.4's scope — premise divergence flagged for A.4.
+#
+tests/backend/api/test_announcement_moderation.py::test_teacher_targeted_announcement_lands_in_pending
+tests/backend/api/test_announcement_moderation.py::test_student_targeted_also_lands_in_pending
+tests/backend/api/test_announcement_moderation.py::test_all_audience_requires_approval_and_expands_roles
+tests/backend/api/test_announcement_moderation.py::test_class_audience_requires_approval_and_targets_students
+tests/backend/api/test_announcement_moderation.py::test_mixed_admin_teacher_still_pending
+tests/backend/unit/test_multi_tenancy_enforcement.py::test_middleware_wrong_role_returns_403
+tests/backend/unit/test_multi_tenancy_enforcement.py::test_deactivate_school_invalidates_refresh_tokens
+tests/backend/unit/test_receptionist_p11.py::test_complaint_stores_on_behalf_of_phone
+tests/backend/unit/test_receptionist_p11.py::test_complaint_routing_fees_goes_to_accountant
+tests/backend/unit/test_school_onboarding.py::test_create_school_unauthenticated_returns_401
+tests/backend/unit/test_school_onboarding.py::test_create_school_wrong_role_returns_403
+tests/backend/unit/test_school_onboarding.py::test_onboarding_status_unauthenticated_returns_401
+tests/backend/unit/test_school_onboarding.py::test_onboarding_status_wrong_role_returns_403
+tests/backend/unit/test_school_onboarding.py::test_deactivate_school_unauthenticated_returns_401
+tests/backend/unit/test_school_onboarding.py::test_deactivate_school_wrong_role_returns_403
+tests/backend/unit/test_school_onboarding.py::test_create_school_success
+tests/backend/unit/test_school_onboarding.py::test_create_school_duplicate_id_returns_409
+tests/backend/unit/test_school_onboarding.py::test_create_school_invalid_slug_returns_400
+tests/backend/unit/test_school_onboarding.py::test_create_school_invalid_slug_uppercase_returns_400
+tests/backend/unit/test_school_onboarding.py::test_create_school_email_fail_open
+tests/backend/unit/test_school_onboarding.py::test_onboarding_status_all_incomplete
+tests/backend/unit/test_school_onboarding.py::test_onboarding_status_partial
+tests/backend/unit/test_school_onboarding.py::test_onboarding_status_complete_sets_active
+tests/backend/unit/test_school_onboarding.py::test_deactivate_school_success
+tests/backend/unit/test_whatsapp_reminders.py::test_whatsapp_defaulters_owner_returns_ok

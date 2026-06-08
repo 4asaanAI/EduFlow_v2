@@ -5,6 +5,24 @@ from database import get_db
 from middleware.auth import get_current_user, require_owner_or_principal, require_role
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
+from services.actor_context import actor_ctx_from_user
+from services.incident_service import (
+    add_thread_entry as svc_add_thread_entry,
+    assign_followup as svc_assign_followup,
+    update_incident_status as svc_update_incident_status,
+    IncidentValidationError,
+    IncidentNotFoundError,
+)
+from services.approvals_service import (
+    decide_approval_request as decide_approval_request_service,
+    ApprovalValidationError,
+    ApprovalNotFoundError,
+    ApprovalAuthorizationError,
+)
+from services.announcement_service import (
+    decide_announcement_status,
+    AnnouncementValidationError,
+)
 from datetime import datetime, date as _date, timedelta
 from tenant import get_school_id, scoped_filter, scoped_query, add_school_id
 import uuid
@@ -40,10 +58,6 @@ def _require_owner_or_accountant(request: Request) -> dict:
 
 _ALL_ANNOUNCEMENT_ROLES = ["teacher", "student", "admin", "parent"]
 
-# EC-9.1: Audiences a principal is allowed to target directly (without approval).
-# "owner" is explicitly excluded — principals cannot broadcast to owner.
-PRINCIPAL_ALLOWED_AUDIENCES = {"teacher", "student", "admin", "all", "parent"}
-
 
 def _announcement_target_roles(body: dict, audience_type: str | None = None) -> list[str]:
     audience_type = audience_type or body.get("audience_type", "all")
@@ -57,25 +71,8 @@ def _announcement_target_roles(body: dict, audience_type: str | None = None) -> 
     return list(explicit_roles or [])
 
 
-def _announcement_requires_approval(audience_type: str, target_roles: list[str]) -> bool:
-    return audience_type in ("all", "class") or any(r in ("teacher", "student") for r in target_roles)
-
-
-def _should_require_approval(user: dict, audience_roles: list) -> bool:
-    """EC-9.1: owner and principal broadcast directly, all other roles need approval.
-
-    Returns True  → go through the normal approval gate.
-    Returns False → skip the gate (broadcast directly as active).
-    """
-    role = user.get("role")
-    if role == "owner":
-        return False  # owner broadcasts directly
-    if role == "admin" and user.get("sub_category") == "principal":
-        # EC-9.1 injection guard: principal cannot target owner role
-        if "owner" in (audience_roles or []):
-            raise HTTPException(422, "Principal cannot target owner role in announcements")
-        return False  # principal bypasses approval gate
-    return True  # all other roles go through the normal gate
+# Announcement moderation gate moved to services.announcement_service.decide_announcement_status
+# (Story A.4) — the single source of truth shared by this route and the AI create_announcement tool.
 
 
 def _audit_doc(action: str, entity_type: str, entity_id: str, user: dict, changes: dict, reason: str = None):
@@ -285,35 +282,19 @@ async def list_approval_requests(request: Request, status: str = None, user: dic
 async def decide_approval_request(approval_id: str, request: Request, user: dict = Depends(get_current_user)):
     db = get_db()
     body = await request.json()
-    if body.get("status") not in ("approved", "rejected") or not body.get("reason"):
-        raise HTTPException(400, "status approved/rejected and reason are required")
-    approval = await db.approval_requests.find_one(scoped_filter({"id": approval_id}, get_school_id()), {"_id": 0})
-    if not approval:
-        raise HTTPException(404, "Approval request not found")
-    # auth: owner can decide any; principal can decide only owner_and_principal routings.
-    principal = user.get("role") == "admin" and user.get("sub_category") == "principal"
-    if user.get("role") != "owner" and not (principal and approval.get("routing") == "owner_and_principal"):
-        raise HTTPException(403, "Forbidden")
-    update = {
-        "status": body["status"],
-        "decision_reason": body["reason"],
-        "decided_by": user["id"],
-        "decided_at": datetime.now().isoformat(),
-        "unread_for": [],
-    }
-    await db.approval_requests.update_one(scoped_filter({"id": approval_id}, get_school_id()), {"$set": update})
-    await _write_audit(db, "approval_decide", "approval_request", approval_id, user, update, body["reason"])
-    await create_notification(
-        db,
-        user_id=approval["submitted_by"],
-        notification_type="approval_decision",
-        title="Approval decision",
-        message=f"{approval['title']} {body['status']}",
-        source_id=approval_id,
-        source_type="approval_request",
-    )
-    updated = await db.approval_requests.find_one(scoped_filter({"id": approval_id}, get_school_id()), {"_id": 0})
-    return {"success": True, "data": updated}
+    # auth: routing-dependent authorization is enforced inside the service
+    # (owner decides any; principal only owner_and_principal) — record-level gate.
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    params = {"approval_id": approval_id, "status": body.get("status"), "reason": body.get("reason")}
+    try:
+        result = await decide_approval_request_service(db, actor_ctx, params)
+    except ApprovalValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ApprovalNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ApprovalAuthorizationError:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return {"success": True, "data": result["approval"]}
 
 
 # --- Certificates ---
@@ -609,68 +590,71 @@ async def get_incident(incident_id: str, request: Request, user: dict = Depends(
 
 @router.post("/incidents/{incident_id}/thread")
 async def add_incident_thread(incident_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    # Story C.2: delegate to services.incident_service — the SAME write path as the AI
+    # `add_thread_entry` tool (push entry + canonical 'add_thread_entry' audit).
     db = get_db()
     body = await request.json()
     if not body.get("content"):
         raise HTTPException(400, "content is required")
-    entry = {
-        "id": str(uuid.uuid4()),
-        "author_id": user["id"],
-        "author_name": user.get("name", ""),
-        "author_role": user.get("role", ""),
-        "content": body["content"],
-        "timestamp": datetime.now().isoformat(),
-    }
-    bid = user.get("branch_id")
-    result = await db.incidents.update_one(
-        scoped_query({"id": incident_id}, branch_id=bid),
-        {"$push": {"thread": entry}, "$set": {"updated_at": datetime.now().isoformat()}}
-    )
-    if result.matched_count == 0:
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_add_thread_entry(db, actor_ctx, {
+            "record_type": "incidents", "record_id": incident_id, "content": body["content"],
+        })
+    except IncidentNotFoundError:
         raise HTTPException(404, "Incident not found")
-    return {"success": True, "data": entry}
+    except IncidentValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["entry"]}
 
 
 @router.patch("/incidents/{incident_id}/assign")
 async def assign_incident(incident_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    # Story C.2: delegate to services.incident_service — the SAME write path as the AI
+    # `assign_followup` tool (assignment fields + optional note + audit + assignee notify).
     db = get_db()
-    bid = user.get("branch_id")
     body = await request.json()
-    updates = {"updated_at": datetime.now().isoformat()}
-    if body.get("assigned_to"):
-        updates["assigned_to"] = body["assigned_to"]
-    if body.get("due_date"):
-        updates["due_date"] = body["due_date"]
-    if body.get("status"):
-        updates["status"] = body["status"]
-    await db.incidents.update_one(scoped_query({"id": incident_id}, branch_id=bid), {"$set": updates})
+    if not body.get("assigned_to") or not body.get("due_date"):
+        raise HTTPException(400, "assigned_to and due_date are required")
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        await svc_assign_followup(db, actor_ctx, {
+            "record_type": "incidents",
+            "record_id": incident_id,
+            "assignee_staff_id": body["assigned_to"],
+            "due_date": body["due_date"],
+            "note": body.get("note"),
+            "status": body.get("status"),
+        })
+    except IncidentNotFoundError:
+        raise HTTPException(404, "Incident not found")
+    except IncidentValidationError as e:
+        raise HTTPException(400, str(e))
     return {"success": True}
 
 
 @router.patch("/incidents/{incident_id}")
 async def update_incident(incident_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
-    """P9.8: Principal/owner can update status and add resolution note."""
+    """P9.8: Principal/owner can update status and add resolution note.
+
+    Story C.3: delegate to services.incident_service.update_incident_status — the SAME
+    write path as the AI `update_incident_status` tool (status transition + audit)."""
     db = get_db()
     body = await request.json()
-    bid = user.get("branch_id")
-
-    update = {"updated_at": datetime.now().isoformat()}
-    if body.get("status"):
-        update["status"] = body["status"]
-    if body.get("resolution_note"):
-        update["resolution_note"] = body["resolution_note"]
-        update["resolved_by"] = user["id"]
-        update["resolved_at"] = datetime.now().isoformat()
-
-    if len(update) == 1:  # only updated_at was added
+    if not body.get("status") and not body.get("resolution_note"):
         raise HTTPException(400, "No update fields provided")
-
-    result = await db.incidents.update_one(
-        scoped_query({"id": incident_id}, branch_id=bid),
-        {"$set": update},
-    )
-    if result.matched_count == 0:
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        await svc_update_incident_status(db, actor_ctx, {
+            "record_type": "incidents",
+            "record_id": incident_id,
+            "new_status": body.get("status"),
+            "resolution_note": body.get("resolution_note"),
+        })
+    except IncidentNotFoundError:
         raise HTTPException(404, "Incident not found")
+    except IncidentValidationError as e:
+        raise HTTPException(400, str(e))
     return {"success": True}
 
 
@@ -1212,21 +1196,16 @@ async def create_announcement(request: Request, user: dict = Depends(require_rol
     audience_type = body.get("audience_type") or ("role" if has_explicit_roles else "all")
     target_roles = _announcement_target_roles(body, audience_type)
 
-    # EC-9.1: Principal can broadcast directly — validate audience guard first.
-    # For principal, check that audience_roles doesn't include "owner".
-    if user.get("role") == "admin" and user.get("sub_category") == "principal":
-        audience_set = set(body.get("audience_roles") or [])
-        if not audience_set.issubset(PRINCIPAL_ALLOWED_AUDIENCES):
-            raise HTTPException(422, detail="Principal cannot target owner role")
-
-    # Story 7-47: announcements addressed to teachers/students require principal
-    # approval before they become visible. Owner and principal can broadcast directly.
-    # Other roles (teacher, receptionist, etc.) always require approval.
-    if _should_require_approval(user, target_roles):
-        requires_approval = _announcement_requires_approval(audience_type, target_roles)
-    else:
-        requires_approval = False
-    initial_status = "pending_approval" if requires_approval else "active"
+    # Moderation gate centralized in services.announcement_service (Story A.4) — the
+    # same decision the AI create_announcement tool uses. EC-9.1 (owner/principal
+    # broadcast directly) + Story 7-47 (teacher/student/all/class held for approval).
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        initial_status = decide_announcement_status(
+            actor_ctx, audience_type, target_roles, raw_audience_roles=body.get("audience_roles")
+        )
+    except AnnouncementValidationError as e:
+        raise HTTPException(422, detail=str(e))
 
     announcement = add_school_id({
         "id": str(uuid.uuid4()),

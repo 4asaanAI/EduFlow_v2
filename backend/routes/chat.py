@@ -33,6 +33,7 @@ from ai.context_builder import build_school_context, detect_language
 from ai.tool_functions_v2 import TOOL_REGISTRY, WRITE_TOOL_NAMES
 from ai.scope_resolver import resolve_scope, Scope
 from ai.content_filter import filter_response, check_input_safety
+from ai.redaction import redact_for_llm
 from middleware.auth import get_current_user
 from services.token_service import check_and_reserve_tokens, record_usage
 from services.confirm_tokens import (
@@ -45,7 +46,22 @@ from services.confirm_tokens import (
     audit_ai_rate_limit_hit,
 )
 from services.ai_rate_limiter import increment_and_check as _ai_rate_check, decrement_count as _ai_rate_decrement
+from services.ai_action_policy import is_action_authorized_phase1
+from services.memory import chat_integration as chat_memory
+from services.ai_kill_switch import ai_writes_enabled
+from services.ai_shadow_mode import ai_dry_run_enabled
+from services.ai_metrics import record_ai_metric
+from services.audit_service import write_audit
 from tenant import get_school_id, scoped_filter
+from ai import plan_executor
+from ai.plan_executor import (
+    PlanStaleError,
+    NeedsManualReconciliationError,
+    SagaCompensatedError,
+    PlanScopeViolationError,
+)
+from ai.plan_schema import single_write_plan, plan_from_steps
+from ai import planner as ai_planner
 
 
 class RateLimitExceeded(Exception):
@@ -67,7 +83,8 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
-MAX_TOOL_ROUNDS = 3
+MAX_TOOL_ROUNDS = 3  # AD2/FR5: bounds planning/read iterations ONLY (not confirmed writes)
+MAX_PLAN_STEPS = ai_planner.MAX_PLAN_STEPS  # AD2/FR5: bounds plan SIZE
 KEEPALIVE_INTERVAL = 5  # seconds — keep short for fast disconnect detection
 LLM_WALLCLOCK_BUDGET = 90  # seconds; bounded ceiling above per-call 45s timeout
 CHAR_BUDGET = 24000
@@ -79,6 +96,41 @@ THINKING_DELAY_MAX = 0.30  # 300ms
 
 # Tools that require user confirmation before execution
 WRITE_ACTION_TOOLS = set(WRITE_TOOL_NAMES)
+
+# F.10/FR42: destructive (delete) tools require a SECOND explicit acknowledgment
+# beyond the plan-confirm, and write an actor-tagged deletion audit row. Derived
+# from the registry `destructive` flag; Epics J/K register the actual delete tools.
+DESTRUCTIVE_TOOL_NAMES = {
+    name for name, tool in TOOL_REGISTRY.items() if tool.get("destructive")
+}
+
+# F.10: student hard-delete / DPDP-erase are NEVER exposed to the assistant — they
+# stay UI-only. These names are refused outright even if a future planner emits one.
+FORBIDDEN_AI_TOOLS = {
+    "delete_student",
+    "erase_student",
+    "dpdp_erase_student",
+    "hard_delete_student",
+}
+
+# E.6: deep-link target panel per tool, used when the assistant cannot complete
+# a job and must hand the user off to the matching UI panel.
+_TOOL_DEEP_LINKS = {
+    "record_fee_payment": "fees",
+    "apply_discount": "fees",
+    "approve_leave": "staff",
+    "initiate_substitution": "staff",
+    "mark_attendance": "attendance",
+    "correct_attendance": "attendance",
+    "award_house_points": "houses",
+    "create_announcement": "announcements",
+    "log_contact_event": "students",
+    "update_incident_status": "incidents",
+    "assign_followup": "incidents",
+    "add_thread_entry": "incidents",
+    "confirm_resolution": "incidents",
+    "decide_approval_request": "approvals",
+}
 
 WRITE_TOOL_REQUIRED_PARAMS = {
     "assign_followup": ("record_id", "assignee_staff_id", "due_date", "note"),
@@ -95,6 +147,32 @@ WRITE_TOOL_REQUIRED_PARAMS = {
     "approve_leave": ("leave_id", "action"),
     "award_house_points": ("student_name", "points"),
     "create_announcement": ("title", "content"),
+    # Epic J — student & staff CRUD
+    "create_student": ("name", "class_id"),
+    "update_student": ("student_id",),
+    "set_student_status": ("student_id", "status"),
+    "manage_student_guardians": ("student_id", "guardians"),
+    "create_staff": ("name", "staff_type"),
+    "update_staff": ("staff_id",),
+    # Epic K.1 — fee-config CRUD
+    "create_fee_structure": ("name",),
+    "update_fee_structure": ("structure_id",),
+    "create_discount_type": ("name", "value", "value_type", "recurrence", "reason_note"),
+    "update_discount_type": ("discount_type_id",),
+    "delete_discount_type": ("discount_type_id",),
+    # Epic K.2 — academic-structure CRUD
+    "create_class": ("name",),
+    "update_class": ("class_id",),
+    "delete_class": ("class_id",),
+    "create_house": ("name",),
+    "update_house": ("house_id",),
+    "delete_house": ("house_id",),
+    # Epic K.3 — org-config CRUD
+    "create_branch": ("name",),
+    "update_branch": ("branch_id", "name"),
+    "delete_branch": ("branch_id",),
+    "update_school_settings": (),
+    "year_end_transition": ("new_year_name",),
 }
 
 WRITE_TOOL_PARAM_LABELS = {
@@ -129,6 +207,25 @@ WRITE_TOOL_PARAM_LABELS = {
     "reason": "reason",
     "title": "announcement title",
     "content": "announcement content",
+    # Epic J — student & staff CRUD
+    "name": "name",
+    "status": "status",
+    "guardians": "guardians",
+    "staff_type": "staff type",
+    "staff_id": "staff member",
+    # Epic K.1 — fee-config CRUD
+    "structure_id": "fee structure",
+    "value": "discount value",
+    "value_type": "discount value type",
+    "recurrence": "recurrence",
+    "reason_note": "reason note",
+    # Epic K.2 — academic-structure CRUD
+    "section": "section",
+    "house_id": "house",
+    "colour": "colour",
+    # Epic K.3 — org-config CRUD
+    "branch_id": "branch",
+    "new_year_name": "new academic year",
 }
 
 # ─── Keyword → Tool Map ──────────────────────────────────────────────────────
@@ -507,11 +604,16 @@ def _is_tool_authorized(user: dict, tool_def: dict) -> bool:
     if user.get("role") not in tool_def.get("roles", []):
         return False
     sub_categories = tool_def.get("sub_categories")
-    if sub_categories is None:
-        return True
-    if user.get("role") != "admin":
-        return True
-    return user.get("sub_category") in sub_categories
+    if sub_categories is not None and user.get("role") == "admin":
+        if user.get("sub_category") not in sub_categories:
+            return False
+    # F.11/FR43: Phase-1 lockdown — AI write/action tools are Owner+Principal only
+    # (pilot scope), even where the registry roles permit broader staff. Read
+    # tools (incl. all student tools) are unaffected. Single switch lives in
+    # services/ai_action_policy.py; Phase 2 (Epic H) widens it with no engine change.
+    if not is_action_authorized_phase1(user, tool_def):
+        return False
+    return True
 
 
 # ─── Keyword detection ────────────────────────────────────────────────────────
@@ -674,69 +776,124 @@ def _extract_empty_message(result: dict) -> Optional[str]:
     return None
 
 
-def _mask_phone(value: Any) -> Any:
-    if not isinstance(value, str):
-        return value
-    digits = re.sub(r"\D", "", value)
-    if len(digits) < 4:
-        return "XX"
-    return f"{digits[:2]}XX-XXX-{digits[-3:]}"
+# F.2/FR21: read tools that return individual minor (student) records. Every
+# assistant read through one of these is audited (actor/target/purpose) so the
+# school can demonstrate purpose-limited, traceable handling of children's data.
+MINOR_READ_TOOLS = {
+    "search_students",
+    "get_fee_transactions",
+    "get_fee_defaulters",
+    "get_student_database",
+    "get_student_profile",
+    "get_my_class_students",
+    "query_student_record",
+    "draft_parent_message",
+    "recall_history",
+}
+
+
+def _collect_student_refs(value: Any, acc: set, depth: int = 0) -> None:
+    """Recursively collect student identifiers from a raw tool result."""
+    if depth > 8 or len(acc) >= 200:
+        return
+    if isinstance(value, list):
+        for item in value:
+            _collect_student_refs(item, acc, depth + 1)
+        return
+    if isinstance(value, dict):
+        for key, raw in value.items():
+            kl = str(key).lower()
+            if kl in ("student_id", "admission_number") and isinstance(raw, (str, int)):
+                acc.add(str(raw))
+            else:
+                _collect_student_refs(raw, acc, depth + 1)
+
+
+async def _audit_minor_read(db, user: dict, tool_name: str, raw_result: Any) -> None:
+    """F.2/FR21: write an audit row for an assistant read of minor records.
+
+    Fail-open (write_audit never raises). Target ids come from the RAW (pre-redaction)
+    result; the audit row itself stores only ids/counts (no special-category PII).
+    """
+    if tool_name not in MINOR_READ_TOOLS:
+        return
+    refs: set = set()
+    _collect_student_refs(raw_result, refs)
+    if not refs:
+        return
+    ref_list = sorted(refs)
+    await write_audit(
+        db,
+        action="minor_record_read",
+        entity_id=ref_list[0],
+        collection="students",
+        changed_by=user.get("id", ""),
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id") or "",
+        changes={"student_refs": ref_list, "count": len(ref_list)},
+        reason=f"ai_read:{tool_name}",
+    )
+
+
+def _token_meta_destructive_steps(token_meta: dict) -> list:
+    """F.10: return the destructive step dicts of a peeked token (legacy or plan).
+
+    A plan step is destructive if its `destructive` flag is set OR its tool is in
+    DESTRUCTIVE_TOOL_NAMES. A legacy single-action token is destructive if its
+    action tool is destructive.
+    """
+    plan_steps = token_meta.get("plan")
+    out: list = []
+    if plan_steps:
+        for s in plan_steps:
+            if s.get("destructive") or s.get("tool") in DESTRUCTIVE_TOOL_NAMES:
+                out.append(s)
+    else:
+        action = token_meta.get("action")
+        if action in DESTRUCTIVE_TOOL_NAMES:
+            out.append({"idx": 0, "tool": action, "params": token_meta.get("params") or {}})
+    return out
+
+
+async def _audit_destructive_step(db, user: dict, step: dict) -> None:
+    """F.10/FR42: actor-tagged deletion audit row — 'who deleted what, when'."""
+    params = step.get("params") or {}
+    target = (
+        params.get("id")
+        or params.get("target_id")
+        or params.get("record_id")
+        or step.get("tool", "")
+    )
+    await write_audit(
+        db,
+        action="delete",
+        entity_id=str(target),
+        collection=step.get("tool", "destructive"),
+        changed_by=user.get("id", ""),
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id") or "",
+        changes={
+            "actor": user.get("id", ""),
+            "actor_name": user.get("name", ""),
+            "tool": step.get("tool"),
+            "destructive": True,
+        },
+        reason="ai_destructive_action",
+    )
 
 
 def _safe_tool_result_for_chat(value: Any) -> Any:
     """
     Redact high-risk personal fields before storing tool traces or sending
     tool output back into the model for final narration.
+
+    F.1: delegates to the canonical `ai.redaction.redact_for_llm` so the SAME
+    DPDP masking (special-category fields: DOB/contact/health/address/Aadhaar +
+    secrets) applies at both the outbound LLM payload and trace persistence.
     """
-    if isinstance(value, list):
-        return [_safe_tool_result_for_chat(item) for item in value]
-
-    if not isinstance(value, dict):
-        return value
-
-    safe: dict[str, Any] = {}
-    restricted_exact = {
-        "address",
-        "home_address",
-        "date_of_birth",
-        "dob",
-        "aadhaar",
-        "aadhaar_number",
-        "password",
-        "password_hash",
-        "salt",
-        "secret",
-        "api_key",
-        "private_key",
-        "refresh_token",
-        "access_token",
-        "session_token",
-        "webhook_secret",
-        "medical_record",
-        "medical_records",
-    }
-    # Exact phone keys + keys that end/start with phone/mobile (e.g. guardian_phone)
-    # but NOT keys like is_phone_verified that contain "phone" but aren't numbers.
-    phone_field_prefixes_suffixes = ("phone", "mobile", "_phone", "_mobile", "phone_", "mobile_")
-    for key, raw in value.items():
-        key_lower = str(key).lower()
-        is_phone_field = (
-            key_lower in ("phone", "mobile", "phone_number", "mobile_number")
-            or key_lower.endswith(("_phone", "_mobile"))
-            or key_lower.startswith(("phone_", "mobile_"))
-        )
-        if key_lower in restricted_exact:
-            safe[key] = "[restricted in chat]"
-        elif is_phone_field or "contact" in key_lower:
-            if isinstance(raw, str):
-                safe[key] = _mask_phone(raw)
-            elif isinstance(raw, (dict, list)):
-                safe[key] = _safe_tool_result_for_chat(raw)
-            else:
-                safe[key] = "[restricted in chat]"
-        else:
-            safe[key] = _safe_tool_result_for_chat(raw)
-    return safe
+    return redact_for_llm(value)
 
 
 _NUMERIC_POSITIVE_PARAMS = {"points", "amount"}
@@ -786,6 +943,35 @@ async def _resolve_params(params: dict, db, scope=None) -> dict:
     from tenant import scoped_query  # local to avoid circular at import time
 
     resolved = dict(params)
+
+    def _student_options(docs: list) -> list:
+        """I.3: build selectable disambiguation options from candidate students.
+        `value` is the admission number (re-resolves uniquely); `label` is human."""
+        opts = []
+        for d in docs[:5]:
+            adm = d.get("admission_number")
+            cls = d.get("class_name") or d.get("class_id")
+            label_bits = [d.get("name", "Unknown")]
+            if cls:
+                label_bits.append(f"Class {cls}")
+            if adm:
+                label_bits.append(f"Adm {adm}")
+            opts.append({
+                "label": " — ".join(str(b) for b in label_bits),
+                # Prefer the admission number (unique); fall back to the id.
+                "value": str(adm) if adm else str(d.get("id", "")),
+            })
+        return opts
+
+    def _staff_options(docs: list) -> list:
+        opts = []
+        for d in docs[:5]:
+            role = d.get("designation") or d.get("role")
+            label = d.get("name", "Unknown")
+            if role:
+                label = f"{label} — {role}"
+            opts.append({"label": label, "value": str(d.get("id", ""))})
+        return opts
 
     def _scoped(collection: str, base: dict) -> dict:
         """Compose base query with the user's scope.filter() + scoped_query."""
@@ -837,6 +1023,7 @@ async def _resolve_params(params: dict, db, scope=None) -> dict:
                 f"Multiple students share the name '{student_name}' — "
                 f"please specify the admission number."
             )
+            resolved["_resolution_options"] = _student_options(exact)
             matches = []
         else:
             # Fall back to substring; require uniqueness within scope.
@@ -848,6 +1035,7 @@ async def _resolve_params(params: dict, db, scope=None) -> dict:
                     f"Multiple students match '{student_name}' — "
                     f"please specify the admission number."
                 )
+                resolved["_resolution_options"] = _student_options(matches)
                 matches = []
         if len(matches) == 1:
             student = matches[0]
@@ -869,6 +1057,7 @@ async def _resolve_params(params: dict, db, scope=None) -> dict:
                 f"Multiple students match '{search_term}' — "
                 f"please specify the admission number."
             )
+            resolved["_resolution_options"] = _student_options(matches)
         elif len(matches) == 1:
             student = matches[0]
             resolved["student_id"] = student["id"]
@@ -899,6 +1088,7 @@ async def _resolve_params(params: dict, db, scope=None) -> dict:
             resolved["_resolution_error"] = (
                 f"Multiple staff members share the name '{staff_name}'."
             )
+            resolved["_resolution_options"] = _staff_options(exact)
             matches = []
         else:
             matches = await db.staff.find(_scoped("staff", {
@@ -908,6 +1098,7 @@ async def _resolve_params(params: dict, db, scope=None) -> dict:
                 resolved["_resolution_error"] = (
                     f"Multiple staff match '{staff_name}'."
                 )
+                resolved["_resolution_options"] = _staff_options(matches)
                 matches = []
         if len(matches) == 1:
             staff = matches[0]
@@ -979,6 +1170,138 @@ async def _build_confirm_event(tool_name: str, params: dict, user: dict, session
             {"label": "Cancel", "action": "cancel"},
         ],
     }
+
+
+def _deep_link_for_tool(tool_name: str) -> str:
+    """E.6: map a tool the assistant can't run to the UI panel that can."""
+    panel = _TOOL_DEEP_LINKS.get(tool_name, "dashboard")
+    return f"/app?tool={panel}"
+
+
+async def _build_plan_confirm_event(
+    plan_steps: list, user: dict, session_id: str, db
+) -> dict:
+    """E.5/UX-DR1: issue ONE plan-confirm token and a single confirm_action SSE
+    event that lists every step of the resolved multi-step plan."""
+    token = await issue_confirm_token(
+        action="plan",
+        params={},
+        user_id=user["id"],
+        session_id=session_id,
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id"),
+        plan=plan_steps,
+        db=db,
+    )
+    step_displays = [
+        {
+            "idx": s.get("idx", i),
+            "tool": s.get("tool"),
+            "kind": s.get("kind", "write"),
+            "destructive": bool(s.get("destructive", False)),
+            "display": _build_confirm_display(s.get("tool"), s.get("params") or {}),
+        }
+        for i, s in enumerate(plan_steps)
+    ]
+    return {
+        "type": "confirm_action",
+        "action_id": token,
+        "token": token,
+        "tool": "plan",
+        "is_plan": True,
+        "steps": step_displays,
+        "display": "I'll run these steps in order — confirm to proceed:",
+        "expires_in_seconds": 5 * 60,
+        "buttons": [
+            {"label": "Confirm", "action": "confirm"},
+            {"label": "Cancel", "action": "cancel"},
+        ],
+    }
+
+
+async def _stream_text_message(text: str, conv_id, user, db, lang, total_tokens_used, *, actions=None, extra_events=None):
+    """Stream a plain assistant message (text deltas), persist it, then close."""
+    yield thinking_event("composing", "Writing your answer...")
+    await _thinking_delay()
+    for i in range(0, len(text), 4):
+        yield f"data: {json.dumps({'type': 'text_delta', 'delta': text[i:i + 4]})}\n\n"
+        await asyncio.sleep(0.008)
+    for ev in (extra_events or []):
+        yield ev
+    message_id = None
+    if conv_id:
+        ai_msg = Message(
+            conversation_id=conv_id, role="assistant", content=text,
+            actions=actions, language_detected=lang,
+        )
+        await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
+        message_id = ai_msg.id
+    yield f"data: {json.dumps({'type': 'done', 'message_id': message_id, 'tokens_used': total_tokens_used})}\n\n"
+
+
+async def _stream_plan(calls, user, db, scope, session_id, conv_id, lang, total_tokens_used):
+    """Epic E end-to-end: resolve+authorize a compound plan and gate it behind
+    ONE confirm card, or fall back gracefully (disambiguation / deep-link)."""
+
+    async def _request_plan(*, instruction, user, scope):
+        return [{"tool": c.get("action"), "params": c.get("params") or {}} for c in calls]
+
+    result = await ai_planner.build_plan(
+        instruction="",
+        user=user,
+        db=db,
+        scope=scope,
+        registry=TOOL_REGISTRY,
+        write_tools=WRITE_ACTION_TOOLS,
+        is_authorized=_is_tool_authorized,
+        resolve_params=_resolve_params,
+        request_plan=_request_plan,
+        deep_link_for=_deep_link_for_tool,
+    )
+
+    if result.status == ai_planner.PLAN and result.has_writes:
+        try:
+            confirm_event = await _build_plan_confirm_event(result.steps, user, session_id, db)
+        except HTTPException as exc:
+            yield f"data: {json.dumps({'type': 'error', 'phase': 'confirm_token', 'message': exc.detail})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            return
+        yield f"data: {json.dumps(confirm_event)}\n\n"
+        confirm_text = "I need your confirmation before proceeding. Please review the plan above."
+        async for ev in _stream_text_message(
+            confirm_text, conv_id, user, db, lang, total_tokens_used, actions=[confirm_event]
+        ):
+            yield ev
+        return
+
+    # E.6: graceful fallback — disambiguation, unauthorized, too-long, or
+    # cannot-plan. NOTHING was written and no token issued; hand off to the UI.
+    # Disambiguation is a question (no dead-end), so it gets no deep-link; the
+    # other dead-ends offer a panel to finish the job by hand (UX-DR4).
+    deep_link = result.deep_link
+    if deep_link is None and result.status in (ai_planner.CANNOT_PLAN, ai_planner.TOO_LONG):
+        deep_link = "/app?tool=dashboard"
+    extra_events = []
+    # I.3: a disambiguation is a question with selectable candidates — emit a
+    # structured event the chat renders as clickable options (no deep-link, no
+    # token, no write). The picked option's `value` continues the flow.
+    if result.status == ai_planner.DISAMBIGUATION and result.options:
+        extra_events.append(
+            f"data: {json.dumps({'type': 'disambiguation', 'message': result.message, 'options': result.options})}\n\n"
+        )
+    elif deep_link:
+        extra_events.append(
+            f"data: {json.dumps({'type': 'navigate', 'url': deep_link})}\n\n"
+        )
+    logger.info(
+        "planner_fallback status=%s user=%s tool=%s",
+        result.status, user.get("id"), result.unauthorized_tool,
+    )
+    message = result.message or "I wasn't able to complete that. Try the matching panel."
+    async for ev in _stream_text_message(
+        message, conv_id, user, db, lang, total_tokens_used, extra_events=extra_events
+    ):
+        yield ev
 
 
 def _is_ai_unavailable(result) -> bool:
@@ -1063,6 +1386,20 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
         return
 
+    # ── Phase 1b: Memory commands / confirmations (Epic G — Owner/Principal) ──
+    # Inline "remember:"/"forget", an affirmative reply to a pending memory, or a
+    # correction are handled BEFORE the LLM. A returned string short-circuits the
+    # turn. Best-effort: any failure falls through to the normal flow.
+    try:
+        conv_for_memory = await db.conversations.find_one(_owned_conversation_filter(conv_id, user))
+        pre_turn_reply = await chat_memory.handle_pre_turn(db, user, user_text, conv_for_memory)
+        if pre_turn_reply:
+            async for _ev in _stream_text_message(pre_turn_reply, conv_id, user, db, lang, 0):
+                yield _ev
+            return
+    except Exception as e:
+        logger.error(f"Phase 1b (memory pre-turn) error: {e}")
+
     # ── Thinking: understanding ───────────────────────────────────────────
     yield thinking_event("understanding", "Reading your question...")
     await _thinking_delay()
@@ -1133,6 +1470,15 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
     try:
         school_context = await build_school_context(user["role"], user["id"])
         system_prompt = build_system_prompt(user, school_context, lang)
+
+        # Epic G (G.3): inject recalled memories/skills for Owner/Principal. Hybrid
+        # recall degrades to keyword-only when the vector store is unavailable.
+        try:
+            recall_block = await chat_memory.recall_context_block(db, user, user_text)
+            if recall_block:
+                system_prompt += recall_block
+        except Exception as e:
+            logger.warning(f"Phase 4 (memory recall) non-fatal: {e}")
 
     except Exception as e:
         logger.error(f"Phase 4 (build context) error: {e}")
@@ -1319,6 +1665,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
 
             try:
                 raw_tool_result = await tool_def["fn"]({}, user, scope) if _tool_accepts_scope(tool_def) else await tool_def["fn"]({}, user)
+                await _audit_minor_read(db, user, tool_name, raw_tool_result)
                 result_count = _extract_result_count(raw_tool_result)
                 tool_result = _safe_tool_result_for_chat(raw_tool_result)
                 count_msg = f"Found {result_count} records" if result_count is not None else "Data retrieved"
@@ -1450,6 +1797,21 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
         return
 
+    # ── Phase 8.5: agentic planner (Epic E) — whole-job-by-instruction ────
+    # When the model proposes MORE THAN ONE tool call in a turn and at least one
+    # is a write, treat it as a compound job: resolve + authorize the whole plan
+    # server-side and gate it behind ONE plan-confirm card (plan-then-confirm-once).
+    # The common single-tool path below is unchanged (≤1 parsed call skips this).
+    if not detected_tool:
+        _candidate_calls = _parse_tool_calls(llm_response)
+        _has_write = any(c.get("action") in WRITE_ACTION_TOOLS for c in _candidate_calls)
+        if len(_candidate_calls) > 1 and _has_write:
+            async for _ev in _stream_plan(
+                _candidate_calls, user, db, scope, session_id, conv_id, lang, total_tokens_used
+            ):
+                yield _ev
+            return
+
     # ── Phase 9: LLM tool detection + multi-tool chaining ─────────────────
     # Part 2 Patch P5 (E6/L4): treat the keyword-detected tool as round 1 so
     # MAX_TOOL_ROUNDS is honored (was previously off-by-one: 4 effective rounds
@@ -1572,6 +1934,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
 
             try:
                 raw_tool_result = await tool_def["fn"](resolved_params, user, scope) if _tool_accepts_scope(tool_def) else await tool_def["fn"](resolved_params, user)
+                await _audit_minor_read(db, user, tool_name, raw_tool_result)
                 result_count = _extract_result_count(raw_tool_result)
                 tool_result = _safe_tool_result_for_chat(raw_tool_result)
                 count_msg = f"Found {result_count} records" if result_count is not None else "Data retrieved"
@@ -1689,6 +2052,25 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         logger.error(f"Phase 9 (multi-tool chaining) error: {e}")
         # Continue with whatever llm_response we have
 
+    # ── Phase 9b: Memory auto-save + skill distillation (Epic G) ──────────
+    # Owner/Principal only. Auto-saves clearly-durable info, distills a skill from
+    # complex runs, and returns an in-chat yes/no question for uncertain items that
+    # is appended to the reply (no UI). Best-effort; never blocks the answer.
+    memory_followup_question = None
+    try:
+        _history_for_skill = list(messages_for_llm) + [{"role": "assistant", "content": llm_response or ""}]
+        memory_followup_question = await chat_memory.finalize_turn(
+            db, user,
+            user_text=user_text,
+            assistant_text=llm_response or "",
+            conv_id=conv_id,
+            history=_history_for_skill,
+            round_count=tool_rounds,
+            tool_count=len(all_tool_calls),
+        )
+    except Exception as e:
+        logger.warning(f"Phase 9b (memory finalize) non-fatal: {e}")
+
     # ── Phase 10: Strip residual JSON tool patterns from final response ───
     try:
         llm_response = _strip_tool_json_from_text(llm_response)
@@ -1719,6 +2101,12 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
 
     # ── Phase 12: Parse rich content ──────────────────────────────────────
     clean_text, rich_content = _extract_rich_content(clean_response)
+
+    # Epic G (G.4): append the in-chat "remember that?" question to the reply when
+    # the assistant is genuinely uncertain (never a UI control). Only when there is
+    # already some answer text, so we don't surface a bare question.
+    if memory_followup_question and clean_text and clean_text.strip():
+        clean_text = clean_text + memory_followup_question
 
     # ── Phase 13: Stream text response ────────────────────────────────────
     yield thinking_event("composing", "Writing your answer...")
@@ -1903,7 +2291,7 @@ async def execute_action(conv_id: str, request: Request):
 
 # ─── Confirm action endpoint ─────────────────────────────────────────────────
 
-async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, db, conv_id: str = None):
+async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, db, conv_id: str = None, destructive_ack: bool = False):
     if conv_id:
         await _require_owned_conversation(db, conv_id, user)
 
@@ -1930,6 +2318,45 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
         )
         # consume_confirm_token always raises in this path; defensive fallthrough.
         raise HTTPException(status_code=400, detail="Confirmation token is invalid")
+
+    # F.4/AD9: AI-write kill-switch. Checked BEFORE the rate gate AND token consume
+    # so a blocked write neither burns the one-shot token nor a rate slot — the user
+    # can retry once an operator re-enables writes. Reads never reach this path.
+    if not await ai_writes_enabled(db):
+        await record_ai_metric(
+            db, event="kill_switch_blocked",
+            user_id=user["id"], tool_name=token_meta.get("action", "<unknown>"),
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "ai_writes_disabled",
+                "message": (
+                    "AI actions are temporarily disabled by your administrator. "
+                    "You can still ask questions, or use the panel directly."
+                ),
+            },
+        )
+
+    # F.10/FR42: two-step destructive confirmation. A plan/action containing a
+    # delete requires a SECOND explicit acknowledgment beyond the plan-confirm.
+    # Checked on the PEEKED token, before the rate gate + consume, so a missing ack
+    # burns neither the one-shot token nor a rate slot — the client re-confirms with
+    # destructive_ack=True (a single rate slot is taken on the acknowledged attempt).
+    destructive_steps = _token_meta_destructive_steps(token_meta)
+    if destructive_steps and not destructive_ack:
+        tools = sorted({s.get("tool") for s in destructive_steps})
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "destructive_confirmation_required",
+                "message": (
+                    "This includes a permanent deletion. Please confirm a second "
+                    "time to proceed — this cannot be undone."
+                ),
+                "destructive_tools": tools,
+            },
+        )
 
     # Rate-limit gate runs BEFORE token consumption. A rejected request must
     # not burn the user's one-shot confirm token — they should be able to
@@ -1971,21 +2398,62 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
             # incremented for this request but the dispatch won't happen. Undo the
             # increment so the losing request doesn't permanently reduce the budget.
             await _ai_rate_decrement(user_id=user["id"], db=db)
+        # E.5: a token that expired while the user was reading the plan should
+        # get a clear, re-planable message — not a bare generic 400.
+        if exc.status_code == 400 and isinstance(exc.detail, str) and "expired" in exc.detail.lower():
+            await _ai_rate_decrement(user_id=user["id"], db=db)
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "plan_expired",
+                    "message": (
+                        "This plan expired before it was confirmed. Just ask again "
+                        "and I'll rebuild it for you."
+                    ),
+                },
+            ) from exc
         raise
-    tool_name = token_doc.get("action")
-    params = token_doc.get("params") or {}
-
-    tool_def = TOOL_REGISTRY.get(tool_name)
-    if not tool_def:
-        raise HTTPException(status_code=400, detail=f"Unknown tool: {tool_name}")
-    if tool_name not in WRITE_ACTION_TOOLS:
-        raise HTTPException(status_code=400, detail="Confirmation token is not for a write action")
-    # auth: registry enforces role + sub_category — see _is_tool_authorized
-    if not _is_tool_authorized(user, tool_def):
-        raise HTTPException(status_code=403, detail="Forbidden")
+    # Epic E (AD3): a token may carry an ordered multi-step `plan`; a legacy
+    # token carries a single `action`/`params` and consumes as a length-1 plan.
+    plan_steps = token_doc.get("plan")
+    if plan_steps:
+        write_step_dicts = [s for s in plan_steps if s.get("kind", "write") == "write"]
+        if not write_step_dicts:
+            raise HTTPException(status_code=400, detail="Confirmation token has no write steps")
+        # AD14: authorize EVERY step before executing any — a plan with one
+        # unauthorized step is rejected whole, never partially executed.
+        for s in write_step_dicts:
+            s_tool = s.get("tool")
+            # F.10: student hard-delete / DPDP-erase are never AI-executable.
+            if s_tool in FORBIDDEN_AI_TOOLS:
+                raise HTTPException(status_code=403, detail="Forbidden")
+            s_def = TOOL_REGISTRY.get(s_tool)
+            if not s_def:
+                raise HTTPException(status_code=400, detail=f"Unknown tool: {s_tool}")
+            if s_tool not in WRITE_ACTION_TOOLS:
+                raise HTTPException(status_code=400, detail=f"Step '{s_tool}' is not a write action")
+            if not _is_tool_authorized(user, s_def):
+                raise HTTPException(status_code=403, detail="Forbidden")
+        tool_name = "plan"  # audit/forensic label for the whole dispatch
+        params = {"steps": plan_steps}
+    else:
+        tool_name = token_doc.get("action")
+        params = token_doc.get("params") or {}
+        # F.10: student hard-delete / DPDP-erase are never AI-executable.
+        if tool_name in FORBIDDEN_AI_TOOLS:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        tool_def = TOOL_REGISTRY.get(tool_name)
+        if not tool_def:
+            raise HTTPException(status_code=400, detail=f"Unknown tool: {tool_name}")
+        if tool_name not in WRITE_ACTION_TOOLS:
+            raise HTTPException(status_code=400, detail="Confirmation token is not for a write action")
+        # auth: registry enforces role + sub_category — see _is_tool_authorized
+        if not _is_tool_authorized(user, tool_def):
+            raise HTTPException(status_code=403, detail="Forbidden")
 
     # Part 4 Story 4.2: write-ahead audit row — fail-open with structured warning.
     # Audit failure must not block AI responses; proceed and log loudly.
+    # AD14: a whole plan is ONE dispatch — a single audit row, not one per step.
     audit_id = None
     try:
         audit_id = await audit_ai_dispatch_pending(
@@ -2009,10 +2477,136 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
 
     try:
         scope = await resolve_scope(user, db)
-        if _tool_accepts_scope(tool_def):
-            result = await tool_def["fn"](params, user, scope)
+
+        def _make_runner(s_tool: str, s_params: dict):
+            s_def = TOOL_REGISTRY.get(s_tool)
+            accepts_scope = _tool_accepts_scope(s_def)
+
+            async def _runner():
+                # The forward write action. Runs inside the executor's transaction;
+                # the tool's services enlist via the ambient txn-session contextvar.
+                if accepts_scope:
+                    return await s_def["fn"](s_params, user, scope)
+                return await s_def["fn"](s_params, user)
+
+            return _runner
+
+        if plan_steps:
+            # AD4/D.3: same single execution path — a resolved multi-step plan.
+            plan = plan_from_steps(
+                steps=plan_steps,
+                runner_factory=lambda raw: _make_runner(raw.get("tool"), raw.get("params") or {}),
+                school_id=get_school_id(),
+                branch_id=user.get("branch_id"),
+                plan_token=token,
+            )
         else:
-            result = await tool_def["fn"](params, user)
+            # Legacy single confirmed write — a one-step plan (no len==1 fork).
+            plan = single_write_plan(
+                tool=tool_name,
+                params=params,
+                runner=_make_runner(tool_name, params),
+                school_id=get_school_id(),
+                branch_id=user.get("branch_id"),
+                plan_token=token,
+            )
+        # F.5: shadow/dry-run — runs the writes in an always-aborted txn and
+        # reports the would-be effect, committing nothing (saga side-effects skipped).
+        dry_run = await ai_dry_run_enabled(db)
+        exec_result = await plan_executor.run(plan, db=db, dry_run=dry_run)
+        if exec_result.dry_run:
+            result = {
+                "success": True,
+                "dry_run": True,
+                "message": "Shadow mode: showing what would change — nothing was committed.",
+                "would_change": exec_result.step_results,
+            }
+        elif exec_result.status == "already_applied":
+            # Idempotent replay (concurrent/duplicate confirm) — nothing re-applied.
+            result = {
+                "success": True,
+                "idempotent_replay": True,
+                "message": "This action was already applied.",
+            }
+        elif plan_steps:
+            # Surface every step's result for the multi-step plan.
+            result = {
+                "success": True,
+                "message": f"Completed all {len(exec_result.step_results)} steps.",
+                "steps": exec_result.step_results,
+            }
+        elif exec_result.step_results:
+            result = exec_result.step_results[0].get("result")
+        else:
+            result = None
+        # F.7: pilot observability — one confirmation + plan_executed event per
+        # dispatch, plus a per-step outcome. PII-free (tool names + statuses only).
+        await record_ai_metric(
+            db, event="confirmation", user_id=user["id"], tool_name=tool_name,
+            status=exec_result.status, school_id=get_school_id(), branch_id=user.get("branch_id"),
+        )
+        await record_ai_metric(
+            db, event="plan_executed", user_id=user["id"], tool_name=tool_name,
+            status=exec_result.status, school_id=get_school_id(), branch_id=user.get("branch_id"),
+            count=len(exec_result.step_results) or 1,
+        )
+        await record_ai_metric(
+            db, event="ai_action", user_id=user["id"], tool_name=tool_name,
+            school_id=get_school_id(), branch_id=user.get("branch_id"),
+        )
+        for sr in exec_result.step_results:
+            await record_ai_metric(
+                db, event="step_outcome", user_id=user["id"], tool_name=sr.get("tool", tool_name),
+                status=sr.get("status", "ok"), school_id=get_school_id(), branch_id=user.get("branch_id"),
+            )
+        # F.10/FR42: actor-tagged deletion audit per destructive step — only when
+        # the dispatch actually committed (not on an idempotent no-op replay).
+        if exec_result.status == "committed":
+            for ds in destructive_steps:
+                await _audit_destructive_step(db, user, ds)
+    except PlanStaleError as stale:
+        await audit_ai_dispatch_finalize(
+            audit_id=audit_id, result=None, error="plan_stale", db=db,
+        )
+        raise HTTPException(
+            status_code=409,
+            detail={"code": stale.code, "message": str(stale)},
+        )
+    except NeedsManualReconciliationError as recon:
+        await audit_ai_dispatch_finalize(
+            audit_id=audit_id, result=None, error="needs_manual_reconciliation", db=db,
+        )
+        await record_ai_metric(
+            db, event="torn_state", user_id=user["id"], tool_name=tool_name,
+            status="needs_manual_reconciliation", school_id=get_school_id(),
+            branch_id=user.get("branch_id"),
+        )
+        raise HTTPException(
+            status_code=409,
+            detail={"code": recon.code, "message": str(recon)},
+        )
+    except PlanScopeViolationError as scope_exc:
+        # F.3: a step tried to widen tenant/branch scope — refused, nothing applied.
+        await audit_ai_dispatch_finalize(
+            audit_id=audit_id, result=None, error="plan_scope_violation", db=db,
+        )
+        await record_ai_metric(
+            db, event="torn_state", user_id=user["id"], tool_name=tool_name,
+            status="plan_scope_violation", school_id=get_school_id(),
+            branch_id=user.get("branch_id"),
+        )
+        logger.warning("plan_scope_violation user=%s step=%s", user.get("id"), scope_exc.step_idx)
+        raise HTTPException(status_code=403, detail="Forbidden")
+    except SagaCompensatedError as saga:
+        await audit_ai_dispatch_finalize(
+            audit_id=audit_id, result=None, error="saga_compensated", db=db,
+        )
+        await record_ai_metric(
+            db, event="torn_state", user_id=user["id"], tool_name=tool_name,
+            status="saga_compensated", school_id=get_school_id(),
+            branch_id=user.get("branch_id"),
+        )
+        raise HTTPException(status_code=502, detail={"code": "side_effect_failed", "message": str(saga)})
     except HTTPException as http_exc:
         await audit_ai_dispatch_finalize(
             audit_id=audit_id, result=None,
@@ -2087,8 +2681,11 @@ async def confirm_token_action(request: Request):
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id is required")
 
+    destructive_ack = bool(body.get("destructive_ack") or body.get("acknowledge_destructive"))
     try:
-        return await _execute_confirmed_dispatch(token, session_id, user, db, body.get("conversation_id"))
+        return await _execute_confirmed_dispatch(
+            token, session_id, user, db, body.get("conversation_id"), destructive_ack=destructive_ack
+        )
     except RateLimitExceeded as exc:
         return JSONResponse(
             status_code=429,
@@ -2126,8 +2723,11 @@ async def confirm_action(conv_id: str, request: Request):
 
     token = body.get("token") or body.get("action_id")
     session_id = body.get("session_id") or conv_id
+    destructive_ack = bool(body.get("destructive_ack") or body.get("acknowledge_destructive"))
     try:
-        return await _execute_confirmed_dispatch(token, session_id, user, db, conv_id)
+        return await _execute_confirmed_dispatch(
+            token, session_id, user, db, conv_id, destructive_ack=destructive_ack
+        )
     except RateLimitExceeded as exc:
         return JSONResponse(
             status_code=429,

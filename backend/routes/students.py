@@ -9,8 +9,19 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 
 from database import get_db
 from middleware.auth import get_current_user, require_owner, require_role
-from models.schemas import Guardian, Student, StudentCreate
+from models.schemas import StudentCreate
+from services.actor_context import actor_ctx_from_user
 from services.audit_service import write_audit_doc
+from services.student_service import (
+    create_student as create_student_service,
+    update_student as update_student_service,
+    upsert_guardians as upsert_guardians_service,
+    ClassNotFoundError,
+    ClassValidationError,
+    StudentConflictError,
+    StudentNotFoundError,
+    StudentValidationError,
+)
 from services.s3_storage import (
     build_upload_key,
     create_presigned_get_url,
@@ -30,25 +41,9 @@ SORT_FIELDS = {
     "name": ("name", 1),
     "class": ("class_id", 1),
 }
-UPDATABLE_FIELDS = {
-    "name",
-    "class_id",
-    "admission_number",
-    "roll_number",
-    "dob",
-    "gender",
-    "blood_group",
-    "height_cm",
-    "weight_kg",
-    "medical_notes",
-    "emergency_contact",
-    "house",
-    "photo_url",
-    "uses_transport",
-    "bus_route",
-    "route_zone_id",
-    "status",
-}
+# NOTE: the student updatable-field whitelist now lives ONLY in
+# services/student_service.py (UPDATABLE_FIELDS) — the single shared write path.
+# Do not reintroduce a route-local copy (it would silently drift from the service).
 
 GUARDIAN_UPDATABLE_FIELDS = {
     "name", "phone", "alt_phone", "whatsapp_phone",
@@ -81,26 +76,6 @@ def _student_query(extra: dict | None = None) -> dict:
 
 def _role_can_manage(user: dict) -> bool:
     return user.get("role") in ADMIN_ROLES
-
-
-def _is_transport_head(user: dict) -> bool:
-    return user.get("role") == "admin" and user.get("sub_category") == "transport_head"
-
-
-async def _get_current_academic_year(db) -> dict | None:
-    return await db.academic_years.find_one(scoped_filter({"is_current": True}, get_school_id()), {"_id": 0})
-
-
-async def _validate_class(db, class_id: str) -> dict:
-    cls = await db.classes.find_one(scoped_filter({"id": class_id}, get_school_id()), {"_id": 0})
-    if not cls:
-        raise HTTPException(404, "Class not found")
-
-    current_year = await _get_current_academic_year(db)
-    class_year = cls.get("academic_year_id")
-    if current_year and class_year and class_year != current_year.get("id"):
-        raise HTTPException(400, "Class does not belong to the current academic year")
-    return cls
 
 
 async def _add_class_and_guardians(db, student: dict, include_guardians: bool = False) -> dict:
@@ -207,66 +182,18 @@ async def create_student(body: StudentCreate, request: Request):
     user = get_user(request)
     if not _role_can_manage(user):
         raise HTTPException(403, "Forbidden")
-
-    await _validate_class(db, body.class_id)
-
-    admission_number = body.admission_number or f"ADM{datetime.now().strftime('%Y%m%d')}{uuid.uuid4().hex[:4].upper()}"
-    existing = await db.students.find_one(_student_query({"admission_number": admission_number}), {"_id": 0})
-    if existing:
-        raise HTTPException(409, "Admission number already exists")
-
-    student = Student(
-        class_id=body.class_id,
-        name=body.name,
-        admission_number=admission_number,
-        roll_number=body.roll_number,
-        dob=body.dob,
-        gender=body.gender,
-        blood_group=body.blood_group,
-        height_cm=body.height_cm,
-        weight_kg=body.weight_kg,
-        medical_notes=body.medical_notes,
-    )
-    student_doc = _serialize(student)
-    await db.students.insert_one({**student_doc, "_id": student.id})
-
-    guardians_to_create = []
-    if body.father_name and body.father_phone:
-        guardians_to_create.append(Guardian(
-            student_id=student.id,
-            name=body.father_name,
-            relation="Father",
-            phone=body.father_phone,
-            whatsapp_phone=body.father_phone,
-            occupation=body.father_occupation,
-            annual_income=body.annual_income,
-            is_primary=True,
-        ))
-    if body.mother_name and body.mother_phone:
-        guardians_to_create.append(Guardian(
-            student_id=student.id,
-            name=body.mother_name,
-            relation="Mother",
-            phone=body.mother_phone,
-            whatsapp_phone=body.mother_phone,
-            occupation=body.mother_occupation,
-            is_primary=not body.father_name,
-        ))
-    if not guardians_to_create and body.guardian_name and body.guardian_phone:
-        guardians_to_create.append(Guardian(
-            student_id=student.id,
-            name=body.guardian_name,
-            relation="Parent",
-            phone=body.guardian_phone,
-            whatsapp_phone=body.guardian_phone,
-            is_primary=True,
-        ))
-    for g in guardians_to_create:
-        g_doc = _serialize(g)
-        await db.guardians.insert_one({**g_doc, "_id": g.id})
-
-    await _audit(db, action="create", student_id=student.id, user=user, changes={"created": student_doc})
-    return {"success": True, "data": student_doc}
+    # Thin adapter over services.student_service.create_student — the SAME write
+    # path as the AI `create_student` tool (Story J.1 / AD7).
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await create_student_service(db, actor_ctx, _serialize(body))
+    except (ClassNotFoundError, StudentNotFoundError) as e:
+        raise HTTPException(404, str(e))
+    except StudentConflictError as e:
+        raise HTTPException(409, str(e))
+    except (ClassValidationError, StudentValidationError) as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["student"]}
 
 
 @router.get("/me")
@@ -378,39 +305,27 @@ async def update_student(student_id: str, request: Request):
     if not _role_can_manage(user):
         raise HTTPException(403, "Forbidden")
 
-    existing = await db.students.find_one(_student_query({"id": student_id}), {"_id": 0})
-    if not existing:
-        raise HTTPException(404, "Student not found")
-
+    # Thin adapter over services.student_service.update_student — the SAME write
+    # path as the AI `update_student` tool. Transport-head field restriction maps
+    # to 403 (preserved); other validation errors map to 400 (Story J.1 / AD7).
     body = await request.json()
-    update = {k: v for k, v in body.items() if k in UPDATABLE_FIELDS}
-    if not update:
-        raise HTTPException(400, "No updatable fields provided")
-    if _is_transport_head(user):
-        allowed_transport_fields = {"route_zone_id", "uses_transport", "bus_route"}
-        blocked = set(update) - allowed_transport_fields
-        if blocked:
-            raise HTTPException(403, "Transport Head can only update transport assignment fields")
-    if "class_id" in update and update["class_id"] != existing.get("class_id"):
-        await _validate_class(db, update["class_id"])
-    if "admission_number" in update and update["admission_number"] != existing.get("admission_number"):
-        duplicate = await db.students.find_one(_student_query({"admission_number": update["admission_number"]}), {"_id": 0})
-        if duplicate and duplicate.get("id") != student_id:
-            raise HTTPException(409, "Admission number already exists")
-
-    changes = {
-        key: {"previous": existing.get(key), "new": value}
-        for key, value in update.items()
-        if existing.get(key) != value
-    }
-    if not changes:
-        return {"success": True, "data": existing}
-
-    update["updated_at"] = datetime.now().isoformat()
-    await db.students.update_one(_student_query({"id": student_id}), {"$set": update})
-    await _audit(db, action="update", student_id=student_id, user=user, changes=changes)
-    updated = await db.students.find_one(_student_query({"id": student_id}), {"_id": 0})
-    return {"success": True, "data": updated}
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await update_student_service(db, actor_ctx, {**body, "student_id": student_id})
+    except StudentNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except ClassNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except StudentConflictError as e:
+        raise HTTPException(409, str(e))
+    except StudentValidationError as e:
+        msg = str(e)
+        if msg == "Transport Head can only update transport assignment fields":
+            raise HTTPException(403, msg)
+        raise HTTPException(400, msg)
+    except ClassValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["student"]}
 
 
 @router.delete("/{student_id}")
@@ -519,63 +434,23 @@ async def upsert_guardians(student_id: str, request: Request):
     user = get_user(request)
     if not _role_can_manage(user):
         raise HTTPException(403, "Forbidden")
-    student = await db.students.find_one(_student_query({"id": student_id}), {"_id": 0})
-    if not student:
-        raise HTTPException(404, "Student not found")
-
+    # Thin adapter over services.student_service.upsert_guardians — the SAME write
+    # path as the AI `manage_student_guardians` tool (Story J.1 / AD7).
     body = await request.json()
-    if not isinstance(body, list):
-        raise HTTPException(400, "Body must be a list of guardian objects")
-
-    existing = await db.guardians.find(
-        scoped_filter({"student_id": student_id}, get_school_id()), {"_id": 0}
-    ).to_list(10)
-    existing_by_relation = {g["relation"].lower(): g for g in existing}
-
-    saved = []
-    for item in body:
-        relation = (item.get("relation") or "Parent").strip()
-        name = (item.get("name") or "").strip()
-        phone = (item.get("phone") or "").strip()
-        if not name or not phone:
-            continue
-        existing_g = existing_by_relation.get(relation.lower())
-        update_doc = {
-            "name": name,
-            "phone": phone,
-            "whatsapp_phone": item.get("whatsapp_phone") or phone,
-            "alt_phone": item.get("alt_phone"),
-            "email": item.get("email"),
-            "occupation": item.get("occupation"),
-            "annual_income": item.get("annual_income"),
-            "is_primary": item.get("is_primary", False),
-            "updated_at": datetime.now().isoformat(),
-        }
-        if existing_g:
-            await db.guardians.update_one(
-                scoped_filter({"id": existing_g["id"]}, get_school_id()),
-                {"$set": update_doc},
-            )
-            saved.append({**existing_g, **update_doc})
-        else:
-            new_g = Guardian(
-                student_id=student_id,
-                name=name,
-                relation=relation,
-                phone=phone,
-                whatsapp_phone=item.get("whatsapp_phone") or phone,
-                alt_phone=item.get("alt_phone"),
-                email=item.get("email"),
-                occupation=item.get("occupation"),
-                annual_income=item.get("annual_income"),
-                is_primary=item.get("is_primary", False),
-            )
-            g_doc = _serialize(new_g)
-            await db.guardians.insert_one({**g_doc, "_id": new_g.id})
-            saved.append(g_doc)
-
-    await _audit(db, action="guardians_update", student_id=student_id, user=user, changes={"count": len(saved)})
-    return {"success": True, "data": saved}
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await upsert_guardians_service(
+            db, actor_ctx, {"student_id": student_id, "guardians": body}
+        )
+    except StudentNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except StudentValidationError as e:
+        msg = str(e)
+        # Preserve the REST contract: bad body shape → 400 "Body must be a list..."
+        if msg == "guardians must be a list of guardian objects":
+            raise HTTPException(400, "Body must be a list of guardian objects")
+        raise HTTPException(400, msg)
+    return {"success": True, "data": result["guardians"]}
 
 
 @router.post("/{student_id}/guardians/{guardian_id}/photo")
@@ -663,4 +538,15 @@ async def erase_student(student_id: str, request: Request, reason: str = Form(de
     await db.guardians.delete_many(scoped_filter({"student_id": student_id}, get_school_id()))
     await db.file_uploads.delete_many(scoped_filter({"linked_table": "students", "linked_id": student_id}, get_school_id()))
     await db.students.delete_one(_student_query({"id": student_id}))
+    # Epic G (G.7 / DPDP §12): purge any AI memory that references this student so
+    # the right-to-erasure also covers what the assistant "learned" about them.
+    try:
+        from services.memory.store import purge_student_references
+
+        await purge_student_references(
+            db, school_id=get_school_id(), student_id=student_id, changed_by=user.get("id", "system")
+        )
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning("ai_memory purge on student erase failed", exc_info=True)
     return {"success": True, "data": {"erasure_token": token}}
