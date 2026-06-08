@@ -77,7 +77,11 @@ def _require_fee_write(user: dict):
 
 
 def _normalize_fee_key(student_id: str | None, fee_period: str | None, fee_head: str | None) -> str:
-    return f"{student_id}|{fee_period}|{(fee_head or '').strip().lower()}"
+    # D-review fix: single source of truth — AI path (fees_service.normalize_fee_key)
+    # and REST must derive the IDENTICAL content idempotency key (AD14). Delegate
+    # rather than duplicate the f-string so the two can never silently drift.
+    from services.fees_service import normalize_fee_key
+    return normalize_fee_key(student_id, fee_period, fee_head)
 
 
 def _discount_amount(dtype: dict, original_amount: float) -> float:

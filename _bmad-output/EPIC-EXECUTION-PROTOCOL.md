@@ -45,18 +45,29 @@ STEP 3 — Implement EVERY story in Epic {EPIC_ID}, in order, using the per-stor
   bmad-create-story  →  bmad-dev-story  →  run tests  →  bmad-code-review
 Characterization-test-FIRST for any service extraction (pin REST behavior, then prove AI path byte-identical). Add migrations + regression guards exactly as the stories specify. Do NOT start any later Epic.
 
-STEP 4 — Epic DONE criteria (all must hold):
+STEP 4 — MANDATORY EPIC-CLOSE REVIEW (do NOT skip; the epic is NOT done until this is clean): once every story is implemented, run a THOROUGH, multi-lens review of EVERYTHING this epic built and FIX every bug found NOW — bugs introduced by this epic must be closed here, never carried into the next epic. Run ALL of these BMAD review skills over this epic's diff/surface and act on every finding:
+  - bmad-code-review                — correctness + quality of the epic's diff
+  - bmad-review-adversarial-general — adversarial gap/assumption hunt
+  - bmad-review-edge-case-hunter    — boundaries, races, empty/None/dup inputs, failure paths
+  - bmad-testarch-test-review       — test quality (no false-green, right assertions, isolation)
+  - bmad-testarch-trace             — every story AC traced to a test
+  - bmad-testarch-nfr               — the NFRs this epic's ADs quantify (integrity/security/perf)
+  For EACH finding: fix the code (or test), add a regression test that fails-before/passes-after, and re-run the full suite to green (>=699, 0 skipped, 0 new failures vs the pinned baseline). Capture the review + every fix in `_bmad-output/implementation-artifacts/ai-hardening/story-{EPIC_ID}-review.md` (findings table: severity · file · issue · fix · regression test). If a finding is a genuine non-bug, record WHY it was dismissed. Re-run the `scoped_filter`/`scoped_query` grep audit as part of this step.
+
+STEP 5 — Epic DONE criteria (all must hold):
 - Every story's Given/When/Then ACs met; new + existing tests green (>=699, 0 skipped); parity/regression tests added where required.
+- STEP 4 epic-close review complete: all findings fixed (or dismissed-with-reason), regression tests added, `story-{EPIC_ID}-review.md` written.
 - `scoped_filter`/`scoped_query` audit clean on every touched route file (CLAUDE.md rule).
 - Tracker row 17 in _bmad-output/platform-quality-sweep.md updated; commit + push to branch `ai-layer-hardening-plan`.
 
-STEP 5 — MANDATORY FINAL STEP (prevents drift): emit the next-Epic prompt.
+STEP 6 — MANDATORY FINAL STEP (prevents drift): emit the next-Epic prompt.
 - Open _bmad-output/EPIC-EXECUTION-PROTOCOL.md, copy this fixed template VERBATIM, and fill ONLY {EPIC_ID}/{EPIC_NAME} with the NEXT epic per the "Epic order" table, then output it in a code block for the user to paste into a fresh context window. Do NOT reword the template.
 - If the just-finished epic was the LAST before a gate (after G → H), DO NOT emit an H prompt: instead state that Phase 1 is complete and H is gated on the Owner/Principal pilot sign-off.
 ```
 
 ## Rules that keep the prompt from drifting
-1. The template above is the **single source of truth**. Sessions **copy it verbatim** and change only the `{EPIC_ID}` and `{EPIC_NAME}` slots from the order table — never reword STEPs 1–5.
+1. The template above is the **single source of truth**. Sessions **copy it verbatim** and change only the `{EPIC_ID}` and `{EPIC_NAME}` slots from the order table — never reword STEPs 1–6.
 2. Guardrails (STEP 2) are fixed text; do not paraphrase or trim them.
 3. One Epic per context window — never chain two epics in one session (keeps context lean and the protocol intact).
 4. If the plan changes, edit it **here** (and in the epics doc), not ad-hoc inside a session's emitted prompt.
+5. **STEP 4 (epic-close review) is mandatory and non-negotiable** — every epic ends with the full BMAD multi-lens review and all its bugs fixed in-epic. Added 2026-06-08 at the user's direction precisely so bugs never leak across epic boundaries.

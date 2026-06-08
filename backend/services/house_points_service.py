@@ -55,7 +55,12 @@ async def award_points(db, actor_ctx: ActorContext, params: dict, *, session=Non
         raise HousePointsValidationError("house_id is required")
     if delta in (None, ""):
         raise HousePointsValidationError("delta is required")
-    delta = int(delta)
+    try:
+        # D-review fix: a non-numeric delta must be a 400 (domain error), not an
+        # uncaught ValueError → opaque 500.
+        delta = int(delta)
+    except (TypeError, ValueError):
+        raise HousePointsValidationError("delta must be an integer")
 
     house = await db.houses.find_one(scoped_filter({"id": house_id}, school_id), {"_id": 0}, **_session_kwargs(session))
     if not house:

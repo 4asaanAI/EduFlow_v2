@@ -92,9 +92,14 @@ async def record_payment(
             raise FeeValidationError(f"{field} is required")
 
     receipt = f"RCP{now.strftime('%Y%m%d')}{uuid.uuid4().hex[:6].upper()}"
-    amount = float(params["amount"])
-    _paid_raw = params.get("paid_amount")
-    paid_amount = float(_paid_raw) if _paid_raw not in (None, "", " ") else amount
+    # D-review fix: non-numeric amount/paid_amount must be a 400 (domain error), not an
+    # uncaught ValueError → opaque 500. Also handles whitespace-only paid_amount.
+    try:
+        amount = float(params["amount"])
+        _paid_raw = params.get("paid_amount")
+        paid_amount = float(_paid_raw) if (_paid_raw is not None and str(_paid_raw).strip() != "") else amount
+    except (TypeError, ValueError):
+        raise FeeValidationError("amount and paid_amount must be numeric")
     if params.get("status"):
         status = params["status"]
     elif paid_amount < amount:

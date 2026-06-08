@@ -28,9 +28,9 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
-from pymongo.errors import DuplicateKeyError, PyMongoError
+from pymongo.errors import DuplicateKeyError, OperationFailure
 
-from database import get_txn_session
+from database import get_txn_session, _NoopSession
 from services.txn_context import set_current_session, reset_current_session, session_kwargs
 from tenant import scoped_query
 from ai.plan_schema import Plan, Step, WRITE
@@ -85,6 +85,16 @@ class _DryRunAbort(Exception):
     dry-run commits nothing (full shadow behavior is Story F.5)."""
 
 
+def _get_nested(doc: dict, path: str):
+    """Resolve a dotted field path (e.g. 'meta.version') against a doc; None if absent."""
+    node = doc
+    for part in path.split("."):
+        if not isinstance(node, dict):
+            return None
+        node = node.get(part)
+    return node
+
+
 async def _revalidate_precondition(db, step: Step, branch_id: Optional[str]) -> None:
     """Re-read the step's precondition target inside the txn; abort if it moved (D.6)."""
     pre = step.precondition
@@ -93,8 +103,14 @@ async def _revalidate_precondition(db, step: Step, branch_id: Optional[str]) -> 
     collection = pre.get("collection")
     record_id = pre.get("id")
     if not collection or not record_id:
+        # D-review fix: a precondition the planner intended but that is unusable must
+        # NOT silently disable the stale-guard — surface it loudly (a planner bug).
+        logger.warning(
+            "malformed precondition on step=%s (missing collection/id): %r — stale-guard skipped",
+            step.idx, pre,
+        )
         return
-    field_name = pre.get("field", "updated_at")
+    field_name = pre.get("field", "version")  # prefer a monotonic version over a timestamp string
     expected = pre.get("version", pre.get("expected"))
     current = await getattr(db, collection).find_one(
         scoped_query({"id": record_id}, branch_id=branch_id),
@@ -105,26 +121,26 @@ async def _revalidate_precondition(db, step: Step, branch_id: Optional[str]) -> 
         raise PlanStaleError(
             f"Record {record_id} in {collection} no longer exists.", step_idx=step.idx
         )
-    if expected is not None and current.get(field_name) != expected:
+    if expected is not None and _get_nested(current, field_name) != expected:
         raise PlanStaleError(
             f"{collection}/{record_id} changed since the plan was built "
-            f"({field_name}: expected {expected!r}, found {current.get(field_name)!r}).",
+            f"({field_name}: expected {expected!r}, found {_get_nested(current, field_name)!r}).",
             step_idx=step.idx,
         )
 
 
-async def _claim_idempotency(db, plan: Plan, step: Step) -> None:
+def _idempotency_key(plan: Plan, step: Step) -> Optional[str]:
+    return f"{plan.plan_token}:{step.idx}" if plan.plan_token else None
+
+
+async def _claim_idempotency(db, plan: Plan, step: Step, key: str) -> None:
     """Insert the per-step idempotency key inside the txn (D.4).
 
     DuplicateKey ⇒ this (plan_token, step_idx) already applied (replay or concurrent
     confirm) — propagated so the txn aborts and the caller reports `already_applied`.
     """
-    if not plan.plan_token:
-        return
-    key = f"{plan.plan_token}:{step.idx}"
     await getattr(db, IDEMPOTENCY_COLLECTION).insert_one(
         {
-            "_id": key,
             "idempotency_key": key,
             "plan_token": plan.plan_token,
             "step_idx": step.idx,
@@ -132,6 +148,26 @@ async def _claim_idempotency(db, plan: Plan, step: Step) -> None:
         },
         **session_kwargs(),
     )
+
+
+async def _idempotency_key_committed(db, key: str) -> bool:
+    """Has `key` been committed by another confirm? Queried WITHOUT a session so it
+    reads committed state even after our own transaction aborted."""
+    try:
+        doc = await getattr(db, IDEMPOTENCY_COLLECTION).find_one({"idempotency_key": key})
+    except Exception:
+        return False
+    return doc is not None
+
+
+def _is_write_conflict(exc: OperationFailure) -> bool:
+    """A concurrent transaction lost the race for the same contended write."""
+    try:
+        if exc.has_error_label("TransientTransactionError"):
+            return True
+    except Exception:
+        pass
+    return getattr(exc, "code", None) in (112, 11000, 251)  # WriteConflict / dup / NoSuchTransaction
 
 
 async def _run_side_effects(plan: Plan, audit_recon: Optional[Callable] = None) -> None:
@@ -145,9 +181,28 @@ async def _run_side_effects(plan: Plan, audit_recon: Optional[Callable] = None) 
             completed.append(step)
         except Exception as exc:  # the side effect failed → compensate prior ones
             logger.warning("side_effect_failed step=%s tool=%s", step.idx, step.tool, exc_info=True)
+
+            async def _recon(done_idx: int) -> NeedsManualReconciliationError:
+                if audit_recon is not None:
+                    try:
+                        await audit_recon(plan, done_idx, str(exc))
+                    except Exception:
+                        logger.error("recon audit write failed", exc_info=True)
+                return NeedsManualReconciliationError(
+                    f"Side effect for step {step.idx} failed and step {done_idx}'s effect "
+                    "could not be cleanly reversed; manual reconciliation required."
+                )
+
             for done in reversed(completed):
+                # D-review fix: a completed side effect with NO compensator cannot be
+                # undone — escalating to needs_manual_reconciliation is correct; silently
+                # skipping it while claiming "compensated" is a false success.
                 if done.compensate is None:
-                    continue
+                    logger.error(
+                        "no compensator for completed side-effect step=%s — needs manual reconciliation",
+                        done.idx,
+                    )
+                    raise await _recon(done.idx)
                 try:
                     await done.compensate()
                 except Exception:
@@ -155,15 +210,7 @@ async def _run_side_effects(plan: Plan, audit_recon: Optional[Callable] = None) 
                         "compensation_failed step=%s — needs manual reconciliation",
                         done.idx, exc_info=True,
                     )
-                    if audit_recon is not None:
-                        try:
-                            await audit_recon(plan, done.idx, str(exc))
-                        except Exception:
-                            logger.error("recon audit write failed", exc_info=True)
-                    raise NeedsManualReconciliationError(
-                        f"Compensation for step {done.idx} failed after step {step.idx} "
-                        "errored; manual reconciliation required."
-                    )
+                    raise await _recon(done.idx)
             raise SagaCompensatedError(
                 f"Side effect for step {step.idx} failed; prior side effects were "
                 "compensated. No further changes applied.",
@@ -183,14 +230,21 @@ async def run(
     session_factory = session_factory or get_txn_session
     write_steps = plan.write_steps
     session = await session_factory()
+    is_real_txn = not isinstance(session, _NoopSession)
     token = set_current_session(session)
     step_results: list = []
+    claimed: list = []  # idempotency keys claimed this run (for noop-path compensation)
     try:
         try:
             async with session.start_transaction():
                 for step in write_steps:
                     await _revalidate_precondition(db, step, plan.branch_id)
-                    await _claim_idempotency(db, plan, step)
+                    key = _idempotency_key(plan, step)
+                    # Skip the claim in dry-run: on the non-transactional (noop) path the
+                    # claim would NOT roll back and would poison the key for a later real run.
+                    if key and not dry_run:
+                        await _claim_idempotency(db, plan, step, key)
+                        claimed.append(key)
                     result = await step.runner() if step.runner else None
                     step_results.append({"step": step.idx, "tool": step.tool, "status": "ok", "result": result})
                 if dry_run:
@@ -202,6 +256,27 @@ async def run(
             # Idempotency claim lost → exactly-once. Nothing committed this round.
             logger.info("idempotent_replay plan_token=%s — already applied", plan.plan_token)
             return ExecutionResult(status="already_applied", step_results=step_results)
+        except OperationFailure as exc:
+            # A concurrent confirm may abort this txn with a WriteConflict /
+            # TransientTransactionError rather than a surfaced DuplicateKey (the conflict
+            # can land on the claim insert itself, before `claimed` is appended). If the
+            # first step's key was already committed by the winner, this is an idempotent
+            # replay too — map it to already_applied instead of leaking a 500.
+            first_key = _idempotency_key(plan, write_steps[0]) if write_steps else None
+            if _is_write_conflict(exc) and first_key and await _idempotency_key_committed(db, first_key):
+                logger.info("idempotent_replay (write-conflict) plan_token=%s", plan.plan_token)
+                return ExecutionResult(status="already_applied", step_results=step_results)
+            raise
+        except Exception:
+            # On the non-transactional (noop) path nothing rolled back the claim
+            # inserts; compensate them so a transient failure can't poison the key.
+            if not is_real_txn and claimed:
+                for k in claimed:
+                    try:
+                        await getattr(db, IDEMPOTENCY_COLLECTION).delete_one({"idempotency_key": k})
+                    except Exception:
+                        pass
+            raise
     finally:
         reset_current_session(token)
         try:

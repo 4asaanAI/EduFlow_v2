@@ -82,15 +82,23 @@ async def mark_attendance(
                 **_session_kwargs(session),
             )
             results.append({"student_id": record["student_id"], "status": "saved"})
-        except Exception as e:  # preserved-from-REST: per-record error is reported, not swallowed
+        except Exception as e:
             logger.warning(
                 "attendance bulk record write failed",
                 extra={"student_id": record.get("student_id"), "class_id": class_id, "date": target_date},
                 exc_info=True,
             )
+            # AI Layer Hardening D-review: under the plan executor's transaction
+            # (ambient/explicit session) a per-record failure MUST abort the whole
+            # batch — all-or-nothing (AD4). The REST path (no session) preserves the
+            # original per-record error-reporting so its characterization test holds.
+            if _session_kwargs(session):
+                raise
             results.append({"student_id": record["student_id"], "status": "error", "error": str(e)})
 
     if idempotency_key:
+        # D-review: thread the session so the idempotency claim is part of the txn
+        # (else a later abort leaves a key that falsely rejects a legitimate retry).
         await db.attendance_bulk_keys.insert_one({
             "_id": str(uuid.uuid4()),
             "id": str(uuid.uuid4()),
@@ -100,7 +108,7 @@ async def mark_attendance(
             "date": target_date,
             "response": results,
             "created_at": actor_ctx.now_iso(),
-        })
+        }, **_session_kwargs(session))
 
     # EC-14.1: ONE audit entry per bulk call (not N per student).
     await write_audit_doc(
