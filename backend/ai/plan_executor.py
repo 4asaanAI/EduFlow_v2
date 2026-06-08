@@ -129,6 +129,51 @@ async def _revalidate_precondition(db, step: Step, branch_id: Optional[str]) -> 
         )
 
 
+class PlanScopeViolationError(Exception):
+    """A plan step tried to widen tenant/branch scope beyond the plan's binding (F.3).
+
+    The plan is bound to a single (school_id, branch_id) derived from the
+    authenticated actor at confirm time. A step whose params carry a DIFFERENT
+    schoolId/branch_id is a cross-tenant/branch leak attempt and aborts the whole
+    plan — never partially applied."""
+
+    def __init__(self, message: str, *, step_idx: int):
+        super().__init__(message)
+        self.step_idx = step_idx
+
+
+def _assert_step_scope(plan: Plan, step: Step) -> None:
+    """F.3: re-scope each step to the plan's tenant/branch before it runs.
+
+    Every step in a chain is re-checked against the plan's (school_id, branch_id)
+    so step 3 cannot widen scope vs step 1. A step param that names a different
+    branch/school than the plan's binding aborts the plan. (The forward tools
+    additionally inject schoolId/branch_id from the actor's scope — this is a
+    second, explicit barrier at the executor level.)
+    """
+    params = step.params or {}
+    p_school = params.get("schoolId") or params.get("school_id")
+    if p_school is not None and plan.school_id is not None and p_school != plan.school_id:
+        raise PlanScopeViolationError(
+            f"Step {step.idx} references school {p_school!r} outside the plan's "
+            f"tenant {plan.school_id!r}.",
+            step_idx=step.idx,
+        )
+    # branch_id widening: a branch-scoped plan (non-None branch_id) cannot target a
+    # different branch. An owner plan (branch_id=None) is school-wide by authority.
+    p_branch = params.get("branch_id")
+    if (
+        p_branch is not None
+        and plan.branch_id is not None
+        and p_branch != plan.branch_id
+    ):
+        raise PlanScopeViolationError(
+            f"Step {step.idx} references branch {p_branch!r} outside the plan's "
+            f"branch {plan.branch_id!r}.",
+            step_idx=step.idx,
+        )
+
+
 def _idempotency_key(plan: Plan, step: Step) -> Optional[str]:
     return f"{plan.plan_token}:{step.idx}" if plan.plan_token else None
 
@@ -238,6 +283,7 @@ async def run(
         try:
             async with session.start_transaction():
                 for step in write_steps:
+                    _assert_step_scope(plan, step)  # F.3: re-scope per step
                     await _revalidate_precondition(db, step, plan.branch_id)
                     key = _idempotency_key(plan, step)
                     # Skip the claim in dry-run: on the non-transactional (noop) path the

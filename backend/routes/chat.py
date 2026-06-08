@@ -33,6 +33,7 @@ from ai.context_builder import build_school_context, detect_language
 from ai.tool_functions_v2 import TOOL_REGISTRY, WRITE_TOOL_NAMES
 from ai.scope_resolver import resolve_scope, Scope
 from ai.content_filter import filter_response, check_input_safety
+from ai.redaction import redact_for_llm
 from middleware.auth import get_current_user
 from services.token_service import check_and_reserve_tokens, record_usage
 from services.confirm_tokens import (
@@ -45,9 +46,19 @@ from services.confirm_tokens import (
     audit_ai_rate_limit_hit,
 )
 from services.ai_rate_limiter import increment_and_check as _ai_rate_check, decrement_count as _ai_rate_decrement
+from services.ai_action_policy import is_action_authorized_phase1
+from services.ai_kill_switch import ai_writes_enabled
+from services.ai_shadow_mode import ai_dry_run_enabled
+from services.ai_metrics import record_ai_metric
+from services.audit_service import write_audit
 from tenant import get_school_id, scoped_filter
 from ai import plan_executor
-from ai.plan_executor import PlanStaleError, NeedsManualReconciliationError, SagaCompensatedError
+from ai.plan_executor import (
+    PlanStaleError,
+    NeedsManualReconciliationError,
+    SagaCompensatedError,
+    PlanScopeViolationError,
+)
 from ai.plan_schema import single_write_plan, plan_from_steps
 from ai import planner as ai_planner
 
@@ -84,6 +95,22 @@ THINKING_DELAY_MAX = 0.30  # 300ms
 
 # Tools that require user confirmation before execution
 WRITE_ACTION_TOOLS = set(WRITE_TOOL_NAMES)
+
+# F.10/FR42: destructive (delete) tools require a SECOND explicit acknowledgment
+# beyond the plan-confirm, and write an actor-tagged deletion audit row. Derived
+# from the registry `destructive` flag; Epics J/K register the actual delete tools.
+DESTRUCTIVE_TOOL_NAMES = {
+    name for name, tool in TOOL_REGISTRY.items() if tool.get("destructive")
+}
+
+# F.10: student hard-delete / DPDP-erase are NEVER exposed to the assistant — they
+# stay UI-only. These names are refused outright even if a future planner emits one.
+FORBIDDEN_AI_TOOLS = {
+    "delete_student",
+    "erase_student",
+    "dpdp_erase_student",
+    "hard_delete_student",
+}
 
 # E.6: deep-link target panel per tool, used when the assistant cannot complete
 # a job and must hand the user off to the matching UI panel.
@@ -531,11 +558,16 @@ def _is_tool_authorized(user: dict, tool_def: dict) -> bool:
     if user.get("role") not in tool_def.get("roles", []):
         return False
     sub_categories = tool_def.get("sub_categories")
-    if sub_categories is None:
-        return True
-    if user.get("role") != "admin":
-        return True
-    return user.get("sub_category") in sub_categories
+    if sub_categories is not None and user.get("role") == "admin":
+        if user.get("sub_category") not in sub_categories:
+            return False
+    # F.11/FR43: Phase-1 lockdown — AI write/action tools are Owner+Principal only
+    # (pilot scope), even where the registry roles permit broader staff. Read
+    # tools (incl. all student tools) are unaffected. Single switch lives in
+    # services/ai_action_policy.py; Phase 2 (Epic H) widens it with no engine change.
+    if not is_action_authorized_phase1(user, tool_def):
+        return False
+    return True
 
 
 # ─── Keyword detection ────────────────────────────────────────────────────────
@@ -698,69 +730,123 @@ def _extract_empty_message(result: dict) -> Optional[str]:
     return None
 
 
-def _mask_phone(value: Any) -> Any:
-    if not isinstance(value, str):
-        return value
-    digits = re.sub(r"\D", "", value)
-    if len(digits) < 4:
-        return "XX"
-    return f"{digits[:2]}XX-XXX-{digits[-3:]}"
+# F.2/FR21: read tools that return individual minor (student) records. Every
+# assistant read through one of these is audited (actor/target/purpose) so the
+# school can demonstrate purpose-limited, traceable handling of children's data.
+MINOR_READ_TOOLS = {
+    "search_students",
+    "get_fee_transactions",
+    "get_fee_defaulters",
+    "get_student_database",
+    "get_student_profile",
+    "get_my_class_students",
+    "query_student_record",
+    "draft_parent_message",
+}
+
+
+def _collect_student_refs(value: Any, acc: set, depth: int = 0) -> None:
+    """Recursively collect student identifiers from a raw tool result."""
+    if depth > 8 or len(acc) >= 200:
+        return
+    if isinstance(value, list):
+        for item in value:
+            _collect_student_refs(item, acc, depth + 1)
+        return
+    if isinstance(value, dict):
+        for key, raw in value.items():
+            kl = str(key).lower()
+            if kl in ("student_id", "admission_number") and isinstance(raw, (str, int)):
+                acc.add(str(raw))
+            else:
+                _collect_student_refs(raw, acc, depth + 1)
+
+
+async def _audit_minor_read(db, user: dict, tool_name: str, raw_result: Any) -> None:
+    """F.2/FR21: write an audit row for an assistant read of minor records.
+
+    Fail-open (write_audit never raises). Target ids come from the RAW (pre-redaction)
+    result; the audit row itself stores only ids/counts (no special-category PII).
+    """
+    if tool_name not in MINOR_READ_TOOLS:
+        return
+    refs: set = set()
+    _collect_student_refs(raw_result, refs)
+    if not refs:
+        return
+    ref_list = sorted(refs)
+    await write_audit(
+        db,
+        action="minor_record_read",
+        entity_id=ref_list[0],
+        collection="students",
+        changed_by=user.get("id", ""),
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id") or "",
+        changes={"student_refs": ref_list, "count": len(ref_list)},
+        reason=f"ai_read:{tool_name}",
+    )
+
+
+def _token_meta_destructive_steps(token_meta: dict) -> list:
+    """F.10: return the destructive step dicts of a peeked token (legacy or plan).
+
+    A plan step is destructive if its `destructive` flag is set OR its tool is in
+    DESTRUCTIVE_TOOL_NAMES. A legacy single-action token is destructive if its
+    action tool is destructive.
+    """
+    plan_steps = token_meta.get("plan")
+    out: list = []
+    if plan_steps:
+        for s in plan_steps:
+            if s.get("destructive") or s.get("tool") in DESTRUCTIVE_TOOL_NAMES:
+                out.append(s)
+    else:
+        action = token_meta.get("action")
+        if action in DESTRUCTIVE_TOOL_NAMES:
+            out.append({"idx": 0, "tool": action, "params": token_meta.get("params") or {}})
+    return out
+
+
+async def _audit_destructive_step(db, user: dict, step: dict) -> None:
+    """F.10/FR42: actor-tagged deletion audit row — 'who deleted what, when'."""
+    params = step.get("params") or {}
+    target = (
+        params.get("id")
+        or params.get("target_id")
+        or params.get("record_id")
+        or step.get("tool", "")
+    )
+    await write_audit(
+        db,
+        action="delete",
+        entity_id=str(target),
+        collection=step.get("tool", "destructive"),
+        changed_by=user.get("id", ""),
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id") or "",
+        changes={
+            "actor": user.get("id", ""),
+            "actor_name": user.get("name", ""),
+            "tool": step.get("tool"),
+            "destructive": True,
+        },
+        reason="ai_destructive_action",
+    )
 
 
 def _safe_tool_result_for_chat(value: Any) -> Any:
     """
     Redact high-risk personal fields before storing tool traces or sending
     tool output back into the model for final narration.
+
+    F.1: delegates to the canonical `ai.redaction.redact_for_llm` so the SAME
+    DPDP masking (special-category fields: DOB/contact/health/address/Aadhaar +
+    secrets) applies at both the outbound LLM payload and trace persistence.
     """
-    if isinstance(value, list):
-        return [_safe_tool_result_for_chat(item) for item in value]
-
-    if not isinstance(value, dict):
-        return value
-
-    safe: dict[str, Any] = {}
-    restricted_exact = {
-        "address",
-        "home_address",
-        "date_of_birth",
-        "dob",
-        "aadhaar",
-        "aadhaar_number",
-        "password",
-        "password_hash",
-        "salt",
-        "secret",
-        "api_key",
-        "private_key",
-        "refresh_token",
-        "access_token",
-        "session_token",
-        "webhook_secret",
-        "medical_record",
-        "medical_records",
-    }
-    # Exact phone keys + keys that end/start with phone/mobile (e.g. guardian_phone)
-    # but NOT keys like is_phone_verified that contain "phone" but aren't numbers.
-    phone_field_prefixes_suffixes = ("phone", "mobile", "_phone", "_mobile", "phone_", "mobile_")
-    for key, raw in value.items():
-        key_lower = str(key).lower()
-        is_phone_field = (
-            key_lower in ("phone", "mobile", "phone_number", "mobile_number")
-            or key_lower.endswith(("_phone", "_mobile"))
-            or key_lower.startswith(("phone_", "mobile_"))
-        )
-        if key_lower in restricted_exact:
-            safe[key] = "[restricted in chat]"
-        elif is_phone_field or "contact" in key_lower:
-            if isinstance(raw, str):
-                safe[key] = _mask_phone(raw)
-            elif isinstance(raw, (dict, list)):
-                safe[key] = _safe_tool_result_for_chat(raw)
-            else:
-                safe[key] = "[restricted in chat]"
-        else:
-            safe[key] = _safe_tool_result_for_chat(raw)
-    return safe
+    return redact_for_llm(value)
 
 
 _NUMERIC_POSITIVE_PARAMS = {"points", "amount"}
@@ -1509,6 +1595,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
 
             try:
                 raw_tool_result = await tool_def["fn"]({}, user, scope) if _tool_accepts_scope(tool_def) else await tool_def["fn"]({}, user)
+                await _audit_minor_read(db, user, tool_name, raw_tool_result)
                 result_count = _extract_result_count(raw_tool_result)
                 tool_result = _safe_tool_result_for_chat(raw_tool_result)
                 count_msg = f"Found {result_count} records" if result_count is not None else "Data retrieved"
@@ -1777,6 +1864,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
 
             try:
                 raw_tool_result = await tool_def["fn"](resolved_params, user, scope) if _tool_accepts_scope(tool_def) else await tool_def["fn"](resolved_params, user)
+                await _audit_minor_read(db, user, tool_name, raw_tool_result)
                 result_count = _extract_result_count(raw_tool_result)
                 tool_result = _safe_tool_result_for_chat(raw_tool_result)
                 count_msg = f"Found {result_count} records" if result_count is not None else "Data retrieved"
@@ -2108,7 +2196,7 @@ async def execute_action(conv_id: str, request: Request):
 
 # ─── Confirm action endpoint ─────────────────────────────────────────────────
 
-async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, db, conv_id: str = None):
+async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, db, conv_id: str = None, destructive_ack: bool = False):
     if conv_id:
         await _require_owned_conversation(db, conv_id, user)
 
@@ -2135,6 +2223,45 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
         )
         # consume_confirm_token always raises in this path; defensive fallthrough.
         raise HTTPException(status_code=400, detail="Confirmation token is invalid")
+
+    # F.4/AD9: AI-write kill-switch. Checked BEFORE the rate gate AND token consume
+    # so a blocked write neither burns the one-shot token nor a rate slot — the user
+    # can retry once an operator re-enables writes. Reads never reach this path.
+    if not await ai_writes_enabled(db):
+        await record_ai_metric(
+            db, event="kill_switch_blocked",
+            user_id=user["id"], tool_name=token_meta.get("action", "<unknown>"),
+        )
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "ai_writes_disabled",
+                "message": (
+                    "AI actions are temporarily disabled by your administrator. "
+                    "You can still ask questions, or use the panel directly."
+                ),
+            },
+        )
+
+    # F.10/FR42: two-step destructive confirmation. A plan/action containing a
+    # delete requires a SECOND explicit acknowledgment beyond the plan-confirm.
+    # Checked on the PEEKED token, before the rate gate + consume, so a missing ack
+    # burns neither the one-shot token nor a rate slot — the client re-confirms with
+    # destructive_ack=True (a single rate slot is taken on the acknowledged attempt).
+    destructive_steps = _token_meta_destructive_steps(token_meta)
+    if destructive_steps and not destructive_ack:
+        tools = sorted({s.get("tool") for s in destructive_steps})
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "destructive_confirmation_required",
+                "message": (
+                    "This includes a permanent deletion. Please confirm a second "
+                    "time to proceed — this cannot be undone."
+                ),
+                "destructive_tools": tools,
+            },
+        )
 
     # Rate-limit gate runs BEFORE token consumption. A rejected request must
     # not burn the user's one-shot confirm token — they should be able to
@@ -2202,6 +2329,9 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
         # unauthorized step is rejected whole, never partially executed.
         for s in write_step_dicts:
             s_tool = s.get("tool")
+            # F.10: student hard-delete / DPDP-erase are never AI-executable.
+            if s_tool in FORBIDDEN_AI_TOOLS:
+                raise HTTPException(status_code=403, detail="Forbidden")
             s_def = TOOL_REGISTRY.get(s_tool)
             if not s_def:
                 raise HTTPException(status_code=400, detail=f"Unknown tool: {s_tool}")
@@ -2214,6 +2344,9 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
     else:
         tool_name = token_doc.get("action")
         params = token_doc.get("params") or {}
+        # F.10: student hard-delete / DPDP-erase are never AI-executable.
+        if tool_name in FORBIDDEN_AI_TOOLS:
+            raise HTTPException(status_code=403, detail="Forbidden")
         tool_def = TOOL_REGISTRY.get(tool_name)
         if not tool_def:
             raise HTTPException(status_code=400, detail=f"Unknown tool: {tool_name}")
@@ -2282,8 +2415,18 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
                 branch_id=user.get("branch_id"),
                 plan_token=token,
             )
-        exec_result = await plan_executor.run(plan, db=db)
-        if exec_result.status == "already_applied":
+        # F.5: shadow/dry-run — runs the writes in an always-aborted txn and
+        # reports the would-be effect, committing nothing (saga side-effects skipped).
+        dry_run = await ai_dry_run_enabled(db)
+        exec_result = await plan_executor.run(plan, db=db, dry_run=dry_run)
+        if exec_result.dry_run:
+            result = {
+                "success": True,
+                "dry_run": True,
+                "message": "Shadow mode: showing what would change — nothing was committed.",
+                "would_change": exec_result.step_results,
+            }
+        elif exec_result.status == "already_applied":
             # Idempotent replay (concurrent/duplicate confirm) — nothing re-applied.
             result = {
                 "success": True,
@@ -2301,6 +2444,31 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
             result = exec_result.step_results[0].get("result")
         else:
             result = None
+        # F.7: pilot observability — one confirmation + plan_executed event per
+        # dispatch, plus a per-step outcome. PII-free (tool names + statuses only).
+        await record_ai_metric(
+            db, event="confirmation", user_id=user["id"], tool_name=tool_name,
+            status=exec_result.status, school_id=get_school_id(), branch_id=user.get("branch_id"),
+        )
+        await record_ai_metric(
+            db, event="plan_executed", user_id=user["id"], tool_name=tool_name,
+            status=exec_result.status, school_id=get_school_id(), branch_id=user.get("branch_id"),
+            count=len(exec_result.step_results) or 1,
+        )
+        await record_ai_metric(
+            db, event="ai_action", user_id=user["id"], tool_name=tool_name,
+            school_id=get_school_id(), branch_id=user.get("branch_id"),
+        )
+        for sr in exec_result.step_results:
+            await record_ai_metric(
+                db, event="step_outcome", user_id=user["id"], tool_name=sr.get("tool", tool_name),
+                status=sr.get("status", "ok"), school_id=get_school_id(), branch_id=user.get("branch_id"),
+            )
+        # F.10/FR42: actor-tagged deletion audit per destructive step — only when
+        # the dispatch actually committed (not on an idempotent no-op replay).
+        if exec_result.status == "committed":
+            for ds in destructive_steps:
+                await _audit_destructive_step(db, user, ds)
     except PlanStaleError as stale:
         await audit_ai_dispatch_finalize(
             audit_id=audit_id, result=None, error="plan_stale", db=db,
@@ -2313,13 +2481,35 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
         await audit_ai_dispatch_finalize(
             audit_id=audit_id, result=None, error="needs_manual_reconciliation", db=db,
         )
+        await record_ai_metric(
+            db, event="torn_state", user_id=user["id"], tool_name=tool_name,
+            status="needs_manual_reconciliation", school_id=get_school_id(),
+            branch_id=user.get("branch_id"),
+        )
         raise HTTPException(
             status_code=409,
             detail={"code": recon.code, "message": str(recon)},
         )
+    except PlanScopeViolationError as scope_exc:
+        # F.3: a step tried to widen tenant/branch scope — refused, nothing applied.
+        await audit_ai_dispatch_finalize(
+            audit_id=audit_id, result=None, error="plan_scope_violation", db=db,
+        )
+        await record_ai_metric(
+            db, event="torn_state", user_id=user["id"], tool_name=tool_name,
+            status="plan_scope_violation", school_id=get_school_id(),
+            branch_id=user.get("branch_id"),
+        )
+        logger.warning("plan_scope_violation user=%s step=%s", user.get("id"), scope_exc.step_idx)
+        raise HTTPException(status_code=403, detail="Forbidden")
     except SagaCompensatedError as saga:
         await audit_ai_dispatch_finalize(
             audit_id=audit_id, result=None, error="saga_compensated", db=db,
+        )
+        await record_ai_metric(
+            db, event="torn_state", user_id=user["id"], tool_name=tool_name,
+            status="saga_compensated", school_id=get_school_id(),
+            branch_id=user.get("branch_id"),
         )
         raise HTTPException(status_code=502, detail={"code": "side_effect_failed", "message": str(saga)})
     except HTTPException as http_exc:
@@ -2396,8 +2586,11 @@ async def confirm_token_action(request: Request):
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id is required")
 
+    destructive_ack = bool(body.get("destructive_ack") or body.get("acknowledge_destructive"))
     try:
-        return await _execute_confirmed_dispatch(token, session_id, user, db, body.get("conversation_id"))
+        return await _execute_confirmed_dispatch(
+            token, session_id, user, db, body.get("conversation_id"), destructive_ack=destructive_ack
+        )
     except RateLimitExceeded as exc:
         return JSONResponse(
             status_code=429,
@@ -2435,8 +2628,11 @@ async def confirm_action(conv_id: str, request: Request):
 
     token = body.get("token") or body.get("action_id")
     session_id = body.get("session_id") or conv_id
+    destructive_ack = bool(body.get("destructive_ack") or body.get("acknowledge_destructive"))
     try:
-        return await _execute_confirmed_dispatch(token, session_id, user, db, conv_id)
+        return await _execute_confirmed_dispatch(
+            token, session_id, user, db, conv_id, destructive_ack=destructive_ack
+        )
     except RateLimitExceeded as exc:
         return JSONResponse(
             status_code=429,

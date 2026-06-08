@@ -269,6 +269,10 @@ _bmad-output/
 | Notification utility | **`create_notification()` canonical** | set in Part 5 |
 | S3 key namespace | **`{school_id}/uploads/...`** | set in Part 6 |
 | Audit service | **`write_audit()` via `audit_service.py`** | ✅ Part 7 shipped |
+| AI PII redaction | **`ai/redaction.py:redact_for_llm()`** — surgical (special-category keys only; never over-block the LLM) | ✅ AI-Hardening F.1 |
+| AI-write kill-switch | **`services/ai_kill_switch.py`** (`db.system_flags.ai_writes_enabled`, fails open) | ✅ F.4 — runbook `docs/deployment-runbook.md` §8 |
+| Phase-1 action lockdown | **`services/ai_action_policy.py`** single switch `LOCKDOWN_ENABLED` (Owner+Principal-only AI writes) | ✅ F.11/FR43 — Phase 2 widens it, no engine change |
+| AI write-tool parity gate | **`tests/backend/parity/` corpus + CI drift gate** | ✅ F.6 — new write tool ⇒ add parity test + corpus entry |
 
 ---
 

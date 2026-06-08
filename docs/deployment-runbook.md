@@ -175,3 +175,72 @@ For a second school:
 
 Use branch-level isolation inside a school through `branch_id`; do not use branch ids as a substitute for `SCHOOL_ID` across different schools.
 
+
+## 8. AI Action Layer — Safety Operations (AI Layer Hardening, Epic F)
+
+The AI assistant can perform writes (attendance, fees, approvals, announcements, …)
+through the same shared service layer as the UI. Three operator controls govern it.
+
+### 8.1 Kill-switch — stop all AI writes instantly (Story F.4)
+
+The flag lives in `db.system_flags` keyed `ai_writes_enabled`. When off, the
+`/api/chat/confirm` dispatch refuses every write within ≤30s (the cache TTL) with
+a clear message; **reads keep working**.
+
+```js
+// Disable (mongosh)
+db.system_flags.updateOne({key:"ai_writes_enabled"}, {$set:{key:"ai_writes_enabled", enabled:false}}, {upsert:true})
+// Re-enable
+db.system_flags.updateOne({key:"ai_writes_enabled"}, {$set:{enabled:true}}, {upsert:true})
+```
+
+Programmatic: `services.ai_kill_switch.set_ai_writes_enabled(db, enabled=False, actor_id=...)`
+(invalidates the in-process cache immediately).
+
+### 8.2 Shadow / dry-run mode (Story F.5)
+
+Flag `ai_dry_run` in `db.system_flags`. When on, confirmed plans run inside an
+always-aborted transaction and report the would-be diff — **committing nothing**;
+post-commit SMS/email never fire. Use it during the pilot to accumulate parity
+evidence at zero write-risk before enabling live writes.
+
+```js
+db.system_flags.updateOne({key:"ai_dry_run"}, {$set:{key:"ai_dry_run", enabled:true}}, {upsert:true})
+```
+
+### 8.3 Reverting a bad AI write — remediation runbook (Story F.9)
+
+Every AI dispatch is recorded write-ahead in `db.ai_dispatch_audit_log` (one row
+per dispatch, `_id = ai-dispatch-<confirm-token>`), and each domain write also
+emits a row in `db.audit_logs`. To reverse a specific bad AI write:
+
+1. **Stop the bleeding.** Flip the kill-switch off (8.1) so no new AI writes land
+   while you investigate.
+2. **Identify the dispatch.** Find the offending row in `ai_dispatch_audit_log`:
+   ```js
+   db.ai_dispatch_audit_log.find({user_id:"<actor>", status:"success"}).sort({executed_at:-1}).limit(20)
+   ```
+   The row carries `tool_name`, `params`, `user_id`, `session_id`, `confirmed_at`,
+   `school_id`, `branch_id`. For a multi-step plan the `params.steps[]` lists every
+   step in order.
+3. **Reconstruct the blast radius.** Cross-reference `db.audit_logs` for the same
+   actor/time window. Each domain audit row carries `collection`, `entity_id`,
+   `action`, and `changes` (before/after where the service records them).
+4. **Reverse it through the UI/service layer**, never with an ad-hoc raw write —
+   re-open the affected record in the panel and apply the inverse operation
+   (e.g. re-mark attendance, reverse/void the fee transaction, un-approve the
+   leave). This keeps the correction itself scoped, validated, and audited.
+5. **Destructive (delete) dispatches** are tagged in `audit_logs` with
+   `action="delete"` and `changes.actor` / `changes.actor_name` — query
+   "who deleted what, when":
+   ```js
+   db.audit_logs.find({action:"delete"}).sort({created_at:-1})
+   ```
+   Restore the deleted record from the most recent backup/snapshot (deletes are
+   not soft-deletes); there is no automatic undo.
+6. **Re-enable** AI writes (8.1) once the data is corrected and the root cause is
+   understood.
+
+Pilot metrics for the acceptance review live in `db.ai_metrics` (Story F.7):
+`event ∈ {plan_executed, confirmation, step_outcome, ai_action, torn_state,
+kill_switch_blocked, parity_diff}`. These rows are PII-free by construction.

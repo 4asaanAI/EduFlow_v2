@@ -1,0 +1,30 @@
+"""Parity corpus registry + CI drift gate source (Story F.6).
+
+Maps every AI write tool to the parity test module that proves its AI entrypoint
+and its REST entrypoint produce byte-identical DB state (modulo the volatile
+allowlist in `normalizer.py`). The CI drift gate (`test_parity_corpus.py`) fails
+if a tool in `WRITE_TOOL_NAMES` has no entry here — so a new write tool/route
+cannot ship without a parity corpus entry, and drift can never silently reappear.
+
+When Epics J/K add CRUD write tools, add their parity test here in the same PR.
+"""
+
+from __future__ import annotations
+
+# tool name -> relative parity test module under tests/backend/parity/
+PARITY_CORPUS = {
+    "mark_attendance": "attendance_parity_test.py",
+    "correct_attendance": "attendance_correction_parity_test.py",
+    "approve_leave": "leave_parity_test.py",
+    "decide_approval_request": "approvals_parity_test.py",
+    "create_announcement": "announcement_parity_test.py",
+    "log_contact_event": "contact_log_parity_test.py",
+    "initiate_substitution": "substitution_parity_test.py",
+    "record_fee_payment": "fees_parity_test.py",
+    "apply_discount": "discount_parity_test.py",
+    "award_house_points": "house_points_parity_test.py",
+    "assign_followup": "incident_parity_test.py",
+    "add_thread_entry": "incident_parity_test.py",
+    "update_incident_status": "incident_parity_test.py",
+    "confirm_resolution": "incident_resolution_test.py",
+}

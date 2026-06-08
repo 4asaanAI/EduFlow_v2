@@ -507,6 +507,9 @@ class FakeDb:
         self.study_plans = FakeCollection()
         self.visitors = FakeCollection()
         self.schools = FakeCollection()
+        # AI Layer Hardening — Epic F
+        self.system_flags = FakeCollection()
+        self.ai_metrics = FakeCollection()
 
     async def command(self, command_name):
         if command_name == "ping":
