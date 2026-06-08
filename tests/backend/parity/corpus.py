@@ -34,4 +34,23 @@ PARITY_CORPUS = {
     "manage_student_guardians": "student_parity_test.py",
     "create_staff": "staff_parity_test.py",
     "update_staff": "staff_parity_test.py",
+    # Epic K.1 — fee-config CRUD
+    "create_fee_structure": "fee_config_parity_test.py",
+    "update_fee_structure": "fee_config_parity_test.py",
+    "create_discount_type": "fee_config_parity_test.py",
+    "update_discount_type": "fee_config_parity_test.py",
+    "delete_discount_type": "fee_config_parity_test.py",
+    # Epic K.2 — academic-structure CRUD
+    "create_class": "academic_structure_parity_test.py",
+    "update_class": "academic_structure_parity_test.py",
+    "delete_class": "academic_structure_parity_test.py",
+    "create_house": "academic_structure_parity_test.py",
+    "update_house": "academic_structure_parity_test.py",
+    "delete_house": "academic_structure_parity_test.py",
+    # Epic K.3 — org-config CRUD
+    "create_branch": "org_config_parity_test.py",
+    "update_branch": "org_config_parity_test.py",
+    "delete_branch": "org_config_parity_test.py",
+    "update_school_settings": "org_config_parity_test.py",
+    "year_end_transition": "org_config_parity_test.py",
 }

@@ -17,6 +17,15 @@ from services.discount_service import (
     DiscountValidationError,
     DiscountNotFoundError,
 )
+from services.fee_config_service import (
+    create_fee_structure as svc_create_fee_structure,
+    update_fee_structure as svc_update_fee_structure,
+    create_discount_type as svc_create_discount_type,
+    update_discount_type as svc_update_discount_type,
+    delete_discount_type as svc_delete_discount_type,
+    FeeConfigValidationError,
+    FeeConfigNotFoundError,
+)
 from services.contact_log_service import log_contact_event, ContactLogValidationError
 from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, normalize_session_id, publish
 from pymongo import ReturnDocument
@@ -198,36 +207,31 @@ async def get_fee_structures(request: Request, user: dict = Depends(require_role
 
 @router.post("/structures")
 async def create_fee_structure(request: Request, user: dict = Depends(require_owner)):
-    """P10.3: Owner-only — create a fee structure for a class."""
+    """P10.3: Owner-only — create a fee structure for a class.
+
+    Thin adapter over services.fee_config_service.create_fee_structure — the SAME
+    write path as the AI `create_fee_structure` tool (Story K.1 / AD7)."""
     db = get_db()
     body = await request.json()
-    bid = user.get("branch_id")
-    structure = {
-        "id": str(uuid.uuid4()),
-        "name": body.get("name", ""),
-        "class_id": body.get("class_id", ""),
-        "fee_heads": body.get("fee_heads", []),
-        "academic_year": body.get("academic_year", ""),
-        "created_by": user["id"],
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    doc = add_school_id(structure)
-    await db.fee_structures.insert_one({**doc, "_id": doc["id"]})
-    return {"success": True, "data": doc}
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    result = await svc_create_fee_structure(db, actor_ctx, body)
+    return {"success": True, "data": result["structure"]}
 
 
 @router.patch("/structures/{structure_id}")
 async def update_fee_structure(structure_id: str, request: Request, user: dict = Depends(require_owner)):
-    """P10.3: Owner-only — update a fee structure."""
+    """P10.3: Owner-only — update a fee structure.
+
+    Thin adapter over services.fee_config_service.update_fee_structure (Story K.1 / AD7)."""
     db = get_db()
     body = await request.json()
-    bid = user.get("branch_id")
-    result = await db.fee_structures.update_one(
-        scoped_query({"id": structure_id}, branch_id=bid),
-        {"$set": body}
-    )
-    if result.matched_count == 0:
-        raise HTTPException(404, "Fee structure not found")
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        await svc_update_fee_structure(db, actor_ctx, {**body, "structure_id": structure_id})
+    except FeeConfigNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except FeeConfigValidationError as e:
+        raise HTTPException(400, str(e))
     return {"success": True}
 
 
@@ -532,30 +536,16 @@ async def delete_fee_transaction(transaction_id: str, request: Request):
 
 @router.post("/discount-types")
 async def create_discount_type(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    """Thin adapter over services.fee_config_service.create_discount_type (Story K.1 / AD7)."""
     db = get_db()
     _require_fee_write(user)
     body = await request.json()
-    required = {"name", "value", "value_type", "recurrence", "reason_note"}
-    if any(body.get(field) in (None, "") for field in required):
-        raise HTTPException(400, "name, value, value_type, recurrence, and reason_note are required")
-    if body["value_type"] not in ("flat", "percentage"):
-        raise HTTPException(400, "value_type must be flat or percentage")
-    doc = {
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
-        "schoolId": get_school_id(),
-        "name": body["name"],
-        "value": float(body["value"]),
-        "value_type": body["value_type"],
-        "recurrence": body["recurrence"],
-        "reason_note": body["reason_note"],
-        "is_active": True,
-        "created_by": user["id"],
-        "created_at": datetime.now().isoformat(),
-    }
-    await db.fee_discount_types.insert_one(doc)
-    await _audit(db, action="discount_type_create", entity_id=doc["id"], user=user, changes={"created": {k: v for k, v in doc.items() if k != "_id"}})
-    return {"success": True, "data": {k: v for k, v in doc.items() if k != "_id"}}
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_create_discount_type(db, actor_ctx, body)
+    except FeeConfigValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["discount_type"]}
 
 
 @router.get("/discount-types")
@@ -568,20 +558,31 @@ async def get_discount_types(request: Request, include_inactive: bool = False, u
 
 @router.patch("/discount-types/{discount_type_id}")
 async def update_discount_type(discount_type_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    """Thin adapter over services.fee_config_service.update_discount_type (Story K.1 / AD7)."""
     db = get_db()
     _require_fee_write(user)
     body = await request.json()
-    allowed = {"name", "is_active", "reason_note"}
-    changes = {k: v for k, v in body.items() if k in allowed}
-    if not changes:
-        raise HTTPException(400, "No editable fields supplied")
-    existing = await db.fee_discount_types.find_one(_fee_query({"id": discount_type_id}), {"_id": 0})
-    if not existing:
-        raise HTTPException(404, "Discount type not found")
-    await db.fee_discount_types.update_one(_fee_query({"id": discount_type_id}), {"$set": {**changes, "updated_at": datetime.now().isoformat()}})
-    await _audit(db, action="discount_type_update", entity_id=discount_type_id, user=user, changes=changes, reason=body.get("reason_note"))
-    updated = await db.fee_discount_types.find_one(_fee_query({"id": discount_type_id}), {"_id": 0})
-    return {"success": True, "data": updated}
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_update_discount_type(db, actor_ctx, {**body, "discount_type_id": discount_type_id})
+    except FeeConfigNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except FeeConfigValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["discount_type"]}
+
+
+@router.delete("/discount-types/{discount_type_id}")
+async def delete_discount_type(discount_type_id: str, request: Request, user: dict = Depends(require_owner)):
+    """Owner-only: hard-delete a discount type. Parity reference for the AI
+    `delete_discount_type` tool (destructive — F.10 two-step at the chat layer)."""
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_delete_discount_type(db, actor_ctx, {"discount_type_id": discount_type_id})
+    except FeeConfigNotFoundError as e:
+        raise HTTPException(404, str(e))
+    return {"success": True, "data": result}
 
 
 @router.post("/discounts/apply")

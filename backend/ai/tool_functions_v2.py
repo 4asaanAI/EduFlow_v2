@@ -55,6 +55,36 @@ from services.staff_service import (
     StaffAuthorizationError,
     LinkedUserNotFoundError,
 )
+from services.fee_config_service import (
+    create_fee_structure as svc_create_fee_structure,
+    update_fee_structure as svc_update_fee_structure,
+    create_discount_type as svc_create_discount_type,
+    update_discount_type as svc_update_discount_type,
+    delete_discount_type as svc_delete_discount_type,
+    FeeConfigValidationError,
+    FeeConfigNotFoundError,
+)
+from services.academic_structure_service import (
+    create_class as svc_create_class,
+    update_class as svc_update_class,
+    delete_class as svc_delete_class,
+    create_house as svc_create_house,
+    update_house as svc_update_house,
+    delete_house as svc_delete_house,
+    AcademicStructureValidationError,
+    AcademicStructureNotFoundError,
+    AcademicStructureConflictError,
+)
+from services.org_config_service import (
+    create_branch as svc_create_branch,
+    upsert_branch as svc_upsert_branch,
+    delete_branch as svc_delete_branch,
+    update_school_settings as svc_update_school_settings,
+    year_end_transition as svc_year_end_transition,
+    OrgConfigValidationError,
+    OrgConfigNotFoundError,
+    OrgConfigConflictError,
+)
 from services.incident_service import (
     resolve_record_type,
     assign_followup as svc_assign_followup,
@@ -1502,6 +1532,249 @@ async def tool_update_staff(params: dict, user: dict, scope: dict = None) -> dic
     return {"success": True, "data": result["staff"], "message": msg}
 
 
+# ──────────────── Epic K.1: fee-config CRUD (Owner + Principal only) ─────────────
+
+
+async def tool_create_fee_structure(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.fee_config_service.create_fee_structure — the SAME
+    # write path as POST /api/fees/structures (Story K.1 / AD7). School-scoped.
+    if not params.get("name"):
+        return {"success": False, "message": "name is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_create_fee_structure(db, actor_ctx, params)
+    except FeeConfigValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["structure"], "message": "Fee structure created."}
+
+
+async def tool_update_fee_structure(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.fee_config_service.update_fee_structure (Story K.1 / AD7).
+    if not params.get("structure_id"):
+        return {"success": False, "message": "structure_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_update_fee_structure(db, actor_ctx, params)
+    except FeeConfigNotFoundError:
+        return _empty_result("Fee structure not found.")
+    except FeeConfigValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "Fee structure updated."}
+
+
+async def tool_create_discount_type(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.fee_config_service.create_discount_type (Story K.1 / AD7).
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_create_discount_type(db, actor_ctx, params)
+    except FeeConfigValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["discount_type"], "message": "Discount type created."}
+
+
+async def tool_update_discount_type(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.fee_config_service.update_discount_type (Story K.1 / AD7).
+    if not params.get("discount_type_id"):
+        return {"success": False, "message": "discount_type_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_update_discount_type(db, actor_ctx, params)
+    except FeeConfigNotFoundError:
+        return _empty_result("Discount type not found.")
+    except FeeConfigValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["discount_type"], "message": "Discount type updated."}
+
+
+async def tool_delete_discount_type(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over services.fee_config_service.delete_discount_type (Story K.1 / AD7).
+    # DESTRUCTIVE: routed through F.10 two-step confirm + deletion audit at the chat layer.
+    if not params.get("discount_type_id"):
+        return {"success": False, "message": "discount_type_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_delete_discount_type(db, actor_ctx, params)
+    except FeeConfigNotFoundError:
+        return _empty_result("Discount type not found.")
+    except FeeConfigValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "Discount type deleted."}
+
+
+# ──────────── Epic K.2: academic-structure CRUD (Owner + Principal only) ─────────
+
+
+async def tool_create_class(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over academic_structure_service.create_class (Story K.2 / AD7).
+    # Branch-scoped: owner = cross-branch, principal = own branch.
+    if not params.get("name"):
+        return {"success": False, "message": "name is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_create_class(db, actor_ctx, params)
+    except AcademicStructureValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["class"], "message": "Class created."}
+
+
+async def tool_update_class(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over academic_structure_service.update_class (Story K.2 / AD7).
+    if not params.get("class_id"):
+        return {"success": False, "message": "class_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_update_class(db, actor_ctx, params)
+    except AcademicStructureNotFoundError:
+        return _empty_result("Class not found.")
+    except AcademicStructureValidationError as e:
+        return {"success": False, "message": str(e)}
+    msg = "No changes to apply." if result.get("noop") else "Class updated."
+    return {"success": True, "data": result["class"], "message": msg}
+
+
+async def tool_delete_class(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over academic_structure_service.delete_class (Story K.2 / AD7).
+    # DESTRUCTIVE: F.10 two-step confirm + deletion audit at the chat layer.
+    if not params.get("class_id"):
+        return {"success": False, "message": "class_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_delete_class(db, actor_ctx, params)
+    except AcademicStructureNotFoundError:
+        return _empty_result("Class not found.")
+    except AcademicStructureConflictError as e:
+        return {"success": False, "message": str(e)}
+    except AcademicStructureValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "Class deleted."}
+
+
+async def tool_create_house(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over academic_structure_service.create_house (Story K.2 / AD7).
+    if not params.get("name"):
+        return {"success": False, "message": "name is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_create_house(db, actor_ctx, params)
+    except AcademicStructureValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["house"], "message": "House created."}
+
+
+async def tool_update_house(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over academic_structure_service.update_house (Story K.2 / AD7).
+    if not params.get("house_id"):
+        return {"success": False, "message": "house_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_update_house(db, actor_ctx, params)
+    except AcademicStructureNotFoundError:
+        return _empty_result("House not found.")
+    except AcademicStructureValidationError as e:
+        return {"success": False, "message": str(e)}
+    msg = "No changes to apply." if result.get("noop") else "House updated."
+    return {"success": True, "data": result["house"], "message": msg}
+
+
+async def tool_delete_house(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over academic_structure_service.delete_house (Story K.2 / AD7).
+    # DESTRUCTIVE: F.10 two-step confirm + deletion audit at the chat layer.
+    if not params.get("house_id"):
+        return {"success": False, "message": "house_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_delete_house(db, actor_ctx, params)
+    except AcademicStructureNotFoundError:
+        return _empty_result("House not found.")
+    except AcademicStructureConflictError as e:
+        return {"success": False, "message": str(e)}
+    except AcademicStructureValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "House deleted."}
+
+
+# ──────────── Epic K.3: org-config CRUD (Owner authority only) ───────────────────
+
+
+async def tool_create_branch(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over org_config_service.create_branch (Story K.3 / AD7). Owner-only.
+    if not params.get("name"):
+        return {"success": False, "message": "name is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_create_branch(db, actor_ctx, params)
+    except OrgConfigConflictError as e:
+        return {"success": False, "message": str(e)}
+    except OrgConfigValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["branch"], "message": "Branch created."}
+
+
+async def tool_update_branch(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over org_config_service.upsert_branch (Story K.3 / AD7). Owner-only.
+    if not params.get("branch_id"):
+        return {"success": False, "message": "branch_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_upsert_branch(db, actor_ctx, params)
+    except OrgConfigValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["branch"], "message": "Branch updated."}
+
+
+async def tool_delete_branch(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over org_config_service.delete_branch (Story K.3 / AD7). Owner-only.
+    # DESTRUCTIVE: F.10 two-step confirm + deletion audit at the chat layer.
+    if not params.get("branch_id"):
+        return {"success": False, "message": "branch_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_delete_branch(db, actor_ctx, params)
+    except OrgConfigNotFoundError:
+        return _empty_result("Branch not found.")
+    except OrgConfigConflictError as e:
+        return {"success": False, "message": str(e)}
+    except OrgConfigValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "Branch deleted."}
+
+
+async def tool_update_school_settings(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over org_config_service.update_school_settings (Story K.3 / AD7). Owner-only.
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    result = await svc_update_school_settings(db, actor_ctx, params)
+    return {"success": True, "data": result, "message": "School settings updated."}
+
+
+async def tool_year_end_transition(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over org_config_service.year_end_transition (Story K.3 / AD7). Owner-only.
+    # HIGH-IMPACT: F.10 two-step confirm at the chat layer.
+    if not params.get("new_year_name"):
+        return {"success": False, "message": "new_year_name is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        data = await svc_year_end_transition(db, actor_ctx, params)
+    except OrgConfigValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": data, "message": data["message"]}
+
+
 async def tool_mark_attendance(params: dict, user: dict, scope: dict = None) -> dict:
     if not params.get("class_id") and not params.get("class_name"):
         return {"success": False, "message": "class_id or class_name is required."}
@@ -2377,6 +2650,221 @@ TOOL_REGISTRY = {
             "email": {"type": "string", "description": "Email"},
             "department": {"type": "string", "description": "Department"},
             "qualification": {"type": "string", "description": "Qualification"},
+        },
+    },
+    # ---- Epic K.1: fee-config CRUD (Owner + Principal only; Phase-1 lockdown) ----
+    "create_fee_structure": {
+        "fn": tool_create_fee_structure,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Create a fee structure (fee heads) for a class.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "name": {"type": "string", "description": "Structure name (required)"},
+            "class_id": {"type": "string", "description": "Class ID this structure applies to"},
+            "fee_heads": {"type": "array", "description": "List of {name, amount, frequency} fee heads"},
+            "academic_year": {"type": "string", "description": "Academic year, e.g. 2026-27"},
+        },
+    },
+    "update_fee_structure": {
+        "fn": tool_update_fee_structure,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Update an existing fee structure's fields.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "structure_id": {"type": "string", "description": "Fee structure ID (required)"},
+            "name": {"type": "string", "description": "Updated name"},
+            "fee_heads": {"type": "array", "description": "Updated fee heads list"},
+            "academic_year": {"type": "string", "description": "Academic year"},
+        },
+    },
+    "create_discount_type": {
+        "fn": tool_create_discount_type,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Create a fee discount type (e.g. sibling, staff-ward).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "name": {"type": "string", "description": "Discount name (required)"},
+            "value": {"type": "number", "description": "Discount value (required)"},
+            "value_type": {"type": "string", "description": "flat or percentage (required)"},
+            "recurrence": {"type": "string", "description": "e.g. one-time or recurring (required)"},
+            "reason_note": {"type": "string", "description": "Reason for the discount type (required)"},
+        },
+    },
+    "update_discount_type": {
+        "fn": tool_update_discount_type,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Update a discount type (name, active state, or reason note).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "discount_type_id": {"type": "string", "description": "Discount type ID (required)"},
+            "name": {"type": "string", "description": "Updated name"},
+            "is_active": {"type": "boolean", "description": "Activate/deactivate the discount type"},
+            "reason_note": {"type": "string", "description": "Updated reason note"},
+        },
+    },
+    "delete_discount_type": {
+        "fn": tool_delete_discount_type,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Permanently delete a discount type. Destructive — requires a second confirmation.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "discount_type_id": {"type": "string", "description": "Discount type ID to delete (required)"},
+        },
+    },
+    # ---- Epic K.2: academic-structure CRUD (Owner + Principal only; lockdown) ----
+    "create_class": {
+        "fn": tool_create_class,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Create a class (with an optional section).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "name": {"type": "string", "description": "Class name, e.g. 'Class 5' (required)"},
+            "section": {"type": "string", "description": "Section, e.g. 'A'"},
+            "academic_year_id": {"type": "string", "description": "Academic year ID"},
+            "class_teacher_id": {"type": "string", "description": "Class teacher staff ID"},
+            "room_number": {"type": "string", "description": "Room number"},
+        },
+    },
+    "update_class": {
+        "fn": tool_update_class,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Update a class's fields (name, section, teacher, room).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "class_id": {"type": "string", "description": "Class ID (required)"},
+            "name": {"type": "string", "description": "Updated class name"},
+            "section": {"type": "string", "description": "Updated section"},
+            "class_teacher_id": {"type": "string", "description": "Class teacher staff ID"},
+            "room_number": {"type": "string", "description": "Room number"},
+        },
+    },
+    "delete_class": {
+        "fn": tool_delete_class,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Permanently delete a class. Destructive — requires a second confirmation. Blocked if active students are assigned.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "class_id": {"type": "string", "description": "Class ID to delete (required)"},
+        },
+    },
+    "create_house": {
+        "fn": tool_create_house,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Create a house.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "name": {"type": "string", "description": "House name (required)"},
+            "colour": {"type": "string", "description": "House colour"},
+        },
+    },
+    "update_house": {
+        "fn": tool_update_house,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Update a house's name or colour (not its points).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "house_id": {"type": "string", "description": "House ID (required)"},
+            "name": {"type": "string", "description": "Updated name"},
+            "colour": {"type": "string", "description": "Updated colour"},
+        },
+    },
+    "delete_house": {
+        "fn": tool_delete_house,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Permanently delete a house. Destructive — requires a second confirmation. Blocked if active students are assigned.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "house_id": {"type": "string", "description": "House ID to delete (required)"},
+        },
+    },
+    # ---- Epic K.3: org-config CRUD (Owner authority only — even in Phase 2) ----
+    "create_branch": {
+        "fn": tool_create_branch,
+        "roles": ["owner"],
+        "description": "Create a new school branch (owner only).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "name": {"type": "string", "description": "Branch name (required)"},
+            "branch_code": {"type": "string", "description": "Unique branch code"},
+            "location": {"type": "string", "description": "Branch location"},
+        },
+    },
+    "update_branch": {
+        "fn": tool_update_branch,
+        "roles": ["owner"],
+        "description": "Update (or create-by-id) a school branch (owner only).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "branch_id": {"type": "string", "description": "Branch ID (required)"},
+            "name": {"type": "string", "description": "Branch name (required)"},
+            "address": {"type": "string", "description": "Address"},
+            "phone": {"type": "string", "description": "Phone"},
+            "is_active": {"type": "boolean", "description": "Active state"},
+        },
+    },
+    "delete_branch": {
+        "fn": tool_delete_branch,
+        "roles": ["owner"],
+        "description": "Permanently delete a branch (owner only). Destructive — requires a second confirmation. Blocked if active students are assigned.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "branch_id": {"type": "string", "description": "Branch ID to delete (required)"},
+        },
+    },
+    "update_school_settings": {
+        "fn": tool_update_school_settings,
+        "roles": ["owner"],
+        "description": "Update school-level settings (name, board, city, attendance threshold, AI context) — owner only.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "school_name": {"type": "string", "description": "School name"},
+            "board": {"type": "string", "description": "Board, e.g. CBSE"},
+            "city": {"type": "string", "description": "City"},
+            "attendance_threshold": {"type": "number", "description": "Attendance % threshold"},
+            "ai_context": {"type": "string", "description": "AI assistant context note"},
+        },
+    },
+    "year_end_transition": {
+        "fn": tool_year_end_transition,
+        "roles": ["owner"],
+        "description": "Transition the school to a new academic year (owner only). High-impact — requires a second confirmation.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "new_year_name": {"type": "string", "description": "New academic year, e.g. 2026-27 (required)"},
+            "start_date": {"type": "string", "description": "Start date YYYY-MM-DD"},
+            "end_date": {"type": "string", "description": "End date YYYY-MM-DD"},
         },
     },
     "mark_attendance": {

@@ -153,6 +153,25 @@ WRITE_TOOL_REQUIRED_PARAMS = {
     "manage_student_guardians": ("student_id", "guardians"),
     "create_staff": ("name", "staff_type"),
     "update_staff": ("staff_id",),
+    # Epic K.1 — fee-config CRUD
+    "create_fee_structure": ("name",),
+    "update_fee_structure": ("structure_id",),
+    "create_discount_type": ("name", "value", "value_type", "recurrence", "reason_note"),
+    "update_discount_type": ("discount_type_id",),
+    "delete_discount_type": ("discount_type_id",),
+    # Epic K.2 — academic-structure CRUD
+    "create_class": ("name",),
+    "update_class": ("class_id",),
+    "delete_class": ("class_id",),
+    "create_house": ("name",),
+    "update_house": ("house_id",),
+    "delete_house": ("house_id",),
+    # Epic K.3 — org-config CRUD
+    "create_branch": ("name",),
+    "update_branch": ("branch_id", "name"),
+    "delete_branch": ("branch_id",),
+    "update_school_settings": (),
+    "year_end_transition": ("new_year_name",),
 }
 
 WRITE_TOOL_PARAM_LABELS = {
@@ -193,6 +212,19 @@ WRITE_TOOL_PARAM_LABELS = {
     "guardians": "guardians",
     "staff_type": "staff type",
     "staff_id": "staff member",
+    # Epic K.1 — fee-config CRUD
+    "structure_id": "fee structure",
+    "value": "discount value",
+    "value_type": "discount value type",
+    "recurrence": "recurrence",
+    "reason_note": "reason note",
+    # Epic K.2 — academic-structure CRUD
+    "section": "section",
+    "house_id": "house",
+    "colour": "colour",
+    # Epic K.3 — org-config CRUD
+    "branch_id": "branch",
+    "new_year_name": "new academic year",
 }
 
 # ─── Keyword → Tool Map ──────────────────────────────────────────────────────
