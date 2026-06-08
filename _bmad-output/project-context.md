@@ -69,6 +69,7 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 | google-generativeai | ≥0.8.0 | Secondary LLM / image tasks |
 | boto3 | ≥1.34 | S3 file storage |
 | twilio | ≥9.2.0 | SMS |
+| razorpay | ≥1.4.0 | **Billing vendor (token recharge + subscriptions)** — `services/razorpay_service.py` + `routes/tokens.py`. Migrated from Stripe 2026-06-08. Payment Links (one-time) + Subscriptions (recurring); webhook verifies `X-Razorpay-Signature`. |
 
 ### Infrastructure
 - **Frontend hosting**: AWS Amplify — build command `yarn build`, output `build/`

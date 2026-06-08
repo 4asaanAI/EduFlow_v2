@@ -54,6 +54,7 @@ MIGRATIONS = [
     ("021_audit_log_indexes", "Add audit log scoped query indexes (Part 7)"),
     ("022_stripe_fields", "Add Stripe subscription fields to token_balances (Story 7-42)"),
     ("023_transport_coordinates", "Add 2dsphere indexes for transport route centroids and student coordinates (Story 7-46)"),
+    ("024_razorpay_fields", "Vendor change Stripe→Razorpay: rename token_balances.stripe_customer_id and token_purchases.stripe_session_id (2026-06-08)"),
 ]
 
 

@@ -130,11 +130,11 @@ Every variable from `backend/.env.example` must be reviewed for each environment
 | `TWILIO_WHATSAPP_FROM` | Optional | WhatsApp-enabled Twilio number for template messages (Story 7-40). |
 | `TWILIO_WHATSAPP_FEE_TEMPLATE_SID` | Optional | Twilio Content Template SID for fee reminder WhatsApp messages (Story 7-40). |
 | `TWILIO_WHATSAPP_ATTENDANCE_TEMPLATE_SID` | Optional | Twilio Content Template SID for attendance alert WhatsApp messages (Story 7-40). |
-| `STRIPE_SECRET_KEY` | Optional | Stripe secret key for token billing (Story 7-42). Use `sk_live_...` in production. |
-| `STRIPE_PUBLISHABLE_KEY` | Optional | Stripe publishable key (reference only, not used server-side). |
-| `STRIPE_WEBHOOK_SECRET` | Optional | Stripe webhook signing secret (`whsec_...`). Required for webhook endpoint security. |
-| `STRIPE_PRICE_MONTHLY_SCHOOL_STARTER` | Optional | Stripe Price ID for the Starter monthly plan (INR, created in Stripe Dashboard). |
-| `STRIPE_PRICE_MONTHLY_SCHOOL_PRO` | Optional | Stripe Price ID for the Pro monthly plan (INR, created in Stripe Dashboard). |
+| `RAZORPAY_KEY_ID` | Optional | Razorpay key id for token billing (Story 7-42; vendor change 2026-06-08). Use `rzp_live_...` in production. |
+| `RAZORPAY_KEY_SECRET` | Optional | Razorpay key secret (server-side; pairs with `RAZORPAY_KEY_ID`). |
+| `RAZORPAY_WEBHOOK_SECRET` | Optional | Razorpay webhook signing secret. Required for webhook endpoint security (verifies `X-Razorpay-Signature`). |
+| `RAZORPAY_PLAN_MONTHLY_SCHOOL_STARTER` | Optional | Razorpay Plan ID for the Starter monthly plan (INR, created in Razorpay Dashboard). |
+| `RAZORPAY_PLAN_MONTHLY_SCHOOL_PRO` | Optional | Razorpay Plan ID for the Pro monthly plan (INR, created in Razorpay Dashboard). |
 | `GOOGLE_MAPS_API_KEY` | Optional | Google Maps Geocoding API key for transport route optimisation (Story 7-46). Enable Geocoding API in Google Cloud Console; restrict to server IP. |
 | `OPERATOR_NOTIFY_EMAIL` | Optional | Email address that receives school onboarding completion notifications (Story 7-44). |
 | `OPERATOR_SLACK_WEBHOOK_URL` | Optional | Slack incoming webhook URL for school onboarding completion alerts (Story 7-44). |

@@ -8,26 +8,26 @@ Endpoints:
   GET  /api/tokens/usage/me                 — current user's usage this month
   GET  /api/tokens/packs                    — available top-up packs + subscription plans
   PUT  /api/tokens/limits                   — update per-role limits (owner only)
-  POST /api/tokens/create-checkout-session  — Stripe one-time payment checkout (owner only)
-  POST /api/tokens/create-subscription-session — Stripe subscription checkout (owner only)
-  POST /api/tokens/webhook                  — Stripe webhook receiver (no JWT auth)
+  POST /api/tokens/create-checkout-session  — Razorpay one-time payment link (owner only)
+  POST /api/tokens/create-subscription-session — Razorpay subscription (owner only)
+  POST /api/tokens/webhook                  — Razorpay webhook receiver (no JWT auth)
 """
 
 import logging
 import os
 
-import stripe
+import razorpay
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from middleware.auth import get_current_user, require_owner
-from services.stripe_service import (
+from services.razorpay_service import (
     SUBSCRIPTION_PLANS,
     create_checkout_session,
     create_subscription_session,
-    handle_checkout_completed,
-    handle_invoice_payment_succeeded,
-    handle_subscription_created,
-    handle_subscription_deleted,
+    handle_payment_link_paid,
+    handle_subscription_activated,
+    handle_subscription_cancelled,
+    handle_subscription_charged,
     verify_webhook,
 )
 from services.token_service import (
@@ -167,8 +167,8 @@ async def create_checkout_session_endpoint(
         )
     _validate_redirect_url(success_url, "success_url")
     _validate_redirect_url(cancel_url, "cancel_url")
-    if not os.getenv("STRIPE_SECRET_KEY"):
-        raise HTTPException(status_code=400, detail="Stripe is not configured on this server.")
+    if not os.getenv("RAZORPAY_KEY_ID"):
+        raise HTTPException(status_code=400, detail="Razorpay is not configured on this server.")
 
     try:
         result = await create_checkout_session(
@@ -207,8 +207,8 @@ async def create_subscription_session_endpoint(
         )
     _validate_redirect_url(success_url, "success_url")
     _validate_redirect_url(cancel_url, "cancel_url")
-    if not os.getenv("STRIPE_SECRET_KEY"):
-        raise HTTPException(status_code=400, detail="Stripe is not configured on this server.")
+    if not os.getenv("RAZORPAY_KEY_ID"):
+        raise HTTPException(status_code=400, detail="Razorpay is not configured on this server.")
 
     try:
         result = await create_subscription_session(
@@ -227,42 +227,45 @@ async def create_subscription_session_endpoint(
 
 
 # ─── POST /api/tokens/webhook ────────────────────────────────────────────────
-# No JWT auth — Stripe signature verification replaces it.
+# No JWT auth — Razorpay signature verification replaces it.
 
 @router.post("/webhook")
-async def stripe_webhook(request: Request):
+async def razorpay_webhook(request: Request):
     raw_body = await request.body()
-    sig_header = request.headers.get("stripe-signature", "")
+    signature = request.headers.get("x-razorpay-signature", "")
 
-    if not os.getenv("STRIPE_WEBHOOK_SECRET"):
+    if not os.getenv("RAZORPAY_WEBHOOK_SECRET"):
         raise HTTPException(status_code=400, detail="Webhook endpoint not configured.")
 
     try:
-        event = verify_webhook(raw_body, sig_header)
-    except (stripe.error.StripeError, ValueError):
+        event = verify_webhook(raw_body, signature)
+    except (razorpay.errors.SignatureVerificationError, ValueError):
         raise HTTPException(status_code=400, detail="Invalid webhook signature.")
 
-    event_type = event.type
-    event_data = event.data.object
+    event_type = event.get("event")
+    payload = event.get("payload") or {}
+
+    def _entity(key: str) -> dict:
+        return (payload.get(key) or {}).get("entity") or {}
 
     try:
-        if event_type == "checkout.session.completed":
-            await handle_checkout_completed(dict(event_data))
-        elif event_type == "customer.subscription.created":
-            await handle_subscription_created(dict(event_data))
-        elif event_type == "invoice.payment_succeeded":
-            await handle_invoice_payment_succeeded(dict(event_data))
-        elif event_type == "customer.subscription.deleted":
-            await handle_subscription_deleted(dict(event_data))
+        if event_type == "payment_link.paid":
+            await handle_payment_link_paid(_entity("payment_link"))
+        elif event_type == "subscription.activated":
+            await handle_subscription_activated(_entity("subscription"))
+        elif event_type == "subscription.charged":
+            await handle_subscription_charged(_entity("subscription"), _entity("payment").get("id"))
+        elif event_type == "subscription.cancelled":
+            await handle_subscription_cancelled(_entity("subscription"))
         else:
-            logger.info("stripe_webhook_unhandled_event", extra={"event_type": event_type})
+            logger.info("razorpay_webhook_unhandled_event", extra={"event_type": event_type})
     except Exception:
         logger.error(
-            "stripe_webhook_handler_error",
+            "razorpay_webhook_handler_error",
             extra={"event_type": event_type},
             exc_info=True,
         )
-        # Return 200 to prevent Stripe retry storm — log the error for investigation
+        # Return 200 to prevent a Razorpay retry storm — log the error for investigation.
         return {"received": True, "error": "handler_failed"}
 
     return {"received": True}

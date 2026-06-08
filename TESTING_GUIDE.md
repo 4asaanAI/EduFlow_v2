@@ -475,7 +475,7 @@ Go to `http://localhost:8000/docs`
 | SMS notifications | Twilio credentials in `.env` |
 | AI Chat responses | Azure OpenAI API key |
 | File uploads | AWS S3 credentials (or runs locally without S3) |
-| Stripe billing | Stripe keys + webhook |
+| Razorpay billing | Razorpay key id/secret + webhook secret |
 | Password reset emails | SMTP credentials |
 | Transport coordinates | Google Maps API key |
 | AI image generation (certificates) | Gemini API key |

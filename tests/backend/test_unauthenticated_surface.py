@@ -19,7 +19,7 @@ PUBLIC_PATHS = {
     "/api/auth/seed-status",
     "/api/docs",
     "/openapi.json",
-    # Stripe webhook: authenticated via Stripe-Signature header, not JWT
+    # Razorpay webhook: authenticated via X-Razorpay-Signature header, not JWT
     "/api/tokens/webhook",
 }
 

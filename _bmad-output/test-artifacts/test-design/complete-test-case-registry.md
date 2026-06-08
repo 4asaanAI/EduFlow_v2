@@ -560,7 +560,7 @@ total_test_cases: 310
 - [ ] **TC-282** (Any) `GET /api/settings/token-usage/me` → own cumulative usage
 - [ ] **TC-283** (U1) `GET /api/tokens/balance` → school token balance
 - [ ] **TC-284** (U1) `GET /api/tokens/usage` → school-level usage
-- [ ] **TC-285** (U1) `GET /api/tokens/packs` → available token packs (Stripe)
+- [ ] **TC-285** (U1) `GET /api/tokens/packs` → available token packs (Razorpay)
 
 ---
 

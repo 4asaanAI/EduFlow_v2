@@ -414,7 +414,7 @@ async def get_balance(branch_id: str) -> dict:
             "subscription_status": None,
             "subscription_plan": None,
             "subscription_current_period_end": None,
-            "stripe_customer_id": None,
+            "razorpay_customer_id": None,
         }
 
     # Total usage this month across all users
@@ -437,7 +437,7 @@ async def get_balance(branch_id: str) -> dict:
         "subscription_status": balance_doc.get("subscription_status"),
         "subscription_plan": balance_doc.get("subscription_plan"),
         "subscription_current_period_end": balance_doc.get("subscription_current_period_end"),
-        "stripe_customer_id": balance_doc.get("stripe_customer_id"),
+        "razorpay_customer_id": balance_doc.get("razorpay_customer_id"),
     }
 
 
