@@ -70,6 +70,9 @@ class PlannerResult:
     unauthorized_tool: Optional[str] = None
     unauthorized_step_idx: Optional[int] = None
     deep_link: Optional[str] = None
+    # I.3: on a DISAMBIGUATION result, the candidate records the user picks from
+    # (each: {"label", "value"}). Empty when resolution produced no candidates.
+    options: list = field(default_factory=list)
 
     @property
     def has_writes(self) -> bool:
@@ -165,6 +168,7 @@ async def build_plan(
             return PlannerResult(
                 status=DISAMBIGUATION,
                 message=resolved["_resolution_error"],
+                options=resolved.get("_resolution_options") or [],
             )
         # Public params only — drop resolution-internal keys (prefixed `_`) so
         # the plan_hash binds exactly what executes and the card shows nothing

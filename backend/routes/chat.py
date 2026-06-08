@@ -811,6 +811,35 @@ async def _resolve_params(params: dict, db, scope=None) -> dict:
 
     resolved = dict(params)
 
+    def _student_options(docs: list) -> list:
+        """I.3: build selectable disambiguation options from candidate students.
+        `value` is the admission number (re-resolves uniquely); `label` is human."""
+        opts = []
+        for d in docs[:5]:
+            adm = d.get("admission_number")
+            cls = d.get("class_name") or d.get("class_id")
+            label_bits = [d.get("name", "Unknown")]
+            if cls:
+                label_bits.append(f"Class {cls}")
+            if adm:
+                label_bits.append(f"Adm {adm}")
+            opts.append({
+                "label": " — ".join(str(b) for b in label_bits),
+                # Prefer the admission number (unique); fall back to the id.
+                "value": str(adm) if adm else str(d.get("id", "")),
+            })
+        return opts
+
+    def _staff_options(docs: list) -> list:
+        opts = []
+        for d in docs[:5]:
+            role = d.get("designation") or d.get("role")
+            label = d.get("name", "Unknown")
+            if role:
+                label = f"{label} — {role}"
+            opts.append({"label": label, "value": str(d.get("id", ""))})
+        return opts
+
     def _scoped(collection: str, base: dict) -> dict:
         """Compose base query with the user's scope.filter() + scoped_query."""
         if scope is None:
@@ -861,6 +890,7 @@ async def _resolve_params(params: dict, db, scope=None) -> dict:
                 f"Multiple students share the name '{student_name}' — "
                 f"please specify the admission number."
             )
+            resolved["_resolution_options"] = _student_options(exact)
             matches = []
         else:
             # Fall back to substring; require uniqueness within scope.
@@ -872,6 +902,7 @@ async def _resolve_params(params: dict, db, scope=None) -> dict:
                     f"Multiple students match '{student_name}' — "
                     f"please specify the admission number."
                 )
+                resolved["_resolution_options"] = _student_options(matches)
                 matches = []
         if len(matches) == 1:
             student = matches[0]
@@ -893,6 +924,7 @@ async def _resolve_params(params: dict, db, scope=None) -> dict:
                 f"Multiple students match '{search_term}' — "
                 f"please specify the admission number."
             )
+            resolved["_resolution_options"] = _student_options(matches)
         elif len(matches) == 1:
             student = matches[0]
             resolved["student_id"] = student["id"]
@@ -923,6 +955,7 @@ async def _resolve_params(params: dict, db, scope=None) -> dict:
             resolved["_resolution_error"] = (
                 f"Multiple staff members share the name '{staff_name}'."
             )
+            resolved["_resolution_options"] = _staff_options(exact)
             matches = []
         else:
             matches = await db.staff.find(_scoped("staff", {
@@ -932,6 +965,7 @@ async def _resolve_params(params: dict, db, scope=None) -> dict:
                 resolved["_resolution_error"] = (
                     f"Multiple staff match '{staff_name}'."
                 )
+                resolved["_resolution_options"] = _staff_options(matches)
                 matches = []
         if len(matches) == 1:
             staff = matches[0]
@@ -1115,7 +1149,14 @@ async def _stream_plan(calls, user, db, scope, session_id, conv_id, lang, total_
     if deep_link is None and result.status in (ai_planner.CANNOT_PLAN, ai_planner.TOO_LONG):
         deep_link = "/app?tool=dashboard"
     extra_events = []
-    if deep_link:
+    # I.3: a disambiguation is a question with selectable candidates — emit a
+    # structured event the chat renders as clickable options (no deep-link, no
+    # token, no write). The picked option's `value` continues the flow.
+    if result.status == ai_planner.DISAMBIGUATION and result.options:
+        extra_events.append(
+            f"data: {json.dumps({'type': 'disambiguation', 'message': result.message, 'options': result.options})}\n\n"
+        )
+    elif deep_link:
         extra_events.append(
             f"data: {json.dumps({'type': 'navigate', 'url': deep_link})}\n\n"
         )

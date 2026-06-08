@@ -10,6 +10,7 @@ import { getAuthHeaders } from '../lib/authSession';
 import { Sparkles } from 'lucide-react';
 import ThinkingProcess from './ThinkingProcess';
 import ConfirmActionCard from './ConfirmActionCard';
+import ChatFollowup from './ChatFollowup';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function getHeaders() {
@@ -199,6 +200,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   const [thinkingCollapsed, setThinkingCollapsed] = useState(false);
   const [thinkingStartTime, setThinkingStartTime] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null); // {action_id, tool, params, display, buttons}
+  const [followup, setFollowup] = useState(null); // I.3: {kind:'disambiguation'|'deeplink', message, options?, url?}
 
   // Token budget state
   const [tokenUsed, setTokenUsed] = useState(0);
@@ -350,6 +352,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     setThinkingCollapsed(false);
     setThinkingStartTime(null);
     setConfirmAction(null);
+    setFollowup(null);
     setAiUnavailable(false);
     setAiUnavailableMessage('');
     thinkingStartTimeRef.current = null;
@@ -413,10 +416,18 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           setCurrentStreamMsg(prev => prev ? ({ ...prev, richBlocks: event.blocks || [], actionButtons: event.action_buttons || [] }) : prev);
         } else if (event.type === 'confirm_action') {
           setConfirmAction(parsed);
+        } else if (event.type === 'disambiguation') {
+          // I.3: ambiguous match — show selectable candidates; no write, no token.
+          setFollowup({ kind: 'disambiguation', message: parsed.message, options: parsed.options || [] });
         } else if (event.type === 'navigate') {
-          // Trigger tool panel switch
+          // Legacy direct panel switch (tool_id), OR an E.6 can't-complete
+          // fallback carrying a deep-link `url`. The deep-link is shown as a
+          // clickable card (I.3) — never an automatic jump — so nothing moves
+          // under the user after a dead-end.
           if (parsed.tool_id) {
             window.dispatchEvent(new CustomEvent('eduflow-navigate', { detail: { toolId: parsed.tool_id } }));
+          } else if (parsed.url) {
+            setFollowup({ kind: 'deeplink', message: parsed.message, url: parsed.url });
           }
         } else if (event.type === 'token_exhausted') {
           // Token budget exhausted — show recharge prompt and disable input
@@ -713,6 +724,27 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
                     content: message,
                     created_at: new Date().toISOString(),
                   }]);
+                }
+              }}
+            />
+          )}
+
+          {followup && (
+            <ChatFollowup
+              followup={followup}
+              isDark={isDark}
+              onPick={(opt) => {
+                // Only dismiss the chooser once we actually have something to
+                // send — otherwise a value-less option would leave a dead-end.
+                if (opt && opt.value != null && String(opt.value).trim()) {
+                  setFollowup(null);
+                  handleSend(String(opt.value));
+                }
+              }}
+              onOpenPanel={(toolId) => {
+                setFollowup(null);
+                if (toolId) {
+                  window.dispatchEvent(new CustomEvent('eduflow-navigate', { detail: { toolId } }));
                 }
               }}
             />

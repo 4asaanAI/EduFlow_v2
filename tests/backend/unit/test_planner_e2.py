@@ -119,6 +119,49 @@ async def test_ambiguous_entity_returns_disambiguation_no_steps():
     assert res.steps == []
 
 
+async def test_disambiguation_propagates_resolution_options():
+    # I.3: the planner forwards candidate options the resolver attached so the
+    # frontend can render selectable choices (and continue the flow).
+    async def _ambiguous_with_options(params, db, scope=None):
+        out = dict(params)
+        out["_resolution_error"] = "Multiple students named 'Rahul'."
+        out["_resolution_options"] = [
+            {"label": "Rahul Kumar — Class 4B — Adm 2024-001", "value": "2024-001"},
+            {"label": "Rahul Singh — Class 5A — Adm 2024-002", "value": "2024-002"},
+        ]
+        return out
+
+    steps = [{"tool": "record_fee_payment", "params": {"student_name": "Rahul", "amount": 100}}]
+    res = await planner.build_plan(
+        instruction="x", user=_OWNER, db=None, scope=None,
+        registry=_REGISTRY, write_tools=_WRITE_TOOLS,
+        is_authorized=_is_authorized, resolve_params=_ambiguous_with_options,
+        request_plan=_fixture(steps),
+    )
+    assert res.status == planner.DISAMBIGUATION
+    assert len(res.options) == 2
+    assert res.options[0]["value"] == "2024-001"
+    assert res.steps == []
+
+
+async def test_disambiguation_options_default_empty_when_none_attached():
+    # Back-compat: a resolver that only sets the error (no options) yields [].
+    async def _ambiguous_no_options(params, db, scope=None):
+        out = dict(params)
+        out["_resolution_error"] = "Multiple students named 'Rahul'."
+        return out
+
+    steps = [{"tool": "record_fee_payment", "params": {"student_name": "Rahul", "amount": 100}}]
+    res = await planner.build_plan(
+        instruction="x", user=_OWNER, db=None, scope=None,
+        registry=_REGISTRY, write_tools=_WRITE_TOOLS,
+        is_authorized=_is_authorized, resolve_params=_ambiguous_no_options,
+        request_plan=_fixture(steps),
+    )
+    assert res.status == planner.DISAMBIGUATION
+    assert res.options == []
+
+
 async def test_unknown_tool_cannot_plan():
     steps = [{"tool": "make_coffee", "params": {}}]
     res = await planner.build_plan(

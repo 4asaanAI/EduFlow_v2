@@ -29,6 +29,83 @@ function useDarkMode() {
 
 // Status: 'pending' | 'loading' | 'confirmed' | 'cancelled' | 'error' | 'rate_limited'
 
+// I.2: map the backend 409/502/500 failure taxonomy to a specific, human message
+// and whether re-confirming the SAME token can help. The backend nests the code
+// under `detail` (FastAPI HTTPException), e.g. {"detail": {"code, message}}; a
+// 500 detail is an opaque string with a correlation id.
+function classifyConfirmError(httpStatus, body) {
+  const detail = body && typeof body === 'object' ? body.detail : null;
+  const code = detail && typeof detail === 'object'
+    ? detail.code
+    : (body && typeof body === 'object' ? body.code : null);
+  const serverMsg = detail && typeof detail === 'object' ? detail.message : null;
+  // A correlation id may arrive as a top-level field, nested in the detail
+  // object, OR embedded in an opaque 500 detail string like
+  // "An internal error occurred (id=abc-123)". Extract it without surfacing the
+  // rest of the (internal) string.
+  let correlationId = null;
+  if (body && typeof body === 'object') {
+    correlationId = body.correlation_id
+      || (detail && typeof detail === 'object' ? detail.correlation_id : null)
+      || null;
+    if (!correlationId && typeof detail === 'string') {
+      const m = detail.match(/id=([\w-]+)/i);
+      if (m) correlationId = m[1];
+    }
+  }
+
+  switch (code) {
+    case 'plan_tampered':
+      return {
+        kind: code,
+        message: serverMsg
+          || 'The approved plan could not be verified. Please ask me to prepare it again, then confirm.',
+        // The token is spent/invalid — re-posting it can't help. Re-ask instead.
+        retryable: false,
+      };
+    case 'plan_stale':
+      return {
+        kind: code,
+        message: serverMsg
+          || 'The data changed since you reviewed this plan. Please ask me to re-plan it.',
+        retryable: false,
+      };
+    case 'plan_expired':
+      return {
+        kind: code,
+        message: serverMsg
+          || 'This plan expired before it was confirmed. Just ask again and I\'ll rebuild it.',
+        retryable: false,
+      };
+    case 'needs_manual_reconciliation':
+      return {
+        kind: code,
+        message: serverMsg
+          || 'Part of this could not be completed safely. Nothing was applied — this needs manual attention in the relevant panel.',
+        retryable: false,
+      };
+    case 'side_effect_failed':
+      return {
+        kind: code,
+        message: serverMsg
+          || 'The records were updated but a follow-up step (e.g. a notification) failed. Please check the panel before retrying.',
+        retryable: false,
+      };
+    default:
+      // Opaque / unexpected failure: surface NO internal detail beyond a
+      // correlation id the user can quote to support.
+      return {
+        kind: 'opaque',
+        message: correlationId
+          ? `Nothing was applied because something went wrong. Reference: ${correlationId}`
+          : 'Nothing was applied because something went wrong. Please try again in a moment.',
+        // A transient/opaque failure can be re-attempted; the token may still be live.
+        retryable: httpStatus >= 500,
+        correlationId,
+      };
+  }
+}
+
 function formatParamKey(key) {
   return String(key || '')
     .replace(/^_+/, '')
@@ -41,6 +118,90 @@ function formatParamValue(value) {
   if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? '' : 's'}`;
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
+}
+
+function DestructiveBadge({ isDark }) {
+  return (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      marginLeft: 6,
+      padding: '1px 6px',
+      borderRadius: 6,
+      fontSize: 10,
+      fontWeight: 700,
+      textTransform: 'uppercase',
+      letterSpacing: '0.03em',
+      color: isDark ? '#fca5a5' : '#b91c1c',
+      background: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)',
+      border: `1px solid ${isDark ? '#3a1a1a' : '#fecaca'}`,
+    }}>
+      Destructive
+    </span>
+  );
+}
+
+// I.1: renders the ordered steps of a multi-step plan under one confirm/cancel.
+function PlanSteps({ steps, isDark, muted }) {
+  const ordered = (steps || []).filter(Boolean);
+  if (ordered.length === 0) return null;
+  return (
+    <ol
+      data-testid="confirm-plan-steps"
+      style={{
+        listStyle: 'none',
+        margin: '4px 0 12px',
+        padding: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+        opacity: muted ? 0.7 : 1,
+      }}
+    >
+      {ordered.map((step, i) => (
+        <li
+          key={step.idx != null ? step.idx : i}
+          data-testid={`confirm-plan-step-${i}`}
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 8,
+            background: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.55)',
+            border: `1px solid ${isDark ? '#2e2e2e' : '#f3e8b5'}`,
+            borderRadius: 8,
+            padding: '7px 10px',
+          }}
+        >
+          <span style={{
+            flexShrink: 0,
+            width: 18,
+            height: 18,
+            borderRadius: '50%',
+            background: isDark ? '#3a3520' : '#fde68a',
+            color: isDark ? '#fbbf24' : '#92400e',
+            fontSize: 11,
+            fontWeight: 700,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginTop: 1,
+          }}>
+            {i + 1}
+          </span>
+          <span style={{
+            flex: 1,
+            minWidth: 0,
+            color: isDark ? '#d4d4d4' : '#292524',
+            fontSize: 12,
+            lineHeight: 1.45,
+          }}>
+            {step.display || step.tool}
+            {step.destructive && <DestructiveBadge isDark={isDark} />}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
 }
 
 function ActionDetails({ params, isDark }) {
@@ -84,9 +245,11 @@ function ActionDetails({ params, isDark }) {
 
 export default function ConfirmActionCard({ action, conversationId, sessionId, onComplete }) {
   const isDark = useDarkMode();
+  const isPlan = action.is_plan === true && Array.isArray(action.steps);
   const [status, setStatus] = useState('pending');
   const [clickedAction, setClickedAction] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [errorRetryable, setErrorRetryable] = useState(true);
   const [secondsLeft, setSecondsLeft] = useState(action.expires_in_seconds || null);
   const [rateLimitSecondsLeft, setRateLimitSecondsLeft] = useState(0);
   const [rateLimitInfo, setRateLimitInfo] = useState(null);
@@ -186,7 +349,12 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
 
       if (!res.ok) {
         const errData = await res.json().catch(() => null);
-        throw new Error(errData?.message || errData?.error || `Request failed (${res.status})`);
+        const classified = classifyConfirmError(res.status, errData);
+        setErrorMsg(classified.message);
+        setErrorRetryable(classified.retryable);
+        setStatus('error');
+        setClickedAction(null);
+        return;
       }
 
       const data = await res.json();
@@ -197,7 +365,10 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
         onComplete(data);
       }
     } catch (err) {
+      // Network/transport failure (fetch rejected) — no server response to
+      // classify. Safe to re-attempt with the same token.
       setErrorMsg(err.message || 'Something went wrong. Please try again.');
+      setErrorRetryable(true);
       setStatus('error');
       setClickedAction(null);
     } finally {
@@ -210,6 +381,7 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
     setStatus('pending');
     setClickedAction(null);
     setErrorMsg('');
+    setErrorRetryable(true);
   }, []);
 
   // --- Outcome icons ---
@@ -376,7 +548,9 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
             }}>
               {action.display}
             </div>
-            {action.params && <ActionDetails params={action.params} isDark={isDark} />}
+            {isPlan
+              ? <PlanSteps steps={action.steps} isDark={isDark} muted={status === 'cancelled'} />
+              : (action.params && <ActionDetails params={action.params} isDark={isDark} />)}
             <div style={{
               ...outcomeStyle,
               color: status === 'confirmed'
@@ -390,22 +564,24 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
               {status === 'error' && (
                 <span>
                   {errorMsg}
-                  <button
-                    onClick={handleRetry}
-                    style={{
-                      marginLeft: 8,
-                      background: 'none',
-                      border: 'none',
-                      color: '#4f8ff7',
-                      cursor: 'pointer',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      textDecoration: 'underline',
-                      padding: 0,
-                    }}
-                  >
-                    Retry
-                  </button>
+                  {errorRetryable && (
+                    <button
+                      onClick={handleRetry}
+                      style={{
+                        marginLeft: 8,
+                        background: 'none',
+                        border: 'none',
+                        color: '#4f8ff7',
+                        cursor: 'pointer',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        textDecoration: 'underline',
+                        padding: 0,
+                      }}
+                    >
+                      Retry
+                    </button>
+                  )}
                 </span>
               )}
             </div>
@@ -433,7 +609,9 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
       <div style={displayTextStyle}>
         {action.display}
       </div>
-      <ActionDetails params={action.params} isDark={isDark} />
+      {isPlan
+        ? <PlanSteps steps={action.steps} isDark={isDark} />
+        : <ActionDetails params={action.params} isDark={isDark} />}
       {status === 'rate_limited' && (
         <div data-testid="confirm-rate-limit-notice" style={{
           display: 'flex',
