@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -13,9 +15,39 @@ logger = logging.getLogger(__name__)
 
 TOKEN_TTL_SECONDS = 5 * 60
 
+# Epic E (AD3/P4): the on-disk plan/token schema version. Bump only on a
+# breaking change to the stored `plan` shape or the hash canonicalization, so
+# a token issued under an older planner is recognisably stale.
+PLAN_SCHEMA_VERSION = 1
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def compute_plan_hash(
+    plan: list[dict[str, Any]] | None,
+    *,
+    school_id: str | None,
+    branch_id: str | None,
+) -> str:
+    """Canonical sha256 over the resolved plan + tenant binding (AD3/P4).
+
+    The SAME helper is used at issue and consume so a tampered persisted plan
+    (DB-level edit, mismatched tenant) is detected. Canonicalization is a
+    sorted-key, separator-tight JSON dump; entity IDs already live inside each
+    step's resolved `params`, so they are covered. `default=str` keeps it total
+    for any stray datetime/UUID that slips into params.
+    """
+    payload = {
+        "plan": plan or [],
+        "school_id": school_id,
+        "branch_id": branch_id,
+    }
+    canonical = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), default=str
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 async def issue_confirm_token(
@@ -26,9 +58,16 @@ async def issue_confirm_token(
     session_id: str,
     school_id: str | None = None,
     branch_id: str | None = None,
+    plan: list[dict[str, Any]] | None = None,
     db=None,
 ) -> str:
-    """Create a one-time confirmation token for a pending AI write dispatch."""
+    """Create a one-time confirmation token for a pending AI write dispatch.
+
+    Epic E (AD3): when a multi-step `plan` is supplied the token additionally
+    binds the ordered, resolved plan + its `plan_hash` + `schema_version`. A
+    token issued WITHOUT a plan is a legacy single-action token and consumes as
+    a length-1 plan (back-compat by data, not branching).
+    """
     token = str(uuid.uuid4())
     expires_at = _now() + timedelta(seconds=TOKEN_TTL_SECONDS)
     token_db = db or get_db()
@@ -44,6 +83,12 @@ async def issue_confirm_token(
         "used": False,
         "created_at": _now(),
     }
+    if plan is not None:
+        document["plan"] = plan
+        document["plan_hash"] = compute_plan_hash(
+            plan, school_id=school_id, branch_id=branch_id
+        )
+        document["schema_version"] = PLAN_SCHEMA_VERSION
 
     try:
         await token_db.confirm_tokens.insert_one({**document, "_id": token})
@@ -149,6 +194,28 @@ async def consume_confirm_token(
         if branch_id is not None and doc.get("branch_id") is not None:
             if doc["branch_id"] != branch_id:
                 raise HTTPException(status_code=409, detail="Confirmation token tenant mismatch")
+        # Epic E (AD3/P4): plan-hash revalidation. A token carrying a multi-step
+        # `plan` must hash to exactly what was stored at issue — a tampered
+        # persisted plan (or a tenant the plan was not bound to) is rejected with
+        # the distinct `plan_tampered` 409 the frontend maps to "re-confirm".
+        # A legacy token (no `plan`) skips this — it consumes as a length-1 plan.
+        if doc.get("plan") is not None:
+            expected_hash = compute_plan_hash(
+                doc.get("plan"),
+                school_id=doc.get("school_id"),
+                branch_id=doc.get("branch_id"),
+            )
+            if expected_hash != doc.get("plan_hash"):
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "plan_tampered",
+                        "message": (
+                            "The approved plan could not be verified and was "
+                            "rejected. Please ask again so a fresh plan can be built."
+                        ),
+                    },
+                )
         return doc
 
     try:

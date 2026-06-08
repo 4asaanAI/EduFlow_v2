@@ -73,3 +73,38 @@ def single_write_plan(
     """
     step = Step(tool=tool, params=params, kind=WRITE, idx=0, runner=runner, destructive=destructive)
     return Plan(steps=[step], school_id=school_id, branch_id=branch_id, plan_token=plan_token)
+
+
+def plan_from_steps(
+    *,
+    steps: list,
+    runner_factory: Callable[[dict], Callable[[], Awaitable[Any]]],
+    school_id: str,
+    branch_id: Optional[str] = None,
+    plan_token: Optional[str] = None,
+) -> Plan:
+    """Build an executable multi-step Plan from resolved step dicts (Epic E.5).
+
+    `steps` are the canonical resolved dicts stored on the confirm token
+    (`{idx, tool, kind, params, precondition?, destructive?}`). `runner_factory`
+    maps each WRITE step dict to the async callable that performs its write —
+    chat.py wires this to the tool registry; tests pass a closure. Read steps
+    (already executed inline during planning) carry no runner and never re-run.
+    """
+    built: list = []
+    for raw in steps:
+        kind = raw.get("kind", WRITE)
+        idx = raw.get("idx", len(built))
+        runner = runner_factory(raw) if kind == WRITE else None
+        built.append(
+            Step(
+                tool=raw.get("tool"),
+                params=raw.get("params") or {},
+                kind=kind,
+                idx=idx,
+                precondition=raw.get("precondition"),
+                destructive=bool(raw.get("destructive", False)),
+                runner=runner,
+            )
+        )
+    return Plan(steps=built, school_id=school_id, branch_id=branch_id, plan_token=plan_token)

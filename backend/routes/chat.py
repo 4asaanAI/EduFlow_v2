@@ -48,7 +48,8 @@ from services.ai_rate_limiter import increment_and_check as _ai_rate_check, decr
 from tenant import get_school_id, scoped_filter
 from ai import plan_executor
 from ai.plan_executor import PlanStaleError, NeedsManualReconciliationError, SagaCompensatedError
-from ai.plan_schema import single_write_plan
+from ai.plan_schema import single_write_plan, plan_from_steps
+from ai import planner as ai_planner
 
 
 class RateLimitExceeded(Exception):
@@ -70,7 +71,8 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
-MAX_TOOL_ROUNDS = 3
+MAX_TOOL_ROUNDS = 3  # AD2/FR5: bounds planning/read iterations ONLY (not confirmed writes)
+MAX_PLAN_STEPS = ai_planner.MAX_PLAN_STEPS  # AD2/FR5: bounds plan SIZE
 KEEPALIVE_INTERVAL = 5  # seconds — keep short for fast disconnect detection
 LLM_WALLCLOCK_BUDGET = 90  # seconds; bounded ceiling above per-call 45s timeout
 CHAR_BUDGET = 24000
@@ -82,6 +84,25 @@ THINKING_DELAY_MAX = 0.30  # 300ms
 
 # Tools that require user confirmation before execution
 WRITE_ACTION_TOOLS = set(WRITE_TOOL_NAMES)
+
+# E.6: deep-link target panel per tool, used when the assistant cannot complete
+# a job and must hand the user off to the matching UI panel.
+_TOOL_DEEP_LINKS = {
+    "record_fee_payment": "fees",
+    "apply_discount": "fees",
+    "approve_leave": "staff",
+    "initiate_substitution": "staff",
+    "mark_attendance": "attendance",
+    "correct_attendance": "attendance",
+    "award_house_points": "houses",
+    "create_announcement": "announcements",
+    "log_contact_event": "students",
+    "update_incident_status": "incidents",
+    "assign_followup": "incidents",
+    "add_thread_entry": "incidents",
+    "confirm_resolution": "incidents",
+    "decide_approval_request": "approvals",
+}
 
 WRITE_TOOL_REQUIRED_PARAMS = {
     "assign_followup": ("record_id", "assignee_staff_id", "due_date", "note"),
@@ -984,6 +1005,131 @@ async def _build_confirm_event(tool_name: str, params: dict, user: dict, session
     }
 
 
+def _deep_link_for_tool(tool_name: str) -> str:
+    """E.6: map a tool the assistant can't run to the UI panel that can."""
+    panel = _TOOL_DEEP_LINKS.get(tool_name, "dashboard")
+    return f"/app?tool={panel}"
+
+
+async def _build_plan_confirm_event(
+    plan_steps: list, user: dict, session_id: str, db
+) -> dict:
+    """E.5/UX-DR1: issue ONE plan-confirm token and a single confirm_action SSE
+    event that lists every step of the resolved multi-step plan."""
+    token = await issue_confirm_token(
+        action="plan",
+        params={},
+        user_id=user["id"],
+        session_id=session_id,
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id"),
+        plan=plan_steps,
+        db=db,
+    )
+    step_displays = [
+        {
+            "idx": s.get("idx", i),
+            "tool": s.get("tool"),
+            "kind": s.get("kind", "write"),
+            "destructive": bool(s.get("destructive", False)),
+            "display": _build_confirm_display(s.get("tool"), s.get("params") or {}),
+        }
+        for i, s in enumerate(plan_steps)
+    ]
+    return {
+        "type": "confirm_action",
+        "action_id": token,
+        "token": token,
+        "tool": "plan",
+        "is_plan": True,
+        "steps": step_displays,
+        "display": "I'll run these steps in order — confirm to proceed:",
+        "expires_in_seconds": 5 * 60,
+        "buttons": [
+            {"label": "Confirm", "action": "confirm"},
+            {"label": "Cancel", "action": "cancel"},
+        ],
+    }
+
+
+async def _stream_text_message(text: str, conv_id, user, db, lang, total_tokens_used, *, actions=None, extra_events=None):
+    """Stream a plain assistant message (text deltas), persist it, then close."""
+    yield thinking_event("composing", "Writing your answer...")
+    await _thinking_delay()
+    for i in range(0, len(text), 4):
+        yield f"data: {json.dumps({'type': 'text_delta', 'delta': text[i:i + 4]})}\n\n"
+        await asyncio.sleep(0.008)
+    for ev in (extra_events or []):
+        yield ev
+    message_id = None
+    if conv_id:
+        ai_msg = Message(
+            conversation_id=conv_id, role="assistant", content=text,
+            actions=actions, language_detected=lang,
+        )
+        await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
+        message_id = ai_msg.id
+    yield f"data: {json.dumps({'type': 'done', 'message_id': message_id, 'tokens_used': total_tokens_used})}\n\n"
+
+
+async def _stream_plan(calls, user, db, scope, session_id, conv_id, lang, total_tokens_used):
+    """Epic E end-to-end: resolve+authorize a compound plan and gate it behind
+    ONE confirm card, or fall back gracefully (disambiguation / deep-link)."""
+
+    async def _request_plan(*, instruction, user, scope):
+        return [{"tool": c.get("action"), "params": c.get("params") or {}} for c in calls]
+
+    result = await ai_planner.build_plan(
+        instruction="",
+        user=user,
+        db=db,
+        scope=scope,
+        registry=TOOL_REGISTRY,
+        write_tools=WRITE_ACTION_TOOLS,
+        is_authorized=_is_tool_authorized,
+        resolve_params=_resolve_params,
+        request_plan=_request_plan,
+        deep_link_for=_deep_link_for_tool,
+    )
+
+    if result.status == ai_planner.PLAN and result.has_writes:
+        try:
+            confirm_event = await _build_plan_confirm_event(result.steps, user, session_id, db)
+        except HTTPException as exc:
+            yield f"data: {json.dumps({'type': 'error', 'phase': 'confirm_token', 'message': exc.detail})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            return
+        yield f"data: {json.dumps(confirm_event)}\n\n"
+        confirm_text = "I need your confirmation before proceeding. Please review the plan above."
+        async for ev in _stream_text_message(
+            confirm_text, conv_id, user, db, lang, total_tokens_used, actions=[confirm_event]
+        ):
+            yield ev
+        return
+
+    # E.6: graceful fallback — disambiguation, unauthorized, too-long, or
+    # cannot-plan. NOTHING was written and no token issued; hand off to the UI.
+    # Disambiguation is a question (no dead-end), so it gets no deep-link; the
+    # other dead-ends offer a panel to finish the job by hand (UX-DR4).
+    deep_link = result.deep_link
+    if deep_link is None and result.status in (ai_planner.CANNOT_PLAN, ai_planner.TOO_LONG):
+        deep_link = "/app?tool=dashboard"
+    extra_events = []
+    if deep_link:
+        extra_events.append(
+            f"data: {json.dumps({'type': 'navigate', 'url': deep_link})}\n\n"
+        )
+    logger.info(
+        "planner_fallback status=%s user=%s tool=%s",
+        result.status, user.get("id"), result.unauthorized_tool,
+    )
+    message = result.message or "I wasn't able to complete that. Try the matching panel."
+    async for ev in _stream_text_message(
+        message, conv_id, user, db, lang, total_tokens_used, extra_events=extra_events
+    ):
+        yield ev
+
+
 def _is_ai_unavailable(result) -> bool:
     return isinstance(result, dict) and result.get("type") == "ai_unavailable"
 
@@ -1452,6 +1598,21 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         yield f"data: {json.dumps({'type': 'error', 'phase': 'llm_call', 'message': 'Failed to generate response. Please try again.'})}\n\n"
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
         return
+
+    # ── Phase 8.5: agentic planner (Epic E) — whole-job-by-instruction ────
+    # When the model proposes MORE THAN ONE tool call in a turn and at least one
+    # is a write, treat it as a compound job: resolve + authorize the whole plan
+    # server-side and gate it behind ONE plan-confirm card (plan-then-confirm-once).
+    # The common single-tool path below is unchanged (≤1 parsed call skips this).
+    if not detected_tool:
+        _candidate_calls = _parse_tool_calls(llm_response)
+        _has_write = any(c.get("action") in WRITE_ACTION_TOOLS for c in _candidate_calls)
+        if len(_candidate_calls) > 1 and _has_write:
+            async for _ev in _stream_plan(
+                _candidate_calls, user, db, scope, session_id, conv_id, lang, total_tokens_used
+            ):
+                yield _ev
+            return
 
     # ── Phase 9: LLM tool detection + multi-tool chaining ─────────────────
     # Part 2 Patch P5 (E6/L4): treat the keyword-detected tool as round 1 so
@@ -1974,21 +2135,56 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
             # incremented for this request but the dispatch won't happen. Undo the
             # increment so the losing request doesn't permanently reduce the budget.
             await _ai_rate_decrement(user_id=user["id"], db=db)
+        # E.5: a token that expired while the user was reading the plan should
+        # get a clear, re-planable message — not a bare generic 400.
+        if exc.status_code == 400 and isinstance(exc.detail, str) and "expired" in exc.detail.lower():
+            await _ai_rate_decrement(user_id=user["id"], db=db)
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "plan_expired",
+                    "message": (
+                        "This plan expired before it was confirmed. Just ask again "
+                        "and I'll rebuild it for you."
+                    ),
+                },
+            ) from exc
         raise
-    tool_name = token_doc.get("action")
-    params = token_doc.get("params") or {}
-
-    tool_def = TOOL_REGISTRY.get(tool_name)
-    if not tool_def:
-        raise HTTPException(status_code=400, detail=f"Unknown tool: {tool_name}")
-    if tool_name not in WRITE_ACTION_TOOLS:
-        raise HTTPException(status_code=400, detail="Confirmation token is not for a write action")
-    # auth: registry enforces role + sub_category — see _is_tool_authorized
-    if not _is_tool_authorized(user, tool_def):
-        raise HTTPException(status_code=403, detail="Forbidden")
+    # Epic E (AD3): a token may carry an ordered multi-step `plan`; a legacy
+    # token carries a single `action`/`params` and consumes as a length-1 plan.
+    plan_steps = token_doc.get("plan")
+    if plan_steps:
+        write_step_dicts = [s for s in plan_steps if s.get("kind", "write") == "write"]
+        if not write_step_dicts:
+            raise HTTPException(status_code=400, detail="Confirmation token has no write steps")
+        # AD14: authorize EVERY step before executing any — a plan with one
+        # unauthorized step is rejected whole, never partially executed.
+        for s in write_step_dicts:
+            s_tool = s.get("tool")
+            s_def = TOOL_REGISTRY.get(s_tool)
+            if not s_def:
+                raise HTTPException(status_code=400, detail=f"Unknown tool: {s_tool}")
+            if s_tool not in WRITE_ACTION_TOOLS:
+                raise HTTPException(status_code=400, detail=f"Step '{s_tool}' is not a write action")
+            if not _is_tool_authorized(user, s_def):
+                raise HTTPException(status_code=403, detail="Forbidden")
+        tool_name = "plan"  # audit/forensic label for the whole dispatch
+        params = {"steps": plan_steps}
+    else:
+        tool_name = token_doc.get("action")
+        params = token_doc.get("params") or {}
+        tool_def = TOOL_REGISTRY.get(tool_name)
+        if not tool_def:
+            raise HTTPException(status_code=400, detail=f"Unknown tool: {tool_name}")
+        if tool_name not in WRITE_ACTION_TOOLS:
+            raise HTTPException(status_code=400, detail="Confirmation token is not for a write action")
+        # auth: registry enforces role + sub_category — see _is_tool_authorized
+        if not _is_tool_authorized(user, tool_def):
+            raise HTTPException(status_code=403, detail="Forbidden")
 
     # Part 4 Story 4.2: write-ahead audit row — fail-open with structured warning.
     # Audit failure must not block AI responses; proceed and log loudly.
+    # AD14: a whole plan is ONE dispatch — a single audit row, not one per step.
     audit_id = None
     try:
         audit_id = await audit_ai_dispatch_pending(
@@ -2012,26 +2208,39 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
 
     try:
         scope = await resolve_scope(user, db)
-        accepts_scope = _tool_accepts_scope(tool_def)
 
-        async def _runner():
-            # The forward write action. Runs inside the executor's transaction; the
-            # tool's services enlist via the ambient txn-session contextvar (D.2).
-            if accepts_scope:
-                return await tool_def["fn"](params, user, scope)
-            return await tool_def["fn"](params, user)
+        def _make_runner(s_tool: str, s_params: dict):
+            s_def = TOOL_REGISTRY.get(s_tool)
+            accepts_scope = _tool_accepts_scope(s_def)
 
-        # AD4/D.3: one execution path — even a single confirmed write runs through
-        # the atomic executor as a length-1 plan (no len==1 fork). The confirm token
-        # is the plan token, so idempotency keys derive as f"{token}:{step_idx}" (D.4).
-        plan = single_write_plan(
-            tool=tool_name,
-            params=params,
-            runner=_runner,
-            school_id=get_school_id(),
-            branch_id=user.get("branch_id"),
-            plan_token=token,
-        )
+            async def _runner():
+                # The forward write action. Runs inside the executor's transaction;
+                # the tool's services enlist via the ambient txn-session contextvar.
+                if accepts_scope:
+                    return await s_def["fn"](s_params, user, scope)
+                return await s_def["fn"](s_params, user)
+
+            return _runner
+
+        if plan_steps:
+            # AD4/D.3: same single execution path — a resolved multi-step plan.
+            plan = plan_from_steps(
+                steps=plan_steps,
+                runner_factory=lambda raw: _make_runner(raw.get("tool"), raw.get("params") or {}),
+                school_id=get_school_id(),
+                branch_id=user.get("branch_id"),
+                plan_token=token,
+            )
+        else:
+            # Legacy single confirmed write — a one-step plan (no len==1 fork).
+            plan = single_write_plan(
+                tool=tool_name,
+                params=params,
+                runner=_make_runner(tool_name, params),
+                school_id=get_school_id(),
+                branch_id=user.get("branch_id"),
+                plan_token=token,
+            )
         exec_result = await plan_executor.run(plan, db=db)
         if exec_result.status == "already_applied":
             # Idempotent replay (concurrent/duplicate confirm) — nothing re-applied.
@@ -2039,6 +2248,13 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
                 "success": True,
                 "idempotent_replay": True,
                 "message": "This action was already applied.",
+            }
+        elif plan_steps:
+            # Surface every step's result for the multi-step plan.
+            result = {
+                "success": True,
+                "message": f"Completed all {len(exec_result.step_results)} steps.",
+                "steps": exec_result.step_results,
             }
         elif exec_result.step_results:
             result = exec_result.step_results[0].get("result")
