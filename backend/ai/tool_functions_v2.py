@@ -36,6 +36,16 @@ from services.announcement_service import (
     AnnouncementValidationError,
 )
 from services.contact_log_service import log_contact_event, ContactLogValidationError
+from services.incident_service import (
+    resolve_record_type,
+    assign_followup as svc_assign_followup,
+    add_thread_entry as svc_add_thread_entry,
+    update_incident_status as svc_update_incident_status,
+    confirm_resolution as svc_confirm_resolution,
+    IncidentValidationError,
+    IncidentNotFoundError,
+    IncidentAmbiguousError,
+)
 from services.substitution_service import initiate_substitution
 from services.attendance_correction_service import (
     correct_attendance,
@@ -1082,37 +1092,18 @@ async def _write_audit(
     )
 
 
-async def _find_mutable_record(db, record_id: str, *, include_tech: bool = True, branch_id: str | None = None):
-    candidates = [
-        ("incidents", db.incidents, {"id": record_id}),
-        ("complaints", db.complaints, {"id": record_id}),
-        ("facility_requests", db.facility_requests, {"id": record_id}),
-    ]
-    if include_tech:
-        candidates.append(("tech_requests", db.tech_requests, {"id": record_id}))
-    for collection, handle, query in candidates:
-        doc = await handle.find_one(scoped_query(query, branch_id=branch_id), {"_id": 0})
-        if doc:
-            return collection, handle, doc
-    return None, None, None
-
-
-async def _append_record_note(handle, record_id: str, existing: dict, user: dict, content: str, field: str, branch_id: str | None = None):
-    entry = {
-        "id": str(uuid.uuid4()),
-        "author_id": user.get("id"),
-        "author_name": user.get("name", ""),
-        "author_role": user.get("role", ""),
-        "content": content,
-        "timestamp": datetime.now().isoformat(),
-    }
-    current = list(existing.get(field) or [])
-    current.append(entry)
-    await handle.update_one(
-        scoped_query({"id": record_id}, branch_id=branch_id),
-        {"$set": {field: current, "updated_at": datetime.now().isoformat()}},
-    )
-    return entry
+async def _resolve_record_type_or_result(db, record_id: str, *, branch_id: str | None, not_found_msg: str):
+    """AI-adapter helper: resolve the target collection EXPLICITLY up front (Story C.1)
+    so the shared service writes to a known surface (no blind multi-collection scan at
+    write). Returns ``(record_type, doc, None)`` on success, else ``(None, None, result)``
+    where ``result`` is the tool envelope to return."""
+    try:
+        record_type, doc = await resolve_record_type(db, record_id, branch_id=branch_id)
+        return record_type, doc, None
+    except IncidentNotFoundError:
+        return None, None, _empty_result(not_found_msg)
+    except IncidentAmbiguousError as e:
+        return None, None, {"success": False, "message": str(e)}
 
 
 async def tool_assign_followup(params: dict, user: dict, scope: dict = None) -> dict:
@@ -1121,25 +1112,23 @@ async def tool_assign_followup(params: dict, user: dict, scope: dict = None) -> 
         return {"success": False, "message": "record_id, assignee_staff_id, due_date, and note are required."}
     db = get_db()
     bid = _branch_id(user, scope)
-    collection, handle, existing = await _find_mutable_record(db, params["record_id"], branch_id=bid)
-    if not existing:
+    record_type, _doc, err = await _resolve_record_type_or_result(db, params["record_id"], branch_id=bid, not_found_msg="Record not found for follow-up assignment.")
+    if err:
+        return err
+    actor_ctx = actor_ctx_from_user(user, branch_id=bid)
+    try:
+        result = await svc_assign_followup(db, actor_ctx, {
+            "record_type": record_type,
+            "record_id": params["record_id"],
+            "assignee_staff_id": params["assignee_staff_id"],
+            "due_date": params["due_date"],
+            "note": params["note"],
+        })
+    except IncidentNotFoundError:
         return _empty_result("Record not found for follow-up assignment.")
-    staff = await db.staff.find_one(scoped_query({"id": params["assignee_staff_id"]}, branch_id=bid), {"_id": 0})
-    updates = {"assigned_to": params["assignee_staff_id"], "due_date": params["due_date"], "updated_at": datetime.now().isoformat()}
-    await handle.update_one(scoped_query({"id": params["record_id"]}, branch_id=bid), {"$set": updates})
-    field = "thread" if collection in ("incidents", "complaints") else "notes"
-    await _append_record_note(handle, params["record_id"], existing, user, params["note"], field, branch_id=bid)
-    await _write_audit(db, "assign_followup", collection, params["record_id"], user, updates, params["note"], scope=scope)
-    await create_notification(
-        db,
-        user_id=(staff or {}).get("user_id"),
-        notification_type="followup_assigned",
-        title="Follow-up assigned",
-        message=params["note"],
-        source_id=params["record_id"],
-        source_type=collection,
-    )
-    return {"success": True, "data": {"record_id": params["record_id"], **updates}, "message": "Follow-up assigned."}
+    except IncidentValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": {"record_id": params["record_id"], **result["updates"]}, "message": "Follow-up assigned."}
 
 
 async def tool_update_incident_status(params: dict, user: dict, scope: dict = None) -> dict:
@@ -1148,18 +1137,22 @@ async def tool_update_incident_status(params: dict, user: dict, scope: dict = No
         return {"success": False, "message": "record_id, new_status, and note are required."}
     db = get_db()
     bid = _branch_id(user, scope)
-    collection, handle, existing = await _find_mutable_record(db, params["record_id"], branch_id=bid)
-    if not existing:
+    record_type, _doc, err = await _resolve_record_type_or_result(db, params["record_id"], branch_id=bid, not_found_msg="Incident, complaint, or request not found.")
+    if err:
+        return err
+    actor_ctx = actor_ctx_from_user(user, branch_id=bid)
+    try:
+        result = await svc_update_incident_status(db, actor_ctx, {
+            "record_type": record_type,
+            "record_id": params["record_id"],
+            "new_status": params["new_status"],
+            "note": params["note"],
+        })
+    except IncidentNotFoundError:
         return _empty_result("Incident, complaint, or request not found.")
-    # auth: enforcement is at the registry gate (_is_tool_authorized); body check removed (P6)
-    if _is_maintenance(user) and params["new_status"] == "closed":
-        return {"success": False, "message": "Maintenance Admin cannot close a facility request directly."}
-    updates = {"status": params["new_status"], "updated_at": datetime.now().isoformat()}
-    await handle.update_one(scoped_query({"id": params["record_id"]}, branch_id=bid), {"$set": updates})
-    field = "thread" if collection in ("incidents", "complaints") else "notes"
-    await _append_record_note(handle, params["record_id"], existing, user, params["note"], field, branch_id=bid)
-    await _write_audit(db, "update_incident_status", collection, params["record_id"], user, {"previous_status": existing.get("status"), **updates}, params["note"], scope=scope)
-    return {"success": True, "data": {"record_id": params["record_id"], **updates}, "message": "Status updated."}
+    except IncidentValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": {"record_id": params["record_id"], **result["updates"]}, "message": "Status updated."}
 
 
 async def tool_add_thread_entry(params: dict, user: dict, scope: dict = None) -> dict:
@@ -1167,13 +1160,21 @@ async def tool_add_thread_entry(params: dict, user: dict, scope: dict = None) ->
         return {"success": False, "message": "record_id and content are required."}
     db = get_db()
     bid = _branch_id(user, scope)
-    collection, handle, existing = await _find_mutable_record(db, params["record_id"], branch_id=bid)
-    if not existing:
+    record_type, _doc, err = await _resolve_record_type_or_result(db, params["record_id"], branch_id=bid, not_found_msg="Record not found for thread entry.")
+    if err:
+        return err
+    actor_ctx = actor_ctx_from_user(user, branch_id=bid)
+    try:
+        result = await svc_add_thread_entry(db, actor_ctx, {
+            "record_type": record_type,
+            "record_id": params["record_id"],
+            "content": params["content"],
+        })
+    except IncidentNotFoundError:
         return _empty_result("Record not found for thread entry.")
-    field = "thread" if collection in ("incidents", "complaints") else "notes"
-    entry = await _append_record_note(handle, params["record_id"], existing, user, params["content"], field, branch_id=bid)
-    await _write_audit(db, "add_thread_entry", collection, params["record_id"], user, {"entry": entry}, scope=scope)
-    return {"success": True, "data": entry, "message": "Thread entry added."}
+    except IncidentValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["entry"], "message": "Thread entry added."}
 
 
 async def tool_initiate_substitution(params: dict, user: dict, scope: dict = None) -> dict:
@@ -1318,27 +1319,21 @@ async def tool_decide_approval_request(params: dict, user: dict, scope: dict = N
 async def tool_confirm_resolution(params: dict, user: dict, scope: dict = None) -> dict:
     if not params.get("request_id") or not params.get("confirmation_note"):
         return {"success": False, "message": "request_id and confirmation_note are required."}
+    # Thin adapter over services.incident_service.confirm_resolution — the SAME write
+    # path as POST /api/issues/facility/{id}/confirm-resolution (Story C.3).
     db = get_db()
     bid = _branch_id(user, scope)
-    existing = await db.facility_requests.find_one(scoped_query({"id": params["request_id"]}, branch_id=bid), {"_id": 0})
-    if not existing:
+    actor_ctx = actor_ctx_from_user(user, branch_id=bid)
+    try:
+        result = await svc_confirm_resolution(db, actor_ctx, {
+            "request_id": params["request_id"],
+            "confirmation_note": params["confirmation_note"],
+        })
+    except IncidentNotFoundError:
         return _empty_result("Facility request not found.")
-    if existing.get("status") != "pending_owner_confirmation":
-        return {"success": False, "message": "Request must be pending Owner confirmation before it can be closed."}
-    update = {"status": "closed", "resolved_by": user.get("id"), "resolved_at": datetime.now().isoformat(), "updated_at": datetime.now().isoformat()}
-    await db.facility_requests.update_one(scoped_query({"id": params["request_id"]}, branch_id=bid), {"$set": update})
-    await _append_record_note(db.facility_requests, params["request_id"], existing, user, params["confirmation_note"], "notes", branch_id=bid)
-    await _write_audit(db, "confirm_resolution", "facility_requests", params["request_id"], user, update, params["confirmation_note"], scope=scope)
-    await create_notification(
-        db,
-        user_id=existing.get("logged_by"),
-        notification_type="facility_resolved",
-        title="Facility request resolved",
-        message="Facility request resolved and closed by Owner.",
-        source_id=params["request_id"],
-        source_type="facility_request",
-    )
-    return {"success": True, "data": {"request_id": params["request_id"], **update}, "message": "Resolution confirmed."}
+    except IncidentValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": {"request_id": params["request_id"], **result["update"]}, "message": "Resolution confirmed."}
 
 
 async def tool_record_fee_payment(params: dict, user: dict, scope: dict = None) -> dict:

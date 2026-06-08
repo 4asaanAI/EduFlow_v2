@@ -6,6 +6,13 @@ from middleware.auth import get_current_user, require_owner_or_principal, requir
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
 from services.actor_context import actor_ctx_from_user
+from services.incident_service import (
+    add_thread_entry as svc_add_thread_entry,
+    assign_followup as svc_assign_followup,
+    update_incident_status as svc_update_incident_status,
+    IncidentValidationError,
+    IncidentNotFoundError,
+)
 from services.approvals_service import (
     decide_approval_request as decide_approval_request_service,
     ApprovalValidationError,
@@ -583,68 +590,71 @@ async def get_incident(incident_id: str, request: Request, user: dict = Depends(
 
 @router.post("/incidents/{incident_id}/thread")
 async def add_incident_thread(incident_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    # Story C.2: delegate to services.incident_service — the SAME write path as the AI
+    # `add_thread_entry` tool (push entry + canonical 'add_thread_entry' audit).
     db = get_db()
     body = await request.json()
     if not body.get("content"):
         raise HTTPException(400, "content is required")
-    entry = {
-        "id": str(uuid.uuid4()),
-        "author_id": user["id"],
-        "author_name": user.get("name", ""),
-        "author_role": user.get("role", ""),
-        "content": body["content"],
-        "timestamp": datetime.now().isoformat(),
-    }
-    bid = user.get("branch_id")
-    result = await db.incidents.update_one(
-        scoped_query({"id": incident_id}, branch_id=bid),
-        {"$push": {"thread": entry}, "$set": {"updated_at": datetime.now().isoformat()}}
-    )
-    if result.matched_count == 0:
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_add_thread_entry(db, actor_ctx, {
+            "record_type": "incidents", "record_id": incident_id, "content": body["content"],
+        })
+    except IncidentNotFoundError:
         raise HTTPException(404, "Incident not found")
-    return {"success": True, "data": entry}
+    except IncidentValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["entry"]}
 
 
 @router.patch("/incidents/{incident_id}/assign")
 async def assign_incident(incident_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    # Story C.2: delegate to services.incident_service — the SAME write path as the AI
+    # `assign_followup` tool (assignment fields + optional note + audit + assignee notify).
     db = get_db()
-    bid = user.get("branch_id")
     body = await request.json()
-    updates = {"updated_at": datetime.now().isoformat()}
-    if body.get("assigned_to"):
-        updates["assigned_to"] = body["assigned_to"]
-    if body.get("due_date"):
-        updates["due_date"] = body["due_date"]
-    if body.get("status"):
-        updates["status"] = body["status"]
-    await db.incidents.update_one(scoped_query({"id": incident_id}, branch_id=bid), {"$set": updates})
+    if not body.get("assigned_to") or not body.get("due_date"):
+        raise HTTPException(400, "assigned_to and due_date are required")
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        await svc_assign_followup(db, actor_ctx, {
+            "record_type": "incidents",
+            "record_id": incident_id,
+            "assignee_staff_id": body["assigned_to"],
+            "due_date": body["due_date"],
+            "note": body.get("note"),
+            "status": body.get("status"),
+        })
+    except IncidentNotFoundError:
+        raise HTTPException(404, "Incident not found")
+    except IncidentValidationError as e:
+        raise HTTPException(400, str(e))
     return {"success": True}
 
 
 @router.patch("/incidents/{incident_id}")
 async def update_incident(incident_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
-    """P9.8: Principal/owner can update status and add resolution note."""
+    """P9.8: Principal/owner can update status and add resolution note.
+
+    Story C.3: delegate to services.incident_service.update_incident_status — the SAME
+    write path as the AI `update_incident_status` tool (status transition + audit)."""
     db = get_db()
     body = await request.json()
-    bid = user.get("branch_id")
-
-    update = {"updated_at": datetime.now().isoformat()}
-    if body.get("status"):
-        update["status"] = body["status"]
-    if body.get("resolution_note"):
-        update["resolution_note"] = body["resolution_note"]
-        update["resolved_by"] = user["id"]
-        update["resolved_at"] = datetime.now().isoformat()
-
-    if len(update) == 1:  # only updated_at was added
+    if not body.get("status") and not body.get("resolution_note"):
         raise HTTPException(400, "No update fields provided")
-
-    result = await db.incidents.update_one(
-        scoped_query({"id": incident_id}, branch_id=bid),
-        {"$set": update},
-    )
-    if result.matched_count == 0:
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        await svc_update_incident_status(db, actor_ctx, {
+            "record_type": "incidents",
+            "record_id": incident_id,
+            "new_status": body.get("status"),
+            "resolution_note": body.get("resolution_note"),
+        })
+    except IncidentNotFoundError:
         raise HTTPException(404, "Incident not found")
+    except IncidentValidationError as e:
+        raise HTTPException(400, str(e))
     return {"success": True}
 
 
