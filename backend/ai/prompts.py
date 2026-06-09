@@ -568,6 +568,58 @@ TOOL_GET_TODAY_CLASS_ATTENDANCE = {
         "class_name": "optional — class name (alternative to class_id)",
     },
 }
+TOOL_QUERY_ATTENDANCE_STATUS = {
+    "name": "query_attendance_status",
+    "description": "Current staff attendance status from biometric feed for a given date.",
+    "params_schema": {"date": "optional YYYY-MM-DD — defaults to today"},
+}
+TOOL_QUERY_FEE_STATUS = {
+    "name": "query_fee_status",
+    "description": "Fee status, defaulters, and overdue list for a student or cohort.",
+    "params_schema": {
+        "student_id": "optional — student ID for individual lookup",
+        "status": "optional — 'paid' | 'pending' | 'overdue'",
+    },
+}
+TOOL_QUERY_MAINTENANCE_REQUESTS = {
+    "name": "query_maintenance_requests",
+    "description": "Open facility maintenance requests — filter by status, date, or location.",
+    "params_schema": {"status": "optional — 'open' | 'in_progress' | 'resolved'"},
+}
+TOOL_QUERY_STAFF_AVAILABILITY = {
+    "name": "query_staff_availability",
+    "description": "Available (unoccupied) staff for a given timetable period.",
+    "params_schema": {"period_id": "optional — timetable period ID"},
+}
+TOOL_APPLY_DISCOUNT = {
+    "name": "apply_discount",
+    "description": "Apply a configured discount type to a student's fee profile. Write action — requires confirmation.",
+    "params_schema": {
+        "student_id": "required — student ID",
+        "discount_type_id": "required — discount type ID (use get_fee_structures to find discount types)",
+        "effective_from": "optional YYYY-MM-DD — effective date",
+    },
+}
+TOOL_INITIATE_SUBSTITUTION = {
+    "name": "initiate_substitution",
+    "description": "Approve a substitution assignment for an absent teacher. Write action — requires confirmation.",
+    "params_schema": {
+        "absent_staff_id": "required — absent teacher's staff ID",
+        "substitute_staff_id": "required — substitute teacher's staff ID",
+        "class_id": "required — class ID",
+        "period_id": "required — timetable period/slot ID",
+    },
+}
+TOOL_LOG_CONTACT_EVENT = {
+    "name": "log_contact_event",
+    "description": "Log a contact event against a student's fee record (call, message, visit). Write action — requires confirmation.",
+    "params_schema": {
+        "student_id": "required — student ID",
+        "contact_type": "required — 'call' | 'message' | 'visit' | 'other'",
+        "outcome": "required — outcome of the contact",
+        "note": "optional — additional note",
+    },
+}
 
 
 # ---------------------------------------------------------------------------
@@ -611,6 +663,11 @@ _OWNER_TOOLS = [
     TOOL_RECALL_HISTORY,
     TOOL_QUERY_INCIDENTS,
     TOOL_QUERY_AUDIT_LOG,
+    # ---- Additional query tools ----
+    TOOL_QUERY_ATTENDANCE_STATUS,
+    TOOL_QUERY_FEE_STATUS,
+    TOOL_QUERY_MAINTENANCE_REQUESTS,
+    TOOL_QUERY_STAFF_AVAILABILITY,
     # ---- Standard write actions ----
     TOOL_RECORD_FEE_PAYMENT,
     TOOL_MARK_ATTENDANCE,
@@ -618,6 +675,9 @@ _OWNER_TOOLS = [
     TOOL_APPROVE_LEAVE,
     TOOL_AWARD_HOUSE_POINTS,
     TOOL_CREATE_ANNOUNCEMENT,
+    TOOL_APPLY_DISCOUNT,
+    TOOL_INITIATE_SUBSTITUTION,
+    TOOL_LOG_CONTACT_EVENT,
     TOOL_ASSIGN_FOLLOWUP,
     TOOL_UPDATE_INCIDENT_STATUS,
     TOOL_ADD_THREAD_ENTRY,
@@ -926,11 +986,27 @@ SCHOOL CONFIGURATION (owner only):
 - Year-end academic transition: use year_end_transition
 - Compare branches: use get_branch_comparison
 
+TRANSPORT & INVENTORY:
+- View transport routes/drivers: use get_transport_status
+- View inventory stock & low-stock alerts: use get_inventory_status (category filter: furniture, it_equipment, sports, stationery)
+
+FEE DISCOUNT APPLICATION:
+- Apply a discount to a student: use apply_discount (first get discount_type_id from get_fee_structures)
+- Log fee-collection contact event (call/visit): use log_contact_event
+
+SUBSTITUTION MANAGEMENT:
+- Initiate substitute for absent teacher: use initiate_substitution (need absent_staff_id, substitute_staff_id, class_id, period_id)
+- Check staff availability for a period: use query_staff_availability
+
 OTHER OPERATIONS:
 - Approve/reject leave requests: use approve_leave
 - Publish announcements: use create_announcement
 - Award house points: use award_house_points
 - Financial reports: use get_financial_report (owner exclusive)
+- Branch comparison: use get_branch_comparison (owner exclusive — strength, attendance, fees)
+- Staff attendance status: use query_attendance_status
+- Fee status deep-dive: use query_fee_status
+- Maintenance requests: use query_maintenance_requests
 - Audit log: use query_audit_log
 
 SALARY: Never reveal exact salaries in chat — direct to Financial Reports panel.

@@ -2280,6 +2280,151 @@ async def tool_recall_history(params: dict, user: dict, scope: dict = None) -> d
 
 
 # =========================================================================
+#  Missing tool functions — transport, inventory, branch comparison
+# =========================================================================
+
+async def tool_get_transport_status(params: dict, user: dict, scope: dict = None) -> dict:
+    """Transport overview: routes, vehicles, drivers (owner + admin)."""
+    t0 = time.time()
+    db = get_db()
+    query: dict = {}
+    _apply_branch_filter(query, scope)
+    route_filter = params.get("route_id")
+
+    routes = await db.transport_routes.find(query, {"_id": 0}).to_list(100)
+
+    if route_filter:
+        routes = [r for r in routes if r.get("id") == route_filter]
+
+    def _fmt(r: dict) -> dict:
+        phone = r.get("driver_phone", "")
+        masked = (phone[:-3] + "XXX") if len(phone) >= 4 else phone
+        return {
+            "id": r.get("id"),
+            "route_name": r.get("route_name"),
+            "driver_name": r.get("driver_name"),
+            "driver_phone": masked,
+            "vehicle_number": r.get("vehicle_number"),
+            "stops_count": len(r.get("stops", [])),
+            "fare": r.get("fare"),
+            "is_active": r.get("is_active", True),
+        }
+
+    active = [r for r in routes if r.get("is_active", True)]
+    elapsed = (time.time() - t0) * 1000
+    return {
+        "success": True,
+        "data": {
+            "total_routes": len(routes),
+            "active_routes": len(active),
+            "routes": [_fmt(r) for r in active[:25]],
+        },
+        "meta": {"count": len(active), "query_time_ms": round(elapsed, 2)},
+        "message": "",
+    }
+
+
+async def tool_get_inventory_status(params: dict, user: dict, scope: dict = None) -> dict:
+    """Inventory overview: total items, categories, low-stock alerts."""
+    t0 = time.time()
+    db = get_db()
+    query: dict = {}
+    _apply_branch_filter(query, scope)
+
+    category_filter = params.get("category")
+    if category_filter:
+        query["category"] = category_filter
+
+    items = await db.inventory_items.find(query, {"_id": 0}).to_list(500)
+
+    if not items:
+        elapsed = (time.time() - t0) * 1000
+        return _empty_result("No inventory items found.", elapsed)
+
+    # Aggregate by category
+    cats: dict = {}
+    low_stock = []
+    for item in items:
+        cat = item.get("category", "other")
+        cats[cat] = cats.get(cat, 0) + 1
+        if item.get("quantity", 0) <= item.get("min_stock", 0):
+            low_stock.append({
+                "name": item.get("name"),
+                "category": cat,
+                "quantity": item.get("quantity"),
+                "min_stock": item.get("min_stock"),
+                "location": item.get("location"),
+            })
+
+    elapsed = (time.time() - t0) * 1000
+    return {
+        "success": True,
+        "data": {
+            "total_items": len(items),
+            "categories": cats,
+            "low_stock_count": len(low_stock),
+            "low_stock_items": low_stock[:20],
+        },
+        "meta": {"count": len(items), "query_time_ms": round(elapsed, 2)},
+        "message": "",
+    }
+
+
+async def tool_get_branch_comparison(params: dict, user: dict, scope: dict = None) -> dict:
+    """Compare key metrics across school branches (owner only)."""
+    t0 = time.time()
+    db = get_db()
+    metric = params.get("metric", "all")
+
+    branches = await db.branches.find({}, {"_id": 0, "id": 1, "name": 1, "is_active": 1}).to_list(20)
+    if not branches:
+        elapsed = (time.time() - t0) * 1000
+        return _empty_result("No branches configured.", elapsed)
+
+    today_str = date.today().strftime("%Y-%m-%d")
+    comparison = []
+
+    for br in branches:
+        bid = br.get("id")
+        entry: dict = {"branch_id": bid, "branch_name": br.get("name"), "is_active": br.get("is_active", True)}
+
+        if metric in ("all", "strength"):
+            entry["total_students"] = await db.students.count_documents(
+                scoped_query({"status": "active"}, branch_id=bid)
+            )
+
+        if metric in ("all", "attendance"):
+            today_records = await db.attendance.count_documents(
+                scoped_query({"date": today_str, "status": "present"}, branch_id=bid)
+            )
+            total_today = await db.attendance.count_documents(
+                scoped_query({"date": today_str}, branch_id=bid)
+            )
+            entry["attendance_rate_today"] = (
+                round(today_records / total_today * 100, 1) if total_today else None
+            )
+
+        if metric in ("all", "fees"):
+            from datetime import datetime as _dt
+            month_start = _dt.now().strftime("%Y-%m-01")
+            fee_cur = await db.fee_transactions.find(
+                scoped_query({"payment_date": {"$gte": month_start}, "status": "paid"}, branch_id=bid),
+                {"_id": 0, "amount": 1}
+            ).to_list(5000)
+            entry["fee_collected_month"] = sum(f.get("amount", 0) for f in fee_cur)
+
+        comparison.append(entry)
+
+    elapsed = (time.time() - t0) * 1000
+    return {
+        "success": True,
+        "data": {"metric": metric, "branches": comparison},
+        "meta": {"count": len(comparison), "query_time_ms": round(elapsed, 2)},
+        "message": "",
+    }
+
+
+# =========================================================================
 #  COMBINED TOOL_REGISTRY
 # =========================================================================
 
@@ -2523,6 +2668,30 @@ TOOL_REGISTRY = {
         "description": "Library overview: total books, issued, overdue. Role-specific detail.",
         "params_schema": {},
     },
+    "get_transport_status": {
+        "fn": tool_get_transport_status,
+        "roles": ["owner", "admin"],
+        "description": "Transport overview: active routes, vehicles, driver assignments.",
+        "params_schema": {
+            "route_id": {"type": "string", "description": "Optional route ID to filter"},
+        },
+    },
+    "get_inventory_status": {
+        "fn": tool_get_inventory_status,
+        "roles": ["owner", "admin"],
+        "description": "Inventory overview: total items, categories, low-stock alerts.",
+        "params_schema": {
+            "category": {"type": "string", "description": "Optional category filter (furniture, it_equipment, sports, stationery, etc.)"},
+        },
+    },
+    "get_branch_comparison": {
+        "fn": tool_get_branch_comparison,
+        "roles": ["owner"],
+        "description": "Compare key metrics (strength, attendance, fees) across all school branches. Owner only.",
+        "params_schema": {
+            "metric": {"type": "string", "description": "attendance | fees | strength | all (default: all)"},
+        },
+    },
 
     # ---- Appendix A formal dispatch table ----
     "assign_followup": {
@@ -2565,7 +2734,7 @@ TOOL_REGISTRY = {
     },
     "initiate_substitution": {
         "fn": tool_initiate_substitution,
-        "roles": ["admin"],
+        "roles": ["owner", "admin"],
         "sub_categories": ["principal"],
         "description": "Approve a substitution assignment for an absent teacher.",
         "dispatch_type": "write",
@@ -2592,7 +2761,7 @@ TOOL_REGISTRY = {
     },
     "log_contact_event": {
         "fn": tool_log_contact_event,
-        "roles": ["admin"],
+        "roles": ["owner", "admin"],
         "sub_categories": ["accountant"],
         "description": "Log a contact event against a student's fee record.",
         "dispatch_type": "write",
@@ -2606,7 +2775,7 @@ TOOL_REGISTRY = {
     },
     "apply_discount": {
         "fn": tool_apply_discount,
-        "roles": ["admin"],
+        "roles": ["owner", "admin"],
         "sub_categories": ["accountant"],
         "description": "Apply a configured discount type to a student's fee profile.",
         "dispatch_type": "write",
@@ -3013,7 +3182,7 @@ TOOL_REGISTRY = {
     },
     "query_staff_availability": {
         "fn": tool_query_staff_availability,
-        "roles": ["admin"],
+        "roles": ["owner", "admin"],
         "sub_categories": ["principal"],
         "description": "Available staff for a given period, filtered against timetable.",
         "params_schema": {
