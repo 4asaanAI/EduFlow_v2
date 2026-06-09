@@ -368,6 +368,20 @@ KEYWORD_TOOL_MAP = [
     # Audit log
     (["/audit-log", "audit log", "who changed what",
       "system log", "activity log"], "query_audit_log"),
+    # Expenses
+    (["show expenses", "list expenses", "expenses this month",
+      "expense summary", "kitna kharch hua", "kharch dekho"], "get_expenses"),
+    (["add expense", "create expense", "log expense", "new expense",
+      "record expense", "kharch add karo", "expense daalo"], "create_expense"),
+    # Enquiry CRUD
+    (["add enquiry", "create enquiry", "new enquiry", "new admission enquiry",
+      "add admission lead", "enquiry add karo", "naya enquiry"], "create_enquiry"),
+    (["update enquiry", "enquiry status", "move enquiry", "advance enquiry",
+      "enquiry ko contacted", "enquiry enrolled", "mark enquiry"], "update_enquiry_status"),
+    # Incident logging
+    (["log incident", "create incident", "new incident", "report incident",
+      "incident log karo", "add incident", "file complaint",
+      "log complaint"], "create_incident"),
 ]
 
 # ─── Navigate Map ─────────────────────────────────────────────────────────────

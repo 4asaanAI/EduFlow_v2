@@ -621,6 +621,65 @@ TOOL_LOG_CONTACT_EVENT = {
     },
 }
 
+# ---- Expense tools ----
+TOOL_GET_EXPENSES = {
+    "name": "get_expenses",
+    "description": "List recent expense records. Filter by category (maintenance, salary, stationery, etc.) or month (YYYY-MM).",
+    "params_schema": {
+        "category": "optional — expense category e.g. 'maintenance', 'salary'",
+        "month": "optional YYYY-MM",
+    },
+}
+TOOL_CREATE_EXPENSE = {
+    "name": "create_expense",
+    "description": "Log a new expense entry (category, amount, vendor, description). Write action — requires confirmation.",
+    "params_schema": {
+        "category": "required — expense category e.g. maintenance, salary, stationery",
+        "amount": "required — amount in INR",
+        "description": "optional — what the expense is for",
+        "vendor": "optional — vendor or payee name",
+        "date": "optional YYYY-MM-DD — defaults to today",
+    },
+}
+
+# ---- Enquiry (admission pipeline) tools ----
+TOOL_CREATE_ENQUIRY = {
+    "name": "create_enquiry",
+    "description": "Log a new admission enquiry or lead. Write action — requires confirmation.",
+    "params_schema": {
+        "student_name": "required — prospective student full name",
+        "parent_name": "optional — parent or guardian name",
+        "phone": "optional — contact phone number",
+        "class_applying": "optional — e.g. 'Class 5', 'LKG'",
+        "source": "optional — walk_in | referral | online | phone (default: walk_in)",
+        "notes": "optional — any additional notes",
+    },
+}
+TOOL_UPDATE_ENQUIRY_STATUS = {
+    "name": "update_enquiry_status",
+    "description": "Advance an admission enquiry through pipeline stages. Write action — requires confirmation.",
+    "params_schema": {
+        "enquiry_id": "required — enquiry ID (use get_enquiries to find IDs)",
+        "status": "required — new | contacted | visit_scheduled | visited | documents_submitted | fee_paid | enrolled | lost",
+        "notes": "optional — notes about this stage",
+        "assigned_to": "optional — staff to assign",
+    },
+}
+
+# ---- Incident creation tool ----
+TOOL_CREATE_INCIDENT = {
+    "name": "create_incident",
+    "description": "Log a new incident (disciplinary, visitor, safety, etc.). High severity auto-assigns to principal. Write action — requires confirmation.",
+    "params_schema": {
+        "title": "optional — brief incident title",
+        "description": "required — full incident description",
+        "severity": "optional — low | medium | high (default: low)",
+        "category": "optional — general | disciplinary | financial | safety | visitor (default: general)",
+        "involved_parties": "optional — names of people involved",
+        "assigned_to": "optional — staff member to assign",
+    },
+}
+
 
 # ---------------------------------------------------------------------------
 # TOOLS_BY_ROLE — maps (role, sub_category) to list of tool dicts
@@ -710,6 +769,14 @@ _OWNER_TOOLS = [
     TOOL_DELETE_BRANCH,
     TOOL_UPDATE_SCHOOL_SETTINGS,
     TOOL_YEAR_END_TRANSITION,
+    # ---- Expense management ----
+    TOOL_GET_EXPENSES,
+    TOOL_CREATE_EXPENSE,
+    # ---- Admission enquiry pipeline ----
+    TOOL_CREATE_ENQUIRY,
+    TOOL_UPDATE_ENQUIRY_STATUS,
+    # ---- Incident logging ----
+    TOOL_CREATE_INCIDENT,
 ]
 
 _PRINCIPAL_TOOLS = [

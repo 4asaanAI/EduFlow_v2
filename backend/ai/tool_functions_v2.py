@@ -2424,6 +2424,200 @@ async def tool_get_branch_comparison(params: dict, user: dict, scope: dict = Non
     }
 
 
+async def tool_get_expenses(params: dict, user: dict, scope: dict = None) -> dict:
+    """List recent expenses with optional category filter."""
+    import time
+    t0 = time.time()
+    db = get_db()
+    bid = user.get("branch_id")
+    query: dict = {}
+    category = params.get("category")
+    if category:
+        query["category"] = {"$regex": category, "$options": "i"}
+    month = params.get("month")
+    if month:
+        query["date"] = {"$gte": f"{month}-01", "$lte": f"{month}-31"}
+    expenses = await db.expenses.find(
+        scoped_query(query, branch_id=bid), {"_id": 0}
+    ).sort("date", -1).to_list(100)
+    total = sum(float(e.get("amount", 0)) for e in expenses)
+    elapsed = (time.time() - t0) * 1000
+    return {
+        "success": True,
+        "data": {"expenses": expenses, "total_amount": round(total, 2), "count": len(expenses)},
+        "meta": {"query_time_ms": round(elapsed, 2)},
+        "message": f"{len(expenses)} expense(s) totalling ₹{total:,.2f}",
+    }
+
+
+async def tool_create_expense(params: dict, user: dict, scope: dict = None) -> dict:
+    """Log a new expense record."""
+    import time, uuid as _uuid
+    from datetime import datetime as _dt
+    t0 = time.time()
+    db = get_db()
+    bid = user.get("branch_id")
+    amount = params.get("amount")
+    category = params.get("category")
+    if not amount:
+        return {"success": False, "message": "amount is required"}
+    if not category:
+        return {"success": False, "message": "category is required"}
+    try:
+        amount = float(amount)
+    except (ValueError, TypeError):
+        return {"success": False, "message": "amount must be a number"}
+    # Budget check
+    budget = await db.expense_budgets.find_one(scoped_query({"category": category}, branch_id=bid), {"_id": 0})
+    if budget:
+        remaining = float(budget.get("remaining_amount", budget.get("monthly_limit", 0)) or 0)
+        if amount > remaining:
+            return {"success": False, "message": f"Expense of ₹{amount:,.2f} exceeds remaining budget of ₹{remaining:,.2f} for '{category}'"}
+    exp_id = str(_uuid.uuid4())
+    expense = {
+        "id": exp_id,
+        "schoolId": user.get("schoolId", ""),
+        "category": category,
+        "description": params.get("description", ""),
+        "amount": amount,
+        "date": params.get("date", _dt.now().strftime("%Y-%m-%d")),
+        "vendor": params.get("vendor", ""),
+        "approved_by": user["id"],
+        "recorded_by": user["id"],
+        "created_at": _dt.now().isoformat(),
+    }
+    if bid:
+        expense["branch_id"] = bid
+    await db.expenses.insert_one({**expense, "_id": exp_id})
+    elapsed = (time.time() - t0) * 1000
+    return {
+        "success": True,
+        "data": expense,
+        "meta": {"query_time_ms": round(elapsed, 2)},
+        "message": f"Expense of ₹{amount:,.2f} logged under '{category}'",
+    }
+
+
+async def tool_create_enquiry(params: dict, user: dict, scope: dict = None) -> dict:
+    """Log a new admission enquiry / lead."""
+    import time, uuid as _uuid
+    from datetime import datetime as _dt
+    t0 = time.time()
+    db = get_db()
+    bid = user.get("branch_id")
+    student_name = params.get("student_name")
+    if not student_name:
+        return {"success": False, "message": "student_name is required"}
+    enq_id = str(_uuid.uuid4())
+    enquiry = {
+        "id": enq_id,
+        "schoolId": user.get("schoolId", ""),
+        "student_name": student_name,
+        "parent_name": params.get("parent_name", ""),
+        "phone": params.get("phone", ""),
+        "class_applying": params.get("class_applying", ""),
+        "status": "new",
+        "source": params.get("source", "walk_in"),
+        "notes": params.get("notes", ""),
+        "assigned_to": params.get("assigned_to", ""),
+        "created_by": user["id"],
+        "created_at": _dt.now().isoformat(),
+        "updated_at": _dt.now().isoformat(),
+    }
+    if bid:
+        enquiry["branch_id"] = bid
+    await db.enquiries.insert_one({**enquiry, "_id": enq_id})
+    elapsed = (time.time() - t0) * 1000
+    return {
+        "success": True,
+        "data": enquiry,
+        "meta": {"query_time_ms": round(elapsed, 2)},
+        "message": f"Enquiry for '{student_name}' created (status: new)",
+    }
+
+
+async def tool_update_enquiry_status(params: dict, user: dict, scope: dict = None) -> dict:
+    """Advance or update an admission enquiry through the pipeline."""
+    import time
+    from datetime import datetime as _dt
+    t0 = time.time()
+    db = get_db()
+    bid = user.get("branch_id")
+    enquiry_id = params.get("enquiry_id")
+    new_status = params.get("status")
+    if not enquiry_id:
+        return {"success": False, "message": "enquiry_id is required"}
+    if not new_status:
+        return {"success": False, "message": "status is required"}
+    VALID_STATUSES = ("new", "contacted", "visit_scheduled", "visited", "documents_submitted", "fee_paid", "enrolled", "lost")
+    if new_status not in VALID_STATUSES:
+        return {"success": False, "message": f"Invalid status. Must be one of: {', '.join(VALID_STATUSES)}"}
+    existing = await db.enquiries.find_one(scoped_query({"id": enquiry_id}, branch_id=bid), {"_id": 0})
+    if not existing:
+        return {"success": False, "message": f"Enquiry {enquiry_id} not found"}
+    update: dict = {
+        "status": new_status,
+        "updated_at": _dt.now().isoformat(),
+        "updated_by": user["id"],
+    }
+    if params.get("notes"):
+        update["notes"] = params["notes"]
+    if params.get("assigned_to"):
+        update["assigned_to"] = params["assigned_to"]
+    await db.enquiries.update_one(scoped_query({"id": enquiry_id}, branch_id=bid), {"$set": update})
+    elapsed = (time.time() - t0) * 1000
+    return {
+        "success": True,
+        "data": {**existing, **update},
+        "meta": {"query_time_ms": round(elapsed, 2)},
+        "message": f"Enquiry for '{existing.get('student_name', enquiry_id)}' status → {new_status}",
+    }
+
+
+async def tool_create_incident(params: dict, user: dict, scope: dict = None) -> dict:
+    """Log a new incident, visitor entry, or disciplinary event."""
+    import time, uuid as _uuid
+    from datetime import datetime as _dt
+    t0 = time.time()
+    db = get_db()
+    bid = user.get("branch_id")
+    description = params.get("description")
+    if not description:
+        return {"success": False, "message": "description is required"}
+    severity = params.get("severity", "low")
+    if severity not in ("low", "medium", "high"):
+        return {"success": False, "message": "severity must be low, medium, or high"}
+    assigned_to = "principal" if severity == "high" else params.get("assigned_to", None)
+    inc_id = str(_uuid.uuid4())
+    incident = {
+        "id": inc_id,
+        "schoolId": user.get("schoolId", ""),
+        "title": params.get("title", ""),
+        "description": description,
+        "severity": severity,
+        "involved_parties": params.get("involved_parties", ""),
+        "category": params.get("category", "general"),
+        "status": "open",
+        "thread": [],
+        "logged_by": user["id"],
+        "logged_by_name": user.get("name", ""),
+        "assigned_to": assigned_to,
+        "due_date": None,
+        "created_at": _dt.now().isoformat(),
+        "updated_at": _dt.now().isoformat(),
+    }
+    if bid:
+        incident["branch_id"] = bid
+    await db.incidents.insert_one({**incident, "_id": inc_id})
+    elapsed = (time.time() - t0) * 1000
+    return {
+        "success": True,
+        "data": incident,
+        "meta": {"query_time_ms": round(elapsed, 2)},
+        "message": f"Incident logged (severity: {severity}" + (", auto-assigned to principal" if assigned_to == "principal" else "") + ")",
+    }
+
+
 # =========================================================================
 #  COMBINED TOOL_REGISTRY
 # =========================================================================
@@ -3271,6 +3465,77 @@ TOOL_REGISTRY = {
             "note": {"type": "string", "description": "additional note to include"},
         },
         "requires_confirmation": False,
+    },
+
+    # ---- Expense, Enquiry, Incident tools ----
+    "get_expenses": {
+        "fn": tool_get_expenses,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["accountant"],
+        "description": "List recent expenses with optional category or month filter.",
+        "params_schema": {
+            "category": {"type": "string", "description": "optional expense category filter"},
+            "month": {"type": "string", "description": "optional YYYY-MM filter"},
+        },
+        "requires_confirmation": False,
+    },
+    "create_expense": {
+        "fn": tool_create_expense,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["accountant"],
+        "description": "Log a new expense (category, amount, vendor, description).",
+        "params_schema": {
+            "category": {"type": "string", "description": "expense category e.g. maintenance, salary, stationery"},
+            "amount": {"type": "number", "description": "expense amount in INR"},
+            "description": {"type": "string", "description": "what the expense is for"},
+            "vendor": {"type": "string", "description": "vendor or payee name"},
+            "date": {"type": "string", "description": "optional YYYY-MM-DD (defaults to today)"},
+        },
+        "requires_confirmation": True,
+        "dispatch_type": "write",
+    },
+    "create_enquiry": {
+        "fn": tool_create_enquiry,
+        "roles": ["owner", "admin"],
+        "description": "Log a new admission enquiry / lead.",
+        "params_schema": {
+            "student_name": {"type": "string", "description": "prospective student name"},
+            "parent_name": {"type": "string", "description": "parent or guardian name"},
+            "phone": {"type": "string", "description": "contact phone number"},
+            "class_applying": {"type": "string", "description": "class applying for e.g. 'Class 5'"},
+            "source": {"type": "string", "description": "walk_in | referral | online | phone — default: walk_in"},
+            "notes": {"type": "string", "description": "optional notes"},
+        },
+        "requires_confirmation": True,
+        "dispatch_type": "write",
+    },
+    "update_enquiry_status": {
+        "fn": tool_update_enquiry_status,
+        "roles": ["owner", "admin"],
+        "description": "Advance an admission enquiry through the pipeline stages.",
+        "params_schema": {
+            "enquiry_id": {"type": "string", "description": "enquiry ID (use get_enquiries to find it)"},
+            "status": {"type": "string", "description": "new | contacted | visit_scheduled | visited | documents_submitted | fee_paid | enrolled | lost"},
+            "notes": {"type": "string", "description": "optional notes about this stage"},
+            "assigned_to": {"type": "string", "description": "optional staff name or ID to assign"},
+        },
+        "requires_confirmation": True,
+        "dispatch_type": "write",
+    },
+    "create_incident": {
+        "fn": tool_create_incident,
+        "roles": ["owner", "admin", "teacher"],
+        "description": "Log a new incident (disciplinary, visitor, safety, etc.).",
+        "params_schema": {
+            "title": {"type": "string", "description": "brief incident title"},
+            "description": {"type": "string", "description": "full incident description — required"},
+            "severity": {"type": "string", "description": "low | medium | high (high auto-assigns to principal)"},
+            "category": {"type": "string", "description": "general | disciplinary | financial | safety | visitor — default: general"},
+            "involved_parties": {"type": "string", "description": "names of people involved"},
+            "assigned_to": {"type": "string", "description": "optional staff member to assign"},
+        },
+        "requires_confirmation": True,
+        "dispatch_type": "write",
     },
 }
 
