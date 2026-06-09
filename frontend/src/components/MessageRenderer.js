@@ -126,7 +126,7 @@ function RichDataTable({ title, headers, rows, isDark }) {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
-              {headers.map((h, i) => <th key={i} style={{ padding: '8px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#737373', textTransform: 'uppercase', letterSpacing: '0.04em', background: thBg, borderBottom: `1px solid ${border}` }}>{h}</th>)}
+              {headers.map((h, i) => <th key={i} style={{ padding: '8px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: isDark ? '#737373' : '#525252', textTransform: 'uppercase', letterSpacing: '0.04em', background: thBg, borderBottom: `1px solid ${border}` }}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -206,7 +206,7 @@ function ToolTraceSummary({ calls, isDark }) {
   if (validCalls.length === 0) return null;
 
   const border = isDark ? '#2e2e2e' : '#e5e5e5';
-  const muted = isDark ? '#737373' : '#a3a3a3';
+  const muted = isDark ? '#888' : '#525252';
   const text = isDark ? '#d4d4d4' : '#525252';
 
   return (
@@ -276,8 +276,8 @@ export default function MessageRenderer({ message, isStreaming, onActionButton }
               : (isAction ? '#f5f5f5' : '#171717'),
             borderRadius: 18, padding: '10px 16px', maxWidth: '80%',
             color: isDark
-              ? (isAction ? '#666' : '#f5f5f5')
-              : (isAction ? '#a3a3a3' : '#ffffff'),
+              ? (isAction ? '#888' : '#f5f5f5')
+              : (isAction ? '#525252' : '#ffffff'),
             fontSize: 14, lineHeight: 1.6, fontStyle: isAction ? 'italic' : 'normal',
             border: isAction ? `1px solid ${isDark ? '#2e2e2e' : '#e5e5e5'}` : 'none',
           }}>

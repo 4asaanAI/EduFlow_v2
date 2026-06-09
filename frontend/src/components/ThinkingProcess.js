@@ -165,7 +165,7 @@ function ToolBadge({ step, isDark }) {
         <span role="img" aria-label="tool">&#128295;</span>
         {step.tool || 'Tool'} &#10003;
         {step.count != null && (
-          <span style={{ color: isDark ? '#737373' : '#a0a0a0', marginLeft: 2 }}>
+          <span style={{ color: isDark ? '#888' : '#525252', marginLeft: 2 }}>
             ({step.count} records)
           </span>
         )}
@@ -296,7 +296,7 @@ export default function ThinkingProcess({ steps, isStreaming, collapsed, duratio
             cursor: 'pointer',
             userSelect: 'none',
             fontSize: 12,
-            color: isDark ? '#737373' : '#a0a0a0',
+            color: isDark ? '#888' : '#525252',
             transition: 'background 0.15s ease',
           }}
           onMouseEnter={(e) => { e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'; }}

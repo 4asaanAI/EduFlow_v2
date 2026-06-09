@@ -159,12 +159,12 @@ function ToolCard({ tool, onClick, isDark }) {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         transition: 'all 0.15s ease',
       }}>
-        <Icon size={17} color={hov ? tool.color : (isDark ? '#666' : '#a3a3a3')} />
+        <Icon size={17} color={hov ? tool.color : (isDark ? '#888' : '#525252')} />
       </div>
       <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? '#f5f5f5' : '#171717', letterSpacing: '-0.01em', lineHeight: 1.3, marginBottom: 3, display: 'block' }}>
         {tool.name}
       </span>
-      <span style={{ fontSize: 11, color: isDark ? '#666' : '#a3a3a3', lineHeight: 1.4, display: 'block' }}>
+      <span style={{ fontSize: 11, color: isDark ? '#888' : '#525252', lineHeight: 1.4, display: 'block' }}>
         {tool.subtitle}
       </span>
     </button>
@@ -194,7 +194,7 @@ export default function ToolDashboard({ onSelectTool }) {
   const roleColor = { admin: '#4f8ff7', teacher: '#34d399' }[currentUser.role] || '#4f8ff7';
   const bg   = isDark ? '#141414' : '#f5f5f5';
   const text = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#555' : '#a3a3a3';
+  const muted = isDark ? '#888' : '#525252';
   const subtle = isDark ? '#2e2e2e' : '#e5e5e5';
 
   return (

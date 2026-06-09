@@ -17,7 +17,7 @@ export default function SettingsModal({ onClose }) {
   const bg = isDark ? '#1e1e1e' : '#fff';
   const border = isDark ? '#2e2e2e' : '#e5e5e5';
   const text = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#666' : '#a3a3a3';
+  const muted = isDark ? '#888' : '#525252';
   const secondary = isDark ? '#a0a0a0' : '#525252';
   const sectionBg = isDark ? '#141414' : '#fafafa';
 

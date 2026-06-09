@@ -224,7 +224,7 @@ function ActionDetails({ params, isDark }) {
     }}>
       {entries.map(([key, value]) => (
         <React.Fragment key={key}>
-          <span style={{ color: isDark ? '#737373' : '#78716c', fontSize: 11, fontWeight: 600 }}>
+          <span style={{ color: isDark ? '#888' : '#525252', fontSize: 11, fontWeight: 600 }}>
             {formatParamKey(key)}
           </span>
           <span style={{
@@ -403,8 +403,8 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
 
   const CancelIcon = () => (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="9" cy="9" r="8" fill={isDark ? 'rgba(163,163,163,0.12)' : 'rgba(163,163,163,0.08)'} stroke={isDark ? '#737373' : '#a3a3a3'} strokeWidth="1.5" />
-      <path d="M6.5 6.5l5 5M11.5 6.5l-5 5" stroke={isDark ? '#737373' : '#a3a3a3'} strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="9" cy="9" r="8" fill={isDark ? 'rgba(163,163,163,0.12)' : 'rgba(82,82,82,0.08)'} stroke={isDark ? '#888' : '#525252'} strokeWidth="1.5" />
+      <path d="M6.5 6.5l5 5M11.5 6.5l-5 5" stroke={isDark ? '#888' : '#525252'} strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 
@@ -453,9 +453,9 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
     cardStyle.borderLeft = '3px solid #34d399';
     cardStyle.background = isDark ? '#1a2420' : '#f0fdf4';
   } else if (status === 'cancelled') {
-    cardStyle.borderLeftColor = isDark ? '#525252' : '#a3a3a3';
+    cardStyle.borderLeftColor = isDark ? '#525252' : '#525252';
     cardStyle.border = `1px solid ${isDark ? '#2e2e2e' : '#e5e5e5'}`;
-    cardStyle.borderLeft = `3px solid ${isDark ? '#525252' : '#a3a3a3'}`;
+    cardStyle.borderLeft = `3px solid ${isDark ? '#525252' : '#525252'}`;
     cardStyle.background = isDark ? '#1e1e1e' : '#fafafa';
   } else if (status === 'error') {
     cardStyle.borderLeftColor = '#ef4444';
@@ -512,7 +512,7 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
     return {
       ...btnBase,
       background: isLocked ? (isDark ? '#252525' : '#f0f0f0') : (isDark ? '#2a2a2a' : '#e5e5e5'),
-      color: isLocked ? (isDark ? '#737373' : '#a3a3a3') : (isDark ? '#d4d4d4' : '#525252'),
+      color: isLocked ? (isDark ? '#888' : '#525252') : (isDark ? '#d4d4d4' : '#525252'),
       opacity: isLocked && !isThisLoading ? 0.5 : 1,
       cursor: isLocked ? 'not-allowed' : 'pointer',
     };
@@ -557,7 +557,7 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
                 ? '#34d399'
                 : status === 'error'
                   ? '#ef4444'
-                  : (isDark ? '#737373' : '#a3a3a3'),
+                  : (isDark ? '#888' : '#525252'),
             }}>
               {status === 'confirmed' && 'Action confirmed and executed'}
               {status === 'cancelled' && 'Action cancelled'}
@@ -677,7 +677,7 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
         <div style={{
           marginTop: 10,
           fontSize: 11,
-          color: isDark ? '#737373' : '#a3a3a3',
+          color: isDark ? '#888' : '#525252',
         }}>
           Expires in {Math.max(0, secondsLeft)}s
         </div>

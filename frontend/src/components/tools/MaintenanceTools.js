@@ -458,7 +458,8 @@ export function MaintenanceSchedule() {
             <span style={{ color: muted, fontSize: 11 }}>{e.assigned_to || '—'}</span>,
             e.overdue ? <Badge label="Overdue" color="var(--tool-hex-f87171)" /> : <span style={{ color: muted, fontSize: 11 }}>On track</span>,
             <select value={e.status} onChange={ev => handleStatusChange(e.id, ev.target.value)}
-              style={{ background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 6, padding: '3px 8px', color: text, fontSize: 11, cursor: 'pointer' }}>
+              className="maintenance-status-select"
+              style={{ background: 'var(--c-input)', border: `1px solid ${border}`, borderRadius: 6, padding: '3px 8px', color: text, fontSize: 11, cursor: 'pointer', colorScheme: isDark ? 'dark' : 'light' }}>
               {SCHEDULE_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>,
           ])}

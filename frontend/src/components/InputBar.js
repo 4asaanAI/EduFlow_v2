@@ -241,8 +241,8 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
   const dropdownBg = isDark ? '#252525' : '#ffffff';
   const dropdownBorder = isDark ? '#333' : '#e5e5e5';
   const gradBg = isDark ? '#1a1a1a' : '#f5f5f5';
-  const footerColor = isDark ? '#444' : '#a3a3a3';
-  const muted = isDark ? '#666' : '#a3a3a3';
+  const footerColor = isDark ? '#666' : '#525252';
+  const muted = isDark ? '#888' : '#525252';
 
   const showList = showSlash ? slashFiltered : showAt ? atResults : [];
 

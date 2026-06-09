@@ -266,6 +266,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   const [renamingId, setRenamingId] = useState(null);
   const [renameVal, setRenameVal] = useState('');
   const [toolsExpanded, setToolsExpanded] = useState(false);
+  const [chatsExpanded, setChatsExpanded] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [openGroups, setOpenGroups] = useState(() => {
     const cfg = getGroupConfig(currentUser);
@@ -329,7 +330,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   const bg = isDark ? '#141414' : '#ffffff';
   const border = isDark ? '#2e2e2e' : '#e5e5e5';
   const tp = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#666' : '#a3a3a3';
+  const muted = isDark ? '#888' : '#525252';
   const secondary = isDark ? '#a0a0a0' : '#525252';
   const hover = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
   const activeBg = isDark ? 'rgba(79,143,247,0.1)' : 'rgba(79,143,247,0.06)';
@@ -474,13 +475,41 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
             renderGroupedNav()
           ) : (
             <>
-              {/* Chat History */}
+              {/* Grouped Tools Section — shown ABOVE chat history */}
+              <div style={{ marginBottom: 4 }}>
+                <button
+                  onClick={() => setToolsExpanded(v => !v)}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '8px 8px', background: 'transparent', border: 'none', cursor: 'pointer', color: muted, borderRadius: 6, transition: 'var(--transition-fast)' }}
+                  onMouseEnter={e => e.currentTarget.style.background = hover}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.03em' }}>Tools ({tools.length})</span>
+                  {toolsExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                </button>
+                {toolsExpanded && (
+                  <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {groupConfig ? (
+                      <>
+                        {groupConfig.top.map(id => renderToolItem(tools.find(t => t.id === id)))}
+                        {groupConfig.top.length > 0 && <div style={{ height: 4 }} />}
+                        {groupConfig.groups.map(renderGroup)}
+                        {groupConfig.bottom.length > 0 && <div style={{ borderTop: `1px solid ${border}`, margin: '4px 0' }} />}
+                        {groupConfig.bottom.map(id => renderToolItem(tools.find(t => t.id === id)))}
+                      </>
+                    ) : (
+                      tools.map(t => renderToolItem(t))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Chat History — below tools, capped at 5 with expand */}
               {conversations.length > 0 && (
-                <div style={{ marginBottom: 4 }}>
+                <div style={{ borderTop: `1px solid ${border}`, marginTop: 4, paddingTop: 4 }}>
                   <div style={{ padding: '8px 8px 6px', fontSize: 11, fontWeight: 600, color: muted, letterSpacing: '0.03em' }}>
                     Chats
                   </div>
-                  {conversations.slice(0, 20).map(conv => (
+                  {(chatsExpanded ? conversations : conversations.slice(0, 5)).map(conv => (
                     <div key={conv.id} style={{ position: 'relative' }}>
                       {renamingId === conv.id ? (
                         <div style={{ padding: '3px 4px' }}>
@@ -522,36 +551,19 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
                       )}
                     </div>
                   ))}
+                  {conversations.length > 5 && (
+                    <button
+                      onClick={() => setChatsExpanded(v => !v)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '6px 10px', background: 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', color: muted, fontSize: 11, fontWeight: 600, transition: 'var(--transition-fast)' }}
+                      onMouseEnter={e => e.currentTarget.style.background = hover}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      {chatsExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                      {chatsExpanded ? 'Show less' : `${conversations.length - 5} more chats`}
+                    </button>
+                  )}
                 </div>
               )}
-
-              {/* Grouped Tools Section */}
-              <div style={{ borderTop: conversations.length > 0 ? `1px solid ${border}` : 'none', marginTop: 4, paddingTop: 4 }}>
-                <button
-                  onClick={() => setToolsExpanded(v => !v)}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '8px 8px', background: 'transparent', border: 'none', cursor: 'pointer', color: muted, borderRadius: 6, transition: 'var(--transition-fast)' }}
-                  onMouseEnter={e => e.currentTarget.style.background = hover}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                >
-                  <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.03em' }}>Tools ({tools.length})</span>
-                  {toolsExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                </button>
-                {toolsExpanded && (
-                  <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    {groupConfig ? (
-                      <>
-                        {groupConfig.top.map(id => renderToolItem(tools.find(t => t.id === id)))}
-                        {groupConfig.top.length > 0 && <div style={{ height: 4 }} />}
-                        {groupConfig.groups.map(renderGroup)}
-                        {groupConfig.bottom.length > 0 && <div style={{ borderTop: `1px solid ${border}`, margin: '4px 0' }} />}
-                        {groupConfig.bottom.map(id => renderToolItem(tools.find(t => t.id === id)))}
-                      </>
-                    ) : (
-                      tools.map(t => renderToolItem(t))
-                    )}
-                  </div>
-                )}
-              </div>
             </>
           )}
         </div>

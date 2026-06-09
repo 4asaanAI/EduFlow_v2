@@ -56,7 +56,7 @@ export function ToastProvider({ children }) {
             }}>
               <Icon size={15} color={color} />
               <span style={{ fontSize: 13, color: isDark ? '#f5f5f5' : '#171717', flex: 1 }}>{t.message}</span>
-              <button onClick={() => dismiss(t.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: isDark ? '#555' : '#a3a3a3', display: 'flex', padding: 2 }}>
+              <button onClick={() => dismiss(t.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: isDark ? '#888' : '#525252', display: 'flex', padding: 2 }}>
                 <X size={13} />
               </button>
             </div>

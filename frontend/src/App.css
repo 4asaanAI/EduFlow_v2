@@ -17,7 +17,7 @@
   --c-border: #e5e5e5;
   --c-text:   #171717;
   --c-muted:  #525252;
-  --c-faint:  #a3a3a3;
+  --c-faint:  #525252;
   --c-input:  #fafafa;
 }
 
@@ -30,6 +30,10 @@ body { background: var(--c-app, #111111); }
   .tool-page-root { padding: 12px 10px !important; }
   /* Certificate / split-panel layouts collapse */
   .cert-split-grid { grid-template-columns: 1fr !important; }
+  /* CircularSender / admin two-col panels collapse */
+  .admin-split-grid { grid-template-columns: 1fr !important; }
+  /* AuditLog table horizontal scroll */
+  .audit-table-wrapper { overflow-x: auto !important; }
 }
 
 @media (max-width: 640px) {
@@ -57,6 +61,25 @@ body { background: var(--c-app, #111111); }
 @media (max-width: 480px) {
   .stat-grid-4 { grid-template-columns: 1fr 1fr !important; }
   .stat-grid-3 { grid-template-columns: 1fr 1fr !important; }
+}
+
+/* ─── Light theme: date/time native input fix ────────────── */
+[data-theme="light"] input[type="date"],
+[data-theme="light"] input[type="time"],
+[data-theme="light"] input[type="datetime-local"] {
+  color-scheme: light;
+}
+
+/* ─── Circular sender: chip row wrapping ─────────────────── */
+.circular-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ─── Maintenance schedule: DataTable select in light mode ── */
+[data-theme="light"] .maintenance-status-select {
+  color-scheme: light;
 }
 
 /* ─── Timetable: filled-cell colour for light theme ──────── */
@@ -95,12 +118,12 @@ body { background: var(--c-app, #111111); }
      Components that need theme-aware backgrounds now use --c-bg / --c-deep instead. */
   --tool-hex-a3a3a3: #525252;
   --tool-hex-a0a0a0: #525252;
-  --tool-hex-737373: #737373;
-  --tool-hex-666:    #737373;
+  --tool-hex-737373: #525252;
+  --tool-hex-666:    #525252;
   --tool-hex-555:    #525252;
-  --tool-hex-bbb:    #a3a3a3;
+  --tool-hex-bbb:    #525252;
   --tool-hex-ccc:    #d4d4d4;
   --tool-hex-d4d4d4: #cccccc;
-  --tool-hex-888:    #737373;
+  --tool-hex-888:    #525252;
   --tool-hex-525252: #525252;
 }

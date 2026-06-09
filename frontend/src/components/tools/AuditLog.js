@@ -154,14 +154,14 @@ export default function AuditLog() {
       {error && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 13, marginBottom: 12 }}>{error}</div>}
 
       {showFilters && (
-        <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 11, padding: 16, marginBottom: 16, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+        <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 11, padding: 16, marginBottom: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(140px, 100%), 1fr))', gap: 10 }}>
           <div>
             <label style={{ fontSize: 11, color: muted, fontWeight: 600, display: 'block', marginBottom: 4 }}>Collection</label>
             <input
               value={filters.collection}
               onChange={e => f('collection')(e.target.value)}
               placeholder="e.g. students, fees..."
-              style={{ width: '100%', background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px', color: text, fontSize: 12, boxSizing: 'border-box' }}
+              style={{ width: '100%', background: 'var(--c-input)', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px', color: text, fontSize: 12, boxSizing: 'border-box', outline: 'none' }}
             />
           </div>
           <div>
@@ -170,7 +170,7 @@ export default function AuditLog() {
               type="date"
               value={filters.date_from}
               onChange={e => f('date_from')(e.target.value)}
-              style={{ width: '100%', background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px', color: text, fontSize: 12, boxSizing: 'border-box' }}
+              style={{ width: '100%', background: 'var(--c-input)', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px', color: text, fontSize: 12, boxSizing: 'border-box', outline: 'none', colorScheme: isDark ? 'dark' : 'light' }}
             />
           </div>
           <div>
@@ -179,17 +179,17 @@ export default function AuditLog() {
               type="date"
               value={filters.date_to}
               onChange={e => f('date_to')(e.target.value)}
-              style={{ width: '100%', background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px', color: text, fontSize: 12, boxSizing: 'border-box' }}
+              style={{ width: '100%', background: 'var(--c-input)', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px', color: text, fontSize: 12, boxSizing: 'border-box', outline: 'none', colorScheme: isDark ? 'dark' : 'light' }}
             />
           </div>
-          <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8 }}>
-            <div style={{ position: 'relative', flex: 1 }}>
+          <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative', flex: 1, minWidth: 160 }}>
               <Search size={12} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: muted }} />
               <input
                 value={filters.q}
                 onChange={e => f('q')(e.target.value)}
                 placeholder="Search by user or record ID..."
-                style={{ width: '100%', background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px 7px 28px', color: text, fontSize: 12, boxSizing: 'border-box' }}
+                style={{ width: '100%', background: 'var(--c-input)', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px 7px 28px', color: text, fontSize: 12, boxSizing: 'border-box', outline: 'none' }}
               />
             </div>
             <ActionBtn label="Search" onClick={() => load(1)} />
@@ -198,34 +198,37 @@ export default function AuditLog() {
         </div>
       )}
 
-      {/* Column headers */}
-      <div style={{ display: 'flex', padding: '0 0 6px', gap: 10, borderBottom: `2px solid ${border}`, marginBottom: 4 }}>
-        <span style={{ width: 20 }} />
-        <span style={{ width: 140, fontSize: 11, fontWeight: 600, color: muted }}>TIMESTAMP</span>
-        <span style={{ minWidth: 90, fontSize: 11, fontWeight: 600, color: muted }}>ACTION</span>
-        <span style={{ flex: 1, fontSize: 11, fontWeight: 600, color: muted }}>RECORD</span>
-        <span style={{ minWidth: 100, fontSize: 11, fontWeight: 600, color: muted, textAlign: 'right' }}>CHANGED BY</span>
+      {/* Audit table with horizontal scroll on mobile */}
+      <div className="audit-table-wrapper" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <div style={{ minWidth: 480 }}>
+          {/* Column headers */}
+          <div style={{ display: 'flex', padding: '0 0 6px', gap: 10, borderBottom: `2px solid ${border}`, marginBottom: 4 }}>
+            <span style={{ width: 20 }} />
+            <span style={{ width: 140, flexShrink: 0, fontSize: 11, fontWeight: 600, color: muted }}>TIMESTAMP</span>
+            <span style={{ minWidth: 90, flexShrink: 0, fontSize: 11, fontWeight: 600, color: muted }}>ACTION</span>
+            <span style={{ flex: 1, fontSize: 11, fontWeight: 600, color: muted }}>RECORD</span>
+            <span style={{ minWidth: 100, flexShrink: 0, fontSize: 11, fontWeight: 600, color: muted, textAlign: 'right' }}>CHANGED BY</span>
+          </div>
+
+          {loading ? (
+            <div style={{ color: muted, textAlign: 'center', padding: 40 }}>Loading...</div>
+          ) : entries.length === 0 ? (
+            <div style={{ color: muted, textAlign: 'center', padding: 40 }}>No audit entries found.</div>
+          ) : (
+            entries.map((entry, i) => (
+              <AuditRow key={entry.id || i} entry={entry} isDark={isDark} />
+            ))
+          )}
+        </div>
       </div>
 
-      {loading ? (
-        <div style={{ color: muted, textAlign: 'center', padding: 40 }}>Loading...</div>
-      ) : entries.length === 0 ? (
-        <div style={{ color: muted, textAlign: 'center', padding: 40 }}>No audit entries found.</div>
-      ) : (
-        <>
-          {entries.map((entry, i) => (
-            <AuditRow key={entry.id || i} entry={entry} isDark={isDark} />
-          ))}
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 16 }}>
-              <ActionBtn label="Prev" variant="secondary" onClick={() => load(page - 1)} disabled={page <= 1} />
-              <span style={{ fontSize: 12, color: muted, padding: '7px 12px' }}>{page} / {totalPages}</span>
-              <ActionBtn label="Next" variant="secondary" onClick={() => load(page + 1)} disabled={page >= totalPages} />
-            </div>
-          )}
-        </>
+      {/* Pagination */}
+      {!loading && totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 16 }}>
+          <ActionBtn label="Prev" variant="secondary" onClick={() => load(page - 1)} disabled={page <= 1} />
+          <span style={{ fontSize: 12, color: muted, padding: '7px 12px' }}>{page} / {totalPages}</span>
+          <ActionBtn label="Next" variant="secondary" onClick={() => load(page + 1)} disabled={page >= totalPages} />
+        </div>
       )}
     </ToolPage>
   );

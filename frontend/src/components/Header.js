@@ -34,7 +34,7 @@ function SearchPanel({ user, onClose, isDark }) {
   const bg = isDark ? '#1e1e1e' : '#fff';
   const border = isDark ? '#2e2e2e' : '#e5e5e5';
   const text = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#666' : '#a3a3a3';
+  const muted = isDark ? '#888' : '#525252';
 
   const typeColors = { tool: '#a78bfa', student: '#4f8ff7', staff: '#34d399', announcement: '#fbbf24' };
 
@@ -109,7 +109,7 @@ function NotificationsPanel({ user, onClose, isDark }) {
   const bg = isDark ? '#1e1e1e' : '#fff';
   const border = isDark ? '#2e2e2e' : '#e5e5e5';
   const text = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#666' : '#a3a3a3';
+  const muted = isDark ? '#888' : '#525252';
   const typeColors = { info: '#4f8ff7', warning: '#fbbf24', success: '#34d399', error: '#f87171' };
 
   const adminRouteMap = { 'Pending Leave Requests': 'staff-leave-manager', 'Fee Overdue': 'fee-collection', 'Announcement': 'announcement-broadcaster' };
@@ -203,7 +203,7 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
   const bg = isDark ? '#1a1a1a' : '#ffffff';
   const border = isDark ? '#2e2e2e' : '#e5e5e5';
   const tp = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#666' : '#a3a3a3';
+  const muted = isDark ? '#888' : '#525252';
   const secondary = isDark ? '#a0a0a0' : '#525252';
 
   return (

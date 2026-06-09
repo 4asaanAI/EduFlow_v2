@@ -79,7 +79,7 @@ export default function TokenBudgetBar({ used = 0, limit = -1, canRecharge = fal
 
   const labelStyle = {
     fontSize: 11,
-    color: isExhausted ? '#f87171' : (isDark ? '#666' : '#a3a3a3'),
+    color: isExhausted ? '#f87171' : (isDark ? '#888' : '#525252'),
     fontWeight: isExhausted ? 600 : 400,
     whiteSpace: 'nowrap',
     fontFamily: 'Inter, -apple-system, sans-serif',

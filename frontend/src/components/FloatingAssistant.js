@@ -88,7 +88,7 @@ export default function FloatingAssistant() {
   const bg = isDark ? '#1a1a1a' : '#ffffff';
   const border = isDark ? '#2e2e2e' : '#e5e5e5';
   const tp = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#666' : '#a3a3a3';
+  const muted = isDark ? '#888' : '#525252';
   const inputBg = isDark ? '#111' : '#f9f9f9';
   const userBubble = '#4f8ff7';
   const aiBubbleBg = isDark ? '#252525' : '#f3f4f6';

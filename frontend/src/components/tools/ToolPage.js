@@ -156,8 +156,9 @@ export function DataTable({ title, headers, rows, emptyMsg = 'No data found', ac
   );
 }
 
-export function Badge({ text, color = 'blue' }) {
-  const colors = {
+export function Badge({ text, label, color = 'blue' }) {
+  const displayText = text ?? label;
+  const named = {
     green: { bg: 'rgba(52,211,153,0.1)', text: 'var(--color-success)', border: 'rgba(52,211,153,0.2)' },
     red: { bg: 'rgba(248,113,113,0.1)', text: 'var(--color-danger)', border: 'rgba(248,113,113,0.2)' },
     yellow: { bg: 'rgba(251,191,36,0.1)', text: 'var(--color-warning)', border: 'rgba(251,191,36,0.2)' },
@@ -165,8 +166,12 @@ export function Badge({ text, color = 'blue' }) {
     purple: { bg: 'rgba(167,139,250,0.1)', text: 'var(--color-purple)', border: 'rgba(167,139,250,0.2)' },
     gray: { bg: 'rgba(100,100,100,0.1)', text: 'var(--color-text-faint)', border: 'rgba(100,100,100,0.2)' },
   };
-  const c = colors[color] || colors.blue;
-  return <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>{text}</span>;
+  const c = named[color] || {
+    bg: `color-mix(in srgb, ${color} 15%, transparent)`,
+    text: color,
+    border: `color-mix(in srgb, ${color} 30%, transparent)`,
+  };
+  return <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: c.bg, color: c.text, border: `1px solid ${c.border}`, whiteSpace: 'nowrap' }}>{displayText}</span>;
 }
 
 export function ComingSoon({ toolName }) {
@@ -217,10 +222,10 @@ export function FormField({ label, type = 'text', value, onChange, placeholder, 
   );
 }
 
-export function ActionBtn({ label, onClick, variant = 'primary', icon, disabled, type = 'button' }) {
+export function ActionBtn({ label, onClick, variant = 'primary', icon, disabled, type = 'button', style: extraStyle }) {
   const { isDark } = useTheme();
   const styles = {
-    primary: { background: 'var(--color-inverse-surface)', color: 'var(--color-inverse-text)', border: 'none' },
+    primary: { background: '#4f8ff7', color: '#ffffff', border: 'none' },
     success: { background: 'rgba(52,211,153,0.1)', color: 'var(--color-success)', border: '1px solid rgba(52,211,153,0.2)' },
     danger: { background: 'rgba(248,113,113,0.1)', color: 'var(--color-danger)', border: '1px solid rgba(248,113,113,0.2)' },
     secondary: { background: isDark ? 'var(--color-surface-raised)' : 'var(--color-surface)', color: isDark ? 'var(--color-text-secondary)' : 'var(--color-text-secondary)', border: `1px solid ${isDark ? 'var(--color-border-strong)' : 'var(--color-border)'}` },
@@ -228,7 +233,7 @@ export function ActionBtn({ label, onClick, variant = 'primary', icon, disabled,
   const s = styles[variant] || styles.primary;
   return (
     <button type={type} onClick={onClick} disabled={disabled} style={{
-      ...s, borderRadius: 10, padding: '8px 16px', fontSize: 13, fontWeight: 600,
+      ...s, ...extraStyle, borderRadius: 10, padding: '8px 16px', fontSize: 13, fontWeight: 600,
       cursor: disabled ? 'not-allowed' : 'pointer', display: 'inline-flex',
       alignItems: 'center', gap: 6, opacity: disabled ? 0.5 : 1,
       transition: 'all var(--transition-fast)', letterSpacing: '-0.01em',

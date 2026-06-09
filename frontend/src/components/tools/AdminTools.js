@@ -739,15 +739,15 @@ export function CircularSender() {
 
   const chipStyle = (active) => ({
     display: 'inline-flex', alignItems: 'center', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
-    background: active ? 'rgba(59,130,246,0.2)' : 'var(--c-deep)',
-    border: `1px solid ${active ? 'var(--tool-hex-4f8ff7)' : 'var(--c-border)'}`,
-    color: active ? 'var(--tool-hex-93c5fd)' : 'var(--c-faint)',
+    background: active ? 'rgba(79,143,247,0.12)' : 'var(--c-deep)',
+    border: `1px solid ${active ? '#4f8ff7' : 'var(--c-border)'}`,
+    color: active ? '#4f8ff7' : 'var(--c-text)',
     userSelect: 'none',
   });
 
   return (
     <ToolPage title="Circular & Notice Sender" subtitle="Send notices to all, by class, or by role" loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start' }}>
+      <div className="admin-split-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start' }}>
         <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20 }}>
           <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>New Circular</h3>
           <form onSubmit={send}>
@@ -757,7 +757,7 @@ export function CircularSender() {
             {/* Audience type */}
             <div style={{ marginBottom: 12 }}>
               <label style={{ display: 'block', fontSize: 11, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Send To</label>
-              <div style={{ display: 'flex', gap: 6 }}>
+              <div className="circular-chip-row">
                 {[['all', 'Everyone'], ['class', 'By Class'], ['role', 'By Role']].map(([val, lbl]) => (
                   <span key={val} style={chipStyle(form.audience_type === val)} onClick={() => f('audience_type')(val)}>{lbl}</span>
                 ))}
@@ -783,7 +783,7 @@ export function CircularSender() {
             {form.audience_type === 'role' && (
               <div style={{ marginBottom: 12 }}>
                 <label style={{ display: 'block', fontSize: 11, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Select Roles</label>
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div className="circular-chip-row">
                   {ROLES.map(role => (
                     <span key={role} style={chipStyle(form.audience_roles.includes(role))} onClick={() => toggleArr('audience_roles', role)}
                     >{role.charAt(0).toUpperCase() + role.slice(1)}</span>
