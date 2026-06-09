@@ -258,7 +258,15 @@ async def _create_indexes():
     await db.token_balances.create_index("subscription_id", sparse=True)
     await db.token_usage.create_index([("branch_id", 1), ("user_id", 1), ("month", 1)])
     await db.token_usage.create_index("created_at")
-    await db.token_purchases.create_index("payment_id", unique=True, sparse=True)
+    # Migrate: drop old non-sparse payment_id_1 index if it was created without sparse=True
+    try:
+        idx_info = await db.token_purchases.index_information()
+        existing = idx_info.get("payment_id_1", {})
+        if existing and not existing.get("sparse"):
+            await db.token_purchases.drop_index("payment_id_1")
+        await db.token_purchases.create_index("payment_id", unique=True, sparse=True)
+    except Exception:
+        pass
     await db.token_purchases.create_index(
         [("razorpay_reference_id", 1)],
         unique=True,
