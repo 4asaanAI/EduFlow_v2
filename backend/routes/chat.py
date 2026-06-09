@@ -311,6 +311,63 @@ KEYWORD_TOOL_MAP = [
     # Staff list (broader keywords)
     (["staff directory", "all teachers", "teacher directory",
       "show staff", "list staff"], "get_staff_list"),
+    # ── CRUD keyword entries ──
+    # Create student
+    (["add student", "create student", "new student", "enroll student",
+      "admit student", "register student", "naya student",
+      "student add karo"], "create_student"),
+    # Update student
+    (["update student", "edit student", "change student name",
+      "student ka naam", "student transfer", "move student to class",
+      "student class change"], "update_student"),
+    # Student status
+    (["withdraw student", "deactivate student", "mark student withdrawn",
+      "tc student", "issue tc", "student status change"], "set_student_status"),
+    # Guardian update
+    (["update guardian", "change parent number", "guardian contact",
+      "parent phone change", "update parent"], "manage_student_guardians"),
+    # Create staff
+    (["add staff", "create staff", "new teacher", "hire teacher",
+      "hire staff", "add teacher", "naya teacher", "add employee"], "create_staff"),
+    # Update staff
+    (["update staff", "edit staff", "change staff", "staff details update",
+      "teacher profile update"], "update_staff"),
+    # Fee structure
+    (["create fee structure", "add fee structure", "new fee structure",
+      "fee structure banao"], "create_fee_structure"),
+    (["update fee structure", "edit fee structure",
+      "change fee structure"], "update_fee_structure"),
+    # Discount
+    (["create discount", "add discount", "new discount type",
+      "sibling discount", "merit discount"], "create_discount_type"),
+    # Class management
+    (["create class", "add class", "new class", "naya class",
+      "add section"], "create_class"),
+    (["update class", "edit class", "change class teacher",
+      "class teacher assign"], "update_class"),
+    # House management
+    (["create house", "add house", "new house"], "create_house"),
+    (["update house", "edit house", "rename house"], "update_house"),
+    # Branch management
+    (["create branch", "add branch", "new branch"], "create_branch"),
+    (["update branch", "edit branch", "branch details"], "update_branch"),
+    # School settings
+    (["update school settings", "school name change", "change school name",
+      "update school name", "school board change"], "update_school_settings"),
+    # Incident management
+    (["assign followup", "assign follow up", "assign complaint",
+      "follow up assign karo"], "assign_followup"),
+    (["update incident", "close incident", "resolve complaint",
+      "incident status"], "update_incident_status"),
+    # Attendance correction
+    (["correct attendance", "attendance correction",
+      "fix attendance", "attendance mistake"], "correct_attendance"),
+    # Dashboard query
+    (["dashboard summary", "all open issues", "pending approvals",
+      "summary of everything"], "query_dashboard_summary"),
+    # Audit log
+    (["/audit-log", "audit log", "who changed what",
+      "system log", "activity log"], "query_audit_log"),
 ]
 
 # ─── Navigate Map ─────────────────────────────────────────────────────────────
@@ -360,6 +417,50 @@ NAVIGATE_MAP = {
     "show exam results": "exam-results",
     "open report cards": "report-cards",
     "show report cards": "report-cards",
+    # Additional panel navigations
+    "open audit log": "audit-log",
+    "show audit log": "audit-log",
+    "go to audit log": "audit-log",
+    "open data import": "data-import",
+    "show data import": "data-import",
+    "open fee sync": "fee-sync",
+    "show fee sync": "fee-sync",
+    "open attendance overview": "attendance-overview",
+    "show attendance overview": "attendance-overview",
+    "open staff attendance": "staff-attendance-tracker",
+    "show staff attendance": "staff-attendance-tracker",
+    "open staff attendance tracker": "staff-attendance-tracker",
+    "open fee defaulter": "smart-fee-defaulter",
+    "show fee defaulter": "smart-fee-defaulter",
+    "open defaulters": "smart-fee-defaulter",
+    "open incident tracker": "incident-tracker",
+    "show incident tracker": "incident-tracker",
+    "open incidents": "incident-tracker",
+    "open facility requests": "facility-requests",
+    "show facility requests": "facility-requests",
+    "open maintenance": "facility-requests",
+    "open school activities": "school-activities",
+    "show school activities": "school-activities",
+    "open fee receipts": "fee-receipts",
+    "show fee receipts": "fee-receipts",
+    "open certificates": "certificate-generator",
+    "show certificates": "certificate-generator",
+    "open certificate generator": "certificate-generator",
+    "open asset tracker": "asset-tracker",
+    "show asset tracker": "asset-tracker",
+    "open assets": "asset-tracker",
+    "open form builder": "custom-form-builder",
+    "show form builder": "custom-form-builder",
+    "open parent messages": "parent-message",
+    "show parent messages": "parent-message",
+    "open admission pipeline": "admission-pipeline",
+    "show admission pipeline": "admission-pipeline",
+    "open staff leave manager": "staff-leave-manager",
+    "show staff leave manager": "staff-leave-manager",
+    "open staff performance": "staff-performance",
+    "show staff performance": "staff-performance",
+    "open timetable builder": "timetable-builder",
+    "show timetable builder": "timetable-builder",
 }
 
 
