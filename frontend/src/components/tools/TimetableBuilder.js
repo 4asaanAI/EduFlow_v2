@@ -8,7 +8,10 @@ import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, ActionBtn, FormField } from './ToolPage';
 import { Plus, Trash2, Edit2, Save, X } from 'lucide-react';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
+const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
+const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
+  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
+  : _rawAPI) + '/api';
 function h() { return getAuthHeaders(); }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -30,21 +33,25 @@ export default function TimetableBuilder() {
 
   const canEdit = currentUser.role === 'owner' || currentUser.role === 'admin';
 
-  const bg = isDark ? 'var(--tool-hex-1a1a1a)' : 'var(--tool-hex-f5f5f5)';
-  const card = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-fff)';
-  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
-  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
-  const muted = isDark ? 'var(--tool-hex-888)' : 'var(--tool-hex-737373)';
+  // Use --c-* semantic variables that work correctly for both themes
+  const bg = 'var(--c-deep)';
+  const card = 'var(--c-bg)';
+  const border = 'var(--c-border)';
+  const text = 'var(--c-text)';
+  const muted = 'var(--c-muted)';
   const accent = 'var(--tool-hex-4f8ff7)';
 
   useEffect(() => {
-    Promise.all([
+    // Use allSettled so a failing staff fetch doesn't block class list from loading
+    Promise.allSettled([
       fetch(`${API}/settings/classes`, { headers: h() }).then(r => r.json()),
-      fetch(`${API}/staff?limit=100`, { headers: h() }).then(r => r.json()),
-    ]).then(([clsRes, staffRes]) => {
-      if (clsRes.success) setClasses(clsRes.data || []);
-      if (staffRes.success) setStaff((staffRes.data || []).filter(s => s.staff_type === 'teacher' || s.sub_category === 'teacher'));
-    }).catch(() => {});
+      fetch(`${API}/staff/?limit=100`, { headers: h() }).then(r => r.json()),
+    ]).then(([clsResult, staffResult]) => {
+      if (clsResult.status === 'fulfilled' && clsResult.value?.success) setClasses(clsResult.value.data || []);
+      if (staffResult.status === 'fulfilled' && staffResult.value?.success) {
+        setStaff((staffResult.value.data || []).filter(s => s.staff_type === 'teacher' || s.sub_category === 'teacher'));
+      }
+    });
   }, []);
 
   const loadTimetable = useCallback(async (classId) => {
@@ -153,9 +160,9 @@ export default function TimetableBuilder() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr>
-                  <th style={{ padding: '8px 12px', textAlign: 'left', color: muted, fontWeight: 600, fontSize: 11, width: 90, background: isDark ? 'var(--tool-hex-161616)' : 'var(--tool-hex-f9f9f9)', border: `1px solid ${border}` }}>Period</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left', color: muted, fontWeight: 600, fontSize: 11, width: 90, background: 'var(--c-deep)', border: `1px solid ${border}` }}>Period</th>
                   {DAYS.map(day => (
-                    <th key={day} style={{ padding: '8px 12px', textAlign: 'center', color: muted, fontWeight: 600, fontSize: 11, background: isDark ? 'var(--tool-hex-161616)' : 'var(--tool-hex-f9f9f9)', border: `1px solid ${border}` }}>
+                    <th key={day} style={{ padding: '8px 12px', textAlign: 'center', color: muted, fontWeight: 600, fontSize: 11, background: 'var(--c-deep)', border: `1px solid ${border}` }}>
                       {day.slice(0, 3)}
                     </th>
                   ))}
@@ -164,7 +171,7 @@ export default function TimetableBuilder() {
               <tbody>
                 {PERIODS.map(period => (
                   <tr key={period}>
-                    <td style={{ padding: '8px 12px', color: muted, fontWeight: 500, background: isDark ? 'var(--tool-hex-161616)' : 'var(--tool-hex-f9f9f9)', border: `1px solid ${border}`, fontSize: 11 }}>P{period}</td>
+                    <td style={{ padding: '8px 12px', color: muted, fontWeight: 500, background: 'var(--c-deep)', border: `1px solid ${border}`, fontSize: 11 }}>P{period}</td>
                     {DAYS.map((day, dayIdx) => {
                       const slot = getSlot(dayIdx, period);
                       return (
@@ -173,11 +180,11 @@ export default function TimetableBuilder() {
                           onClick={() => openEdit(dayIdx, period)}
                           style={{
                             padding: '6px 8px', border: `1px solid ${border}`, cursor: canEdit ? 'pointer' : 'default',
-                            background: slot ? (isDark ? 'var(--tool-hex-1e2433)' : 'var(--tool-hex-eff6ff)') : card,
+                            background: slot ? 'var(--tool-hex-eff6ff)' : card,
                             verticalAlign: 'top', minWidth: 90,
                             transition: 'background 0.12s',
                           }}
-                          onMouseEnter={e => canEdit && !slot && (e.currentTarget.style.background = isDark ? 'var(--tool-hex-222)' : 'var(--tool-hex-f9f9f9)')}
+                          onMouseEnter={e => canEdit && !slot && (e.currentTarget.style.background = 'var(--c-deep)')}
                           onMouseLeave={e => canEdit && !slot && (e.currentTarget.style.background = card)}
                         >
                           {slot ? (
@@ -198,7 +205,7 @@ export default function TimetableBuilder() {
                               )}
                             </div>
                           ) : (
-                            canEdit ? <div style={{ color: isDark ? 'var(--tool-hex-333)' : 'var(--tool-hex-d4d4d4)', fontSize: 11, textAlign: 'center' }}>+</div> : null
+                            canEdit ? <div style={{ color: 'var(--c-border)', fontSize: 11, textAlign: 'center' }}>+</div> : null
                           )}
                         </td>
                       );
@@ -215,9 +222,9 @@ export default function TimetableBuilder() {
               position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
               background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <div style={{ background: card, borderRadius: 14, padding: 24, width: 380, maxWidth: '90vw', border: `1px solid ${border}` }}>
+              <div style={{ background: 'var(--c-bg)', borderRadius: 14, padding: 24, width: 380, maxWidth: '90vw', border: '1px solid var(--c-border)', boxShadow: 'var(--shadow-lg)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                  <h3 style={{ fontSize: 15, fontWeight: 700, color: text, margin: 0 }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text)', margin: 0 }}>
                     {DAYS[editSlot.day]} — Period {editSlot.period}
                   </h3>
                   <button onClick={() => setEditSlot(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: muted }}><X size={16} /></button>

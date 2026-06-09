@@ -6,6 +6,7 @@ import {
   eraseStudent,
   getAllClasses,
   getStudent,
+  getStudentStrengthStats,
   getStudents,
   updateStudent,
   uploadGuardianPhoto,
@@ -604,19 +605,17 @@ export default function StudentDatabase() {
   const canErase = currentUser.role === 'owner';
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / 20)), [total]);
 
-  const strengthByClass = useMemo(() => {
-    const map = {};
-    students.forEach(s => {
-      const key = s.class_info ? `${s.class_info.name}-${s.class_info.section}` : 'Unassigned';
-      if (!map[key]) map[key] = { boys: 0, girls: 0, other: 0, total: 0 };
-      const g = (s.gender || '').toLowerCase();
-      if (g === 'male' || g === 'boy' || g === 'm') map[key].boys++;
-      else if (g === 'female' || g === 'girl' || g === 'f') map[key].girls++;
-      else map[key].other++;
-      map[key].total++;
-    });
-    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
-  }, [students]);
+  // Server-side aggregated stats for the Class Strength tab (accurate across all pages)
+  const [strengthStats, setStrengthStats] = useState([]);
+  const [strengthLoading, setStrengthLoading] = useState(false);
+
+  useEffect(() => {
+    if (tab !== 'strength') return;
+    setStrengthLoading(true);
+    getStudentStrengthStats()
+      .then(res => { if (res.success) setStrengthStats(res.data || []); })
+      .finally(() => setStrengthLoading(false));
+  }, [tab]);
 
   const loadClasses = useCallback(async () => {
     const res = await getAllClasses();
@@ -702,41 +701,51 @@ export default function StudentDatabase() {
       {/* ── Class Strength Tab ── */}
       {tab === 'strength' && (
         <div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 24 }}>
-            {[
-              { label: 'Total Students', value: total, color: '#4f8ff7' },
-              { label: 'Classes', value: strengthByClass.length, color: '#34d399' },
-              { label: 'Boys', value: strengthByClass.reduce((a, [, v]) => a + v.boys, 0), color: '#60a5fa' },
-              { label: 'Girls', value: strengthByClass.reduce((a, [, v]) => a + v.girls, 0), color: '#f472b6' },
-            ].map(stat => (
-              <div key={stat.label} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 10, padding: '16px 18px' }}>
-                <div style={{ fontSize: 28, fontWeight: 700, color: stat.color }}>{stat.value}</div>
-                <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>{stat.label}</div>
-              </div>
-            ))}
-          </div>
-          <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  {['Class', 'Boys', 'Girls', 'Other', 'Total'].map(h => (
-                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 750, color: 'var(--c-faint)', textTransform: 'uppercase', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {strengthByClass.map(([cls, counts], i) => (
-                  <tr key={cls} style={{ borderBottom: i < strengthByClass.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
-                    <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--c-text)', fontSize: 13 }}>{cls}</td>
-                    <td style={{ padding: '10px 14px', color: '#60a5fa', fontSize: 13 }}>{counts.boys}</td>
-                    <td style={{ padding: '10px 14px', color: '#f472b6', fontSize: 13 }}>{counts.girls}</td>
-                    <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 13 }}>{counts.other}</td>
-                    <td style={{ padding: '10px 14px', fontWeight: 700, color: 'var(--c-text)', fontSize: 13 }}>{counts.total}</td>
-                  </tr>
+          {strengthLoading ? (
+            <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13 }}>Loading strength data…</div>
+          ) : (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
+                {[
+                  { label: 'Total Students', value: strengthStats.reduce((a, r) => a + r.total, 0), color: '#4f8ff7' },
+                  { label: 'Classes', value: strengthStats.length, color: '#34d399' },
+                  { label: 'Boys', value: strengthStats.reduce((a, r) => a + r.boys, 0), color: '#60a5fa' },
+                  { label: 'Girls', value: strengthStats.reduce((a, r) => a + r.girls, 0), color: '#f472b6' },
+                ].map(stat => (
+                  <div key={stat.label} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 10, padding: '16px 18px' }}>
+                    <div style={{ fontSize: 28, fontWeight: 700, color: stat.color }}>{stat.value}</div>
+                    <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>{stat.label}</div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </div>
+              {strengthStats.length === 0 ? (
+                <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13 }}>No student data available</div>
+              ) : (
+                <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr>
+                        {['Class', 'Boys', 'Girls', 'Other', 'Total'].map(h => (
+                          <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 750, color: 'var(--c-faint)', textTransform: 'uppercase', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {strengthStats.map((row, i) => (
+                        <tr key={row.class_id || i} style={{ borderBottom: i < strengthStats.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
+                          <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--c-text)', fontSize: 13 }}>{row.class_label}</td>
+                          <td style={{ padding: '10px 14px', color: '#60a5fa', fontSize: 13 }}>{row.boys}</td>
+                          <td style={{ padding: '10px 14px', color: '#f472b6', fontSize: 13 }}>{row.girls}</td>
+                          <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 13 }}>{row.other}</td>
+                          <td style={{ padding: '10px 14px', fontWeight: 700, color: 'var(--c-text)', fontSize: 13 }}>{row.total}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 

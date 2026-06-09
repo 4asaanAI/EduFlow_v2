@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { adminResetPassword, createStaff, deactivateStaff, getPendingLeaves, getStaff, subscribeSSE, updateLeave, updateStaff } from '../../lib/api';
 import { CheckCircle, Edit3, KeyRound, Plus, RefreshCw, X, XCircle } from 'lucide-react';
 import { useUser } from '../../contexts/UserContext';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const blankForm = {
   name: '',
@@ -39,8 +40,11 @@ function lastUpdatedLabel(value) {
 }
 
 function ActionButton({ children, onClick, disabled, variant = 'primary', type = 'button' }) {
+  const { isDark } = useTheme();
   const secondary = variant === 'secondary';
   const danger = variant === 'danger';
+  // Use a bright accessible red in light mode; deep red in dark mode
+  const dangerBg = isDark ? '#991b1b' : '#dc2626';
   return (
     <button
       type={type}
@@ -52,11 +56,11 @@ function ActionButton({ children, onClick, disabled, variant = 'primary', type =
         alignItems: 'center',
         justifyContent: 'center',
         gap: 7,
-        background: danger ? 'var(--tool-hex-7f1d1d)' : secondary ? 'var(--c-bg)' : 'var(--tool-hex-4f8ff7)',
-        border: secondary ? '1px solid var(--c-border)' : 'none',
+        background: danger ? dangerBg : secondary ? 'var(--c-bg)' : 'var(--tool-hex-4f8ff7)',
+        border: secondary ? '1px solid var(--c-border)' : danger ? `1px solid ${isDark ? '#7f1d1d' : '#b91c1c'}` : 'none',
         borderRadius: 8,
         padding: '8px 13px',
-        color: danger || !secondary ? 'var(--tool-hex-fff)' : 'var(--c-muted)',
+        color: danger || !secondary ? '#fff' : 'var(--c-muted)',
         fontSize: 12,
         fontWeight: 650,
         cursor: disabled ? 'not-allowed' : 'pointer',

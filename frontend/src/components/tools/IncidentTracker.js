@@ -8,7 +8,10 @@ import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, Badge, ActionBtn, FormField, DataTable } from './ToolPage';
 import { Plus, MessageSquare, UserCheck, AlertTriangle } from 'lucide-react';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
+const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
+const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
+  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
+  : _rawAPI) + '/api';
 function h() { return getAuthHeaders(); }
 
 const SEVERITY_COLORS = { low: 'var(--tool-hex-34d399)', medium: 'var(--tool-hex-facc15)', high: 'var(--tool-hex-f87171)' };
@@ -31,11 +34,12 @@ export default function IncidentTracker() {
   const [searchQ, setSearchQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
-  const bg = isDark ? 'var(--tool-hex-1a1a1a)' : 'var(--tool-hex-f5f5f5)';
-  const card = isDark ? 'var(--tool-hex-1e1e1e)' : 'var(--tool-hex-fff)';
-  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
-  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
-  const muted = isDark ? 'var(--tool-hex-888)' : 'var(--tool-hex-737373)';
+  // Use semantic --c-* variables for correct light/dark rendering
+  const bg = 'var(--c-deep)';
+  const card = 'var(--c-bg)';
+  const border = 'var(--c-border)';
+  const text = 'var(--c-text)';
+  const muted = 'var(--c-muted)';
 
   const loadIncidents = useCallback(async () => {
     setLoading(true);
@@ -135,7 +139,7 @@ export default function IncidentTracker() {
             onClick={() => { setTab(t); setSelected(null); setShowForm(false); }}
             style={{
               padding: '7px 16px', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontWeight: 600,
-              background: tab === t ? 'var(--tool-hex-4f8ff7)' : (isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)'),
+              background: tab === t ? 'var(--tool-hex-4f8ff7)' : 'var(--c-deep)',
               color: tab === t ? 'var(--tool-hex-fff)' : text,
               border: `1px solid ${tab === t ? 'var(--tool-hex-4f8ff7)' : border}`,
             }}
@@ -192,14 +196,14 @@ export default function IncidentTracker() {
                 value={searchQ}
                 onChange={e => setSearchQ(e.target.value)}
                 placeholder="Search incidents..."
-                style={{ width: '100%', background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 7, padding: '8px 10px', color: text, fontSize: 12, boxSizing: 'border-box' }}
+                style={{ width: '100%', background: 'var(--c-input)', border: `1px solid ${border}`, borderRadius: 7, padding: '8px 10px', color: text, fontSize: 12, boxSizing: 'border-box', outline: 'none' }}
                 onKeyDown={e => e.key === 'Enter' && loadIncidents()}
               />
             </div>
             <select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
-              style={{ background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 7, padding: '8px 12px', color: text, fontSize: 12 }}
+              style={{ background: 'var(--c-input)', border: `1px solid ${border}`, borderRadius: 7, padding: '8px 12px', color: text, fontSize: 12, outline: 'none' }}
             >
               <option value="">All statuses</option>
               <option value="open">Open</option>
@@ -265,7 +269,7 @@ export default function IncidentTracker() {
               {(selected.thread || []).map(entry => (
                 <div key={entry.id} style={{ padding: '8px 0', borderBottom: `1px solid ${border}` }}>
                   <div style={{ fontSize: 11, color: muted, marginBottom: 3 }}>
-                    <strong style={{ color: isDark ? 'var(--tool-hex-ccc)' : 'var(--tool-hex-555)' }}>{entry.author_name}</strong> · {entry.timestamp?.slice(0, 16)}
+                    <strong style={{ color: 'var(--c-text)' }}>{entry.author_name}</strong> · {entry.timestamp?.slice(0, 16)}
                   </div>
                   <div style={{ fontSize: 12, color: text }}>{entry.content}</div>
                 </div>
@@ -276,7 +280,7 @@ export default function IncidentTracker() {
                   onChange={e => setThreadMsg(e.target.value)}
                   placeholder="Add a follow-up..."
                   rows={2}
-                  style={{ flex: 1, background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 7, padding: '8px 10px', color: text, fontSize: 12, resize: 'none' }}
+                  style={{ flex: 1, background: 'var(--c-input)', border: `1px solid ${border}`, borderRadius: 7, padding: '8px 10px', color: text, fontSize: 12, resize: 'none', outline: 'none' }}
                 />
                 <ActionBtn label="Post" onClick={addThread} disabled={!threadMsg.trim()} />
               </div>

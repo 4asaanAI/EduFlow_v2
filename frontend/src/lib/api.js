@@ -1,6 +1,10 @@
 import { getAccessToken, redirectToLoginOnce, refreshAccessToken } from './authSession';
 
-const BACKEND = process.env.REACT_APP_BACKEND_URL;
+const _rawBackend = process.env.REACT_APP_BACKEND_URL || '';
+// Force HTTPS when the page is served over HTTPS (prevents mixed-content blocks on Amplify/CloudFront)
+const BACKEND = typeof window !== 'undefined' && window.location.protocol === 'https:'
+  ? _rawBackend.replace(/^http:\/\/(?!localhost)/, 'https://')
+  : _rawBackend;
 const API = `${BACKEND}/api`;
 
 /**
@@ -245,6 +249,11 @@ export async function updateStudent(studentId, data) {
   const res = await apiFetch(`${API}/students/${studentId}`, {
     method: 'PATCH', headers: getHeaders(), body: JSON.stringify(data),
   });
+  return res.json();
+}
+
+export async function getStudentStrengthStats() {
+  const res = await apiFetch(`${API}/students/strength`, { headers: getHeaders() });
   return res.json();
 }
 

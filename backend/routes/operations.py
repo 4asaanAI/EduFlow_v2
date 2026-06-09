@@ -1368,35 +1368,40 @@ async def create_enquiry(request: Request, user: dict = Depends(require_role("ow
 
 @router.patch("/enquiries/{enquiry_id}")
 async def update_enquiry(enquiry_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
-    _require_frontdesk(user)
     db = get_db()
     bid = user.get("branch_id")
     body = await request.json()
     existing = await db.enquiries.find_one(scoped_query({"id": enquiry_id}, branch_id=bid), {"_id": 0})
     if not existing:
         raise HTTPException(404, "Enquiry not found")
+    # Aligned with frontend pipeline stages
     allowed_transitions = {
-        "new": {"contacted", "closed"},
-        "contacted": {"visited", "closed"},
-        "visited": {"applied", "closed"},
-        "applied": {"admitted", "closed"},
-        "admitted": {"enrolled", "closed"},
-        "enrolled": set(),
+        "new": {"contacted", "lost"},
+        "contacted": {"visit_scheduled", "lost"},
+        "visit_scheduled": {"visited", "lost"},
+        "visited": {"documents_submitted", "lost"},
+        "documents_submitted": {"fee_paid", "lost"},
+        "fee_paid": {"enrolled", "lost"},
+        "enrolled": {"lost"},
+        "lost": set(),
+        # legacy / backward-compat
+        "applied": {"admitted", "enrolled", "lost"},
+        "admitted": {"enrolled", "lost"},
         "closed": set(),
     }
     update = {k: v for k, v in body.items() if k in {"status", "assigned_to", "source", "class_applying", "phone", "parent_name"}}
     new_status = update.get("status")
     if new_status and new_status != existing.get("status"):
         current = existing.get("status", "new")
-        # Fix 7: EC-11.2 owner backward transition guard
-        if user.get("role") == "owner" and new_status in {"new", "contacted"}:
+        # Fix 7: EC-11.2 owner backward transition guard — owner can freely move stages
+        if user.get("role") == "owner":
             if existing.get("status") == "enrolled":
                 linked_student = await db.students.find_one(
                     scoped_query({"enquiry_id": enquiry_id}, branch_id=bid)
                 )
                 if linked_student:
                     raise HTTPException(409, "Cannot revert enrolled enquiry — student record exists. Delete the student record first.")
-            # Allow backward transition for owner
+            # Allow any transition for owner
         elif new_status not in allowed_transitions.get(current, set()):
             raise HTTPException(400, f"Invalid enquiry transition from {current} to {new_status}")
     if body.get("note") or new_status:

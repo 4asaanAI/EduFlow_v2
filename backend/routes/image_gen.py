@@ -134,6 +134,9 @@ def _build_cert_pdf(data: dict, bg: bytes | None) -> bytes:
     date     = data.get("issued_date", datetime.now().strftime("%d-%m-%Y"))
     ay       = data.get("academic_year", "")
 
+    # Strip "Class " prefix to avoid "Class Class 10-A" when class_info.name includes the word
+    if cls.lower().startswith("class "):
+        cls = cls[6:].strip()
     tmpl = CERT_BODIES.get(ctype, CERT_BODIES["bonafide"])
     body = tmpl.format(name=name, school=school, cls=cls, date=date, ay=ay)
 

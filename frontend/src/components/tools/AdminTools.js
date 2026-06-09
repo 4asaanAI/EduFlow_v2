@@ -9,7 +9,10 @@ import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn,
 import { Search, Plus, CheckCircle, XCircle, Save, RefreshCw, X, FileDown, MessageSquare } from 'lucide-react';
 import FullStudentDatabase from './StudentDatabase';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
+const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
+const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
+  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
+  : _rawAPI) + '/api';
 function h() { return getAuthHeaders(); }
 const tint = (color, amount) => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
 
@@ -664,7 +667,7 @@ export function CertificateGenerator() {
 
   return (
     <ToolPage title="Certificate Generator" subtitle="Generate & download TC, Bonafide, Character certificates" loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'min(340px, 100%) 1fr', gap: 20 }}>
         {/* Generator form */}
         <div>
           <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>

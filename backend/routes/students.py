@@ -107,6 +107,46 @@ async def _audit(db, *, action: str, student_id: str, user: dict, changes: dict 
     await write_audit_doc(db, record, school_id=get_school_id(), branch_id=user.get("branch_id"))
 
 
+@router.get("/strength")
+async def class_strength_stats(request: Request):
+    """Aggregated gender-count stats per class — used by the Class Strength tab."""
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in READ_ROLES:
+        raise HTTPException(403, "Forbidden")
+    school_id = get_school_id()
+    pipeline = [
+        {"$match": scoped_filter({"is_active": True}, school_id)},
+        {"$lookup": {"from": "classes", "localField": "class_id", "foreignField": "id", "as": "_cls"}},
+        {"$unwind": {"path": "$_cls", "preserveNullAndEmptyArrays": True}},
+        {"$group": {
+            "_id": "$class_id",
+            "class_name": {"$first": "$_cls.name"},
+            "class_section": {"$first": "$_cls.section"},
+            "boys": {"$sum": {"$cond": [{"$in": [{"$toLower": {"$ifNull": ["$gender", ""]}}, ["male", "boy", "m"]]}, 1, 0]}},
+            "girls": {"$sum": {"$cond": [{"$in": [{"$toLower": {"$ifNull": ["$gender", ""]}}, ["female", "girl", "f"]]}, 1, 0]}},
+            "total": {"$sum": 1},
+        }},
+        {"$addFields": {"other": {"$subtract": ["$total", {"$add": ["$boys", "$girls"]}]}}},
+        {"$sort": {"class_name": 1, "class_section": 1}},
+    ]
+    results = await db.students.aggregate(pipeline).to_list(500)
+    data = []
+    for r in results:
+        cls_label = "Unassigned"
+        if r.get("class_name"):
+            cls_label = f"{r['class_name']}-{r['class_section']}" if r.get("class_section") else r["class_name"]
+        data.append({
+            "class_id": r["_id"],
+            "class_label": cls_label,
+            "boys": r["boys"],
+            "girls": r["girls"],
+            "other": r["other"],
+            "total": r["total"],
+        })
+    return {"success": True, "data": data}
+
+
 @router.get("/")
 async def list_students(
     request: Request,
