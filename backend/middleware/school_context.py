@@ -14,7 +14,7 @@ from tenant import _school_id_var
 
 logger = logging.getLogger(__name__)
 
-# Paths that bypass school-context injection entirely (health + login/password-reset only).
+# Paths that bypass school-context injection entirely (health + login only).
 # /api/auth/refresh and /api/auth/logout are NOT in _SKIP_PATHS — they go through the
 # full middleware so school context is injected, but the deactivated-school 402 gate
 # explicitly exempts them (inner bypass below) so deactivated users can sign out cleanly.
@@ -23,8 +23,6 @@ _SKIP_PATHS = {
     "/api/health/ready",
     "/api/health/system",
     "/api/auth/login",
-    "/api/auth/forgot-password",
-    "/api/auth/reset-password",
     "/api/docs",
     "/api/openapi.json",
 }

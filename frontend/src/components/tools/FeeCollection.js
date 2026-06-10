@@ -168,7 +168,7 @@ export default function FeeCollection() {
         getFeeSummary(payment.fee_period ? { fee_period: payment.fee_period } : {}),
         getFeeTransactions(null, {}),
         getFeeTransactions(null, { overdue_days: overdueDays }),
-        getStudents(null, { limit: 200 }),
+        getStudents(null, { limit: 500 }),
         getDiscountTypes(),
         getDiscountSummary(),
       ]);

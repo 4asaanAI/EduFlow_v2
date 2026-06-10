@@ -8,8 +8,6 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { ToastProvider } from './components/Toast';
 import Layout from './components/Layout';
 import Login from './components/Login';
-import ForgotPassword from './components/ForgotPassword';
-import ResetPassword from './components/ResetPassword';
 import ChangePassword from './components/ChangePassword';
 import { purgeExpiredAttendanceDrafts } from './lib/attendanceDrafts';
 
@@ -32,8 +30,6 @@ function AppContent() {
     );
   }
 
-  if (path === '/forgot-password') return <ForgotPassword />;
-  if (path === '/reset-password') return <ResetPassword />;
   if (!isAuthenticated && path !== '/login') {
     window.history.replaceState(null, '', '/login');
   }

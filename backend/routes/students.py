@@ -167,7 +167,7 @@ async def list_students(
         raise HTTPException(403, "Forbidden")
 
     page = max(page, 1)
-    per_page = max(1, min(limit, 20))
+    per_page = max(1, min(limit, 500))
     query = {} if include_inactive else {"is_active": True}
     if class_id:
         query["class_id"] = class_id
