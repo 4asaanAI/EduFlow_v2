@@ -322,3 +322,61 @@ async def confirm_resolution(
         source_type="facility_request",
     )
     return {"request_id": request_id, "update": update}
+
+
+async def create_incident(db, actor_ctx: ActorContext, params: dict, *, session=None, fan_out_fn=None) -> dict:
+    """Create an incident (shared write path — REST POST /api/ops/incidents + AI
+    `create_incident`). P9.8 semantics preserved: any authenticated role may log;
+    high severity auto-assigns to principal and fans out a notification.
+
+    params: {description, title?, severity?, category?, involved_parties?, assigned_to?}
+    """
+    if not params.get("description"):
+        raise IncidentValidationError("description is required")
+    severity = params.get("severity", "low")
+    if severity not in ("low", "medium", "high"):
+        raise IncidentValidationError("severity must be low, medium, or high")
+    assigned_to = "principal" if severity == "high" else params.get("assigned_to") or None
+    incident = {
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "schoolId": actor_ctx.school_id,
+        "title": params.get("title", ""),
+        "description": params["description"],
+        "severity": severity,
+        "involved_parties": params.get("involved_parties", ""),
+        "category": params.get("category", "general"),
+        "status": "open",
+        "thread": [],
+        "logged_by": actor_ctx.user_id,
+        "logged_by_name": actor_ctx.actor_name,
+        "assigned_to": assigned_to,
+        "due_date": None,
+        "created_at": actor_ctx.now_iso(),
+        "updated_at": actor_ctx.now_iso(),
+    }
+    incident["id"] = incident["_id"]  # one id for both keys, matching panel reads by `id`
+    await db.incidents.insert_one(incident, **_session_kwargs(session))
+
+    if severity == "high" and fan_out_fn is not None:
+        owners_principals = await db.users.find(
+            {"role": {"$in": ["owner", "admin"]}, "is_active": {"$ne": False}},
+            {"_id": 0, "id": 1, "sub_category": 1, "role": 1},
+        ).to_list(20)
+        await fan_out_fn(
+            db,
+            [
+                up["id"] for up in owners_principals
+                if up.get("role") == "owner" or up.get("sub_category") == "principal"
+            ],
+            notification_type="high_severity_incident",
+            title="High-severity incident",
+            message=f"High-severity incident reported: {params['description'][:80]}",
+            source_id=incident["id"],
+            source_type="incident",
+        )
+    await _audit(
+        db, "incident_create", "incidents", incident["id"], actor_ctx,
+        {"severity": severity, "description": params["description"][:100]},
+    )
+    return {"incident": {k: v for k, v in incident.items() if k != "_id"}}

@@ -9,9 +9,24 @@ from services.actor_context import actor_ctx_from_user
 from services.incident_service import (
     add_thread_entry as svc_add_thread_entry,
     assign_followup as svc_assign_followup,
+    create_incident as svc_create_incident,
     update_incident_status as svc_update_incident_status,
     IncidentValidationError,
     IncidentNotFoundError,
+)
+from services.expense_service import (
+    create_expense as svc_create_expense,
+    update_expense as svc_update_expense,
+    delete_expense as svc_delete_expense,
+    ExpenseValidationError,
+    ExpenseNotFoundError,
+)
+from services.enquiry_service import (
+    create_enquiry as svc_create_enquiry,
+    update_enquiry as svc_update_enquiry,
+    EnquiryValidationError,
+    EnquiryNotFoundError,
+    EnquiryConflictError,
 )
 from services.approvals_service import (
     decide_approval_request as decide_approval_request_service,
@@ -477,28 +492,15 @@ async def list_expenses(request: Request, user: dict = Depends(_require_owner_or
 
 @router.post("/expenses")
 async def create_expense(request: Request, user: dict = Depends(_require_owner_or_accountant)):
+    # AD7 shared write path — same service as the AI `create_expense` tool.
     db = get_db()
-    bid = user.get("branch_id")
     body = await request.json()
-    amount = float(body.get("amount", 0))
-    category = body.get("category")
-    if category:
-        budget = await db.expense_budgets.find_one(scoped_query({"category": category}, branch_id=bid), {"_id": 0})
-        if budget and amount > float(budget.get("remaining_amount", budget.get("monthly_limit", 0)) or 0):
-            raise HTTPException(400, "Expense exceeds remaining category budget")
-    expense = add_school_id({
-        "id": str(uuid.uuid4()),
-        "category": category,
-        "description": body.get("description", ""),
-        "amount": amount,
-        "date": body.get("date", datetime.now().strftime("%Y-%m-%d")),
-        "vendor": body.get("vendor", ""),
-        "approved_by": user["id"],
-        "recorded_by": user["id"],
-        "created_at": datetime.now().isoformat(),
-    })
-    await db.expenses.insert_one({**expense, "_id": expense["id"]})
-    return {"success": True, "data": expense}
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_create_expense(db, actor_ctx, body)
+    except ExpenseValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["expense"]}
 
 
 # ─── Story 13: Incident Management (enhanced) ─────────────────────────────────
@@ -527,53 +529,16 @@ async def list_incidents(request: Request, status: str = None, q: str = None, pa
 
 @router.post("/incidents")
 async def create_incident(request: Request, user: dict = Depends(get_current_user)):
-    db = get_db()
     # P9.8: Any authenticated user (teacher, admin, owner) may log incidents.
+    # AD7 shared write path — same service as the AI `create_incident` tool.
+    db = get_db()
     body = await request.json()
-    if not body.get("description"):
-        raise HTTPException(400, "description is required")
-    severity = body.get("severity", "low")
-    if severity not in ("low", "medium", "high"):
-        raise HTTPException(400, "severity must be low, medium, or high")
-    # P9.8: Auto-assign high-severity incidents to principal
-    assigned_to = "principal" if severity == "high" else body.get("assigned_to", None)
-    incident = add_school_id({
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
-        "title": body.get("title", ""),
-        "description": body["description"],
-        "severity": severity,
-        "involved_parties": body.get("involved_parties", ""),
-        "category": body.get("category", "general"),
-        "status": "open",
-        "thread": [],
-        "logged_by": user["id"],
-        "logged_by_name": user.get("name", ""),
-        "assigned_to": assigned_to,
-        "due_date": None,
-        "created_at": datetime.now().isoformat(),
-        "updated_at": datetime.now().isoformat(),
-    })
-    await db.incidents.insert_one(incident)
-    # High-severity: notify Owner and Principal
-    if severity == "high":
-        owners_principals = await db.users.find(
-            {"role": {"$in": ["owner", "admin"]}, "is_active": {"$ne": False}}, {"_id": 0, "id": 1, "sub_category": 1, "role": 1}
-        ).to_list(20)
-        await fan_out_notifications(
-            db,
-            [
-                up["id"] for up in owners_principals
-                if up.get("role") == "owner" or up.get("sub_category") == "principal"
-            ],
-            notification_type="high_severity_incident",
-            title="High-severity incident",
-            message=f"High-severity incident reported: {body['description'][:80]}",
-            source_id=incident["id"],
-            source_type="incident",
-        )
-    await _write_audit(db, "incident_create", "incidents", incident["id"], user, {"severity": severity, "description": body["description"][:100]})
-    return {"success": True, "data": {k: v for k, v in incident.items() if k != "_id"}}
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_create_incident(db, actor_ctx, body, fan_out_fn=fan_out_notifications)
+    except IncidentValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["incident"]}
 
 
 @router.get("/incidents/{incident_id}")
@@ -1121,20 +1086,32 @@ async def save_study_plan(request: Request, user: dict = Depends(get_current_use
 
 @router.patch("/expenses/{expense_id}")
 async def update_expense(expense_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    # AD7 shared write path — same service as the AI `update_expense` tool.
     _require_accounting(user)
     db = get_db()
-    bid = user.get("branch_id")
-    body = await request.json(); body.pop("id", None)
-    await db.expenses.update_one(scoped_query({"id": expense_id}, branch_id=bid), {"$set": body})
+    body = await request.json()
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        await svc_update_expense(db, actor_ctx, {**body, "expense_id": expense_id})
+    except ExpenseNotFoundError:
+        raise HTTPException(404, "Expense not found")
+    except ExpenseValidationError as e:
+        raise HTTPException(400, str(e))
     return {"success": True}
 
 
 @router.delete("/expenses/{expense_id}")
 async def delete_expense(expense_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    # AD7 shared write path — same service as the AI `delete_expense` tool.
     _require_accounting(user)
     db = get_db()
-    bid = user.get("branch_id")
-    await db.expenses.delete_one(scoped_query({"id": expense_id}, branch_id=bid))
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        await svc_delete_expense(db, actor_ctx, {"expense_id": expense_id})
+    except ExpenseNotFoundError:
+        raise HTTPException(404, "Expense not found")
+    except ExpenseValidationError as e:
+        raise HTTPException(400, str(e))
     return {"success": True}
 
 
@@ -1363,78 +1340,32 @@ async def list_enquiries(request: Request, status: str = None, user: dict = Depe
 
 @router.post("/enquiries")
 async def create_enquiry(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    # AD7 shared write path — same service as the AI `create_enquiry` tool.
     db = get_db()
-    bid = user.get("branch_id")
     body = await request.json()
-    enquiry = add_school_id({
-        "id": str(uuid.uuid4()),
-        "student_name": body.get("student_name"),
-        "parent_name": body.get("parent_name"),
-        "phone": body.get("phone"),
-        "class_applying": body.get("class_applying", ""),
-        "status": "new",
-        "source": body.get("source", "walk_in"),
-        "assigned_to": user["id"],
-        "created_at": datetime.now().isoformat(),
-    })
-    await db.enquiries.insert_one({**enquiry, "_id": enquiry["id"]})
-    return {"success": True, "data": enquiry}
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_create_enquiry(db, actor_ctx, body)
+    except EnquiryValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["enquiry"]}
 
 
 @router.patch("/enquiries/{enquiry_id}")
 async def update_enquiry(enquiry_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    # AD7 shared write path — same service as the AI `update_enquiry_status` tool.
     db = get_db()
-    bid = user.get("branch_id")
     body = await request.json()
-    existing = await db.enquiries.find_one(scoped_query({"id": enquiry_id}, branch_id=bid), {"_id": 0})
-    if not existing:
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_update_enquiry(db, actor_ctx, {**body, "enquiry_id": enquiry_id})
+    except EnquiryNotFoundError:
         raise HTTPException(404, "Enquiry not found")
-    # Aligned with frontend pipeline stages
-    allowed_transitions = {
-        "new": {"contacted", "lost"},
-        "contacted": {"visit_scheduled", "lost"},
-        "visit_scheduled": {"visited", "lost"},
-        "visited": {"documents_submitted", "lost"},
-        "documents_submitted": {"fee_paid", "lost"},
-        "fee_paid": {"enrolled", "lost"},
-        "enrolled": {"lost"},
-        "lost": set(),
-        # legacy / backward-compat
-        "applied": {"admitted", "enrolled", "lost"},
-        "admitted": {"enrolled", "lost"},
-        "closed": set(),
-    }
-    update = {k: v for k, v in body.items() if k in {"status", "assigned_to", "source", "class_applying", "phone", "parent_name"}}
-    new_status = update.get("status")
-    if new_status and new_status != existing.get("status"):
-        current = existing.get("status", "new")
-        # Fix 7: EC-11.2 owner backward transition guard — owner can freely move stages
-        if user.get("role") == "owner":
-            if existing.get("status") == "enrolled":
-                linked_student = await db.students.find_one(
-                    scoped_query({"enquiry_id": enquiry_id}, branch_id=bid)
-                )
-                if linked_student:
-                    raise HTTPException(409, "Cannot revert enrolled enquiry — student record exists. Delete the student record first.")
-            # Allow any transition for owner
-        elif new_status not in allowed_transitions.get(current, set()):
-            raise HTTPException(400, f"Invalid enquiry transition from {current} to {new_status}")
-    if body.get("note") or new_status:
-        await db.enquiries.update_one(
-            scoped_query({"id": enquiry_id}, branch_id=bid),
-            {"$push": {"timeline": {
-                "id": str(uuid.uuid4()),
-                "author_id": user["id"],
-                "from_status": existing.get("status"),
-                "to_status": new_status or existing.get("status"),
-                "note": body.get("note", ""),
-                "created_at": datetime.now().isoformat(),
-            }}},
-        )
-    update["updated_at"] = datetime.now().isoformat()
-    await db.enquiries.update_one(scoped_query({"id": enquiry_id}, branch_id=bid), {"$set": update})
-    updated = await db.enquiries.find_one(scoped_query({"id": enquiry_id}, branch_id=bid), {"_id": 0})
-    return {"success": True, "data": updated}
+    except EnquiryConflictError as e:
+        raise HTTPException(409, str(e))
+    except EnquiryValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["enquiry"]}
 
 
 @router.get("/visitors/pending-checkout")

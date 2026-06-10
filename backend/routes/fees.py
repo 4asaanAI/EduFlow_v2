@@ -11,7 +11,15 @@ from tenant import get_school_id, scoped_filter, scoped_query, add_school_id
 from services.audit_service import write_audit_doc
 from services.notification_service import fan_out_notifications
 from services.actor_context import actor_ctx_from_user
-from services.fees_service import record_payment as svc_record_payment, FeeValidationError
+from services.fees_service import (
+    record_payment as svc_record_payment,
+    correct_transaction as svc_correct_transaction,
+    delete_transaction as svc_delete_transaction,
+    FeeValidationError,
+    FeeTransactionNotFoundError,
+    FeeAuthorizationError,
+)
+from services.fee_sync_service import trigger_sync as svc_trigger_fee_sync, FeeSyncUpstreamError
 from services.discount_service import (
     apply_discount as svc_apply_discount,
     DiscountValidationError,
@@ -376,77 +384,22 @@ async def correct_fee_transaction(
     request: Request,
     user: dict = Depends(require_role("owner", "admin")),
 ):
+    # AD7 shared write path — same service as the AI `correct_fee_transaction` tool.
     db = get_db()
     _require_fee_write(user)
     body = await request.json()
-    reason = body.get("reason")
-    if not reason:
-        raise HTTPException(400, "reason is required")
-    bid = user.get("branch_id")
-
-    original = await db.fee_transactions.find_one(
-        scoped_query({"id": transaction_id}, branch_id=bid), {"_id": 0}
-    )
-    if not original:
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_correct_transaction(
+            db, actor_ctx, {**body, "transaction_id": transaction_id}, publish_fn=_publish_fee_update
+        )
+    except FeeTransactionNotFoundError:
         raise HTTPException(404, "Fee transaction not found")
-
-    # EC-10.5: Accountant can only correct their own transactions
-    if user.get("role") == "admin" and user.get("sub_category") == "accounts":
-        if original.get("created_by") != user["id"]:
-            raise HTTPException(403, "Accountant can only correct their own transactions")
-
-    allowed = {"amount", "status", "due_date", "paid_date", "payment_mode", "transaction_ref", "fee_period", "fee_head", "fee_type"}
-    changes = {k: v for k, v in body.items() if k in allowed}
-    if not changes:
-        raise HTTPException(400, "No correctable fields supplied")
-
-    now = datetime.now(timezone.utc).isoformat()
-    update_ops: dict = {
-        "$set": {
-            **changes,
-            "corrected": True,
-            "corrected_at": now,
-            "corrected_by": user["id"],
-            "updated_at": now,
-        },
-        "$inc": {"correction_count": 1},  # EC-10.3: increment, not overwrite
-    }
-
-    # Only set original_snapshot on the FIRST correction (preserve pre-correction state)
-    if not original.get("original_snapshot"):
-        update_ops["$set"]["original_snapshot"] = {
-            "amount": original.get("amount"),
-            "status": original.get("status"),
-            "payment_mode": original.get("payment_mode"),
-            "paid_date": original.get("paid_date"),
-        }
-
-    await db.fee_transactions.update_one(
-        scoped_query({"id": transaction_id}, branch_id=bid),
-        update_ops,
-    )
-
-    # Insert correction record (existing tests assert on fee_transaction_corrections collection)
-    correction = {
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
-        "schoolId": get_school_id(),
-        "transaction_id": transaction_id,
-        "original_record": original,
-        "changes": changes,
-        "reason": reason,
-        "corrected_by": user["id"],
-        "corrected_at": now,
-    }
-    await db.fee_transaction_corrections.insert_one(correction)
-
-    await _audit(db, action="correct", entity_id=transaction_id, user=user, changes=changes, reason=reason)
-
-    updated = await db.fee_transactions.find_one(
-        scoped_query({"id": transaction_id}, branch_id=bid), {"_id": 0}
-    )
-    await _publish_fee_update(db, "fee_transaction_corrected", updated, updated.get("fee_period") if updated else None)
-    return {"success": True, "data": updated, "correction": {k: v for k, v in correction.items() if k != "_id"}}
+    except FeeAuthorizationError as e:
+        raise HTTPException(403, str(e))
+    except FeeValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["data"], "correction": result["correction"]}
 
 
 @router.post("/contact-log")
@@ -532,28 +485,21 @@ async def get_student_fee_status(student_id: str, request: Request, user: dict =
 
 @router.delete("/transactions/{transaction_id}")
 async def delete_fee_transaction(transaction_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    # AD7 shared write path — same service as the AI `delete_fee_transaction` tool.
     db = get_db()
     _require_fee_write(user)
-    bid = user.get("branch_id")
-    original = await db.fee_transactions.find_one(
-        scoped_query({"id": transaction_id}, branch_id=bid), {"_id": 0}
-    )
-    if not original:
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_delete_transaction(
+            db, actor_ctx, {"transaction_id": transaction_id}, publish_fn=_publish_fee_update
+        )
+    except FeeTransactionNotFoundError:
         raise HTTPException(404, "Fee transaction not found")
-    if original.get("deleted"):
-        raise HTTPException(404, "Fee transaction not found")
-    # Accountant can only delete their own transactions
-    if user.get("role") == "admin" and user.get("sub_category") in ("accounts", "accountant"):
-        if original.get("created_by") != user["id"]:
-            raise HTTPException(403, "Accountant can only delete their own transactions")
-    now = datetime.now(timezone.utc).isoformat()
-    await db.fee_transactions.update_one(
-        scoped_query({"id": transaction_id}, branch_id=bid),
-        {"$set": {"deleted": True, "deleted_at": now, "deleted_by": user.get("id")}}
-    )
-    await _audit(db, action="delete", entity_id=transaction_id, user=user, changes={"deleted": True})
-    await _publish_fee_update(db, "fee_transaction_deleted", {"id": transaction_id}, original.get("fee_period"))
-    return {"success": True, "data": {"id": transaction_id, "deleted": True}}
+    except FeeAuthorizationError as e:
+        raise HTTPException(403, str(e))
+    except FeeValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["data"]}
 
 
 @router.post("/discount-types")
@@ -865,105 +811,18 @@ SYNC_JOB_TIMEOUT_MINUTES = int(os.environ.get("SYNC_JOB_TIMEOUT_MINUTES", "30"))
 
 @router.post("/sync/trigger")
 async def trigger_fee_sync(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    # AD7 shared write path — same service as the AI `trigger_fee_sync` tool.
     db = get_db()
-    bid = user.get("branch_id")
-    now = datetime.now(timezone.utc)
-    timeout_cutoff = (now - timedelta(minutes=SYNC_JOB_TIMEOUT_MINUTES)).isoformat()
-
-    # EC-10.1: Check for existing in-progress job (idempotency)
-    existing_job = await db.fee_sync_jobs.find_one(
-        scoped_query({"status": "in_progress"}, branch_id=bid), {"_id": 0}
-    )
-    if existing_job:
-        started_at = existing_job.get("started_at", "")
-        if started_at and started_at < timeout_cutoff:
-            # Auto-expire hung job
-            await db.fee_sync_jobs.update_one(
-                scoped_query({"id": existing_job["id"]}, branch_id=bid),
-                {"$set": {"status": "failed", "reason": "timeout", "failed_at": now.isoformat()}},
-            )
-        else:
-            # Return existing in-progress job (idempotency)
-            return {"success": True, "data": existing_job, "message": "Sync already in progress"}
-
-    job_id = str(uuid.uuid4())
-    job = {
-        "_id": job_id,
-        "id": job_id,
-        "schoolId": get_school_id(),
-        "status": "running",
-        "started_at": now.isoformat(),
-        "synced_count": 0,
-        "conflict_count": 0,
-        "conflicts": [],
-        "triggered_by": user["id"],
-        "created_at": now.isoformat(),
-    }
-    if bid:
-        job["branch_id"] = bid
-    await db.fee_sync_jobs.insert_one(job)
+    actor_ctx = actor_ctx_from_user(user)
     try:
-        records = await _fetch_external_fee_records()
-    except HTTPException as exc:
-        await db.fee_sync_jobs.update_one(_fee_query({"id": job_id}), {"$set": {"status": "failed", "error": exc.detail, "completed_at": datetime.now().isoformat()}})
-        await _audit(db, action="fee_sync_failed", entity_id=job_id, user=user, changes={"error": exc.detail})
-        raise
-    except Exception as exc:
-        message = f"Fee sync failed: {exc}"
-        await db.fee_sync_jobs.update_one(_fee_query({"id": job_id}), {"$set": {"status": "failed", "error": message, "completed_at": datetime.now().isoformat()}})
-        await _audit(db, action="fee_sync_failed", entity_id=job_id, user=user, changes={"error": message})
-        return {"success": True, "data": {"sync_job_id": job_id, "status": "failed", "error": message}}
-
-    conflicts = []
-    synced = 0
-    for record in records:
-        student_id, period, fee_head = _external_key(record)
-        if not student_id or not period or not fee_head:
-            continue
-        existing = await db.fee_transactions.find_one(_fee_query({"student_id": student_id, "fee_period": period, "fee_head": fee_head}), {"_id": 0})
-        amount = float(record.get("amount", 0))
-        if existing and float(existing.get("amount", 0)) != amount:
-            conflicts.append({
-                "id": str(uuid.uuid4()),
-                "student_id": student_id,
-                "period": period,
-                "fee_head": fee_head,
-                "ours": existing,
-                "theirs": record,
-                "status": "conflict",
-            })
-            continue
-        if not existing:
-            txn_id = str(uuid.uuid4())
-            await db.fee_transactions.insert_one({
-                "_id": txn_id,
-                "id": txn_id,
-                "schoolId": get_school_id(),
-                "student_id": student_id,
-                "fee_period": period,
-                "fee_head": fee_head,
-                "fee_type": fee_head,
-                "amount": amount,
-                "status": record.get("status", "pending"),
-                "due_date": record.get("due_date"),
-                "created_at": datetime.now().isoformat(),
-                "source": "fee_api_sync",
-            })
-            synced += 1
-
-    status = "conflict" if conflicts else "completed"
-    update = {
-        "status": status,
-        "synced_count": synced,
-        "conflict_count": len(conflicts),
-        "conflicts": conflicts,
-        "completed_at": datetime.now().isoformat(),
-    }
-    await db.fee_sync_jobs.update_one(_fee_query({"id": job_id}), {"$set": update})
-    await _audit(db, action="fee_sync_completed", entity_id=job_id, user=user, changes=update)
-    if synced:
-        await _publish_fee_update(db, "fee_sync_completed", {"sync_job_id": job_id, **update})
-    return {"success": True, "data": {"sync_job_id": job_id, **update}}
+        result = await svc_trigger_fee_sync(
+            db, actor_ctx, fetch_fn=_fetch_external_fee_records, publish_fn=_publish_fee_update
+        )
+    except FeeSyncUpstreamError as e:
+        raise HTTPException(502, str(e))
+    if result["already_running"]:
+        return {"success": True, "data": result["job"], "message": "Sync already in progress"}
+    return {"success": True, "data": result["job"]}
 
 
 @router.get("/sync/{sync_job_id}")

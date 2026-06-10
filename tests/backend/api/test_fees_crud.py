@@ -95,7 +95,20 @@ class TestFeeCrud:
         assert contact.status_code == 200
         assert fake_db.fee_contact_logs.docs[0]["contact_type"] == "call"
 
-    def test_fee_transaction_hard_delete_rejected(self, client, auth_headers):
-        response = client.delete("/api/fees/transactions/fee-1", headers=auth_headers)
+    def test_fee_transaction_delete_is_soft_never_hard(self, client, auth_headers, fake_db):
+        # DELETE now exists (fee-tracker edit/delete feature) but must NEVER hard-remove:
+        # the record stays in the financial trail flagged deleted=True.
+        fake_db.fee_transactions.docs.append({
+            "_id": "fee-del-1", "id": "fee-del-1", "schoolId": "aaryans-joya",
+            "student_id": "student-1", "fee_period": "2026-05", "fee_head": "tuition",
+            "amount": 1000.0, "status": "paid", "created_by": "owner-1",
+        })
+        response = client.delete("/api/fees/transactions/fee-del-1", headers=auth_headers)
+        assert response.status_code == 200
+        doc = next(d for d in fake_db.fee_transactions.docs if d["id"] == "fee-del-1")
+        assert doc["deleted"] is True
+        assert doc.get("deleted_by")
 
-        assert response.status_code == 405
+        # unknown id → 404, not silent success
+        missing = client.delete("/api/fees/transactions/no-such-txn", headers=auth_headers)
+        assert missing.status_code == 404

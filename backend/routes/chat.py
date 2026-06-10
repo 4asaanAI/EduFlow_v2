@@ -130,6 +130,10 @@ _TOOL_DEEP_LINKS = {
     "add_thread_entry": "incidents",
     "confirm_resolution": "incidents",
     "decide_approval_request": "approvals",
+    "correct_fee_transaction": "fees",
+    "delete_fee_transaction": "fees",
+    "trigger_fee_sync": "fees",
+    "mark_staff_attendance": "attendance",
 }
 
 WRITE_TOOL_REQUIRED_PARAMS = {
@@ -173,6 +177,18 @@ WRITE_TOOL_REQUIRED_PARAMS = {
     "delete_branch": ("branch_id",),
     "update_school_settings": (),
     "year_end_transition": ("new_year_name",),
+    # Drift-gate remediation — operations tools added post-Phase-1 (ff2e929)
+    "create_expense": ("category", "amount"),
+    "create_enquiry": ("student_name",),
+    "update_enquiry_status": ("enquiry_id", "status"),
+    "create_incident": ("description",),
+    # Owner coverage gap-close — expenses edit/delete, staff attendance, fee txn, fee sync
+    "update_expense": ("expense_id",),
+    "delete_expense": ("expense_id",),
+    "mark_staff_attendance": (),
+    "correct_fee_transaction": ("transaction_id", "reason"),
+    "delete_fee_transaction": ("transaction_id",),
+    "trigger_fee_sync": (),
 }
 
 WRITE_TOOL_PARAM_LABELS = {
@@ -226,6 +242,13 @@ WRITE_TOOL_PARAM_LABELS = {
     # Epic K.3 — org-config CRUD
     "branch_id": "branch",
     "new_year_name": "new academic year",
+    # Operations + fee-record tools
+    "category": "expense category",
+    "expense_id": "expense",
+    "student_name": "student name",
+    "enquiry_id": "enquiry",
+    "description": "description",
+    "transaction_id": "fee transaction",
 }
 
 # ─── Keyword → Tool Map ──────────────────────────────────────────────────────

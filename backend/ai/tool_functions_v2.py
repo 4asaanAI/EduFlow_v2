@@ -11,10 +11,17 @@ import uuid
 import logging
 from tenant import add_school_id, get_school_id, scoped_filter, scoped_query
 from services.audit_service import write_audit_doc
-from services.notification_service import create_notification
+from services.notification_service import create_notification, fan_out_notifications
 from services.actor_context import actor_ctx_from_user
 from services.attendance_service import mark_attendance
-from services.fees_service import record_payment, FeeValidationError
+from services.fees_service import (
+    record_payment,
+    correct_transaction as svc_correct_fee_transaction,
+    delete_transaction as svc_delete_fee_transaction,
+    FeeValidationError,
+    FeeTransactionNotFoundError,
+    FeeAuthorizationError,
+)
 from services.discount_service import (
     apply_discount as svc_apply_discount,
     DiscountValidationError,
@@ -89,12 +96,32 @@ from services.incident_service import (
     resolve_record_type,
     assign_followup as svc_assign_followup,
     add_thread_entry as svc_add_thread_entry,
+    create_incident as svc_create_incident,
     update_incident_status as svc_update_incident_status,
     confirm_resolution as svc_confirm_resolution,
     IncidentValidationError,
     IncidentNotFoundError,
     IncidentAmbiguousError,
 )
+from services.expense_service import (
+    create_expense as svc_create_expense,
+    update_expense as svc_update_expense,
+    delete_expense as svc_delete_expense,
+    ExpenseValidationError,
+    ExpenseNotFoundError,
+)
+from services.enquiry_service import (
+    create_enquiry as svc_create_enquiry,
+    update_enquiry as svc_update_enquiry,
+    EnquiryValidationError,
+    EnquiryNotFoundError,
+    EnquiryConflictError,
+)
+from services.staff_attendance_service import (
+    mark_staff_attendance as svc_mark_staff_attendance,
+    StaffAttendanceValidationError,
+)
+from services.fee_sync_service import trigger_sync as svc_trigger_fee_sync, FeeSyncUpstreamError
 from services.substitution_service import initiate_substitution
 from services.attendance_correction_service import (
     correct_attendance,
@@ -2456,171 +2483,223 @@ async def tool_get_expenses(params: dict, user: dict, scope: dict = None) -> dic
 
 
 async def tool_create_expense(params: dict, user: dict, scope: dict = None) -> dict:
-    """Log a new expense record."""
-    import time, uuid as _uuid
-    from datetime import datetime as _dt
-    t0 = time.time()
+    # Thin adapter over expense_service.create_expense (AD7 shared write path).
     db = get_db()
-    bid = user.get("branch_id")
-    amount = params.get("amount")
-    category = params.get("category")
-    if not amount:
-        return {"success": False, "message": "amount is required"}
-    if not category:
-        return {"success": False, "message": "category is required"}
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
     try:
-        amount = float(amount)
-    except (ValueError, TypeError):
-        return {"success": False, "message": "amount must be a number"}
-    # Budget check
-    budget = await db.expense_budgets.find_one(scoped_query({"category": category}, branch_id=bid), {"_id": 0})
-    if budget:
-        remaining = float(budget.get("remaining_amount", budget.get("monthly_limit", 0)) or 0)
-        if amount > remaining:
-            return {"success": False, "message": f"Expense of ₹{amount:,.2f} exceeds remaining budget of ₹{remaining:,.2f} for '{category}'"}
-    exp_id = str(_uuid.uuid4())
-    expense = {
-        "id": exp_id,
-        "schoolId": user.get("schoolId", ""),
-        "category": category,
-        "description": params.get("description", ""),
-        "amount": amount,
-        "date": params.get("date", _dt.now().strftime("%Y-%m-%d")),
-        "vendor": params.get("vendor", ""),
-        "approved_by": user["id"],
-        "recorded_by": user["id"],
-        "created_at": _dt.now().isoformat(),
-    }
-    if bid:
-        expense["branch_id"] = bid
-    await db.expenses.insert_one({**expense, "_id": exp_id})
-    elapsed = (time.time() - t0) * 1000
+        result = await svc_create_expense(db, actor_ctx, params)
+    except ExpenseValidationError as e:
+        return {"success": False, "message": str(e)}
+    exp = result["expense"]
     return {
         "success": True,
-        "data": expense,
-        "meta": {"query_time_ms": round(elapsed, 2)},
-        "message": f"Expense of ₹{amount:,.2f} logged under '{category}'",
+        "data": exp,
+        "message": f"Expense of ₹{float(exp['amount']):,.2f} logged under '{exp['category']}'",
     }
+
+
+async def tool_update_expense(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over expense_service.update_expense (AD7 shared write path).
+    if not params.get("expense_id"):
+        return {"success": False, "message": "expense_id is required (use get_expenses to find it)"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_update_expense(db, actor_ctx, params)
+    except ExpenseNotFoundError:
+        return {"success": False, "message": "Expense not found"}
+    except ExpenseValidationError as e:
+        return {"success": False, "message": str(e)}
+    msg = "No changes to apply." if result.get("noop") else "Expense updated."
+    return {"success": True, "data": result["expense"], "message": msg}
+
+
+async def tool_delete_expense(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over expense_service.delete_expense (AD7 shared write path).
+    # DESTRUCTIVE: F.10 two-step confirm + deletion audit at the chat layer.
+    if not params.get("expense_id"):
+        return {"success": False, "message": "expense_id is required (use get_expenses to find it)"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_delete_expense(db, actor_ctx, params)
+    except ExpenseNotFoundError:
+        return {"success": False, "message": "Expense not found"}
+    except ExpenseValidationError as e:
+        return {"success": False, "message": str(e)}
+    exp = result["expense"]
+    return {"success": True, "data": result,
+            "message": f"Expense '{exp.get('description') or exp.get('category')}' (₹{float(exp.get('amount', 0)):,.2f}) deleted."}
 
 
 async def tool_create_enquiry(params: dict, user: dict, scope: dict = None) -> dict:
-    """Log a new admission enquiry / lead."""
-    import time, uuid as _uuid
-    from datetime import datetime as _dt
-    t0 = time.time()
-    db = get_db()
-    bid = user.get("branch_id")
-    student_name = params.get("student_name")
-    if not student_name:
+    # Thin adapter over enquiry_service.create_enquiry (AD7 shared write path).
+    if not params.get("student_name"):
         return {"success": False, "message": "student_name is required"}
-    enq_id = str(_uuid.uuid4())
-    enquiry = {
-        "id": enq_id,
-        "schoolId": user.get("schoolId", ""),
-        "student_name": student_name,
-        "parent_name": params.get("parent_name", ""),
-        "phone": params.get("phone", ""),
-        "class_applying": params.get("class_applying", ""),
-        "status": "new",
-        "source": params.get("source", "walk_in"),
-        "notes": params.get("notes", ""),
-        "assigned_to": params.get("assigned_to", ""),
-        "created_by": user["id"],
-        "created_at": _dt.now().isoformat(),
-        "updated_at": _dt.now().isoformat(),
-    }
-    if bid:
-        enquiry["branch_id"] = bid
-    await db.enquiries.insert_one({**enquiry, "_id": enq_id})
-    elapsed = (time.time() - t0) * 1000
-    return {
-        "success": True,
-        "data": enquiry,
-        "meta": {"query_time_ms": round(elapsed, 2)},
-        "message": f"Enquiry for '{student_name}' created (status: new)",
-    }
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_create_enquiry(db, actor_ctx, params)
+    except EnquiryValidationError as e:
+        return {"success": False, "message": str(e)}
+    enq = result["enquiry"]
+    return {"success": True, "data": enq,
+            "message": f"Enquiry logged for '{enq['student_name']}' ({enq.get('class_applying') or 'class not specified'})"}
 
 
 async def tool_update_enquiry_status(params: dict, user: dict, scope: dict = None) -> dict:
-    """Advance or update an admission enquiry through the pipeline."""
-    import time
-    from datetime import datetime as _dt
-    t0 = time.time()
-    db = get_db()
-    bid = user.get("branch_id")
-    enquiry_id = params.get("enquiry_id")
-    new_status = params.get("status")
-    if not enquiry_id:
+    # Thin adapter over enquiry_service.update_enquiry (AD7 shared write path).
+    # Parity fix: the legacy AI body skipped the stage-transition guard entirely.
+    if not params.get("enquiry_id"):
         return {"success": False, "message": "enquiry_id is required"}
-    if not new_status:
+    if not params.get("status"):
         return {"success": False, "message": "status is required"}
-    VALID_STATUSES = ("new", "contacted", "visit_scheduled", "visited", "documents_submitted", "fee_paid", "enrolled", "lost")
-    if new_status not in VALID_STATUSES:
-        return {"success": False, "message": f"Invalid status. Must be one of: {', '.join(VALID_STATUSES)}"}
-    existing = await db.enquiries.find_one(scoped_query({"id": enquiry_id}, branch_id=bid), {"_id": 0})
-    if not existing:
-        return {"success": False, "message": f"Enquiry {enquiry_id} not found"}
-    update: dict = {
-        "status": new_status,
-        "updated_at": _dt.now().isoformat(),
-        "updated_by": user["id"],
-    }
-    if params.get("notes"):
-        update["notes"] = params["notes"]
-    if params.get("assigned_to"):
-        update["assigned_to"] = params["assigned_to"]
-    await db.enquiries.update_one(scoped_query({"id": enquiry_id}, branch_id=bid), {"$set": update})
-    elapsed = (time.time() - t0) * 1000
-    return {
-        "success": True,
-        "data": {**existing, **update},
-        "meta": {"query_time_ms": round(elapsed, 2)},
-        "message": f"Enquiry for '{existing.get('student_name', enquiry_id)}' status → {new_status}",
-    }
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    svc_params = {**params, "note": params.get("note") or params.get("notes")}
+    try:
+        result = await svc_update_enquiry(db, actor_ctx, svc_params)
+    except EnquiryNotFoundError:
+        return {"success": False, "message": f"Enquiry {params['enquiry_id']} not found"}
+    except EnquiryConflictError as e:
+        return {"success": False, "message": str(e)}
+    except EnquiryValidationError as e:
+        return {"success": False, "message": str(e)}
+    enq = result["enquiry"]
+    return {"success": True, "data": enq,
+            "message": f"Enquiry for '{enq.get('student_name', params['enquiry_id'])}' status → {enq.get('status')}"}
 
 
 async def tool_create_incident(params: dict, user: dict, scope: dict = None) -> dict:
-    """Log a new incident, visitor entry, or disciplinary event."""
-    import time, uuid as _uuid
-    from datetime import datetime as _dt
+    # Thin adapter over incident_service.create_incident (AD7 shared write path).
+    if not params.get("description"):
+        return {"success": False, "message": "description is required"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_create_incident(db, actor_ctx, params, fan_out_fn=fan_out_notifications)
+    except IncidentValidationError as e:
+        return {"success": False, "message": str(e)}
+    inc = result["incident"]
+    extra = " Owner and Principal notified." if inc.get("severity") == "high" else ""
+    return {"success": True, "data": inc,
+            "message": f"Incident logged ({inc.get('severity')} severity).{extra}"}
+
+
+async def tool_mark_staff_attendance(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over staff_attendance_service.mark_staff_attendance (AD7).
+    # Convenience: "mark all staff present today" → status with no records expands
+    # to every active staff member before hitting the same shared service.
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    records = params.get("records") or []
+    if not records:
+        status = params.get("status")
+        if not status:
+            return {"success": False,
+                    "message": "Provide records=[{staff_id, status}] or a status to apply to all active staff."}
+        staff = await db.staff.find(
+            scoped_query({"is_active": {"$ne": False}}, branch_id=_branch_id(user, scope)),
+            {"_id": 0, "id": 1},
+        ).to_list(500)
+        if not staff:
+            return {"success": False, "message": "No active staff found."}
+        records = [{"staff_id": s["id"], "status": status} for s in staff]
+    from services.sse import publish as _sse_publish
+    try:
+        result = await svc_mark_staff_attendance(
+            db, actor_ctx, {"date": params.get("date"), "records": records}, publish_fn=_sse_publish
+        )
+    except StaffAttendanceValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result,
+            "message": f"Staff attendance marked for {result['marked']} staff member(s) on {result['date']}."}
+
+
+async def tool_correct_fee_transaction(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over fees_service.correct_transaction (AD7 shared write path).
+    if not params.get("transaction_id"):
+        return {"success": False, "message": "transaction_id is required (use get_fee_transactions to find it)"}
+    if not params.get("reason"):
+        return {"success": False, "message": "reason is required"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    from routes.fees import _publish_fee_update
+    try:
+        result = await svc_correct_fee_transaction(db, actor_ctx, params, publish_fn=_publish_fee_update)
+    except FeeTransactionNotFoundError:
+        return {"success": False, "message": "Fee transaction not found"}
+    except FeeAuthorizationError as e:
+        return {"success": False, "message": str(e)}
+    except FeeValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["data"], "message": "Fee transaction corrected."}
+
+
+async def tool_delete_fee_transaction(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over fees_service.delete_transaction (AD7 shared write path).
+    # DESTRUCTIVE: F.10 two-step confirm + deletion audit. Soft delete — the
+    # record is kept with deleted=True for the financial trail.
+    if not params.get("transaction_id"):
+        return {"success": False, "message": "transaction_id is required (use get_fee_transactions to find it)"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    from routes.fees import _publish_fee_update
+    try:
+        result = await svc_delete_fee_transaction(db, actor_ctx, params, publish_fn=_publish_fee_update)
+    except FeeTransactionNotFoundError:
+        return {"success": False, "message": "Fee transaction not found"}
+    except FeeAuthorizationError as e:
+        return {"success": False, "message": str(e)}
+    except FeeValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["data"], "message": "Fee transaction deleted (soft — kept in the financial trail)."}
+
+
+async def tool_trigger_fee_sync(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over fee_sync_service.trigger_sync (AD7 shared write path).
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    from routes.fees import _fetch_external_fee_records, _publish_fee_update
+    try:
+        result = await svc_trigger_fee_sync(
+            db, actor_ctx, fetch_fn=_fetch_external_fee_records, publish_fn=_publish_fee_update
+        )
+    except FeeSyncUpstreamError as e:
+        return {"success": False, "message": f"Fee sync failed upstream: {e}"}
+    job = result["job"]
+    if result["already_running"]:
+        return {"success": True, "data": job, "message": "A fee sync is already in progress."}
+    status = job.get("status")
+    if status == "conflict":
+        msg = (f"Fee sync finished with {job.get('conflict_count', 0)} conflict(s) — "
+               f"{job.get('synced_count', 0)} record(s) synced. Resolve conflicts in the Fee Sync panel.")
+    elif status == "failed":
+        msg = f"Fee sync failed: {job.get('error', 'unknown error')}"
+    else:
+        msg = f"Fee sync completed — {job.get('synced_count', 0)} record(s) synced."
+    return {"success": True, "data": job, "message": msg}
+
+
+async def tool_get_fee_sync_status(params: dict, user: dict, scope: dict = None) -> dict:
+    """Read-only: latest fee sync job(s) and any unresolved conflicts."""
+    import time
     t0 = time.time()
     db = get_db()
-    bid = user.get("branch_id")
-    description = params.get("description")
-    if not description:
-        return {"success": False, "message": "description is required"}
-    severity = params.get("severity", "low")
-    if severity not in ("low", "medium", "high"):
-        return {"success": False, "message": "severity must be low, medium, or high"}
-    assigned_to = "principal" if severity == "high" else params.get("assigned_to", None)
-    inc_id = str(_uuid.uuid4())
-    incident = {
-        "id": inc_id,
-        "schoolId": user.get("schoolId", ""),
-        "title": params.get("title", ""),
-        "description": description,
-        "severity": severity,
-        "involved_parties": params.get("involved_parties", ""),
-        "category": params.get("category", "general"),
-        "status": "open",
-        "thread": [],
-        "logged_by": user["id"],
-        "logged_by_name": user.get("name", ""),
-        "assigned_to": assigned_to,
-        "due_date": None,
-        "created_at": _dt.now().isoformat(),
-        "updated_at": _dt.now().isoformat(),
-    }
-    if bid:
-        incident["branch_id"] = bid
-    await db.incidents.insert_one({**incident, "_id": inc_id})
+    bid = _branch_id(user, scope)
+    jobs = await db.fee_sync_jobs.find(
+        scoped_query({}, branch_id=bid), {"_id": 0}
+    ).sort("started_at", -1).to_list(5)
     elapsed = (time.time() - t0) * 1000
-    return {
-        "success": True,
-        "data": incident,
-        "meta": {"query_time_ms": round(elapsed, 2)},
-        "message": f"Incident logged (severity: {severity}" + (", auto-assigned to principal" if assigned_to == "principal" else "") + ")",
-    }
+    if not jobs:
+        return {"success": True, "data": {"jobs": []}, "meta": {"count": 0, "query_time_ms": round(elapsed, 2)},
+                "message": "No fee sync has been run yet."}
+    latest = jobs[0]
+    msg = (f"Latest sync: {latest.get('status')} — {latest.get('synced_count', 0)} synced, "
+           f"{latest.get('conflict_count', 0)} conflict(s).")
+    return {"success": True, "data": {"jobs": jobs, "latest": latest},
+            "meta": {"count": len(jobs), "query_time_ms": round(elapsed, 2)}, "message": msg}
+
 
 
 # =========================================================================
@@ -3541,6 +3620,95 @@ TOOL_REGISTRY = {
         },
         "requires_confirmation": True,
         "dispatch_type": "write",
+    },
+    "update_expense": {
+        "fn": tool_update_expense,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["accountant"],
+        "description": "Update an existing expense (category, amount, vendor, description, date).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "expense_id": {"type": "string", "description": "Expense ID to update (required — use get_expenses to find it)"},
+            "category": {"type": "string", "description": "Updated category"},
+            "amount": {"type": "number", "description": "Updated amount in INR"},
+            "description": {"type": "string", "description": "Updated description"},
+            "vendor": {"type": "string", "description": "Updated vendor/payee"},
+            "date": {"type": "string", "description": "Updated YYYY-MM-DD date"},
+        },
+    },
+    "delete_expense": {
+        "fn": tool_delete_expense,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["accountant"],
+        "description": "Permanently delete an expense record. Destructive — requires a second confirmation.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "expense_id": {"type": "string", "description": "Expense ID to delete (required — use get_expenses to find it)"},
+        },
+    },
+    "mark_staff_attendance": {
+        "fn": tool_mark_staff_attendance,
+        "roles": ["owner", "admin"],
+        "description": "Bulk-mark staff attendance for a date. Either pass records=[{staff_id, status}] or just a status (e.g. 'present') to apply to ALL active staff.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "date": {"type": "string", "description": "YYYY-MM-DD (defaults to today)"},
+            "status": {"type": "string", "description": "present | absent | late | half_day | leave — applied to all active staff when records is omitted"},
+            "records": {"type": "array", "description": "Per-staff records: [{staff_id, status, check_in?, check_out?}]"},
+        },
+    },
+    "correct_fee_transaction": {
+        "fn": tool_correct_fee_transaction,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["accountant"],
+        "description": "Correct a recorded fee transaction (amount, status, dates, payment mode, fee period/head). Requires a reason; keeps the original snapshot.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "transaction_id": {"type": "string", "description": "Fee transaction ID (required — use get_fee_transactions to find it)"},
+            "reason": {"type": "string", "description": "Why the correction is needed (required)"},
+            "amount": {"type": "number", "description": "Corrected amount"},
+            "status": {"type": "string", "description": "Corrected status, e.g. paid | pending | partial | overdue"},
+            "payment_mode": {"type": "string", "description": "Corrected payment mode"},
+            "due_date": {"type": "string", "description": "Corrected due date YYYY-MM-DD"},
+            "paid_date": {"type": "string", "description": "Corrected paid date YYYY-MM-DD"},
+            "fee_period": {"type": "string", "description": "Corrected fee period"},
+            "fee_head": {"type": "string", "description": "Corrected fee head"},
+        },
+    },
+    "delete_fee_transaction": {
+        "fn": tool_delete_fee_transaction,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["accountant"],
+        "description": "Delete a fee transaction (soft delete — kept in the financial trail). Use for duplicate or erroneous entries. Destructive — requires a second confirmation.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "transaction_id": {"type": "string", "description": "Fee transaction ID to delete (required — use get_fee_transactions to find it)"},
+            "reason": {"type": "string", "description": "Why it is being deleted (e.g. duplicate entry)"},
+        },
+    },
+    "trigger_fee_sync": {
+        "fn": tool_trigger_fee_sync,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["accountant"],
+        "description": "Trigger a fee synchronization with the external fee system. Reports synced records and any conflicts.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {},
+    },
+    "get_fee_sync_status": {
+        "fn": tool_get_fee_sync_status,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["accountant", "principal"],
+        "description": "Show the latest fee sync job status, synced counts, and unresolved conflicts.",
+        "params_schema": {},
+        "requires_confirmation": False,
     },
 }
 

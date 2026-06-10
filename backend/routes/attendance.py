@@ -15,6 +15,10 @@ from services.attendance_correction_service import (
     AttendanceCorrectionValidationError,
     AttendanceCorrectionNotFoundError,
 )
+from services.staff_attendance_service import (
+    mark_staff_attendance as staff_attendance_service,
+    StaffAttendanceValidationError,
+)
 from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, normalize_session_id, publish
 import asyncio
 import csv
@@ -241,31 +245,14 @@ async def get_today_attendance(class_id: str, request: Request, date: str = None
 
 @router.post("/staff/bulk")
 async def mark_staff_attendance(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    # AD7 shared write path — same service as the AI `mark_staff_attendance` tool.
     db = get_db()
     body = await request.json()
-    today = body.get("date", date.today().strftime("%Y-%m-%d"))
-    records = body.get("records", [])
-
-    for rec in records:
-        att = StaffAttendance(
-            staff_id=rec["staff_id"],
-            date=today,
-            status=rec["status"],
-            check_in=rec.get("check_in"),
-            check_out=rec.get("check_out"),
-        )
-        await db.staff_attendance.update_one(
-            _attendance_query({"staff_id": rec["staff_id"], "date": today}),
-            {"$set": {**_serialize(att), "_id": att.id, "schoolId": get_school_id()}},
-            upsert=True,
-        )
-
-    await publish("attendance", {
-        "type": "staff_attendance_updated",
-        "date": today,
-        "records": records,
-        "updated_at": datetime.now().isoformat(),
-    })
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        await staff_attendance_service(db, actor_ctx, body, publish_fn=publish)
+    except StaffAttendanceValidationError as e:
+        raise HTTPException(400, str(e))
     return {"success": True}
 
 

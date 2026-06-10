@@ -47,12 +47,21 @@ class TestGetStudents:
         inactive_list = client.get("/api/students?include_inactive=true", headers=auth_headers).json()
         assert student_id in [student["id"] for student in inactive_list["data"]]
 
-    def test_list_paginates_at_twenty(self, client, auth_headers):
+    def test_list_pagination_default_and_cap(self, client, auth_headers):
+        # Default page size stays 20; explicit limit is honored but hard-capped at 500
+        # (raised from 20 so the student-database table can load full classes).
+        default = client.get("/api/students?sort=name", headers=auth_headers)
+        assert default.status_code == 200
+        assert default.json()["meta"]["per_page"] == 20
+
         response = client.get("/api/students?limit=200&sort=name", headers=auth_headers)
         assert response.status_code == 200
         data = response.json()
-        assert data["meta"]["per_page"] == 20
-        assert len(data["data"]) <= 20
+        assert data["meta"]["per_page"] == 200
+        assert len(data["data"]) <= 200
+
+        capped = client.get("/api/students?limit=9999&sort=name", headers=auth_headers)
+        assert capped.json()["meta"]["per_page"] == 500
 
 
 class TestGetStudentById:

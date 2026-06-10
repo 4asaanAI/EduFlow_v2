@@ -53,4 +53,16 @@ PARITY_CORPUS = {
     "delete_branch": "org_config_parity_test.py",
     "update_school_settings": "org_config_parity_test.py",
     "year_end_transition": "org_config_parity_test.py",
+    # Drift-gate remediation — operations tools added post-Phase-1 (ff2e929)
+    "create_expense": "ops_crud_parity_test.py",
+    "update_expense": "ops_crud_parity_test.py",
+    "delete_expense": "ops_crud_parity_test.py",
+    "create_enquiry": "ops_crud_parity_test.py",
+    "update_enquiry_status": "ops_crud_parity_test.py",
+    "create_incident": "ops_crud_parity_test.py",
+    # Owner coverage gap-close — staff attendance + fee transaction lifecycle
+    "mark_staff_attendance": "staff_attendance_parity_test.py",
+    "correct_fee_transaction": "fee_txn_parity_test.py",
+    "delete_fee_transaction": "fee_txn_parity_test.py",
+    "trigger_fee_sync": "fee_txn_parity_test.py",
 }
