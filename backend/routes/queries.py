@@ -11,6 +11,16 @@ from pathlib import Path
 
 from database import get_db
 from middleware.auth import get_current_user
+from services.actor_context import actor_ctx_from_user
+from services.query_ticket_service import (
+    create_ticket as svc_create_ticket,
+    resolve_ticket as svc_resolve_ticket,
+    reopen_ticket as svc_reopen_ticket,
+    assign_ticket as svc_assign_ticket,
+    delete_ticket as svc_delete_ticket,
+    TicketValidationError,
+    TicketNotFoundError,
+)
 from tenant import add_school_id, get_school_id, scoped_filter
 
 router = APIRouter(prefix="/api/queries", tags=["queries"])
@@ -74,22 +84,7 @@ async def create_query(
     attachment: UploadFile = File(None),
 ):
     user = get_user(request)
-
-    # Validate inputs
-    title = title.strip()
-    description = description.strip()
-    if not title or len(title) > 200:
-        raise HTTPException(400, "Title must be 1–200 characters")
-    if not description or len(description) > 2000:
-        raise HTTPException(400, "Description must be 1–2000 characters")
-    if priority not in ALLOWED_PRIORITIES:
-        raise HTTPException(400, f"Priority must be one of: {', '.join(ALLOWED_PRIORITIES)}")
-
-    ticket_id = str(uuid.uuid4())
-    attachment_url = None
-    attachment_type = None
-    attachment_data = None
-
+    upload = None
     if attachment and attachment.filename:
         ext = Path(attachment.filename).suffix.lower()
         if ext not in ALLOWED_EXTS:
@@ -97,36 +92,24 @@ async def create_query(
         contents = await attachment.read()
         if len(contents) > MAX_FILE_MB * 1024 * 1024:
             raise HTTPException(400, f"File too large. Max {MAX_FILE_MB}MB")
-        attachment_type = ext.lstrip(".")
-        attachment_data = contents
-        attachment_url = f"/api/queries/{ticket_id}/attachment"
+        upload = {"data": contents, "type": ext.lstrip(".")}
 
-    ticket = {
-        "schoolId": get_school_id(),
-        "id": ticket_id,
+    # AD7 shared write path — same service as the AI `create_query_ticket` tool;
+    # only the multipart attachment handling above is route-specific.
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user)
+    params = {
         "title": title,
         "description": description,
         "priority": priority,
-        "status": "open",
-        "category": request.query_params.get("category") or "general",
+        "category": request.query_params.get("category"),
         "assigned_to": request.query_params.get("assigned_to"),
-        "created_by": user["id"],
-        "created_by_name": user.get("name", ""),
-        "created_by_role": user.get("role", ""),
-        "attachment_url": attachment_url,
-        "attachment_type": attachment_type,
-        "created_at": datetime.now().isoformat(),
-        "resolved_at": None,
-        "resolved_by": None,
-        "resolved_by_name": None,
     }
-
-    db = get_db()
-    db_record = add_school_id({**ticket, "_id": ticket["id"]})
-    if attachment_data:
-        db_record["attachment_data"] = attachment_data
-    await db.queries.insert_one(db_record)
-    return {"success": True, "data": ticket}
+    try:
+        result = await svc_create_ticket(db, actor_ctx, params, attachment=upload)
+    except TicketValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["ticket"]}
 
 
 # ─── PATCH /api/queries/{id}/resolve ────────────────────────────────────────
@@ -136,21 +119,16 @@ async def resolve_query(ticket_id: str, request: Request):
     user = get_user(request)
     if not (_is_it_tech(user) or user.get("role") == "owner"):
         raise HTTPException(403, "Forbidden")
+    # AD7 shared write path — same service as the AI `resolve_query_ticket` tool.
     db = get_db()
-    ticket = await db.queries.find_one(scoped_filter({"id": ticket_id}, get_school_id()), {"_id": 0})
-    if not ticket:
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_resolve_ticket(db, actor_ctx, {"ticket_id": ticket_id})
+    except TicketNotFoundError:
         raise HTTPException(404, "Ticket not found")
-    now = datetime.now().isoformat()
-    await db.queries.update_one(
-        scoped_filter({"id": ticket_id}, get_school_id()),
-        {"$set": {
-            "status": "resolved",
-            "resolved_at": now,
-            "resolved_by": user["id"],
-            "resolved_by_name": user.get("name", ""),
-        }}
-    )
-    return {"success": True, "status": "resolved", "resolved_at": now}
+    except TicketValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "status": "resolved", "resolved_at": result["resolved_at"]}
 
 
 # ─── PATCH /api/queries/{id}/unresolve ──────────────────────────────────────
@@ -160,14 +138,15 @@ async def unresolve_query(ticket_id: str, request: Request):
     user = get_user(request)
     if not (_is_it_tech(user) or user.get("role") == "owner"):
         raise HTTPException(403, "Forbidden")
+    # AD7 shared write path — same service as the AI `reopen_query_ticket` tool.
     db = get_db()
-    ticket = await db.queries.find_one(scoped_filter({"id": ticket_id}, get_school_id()), {"_id": 0})
-    if not ticket:
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        await svc_reopen_ticket(db, actor_ctx, {"ticket_id": ticket_id})
+    except TicketNotFoundError:
         raise HTTPException(404, "Ticket not found")
-    await db.queries.update_one(
-        scoped_filter({"id": ticket_id}, get_school_id()),
-        {"$set": {"status": "open", "resolved_at": None, "resolved_by": None, "resolved_by_name": None}}
-    )
+    except TicketValidationError as e:
+        raise HTTPException(400, str(e))
     return {"success": True, "status": "open"}
 
 
@@ -178,34 +157,35 @@ async def assign_query(ticket_id: str, request: Request):
     user = get_user(request)
     if not _is_support_admin(user):
         raise HTTPException(403, "Forbidden")
+    # AD7 shared write path — same service as the AI `assign_query_ticket` tool.
     db = get_db()
     body = await request.json()
-    assigned_to = body.get("assigned_to")
-    if not assigned_to:
-        raise HTTPException(400, "assigned_to is required")
-    ticket = await db.queries.find_one(scoped_filter({"id": ticket_id}, get_school_id()), {"_id": 0})
-    if not ticket:
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_assign_ticket(
+            db, actor_ctx,
+            {"ticket_id": ticket_id, "assigned_to": body.get("assigned_to"), "status": body.get("status", "in_progress")})
+    except TicketNotFoundError:
         raise HTTPException(404, "Ticket not found")
-    update = {
-        "assigned_to": assigned_to,
-        "status": body.get("status", "in_progress"),
-        "updated_at": datetime.now().isoformat(),
-    }
-    await db.queries.update_one(scoped_filter({"id": ticket_id}, get_school_id()), {"$set": update})
-    updated = await db.queries.find_one(scoped_filter({"id": ticket_id}, get_school_id()), {"_id": 0, "attachment_data": 0})
-    return {"success": True, "data": updated}
+    except TicketValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["ticket"]}
 
 
 @router.delete("/{ticket_id}")
 async def delete_query(ticket_id: str, request: Request):
     user = get_user(request)
-    db = get_db()
-    ticket = await db.queries.find_one(scoped_filter({"id": ticket_id}, get_school_id()), {"_id": 0})
-    if not ticket:
-        raise HTTPException(404, "Ticket not found")
     if not (_is_it_tech(user) or user.get("role") == "owner"):
         raise HTTPException(403, "Forbidden")
-    await db.queries.delete_one(scoped_filter({"id": ticket_id}, get_school_id()))
+    # AD7 shared write path — same service as the AI `delete_query_ticket` tool.
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        await svc_delete_ticket(db, actor_ctx, {"ticket_id": ticket_id})
+    except TicketNotFoundError:
+        raise HTTPException(404, "Ticket not found")
+    except TicketValidationError as e:
+        raise HTTPException(400, str(e))
     return {"success": True}
 
 

@@ -39,6 +39,10 @@ from services.approvals_service import (
     ApprovalAuthorizationError,
 )
 from services.announcement_service import (
+    decide_announcement as svc_decide_announcement,
+    delete_announcement as svc_delete_announcement,
+    AnnouncementNotFoundError,
+    AnnouncementStateError,
     decide_announcement_status,
     AnnouncementValidationError,
 )
@@ -122,6 +126,48 @@ from services.staff_attendance_service import (
     StaffAttendanceValidationError,
 )
 from services.fee_sync_service import trigger_sync as svc_trigger_fee_sync, FeeSyncUpstreamError
+from services.asset_service import (
+    create_asset as svc_create_asset,
+    update_asset as svc_update_asset,
+    delete_asset as svc_delete_asset,
+    AssetValidationError,
+    AssetNotFoundError,
+)
+from services.visitor_service import (
+    log_visitor as svc_log_visitor,
+    checkout_visitor as svc_checkout_visitor,
+    delete_visitor as svc_delete_visitor,
+    VisitorValidationError,
+    VisitorNotFoundError,
+    VisitorDuplicateError,
+    VisitorRateLimitError,
+)
+from services.certificate_service import (
+    create_certificate as svc_create_certificate,
+    approve_certificate as svc_approve_certificate,
+    reject_certificate as svc_reject_certificate,
+    CertificateValidationError,
+    CertificateNotFoundError,
+    CertificateStateError,
+)
+from services.query_ticket_service import (
+    create_ticket as svc_create_query_ticket,
+    resolve_ticket as svc_resolve_query_ticket,
+    reopen_ticket as svc_reopen_query_ticket,
+    assign_ticket as svc_assign_query_ticket,
+    delete_ticket as svc_delete_query_ticket,
+    TicketValidationError,
+    TicketNotFoundError,
+)
+from services.transport_service import (
+    create_route as svc_create_transport_route,
+    update_route as svc_update_transport_route,
+    delete_route as svc_delete_transport_route,
+    create_vehicle as svc_create_vehicle,
+    TransportValidationError,
+    TransportNotFoundError,
+    TransportConflictError,
+)
 from services.substitution_service import initiate_substitution
 from services.attendance_correction_service import (
     correct_attendance,
@@ -2702,6 +2748,311 @@ async def tool_get_fee_sync_status(params: dict, user: dict, scope: dict = None)
 
 
 
+async def tool_create_asset(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over asset_service.create_asset (AD7 shared write path).
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_create_asset(db, actor_ctx, params)
+    except AssetValidationError as e:
+        return {"success": False, "message": str(e)}
+    a = result["asset"]
+    return {"success": True, "data": a, "message": f"Asset '{a['name']}' added (qty {a['quantity']})."}
+
+
+async def tool_update_asset(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over asset_service.update_asset (AD7 shared write path).
+    if not params.get("asset_id"):
+        return {"success": False, "message": "asset_id is required (use get_inventory_status to find it)"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_update_asset(db, actor_ctx, params)
+    except AssetNotFoundError:
+        return {"success": False, "message": "Asset not found"}
+    except AssetValidationError as e:
+        return {"success": False, "message": str(e)}
+    msg = "No changes to apply." if result.get("noop") else "Asset updated."
+    return {"success": True, "data": result["asset"], "message": msg}
+
+
+async def tool_delete_asset(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over asset_service.delete_asset (AD7 shared write path).
+    # DESTRUCTIVE: F.10 two-step confirm + deletion audit at the chat layer.
+    if not params.get("asset_id"):
+        return {"success": False, "message": "asset_id is required (use get_inventory_status to find it)"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_delete_asset(db, actor_ctx, params)
+    except AssetNotFoundError:
+        return {"success": False, "message": "Asset not found"}
+    except AssetValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": f"Asset '{result['asset'].get('name')}' deleted."}
+
+
+async def tool_log_visitor(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over visitor_service.log_visitor (AD7 shared write path).
+    if not (params.get("visitor_name") or "").strip():
+        return {"success": False, "message": "visitor_name is required"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_log_visitor(db, actor_ctx, params)
+    except VisitorDuplicateError as e:
+        return {"success": False,
+                "message": f"{e} (existing entry: {e.existing_id}) — re-run with force=true to override."}
+    except VisitorRateLimitError as e:
+        return {"success": False, "message": str(e)}
+    except VisitorValidationError as e:
+        return {"success": False, "message": str(e)}
+    v = result["visitor"]
+    return {"success": True, "data": v, "message": f"Visitor '{v['visitor_name']}' checked in."}
+
+
+async def tool_checkout_visitor(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over visitor_service.checkout_visitor (AD7 shared write path).
+    if not params.get("visitor_id"):
+        return {"success": False, "message": "visitor_id is required"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_checkout_visitor(db, actor_ctx, params)
+    except VisitorNotFoundError:
+        return {"success": False, "message": "Visitor not found"}
+    except VisitorValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "Visitor checked out."}
+
+
+async def tool_delete_visitor(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over visitor_service.delete_visitor (AD7 shared write path).
+    # DESTRUCTIVE: F.10 two-step confirm + deletion audit at the chat layer.
+    if not params.get("visitor_id"):
+        return {"success": False, "message": "visitor_id is required"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_delete_visitor(db, actor_ctx, params)
+    except VisitorNotFoundError:
+        return {"success": False, "message": "Visitor not found"}
+    except VisitorValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "Visitor log entry deleted."}
+
+
+async def tool_create_certificate(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over certificate_service.create_certificate (AD7 shared write path).
+    if not params.get("student_id"):
+        return {"success": False, "message": "student_id is required (use search_students to find it)"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_create_certificate(db, actor_ctx, params)
+    except CertificateValidationError as e:
+        return {"success": False, "message": str(e)}
+    cert = result["certificate"]
+    state = "generated" if cert["status"] == "generated" else "queued for principal approval"
+    return {"success": True, "data": cert,
+            "message": f"{cert['cert_type'].replace('_', ' ').title()} certificate {state} (serial {cert['serial_number']})."}
+
+
+async def tool_decide_certificate(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over certificate_service approve/reject (AD7 shared write path).
+    if not params.get("cert_id"):
+        return {"success": False, "message": "cert_id is required"}
+    decision = params.get("decision")
+    if decision not in ("approve", "reject"):
+        return {"success": False, "message": "decision must be approve or reject"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        if decision == "approve":
+            result = await svc_approve_certificate(db, actor_ctx, params)
+        else:
+            result = await svc_reject_certificate(db, actor_ctx, params)
+    except CertificateNotFoundError:
+        return {"success": False, "message": "Certificate not found"}
+    except CertificateStateError as e:
+        return {"success": False, "message": str(e)}
+    except CertificateValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["certificate"], "message": f"Certificate {decision}d."}
+
+
+async def tool_create_query_ticket(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over query_ticket_service.create_ticket (AD7 shared write path).
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_create_query_ticket(db, actor_ctx, params)
+    except TicketValidationError as e:
+        return {"success": False, "message": str(e)}
+    t = result["ticket"]
+    return {"success": True, "data": t, "message": f"Ticket '{t['title']}' created ({t['priority']} priority)."}
+
+
+async def tool_resolve_query_ticket(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over query_ticket_service.resolve_ticket (AD7 shared write path).
+    if not params.get("ticket_id"):
+        return {"success": False, "message": "ticket_id is required (use query_dashboard_summary to find it)"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_resolve_query_ticket(db, actor_ctx, params)
+    except TicketNotFoundError:
+        return {"success": False, "message": "Ticket not found"}
+    except TicketValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "Ticket marked resolved."}
+
+
+async def tool_reopen_query_ticket(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over query_ticket_service.reopen_ticket (AD7 shared write path).
+    if not params.get("ticket_id"):
+        return {"success": False, "message": "ticket_id is required"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_reopen_query_ticket(db, actor_ctx, params)
+    except TicketNotFoundError:
+        return {"success": False, "message": "Ticket not found"}
+    except TicketValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "Ticket reopened."}
+
+
+async def tool_assign_query_ticket(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over query_ticket_service.assign_ticket (AD7 shared write path).
+    if not params.get("ticket_id"):
+        return {"success": False, "message": "ticket_id is required"}
+    if not params.get("assigned_to"):
+        return {"success": False, "message": "assigned_to is required"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_assign_query_ticket(db, actor_ctx, params)
+    except TicketNotFoundError:
+        return {"success": False, "message": "Ticket not found"}
+    except TicketValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result["ticket"], "message": "Ticket assigned."}
+
+
+async def tool_delete_query_ticket(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over query_ticket_service.delete_ticket (AD7 shared write path).
+    # DESTRUCTIVE: F.10 two-step confirm + deletion audit at the chat layer.
+    if not params.get("ticket_id"):
+        return {"success": False, "message": "ticket_id is required"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_delete_query_ticket(db, actor_ctx, params)
+    except TicketNotFoundError:
+        return {"success": False, "message": "Ticket not found"}
+    except TicketValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "Ticket deleted."}
+
+
+async def tool_create_transport_route(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over transport_service.create_route (AD7 shared write path).
+    if not (params.get("route_name") or params.get("name")):
+        return {"success": False, "message": "route_name is required"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_create_transport_route(db, actor_ctx, params)
+    except TransportValidationError as e:
+        return {"success": False, "message": str(e)}
+    r = result["route"]
+    return {"success": True, "data": r, "message": f"Transport route '{r['route_name']}' created."}
+
+
+async def tool_update_transport_route(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over transport_service.update_route (AD7 shared write path).
+    if not params.get("route_id"):
+        return {"success": False, "message": "route_id is required (use get_transport_status to find it)"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_update_transport_route(db, actor_ctx, params)
+    except TransportNotFoundError:
+        return {"success": False, "message": "Route not found"}
+    except TransportValidationError as e:
+        return {"success": False, "message": str(e)}
+    msg = "No changes to apply." if result.get("noop") else "Transport route updated."
+    return {"success": True, "data": result["route"], "message": msg}
+
+
+async def tool_delete_transport_route(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over transport_service.delete_route (AD7 shared write path).
+    # DESTRUCTIVE: F.10 two-step confirm + deletion audit; blocked while students assigned.
+    if not params.get("route_id"):
+        return {"success": False, "message": "route_id is required (use get_transport_status to find it)"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_delete_transport_route(db, actor_ctx, params)
+    except TransportNotFoundError:
+        return {"success": False, "message": "Route not found"}
+    except TransportConflictError as e:
+        return {"success": False, "message": str(e)}
+    except TransportValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": f"Transport route '{result['route'].get('route_name')}' deleted."}
+
+
+async def tool_add_transport_vehicle(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over transport_service.create_vehicle (AD7 shared write path).
+    if not params.get("vehicle_number"):
+        return {"success": False, "message": "vehicle_number is required"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_create_vehicle(db, actor_ctx, params)
+    except TransportValidationError as e:
+        return {"success": False, "message": str(e)}
+    v = result["vehicle"]
+    return {"success": True, "data": v, "message": f"Vehicle {v['vehicle_number']} registered."}
+
+
+async def tool_decide_announcement(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over announcement_service.decide_announcement (AD7 shared write path).
+    if not params.get("announcement_id"):
+        return {"success": False, "message": "announcement_id is required"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_decide_announcement(db, actor_ctx, params)
+    except AnnouncementNotFoundError:
+        return {"success": False, "message": "Announcement not found"}
+    except AnnouncementStateError as e:
+        return {"success": False, "message": str(e)}
+    except AnnouncementValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": f"Announcement {result['status']}."}
+
+
+async def tool_delete_announcement(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over announcement_service.delete_announcement (AD7 shared write path).
+    # DESTRUCTIVE: F.10 two-step confirm + deletion audit at the chat layer.
+    if not params.get("announcement_id"):
+        return {"success": False, "message": "announcement_id is required"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_delete_announcement(db, actor_ctx, params)
+    except AnnouncementNotFoundError:
+        return {"success": False, "message": "Announcement not found"}
+    except AnnouncementValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result,
+            "message": f"Announcement '{result['announcement'].get('title', '')}' deleted."}
+
+
+
 # =========================================================================
 #  COMBINED TOOL_REGISTRY
 # =========================================================================
@@ -3709,6 +4060,257 @@ TOOL_REGISTRY = {
         "description": "Show the latest fee sync job status, synced counts, and unresolved conflicts.",
         "params_schema": {},
         "requires_confirmation": False,
+    },
+    "create_asset": {
+        "fn": tool_create_asset,
+        "roles": ["owner", "admin"],
+        "description": "Add an inventory asset (name, category, quantity, location, status).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "name": {"type": "string", "description": "Asset name (required)"},
+            "category": {"type": "string", "description": "e.g. furniture, electronics, sports"},
+            "quantity": {"type": "number", "description": "Quantity (default 1)"},
+            "location": {"type": "string", "description": "Where it is kept"},
+            "status": {"type": "string", "description": "good | needs_repair | damaged (default good)"},
+            "purchase_date": {"type": "string", "description": "YYYY-MM-DD"},
+            "maintenance_due": {"type": "string", "description": "YYYY-MM-DD"},
+        },
+    },
+    "update_asset": {
+        "fn": tool_update_asset,
+        "roles": ["owner", "admin"],
+        "description": "Update an inventory asset (quantity, location, status, etc.).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "asset_id": {"type": "string", "description": "Asset ID (required)"},
+            "name": {"type": "string", "description": "Updated name"},
+            "category": {"type": "string", "description": "Updated category"},
+            "quantity": {"type": "number", "description": "Updated quantity"},
+            "location": {"type": "string", "description": "Updated location"},
+            "status": {"type": "string", "description": "Updated condition status"},
+            "maintenance_due": {"type": "string", "description": "Updated maintenance date"},
+        },
+    },
+    "delete_asset": {
+        "fn": tool_delete_asset,
+        "roles": ["owner", "admin"],
+        "description": "Permanently delete an inventory asset. Destructive — requires a second confirmation.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "asset_id": {"type": "string", "description": "Asset ID to delete (required)"},
+        },
+    },
+    "log_visitor": {
+        "fn": tool_log_visitor,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "receptionist"],
+        "description": "Check a visitor in at the front desk (duplicate same-day check-ins are blocked unless force=true).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "visitor_name": {"type": "string", "description": "Visitor full name (required)"},
+            "phone": {"type": "string", "description": "Contact number"},
+            "purpose": {"type": "string", "description": "Purpose of the visit"},
+            "whom_to_meet": {"type": "string", "description": "Person being visited"},
+            "id_type": {"type": "string", "description": "ID shown, e.g. aadhaar, driving licence"},
+            "force": {"type": "boolean", "description": "Override the same-day duplicate guard"},
+        },
+    },
+    "checkout_visitor": {
+        "fn": tool_checkout_visitor,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "receptionist"],
+        "description": "Check a visitor out (sets their time_out).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "visitor_id": {"type": "string", "description": "Visitor log entry ID (required)"},
+        },
+    },
+    "delete_visitor": {
+        "fn": tool_delete_visitor,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "receptionist"],
+        "description": "Delete a visitor-log entry. Destructive — requires a second confirmation.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "visitor_id": {"type": "string", "description": "Visitor log entry ID to delete (required)"},
+        },
+    },
+    "create_certificate": {
+        "fn": tool_create_certificate,
+        "roles": ["owner", "admin"],
+        "description": "Request/generate a student certificate (bonafide, tc, character, merit, etc.). Owner/principal issues instantly; other types may queue for approval.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "student_id": {"type": "string", "description": "Student ID (required — use search_students)"},
+            "cert_type": {"type": "string", "description": "bonafide | tc | transfer_certificate | character | merit | participation (default bonafide)"},
+            "content_data": {"type": "object", "description": "Optional extra fields for the certificate body"},
+        },
+    },
+    "decide_certificate": {
+        "fn": tool_decide_certificate,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Approve or reject a pending certificate request (reason required when rejecting).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "cert_id": {"type": "string", "description": "Certificate ID (required)"},
+            "decision": {"type": "string", "description": "approve | reject (required)"},
+            "reason": {"type": "string", "description": "Rejection reason (required when rejecting)"},
+        },
+    },
+    "create_query_ticket": {
+        "fn": tool_create_query_ticket,
+        "roles": ["owner", "admin"],
+        "description": "Raise an internal support/query ticket (title, description, priority).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "title": {"type": "string", "description": "Ticket title, 1-200 chars (required)"},
+            "description": {"type": "string", "description": "Details, 1-2000 chars (required)"},
+            "priority": {"type": "string", "description": "low | medium | high | urgent (required)"},
+            "category": {"type": "string", "description": "Optional category (default general)"},
+            "assigned_to": {"type": "string", "description": "Optional user ID to assign to"},
+        },
+    },
+    "resolve_query_ticket": {
+        "fn": tool_resolve_query_ticket,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["it_tech"],
+        "description": "Mark a support/query ticket resolved.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "ticket_id": {"type": "string", "description": "Ticket ID (required)"},
+        },
+    },
+    "reopen_query_ticket": {
+        "fn": tool_reopen_query_ticket,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["it_tech"],
+        "description": "Reopen a resolved support/query ticket.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "ticket_id": {"type": "string", "description": "Ticket ID (required)"},
+        },
+    },
+    "assign_query_ticket": {
+        "fn": tool_assign_query_ticket,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "it_tech", "receptionist"],
+        "description": "Assign a support/query ticket to a staff member (sets status in_progress).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "ticket_id": {"type": "string", "description": "Ticket ID (required)"},
+            "assigned_to": {"type": "string", "description": "User ID to assign (required)"},
+            "status": {"type": "string", "description": "Optional status (default in_progress)"},
+        },
+    },
+    "delete_query_ticket": {
+        "fn": tool_delete_query_ticket,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["it_tech"],
+        "description": "Delete a support/query ticket. Destructive — requires a second confirmation.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "ticket_id": {"type": "string", "description": "Ticket ID to delete (required)"},
+        },
+    },
+    "create_transport_route": {
+        "fn": tool_create_transport_route,
+        "roles": ["owner", "admin"],
+        "description": "Create a transport route/zone (route name, stops, driver, vehicle, fare).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "route_name": {"type": "string", "description": "Route/zone name (required)"},
+            "start_point": {"type": "string", "description": "Start point"},
+            "end_point": {"type": "string", "description": "End point"},
+            "stops": {"type": "array", "description": "List of stop names"},
+            "driver_name": {"type": "string", "description": "Driver name"},
+            "driver_phone": {"type": "string", "description": "Driver phone"},
+            "vehicle_no": {"type": "string", "description": "Vehicle number"},
+            "fare": {"type": "number", "description": "Monthly fare"},
+            "description": {"type": "string", "description": "Optional zone description"},
+        },
+    },
+    "update_transport_route": {
+        "fn": tool_update_transport_route,
+        "roles": ["owner", "admin"],
+        "description": "Update a transport route (driver, vehicle, stops, fare, active flag).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "route_id": {"type": "string", "description": "Route ID (required — use get_transport_status)"},
+            "route_name": {"type": "string", "description": "Updated name"},
+            "driver_name": {"type": "string", "description": "Updated driver"},
+            "driver_phone": {"type": "string", "description": "Updated driver phone"},
+            "vehicle_no": {"type": "string", "description": "Updated vehicle"},
+            "fare": {"type": "number", "description": "Updated fare"},
+            "is_active": {"type": "boolean", "description": "Activate/deactivate the route"},
+        },
+    },
+    "delete_transport_route": {
+        "fn": tool_delete_transport_route,
+        "roles": ["owner", "admin"],
+        "description": "Delete a transport route. Blocked while active students are assigned. Destructive — requires a second confirmation.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "route_id": {"type": "string", "description": "Route ID to delete (required)"},
+        },
+    },
+    "add_transport_vehicle": {
+        "fn": tool_add_transport_vehicle,
+        "roles": ["owner", "admin"],
+        "description": "Register a transport vehicle (number, type, capacity, driver).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "vehicle_number": {"type": "string", "description": "Vehicle registration number (required)"},
+            "vehicle_type": {"type": "string", "description": "bus | van | auto (default bus)"},
+            "capacity": {"type": "number", "description": "Seating capacity"},
+            "driver_name": {"type": "string", "description": "Driver name"},
+            "driver_phone": {"type": "string", "description": "Driver phone"},
+        },
+    },
+    "decide_announcement": {
+        "fn": tool_decide_announcement,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Approve or reject a pending announcement (reason required when rejecting).",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "announcement_id": {"type": "string", "description": "Announcement ID (required)"},
+            "decision": {"type": "string", "description": "approve | reject (required)"},
+            "reason": {"type": "string", "description": "Rejection reason (required when rejecting)"},
+        },
+    },
+    "delete_announcement": {
+        "fn": tool_delete_announcement,
+        "roles": ["owner", "admin"],
+        "description": "Delete an announcement. Destructive — requires a second confirmation.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "announcement_id": {"type": "string", "description": "Announcement ID to delete (required)"},
+        },
     },
 }
 

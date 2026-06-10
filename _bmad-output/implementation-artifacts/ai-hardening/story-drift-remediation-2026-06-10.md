@@ -30,3 +30,23 @@ The gate's own CI tests were failing and caught it.
 - Suite: **1161 passed, 0 new failures** vs pinned 25-failure baseline (`ai-hardening-epic-a-baseline.txt`);
   16 new parity/guardrail tests.
 - Data-import remains UI-only by design (file-upload validate/commit flow — not a chat surface).
+
+
+## Wave 2 (same day) — remaining owner-modifiable surfaces
+
+19 more hardened AI tools so the owner can modify every major panel via chat:
+
+| Domain | Tools | Service | Notes |
+|---|---|---|---|
+| Assets / inventory | create_asset, update_asset, delete_asset† | `asset_service.py` | PATCH whitelist (legacy `$set` raw body); audit on every mutation |
+| Visitor log | log_visitor, checkout_visitor, delete_visitor† | `visitor_service.py` | Same-day duplicate guard + EC-11.1 force-override rate limit preserved |
+| Certificates | create_certificate, decide_certificate | `certificate_service.py` | Owner/principal auto-issue; pending→approve/reject state guards + notifications |
+| Query tickets | create/resolve/reopen/assign/delete_query_ticket† | `query_ticket_service.py` | REST keeps multipart attachment handling; doc build shared |
+| Transport | create/update/delete_transport_route†, add_transport_vehicle | `transport_service.py` | **Route delete now blocked while active students assigned (both entrypoints)** |
+| Announcements | decide_announcement, delete_announcement† | `announcement_service.py` | approve/reject extracted from routes; author notified on reject |
+
+† destructive → F.10 two-step confirm + actor-tagged deletion audit.
+
+Registry after Wave 2: **110 tools / 65 write / 12 destructive.** Parity: `ops_admin_parity_test.py` + `query_transport_parity_test.py` (18 tests). Suite: **1179 passed / 0 new failures.**
+
+**Deliberately NOT AI-exposed (documented decisions):** data import (file-upload flow), payroll disbursement + SMS/WhatsApp sends (money-movement / outward comms — defer to an explicit user decision), teacher academics surfaces (assignments, lesson plans, worksheets, question papers — Phase 2 / Epic H territory), maintenance vendors/schedule, council positions/teams (low owner value). Student hard-delete/erase remain FORBIDDEN_AI_TOOLS.

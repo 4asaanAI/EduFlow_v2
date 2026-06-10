@@ -134,6 +134,8 @@ _TOOL_DEEP_LINKS = {
     "delete_fee_transaction": "fees",
     "trigger_fee_sync": "fees",
     "mark_staff_attendance": "attendance",
+    "decide_announcement": "announcements",
+    "delete_announcement": "announcements",
 }
 
 WRITE_TOOL_REQUIRED_PARAMS = {
@@ -189,6 +191,26 @@ WRITE_TOOL_REQUIRED_PARAMS = {
     "correct_fee_transaction": ("transaction_id", "reason"),
     "delete_fee_transaction": ("transaction_id",),
     "trigger_fee_sync": (),
+    # Wave 2 — assets, visitors, certificates, query tickets, transport, announcement moderation
+    "create_asset": ("name",),
+    "update_asset": ("asset_id",),
+    "delete_asset": ("asset_id",),
+    "log_visitor": ("visitor_name",),
+    "checkout_visitor": ("visitor_id",),
+    "delete_visitor": ("visitor_id",),
+    "create_certificate": ("student_id",),
+    "decide_certificate": ("cert_id", "decision"),
+    "create_query_ticket": ("title", "description", "priority"),
+    "resolve_query_ticket": ("ticket_id",),
+    "reopen_query_ticket": ("ticket_id",),
+    "assign_query_ticket": ("ticket_id", "assigned_to"),
+    "delete_query_ticket": ("ticket_id",),
+    "create_transport_route": ("route_name",),
+    "update_transport_route": ("route_id",),
+    "delete_transport_route": ("route_id",),
+    "add_transport_vehicle": ("vehicle_number",),
+    "decide_announcement": ("announcement_id", "decision"),
+    "delete_announcement": ("announcement_id",),
 }
 
 WRITE_TOOL_PARAM_LABELS = {
@@ -249,6 +271,18 @@ WRITE_TOOL_PARAM_LABELS = {
     "enquiry_id": "enquiry",
     "description": "description",
     "transaction_id": "fee transaction",
+    # Wave 2
+    "asset_id": "asset",
+    "visitor_name": "visitor name",
+    "visitor_id": "visitor entry",
+    "cert_id": "certificate",
+    "ticket_id": "ticket",
+    "assigned_to": "assignee",
+    "route_name": "route name",
+    "route_id": "transport route",
+    "vehicle_number": "vehicle number",
+    "announcement_id": "announcement",
+    "priority": "priority",
 }
 
 # ─── Keyword → Tool Map ──────────────────────────────────────────────────────

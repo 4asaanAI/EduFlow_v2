@@ -36,7 +36,44 @@ from services.approvals_service import (
 )
 from services.announcement_service import (
     decide_announcement_status,
+    decide_announcement as svc_decide_announcement,
+    delete_announcement as svc_delete_announcement,
     AnnouncementValidationError,
+    AnnouncementNotFoundError,
+    AnnouncementStateError,
+)
+from services.asset_service import (
+    create_asset as svc_create_asset,
+    update_asset as svc_update_asset,
+    delete_asset as svc_delete_asset,
+    AssetValidationError,
+    AssetNotFoundError,
+)
+from services.visitor_service import (
+    log_visitor as svc_log_visitor,
+    checkout_visitor as svc_checkout_visitor,
+    delete_visitor as svc_delete_visitor,
+    VisitorValidationError,
+    VisitorNotFoundError,
+    VisitorDuplicateError,
+    VisitorRateLimitError,
+)
+from services.certificate_service import (
+    create_certificate as svc_create_certificate,
+    approve_certificate as svc_approve_certificate,
+    reject_certificate as svc_reject_certificate,
+    CertificateValidationError,
+    CertificateNotFoundError,
+    CertificateStateError,
+)
+from services.transport_service import (
+    create_route as svc_create_transport_route,
+    update_route as svc_update_transport_route,
+    delete_route as svc_delete_transport_route,
+    create_vehicle as svc_create_vehicle,
+    TransportValidationError,
+    TransportNotFoundError,
+    TransportConflictError,
 )
 from datetime import datetime, date as _date, timedelta
 from tenant import get_school_id, scoped_filter, scoped_query, add_school_id
@@ -348,109 +385,48 @@ async def list_certs(request: Request, student_id: str = None, user: dict = Depe
 
 @router.post("/certificates")
 async def create_cert(request: Request, user: dict = Depends(require_role("admin", "owner"))):
+    # AD7 shared write path — same service as the AI `create_certificate` tool.
     db = get_db()
-    bid = user.get("branch_id")
     body = await request.json()
-    cert_type = body.get("cert_type") or body.get("type", "bonafide")
-    # Fix 4: character and merit cert types also require approval
-    requires_approval = cert_type in {"bonafide", "tc", "transfer_certificate", "character", "merit"}
-    approved_actor = _is_owner_or_principal_user(user)
-    cert = add_school_id({
-        "id": str(uuid.uuid4()),
-        "student_id": body.get("student_id"),
-        "cert_type": cert_type,
-        "serial_number": f"CERT{datetime.now().strftime('%Y%m%d')}{uuid.uuid4().hex[:6].upper()}",
-        "content_data": body.get("content_data", {}),
-        "status": "generated" if (approved_actor or not requires_approval) else "pending_approval",
-        "issued_date": datetime.now().strftime("%Y-%m-%d") if (approved_actor or not requires_approval) else None,
-        "issued_by": user["id"] if (approved_actor or not requires_approval) else None,
-        "requested_by": user["id"],
-        "created_at": datetime.now().isoformat(),
-    })
-    await db.certificates.insert_one({**cert, "_id": cert["id"]})
-    if cert["status"] == "pending_approval":
-        principals = await db.users.find(
-            scoped_query({"role": "admin", "sub_category": "principal", "is_active": {"$ne": False}}, branch_id=bid),
-            {"_id": 0, "id": 1},
-        ).to_list(20)
-        await fan_out_notifications(
-            db,
-            [p["id"] for p in principals if p.get("id")],
-            notification_type="certificate_approval_requested",
-            title="Certificate approval required",
-            message=f"{cert_type.replace('_', ' ').title()} certificate is waiting for approval.",
-            source_id=cert["id"],
-            source_type="certificate",
-        )
-    return {"success": True, "data": cert}
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_create_certificate(db, actor_ctx, body)
+    except CertificateValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["certificate"]}
 
 
 @router.patch("/certificates/{cert_id}/approve")
 async def approve_cert(cert_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
+    # AD7 shared write path — same service as the AI `approve_certificate` tool.
     db = get_db()
-    bid = user.get("branch_id")
-    cert = await db.certificates.find_one(scoped_query({"id": cert_id}, branch_id=bid), {"_id": 0})
-    if not cert:
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_approve_certificate(db, actor_ctx, {"cert_id": cert_id})
+    except CertificateNotFoundError:
         raise HTTPException(404, "Certificate not found")
-    # Fix 5: state guard
-    if cert.get("status") != "pending_approval":
-        raise HTTPException(422, "Certificate is not in pending_approval state")
-    now = datetime.now().isoformat()
-    update = {
-        "status": "generated",
-        "issued_date": datetime.now().strftime("%Y-%m-%d"),
-        "issued_by": user["id"],
-        "approved_by": user["id"],
-        "approved_at": now,
-    }
-    await db.certificates.update_one(scoped_query({"id": cert_id}, branch_id=bid), {"$set": update})
-    if cert.get("requested_by"):
-        await create_notification(
-            db,
-            user_id=cert["requested_by"],
-            notification_type="certificate_approved",
-            title="Certificate approved",
-            message=f"{cert.get('cert_type', 'Certificate')} approved.",
-            source_id=cert_id,
-            source_type="certificate",
-        )
-    updated = await db.certificates.find_one(scoped_query({"id": cert_id}, branch_id=bid), {"_id": 0})
-    return {"success": True, "data": updated}
+    except CertificateStateError as e:
+        raise HTTPException(422, str(e))
+    except CertificateValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["certificate"]}
 
 
 @router.patch("/certificates/{cert_id}/reject")
 async def reject_cert(cert_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
+    # AD7 shared write path — same service as the AI `reject_certificate` tool.
     db = get_db()
-    bid = user.get("branch_id")
     body = await request.json()
-    reason = (body.get("reason") or "").strip()
-    if not reason:
-        raise HTTPException(400, "reason is required")
-    cert = await db.certificates.find_one(scoped_query({"id": cert_id}, branch_id=bid), {"_id": 0})
-    if not cert:
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_reject_certificate(db, actor_ctx, {"cert_id": cert_id, "reason": body.get("reason")})
+    except CertificateNotFoundError:
         raise HTTPException(404, "Certificate not found")
-    # Fix 5: state guard
-    if cert.get("status") != "pending_approval":
-        raise HTTPException(422, "Certificate is not in pending_approval state")
-    update = {
-        "status": "rejected",
-        "rejected_by": user["id"],
-        "rejected_at": datetime.now().isoformat(),
-        "rejection_reason": reason,
-    }
-    await db.certificates.update_one(scoped_query({"id": cert_id}, branch_id=bid), {"$set": update})
-    if cert.get("requested_by"):
-        await create_notification(
-            db,
-            user_id=cert["requested_by"],
-            notification_type="certificate_rejected",
-            title="Certificate rejected",
-            message=reason,
-            source_id=cert_id,
-            source_type="certificate",
-        )
-    updated = await db.certificates.find_one(scoped_query({"id": cert_id}, branch_id=bid), {"_id": 0})
-    return {"success": True, "data": updated}
+    except CertificateStateError as e:
+        raise HTTPException(422, str(e))
+    except CertificateValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["certificate"]}
 
 
 # --- Expenses ---
@@ -636,66 +612,39 @@ async def list_visitors(request: Request, user: dict = Depends(require_role("own
 
 @router.post("/visitors")
 async def log_visitor(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    # AD7 shared write path — same service as the AI `log_visitor` tool.
     _require_frontdesk(user)
     db = get_db()
-    bid = user.get("branch_id")
     body = await request.json()
-    today = datetime.now().strftime("%Y-%m-%d")
-    today_prefix = today
-    force = body.get("force", False)
-    visitor_name = (body.get("visitor_name") or "").strip()
-    norm_name = re.escape(visitor_name) if visitor_name else ""
-    if visitor_name:
-        duplicate = await db.visitor_log.find_one(
-            scoped_query({
-                "visitor_name": {"$regex": norm_name, "$options": "i"},
-                "time_in": {"$regex": f"^{today_prefix}"},
-                "time_out": None,
-            }, branch_id=bid),
-            {"_id": 0},
-        )
-        if duplicate:
-            if not force:
-                # Fix 2: return structured 409 with duplicate:true
-                from fastapi.responses import JSONResponse
-                return JSONResponse(status_code=409, content={
-                    "success": False, "duplicate": True,
-                    "existing_id": duplicate.get("id"),
-                    "detail": "Visitor already checked in today. Pass force:true to override.",
-                })
-            # EC-11.1: Rate limit on force overrides
-            MAX_FORCE_OVERRIDES = 3
-            force_count = await db.visitor_log.count_documents(
-                scoped_query({
-                    "visitor_name": {"$regex": norm_name, "$options": "i"},
-                    "time_in": {"$regex": f"^{today_prefix}"},
-                    "force_override": True,
-                }, branch_id=bid)
-            )
-            if force_count >= MAX_FORCE_OVERRIDES:
-                raise HTTPException(429, f"Maximum {MAX_FORCE_OVERRIDES} forced check-ins per visitor per day exceeded")
-    visitor = add_school_id({
-        "id": str(uuid.uuid4()),
-        "visitor_name": visitor_name,
-        "phone": body.get("phone", ""),
-        "purpose": body.get("purpose"),
-        "whom_to_meet": body.get("whom_to_meet", ""),
-        "id_type": body.get("id_type", ""),
-        "time_in": datetime.now().isoformat(),
-        "time_out": None,
-        "force_override": force,
-    })
-    await db.visitor_log.insert_one({**visitor, "_id": visitor["id"]})
-    return {"success": True, "data": visitor}
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_log_visitor(db, actor_ctx, body)
+    except VisitorDuplicateError as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=409, content={
+            "success": False, "duplicate": True,
+            "existing_id": e.existing_id,
+            "detail": str(e),
+        })
+    except VisitorRateLimitError as e:
+        raise HTTPException(429, str(e))
+    except VisitorValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["visitor"]}
 
 
 @router.patch("/visitors/{visitor_id}/checkout")
 async def checkout_visitor(visitor_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    # AD7 shared write path — same service as the AI `checkout_visitor` tool.
     _require_frontdesk(user)
     db = get_db()
-    bid = user.get("branch_id")
-    # branch-scope: receptionist sees only own branch
-    await db.visitor_log.update_one(scoped_query({"id": visitor_id}, branch_id=bid), {"$set": {"time_out": datetime.now().isoformat()}})
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        await svc_checkout_visitor(db, actor_ctx, {"visitor_id": visitor_id})
+    except VisitorNotFoundError:
+        raise HTTPException(404, "Visitor not found")
+    except VisitorValidationError as e:
+        raise HTTPException(400, str(e))
     return {"success": True}
 
 
@@ -721,31 +670,29 @@ async def list_assets(request: Request, user: dict = Depends(require_role("owner
 
 @router.post("/assets")
 async def create_asset(request: Request, user: dict = Depends(require_role("admin", "owner"))):
+    # AD7 shared write path — same service as the AI `create_asset` tool.
     db = get_db()
     body = await request.json()
-    asset = add_school_id({
-        "id": str(uuid.uuid4()),
-        "name": body.get("name"),
-        "category": body.get("category", ""),
-        "quantity": int(body.get("quantity", 1)),
-        "location": body.get("location", ""),
-        "status": body.get("status", "good"),
-        "purchase_date": body.get("purchase_date", ""),
-        "maintenance_due": body.get("maintenance_due", ""),
-        "created_by": user.get("id"),
-        "created_by_role": user.get("role"),
-        "created_by_sub_category": user.get("sub_category", ""),
-    })
-    await db.assets.insert_one({**asset, "_id": asset["id"]})
-    return {"success": True, "data": asset}
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_create_asset(db, actor_ctx, body)
+    except AssetValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["asset"]}
 
 
 @router.patch("/assets/{asset_id}")
 async def update_asset(asset_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
+    # AD7 shared write path — same service as the AI `update_asset` tool.
     db = get_db()
-    bid = user.get("branch_id")
     body = await request.json()
-    await db.assets.update_one(scoped_query({"id": asset_id}, branch_id=bid), {"$set": body})
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        await svc_update_asset(db, actor_ctx, {**body, "asset_id": asset_id})
+    except AssetNotFoundError:
+        raise HTTPException(404, "Asset not found")
+    except AssetValidationError as e:
+        raise HTTPException(400, str(e))
     return {"success": True}
 
 
@@ -766,24 +713,15 @@ async def list_transport(request: Request, user: dict = Depends(require_role("ow
 @router.post("/transport")
 @transport_router.post("")
 async def create_route(request: Request, user: dict = Depends(require_role("admin", "owner"))):
+    # AD7 shared write path — same service as the AI `create_transport_route` tool.
     db = get_db()
     body = await request.json()
-    route = add_school_id({
-        "id": str(uuid.uuid4()),
-        "route_name": body.get("route_name") or body.get("name"),
-        "start_point": body.get("start_point", ""),
-        "end_point": body.get("end_point", ""),
-        "stops": body.get("stops", []),
-        "driver_name": body.get("driver_name", ""),
-        "driver_phone": body.get("driver_phone", ""),
-        "vehicle_no": body.get("vehicle_no") or body.get("vehicle_id", ""),
-        "capacity": body.get("capacity", ""),
-        "fare": body.get("fare", 0),
-        "is_active": True,
-        "created_at": datetime.now().isoformat(),
-    })
-    await db.transport_routes.insert_one({**route, "_id": route["id"]})
-    return {"success": True, "data": route}
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_create_transport_route(db, actor_ctx, body)
+    except TransportValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["route"]}
 
 
 @router.get("/transport/roster")
@@ -806,20 +744,15 @@ async def get_transport_roster(request: Request, zone_id: str = None, user: dict
 @router.post("/transport/vehicles")
 @transport_router.post("/vehicles")
 async def create_vehicle(request: Request, user: dict = Depends(require_role("admin", "owner"))):
+    # AD7 shared write path — same service as the AI `add_transport_vehicle` tool.
     db = get_db()
     body = await request.json()
-    vehicle = add_school_id({
-        "id": str(uuid.uuid4()),
-        "vehicle_number": body.get("vehicle_number", ""),
-        "vehicle_type": body.get("vehicle_type", "bus"),
-        "capacity": int(body.get("capacity", 0)),
-        "driver_name": body.get("driver_name", ""),
-        "driver_phone": body.get("driver_phone", ""),
-        "is_active": True,
-        "created_at": datetime.now().isoformat(),
-    })
-    await db.vehicles.insert_one({**vehicle, "_id": vehicle["id"]})
-    return {"success": True, "data": vehicle}
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_create_vehicle(db, actor_ctx, body)
+    except TransportValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["vehicle"]}
 
 
 @router.get("/transport/vehicles")
@@ -834,38 +767,50 @@ async def list_vehicles(request: Request, user: dict = Depends(require_role("own
 @router.post("/transport/zones")
 @transport_router.post("/zones")
 async def create_zone(request: Request, user: dict = Depends(require_role("admin", "owner"))):
-    """Alias: zones map to transport routes with zone semantics."""
+    """Alias: zones map to transport routes with zone semantics (AD7 shared service)."""
     db = get_db()
     body = await request.json()
-    zone = add_school_id({
-        "id": str(uuid.uuid4()),
-        "route_name": body.get("name") or body.get("route_name", ""),
-        "description": body.get("description", ""),
-        "fare": body.get("fare", 0),
-        "is_active": True,
-        "created_at": datetime.now().isoformat(),
-    })
-    await db.transport_routes.insert_one({**zone, "_id": zone["id"]})
-    return {"success": True, "data": zone}
+    actor_ctx = actor_ctx_from_user(user)
+    params = {"route_name": body.get("name") or body.get("route_name", ""),
+              "description": body.get("description", ""), "fare": body.get("fare", 0)}
+    try:
+        result = await svc_create_transport_route(db, actor_ctx, params)
+    except TransportValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["route"]}
 
 
 @router.patch("/transport/{route_id}")
 @transport_router.patch("/{route_id}")
 async def update_route(route_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
+    # AD7 shared write path — same service as the AI `update_transport_route` tool.
     db = get_db()
-    bid = user.get("branch_id")
     body = await request.json()
-    await db.transport_routes.update_one(scoped_query({"id": route_id}, branch_id=bid), {"$set": body})
-    route = await db.transport_routes.find_one(scoped_query({"id": route_id}, branch_id=bid), {"_id": 0})
-    return {"success": True, "data": route}
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_update_transport_route(db, actor_ctx, {**body, "route_id": route_id})
+    except TransportNotFoundError:
+        raise HTTPException(404, "Route not found")
+    except TransportValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["route"]}
 
 
 @router.delete("/transport/{route_id}")
 @transport_router.delete("/{route_id}")
 async def delete_route(route_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
+    # AD7 shared write path — same service as the AI `delete_transport_route` tool.
+    # Now blocked while active students are assigned (K-review safety rule).
     db = get_db()
-    bid = user.get("branch_id")
-    await db.transport_routes.delete_one(scoped_query({"id": route_id}, branch_id=bid))
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        await svc_delete_transport_route(db, actor_ctx, {"route_id": route_id})
+    except TransportNotFoundError:
+        raise HTTPException(404, "Route not found")
+    except TransportConflictError as e:
+        raise HTTPException(409, str(e))
+    except TransportValidationError as e:
+        raise HTTPException(400, str(e))
     return {"success": True}
 
 
@@ -1117,26 +1062,44 @@ async def delete_expense(expense_id: str, request: Request, user: dict = Depends
 
 @router.delete("/assets/{asset_id}")
 async def delete_asset(asset_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
+    # AD7 shared write path — same service as the AI `delete_asset` tool.
     db = get_db()
-    bid = user.get("branch_id")
-    await db.assets.delete_one(scoped_query({"id": asset_id}, branch_id=bid))
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        await svc_delete_asset(db, actor_ctx, {"asset_id": asset_id})
+    except AssetNotFoundError:
+        raise HTTPException(404, "Asset not found")
+    except AssetValidationError as e:
+        raise HTTPException(400, str(e))
     return {"success": True}
 
 
 @router.delete("/announcements/{ann_id}")
 async def delete_announcement(ann_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
+    # AD7 shared write path — same service as the AI `delete_announcement` tool.
     db = get_db()
-    await db.announcements.delete_one(scoped_filter({"id": ann_id}, get_school_id()))
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        await svc_delete_announcement(db, actor_ctx, {"announcement_id": ann_id})
+    except AnnouncementNotFoundError:
+        raise HTTPException(404, "Announcement not found")
+    except AnnouncementValidationError as e:
+        raise HTTPException(400, str(e))
     return {"success": True}
 
 
 @router.delete("/visitors/{visitor_id}")
 async def delete_visitor(visitor_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
+    # AD7 shared write path — same service as the AI `delete_visitor` tool.
     _require_frontdesk(user)
     db = get_db()
-    bid = user.get("branch_id")
-    # branch-scope: receptionist sees only own branch
-    await db.visitor_log.delete_one(scoped_query({"id": visitor_id}, branch_id=bid))
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        await svc_delete_visitor(db, actor_ctx, {"visitor_id": visitor_id})
+    except VisitorNotFoundError:
+        raise HTTPException(404, "Visitor not found")
+    except VisitorValidationError as e:
+        raise HTTPException(400, str(e))
     return {"success": True}
 
 
@@ -1233,96 +1196,36 @@ async def list_pending_announcements(request: Request, user: dict = Depends(requ
 
 @router.patch("/announcements/{ann_id}/approve")
 async def approve_announcement(ann_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
-    """Story 7-47: principal approval moves announcement to active."""
+    """Story 7-47 — AD7 shared write path, same service as the AI `decide_announcement` tool."""
     db = get_db()
-    ann = await db.announcements.find_one(scoped_filter({"id": ann_id}, get_school_id()))
-    if not ann:
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_decide_announcement(db, actor_ctx, {"announcement_id": ann_id, "decision": "approve"})
+    except AnnouncementNotFoundError:
         raise HTTPException(status_code=404, detail="Announcement not found")
-    if ann.get("status") != "pending_approval":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot approve announcement in status '{ann.get('status', 'unknown')}'",
-        )
-
-    now = datetime.now().isoformat()
-    await db.announcements.update_one(
-        scoped_filter({"id": ann_id}, get_school_id()),
-        {"$set": {
-            "status": "active",
-            "approved_by": user.get("id"),
-            "approved_by_name": user.get("name", ""),
-            "approved_at": now,
-        }},
-    )
-    await _write_audit(
-        db,
-        action="announcement_approved",
-        entity_type="announcement",
-        entity_id=ann_id,
-        user=user,
-        changes={
-            "status": {"from": "pending_approval", "to": "active"},
-            "target_roles": ann.get("target_roles") or ann.get("audience_roles"),
-        },
-    )
-    return {"success": True, "data": {"id": ann_id, "status": "active", "approved_at": now}}
+    except AnnouncementStateError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except AnnouncementValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"success": True, "data": result}
 
 
 @router.patch("/announcements/{ann_id}/reject")
 async def reject_announcement(ann_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
-    """Story 7-47: principal rejection with mandatory reason; notifies author."""
+    """Story 7-47 — AD7 shared write path, same service as the AI `decide_announcement` tool."""
     db = get_db()
     body = await request.json()
-    reason = (body.get("reason") or "").strip()
-    if not reason:
-        raise HTTPException(status_code=400, detail="rejection reason is required")
-
-    ann = await db.announcements.find_one(scoped_filter({"id": ann_id}, get_school_id()))
-    if not ann:
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_decide_announcement(
+            db, actor_ctx, {"announcement_id": ann_id, "decision": "reject", "reason": body.get("reason")})
+    except AnnouncementNotFoundError:
         raise HTTPException(status_code=404, detail="Announcement not found")
-    if ann.get("status") != "pending_approval":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot reject announcement in status '{ann.get('status', 'unknown')}'",
-        )
-
-    now = datetime.now().isoformat()
-    await db.announcements.update_one(
-        scoped_filter({"id": ann_id}, get_school_id()),
-        {"$set": {
-            "status": "rejected",
-            "rejected_by": user.get("id"),
-            "rejected_by_name": user.get("name", ""),
-            "rejected_at": now,
-            "rejection_reason": reason,
-        }},
-    )
-    await _write_audit(
-        db,
-        action="announcement_rejected",
-        entity_type="announcement",
-        entity_id=ann_id,
-        user=user,
-        changes={
-            "status": {"from": "pending_approval", "to": "rejected"},
-            "target_roles": ann.get("target_roles") or ann.get("audience_roles"),
-        },
-        reason=reason,
-    )
-
-    author_id = ann.get("created_by")
-    if author_id:
-        await create_notification(
-            db,
-            user_id=author_id,
-            notification_type="announcement_rejected",
-            title="Announcement rejected",
-            message=f"Your announcement '{ann.get('title', '')}' was rejected: {reason}",
-            source_id=ann_id,
-            source_type="announcement",
-        )
-
-    return {"success": True, "data": {"id": ann_id, "status": "rejected", "rejected_at": now, "reason": reason}}
+    except AnnouncementStateError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except AnnouncementValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"success": True, "data": result}
 
 
 # --- Enquiries ---
