@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useUser } from '../contexts/UserContext';
 import { X, Sun, Moon, Bell, Lock, Check, KeyRound, Eye, EyeOff } from 'lucide-react';
@@ -23,6 +23,20 @@ export default function SettingsModal({ onClose }) {
   const [pwSuccess, setPwSuccess] = useState(false);
   const [showNewPw, setShowNewPw] = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
+  const containerRef = useRef(null);
+  const scrollLockRef = useRef(null);
+
+  // Restore scroll position after re-renders triggered by password field typing
+  useEffect(() => {
+    if (scrollLockRef.current != null && containerRef.current) {
+      containerRef.current.scrollTop = scrollLockRef.current;
+      scrollLockRef.current = null;
+    }
+  });
+
+  const lockScroll = () => {
+    if (containerRef.current) scrollLockRef.current = containerRef.current.scrollTop;
+  };
 
   const bg = isDark ? '#1e1e1e' : '#fff';
   const border = isDark ? '#2e2e2e' : '#e5e5e5';
@@ -110,7 +124,7 @@ export default function SettingsModal({ onClose }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}>
-      <div className="fade-in-scale" style={{ background: bg, border: `1px solid ${border}`, borderRadius: 20, padding: 32, width: 460, maxWidth: '90vw', maxHeight: '88vh', overflowY: 'auto', boxShadow: 'var(--shadow-xl)' }}>
+      <div ref={containerRef} className="fade-in-scale" style={{ background: bg, border: `1px solid ${border}`, borderRadius: 20, padding: 32, width: 460, maxWidth: '90vw', maxHeight: '88vh', overflowY: 'auto', boxShadow: 'var(--shadow-xl)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: text, letterSpacing: '-0.02em' }}>Settings</h2>
           <button onClick={onClose} style={{ background: isDark ? '#252525' : '#f5f5f5', border: 'none', color: muted, cursor: 'pointer', borderRadius: 8, padding: 6, transition: 'var(--transition-fast)' }}
@@ -162,9 +176,11 @@ export default function SettingsModal({ onClose }) {
                   <input
                     type={showNewPw ? 'text' : 'password'}
                     value={pwForm.new_password}
-                    onChange={e => setPwForm(p => ({ ...p, new_password: e.target.value }))}
+                    onChange={e => { lockScroll(); setPwForm(p => ({ ...p, new_password: e.target.value })); }}
+                    onFocus={lockScroll}
                     placeholder="Enter new password"
                     required
+                    autoComplete="new-password"
                     style={{ width: '100%', background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`, borderRadius: 8, padding: '9px 36px 9px 12px', color: text, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
                   />
                   <button type="button" onClick={() => setShowNewPw(v => !v)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: muted, padding: 2, display: 'flex', alignItems: 'center' }}>
@@ -178,9 +194,11 @@ export default function SettingsModal({ onClose }) {
                   <input
                     type={showConfirmPw ? 'text' : 'password'}
                     value={pwForm.confirm_password}
-                    onChange={e => setPwForm(p => ({ ...p, confirm_password: e.target.value }))}
+                    onChange={e => { lockScroll(); setPwForm(p => ({ ...p, confirm_password: e.target.value })); }}
+                    onFocus={lockScroll}
                     placeholder="Confirm new password"
                     required
+                    autoComplete="new-password"
                     style={{ width: '100%', background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`, borderRadius: 8, padding: '9px 36px 9px 12px', color: text, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
                   />
                   <button type="button" onClick={() => setShowConfirmPw(v => !v)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: muted, padding: 2, display: 'flex', alignItems: 'center' }}>

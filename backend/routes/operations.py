@@ -1057,7 +1057,7 @@ async def cluster_analysis(
 
     students = await db.students.find(
         scoped_query({"is_active": {"$ne": False}, "coordinates": {"$exists": True}}, branch_id=bid),
-        {"_id": 0, "id": 1, "name": 1, "coordinates": 1, "route_zone_id": 1},
+        {"_id": 0, "id": 1, "name": 1, "admission_number": 1, "coordinates": 1, "route_zone_id": 1},
     ).to_list(5000)
 
     suboptimal = []
@@ -1084,6 +1084,7 @@ async def cluster_analysis(
                 suboptimal.append({
                     "student_id": s["id"],
                     "student_name": s.get("name", ""),
+                    "admission_number": s.get("admission_number", ""),
                     "current_zone_id": current_zone_id,
                     "current_zone_name": zone_map.get(current_zone_id, {}).get("route_name", ""),
                     "nearest_zone_id": nearest_zone["id"],

@@ -295,7 +295,37 @@ function IssuePanel({ type, title }) {
   );
 }
 
+function OwnerFacilityAndTechTracker() {
+  const { isDark } = useTheme();
+  const { currentUser } = useUser();
+  const [activeTab, setActiveTab] = useState('facility');
+  const tabs = [
+    { id: 'facility', label: 'Facility Requests' },
+    { id: 'tech', label: 'Tech Issues' },
+  ];
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 4, padding: 4, background: isDark ? 'var(--tool-hex-141414)' : 'var(--tool-hex-f5f5f5)', borderRadius: 10, width: 'fit-content', marginBottom: 18 }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
+            padding: '6px 16px', borderRadius: 7, border: 'none',
+            background: activeTab === t.id ? (isDark ? 'var(--tool-hex-252525)' : '#fff') : 'transparent',
+            color: activeTab === t.id ? (isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)') : (isDark ? 'var(--tool-hex-888)' : 'var(--tool-hex-737373)'),
+            fontSize: 12, fontWeight: activeTab === t.id ? 600 : 500, cursor: 'pointer',
+            boxShadow: activeTab === t.id ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
+          }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <IssuePanel type={activeTab} title={activeTab === 'facility' ? 'Facility Requests' : 'Tech Issues'} />
+    </div>
+  );
+}
+
 export function MaintenanceFacilityTracker() {
+  const { currentUser } = useUser();
+  if (currentUser?.role === 'owner') return <OwnerFacilityAndTechTracker />;
   return <IssuePanel type="facility" title="Facility Requests" />;
 }
 

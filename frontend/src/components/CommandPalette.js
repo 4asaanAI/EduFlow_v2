@@ -25,7 +25,7 @@ const ALL_TOOLS = [
   { id: 'incident-tracker',       name: 'Incidents & Visitors',  subtitle: 'Log & track incidents',    icon: AlertTriangle, roles: ['owner','admin'] },
   { id: 'transport-manager',      name: 'Transport',             subtitle: 'Routes & buses',           icon: Truck,         roles: ['owner','admin'] },
   { id: 'facility-requests',      name: 'Facility Requests',     subtitle: 'Maintenance queue',        icon: Wrench,        roles: ['owner','admin'] },
-  { id: 'tech-issues',            name: 'Tech Issues',           subtitle: 'IT request tracker',       icon: Monitor,       roles: ['owner','admin'] },
+  { id: 'tech-issues',            name: 'Tech Issues',           subtitle: 'IT request tracker',       icon: Monitor,       roles: ['admin'] },
   { id: 'audit-log',              name: 'Audit Log',             subtitle: 'Who did what',             icon: ScrollText,    roles: ['owner','admin'] },
   { id: 'school-activities',      name: 'School Activities',     subtitle: 'Houses, sports, awards',   icon: Trophy,        roles: ['owner','admin'] },
   { id: 'fee-receipts',           name: 'Fee Receipts',          subtitle: 'PDF & export',             icon: FileText,      roles: ['owner','admin'] },

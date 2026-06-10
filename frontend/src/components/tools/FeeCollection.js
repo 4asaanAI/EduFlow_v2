@@ -219,6 +219,23 @@ export default function FeeCollection() {
       if (payment.paid_amount) payload.paid_amount = Number(payment.paid_amount);
       const res = await recordFeePayment(null, payload, key);
       if (!res.success) throw new Error(res.detail || 'Payment could not be saved');
+
+      // Auto-close matching overdue transactions for this student + fee head
+      if (payment.status === 'paid' || payment.status === 'partial') {
+        const matchingOverdue = overdueList.filter(
+          txn => txn.student_id === payment.student_id &&
+                 (txn.fee_head === payment.fee_head || txn.fee_type === payment.fee_head)
+        );
+        for (const txn of matchingOverdue) {
+          try {
+            await correctFeeTransaction(txn.id, {
+              reason: 'Auto-closed: payment recorded',
+              status: payment.status === 'partial' ? 'partial' : 'paid',
+            });
+          } catch {}
+        }
+      }
+
       setNotice(res.idempotent ? 'Duplicate submission recovered. Original payment returned.' : 'Payment saved.');
       setPayment(initialPayment);
       await loadData();

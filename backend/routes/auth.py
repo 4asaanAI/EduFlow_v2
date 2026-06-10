@@ -295,7 +295,8 @@ async def change_password(
     current_user: dict = Depends(get_current_user),
 ):
     db = get_db()
-    auth = await db.auth_users.find_one(_auth_user_filter(current_user["user_id"]))
+    uid = current_user.get("id") or current_user.get("user_id", "")
+    auth = await db.auth_users.find_one(_auth_user_filter(uid))
     if not auth:
         raise HTTPException(404, "Auth record not found")
     stored_hash = auth.get("password_hash", "")
@@ -304,16 +305,16 @@ async def change_password(
     if not verify_password(body.current_password, stored_hash):
         raise HTTPException(400, "Current password is incorrect")
     await db.auth_users.update_one(
-        _auth_user_filter(current_user["user_id"]),
+        _auth_user_filter(uid),
         {"$set": {"password_hash": hash_password(body.new_password), "must_change_password": False}},
     )
     # Revoke old tokens first, then issue a fresh one so the client session survives the redirect
-    await revoke_user_refresh_tokens(db, current_user["user_id"], reason="password_changed")
+    await revoke_user_refresh_tokens(db, uid, reason="password_changed")
     try:
-        new_refresh = await issue_refresh_token(db, current_user["user_id"], request)
+        new_refresh = await issue_refresh_token(db, uid, request)
         set_refresh_cookie(response, new_refresh)
     except Exception:
-        logger.warning("issue_refresh_token failed after password change user_id=%s", current_user["user_id"], exc_info=True)
+        logger.warning("issue_refresh_token failed after password change user_id=%s", uid, exc_info=True)
     return {"success": True}
 
 
@@ -328,19 +329,20 @@ async def set_password(
     Used by the Settings modal for all roles/sub-roles.
     """
     db = get_db()
-    auth = await db.auth_users.find_one(_auth_user_filter(current_user["user_id"]))
+    uid = current_user.get("id") or current_user.get("user_id", "")
+    auth = await db.auth_users.find_one(_auth_user_filter(uid))
     if not auth:
         raise HTTPException(404, "Auth record not found")
     await db.auth_users.update_one(
-        _auth_user_filter(current_user["user_id"]),
+        _auth_user_filter(uid),
         {"$set": {"password_hash": hash_password(body.new_password), "must_change_password": False}},
     )
-    await revoke_user_refresh_tokens(db, current_user["user_id"], reason="password_changed")
+    await revoke_user_refresh_tokens(db, uid, reason="password_changed")
     try:
-        new_refresh = await issue_refresh_token(db, current_user["user_id"], request)
+        new_refresh = await issue_refresh_token(db, uid, request)
         set_refresh_cookie(response, new_refresh)
     except Exception:
-        logger.warning("issue_refresh_token failed after set-password user_id=%s", current_user["user_id"], exc_info=True)
+        logger.warning("issue_refresh_token failed after set-password user_id=%s", uid, exc_info=True)
     return {"success": True}
 
 

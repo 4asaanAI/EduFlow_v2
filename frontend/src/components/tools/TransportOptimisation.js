@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { MapPin, Navigation, AlertTriangle, CheckCircle, Search, RefreshCw } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { MapPin, Navigation, AlertTriangle, CheckCircle, Search, RefreshCw, Zap } from 'lucide-react';
 import {
   geocodeAddress,
   setStudentCoordinates,
@@ -7,63 +7,104 @@ import {
   fetchRouteSuggestion,
   fetchClusterAnalysis,
   updateStudent,
+  getStudents,
 } from '@/lib/api';
 
-const TABS = ['Geocode', 'Suggest Route', 'Cluster Analysis'];
+const TABS = [
+  { id: 'geocode', label: 'Geocode Address', icon: MapPin, color: '#4f8ff7' },
+  { id: 'route', label: 'Suggest Route', icon: Navigation, color: '#34d399' },
+  { id: 'cluster', label: 'Cluster Analysis', icon: AlertTriangle, color: '#fbbf24' },
+];
 
-function ReassignButton({ studentId, zoneId }) {
-  const [state, setState] = useState('idle');
-  const handleReassign = async () => {
-    setState('loading');
-    try {
-      const res = await updateStudent(studentId, { route_zone_id: zoneId });
-      setState(res.success ? 'done' : 'error');
-    } catch {
-      setState('error');
-    }
+function card(style = {}) {
+  return {
+    background: 'var(--c-bg)',
+    border: '1px solid var(--c-border)',
+    borderRadius: 12,
+    padding: 16,
+    ...style,
   };
-  if (state === 'done') return <span className="text-green-400 text-xs">Reassigned</span>;
-  if (state === 'error') return <span className="text-red-400 text-xs">Failed</span>;
-  return (
-    <button
-      onClick={handleReassign}
-      disabled={state === 'loading'}
-      className="px-2 py-1 bg-green-600/20 text-green-400 border border-green-600/30 rounded text-xs hover:bg-green-600/30 disabled:opacity-50"
-    >
-      {state === 'loading' ? '…' : 'Reassign'}
-    </button>
-  );
 }
+const inputStyle = {
+  width: '100%',
+  background: 'var(--c-deep)',
+  border: '1px solid var(--c-border)',
+  borderRadius: 8,
+  padding: '9px 12px',
+  color: 'var(--c-text)',
+  fontSize: 13,
+  outline: 'none',
+  boxSizing: 'border-box',
+};
+const btnPrimary = (color = 'var(--tool-hex-4f8ff7)') => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 7,
+  padding: '9px 18px',
+  background: color,
+  border: 'none',
+  borderRadius: 8,
+  color: '#fff',
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: 'pointer',
+  flexShrink: 0,
+});
+const btnSecondary = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '7px 14px',
+  background: 'transparent',
+  border: '1px solid var(--c-border)',
+  borderRadius: 8,
+  color: 'var(--c-muted)',
+  fontSize: 12,
+  fontWeight: 500,
+  cursor: 'pointer',
+};
+const label = { fontSize: 11, fontWeight: 600, color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 };
+const sectionTitle = { fontSize: 13, fontWeight: 600, color: 'var(--c-text)', marginBottom: 12 };
+const noticeBox = (color) => ({
+  display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 14px',
+  background: `color-mix(in srgb, ${color} 10%, transparent)`,
+  border: `1px solid color-mix(in srgb, ${color} 30%, transparent)`,
+  borderRadius: 8, fontSize: 12, color, marginBottom: 12,
+});
+const thStyle = {
+  padding: '9px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700,
+  color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.06em',
+  background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)',
+};
+const tdStyle = { padding: '10px 14px', fontSize: 12, color: 'var(--c-text)', borderBottom: '1px solid var(--c-border)' };
 
-function StatusBadge({ label, color }) {
-  const colors = {
-    green: 'bg-green-500/10 text-green-400 border-green-500/20',
-    yellow: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
-    red: 'bg-red-500/10 text-red-400 border-red-500/20',
-    blue: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-  };
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs border ${colors[color] || colors.blue}`}>
-      {label}
-    </span>
-  );
+// Resolve admission number → student_id
+async function resolveAdmissionNumber(admNo) {
+  try {
+    const res = await getStudents(null, { search: admNo.trim(), limit: 5 });
+    if (!res.success || !res.data?.length) return null;
+    const exact = res.data.find(s => s.admission_number === admNo.trim());
+    return (exact || res.data[0]);
+  } catch {
+    return null;
+  }
 }
 
 function GeocodeTab() {
   const [address, setAddress] = useState('');
-  const [studentId, setStudentId] = useState('');
+  const [admNo, setAdmNo] = useState('');
   const [zoneId, setZoneId] = useState('');
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [saved, setSaved] = useState('');
+  const [notice, setNotice] = useState('');
 
-  const handleGeocode = async () => {
+  const handleGeocode = useCallback(async () => {
     if (!address.trim()) return;
     setLoading(true);
     setError('');
     setResult(null);
-    setSaved('');
+    setNotice('');
     try {
       const data = await geocodeAddress(address.trim());
       if (data.success) setResult(data.data);
@@ -73,16 +114,18 @@ function GeocodeTab() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [address]);
 
   const handleSaveToStudent = async () => {
-    if (!result || !studentId.trim()) return;
+    if (!result || !admNo.trim()) return;
     setError('');
-    setSaved('');
+    setNotice('');
     setLoading(true);
     try {
-      const data = await setStudentCoordinates(studentId.trim(), result.lat, result.lng);
-      if (data.success) setSaved(`Saved coordinates to student ${studentId}`);
+      const student = await resolveAdmissionNumber(admNo);
+      if (!student) { setError(`No student found with admission number "${admNo}"`); return; }
+      const data = await setStudentCoordinates(student.id, result.lat, result.lng);
+      if (data.success) setNotice(`Coordinates saved to ${student.name} (${admNo})`);
       else setError(data.detail || 'Save failed');
     } catch {
       setError('Save failed');
@@ -94,11 +137,11 @@ function GeocodeTab() {
   const handleSaveToZone = async () => {
     if (!result || !zoneId.trim()) return;
     setError('');
-    setSaved('');
+    setNotice('');
     setLoading(true);
     try {
       const data = await setZoneCentroid(zoneId.trim(), result.lat, result.lng);
-      if (data.success) setSaved(`Saved centroid to zone ${zoneId}`);
+      if (data.success) setNotice(`Centroid saved to zone "${zoneId}"`);
       else setError(data.detail || 'Save failed');
     } catch {
       setError('Save failed');
@@ -108,84 +151,77 @@ function GeocodeTab() {
   };
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-[var(--text-secondary)]">
-        Convert a text address to GPS coordinates using Google Maps Geocoding API.
+    <div>
+      <p style={{ fontSize: 13, color: 'var(--c-muted)', marginBottom: 16 }}>
+        Convert a text address to GPS coordinates using Google Maps Geocoding API, then assign to a student or route zone.
       </p>
-      <div className="flex gap-2">
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <input
           data-testid="geocode-address-input"
-          className="flex-1 bg-[var(--bg-input)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-          placeholder="Enter address, e.g. Joya Bus Stand, Amroha, UP"
+          style={{ ...inputStyle, flex: 1 }}
+          placeholder="e.g. Joya Bus Stand, Amroha, UP"
           value={address}
           onChange={e => setAddress(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleGeocode()}
         />
-        <button
-          data-testid="geocode-btn"
-          onClick={handleGeocode}
-          disabled={loading || !address.trim()}
-          className="px-4 py-2 bg-[var(--accent)] text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
-        >
-          {loading ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
+        <button onClick={handleGeocode} disabled={loading || !address.trim()} style={btnPrimary()}>
+          {loading ? <RefreshCw size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Search size={14} />}
           Geocode
         </button>
       </div>
 
-      {error && <p className="text-red-400 text-sm">{error}</p>}
+      {error && <div style={noticeBox('var(--tool-hex-f87171)')}><AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />{error}</div>}
+      {notice && <div style={noticeBox('var(--tool-hex-34d399)')}><CheckCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} />{notice}</div>}
 
       {result && (
-        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-lg p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <MapPin size={16} className="text-[var(--accent)]" />
-            <span className="text-sm font-medium text-[var(--text-primary)]">{result.formatted_address}</span>
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-xs text-[var(--text-secondary)]">
-            <span>Latitude: <strong className="text-[var(--text-primary)]">{result.lat}</strong></span>
-            <span>Longitude: <strong className="text-[var(--text-primary)]">{result.lng}</strong></span>
-          </div>
-          <div className="border-t border-[var(--border)] pt-3 space-y-2">
-            <p className="text-xs text-[var(--text-muted)]">Assign these coordinates:</p>
-            <div className="flex gap-2">
-              <input
-                data-testid="student-id-input"
-                className="flex-1 bg-[var(--bg-input)] border border-[var(--border)] rounded px-2 py-1.5 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none"
-                placeholder="Student ID"
-                value={studentId}
-                onChange={e => setStudentId(e.target.value)}
-              />
-              <button
-                data-testid="save-to-student-btn"
-                onClick={handleSaveToStudent}
-                disabled={loading || !studentId.trim()}
-                className="px-3 py-1.5 bg-blue-600/20 text-blue-400 border border-blue-600/30 rounded text-xs hover:bg-blue-600/30 disabled:opacity-50"
-              >
-                Save to Student
-              </button>
+        <div style={{ ...card(), marginTop: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'color-mix(in srgb, var(--tool-hex-4f8ff7) 15%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <MapPin size={15} color="var(--tool-hex-4f8ff7)" />
             </div>
-            <div className="flex gap-2">
-              <input
-                data-testid="zone-id-input"
-                className="flex-1 bg-[var(--bg-input)] border border-[var(--border)] rounded px-2 py-1.5 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none"
-                placeholder="Zone ID (set as centroid)"
-                value={zoneId}
-                onChange={e => setZoneId(e.target.value)}
-              />
-              <button
-                data-testid="save-to-zone-btn"
-                onClick={handleSaveToZone}
-                disabled={loading || !zoneId.trim()}
-                className="px-3 py-1.5 bg-green-600/20 text-green-400 border border-green-600/30 rounded text-xs hover:bg-green-600/30 disabled:opacity-50"
-              >
-                Set as Zone Centroid
-              </button>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text)' }}>{result.formatted_address}</div>
+              <div style={{ fontSize: 11, color: 'var(--c-muted)' }}>
+                Lat: <strong>{result.lat}</strong> · Lng: <strong>{result.lng}</strong>
+              </div>
             </div>
           </div>
-          {saved && (
-            <div className="flex items-center gap-2 text-green-400 text-xs">
-              <CheckCircle size={12} /> {saved}
+
+          <div style={{ borderTop: '1px solid var(--c-border)', paddingTop: 14 }}>
+            <div style={{ ...sectionTitle, marginBottom: 14 }}>Assign coordinates to:</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div>
+                <label style={label}>Student (Admission No.)</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input
+                    data-testid="student-admission-input"
+                    style={{ ...inputStyle, marginBottom: 0 }}
+                    placeholder="e.g. ARY-2024-001"
+                    value={admNo}
+                    onChange={e => setAdmNo(e.target.value)}
+                  />
+                  <button onClick={handleSaveToStudent} disabled={loading || !admNo.trim()} style={btnPrimary('var(--tool-hex-4f8ff7)')}>
+                    Save
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label style={label}>Zone ID (set centroid)</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input
+                    data-testid="zone-id-input"
+                    style={{ ...inputStyle, marginBottom: 0 }}
+                    placeholder="Route zone ID"
+                    value={zoneId}
+                    onChange={e => setZoneId(e.target.value)}
+                  />
+                  <button onClick={handleSaveToZone} disabled={loading || !zoneId.trim()} style={btnPrimary('var(--tool-hex-34d399)')}>
+                    Save
+                  </button>
+                </div>
+              </div>
             </div>
-          )}
+          </div>
         </div>
       )}
     </div>
@@ -193,18 +229,23 @@ function GeocodeTab() {
 }
 
 function SuggestRouteTab() {
-  const [studentId, setStudentId] = useState('');
+  const [admNo, setAdmNo] = useState('');
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resolvedName, setResolvedName] = useState('');
 
   const handleSuggest = async () => {
-    if (!studentId.trim()) return;
+    if (!admNo.trim()) return;
     setLoading(true);
     setError('');
     setResult(null);
+    setResolvedName('');
     try {
-      const data = await fetchRouteSuggestion(studentId.trim());
+      const student = await resolveAdmissionNumber(admNo);
+      if (!student) { setError(`No student found with admission number "${admNo}"`); return; }
+      setResolvedName(student.name);
+      const data = await fetchRouteSuggestion(student.id);
       if (data.success) setResult(data);
       else setError(data.detail || 'Failed to fetch suggestion');
     } catch {
@@ -214,61 +255,99 @@ function SuggestRouteTab() {
     }
   };
 
+  const zones = Array.isArray(result?.data) ? result.data : [];
+
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-[var(--text-secondary)]">
-        Rank all active route zones by proximity to a student's stored coordinates.
+    <div>
+      <p style={{ fontSize: 13, color: 'var(--c-muted)', marginBottom: 16 }}>
+        Rank all active route zones by proximity to a student's stored GPS coordinates.
       </p>
-      <div className="flex gap-2">
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <input
-          data-testid="suggest-student-id-input"
-          className="flex-1 bg-[var(--bg-input)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-          placeholder="Student ID"
-          value={studentId}
-          onChange={e => setStudentId(e.target.value)}
+          data-testid="suggest-student-admission-input"
+          style={{ ...inputStyle, flex: 1 }}
+          placeholder="Student Admission No. (e.g. ARY-2024-001)"
+          value={admNo}
+          onChange={e => setAdmNo(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSuggest()}
         />
-        <button
-          data-testid="suggest-route-btn"
-          onClick={handleSuggest}
-          disabled={loading || !studentId.trim()}
-          className="px-4 py-2 bg-[var(--accent)] text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
-        >
-          {loading ? <RefreshCw size={14} className="animate-spin" /> : <Navigation size={14} />}
+        <button onClick={handleSuggest} disabled={loading || !admNo.trim()} style={btnPrimary('var(--tool-hex-34d399)')}>
+          {loading ? <RefreshCw size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Navigation size={14} />}
           Suggest
         </button>
       </div>
-      {error && <p className="text-red-400 text-sm">{error}</p>}
+
+      {error && <div style={noticeBox('var(--tool-hex-f87171)')}><AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />{error}</div>}
+
       {result && (
-        <div className="space-y-2">
-          <p className="text-xs text-[var(--text-muted)]">
-            Zones ranked by distance for <strong>{result.meta?.student_name || studentId}</strong>:
-          </p>
-          {(!Array.isArray(result.data) || result.data.length === 0) && (
-            <p className="text-sm text-[var(--text-secondary)]">No zones with centroids found.</p>
-          )}
-          {(Array.isArray(result.data) ? result.data : []).map((zone, idx) => (
-            <div
-              key={zone.zone_id}
-              className={`flex items-center justify-between p-3 rounded-lg border ${
-                zone.is_current
-                  ? 'border-[var(--accent)]/40 bg-[var(--accent)]/5'
-                  : 'border-[var(--border)] bg-[var(--bg-card)]'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-bold text-[var(--text-muted)] w-5">{idx + 1}</span>
-                <div>
-                  <p className="text-sm font-medium text-[var(--text-primary)]">{zone.zone_name}</p>
-                  {zone.is_current && <StatusBadge label="Current Zone" color="blue" />}
+        <div>
+          <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 12 }}>
+            Zones ranked nearest → farthest for <strong style={{ color: 'var(--c-text)' }}>{resolvedName}</strong> (Adm: {admNo})
+          </div>
+          {zones.length === 0 ? (
+            <div style={noticeBox('var(--tool-hex-fbbf24)')}><AlertTriangle size={13} />No zones with centroids configured yet.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {zones.map((zone, idx) => (
+                <div key={zone.zone_id} style={{
+                  ...card(),
+                  border: zone.is_current ? '1px solid color-mix(in srgb, var(--tool-hex-4f8ff7) 50%, transparent)' : '1px solid var(--c-border)',
+                  background: zone.is_current ? 'color-mix(in srgb, var(--tool-hex-4f8ff7) 5%, var(--c-bg))' : 'var(--c-bg)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{
+                      width: 28, height: 28, borderRadius: '50%', background: idx === 0 ? 'var(--tool-hex-34d399)' : 'var(--c-deep)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 11, fontWeight: 700, color: idx === 0 ? '#fff' : 'var(--c-faint)', flexShrink: 0,
+                    }}>
+                      {idx + 1}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text)' }}>{zone.zone_name}</div>
+                      {zone.is_current && (
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: 'color-mix(in srgb, var(--tool-hex-4f8ff7) 15%, transparent)', color: 'var(--tool-hex-4f8ff7)' }}>
+                          CURRENT ZONE
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: idx === 0 ? 'var(--tool-hex-34d399)' : 'var(--c-muted)' }}>
+                    {zone.distance_km} km
+                  </div>
                 </div>
-              </div>
-              <span className="text-sm text-[var(--text-secondary)]">{zone.distance_km} km</span>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+function ReassignButton({ studentId, zoneId, onDone }) {
+  const [state, setState] = useState('idle');
+  const handleReassign = async () => {
+    setState('loading');
+    try {
+      const res = await updateStudent(studentId, { route_zone_id: zoneId });
+      setState(res.success ? 'done' : 'error');
+      if (res.success && onDone) onDone();
+    } catch {
+      setState('error');
+    }
+  };
+  if (state === 'done') return <span style={{ fontSize: 11, color: 'var(--tool-hex-34d399)', fontWeight: 600 }}>✓ Reassigned</span>;
+  if (state === 'error') return <span style={{ fontSize: 11, color: 'var(--tool-hex-f87171)' }}>Failed</span>;
+  return (
+    <button onClick={handleReassign} disabled={state === 'loading'} style={{
+      padding: '4px 10px', background: 'color-mix(in srgb, var(--tool-hex-34d399) 12%, transparent)',
+      border: '1px solid color-mix(in srgb, var(--tool-hex-34d399) 30%, transparent)',
+      borderRadius: 6, color: 'var(--tool-hex-34d399)', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+      opacity: state === 'loading' ? 0.5 : 1,
+    }}>
+      {state === 'loading' ? '…' : 'Reassign'}
+    </button>
   );
 }
 
@@ -291,70 +370,75 @@ function ClusterAnalysisTab() {
     }
   };
 
+  const suboptimal = Array.isArray(result?.data) ? result.data : [];
+  const meta = result?.meta || {};
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between">
-        <p className="text-sm text-[var(--text-secondary)]">
-          Students currently assigned to a zone that is not their nearest zone.
-        </p>
-        <button
-          data-testid="cluster-analysis-btn"
-          onClick={handleAnalyse}
-          disabled={loading}
-          className="px-4 py-2 bg-[var(--accent)] text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-2 shrink-0"
-        >
-          {loading ? <RefreshCw size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
+    <div>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div>
+          <p style={{ fontSize: 13, color: 'var(--c-muted)', margin: 0 }}>
+            Identify students assigned to a zone that is not their nearest zone.
+          </p>
+          {result && (
+            <div style={{ display: 'flex', gap: 16, marginTop: 10 }}>
+              <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>
+                Students with GPS: <strong style={{ color: 'var(--c-text)' }}>{meta.total_with_coords ?? '—'}</strong>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--tool-hex-fbbf24)' }}>
+                Suboptimal assignments: <strong>{meta.total_suboptimal ?? '—'}</strong>
+              </div>
+            </div>
+          )}
+        </div>
+        <button data-testid="cluster-analysis-btn" onClick={handleAnalyse} disabled={loading} style={btnPrimary('var(--tool-hex-fbbf24)')}>
+          {loading ? <RefreshCw size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Zap size={14} />}
           Run Analysis
         </button>
       </div>
-      {error && <p className="text-red-400 text-sm">{error}</p>}
-      {result && (
-        <div className="space-y-3">
-          <div className="flex gap-4 text-xs text-[var(--text-secondary)]">
-            <span>Students with coordinates: <strong className="text-[var(--text-primary)]">{result.meta?.total_with_coords}</strong></span>
-            <span>Suboptimal assignments: <strong className="text-yellow-400">{result.meta.total_suboptimal}</strong></span>
-          </div>
-          {(!Array.isArray(result.data) || result.data.length === 0) ? (
-            <div className="flex items-center gap-2 text-green-400 text-sm p-3 bg-green-500/5 border border-green-500/20 rounded-lg">
-              <CheckCircle size={16} /> All students with coordinates are in their nearest zone.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-[var(--text-muted)] border-b border-[var(--border)]">
-                    <th className="text-left py-2 pr-3">Student</th>
-                    <th className="text-left py-2 pr-3">Current Zone</th>
-                    <th className="text-right py-2 pr-3">Dist (km)</th>
-                    <th className="text-left py-2 pr-3">Nearest Zone</th>
-                    <th className="text-right py-2 pr-3">Dist (km)</th>
-                    <th className="text-right py-2 pr-3">Saving</th>
-                    <th className="text-right py-2">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.data.map(row => (
-                    <tr
-                      key={row.student_id}
-                      className="border-b border-[var(--border)]/50 hover:bg-[var(--bg-card)]"
-                    >
-                      <td className="py-2 pr-3 text-[var(--text-primary)]">{row.student_name}</td>
-                      <td className="py-2 pr-3 text-[var(--text-secondary)]">{row.current_zone_name}</td>
-                      <td className="py-2 pr-3 text-right text-[var(--text-secondary)]">{row.current_distance_km}</td>
-                      <td className="py-2 pr-3 text-green-400">{row.nearest_zone_name}</td>
-                      <td className="py-2 pr-3 text-right text-green-400">{row.nearest_distance_km}</td>
-                      <td className="py-2 pr-3 text-right">
-                        <StatusBadge label={`-${row.savings_km} km`} color="yellow" />
-                      </td>
-                      <td className="py-2 text-right">
-                        <ReassignButton studentId={row.student_id} zoneId={row.nearest_zone_id} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+
+      {error && <div style={noticeBox('var(--tool-hex-f87171)')}><AlertTriangle size={13} />{error}</div>}
+
+      {result && suboptimal.length === 0 && (
+        <div style={noticeBox('var(--tool-hex-34d399)')}>
+          <CheckCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+          All students with GPS coordinates are already in their nearest zone.
+        </div>
+      )}
+
+      {suboptimal.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 10, overflow: 'hidden' }}>
+            <thead>
+              <tr>
+                {['Student', 'Adm. No.', 'Current Zone', 'Dist.', 'Nearest Zone', 'Dist.', 'Saving', 'Action'].map(h => (
+                  <th key={h} style={thStyle}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {suboptimal.map(row => (
+                <tr key={row.student_id} style={{ transition: 'background 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--c-deep)'}
+                  onMouseLeave={e => e.currentTarget.style.background = ''}>
+                  <td style={tdStyle}>{row.student_name}</td>
+                  <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 11, color: 'var(--c-muted)' }}>{row.admission_number || '—'}</td>
+                  <td style={tdStyle}>{row.current_zone_name}</td>
+                  <td style={{ ...tdStyle, color: 'var(--tool-hex-f87171)', fontWeight: 600 }}>{row.current_distance_km} km</td>
+                  <td style={{ ...tdStyle, color: 'var(--tool-hex-34d399)', fontWeight: 600 }}>{row.nearest_zone_name}</td>
+                  <td style={{ ...tdStyle, color: 'var(--tool-hex-34d399)' }}>{row.nearest_distance_km} km</td>
+                  <td style={tdStyle}>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 5, background: 'color-mix(in srgb, var(--tool-hex-fbbf24) 12%, transparent)', color: 'var(--tool-hex-fbbf24)' }}>
+                      -{row.savings_km} km
+                    </span>
+                  </td>
+                  <td style={tdStyle}>
+                    <ReassignButton studentId={row.student_id} zoneId={row.nearest_zone_id} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
@@ -363,33 +447,55 @@ function ClusterAnalysisTab() {
 
 export default function TransportOptimisation() {
   const [activeTab, setActiveTab] = useState(0);
+  const ActiveTab = [GeocodeTab, SuggestRouteTab, ClusterAnalysisTab][activeTab];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 mb-1">
-        <MapPin size={18} className="text-[var(--accent)]" />
-        <h3 className="text-base font-semibold text-[var(--text-primary)]">Route Optimisation</h3>
+    <div style={{ padding: '20px 0' }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
+      {/* Header */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'color-mix(in srgb, var(--tool-hex-4f8ff7) 15%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <MapPin size={18} color="var(--tool-hex-4f8ff7)" />
+          </div>
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--c-text)', margin: 0, letterSpacing: '-0.02em' }}>Route Optimisation</h2>
+            <p style={{ fontSize: 12, color: 'var(--c-muted)', margin: 0 }}>Geocode addresses · Suggest optimal routes · Identify suboptimal zone assignments</p>
+          </div>
+        </div>
       </div>
-      <div className="flex gap-1 p-1 bg-[var(--bg-input)] rounded-lg w-fit">
-        {TABS.map((tab, idx) => (
-          <button
-            key={tab}
-            data-testid={`transport-opt-tab-${idx}`}
-            onClick={() => setActiveTab(idx)}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-              activeTab === idx
-                ? 'bg-[var(--accent)] text-white'
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
+
+      {/* Tab bar */}
+      <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--c-deep)', borderRadius: 10, marginBottom: 20, width: 'fit-content' }}>
+        {TABS.map((tab, idx) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === idx;
+          return (
+            <button
+              key={tab.id}
+              data-testid={`transport-opt-tab-${idx}`}
+              onClick={() => setActiveTab(idx)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '7px 14px', borderRadius: 7,
+                background: isActive ? 'var(--c-bg)' : 'transparent',
+                border: isActive ? '1px solid var(--c-border)' : '1px solid transparent',
+                color: isActive ? 'var(--c-text)' : 'var(--c-muted)',
+                fontSize: 12, fontWeight: isActive ? 600 : 500, cursor: 'pointer',
+                transition: 'all 0.15s', boxShadow: isActive ? 'var(--shadow-sm)' : 'none',
+              }}
+            >
+              <Icon size={13} color={isActive ? tab.color : undefined} />
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
-      <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4">
-        {activeTab === 0 && <GeocodeTab />}
-        {activeTab === 1 && <SuggestRouteTab />}
-        {activeTab === 2 && <ClusterAnalysisTab />}
+
+      {/* Tab content */}
+      <div style={{ ...card(), minHeight: 200 }}>
+        <ActiveTab />
       </div>
     </div>
   );

@@ -32,6 +32,7 @@ const T = {
   'query-section':         { id: 'query-section',         name: 'Query & Support',     subtitle: 'Tickets & issues',      icon: LifeBuoy,      color: '#22d3ee' },
   // Phase 3 — new tool panels
   'facility-requests':     { id: 'facility-requests',     name: 'Facility Requests',   subtitle: 'Maintenance queue',     icon: Wrench,        color: '#fb923c' },
+  'raise-maintenance':     { id: 'raise-maintenance',     name: 'Report an Issue',     subtitle: 'Raise maintenance request', icon: Wrench,    color: '#fb923c' },
   'tech-issues':           { id: 'tech-issues',           name: 'Tech Issues',         subtitle: 'IT request tracker',    icon: Monitor,       color: '#818cf8' },
   'incident-tracker':      { id: 'incident-tracker',      name: 'Incidents & Visitors',subtitle: 'Log & track',           icon: AlertTriangle, color: '#f87171' },
   'audit-log':             { id: 'audit-log',             name: 'Audit Log',           subtitle: 'Who did what',          icon: ScrollText,    color: '#737373' },
@@ -68,29 +69,29 @@ const TOOL_SETS = {
   ],
   admin_accountant: [
     'student-database','fee-tracker','smart-fee-defaulter','fee-receipts',
-    'custom-form-builder','query-section',
+    'custom-form-builder','raise-maintenance',
   ],
   admin_transport_head: [
-    'student-database','transport-manager','asset-tracker','custom-form-builder','query-section',
+    'student-database','transport-manager','asset-tracker','custom-form-builder','raise-maintenance',
   ],
   admin_receptionist: [
     'student-database','enquiry-register','admission-pipeline','parent-message',
     'student-transfer','id-card-generator','asset-tracker','incident-tracker',
-    'custom-form-builder','query-section',
+    'custom-form-builder','raise-maintenance',
   ],
   admin_it_tech: [
-    'tech-issues','query-section','custom-form-builder',
+    'tech-issues','raise-maintenance','custom-form-builder',
   ],
   admin_maintenance: [
-    'facility-requests','query-section',
+    'facility-requests','raise-maintenance',
   ],
 
-  // Teacher (unchanged)
+  // Teacher
   teacher: [
     'class-attendance-marker','assignment-generator','question-paper-creator',
     'report-card-builder','student-performance-viewer','leave-application',
     'lesson-plan-generator','worksheet-creator','class-performance-analytics',
-    'substitution-viewer','ptm-notes','curriculum-tracker','form-submissions','query-section',
+    'substitution-viewer','ptm-notes','curriculum-tracker','form-submissions','raise-maintenance',
   ],
 };
 
@@ -113,7 +114,7 @@ const OWNER_TOOLS = [
   'student-database','fee-tracker','attendance-recorder','certificate-generator',
   'circular-sender','enquiry-register','smart-fee-defaulter','admission-pipeline',
   'parent-message','id-card-generator','timetable-builder','asset-tracker',
-  'transport-manager','incident-tracker','facility-requests','tech-issues',
+  'transport-manager','incident-tracker','facility-requests',
   'fee-receipts','school-activities','audit-log','automated-report',
   'custom-form-builder','query-section',
 ];

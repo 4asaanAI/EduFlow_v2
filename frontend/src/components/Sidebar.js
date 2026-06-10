@@ -36,7 +36,6 @@ const TOOLS_BY_ROLE = {
     { id: 'facility-requests', name: 'Facility Requests', subtitle: 'Maintenance queue', icon: Wrench, color: '#fb923c' },
     { id: 'maintenance-schedule', name: 'Maintenance Schedule', subtitle: 'Preventive calendar', icon: CalendarDays, color: '#fbbf24' },
     { id: 'vendor-log', name: 'Vendor Log', subtitle: 'Contractors & vendors', icon: Users, color: '#22d3ee' },
-    { id: 'tech-issues', name: 'Tech Issues', subtitle: 'IT request tracker', icon: Monitor, color: '#818cf8' },
     { id: 'incident-tracker', name: 'Incidents & Visitors', subtitle: 'Log & track', icon: AlertTriangle, color: '#f87171' },
     { id: 'school-activities', name: 'School Activities', subtitle: 'Houses, sports, awards', icon: Trophy, color: '#f59e0b' },
     { id: 'audit-log', name: 'Audit Log', subtitle: 'Who did what', icon: ScrollText, color: '#737373' },
@@ -95,7 +94,6 @@ const TOOLS_BY_ROLE = {
     { id: 'curriculum-tracker', name: 'Curriculum', subtitle: 'Progress tracking', icon: Target, color: '#4f8ff7' },
     { id: 'form-submissions', name: 'Forms', subtitle: 'Surveys & forms', icon: FileText, color: '#22d3ee' },
     { id: 'raise-maintenance', name: 'Report an Issue', subtitle: 'Raise maintenance request', icon: Wrench, color: '#fb923c' },
-    { id: 'query-section', name: 'Query & Support', subtitle: 'Tickets & issues', icon: LifeBuoy, color: '#22d3ee' },
   ],
   student: [
     { id: 'ai-tutor', name: 'AI Tutor', subtitle: 'Study help', icon: Brain, color: '#a78bfa' },
@@ -109,7 +107,7 @@ const TOOLS_BY_ROLE = {
     { id: 'fee-status-viewer', name: 'My Fees', subtitle: 'Payment status', icon: IndianRupee, color: '#4f8ff7' },
     { id: 'ptm-summary-viewer', name: 'PTM Summary', subtitle: 'Teacher notes', icon: MessageSquare, color: '#34d399' },
     { id: 'form-submissions', name: 'Forms', subtitle: 'Surveys & forms', icon: FileText, color: '#22d3ee' },
-    { id: 'query-section', name: 'Query & Support', subtitle: 'Tickets & issues', icon: LifeBuoy, color: '#22d3ee' },
+    { id: 'raise-maintenance', name: 'Report an Issue', subtitle: 'Raise maintenance request', icon: Wrench, color: '#fb923c' },
   ],
 };
 
@@ -117,8 +115,8 @@ const ROLE_COLORS = { owner: '#fb923c', admin: '#4f8ff7', teacher: '#34d399', st
 const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', teacher: 'Teacher', student: 'Student' };
 
 const ADMIN_SUBCATEGORY_TOOLS = {
-  accountant: ['student-database', 'fee-tracker', 'smart-fee-defaulter', 'fee-receipts', 'custom-form-builder', 'query-section'],
-  transport_head: ['student-database', 'transport-manager', 'transport-optimisation', 'asset-tracker', 'custom-form-builder', 'query-section'],
+  accountant: ['student-database', 'fee-tracker', 'smart-fee-defaulter', 'fee-receipts', 'custom-form-builder', 'raise-maintenance'],
+  transport_head: ['student-database', 'transport-manager', 'transport-optimisation', 'asset-tracker', 'custom-form-builder', 'raise-maintenance'],
   principal: [
     'student-database', 'attendance-recorder', 'attendance-overview', 'principal-daily',
     'timetable-builder', 'certificate-generator', 'circular-sender', 'parent-message',
@@ -127,9 +125,9 @@ const ADMIN_SUBCATEGORY_TOOLS = {
     'transport-manager', 'school-activities', 'document-scanner', 'audit-log',
     'facility-requests', 'raise-maintenance', 'custom-form-builder', 'query-section',
   ],
-  receptionist: ['student-database', 'enquiry-register', 'admission-pipeline', 'parent-message', 'student-transfer', 'id-card-generator', 'asset-tracker', 'incident-tracker', 'raise-maintenance', 'custom-form-builder', 'query-section'],
-  it_tech: ['query-section', 'custom-form-builder'],
-  maintenance: ['maintenance-schedule', 'vendor-log', 'query-section'],
+  receptionist: ['student-database', 'enquiry-register', 'admission-pipeline', 'parent-message', 'student-transfer', 'id-card-generator', 'asset-tracker', 'incident-tracker', 'raise-maintenance', 'custom-form-builder'],
+  it_tech: ['tech-issues', 'raise-maintenance', 'custom-form-builder'],
+  maintenance: ['maintenance-schedule', 'vendor-log', 'raise-maintenance'],
 };
 
 // ─── Grouped navigation config per role ──────────────────────────────────────
@@ -148,7 +146,7 @@ const TOOL_GROUPS = {
       { id: 'ai', name: 'Smart AI', icon: Brain, color: '#f472b6',
         tools: ['ai-health-report', 'smart-alerts'] },
       { id: 'queries', name: 'Queries', icon: Wrench, color: '#fb923c',
-        tools: ['tech-issues', 'vendor-log', 'facility-requests', 'maintenance-schedule'] },
+        tools: ['vendor-log', 'facility-requests', 'maintenance-schedule'] },
     ],
     bottom: ['audit-log', 'query-section'],
   },
@@ -182,7 +180,7 @@ const TOOL_GROUPS = {
       { id: 'personal', name: 'Personal', icon: User, color: '#34d399',
         tools: ['leave-application'] },
     ],
-    bottom: ['form-submissions', 'raise-maintenance', 'query-section'],
+    bottom: ['form-submissions', 'raise-maintenance'],
   },
   student: {
     top: [],
@@ -194,7 +192,7 @@ const TOOL_GROUPS = {
       { id: 'planning', name: 'Planning', icon: Target, color: '#22d3ee',
         tools: ['study-planner', 'career-guidance'] },
     ],
-    bottom: ['form-submissions', 'query-section'],
+    bottom: ['form-submissions', 'raise-maintenance'],
   },
 };
 

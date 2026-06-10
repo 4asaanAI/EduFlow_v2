@@ -15,6 +15,8 @@
 
 > Your account is created by the Owner or Administrator. You cannot self-register.
 
+> **Admin sub-role guide:** For a detailed, beginner-friendly breakdown of all six admin sub-roles (Principal, Accountant, Receptionist, Transport Head, Maintenance, IT/Tech), their tools, and how they connect — see **[docs/admin-role-guide.md](admin-role-guide.md)**.
+
 ---
 
 ## Role-by-Role Guide

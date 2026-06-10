@@ -69,7 +69,7 @@ export function FeeTracker() {
   const [showForm, setShowForm] = useState(false);
   const [allStudents, setAllStudents] = useState([]);
   const [classes, setClasses] = useState([]);
-  const [form, setForm] = useState({ class_id: '', student_id: '', fee_type: 'tuition', amount: '', payment_mode: 'cash', status: 'paid', due_date: '' });
+  const [form, setForm] = useState({ class_id: '', student_id: '', fee_head: 'tuition', fee_period: '', amount: '', payment_mode: 'cash', status: 'paid', due_date: '' });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [loadingStudents, setLoadingStudents] = useState(false);
@@ -137,12 +137,16 @@ export function FeeTracker() {
     setError('');
     if (!form.class_id) { setError('Select a class'); return; }
     if (!form.student_id) { setError('Select a student'); return; }
+    if (!form.fee_period) { setError('Enter fee period (e.g. 2026-06)'); return; }
     if (!form.amount) { setError('Enter amount'); return; }
     setSaving(true);
     try {
-      await recordFeePayment(currentUser, { ...form, amount: parseFloat(form.amount) });
+      const idempotencyKey = `${form.student_id}|${form.fee_period}|${(form.fee_head || '').trim().toLowerCase()}`;
+      const payload = { ...form, amount: parseFloat(form.amount), fee_type: form.fee_head };
+      const res = await recordFeePayment(currentUser, payload, idempotencyKey);
+      if (!res.success) { setError(res.detail || 'Failed to record payment'); return; }
       setShowForm(false);
-      setForm({ class_id: '', student_id: '', fee_type: 'tuition', amount: '', payment_mode: 'cash', status: 'paid', due_date: '' });
+      setForm({ class_id: '', student_id: '', fee_head: 'tuition', fee_period: '', amount: '', payment_mode: 'cash', status: 'paid', due_date: '' });
       setError('');
       load();
     } catch (err) {
@@ -158,7 +162,7 @@ export function FeeTracker() {
 
   const handleOpenForm = () => {
     setAllStudents([]);
-    setForm({ class_id: '', student_id: '', fee_type: 'tuition', amount: '', payment_mode: 'cash', status: 'paid', due_date: '' });
+    setForm({ class_id: '', student_id: '', fee_head: 'tuition', fee_period: '', amount: '', payment_mode: 'cash', status: 'paid', due_date: '' });
     setError('');
     setShowForm(true);
   };
@@ -186,7 +190,8 @@ export function FeeTracker() {
                   </div>
                 )}
               </div>
-              <FormField label="Fee Type" type="select" value={form.fee_type} onChange={f('fee_type')} options={['tuition', 'transport', 'exam', 'sports', 'other'].map(v => ({ value: v, label: v }))} />
+              <FormField label="Fee Head" type="select" value={form.fee_head} onChange={f('fee_head')} options={['tuition', 'transport', 'exam', 'sports', 'other'].map(v => ({ value: v, label: v }))} />
+              <FormField label="Fee Period" type="text" value={form.fee_period} onChange={f('fee_period')} placeholder="2026-06" required />
               <FormField label="Amount (₹)" type="number" value={form.amount} onChange={f('amount')} placeholder="0.00" required />
               <FormField label="Payment Mode" type="select" value={form.payment_mode} onChange={f('payment_mode')} options={[{ value: 'cash', label: 'Cash' }, { value: 'upi', label: 'UPI' }, { value: 'cheque', label: 'Cheque' }, { value: 'online', label: 'Online' }]} />
               <FormField label="Status" type="select" value={form.status} onChange={f('status')} options={[{ value: 'paid', label: 'Paid' }, { value: 'pending', label: 'Pending' }, { value: 'overdue', label: 'Overdue' }, { value: 'waived', label: 'Waived' }, { value: 'partial', label: 'Partial' }]} />
@@ -1123,8 +1128,8 @@ export function SmartFeeDefaulter() {
     setSelectedDefaulter(d);
     setSmsResult(null);
     setSmsForm({
-      phone: d.phone || d.guardian_phone || '',
-      message: `Dear ${d.student_name}, your school fee of ₹${d.amount_overdue || d.amount_overdue_fmt} is overdue for ${d.days_overdue} days. Please pay immediately. Contact school office.`
+      phone: d.father_phone || d.mother_phone || d.guardian_phone || d.phone || '',
+      message: `Dear Parent of ${d.student_name}, your school fee of ₹${d.amount_overdue || d.amount_overdue_fmt} is overdue for ${d.days_overdue} days. Please pay immediately. Contact school office.`
     });
   };
 

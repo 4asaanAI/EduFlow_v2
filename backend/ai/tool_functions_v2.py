@@ -522,6 +522,11 @@ async def tool_get_fee_defaulters(params: dict, user: dict, scope: dict = None) 
             "amount_due": dues["amount"],
             "amount_due_fmt": f"\u20b9{dues['amount']:,.0f}",
             "days_overdue": days_overdue,
+            "student_id": sid,
+            "father_phone": student.get("father_phone", ""),
+            "mother_phone": student.get("mother_phone", ""),
+            "guardian_phone": student.get("guardian_phone", ""),
+            "phone": student.get("phone", ""),
         })
 
     results.sort(key=lambda x: x["amount_due"], reverse=True)
