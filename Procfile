@@ -1,1 +1,1 @@
-web: gunicorn -w 4 -k uvicorn.workers.UvicornWorker asgi:app --bind 0.0.0.0:8000 --timeout 120
+web: gunicorn server:app --bind 0.0.0.0:8000 --workers 4 --worker-class uvicorn.workers.UvicornWorker --pythonpath /var/app/current/backend --timeout 120 --access-logfile - --error-logfile -
