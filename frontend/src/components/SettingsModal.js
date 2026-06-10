@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useLayoutEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useUser } from '../contexts/UserContext';
 import { X, Sun, Moon, Bell, Lock, Check, KeyRound, Eye, EyeOff } from 'lucide-react';
@@ -26,8 +26,8 @@ export default function SettingsModal({ onClose }) {
   const containerRef = useRef(null);
   const scrollLockRef = useRef(null);
 
-  // Restore scroll position after re-renders triggered by password field typing
-  useEffect(() => {
+  // Preserve scroll position synchronously before browser paint on every re-render
+  useLayoutEffect(() => {
     if (scrollLockRef.current != null && containerRef.current) {
       containerRef.current.scrollTop = scrollLockRef.current;
       scrollLockRef.current = null;
