@@ -143,7 +143,8 @@ async def _fee_summary_payload(db, fee_period: str | None = None) -> dict:
       rate        = collected / (collected + outstanding) * 100
       defaulters  = distinct student_ids with any outstanding balance
     """
-    query = _fee_query({"fee_period": fee_period}) if fee_period else _fee_query()
+    base = {"fee_period": fee_period, "deleted": {"$ne": True}} if fee_period else {"deleted": {"$ne": True}}
+    query = _fee_query(base)
     pipeline = [
         {"$match": query},
         {
@@ -238,7 +239,7 @@ async def update_fee_structure(structure_id: str, request: Request, user: dict =
 @router.get("/transactions")
 async def get_fee_transactions(request: Request, student_id: str = None, status: str = None, class_id: str = None, overdue_days: int = None, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    query = _fee_query()
+    query = _fee_query({"deleted": {"$ne": True}})
     if student_id:
         query["student_id"] = student_id
     if status:
@@ -279,7 +280,7 @@ async def get_class_fee_summary(request: Request, user: dict = Depends(require_r
         s_ids = [s["id"] for s in students]
         if not s_ids:
             continue
-        txns = await db.fee_transactions.find(_fee_query({"student_id": {"$in": s_ids}}), {"_id": 0}).to_list(1000)
+        txns = await db.fee_transactions.find(_fee_query({"student_id": {"$in": s_ids}, "deleted": {"$ne": True}}), {"_id": 0}).to_list(1000)
         paid = sum(t["amount"] for t in txns if t.get("status") == "paid")
         pending = sum(t["amount"] for t in txns if t.get("status") in ("pending", "overdue"))
         result.append({
@@ -530,8 +531,29 @@ async def get_student_fee_status(student_id: str, request: Request, user: dict =
 
 
 @router.delete("/transactions/{transaction_id}")
-async def delete_fee_transaction(transaction_id: str, request: Request):
-    raise HTTPException(405, "Fee transactions cannot be hard deleted")
+async def delete_fee_transaction(transaction_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    db = get_db()
+    _require_fee_write(user)
+    bid = user.get("branch_id")
+    original = await db.fee_transactions.find_one(
+        scoped_query({"id": transaction_id}, branch_id=bid), {"_id": 0}
+    )
+    if not original:
+        raise HTTPException(404, "Fee transaction not found")
+    if original.get("deleted"):
+        raise HTTPException(404, "Fee transaction not found")
+    # Accountant can only delete their own transactions
+    if user.get("role") == "admin" and user.get("sub_category") in ("accounts", "accountant"):
+        if original.get("created_by") != user["id"]:
+            raise HTTPException(403, "Accountant can only delete their own transactions")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.fee_transactions.update_one(
+        scoped_query({"id": transaction_id}, branch_id=bid),
+        {"$set": {"deleted": True, "deleted_at": now, "deleted_by": user.get("id")}}
+    )
+    await _audit(db, action="delete", entity_id=transaction_id, user=user, changes={"deleted": True})
+    await _publish_fee_update(db, "fee_transaction_deleted", {"id": transaction_id}, original.get("fee_period"))
+    return {"success": True, "data": {"id": transaction_id, "deleted": True}}
 
 
 @router.post("/discount-types")

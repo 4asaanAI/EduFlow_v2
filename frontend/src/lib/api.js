@@ -370,6 +370,13 @@ export async function correctFeeTransaction(transactionId, data) {
   return res.json();
 }
 
+export async function deleteFeeTransaction(transactionId) {
+  const res = await apiFetch(`${API}/fees/transactions/${transactionId}`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
+  return res.json();
+}
+
 export async function getFeeSummary(params = {}) {
   const qs = new URLSearchParams(params).toString();
   const res = await apiFetch(`${API}/fees/summary?${qs}`, { headers: getHeaders() });

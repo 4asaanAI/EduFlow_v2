@@ -3,10 +3,10 @@
  */
 import React, { useState, useEffect, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
-import { getStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, getPendingLeaves, updateLeave, getWhatsappDefaulters, sendAttendanceAlerts } from '../../lib/api';
+import { getStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, correctFeeTransaction, deleteFeeTransaction, getPendingLeaves, updateLeave, getWhatsappDefaulters, sendAttendanceAlerts } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, LineChartWidget } from './ToolPage';
-import { Search, Plus, CheckCircle, XCircle, Save, RefreshCw, X, FileDown, MessageSquare } from 'lucide-react';
+import { Search, Plus, CheckCircle, XCircle, Save, RefreshCw, X, FileDown, MessageSquare, Edit3, Trash2 } from 'lucide-react';
 import FullStudentDatabase from './StudentDatabase';
 
 const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
@@ -76,6 +76,10 @@ export function FeeTracker() {
   const [statusFilter, setStatusFilter] = useState('');
   const [classFilter, setClassFilter] = useState('');
   const [view, setView] = useState('transactions');
+  const [editTxn, setEditTxn] = useState(null);
+  const [editForm, setEditForm] = useState({ amount: '', status: '', payment_mode: '', due_date: '', paid_date: '', transaction_ref: '', reason: '' });
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [actionError, setActionError] = useState('');
 
   const f = k => async v => {
     if (k === 'class_id') {
@@ -167,6 +171,58 @@ export function FeeTracker() {
     setShowForm(true);
   };
 
+  const openEdit = (txn) => {
+    setEditTxn(txn);
+    setEditForm({
+      amount: txn.amount || '',
+      status: txn.status || '',
+      payment_mode: txn.payment_mode || '',
+      due_date: txn.due_date || '',
+      paid_date: txn.paid_date || '',
+      transaction_ref: txn.transaction_ref || '',
+      reason: '',
+    });
+    setActionError('');
+  };
+
+  const handleEditSave = async () => {
+    if (!editForm.reason.trim()) { setActionError('Reason is required to save changes.'); return; }
+    setSaving(true);
+    setActionError('');
+    try {
+      const payload = { reason: editForm.reason.trim() };
+      if (editForm.amount !== '' && String(editForm.amount) !== String(editTxn.amount)) payload.amount = Number(editForm.amount);
+      if (editForm.status && editForm.status !== editTxn.status) payload.status = editForm.status;
+      if (editForm.payment_mode && editForm.payment_mode !== editTxn.payment_mode) payload.payment_mode = editForm.payment_mode;
+      if (editForm.due_date && editForm.due_date !== editTxn.due_date) payload.due_date = editForm.due_date;
+      if (editForm.paid_date && editForm.paid_date !== editTxn.paid_date) payload.paid_date = editForm.paid_date;
+      if (editForm.transaction_ref !== editTxn.transaction_ref) payload.transaction_ref = editForm.transaction_ref;
+      const res = await correctFeeTransaction(editTxn.id, payload);
+      if (!res.success) { setActionError(res.detail || 'Failed to save changes'); return; }
+      setEditTxn(null);
+      load();
+    } catch (err) {
+      setActionError(err.message || 'Failed to save changes');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    setSaving(true);
+    setActionError('');
+    try {
+      const res = await deleteFeeTransaction(id);
+      if (!res.success) { setActionError(res.detail || 'Failed to delete transaction'); return; }
+      setDeleteConfirmId(null);
+      load();
+    } catch (err) {
+      setActionError(err.message || 'Failed to delete transaction');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <ToolPage title="Fee Tracker" subtitle="Payments, dues & class-wise tracking" onRefresh={load} loading={loading}
       actions={<ActionBtn label="Record Payment" onClick={handleOpenForm} icon={<Plus size={11} />} />}>
@@ -243,8 +299,95 @@ export function FeeTracker() {
         )}
       </div>
 
+      {actionError && (
+        <div style={{ color: 'var(--tool-hex-f87171)', background: 'color-mix(in srgb, var(--tool-hex-f87171) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-f87171) 30%, transparent)', borderRadius: 8, padding: '10px 14px', fontSize: 12, marginBottom: 10 }}>{actionError}</div>
+      )}
+
+      {/* Edit modal */}
+      {editTxn && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: 'var(--color-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 20, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--c-text)' }}>Edit Transaction</h3>
+              <button onClick={() => setEditTxn(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-muted)' }}><X size={16} /></button>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 12 }}>{editTxn.student_name} — {editTxn.fee_type} — {editTxn.fee_period}</div>
+            {actionError && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 10 }}>{actionError}</div>}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--c-muted)', marginBottom: 4 }}>Amount (₹)</div>
+                <input type="number" value={editForm.amount} onChange={e => setEditForm(p => ({ ...p, amount: e.target.value }))} style={ftInputStyle} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--c-muted)', marginBottom: 4 }}>Status</div>
+                <select value={editForm.status} onChange={e => setEditForm(p => ({ ...p, status: e.target.value }))} style={ftInputStyle}>
+                  <option value="paid">Paid</option>
+                  <option value="pending">Pending</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="partial">Partial</option>
+                  <option value="waived">Waived</option>
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--c-muted)', marginBottom: 4 }}>Payment mode</div>
+                <select value={editForm.payment_mode} onChange={e => setEditForm(p => ({ ...p, payment_mode: e.target.value }))} style={ftInputStyle}>
+                  <option value="cash">Cash</option>
+                  <option value="upi">UPI</option>
+                  <option value="cheque">Cheque</option>
+                  <option value="online">Online</option>
+                  <option value="bank_transfer">Bank transfer</option>
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--c-muted)', marginBottom: 4 }}>Paid date</div>
+                <input type="date" value={editForm.paid_date} onChange={e => setEditForm(p => ({ ...p, paid_date: e.target.value }))} style={ftInputStyle} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--c-muted)', marginBottom: 4 }}>Due date</div>
+                <input type="date" value={editForm.due_date} onChange={e => setEditForm(p => ({ ...p, due_date: e.target.value }))} style={ftInputStyle} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--c-muted)', marginBottom: 4 }}>Transaction ref</div>
+                <input type="text" value={editForm.transaction_ref} onChange={e => setEditForm(p => ({ ...p, transaction_ref: e.target.value }))} style={ftInputStyle} />
+              </div>
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 11, color: 'var(--c-muted)', marginBottom: 4 }}>Reason for change <span style={{ color: 'var(--tool-hex-f87171)' }}>*</span></div>
+              <textarea value={editForm.reason} onChange={e => setEditForm(p => ({ ...p, reason: e.target.value }))} placeholder="Required — explain the correction" style={{ ...ftInputStyle, minHeight: 64, resize: 'vertical' }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button onClick={handleEditSave} disabled={saving} style={{ flex: 1, padding: '9px 0', borderRadius: 7, border: 'none', background: 'var(--tool-hex-4f8ff7)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}>
+                {saving ? 'Saving…' : 'Save changes'}
+              </button>
+              <button onClick={() => setEditTxn(null)} style={{ flex: 1, padding: '9px 0', borderRadius: 7, border: '1px solid var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-text)', fontSize: 12, cursor: 'pointer' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirm modal */}
+      {deleteConfirmId && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: 'var(--color-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 24, maxWidth: 360, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+            <h3 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 600, color: 'var(--c-text)' }}>Delete transaction?</h3>
+            <p style={{ margin: '0 0 18px', fontSize: 12, color: 'var(--c-muted)' }}>This will remove the transaction from all totals and reports. This action cannot be undone.</p>
+            {actionError && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 10 }}>{actionError}</div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => handleDelete(deleteConfirmId)} disabled={saving} style={{ flex: 1, padding: '9px 0', borderRadius: 7, border: 'none', background: 'var(--tool-hex-f87171)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}>
+                {saving ? 'Deleting…' : 'Yes, delete'}
+              </button>
+              <button onClick={() => { setDeleteConfirmId(null); setActionError(''); }} style={{ flex: 1, padding: '9px 0', borderRadius: 7, border: '1px solid var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-text)', fontSize: 12, cursor: 'pointer' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {view === 'transactions' ? (
-        <DataTable headers={['Student', 'Class', 'Fee Type', 'Amount', 'Mode', 'Paid Date', 'Status']}
+        <DataTable headers={['Student', 'Class', 'Fee Type', 'Amount', 'Mode', 'Paid Date', 'Status', 'Actions']}
           rows={txns.map(t => [
             t.student_name || 'N/A',
             t.class_name || 'N/A',
@@ -253,6 +396,14 @@ export function FeeTracker() {
             t.payment_mode || '—',
             t.paid_date || '—',
             <Badge text={t.status} color={statusColors[t.status] || 'gray'} />,
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button onClick={() => { setActionError(''); openEdit(t); }} title="Edit" style={{ background: 'color-mix(in srgb, var(--tool-hex-4f8ff7) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-4f8ff7) 30%, transparent)', borderRadius: 5, padding: '4px 8px', cursor: 'pointer', color: 'var(--tool-hex-4f8ff7)', display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
+                <Edit3 size={11} />Edit
+              </button>
+              <button onClick={() => { setActionError(''); setDeleteConfirmId(t.id); }} title="Delete" style={{ background: 'color-mix(in srgb, var(--tool-hex-f87171) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-f87171) 30%, transparent)', borderRadius: 5, padding: '4px 8px', cursor: 'pointer', color: 'var(--tool-hex-f87171)', display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
+                <Trash2 size={11} />Delete
+              </button>
+            </div>,
           ])}
           emptyMsg="No transactions found"
         />
@@ -298,6 +449,8 @@ export function FeeTracker() {
     </ToolPage>
   );
 }
+
+const ftInputStyle = { width: '100%', boxSizing: 'border-box', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '7px 10px', color: 'var(--c-text)', fontSize: 12, outline: 'none' };
 
 // 3. Attendance Recorder
 export function AttendanceRecorder() {

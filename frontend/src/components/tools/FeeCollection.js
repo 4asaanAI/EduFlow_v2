@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle, Edit3, Percent, Phone, RefreshCw, Save, FileDown, MessageSquare } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Edit3, Percent, Phone, RefreshCw, Save, FileDown, MessageSquare, Trash2, X } from 'lucide-react';
 import { getAuthHeaders } from '../../lib/authSession';
 import { useUser } from '../../contexts/UserContext';
 
@@ -43,6 +43,7 @@ async function exportFeeCSV(period) {
 import {
   apiFetch,
   correctFeeTransaction,
+  deleteFeeTransaction,
   createFeeContactLog,
   createDiscountType,
   getDiscountSummary,
@@ -99,6 +100,12 @@ export default function FeeCollection() {
   const [feeStreamUpdatedAt, setFeeStreamUpdatedAt] = useState(null);
   const [, setClockTick] = useState(0);
   const liveUpdateLabel = lastUpdatedLabel(feeStreamUpdatedAt || summary?.generated_at);
+
+  // Overdue edit/delete state
+  const [overdueEditTxn, setOverdueEditTxn] = useState(null);
+  const [overdueEditForm, setOverdueEditForm] = useState({ amount: '', status: '', payment_mode: '', due_date: '', transaction_ref: '', reason: '' });
+  const [overdueDeleteId, setOverdueDeleteId] = useState(null);
+  const [overdueActionError, setOverdueActionError] = useState('');
 
   // Payroll state
   const [disbursements, setDisbursements] = useState([]);
@@ -196,7 +203,7 @@ export default function FeeCollection() {
   }, []);
 
   useEffect(() => subscribeSSE('/fees/stream', (event) => {
-    if (event.type === 'snapshot' || event.type === 'fee_payment_recorded' || event.type === 'fee_transaction_corrected' || event.type === 'fee_sync_completed' || event.type === 'fee_sync_conflict_resolved') {
+    if (event.type === 'snapshot' || event.type === 'fee_payment_recorded' || event.type === 'fee_transaction_corrected' || event.type === 'fee_transaction_deleted' || event.type === 'fee_sync_completed' || event.type === 'fee_sync_conflict_resolved') {
       if (event.summary) setSummary(event.summary);
       setFeeStreamUpdatedAt(event.last_updated || new Date().toISOString());
       if (event.type !== 'snapshot') loadData();
@@ -366,6 +373,58 @@ export default function FeeCollection() {
       setError('WhatsApp defaulters load failed');
     } finally {
       setWaLoading(false);
+    }
+  }
+
+  function openOverdueEdit(txn) {
+    setOverdueEditTxn(txn);
+    setOverdueEditForm({
+      amount: txn.amount || '',
+      status: txn.status || '',
+      payment_mode: txn.payment_mode || '',
+      due_date: txn.due_date || '',
+      transaction_ref: txn.transaction_ref || '',
+      reason: '',
+    });
+    setOverdueActionError('');
+  }
+
+  async function saveOverdueEdit() {
+    if (!overdueEditForm.reason.trim()) { setOverdueActionError('Reason is required.'); return; }
+    setSaving(true);
+    setOverdueActionError('');
+    try {
+      const payload = { reason: overdueEditForm.reason.trim() };
+      if (overdueEditForm.amount !== '' && String(overdueEditForm.amount) !== String(overdueEditTxn.amount)) payload.amount = Number(overdueEditForm.amount);
+      if (overdueEditForm.status && overdueEditForm.status !== overdueEditTxn.status) payload.status = overdueEditForm.status;
+      if (overdueEditForm.payment_mode && overdueEditForm.payment_mode !== overdueEditTxn.payment_mode) payload.payment_mode = overdueEditForm.payment_mode;
+      if (overdueEditForm.due_date && overdueEditForm.due_date !== overdueEditTxn.due_date) payload.due_date = overdueEditForm.due_date;
+      if (overdueEditForm.transaction_ref !== overdueEditTxn.transaction_ref) payload.transaction_ref = overdueEditForm.transaction_ref;
+      const res = await correctFeeTransaction(overdueEditTxn.id, payload);
+      if (!res.success) { setOverdueActionError(res.detail || 'Failed to save changes'); return; }
+      setOverdueEditTxn(null);
+      setNotice('Record updated.');
+      await loadData();
+    } catch (err) {
+      setOverdueActionError(err.message || 'Failed to save changes');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteOverdueTxn(id) {
+    setSaving(true);
+    setOverdueActionError('');
+    try {
+      const res = await deleteFeeTransaction(id);
+      if (!res.success) { setOverdueActionError(res.detail || 'Failed to delete record'); return; }
+      setOverdueDeleteId(null);
+      setNotice('Record deleted. Totals updated.');
+      await loadData();
+    } catch (err) {
+      setOverdueActionError(err.message || 'Failed to delete record');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -653,6 +712,78 @@ export default function FeeCollection() {
         </div>
       )}
 
+      {/* Overdue edit modal */}
+      {overdueEditTxn && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 20, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' }}>Edit overdue record</h3>
+              <button onClick={() => setOverdueEditTxn(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)' }}><X size={16} /></button>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 12 }}>{overdueEditTxn.student_name || overdueEditTxn.student_id} — {overdueEditTxn.fee_head || overdueEditTxn.fee_type}</div>
+            {overdueActionError && <div style={alertStyle('var(--tool-hex-f87171)')}><AlertTriangle size={14} />{overdueActionError}</div>}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4 }}>Amount (₹)</div>
+                <input type="number" value={overdueEditForm.amount} onChange={e => setOverdueEditForm(p => ({ ...p, amount: e.target.value }))} style={inputStyle} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4 }}>Status</div>
+                <select value={overdueEditForm.status} onChange={e => setOverdueEditForm(p => ({ ...p, status: e.target.value }))} style={inputStyle}>
+                  <option value="pending">Pending</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="paid">Paid</option>
+                  <option value="partial">Partial</option>
+                  <option value="waived">Waived</option>
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4 }}>Payment mode</div>
+                <select value={overdueEditForm.payment_mode} onChange={e => setOverdueEditForm(p => ({ ...p, payment_mode: e.target.value }))} style={inputStyle}>
+                  <option value="">— unchanged —</option>
+                  <option value="cash">Cash</option>
+                  <option value="upi">UPI</option>
+                  <option value="cheque">Cheque</option>
+                  <option value="bank_transfer">Bank transfer</option>
+                  <option value="card">Card</option>
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4 }}>Due date</div>
+                <input type="date" value={overdueEditForm.due_date} onChange={e => setOverdueEditForm(p => ({ ...p, due_date: e.target.value }))} style={inputStyle} />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4 }}>Transaction ref</div>
+                <input type="text" value={overdueEditForm.transaction_ref} onChange={e => setOverdueEditForm(p => ({ ...p, transaction_ref: e.target.value }))} style={inputStyle} />
+              </div>
+            </div>
+            <div style={{ marginTop: 4 }}>
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4 }}>Reason for change <span style={{ color: 'var(--tool-hex-f87171)' }}>*</span></div>
+              <textarea value={overdueEditForm.reason} onChange={e => setOverdueEditForm(p => ({ ...p, reason: e.target.value }))} placeholder="Required — describe correction" style={textareaStyle} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <button onClick={saveOverdueEdit} disabled={saving} style={{ ...primaryButton('var(--tool-hex-4f8ff7)'), flex: 1, minHeight: 38, fontSize: 12 }}>{saving ? 'Saving…' : 'Save changes'}</button>
+              <button onClick={() => setOverdueEditTxn(null)} style={{ flex: 1, minHeight: 38, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text-primary)', fontSize: 12, cursor: 'pointer' }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Overdue delete confirm modal */}
+      {overdueDeleteId && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, maxWidth: 360, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+            <h3 style={{ margin: '0 0 10px', fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' }}>Delete this record?</h3>
+            <p style={{ margin: '0 0 18px', fontSize: 12, color: 'var(--color-text-muted)' }}>This will permanently remove the transaction. Outstanding totals, defaulter counts, and collection rate will update immediately.</p>
+            {overdueActionError && <div style={alertStyle('var(--tool-hex-f87171)')}><AlertTriangle size={14} />{overdueActionError}</div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => deleteOverdueTxn(overdueDeleteId)} disabled={saving} style={{ ...primaryButton('var(--tool-hex-f87171)'), flex: 1, minHeight: 38, fontSize: 12 }}>{saving ? 'Deleting…' : 'Yes, delete'}</button>
+              <button onClick={() => { setOverdueDeleteId(null); setOverdueActionError(''); }} style={{ flex: 1, minHeight: 38, borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text-primary)', fontSize: 12, cursor: 'pointer' }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={panelStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
           <h2 style={panelTitle}>Overdue records</h2>
@@ -665,7 +796,7 @@ export default function FeeCollection() {
         ) : (
           <div style={{ overflowX: 'auto' }}>
           <table className="fee-txn-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 500 }}>
-            <thead><tr>{['Student', 'Class', 'Head', 'Amount', 'Due', 'Status', 'Receipt'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+            <thead><tr>{['Student', 'Class', 'Head', 'Amount', 'Due', 'Status', 'Receipt', 'Actions'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
             <tbody>
               {overdue.map((txn, index) => (
                 <tr key={txn.id} style={{ borderTop: index ? '1px solid var(--color-border)' : 'none' }}>
@@ -681,6 +812,16 @@ export default function FeeCollection() {
                         <FileDown size={13} /> PDF
                       </button>
                     )}
+                  </td>
+                  <td style={tdStyle}>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button onClick={() => { setOverdueActionError(''); openOverdueEdit(txn); }} title="Edit" style={{ background: 'color-mix(in srgb, var(--tool-hex-4f8ff7) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-4f8ff7) 30%, transparent)', borderRadius: 5, padding: '4px 8px', cursor: 'pointer', color: 'var(--tool-hex-4f8ff7)', display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
+                        <Edit3 size={11} />Edit
+                      </button>
+                      <button onClick={() => { setOverdueActionError(''); setOverdueDeleteId(txn.id); }} title="Delete" style={{ background: 'color-mix(in srgb, var(--tool-hex-f87171) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-f87171) 30%, transparent)', borderRadius: 5, padding: '4px 8px', cursor: 'pointer', color: 'var(--tool-hex-f87171)', display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
+                        <Trash2 size={11} />Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
