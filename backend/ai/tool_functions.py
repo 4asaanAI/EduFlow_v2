@@ -231,22 +231,34 @@ async def tool_get_fee_summary(params: dict, user: dict, scope=None) -> dict:
         if due and (not student_dues[sid]["oldest_due"] or due < student_dues[sid]["oldest_due"]):
             student_dues[sid]["oldest_due"] = due
 
-    # 3. Batch-fetch student + class info (no N+1 queries)
+    # 3. Batch-fetch student + class + guardian info (no N+1 queries)
     if student_dues:
         sid_list = list(student_dues.keys())
         students_docs = await db.students.find(
             _tenant_query(scope, {"id": {"$in": sid_list}}),
-            {"_id": 0, "id": 1, "name": 1, "class_id": 1, "phone": 1, "guardian_phone": 1, "father_phone": 1, "mother_phone": 1},
+            {"_id": 0, "id": 1, "name": 1, "class_id": 1, "phone": 1},
         ).to_list(len(sid_list))
         class_ids = list({st.get("class_id") for st in students_docs if st.get("class_id")})
         classes_docs = await db.classes.find(
             _tenant_query(scope, {"id": {"$in": class_ids}}),
             {"_id": 0, "id": 1, "name": 1, "section": 1},
         ).to_list(len(class_ids))
+        guardians_docs = await db.guardians.find(
+            {"student_id": {"$in": sid_list}},
+            {"_id": 0, "student_id": 1, "phone": 1, "is_primary": 1},
+        ).to_list(len(sid_list) * 4)
         student_map = {st["id"]: st for st in students_docs}
         class_map = {c["id"]: c for c in classes_docs}
+        # Build guardian phone map: prefer primary guardian, else first found
+        guardian_phone_map: dict = {}
+        for g in guardians_docs:
+            gsid = g.get("student_id")
+            if not gsid:
+                continue
+            if gsid not in guardian_phone_map or g.get("is_primary"):
+                guardian_phone_map[gsid] = g.get("phone", "")
     else:
-        student_map, class_map = {}, {}
+        student_map, class_map, guardian_phone_map = {}, {}, {}
 
     defaulters = []
     for sid, dues in student_dues.items():
@@ -265,6 +277,7 @@ async def tool_get_fee_summary(params: dict, user: dict, scope=None) -> dict:
                 days_overdue = max(0, (today_dt - due_dt).days)
             except Exception:
                 pass
+        phone = guardian_phone_map.get(sid) or student.get("phone", "")
         defaulters.append({
             "student_name": student["name"],
             "class": class_name,
@@ -272,10 +285,10 @@ async def tool_get_fee_summary(params: dict, user: dict, scope=None) -> dict:
             "amount_overdue_fmt": f"₹{dues['owed']:,.0f}",
             "days_overdue": days_overdue,
             "student_id": sid,
-            "phone": student.get("phone", ""),
-            "guardian_phone": student.get("guardian_phone", ""),
-            "father_phone": student.get("father_phone", ""),
-            "mother_phone": student.get("mother_phone", ""),
+            "phone": phone,
+            "guardian_phone": phone,
+            "father_phone": "",
+            "mother_phone": "",
         })
 
     defaulters.sort(key=lambda x: x["amount_overdue"], reverse=True)

@@ -1125,10 +1125,11 @@ export function SmartFeeDefaulter() {
   };
 
   const openSmsForm = (d) => {
+    console.log(d)
     setSelectedDefaulter(d);
     setSmsResult(null);
     setSmsForm({
-      phone: d.father_phone || d.mother_phone || d.guardian_phone || d.phone || '',
+      phone: d.phone || d.guardian_phone || '',
       message: `Dear Parent of ${d.student_name}, your school fee of ₹${d.amount_overdue || d.amount_overdue_fmt} is overdue for ${d.days_overdue} days. Please pay immediately. Contact school office.`
     });
   };
