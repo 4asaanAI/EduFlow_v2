@@ -128,7 +128,7 @@ const ADMIN_SUBCATEGORY_TOOLS = {
     'facility-requests', 'raise-maintenance', 'custom-form-builder', 'query-section',
   ],
   receptionist: ['student-database', 'enquiry-register', 'admission-pipeline', 'parent-message', 'student-transfer', 'id-card-generator', 'asset-tracker', 'incident-tracker', 'raise-maintenance', 'custom-form-builder', 'query-section'],
-  it_tech: ['tech-issues', 'raise-maintenance', 'query-section', 'custom-form-builder'],
+  it_tech: ['query-section', 'custom-form-builder'],
   maintenance: ['maintenance-schedule', 'vendor-log', 'query-section'],
 };
 

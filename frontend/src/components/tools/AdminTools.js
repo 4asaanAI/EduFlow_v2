@@ -171,7 +171,7 @@ export function FeeTracker() {
         <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
           <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Record Fee Payment</h3>
           <form onSubmit={handleRecord}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Class" type="select" value={form.class_id} onChange={f('class_id')} options={[{ value: '', label: '-- Select Class --' }, ...classes.map(c => ({ value: c.id, label: `${c.name}-${c.section}` }))]} required />
               <div>
                 <FormField label="Student" type="select" value={form.student_id} onChange={f('student_id')}
@@ -208,7 +208,7 @@ export function FeeTracker() {
       )}
 
       {/* Summary stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+      <div className="stat-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
         <StatCard value={`₹${totalPaid.toLocaleString('en-IN')}`} label="COLLECTED" color="var(--tool-hex-34d399)" />
         <StatCard value={`₹${totalPending.toLocaleString('en-IN')}`} label="PENDING" color="var(--tool-hex-f87171)" />
         <StatCard value={txns.length} label="TRANSACTIONS" color="var(--tool-hex-4f8ff7)" />
@@ -885,7 +885,7 @@ export function EnquiryRegister() {
         <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
           <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Add New Enquiry</h3>
           <form onSubmit={handleAdd}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Student Name" value={form.student_name} onChange={f('student_name')} placeholder="Prospective student" required />
               <FormField label="Parent Name" value={form.parent_name} onChange={f('parent_name')} placeholder="Parent/guardian" required />
               <FormField label="Phone" type="tel" value={form.phone} onChange={f('phone')} placeholder="10-digit mobile" required />
@@ -1003,7 +1003,7 @@ export function DocumentScanner() {
 
   return (
     <ToolPage title="Document Scanner & Extractor" subtitle="Upload and file student documents by class" loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 900 }}>
+      <div className="tool-split-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 900 }}>
         <div>
           <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 600, color: 'var(--c-text)', marginBottom: 14 }}>Upload Document</h3>
 
@@ -1194,14 +1194,14 @@ export function SmartFeeDefaulter() {
 
       {/* Config Warning */}
       {!twilioConfigured && (
-        <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: 'var(--tool-hex-fbbf24)' }}>
+        <div style={{ background: 'color-mix(in srgb, var(--tool-hex-fbbf24) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-fbbf24) 30%, transparent)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: 'var(--tool-hex-fbbf24)' }}>
           ⚠️ Twilio not configured. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER to your .env file to enable SMS sending.
         </div>
       )}
 
       {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16, maxWidth: 600 }}>
-        <StatCard value={data?.stats?.total_overdue || '₹0'} label="TOTAL OVERDUE" color="var(--tool-hex-f87171)" />
+      <div className="stat-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16, maxWidth: 600 }}>
+        <StatCard value={data?.stats?.total_outstanding || '₹0'} label="TOTAL OVERDUE" color="var(--tool-hex-f87171)" />
         <StatCard value={data?.stats?.students_with_dues || 0} label="STUDENTS" color="var(--tool-hex-fbbf24)" />
         <StatCard value={data?.stats?.collection_rate || '0%'} label="COLLECTION RATE" color="var(--tool-hex-34d399)" />
       </div>
@@ -1210,7 +1210,7 @@ export function SmartFeeDefaulter() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, borderBottom: '1px solid var(--c-border)', paddingBottom: 12 }}>
         {['defaulters', 'bulk', 'logs'].map(v => (
           <button key={v} onClick={() => { setViewMode(v); if (v === 'logs') loadLogs(); }}
-            style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === v ? '1px solid var(--tool-hex-4f8ff7)' : '1px solid var(--c-border)', background: viewMode === v ? 'rgba(59,130,246,0.1)' : 'var(--c-bg)', color: viewMode === v ? 'var(--tool-hex-4f8ff7)' : 'var(--c-muted)', fontSize: 12, cursor: 'pointer', textTransform: 'capitalize' }}>
+            style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === v ? '1px solid var(--tool-hex-4f8ff7)' : '1px solid var(--c-border)', background: viewMode === v ? 'color-mix(in srgb, var(--tool-hex-4f8ff7) 10%, transparent)' : 'var(--c-bg)', color: viewMode === v ? 'var(--tool-hex-4f8ff7)' : 'var(--c-muted)', fontSize: 12, cursor: 'pointer', textTransform: 'capitalize' }}>
             {v === 'defaulters' ? 'Defaulters' : v === 'bulk' ? 'Bulk Reminder' : 'SMS Logs'}
           </button>
         ))}
@@ -1241,8 +1241,8 @@ export function SmartFeeDefaulter() {
                 </div>
                 {smsResult && (
                   <div style={{ padding: '8px 12px', borderRadius: 6, marginBottom: 10, fontSize: 12,
-                    background: smsResult.success ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
-                    border: `1px solid ${smsResult.success ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                    background: smsResult.success ? 'color-mix(in srgb, var(--tool-hex-34d399) 10%, transparent)' : 'color-mix(in srgb, var(--tool-hex-f87171) 10%, transparent)',
+                    border: `1px solid ${smsResult.success ? 'color-mix(in srgb, var(--tool-hex-34d399) 30%, transparent)' : 'color-mix(in srgb, var(--tool-hex-f87171) 30%, transparent)'}`,
                     color: smsResult.success ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-f87171)' }}>
                     {smsResult.success ? `✓ SMS ${smsResult.status === 'not_configured' ? 'logged (Twilio not configured)' : 'sent successfully!'}` : `✗ ${smsResult.error}`}
                   </div>
@@ -1262,7 +1262,7 @@ export function SmartFeeDefaulter() {
               <span style={{ color: 'var(--tool-hex-f87171)', fontWeight: 600 }}>{d.amount_overdue_fmt}</span>,
               <span style={{ color: d.days_overdue > 30 ? 'var(--tool-hex-f87171)' : 'var(--tool-hex-fbbf24)' }}>{d.days_overdue} days</span>,
               <button onClick={() => openSmsForm(d)}
-                style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '4px 10px', color: 'var(--tool-hex-4f8ff7)', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>
+                style={{ background: 'color-mix(in srgb, var(--tool-hex-4f8ff7) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-4f8ff7) 30%, transparent)', borderRadius: 5, padding: '4px 10px', color: 'var(--tool-hex-4f8ff7)', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>
                 📱 Remind
               </button>
             ])}
@@ -1297,7 +1297,7 @@ export function SmartFeeDefaulter() {
               </div>
             </div>
             {bulkResult && (
-              <div style={{ padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 12, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', color: 'var(--c-text)' }}>
+              <div style={{ padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 12, background: 'color-mix(in srgb, var(--tool-hex-34d399) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-34d399) 30%, transparent)', color: 'var(--c-text)' }}>
                 {bulkResult.error ? (
                   <span style={{ color: 'var(--tool-hex-f87171)' }}>✗ {bulkResult.error}</span>
                 ) : (
@@ -1430,7 +1430,7 @@ export function ParentMessage() {
 
   return (
     <ToolPage title="Parent Message Composer" subtitle="Send SMS to parents via Twilio" loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 980 }}>
+      <div className="tool-split-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 980 }}>
 
         {/* Left — recipient selector */}
         <div>
@@ -1628,7 +1628,7 @@ export function StudentTransfer() {
 
   return (
     <ToolPage title="Student Transfer / Withdrawal" subtitle="Transfer, withdraw, or move students between classes" loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 960 }}>
+      <div className="tool-split-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 960 }}>
 
         {/* Left: find student */}
         <div>
@@ -1931,7 +1931,7 @@ export function TimetableBuilder() {
         <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
           <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingSlot ? 'Edit Period' : 'Add New Period'}</h3>
           <form onSubmit={handleSave}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+            <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
               <FormField label="Day" type="select" value={form.day_of_week} onChange={f('day_of_week')} options={dayOptions} required />
               <FormField label="Period" type="number" value={form.period_number} onChange={f('period_number')} min="1" required />
               <FormField label="Subject" type="select" value={form.subject_id} onChange={f('subject_id')} options={subjects.map(s => ({ value: s.id, label: s.name }))} required />
@@ -2035,7 +2035,7 @@ export function AssetTracker() {
         <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
           <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Add New Asset</h3>
           <form onSubmit={handleAdd}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Asset Name" value={form.name} onChange={f('name')} placeholder="e.g. Computer, Desk, Projector" required />
               <FormField label="Category" type="select" value={form.category} onChange={f('category')} options={[
                 { value: 'furniture', label: 'Furniture' },
@@ -2181,7 +2181,7 @@ export function TransportManager() {
         <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
           <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingId ? 'Edit Route' : 'Add New Route'}</h3>
           <form onSubmit={handleSave}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Route Name" value={form.route_name} onChange={f('route_name')} placeholder="e.g. Route 1 - City Center" required />
               <FormField label="Start Point" value={form.start_point} onChange={f('start_point')} placeholder="e.g. Main Gate" required />
               <FormField label="End Point" value={form.end_point} onChange={f('end_point')} placeholder="e.g. Market Area" required />
@@ -2203,7 +2203,7 @@ export function TransportManager() {
         <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
           <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Assign Student to Route</h3>
           <form onSubmit={handleAssign}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Route" type="select" value={assignForm.bus_route} onChange={fa('bus_route')} options={routes.map(r => ({ value: r.id, label: r.route_name }))} required />
               <FormField label="Student" type="select" value={assignForm.student_id} onChange={fa('student_id')} options={students.map(s => ({ value: s.id, label: s.name }))} required />
             </div>
@@ -2569,7 +2569,7 @@ export function StudentPerformanceViewer() {
 
   return (
     <ToolPage title="Student Performance" subtitle="Marks, grades & attendance analytics" loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18, maxWidth: 700 }}>
+      <div className="stat-grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18, maxWidth: 700 }}>
         <StatCard value={students.length} label="STUDENTS" color="var(--tool-hex-4f8ff7)" />
         <StatCard value={results.length} label="EXAM ENTRIES" color="var(--tool-hex-a78bfa)" />
         <StatCard value={studentStats.filter(s => s.avg && s.avg >= 80).length} label="ABOVE 80%" color="var(--tool-hex-34d399)" />

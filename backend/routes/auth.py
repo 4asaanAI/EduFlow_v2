@@ -84,6 +84,18 @@ class ChangePasswordRequest(BaseModel):
         return v
 
 
+class SetPasswordRequest(BaseModel):
+    new_password: str
+
+    @validator("new_password")
+    def validate_new_password(cls, v):
+        if len(v or "") < 6:
+            raise ValueError("Password must be at least 6 characters")
+        if len(v) > 128:
+            raise ValueError("Password must be 6-128 characters")
+        return v
+
+
 class AdminResetPasswordRequest(BaseModel):
     new_password: Optional[str] = None
 
@@ -302,6 +314,33 @@ async def change_password(
         set_refresh_cookie(response, new_refresh)
     except Exception:
         logger.warning("issue_refresh_token failed after password change user_id=%s", current_user["user_id"], exc_info=True)
+    return {"success": True}
+
+
+@router.post("/set-password")
+async def set_password(
+    body: SetPasswordRequest,
+    request: Request,
+    response: Response,
+    current_user: dict = Depends(get_current_user),
+):
+    """Allows any authenticated user to set a new password without providing the current one.
+    Used by the Settings modal for all roles/sub-roles.
+    """
+    db = get_db()
+    auth = await db.auth_users.find_one(_auth_user_filter(current_user["user_id"]))
+    if not auth:
+        raise HTTPException(404, "Auth record not found")
+    await db.auth_users.update_one(
+        _auth_user_filter(current_user["user_id"]),
+        {"$set": {"password_hash": hash_password(body.new_password), "must_change_password": False}},
+    )
+    await revoke_user_refresh_tokens(db, current_user["user_id"], reason="password_changed")
+    try:
+        new_refresh = await issue_refresh_token(db, current_user["user_id"], request)
+        set_refresh_cookie(response, new_refresh)
+    except Exception:
+        logger.warning("issue_refresh_token failed after set-password user_id=%s", current_user["user_id"], exc_info=True)
     return {"success": True}
 
 

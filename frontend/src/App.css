@@ -42,6 +42,7 @@ body { background: var(--c-app, #111111); }
   /* Stat grids collapse to 2 columns on mobile */
   .stat-grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
   .stat-grid-3 { grid-template-columns: repeat(2, 1fr) !important; }
+  .stat-grid-2 { grid-template-columns: 1fr !important; }
   /* Mark mode buttons wrap */
   .mark-mode-header { flex-direction: column !important; align-items: flex-start !important; }
   /* Staff row status buttons wrap */
@@ -52,10 +53,20 @@ body { background: var(--c-app, #111111); }
   .expense-form-grid { grid-template-columns: 1fr !important; }
   /* Form grids in modals */
   .form-grid-2col { grid-template-columns: 1fr !important; }
+  /* Generic two-panel split grids */
+  .tool-split-grid { grid-template-columns: 1fr !important; }
   /* Staff tracker: shrink padding */
   [data-testid="staff-tracker-tool"] { padding: 12px !important; }
   /* Enquiry stage buttons wrap */
   .stage-btn-group { gap: 4px !important; }
+  /* Settings modal password form */
+  .settings-modal { width: 95vw !important; padding: 20px !important; }
+  /* Defaulter table wrap */
+  .defaulter-table-wrap { overflow-x: auto !important; }
+  /* Tab button groups wrap */
+  .tab-btn-group { flex-wrap: wrap !important; }
+  /* Action buttons row wrap */
+  .action-btn-row { flex-wrap: wrap !important; }
 }
 
 @media (max-width: 480px) {
@@ -126,4 +137,18 @@ body { background: var(--c-app, #111111); }
   --tool-hex-d4d4d4: #cccccc;
   --tool-hex-888:    #525252;
   --tool-hex-525252: #525252;
+  /* Missing dark surface tokens */
+  --tool-hex-3e3e3e: #d4d4d4;
+  --tool-hex-374151: #6b7280;
+  --tool-hex-1a3a2a: #f0fdf4;
+  --tool-hex-1e3a5f: #eff6ff;
+  --tool-hex-1a2e1a: #f0fdf4;
+  /* e5e5e5 in dark = light gray already, keep as border in light */
+  --tool-hex-e5e5e5: #d4d4d4;
+}
+
+/* ─── Additional missing dark theme hex vars ─────────────── */
+:root {
+  --tool-hex-3e3e3e: #3e3e3e;
+  --tool-hex-374151: #374151;
 }

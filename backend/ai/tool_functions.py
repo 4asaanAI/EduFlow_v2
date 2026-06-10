@@ -236,7 +236,7 @@ async def tool_get_fee_summary(params: dict, user: dict, scope=None) -> dict:
         sid_list = list(student_dues.keys())
         students_docs = await db.students.find(
             _tenant_query(scope, {"id": {"$in": sid_list}}),
-            {"_id": 0, "id": 1, "name": 1, "class_id": 1},
+            {"_id": 0, "id": 1, "name": 1, "class_id": 1, "phone": 1, "guardian_phone": 1},
         ).to_list(len(sid_list))
         class_ids = list({st.get("class_id") for st in students_docs if st.get("class_id")})
         classes_docs = await db.classes.find(
@@ -272,6 +272,8 @@ async def tool_get_fee_summary(params: dict, user: dict, scope=None) -> dict:
             "amount_overdue_fmt": f"₹{dues['owed']:,.0f}",
             "days_overdue": days_overdue,
             "student_id": sid,
+            "phone": student.get("phone", ""),
+            "guardian_phone": student.get("guardian_phone", ""),
         })
 
     defaulters.sort(key=lambda x: x["amount_overdue"], reverse=True)

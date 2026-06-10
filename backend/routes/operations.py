@@ -735,11 +735,22 @@ async def checkout_visitor(visitor_id: str, request: Request, user: dict = Depen
 
 
 # --- Assets ---
+def _is_owner_or_principal(user: dict) -> bool:
+    """Returns True if user is owner, or admin with principal sub_category."""
+    return user.get("role") == "owner" or (
+        user.get("role") == "admin" and user.get("sub_category") == "principal"
+    )
+
+
 @router.get("/assets")
 async def list_assets(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
     bid = user.get("branch_id")
-    assets = await db.assets.find(scoped_query({}, branch_id=bid), {"_id": 0}).to_list(100)
+    base_query: dict = {}
+    # Non-principal admin sub-roles only see assets they created
+    if not _is_owner_or_principal(user):
+        base_query["created_by"] = user.get("id")
+    assets = await db.assets.find(scoped_query(base_query, branch_id=bid), {"_id": 0}).to_list(100)
     return {"success": True, "data": assets}
 
 
@@ -756,6 +767,9 @@ async def create_asset(request: Request, user: dict = Depends(require_role("admi
         "status": body.get("status", "good"),
         "purchase_date": body.get("purchase_date", ""),
         "maintenance_due": body.get("maintenance_due", ""),
+        "created_by": user.get("id"),
+        "created_by_role": user.get("role"),
+        "created_by_sub_category": user.get("sub_category", ""),
     })
     await db.assets.insert_one({**asset, "_id": asset["id"]})
     return {"success": True, "data": asset}

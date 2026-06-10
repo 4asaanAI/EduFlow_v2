@@ -90,6 +90,7 @@ export default function FeeCollection() {
   const [payment, setPayment] = useState(initialPayment);
   const [correction, setCorrection] = useState(initialCorrection);
   const [contact, setContact] = useState(initialContact);
+  const [overdueList, setOverdueList] = useState([]);
   const [discountTypes, setDiscountTypes] = useState([]);
   const [discountSummary, setDiscountSummary] = useState(null);
   const [discountBreakdown, setDiscountBreakdown] = useState(null);
@@ -177,7 +178,7 @@ export default function FeeCollection() {
       setSummary(summaryRes.data);
       setTransactions(txnRes.data || []);
       setStudents(studentRes.data || []);
-      setContact(prev => ({ ...prev, overdue: overdueRes.data || [] }));
+      setOverdueList(overdueRes.data || []);
       setDiscountTypes(discountTypesRes.data || []);
       if (discountSummaryRes.success) setDiscountSummary(discountSummaryRes.data);
     } catch (err) {
@@ -203,7 +204,7 @@ export default function FeeCollection() {
   }, { onReconnect: loadData }), [loadData]);
 
   const selectedTxn = useMemo(() => transactions.find(t => t.id === correction.transaction_id), [transactions, correction.transaction_id]);
-  const overdue = contact.overdue || [];
+  const overdue = overdueList;
 
   async function savePayment() {
     setSaving(true);
@@ -600,8 +601,8 @@ export default function FeeCollection() {
                       borderRadius: 4,
                       fontSize: 11,
                       fontWeight: 600,
-                      background: d.status === 'processed' ? 'var(--tool-hex-34d399, #d1fae5)' : 'var(--tool-hex-fbbf24, #fef3c7)',
-                      color: d.status === 'processed' ? '#065f46' : '#92400e',
+                      background: d.status === 'processed' ? 'color-mix(in srgb, var(--tool-hex-34d399) 18%, transparent)' : 'color-mix(in srgb, var(--tool-hex-fbbf24) 18%, transparent)',
+                      color: d.status === 'processed' ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-fbbf24)',
                     }}>
                       {d.status}
                     </span>
@@ -615,13 +616,13 @@ export default function FeeCollection() {
       </div>
 
       {currentUser?.role === 'owner' && (
-        <div style={{ background: 'rgba(251,191,36,0.07)', border: '1px solid rgba(251,191,36,0.35)', borderRadius: 8, padding: 14, marginBottom: 18 }}>
+        <div style={{ background: 'color-mix(in srgb, var(--tool-hex-fbbf24) 7%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-fbbf24) 35%, transparent)', borderRadius: 8, padding: 14, marginBottom: 18 }}>
           <h2 style={{ ...panelTitle, color: 'var(--tool-hex-fbbf24)' }}>Pending Discount Approvals</h2>
           {pendingApprovals.length === 0 ? (
             <div style={emptyStyle}>No pending discount approvals.</div>
           ) : (
             pendingApprovals.map(p => (
-              <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid rgba(251,191,36,0.2)' }}>
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid color-mix(in srgb, var(--tool-hex-fbbf24) 20%, transparent)' }}>
                 <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>Student: {p.student_id} — {money(p.discount_amount)}</span>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={() => approveDiscount(p.id)}

@@ -117,12 +117,12 @@ function CertCard({ cert, onApprove, onReject }) {
             value={reason}
             onChange={e => setReason(e.target.value)}
             placeholder="Reason for rejection..."
-            style={{ flex: 1, background: 'var(--tool-hex-1a1a1a)', border: '1px solid var(--tool-hex-3e3e3e)', borderRadius: 6, padding: '6px 10px', color: 'var(--tool-hex-e5e5e5)', fontSize: 11, outline: 'none' }}
+            style={{ flex: 1, background: 'var(--c-deep)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '6px 10px', color: 'var(--c-text)', fontSize: 11, outline: 'none' }}
           />
-          <button disabled={busy || !reason.trim()} onClick={handleReject} style={{ background: 'rgba(248,113,113,0.15)', border: '1px solid rgba(248,113,113,0.4)', borderRadius: 6, padding: '5px 10px', color: '#f87171', cursor: 'pointer', fontSize: 11, fontWeight: 600, opacity: (busy || !reason.trim()) ? 0.5 : 1 }}>
+          <button disabled={busy || !reason.trim()} onClick={handleReject} style={{ background: 'color-mix(in srgb, var(--tool-hex-f87171) 15%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-f87171) 40%, transparent)', borderRadius: 6, padding: '5px 10px', color: 'var(--tool-hex-f87171)', cursor: 'pointer', fontSize: 11, fontWeight: 600, opacity: (busy || !reason.trim()) ? 0.5 : 1 }}>
             Confirm
           </button>
-          <button onClick={() => { setRejecting(false); setReason(''); }} style={{ background: 'none', border: '1px solid var(--tool-hex-3e3e3e)', borderRadius: 6, padding: '5px 10px', color: 'var(--tool-hex-888)', cursor: 'pointer', fontSize: 11 }}>
+          <button onClick={() => { setRejecting(false); setReason(''); }} style={{ background: 'none', border: '1px solid var(--c-border)', borderRadius: 6, padding: '5px 10px', color: 'var(--c-muted)', cursor: 'pointer', fontSize: 11 }}>
             Cancel
           </button>
         </div>
@@ -289,15 +289,15 @@ export default function PrincipalDailyOps() {
           <CalendarDays size={13} />
           <input
             type="date" value={date} onChange={e => setDate(e.target.value)}
-            style={{ background: 'var(--tool-hex-252525)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 8, color: 'var(--tool-hex-e5e5e5)', padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}
+            style={{ background: 'var(--c-deep)', border: '1px solid var(--c-border)', borderRadius: 8, color: 'var(--c-text)', padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}
           />
         </label>
       }
     >
       {error && (
-        <div style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 10, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, color: '#f87171', fontSize: 12 }}>
+        <div style={{ background: 'color-mix(in srgb, var(--tool-hex-f87171) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-f87171) 30%, transparent)', borderRadius: 10, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, color: 'var(--tool-hex-f87171)', fontSize: 12 }}>
           <AlertCircle size={14} />{error}
-          <button onClick={load} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 11, textDecoration: 'underline' }}>Retry</button>
+          <button onClick={load} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--tool-hex-f87171)', cursor: 'pointer', fontSize: 11, textDecoration: 'underline' }}>Retry</button>
         </div>
       )}
 

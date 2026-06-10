@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
-import { X, Sun, Moon, Bell, Lock, Check } from 'lucide-react';
+import { useUser } from '../contexts/UserContext';
+import { X, Sun, Moon, Bell, Lock, Check, KeyRound, Eye, EyeOff } from 'lucide-react';
+
+const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 export default function SettingsModal({ onClose }) {
   const { isDark, toggleTheme, theme } = useTheme();
+  const { currentUser, token } = useUser();
   const [notifSettings, setNotifSettings] = useState(() => {
     try {
       const stored = localStorage.getItem('eduflow-notif-settings');
@@ -13,6 +17,12 @@ export default function SettingsModal({ onClose }) {
     }
   });
   const [saved, setSaved] = useState(false);
+  const [pwForm, setPwForm] = useState({ new_password: '', confirm_password: '' });
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwError, setPwError] = useState('');
+  const [pwSuccess, setPwSuccess] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
 
   const bg = isDark ? '#1e1e1e' : '#fff';
   const border = isDark ? '#2e2e2e' : '#e5e5e5';
@@ -35,6 +45,38 @@ export default function SettingsModal({ onClose }) {
       }} />
     </button>
   );
+
+  const handlePasswordChange = async (e) => {
+    e.preventDefault();
+    setPwError('');
+    setPwSuccess(false);
+    if (pwForm.new_password.length < 6) {
+      setPwError('Password must be at least 6 characters.');
+      return;
+    }
+    if (pwForm.new_password !== pwForm.confirm_password) {
+      setPwError('Passwords do not match.');
+      return;
+    }
+    setPwSaving(true);
+    try {
+      const authToken = token || currentUser?.token || localStorage.getItem('token') || '';
+      const res = await fetch(`${API}/auth/set-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ new_password: pwForm.new_password }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setPwError(data.detail || 'Failed to change password.'); return; }
+      setPwSuccess(true);
+      setPwForm({ new_password: '', confirm_password: '' });
+      setTimeout(() => setPwSuccess(false), 3000);
+    } catch {
+      setPwError('Network error. Please try again.');
+    } finally {
+      setPwSaving(false);
+    }
+  };
 
   const toggle = (key) => setNotifSettings(p => {
     const next = { ...p, [key]: !p[key] };
@@ -109,6 +151,58 @@ export default function SettingsModal({ onClose }) {
               <option>30 min</option><option>1 hour</option><option>2 hours</option>
             </select>}
           />
+        </Section>
+
+        <Section title="Change Password">
+          <div style={{ padding: '14px 16px' }}>
+            <form onSubmit={handlePasswordChange}>
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ fontSize: 11, color: muted, fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>New Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showNewPw ? 'text' : 'password'}
+                    value={pwForm.new_password}
+                    onChange={e => setPwForm(p => ({ ...p, new_password: e.target.value }))}
+                    placeholder="Enter new password"
+                    required
+                    style={{ width: '100%', background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`, borderRadius: 8, padding: '9px 36px 9px 12px', color: text, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                  />
+                  <button type="button" onClick={() => setShowNewPw(v => !v)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: muted, padding: 2, display: 'flex', alignItems: 'center' }}>
+                    {showNewPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ fontSize: 11, color: muted, fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Confirm Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showConfirmPw ? 'text' : 'password'}
+                    value={pwForm.confirm_password}
+                    onChange={e => setPwForm(p => ({ ...p, confirm_password: e.target.value }))}
+                    placeholder="Confirm new password"
+                    required
+                    style={{ width: '100%', background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`, borderRadius: 8, padding: '9px 36px 9px 12px', color: text, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                  />
+                  <button type="button" onClick={() => setShowConfirmPw(v => !v)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: muted, padding: 2, display: 'flex', alignItems: 'center' }}>
+                    {showConfirmPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+              </div>
+              {pwError && (
+                <div style={{ padding: '8px 12px', borderRadius: 8, marginBottom: 12, fontSize: 12, background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', color: '#f87171' }}>{pwError}</div>
+              )}
+              {pwSuccess && (
+                <div style={{ padding: '8px 12px', borderRadius: 8, marginBottom: 12, fontSize: 12, background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.3)', color: '#34d399', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Check size={13} /> Password changed successfully!
+                </div>
+              )}
+              <button type="submit" disabled={pwSaving}
+                style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px', borderRadius: 10, background: '#4f8ff7', border: 'none', color: '#fff', fontSize: 13, fontWeight: 600, cursor: pwSaving ? 'not-allowed' : 'pointer', opacity: pwSaving ? 0.7 : 1 }}>
+                <KeyRound size={14} />
+                {pwSaving ? 'Saving...' : 'Update Password'}
+              </button>
+            </form>
+          </div>
         </Section>
 
         <Section title="About">

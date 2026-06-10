@@ -313,16 +313,16 @@ export function SchoolPulse() {
         {/* Snapshot */}
         <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: 20 }}>
           <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 600, color: 'var(--tool-hex-e5e5e5)', marginBottom: 14 }}>Today's Snapshot</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+          <div className="stat-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
             <StatCard value={s.attendance_rate || '0%'} label="ATTENDANCE" color="var(--tool-hex-34d399)" small />
             <StatCard value={s.total_students || 0} label="ENROLLED" color="var(--tool-hex-e5e5e5)" small />
             <StatCard value={data?.fee_stats?.paid || '₹0'} label="FEES PAID" color="var(--tool-hex-4f8ff7)" small />
             <StatCard value={data?.fee_stats?.overdue || '₹0'} label="OVERDUE" color="var(--tool-hex-f87171)" small />
           </div>
-          {(data?.staff_absent_today?.length || 0) > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 7, padding: '8px 12px', marginBottom: 6, fontSize: 12, color: 'var(--tool-hex-fcd34d)' }}><AlertTriangle size={12} />{data.staff_absent_today.length} teachers absent today</div>}
-          {(data?.chronic_absent_students?.length || 0) > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 7, padding: '8px 12px', marginBottom: 6, fontSize: 12, color: 'var(--tool-hex-fca5a5)' }}><AlertTriangle size={12} />{data.chronic_absent_students.length} students absent 3+ days</div>}
-          {data?.fee_stats?.paid && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 7, padding: '8px 12px', marginBottom: 6, fontSize: 12, color: 'var(--tool-hex-6ee7b7)' }}><CheckCircle size={12} />Fee collection: {data.fee_stats.paid} collected</div>}
-          {leaves.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 7, padding: '8px 12px', fontSize: 12, color: 'var(--tool-hex-93c5fd)' }}><Activity size={12} />{leaves.length} leave requests pending</div>}
+          {(data?.staff_absent_today?.length || 0) > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'color-mix(in srgb, var(--tool-hex-fbbf24) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-fbbf24) 20%, transparent)', borderRadius: 7, padding: '8px 12px', marginBottom: 6, fontSize: 12, color: 'var(--tool-hex-fcd34d)' }}><AlertTriangle size={12} />{data.staff_absent_today.length} teachers absent today</div>}
+          {(data?.chronic_absent_students?.length || 0) > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'color-mix(in srgb, var(--tool-hex-f87171) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-f87171) 20%, transparent)', borderRadius: 7, padding: '8px 12px', marginBottom: 6, fontSize: 12, color: 'var(--tool-hex-fca5a5)' }}><AlertTriangle size={12} />{data.chronic_absent_students.length} students absent 3+ days</div>}
+          {data?.fee_stats?.paid && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'color-mix(in srgb, var(--tool-hex-34d399) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-34d399) 20%, transparent)', borderRadius: 7, padding: '8px 12px', marginBottom: 6, fontSize: 12, color: 'var(--tool-hex-6ee7b7)' }}><CheckCircle size={12} />Fee collection: {data.fee_stats.paid} collected</div>}
+          {leaves.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'color-mix(in srgb, var(--tool-hex-4f8ff7) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-4f8ff7) 20%, transparent)', borderRadius: 7, padding: '8px 12px', fontSize: 12, color: 'var(--tool-hex-93c5fd)' }}><Activity size={12} />{leaves.length} leave requests pending</div>}
         </div>
       </div>
 
@@ -577,7 +577,7 @@ export function DataImport() {
           </div>
           {error && <div style={{ marginTop: 12, color: 'var(--tool-hex-f87171)', fontSize: 13 }}>{error}</div>}
           {result && (
-            <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.3)', borderRadius: 9 }}>
+            <div style={{ marginTop: 12, padding: '10px 14px', background: 'color-mix(in srgb, var(--tool-hex-34d399) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-34d399) 30%, transparent)', borderRadius: 9 }}>
               <div style={{ color: 'var(--tool-hex-34d399)', fontSize: 13, fontWeight: 600 }}>
                 ✓ Import complete — {result.imported_count} student{result.imported_count !== 1 ? 's' : ''} added to the database.
               </div>
@@ -595,7 +595,7 @@ export function DataImport() {
               <StatCard value={file?.name || '—'} label="FILE" color="var(--tool-hex-4f8ff7)" />
             </div>
             {canCommit && (
-              <div style={{ marginBottom: 16, padding: '12px 16px', background: 'rgba(79,143,247,0.1)', border: '1px solid rgba(79,143,247,0.35)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ marginBottom: 16, padding: '12px 16px', background: 'color-mix(in srgb, var(--tool-hex-4f8ff7) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-4f8ff7) 35%, transparent)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tool-hex-4f8ff7)' }}>
                     Validation passed — {report.valid_count} student{report.valid_count !== 1 ? 's' : ''} ready to import
@@ -879,7 +879,7 @@ export function StaffAttendanceTracker({ title = 'Staff Tracker', subtitle = 'St
                 <ActionBtn label="Mark Attendance" onClick={enterMarkMode} />
               </div>
               {saveMsg && (
-                <div style={{ marginBottom: 10, fontSize: 12, color: 'var(--tool-hex-34d399)', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.3)', borderRadius: 8, padding: '8px 12px' }}>{saveMsg}</div>
+                <div style={{ marginBottom: 10, fontSize: 12, color: 'var(--tool-hex-34d399)', background: 'color-mix(in srgb, var(--tool-hex-34d399) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-34d399) 30%, transparent)', borderRadius: 8, padding: '8px 12px' }}>{saveMsg}</div>
               )}
               {loading ? (
                 <div style={{ textAlign: 'center', padding: 32, color: 'var(--tool-hex-737373)', fontSize: 13 }}>
@@ -1094,7 +1094,7 @@ export function AnnouncementBroadcaster() {
                   {classes.map(cls => {
                     const key = cls.name + (cls.section ? ' ' + cls.section : '');
                     return (
-                      <label key={cls.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: form.audience_classes.includes(key) ? 'rgba(79,143,247,0.15)' : 'var(--tool-hex-252525)', border: `1px solid ${form.audience_classes.includes(key) ? 'var(--tool-hex-4f8ff7)' : 'var(--tool-hex-333)'}`, borderRadius: 8, cursor: 'pointer', fontSize: 12, color: form.audience_classes.includes(key) ? 'var(--tool-hex-4f8ff7)' : 'var(--tool-hex-a0a0a0)' }}>
+                      <label key={cls.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: form.audience_classes.includes(key) ? 'color-mix(in srgb, var(--tool-hex-4f8ff7) 15%, transparent)' : 'var(--tool-hex-252525)', border: `1px solid ${form.audience_classes.includes(key) ? 'var(--tool-hex-4f8ff7)' : 'var(--tool-hex-333)'}`, borderRadius: 8, cursor: 'pointer', fontSize: 12, color: form.audience_classes.includes(key) ? 'var(--tool-hex-4f8ff7)' : 'var(--tool-hex-a0a0a0)' }}>
                         <input type="checkbox" checked={form.audience_classes.includes(key)} onChange={() => toggleClass(key)} style={{ accentColor: 'var(--tool-hex-4f8ff7)' }} />
                         {key}
                       </label>
@@ -1736,7 +1736,7 @@ export function CustomReportBuilder() {
           <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Select Data Sources</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {dataSources.map(src => (
-              <label key={src.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: selectedSources.includes(src.id) ? 'rgba(59,130,246,0.1)' : 'var(--tool-hex-1e1e1e)', border: `1px solid ${selectedSources.includes(src.id) ? 'var(--tool-hex-4f8ff7)' : 'var(--tool-hex-2e2e2e)'}`, borderRadius: 8, cursor: 'pointer' }}>
+              <label key={src.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: selectedSources.includes(src.id) ? 'color-mix(in srgb, var(--tool-hex-4f8ff7) 10%, transparent)' : 'var(--tool-hex-1e1e1e)', border: `1px solid ${selectedSources.includes(src.id) ? 'var(--tool-hex-4f8ff7)' : 'var(--tool-hex-2e2e2e)'}`, borderRadius: 8, cursor: 'pointer' }}>
                 <input type="checkbox" checked={selectedSources.includes(src.id)} onChange={() => toggle(src.id)} style={{ accentColor: 'var(--tool-hex-4f8ff7)' }} />
                 <span style={{ fontSize: 16 }}>{src.icon}</span>
                 <span style={{ fontSize: 13, color: 'var(--tool-hex-e5e5e5)' }}>{src.label}</span>
@@ -1955,7 +1955,7 @@ export function BoardReport() {
               <ActionBtn label={loading ? 'Refreshing...' : 'Re-generate'} variant="secondary" onClick={generate} disabled={loading} />
             </div>
           </div>
-          {error && <div style={{ color: 'var(--tool-hex-fbbf24)', fontSize: 12, marginBottom: 12, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 8, padding: '8px 12px' }}>{error}</div>}
+          {error && <div style={{ color: 'var(--tool-hex-fbbf24)', fontSize: 12, marginBottom: 12, background: 'color-mix(in srgb, var(--tool-hex-fbbf24) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-fbbf24) 20%, transparent)', borderRadius: 8, padding: '8px 12px' }}>{error}</div>}
 
           {/* Section 1 — School Overview */}
           <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: 18, marginBottom: 14 }}>
@@ -2066,7 +2066,7 @@ export function YearEndTransition() {
       <div style={{ maxWidth: 520 }}>
         {!result ? (
           <>
-            <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 10, padding: '12px 16px', marginBottom: 20, fontSize: 12, color: 'var(--tool-hex-fcd34d)' }}>
+            <div style={{ background: 'color-mix(in srgb, var(--tool-hex-fbbf24) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-fbbf24) 20%, transparent)', borderRadius: 10, padding: '12px 16px', marginBottom: 20, fontSize: 12, color: 'var(--tool-hex-fcd34d)' }}>
               ⚠️ This will archive the current academic year (2025-26) and create a new one. All existing students and data are preserved.
             </div>
             <FormField label="New Academic Year Name" value={newYear} onChange={setNewYear} placeholder="e.g. 2026-27" required />
@@ -2075,7 +2075,7 @@ export function YearEndTransition() {
               <FormField label="End Date" type="date" value={endDate} onChange={setEndDate} />
             </div>
             {confirmed && (
-              <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: 'var(--tool-hex-fca5a5)' }}>
+              <div style={{ background: 'color-mix(in srgb, var(--tool-hex-f87171) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-f87171) 30%, transparent)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: 'var(--tool-hex-fca5a5)' }}>
                 Are you absolutely sure? Click again to confirm. This cannot be undone.
               </div>
             )}
@@ -2229,7 +2229,7 @@ export function AttendanceAlerts() {
   return (
     <ToolPage title="Attendance Alerts" subtitle="Find students below threshold & send SMS to parents">
       {!twilioConfigured && (
-        <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: 'var(--tool-hex-fbbf24)' }}>
+        <div style={{ background: 'color-mix(in srgb, var(--tool-hex-fbbf24) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-fbbf24) 30%, transparent)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: 'var(--tool-hex-fbbf24)' }}>
           Warning: Twilio not configured. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER to .env to enable SMS.
         </div>
       )}
@@ -2274,7 +2274,7 @@ export function AttendanceAlerts() {
           <div style={{ display: 'flex', gap: 8, marginBottom: 14, borderBottom: '1px solid var(--c-border)', paddingBottom: 12 }}>
             {['students', 'bulk', 'logs'].map(v => (
               <button key={v} onClick={() => { setViewMode(v); if (v === 'logs') loadLogs(); }}
-                style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === v ? '1px solid var(--tool-hex-a78bfa)' : '1px solid var(--c-border)', background: viewMode === v ? 'rgba(167,139,250,0.1)' : 'var(--c-bg)', color: viewMode === v ? 'var(--tool-hex-a78bfa)' : 'var(--c-muted)', fontSize: 12, cursor: 'pointer', textTransform: 'capitalize' }}>
+                style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === v ? '1px solid var(--tool-hex-a78bfa)' : '1px solid var(--c-border)', background: viewMode === v ? 'color-mix(in srgb, var(--tool-hex-a78bfa) 10%, transparent)' : 'var(--c-bg)', color: viewMode === v ? 'var(--tool-hex-a78bfa)' : 'var(--c-muted)', fontSize: 12, cursor: 'pointer', textTransform: 'capitalize' }}>
                 {v === 'students' ? 'Students' : v === 'bulk' ? 'Bulk SMS' : 'SMS Logs'}
               </button>
             ))}
@@ -2303,8 +2303,8 @@ export function AttendanceAlerts() {
                     </div>
                     {smsResult && (
                       <div style={{ padding: '8px 12px', borderRadius: 6, marginBottom: 10, fontSize: 12,
-                        background: smsResult.success ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
-                        border: `1px solid ${smsResult.success ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                        background: smsResult.success ? 'color-mix(in srgb, var(--tool-hex-34d399) 10%, transparent)' : 'color-mix(in srgb, var(--tool-hex-f87171) 10%, transparent)',
+                        border: `1px solid ${smsResult.success ? 'color-mix(in srgb, var(--tool-hex-34d399) 30%, transparent)' : 'color-mix(in srgb, var(--tool-hex-f87171) 30%, transparent)'}`,
                         color: smsResult.success ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-f87171)' }}>
                         {smsResult.success ? `SMS ${smsResult.status === 'not_configured' ? 'logged (Twilio not configured)' : 'sent successfully!'}` : `Error: ${smsResult.error}`}
                       </div>
@@ -2325,7 +2325,7 @@ export function AttendanceAlerts() {
                   `${s.present_days}/${s.total_days}`,
                   s.phone || <span style={{ color: 'var(--c-faint)' }}>N/A</span>,
                   <button onClick={() => openSmsForm(s)}
-                    style={{ background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: 5, padding: '4px 10px', color: 'var(--tool-hex-a78bfa)', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>
+                    style={{ background: 'color-mix(in srgb, var(--tool-hex-a78bfa) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-a78bfa) 30%, transparent)', borderRadius: 5, padding: '4px 10px', color: 'var(--tool-hex-a78bfa)', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>
                     SMS Parent
                   </button>
                 ])}
@@ -2359,7 +2359,7 @@ export function AttendanceAlerts() {
                   </div>
                 </div>
                 {bulkResult && (
-                  <div style={{ padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 12, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', color: 'var(--c-text)' }}>
+                  <div style={{ padding: '10px 12px', borderRadius: 6, marginBottom: 12, fontSize: 12, background: 'color-mix(in srgb, var(--tool-hex-34d399) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-34d399) 30%, transparent)', color: 'var(--c-text)' }}>
                     {bulkResult.error ? (
                       <span style={{ color: 'var(--tool-hex-f87171)' }}>Error: {bulkResult.error}</span>
                     ) : (
