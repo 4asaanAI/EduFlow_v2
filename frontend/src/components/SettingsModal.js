@@ -1,9 +1,52 @@
-import React, { useState, useRef, useLayoutEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useUser } from '../contexts/UserContext';
 import { X, Sun, Moon, Bell, Lock, Check, KeyRound, Eye, EyeOff } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
+
+function Toggle({ active, onToggle, isDark }) {
+  return (
+    <button onClick={onToggle} style={{
+      width: 42, height: 24, borderRadius: 12,
+      background: active ? '#4f8ff7' : (isDark ? '#333' : '#d4d4d4'),
+      border: 'none', cursor: 'pointer', position: 'relative',
+      transition: 'background 0.2s ease', flexShrink: 0,
+    }}>
+      <div style={{
+        width: 18, height: 18, borderRadius: '50%', background: '#fff',
+        position: 'absolute', top: 3, left: active ? 21 : 3,
+        transition: 'left 0.2s ease', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+      }} />
+    </button>
+  );
+}
+
+function Section({ title, children, styles }) {
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: styles.muted, letterSpacing: '0.03em', marginBottom: 10 }}>{title}</div>
+      <div style={{ background: styles.sectionBg, borderRadius: 14, border: `1px solid ${styles.border}`, overflow: 'hidden' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Row({ icon: Icon, label, subtitle, control, noBorder, styles }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: noBorder ? 'none' : `1px solid ${styles.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {Icon && <Icon size={16} color={styles.muted} />}
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 500, color: styles.text }}>{label}</div>
+          {subtitle && <div style={{ fontSize: 12, color: styles.muted, marginTop: 2 }}>{subtitle}</div>}
+        </div>
+      </div>
+      {control}
+    </div>
+  );
+}
 
 export default function SettingsModal({ onClose }) {
   const { isDark, toggleTheme, theme } = useTheme();
@@ -24,41 +67,13 @@ export default function SettingsModal({ onClose }) {
   const [showNewPw, setShowNewPw] = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
   const containerRef = useRef(null);
-  const scrollLockRef = useRef(null);
-
-  // Preserve scroll position synchronously before browser paint on every re-render
-  useLayoutEffect(() => {
-    if (scrollLockRef.current != null && containerRef.current) {
-      containerRef.current.scrollTop = scrollLockRef.current;
-      scrollLockRef.current = null;
-    }
-  });
-
-  const lockScroll = () => {
-    if (containerRef.current) scrollLockRef.current = containerRef.current.scrollTop;
-  };
 
   const bg = isDark ? '#1e1e1e' : '#fff';
   const border = isDark ? '#2e2e2e' : '#e5e5e5';
   const text = isDark ? '#f5f5f5' : '#171717';
   const muted = isDark ? '#888' : '#525252';
-  const secondary = isDark ? '#a0a0a0' : '#525252';
   const sectionBg = isDark ? '#141414' : '#fafafa';
-
-  const Toggle = ({ active, onToggle }) => (
-    <button onClick={onToggle} style={{
-      width: 42, height: 24, borderRadius: 12,
-      background: active ? '#4f8ff7' : (isDark ? '#333' : '#d4d4d4'),
-      border: 'none', cursor: 'pointer', position: 'relative',
-      transition: 'background 0.2s ease', flexShrink: 0,
-    }}>
-      <div style={{
-        width: 18, height: 18, borderRadius: '50%', background: '#fff',
-        position: 'absolute', top: 3, left: active ? 21 : 3,
-        transition: 'left 0.2s ease', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-      }} />
-    </button>
-  );
+  const styles = { bg, border, text, muted, sectionBg };
 
   const handlePasswordChange = async (e) => {
     e.preventDefault();
@@ -100,28 +115,6 @@ export default function SettingsModal({ onClose }) {
     return next;
   });
 
-  const Section = ({ title, children }) => (
-    <div style={{ marginBottom: 24 }}>
-      <div style={{ fontSize: 11, fontWeight: 600, color: muted, letterSpacing: '0.03em', marginBottom: 10 }}>{title}</div>
-      <div style={{ background: sectionBg, borderRadius: 14, border: `1px solid ${border}`, overflow: 'hidden' }}>
-        {children}
-      </div>
-    </div>
-  );
-
-  const Row = ({ icon: Icon, label, subtitle, control, noBorder }) => (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: noBorder ? 'none' : `1px solid ${border}` }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        {Icon && <Icon size={16} color={muted} />}
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 500, color: text }}>{label}</div>
-          {subtitle && <div style={{ fontSize: 12, color: muted, marginTop: 2 }}>{subtitle}</div>}
-        </div>
-      </div>
-      {control}
-    </div>
-  );
-
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}>
       <div ref={containerRef} className="fade-in-scale" style={{ background: bg, border: `1px solid ${border}`, borderRadius: 20, padding: 32, width: 460, maxWidth: '90vw', maxHeight: '88vh', overflowY: 'auto', boxShadow: 'var(--shadow-xl)' }}>
@@ -134,14 +127,14 @@ export default function SettingsModal({ onClose }) {
           </button>
         </div>
 
-        <Section title="Appearance">
+        <Section title="Appearance" styles={styles}>
           <Row icon={isDark ? Moon : Sun} label="Theme" subtitle={`Currently: ${theme === 'dark' ? 'Dark' : 'Light'} mode`}
-            control={<Toggle active={isDark} onToggle={toggleTheme} />}
-            noBorder
+            control={<Toggle active={isDark} onToggle={toggleTheme} isDark={isDark} />}
+            noBorder styles={styles}
           />
         </Section>
 
-        <Section title="Notifications">
+        <Section title="Notifications" styles={styles}>
           {[
             { key: 'push', icon: Bell, label: 'Push Notifications', sub: 'School alerts & reminders' },
             { key: 'leave', label: 'Leave approvals', sub: 'Notify when approved/rejected' },
@@ -150,24 +143,26 @@ export default function SettingsModal({ onClose }) {
             { key: 'announcements', label: 'New announcements', sub: 'School broadcasts' },
           ].map(({ key, icon, label, sub }, i, arr) => (
             <Row key={key} icon={icon} label={label} subtitle={sub}
-              control={<Toggle active={notifSettings[key]} onToggle={() => toggle(key)} />}
-              noBorder={i === arr.length - 1}
+              control={<Toggle active={notifSettings[key]} onToggle={() => toggle(key)} isDark={isDark} />}
+              noBorder={i === arr.length - 1} styles={styles}
             />
           ))}
         </Section>
 
-        <Section title="Privacy & Security">
+        <Section title="Privacy & Security" styles={styles}>
           <Row icon={Lock} label="Data Privacy" subtitle="DPDP Act compliant data handling"
             control={<span style={{ fontSize: 12, color: '#34d399', fontWeight: 600 }}>Active</span>}
+            styles={styles}
           />
           <Row label="Session timeout" subtitle="Auto-logout after inactivity" noBorder
             control={<select style={{ background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`, borderRadius: 8, padding: '5px 10px', color: text, fontSize: 13, outline: 'none', cursor: 'pointer' }}>
               <option>30 min</option><option>1 hour</option><option>2 hours</option>
             </select>}
+            styles={styles}
           />
         </Section>
 
-        <Section title="Change Password">
+        <Section title="Change Password" styles={styles}>
           <div style={{ padding: '14px 16px' }}>
             <form onSubmit={handlePasswordChange}>
               <div style={{ marginBottom: 12 }}>
@@ -176,8 +171,7 @@ export default function SettingsModal({ onClose }) {
                   <input
                     type={showNewPw ? 'text' : 'password'}
                     value={pwForm.new_password}
-                    onChange={e => { lockScroll(); setPwForm(p => ({ ...p, new_password: e.target.value })); }}
-                    onFocus={lockScroll}
+                    onChange={e => setPwForm(p => ({ ...p, new_password: e.target.value }))}
                     placeholder="Enter new password"
                     required
                     autoComplete="new-password"
@@ -194,8 +188,7 @@ export default function SettingsModal({ onClose }) {
                   <input
                     type={showConfirmPw ? 'text' : 'password'}
                     value={pwForm.confirm_password}
-                    onChange={e => { lockScroll(); setPwForm(p => ({ ...p, confirm_password: e.target.value })); }}
-                    onFocus={lockScroll}
+                    onChange={e => setPwForm(p => ({ ...p, confirm_password: e.target.value }))}
                     placeholder="Confirm new password"
                     required
                     autoComplete="new-password"
@@ -223,10 +216,10 @@ export default function SettingsModal({ onClose }) {
           </div>
         </Section>
 
-        <Section title="About">
-          <Row label="EduFlow Version" control={<span style={{ fontSize: 12, color: muted, fontWeight: 500 }}>v1.1.0</span>} />
-          <Row label="School" control={<span style={{ fontSize: 12, color: muted, fontWeight: 500 }}>The Aaryans, CBSE</span>} />
-          <Row label="Academic Year" control={<span style={{ fontSize: 12, color: muted, fontWeight: 500 }}>2025-26</span>} noBorder />
+        <Section title="About" styles={styles}>
+          <Row label="EduFlow Version" control={<span style={{ fontSize: 12, color: muted, fontWeight: 500 }}>v1.1.0</span>} styles={styles} />
+          <Row label="School" control={<span style={{ fontSize: 12, color: muted, fontWeight: 500 }}>The Aaryans, CBSE</span>} styles={styles} />
+          <Row label="Academic Year" control={<span style={{ fontSize: 12, color: muted, fontWeight: 500 }}>2025-26</span>} noBorder styles={styles} />
         </Section>
 
         {saved && (
