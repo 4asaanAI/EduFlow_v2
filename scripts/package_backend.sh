@@ -21,6 +21,8 @@ zip -qr "$ZIP_PATH" \
   -x \
   "backend/.env" \
   "backend/.env.*" \
+  "backend/.venv/*" \
+  "backend/venv/*" \
   "backend/uploads/*" \
   "backend/**/__pycache__/*" \
   "backend/**/*.pyc"
