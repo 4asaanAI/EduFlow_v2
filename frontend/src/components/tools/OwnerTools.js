@@ -3,7 +3,7 @@ import { useUser } from '../../contexts/UserContext';
 import { executeTool, updateLeave, getStaff, fetchPlatformHealth } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, useToolData, LineChartWidget, BarChartWidget, PieChartWidget } from './ToolPage';
-import { Activity, CheckCircle, XCircle, AlertTriangle, Plus, RefreshCw, Save, TrendingUp, Users, FileText, Send, Download, Upload, Zap, Database, Cloud } from 'lucide-react';
+import { Activity, CheckCircle, XCircle, AlertTriangle, Plus, RefreshCw, Save, TrendingUp, Users, FileText, Send, Download, Upload, Zap, Database, Cloud, BookOpen, User, CreditCard, Calendar, Wrench, Monitor, ShieldAlert, UserCheck, ClipboardList } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function h() { return getAuthHeaders(); }
@@ -1399,15 +1399,15 @@ export function AiHealthReport() {
 
 // 12. Smart Alerts
 const ALERT_CONFIG = {
-  critical: { color: '#ef4444', bg: '#ef444412', border: '#ef444430', label: 'Critical' },
-  warning:  { color: '#f59e0b', bg: '#f59e0b12', border: '#f59e0b30', label: 'Warning'  },
-  info:     { color: '#4f8ff7', bg: '#4f8ff712', border: '#4f8ff730', label: 'Info'     },
-  success:  { color: '#10b981', bg: '#10b98112', border: '#10b98130', label: 'Good'     },
+  critical: { color: '#ef4444', bg: 'color-mix(in srgb, #ef4444 8%, transparent)', border: 'color-mix(in srgb, #ef4444 25%, transparent)', label: 'Critical' },
+  warning:  { color: '#f59e0b', bg: 'color-mix(in srgb, #f59e0b 8%, transparent)', border: 'color-mix(in srgb, #f59e0b 25%, transparent)', label: 'Warning'  },
+  info:     { color: '#4f8ff7', bg: 'color-mix(in srgb, #4f8ff7 8%, transparent)', border: 'color-mix(in srgb, #4f8ff7 25%, transparent)', label: 'Info'     },
+  success:  { color: '#10b981', bg: 'color-mix(in srgb, #10b981 8%, transparent)', border: 'color-mix(in srgb, #10b981 25%, transparent)', label: 'Good'     },
 };
-const CATEGORY_ICONS = {
-  'Attendance': '🎓', 'Staff': '👤', 'Fees': '₹', 'Leaves': '📅',
-  'Maintenance': '🔧', 'Tech Issues': '💻', 'Incidents': '⚠️',
-  'Visitors': '🚶', 'Admissions': '📋',
+const CATEGORY_ICON_MAP = {
+  'Attendance': BookOpen, 'Staff': User, 'Fees': CreditCard, 'Leaves': Calendar,
+  'Maintenance': Wrench, 'Tech Issues': Monitor, 'Incidents': ShieldAlert,
+  'Visitors': UserCheck, 'Admissions': ClipboardList,
 };
 const PRIORITY_LABELS = { high: 'HIGH', medium: 'MED', low: 'LOW', info: 'INFO' };
 const PRIORITY_COLORS = { high: '#ef4444', medium: '#f59e0b', low: '#737373', info: '#4f8ff7' };
@@ -1444,7 +1444,7 @@ export function SmartAlerts() {
       {/* Summary cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 16 }}>
         {[
-          { key: 'all',      value: allAlerts.length, label: 'TOTAL',    color: 'var(--tool-hex-fbbf24)' },
+          { key: 'all',      value: allAlerts.length, label: 'TOTAL',    color: '#f59e0b' },
           { key: 'critical', value: counts.critical,  label: 'CRITICAL', color: '#ef4444' },
           { key: 'warning',  value: counts.warning,   label: 'WARNINGS', color: '#f59e0b' },
           { key: 'success',  value: counts.success,   label: 'POSITIVE', color: '#10b981' },
@@ -1453,31 +1453,31 @@ export function SmartAlerts() {
             key={s.key}
             onClick={() => setFilter(f => f === s.key ? 'all' : s.key)}
             style={{
-              background: filter === s.key ? `${s.color}15` : 'var(--tool-hex-1e1e1e)',
-              border: `1px solid ${filter === s.key ? s.color + '50' : 'var(--tool-hex-2e2e2e)'}`,
+              background: filter === s.key ? `color-mix(in srgb, ${s.color} 10%, transparent)` : 'var(--c-bg)',
+              border: `1px solid ${filter === s.key ? `color-mix(in srgb, ${s.color} 40%, transparent)` : 'var(--c-border)'}`,
               borderRadius: 10, padding: '12px 14px', cursor: 'pointer',
               transition: 'all 0.15s',
             }}
           >
             <div style={{ fontSize: 22, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.value}</div>
-            <div style={{ fontSize: 10, color: 'var(--tool-hex-737373)', fontWeight: 600, letterSpacing: '0.05em', marginTop: 4 }}>{s.label}</div>
+            <div style={{ fontSize: 10, color: 'var(--c-muted)', fontWeight: 600, letterSpacing: '0.05em', marginTop: 4 }}>{s.label}</div>
           </div>
         ))}
       </div>
 
-      {/* Category filter pills */}
+      {/* Type filter pills */}
       {allAlerts.length > 0 && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
           {['all', 'critical', 'warning', 'info', 'success'].map(t => {
-            const cfg = t === 'all' ? { color: '#737373', label: 'All' } : { color: ALERT_CONFIG[t]?.color, label: ALERT_CONFIG[t]?.label };
+            const cfg = t === 'all' ? { color: 'var(--c-muted)', label: 'All' } : { color: ALERT_CONFIG[t]?.color, label: ALERT_CONFIG[t]?.label };
             const active = filter === t;
             return (
               <button key={t} onClick={() => setFilter(f => f === t ? 'all' : t)}
                 style={{
-                  fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20,
-                  border: `1px solid ${active ? cfg.color : 'var(--tool-hex-2e2e2e)'}`,
-                  background: active ? `${cfg.color}20` : 'transparent',
-                  color: active ? cfg.color : 'var(--tool-hex-737373)',
+                  fontSize: 11, fontWeight: 600, padding: '4px 12px', borderRadius: 20,
+                  border: `1px solid ${active && t !== 'all' ? cfg.color : 'var(--c-border)'}`,
+                  background: active && t !== 'all' ? `color-mix(in srgb, ${cfg.color} 12%, transparent)` : 'transparent',
+                  color: active && t !== 'all' ? cfg.color : 'var(--c-muted)',
                   cursor: 'pointer', transition: 'all 0.15s',
                 }}
               >{cfg.label}</button>
@@ -1488,36 +1488,47 @@ export function SmartAlerts() {
 
       {/* Alert list */}
       {loading ? (
-        <div style={{ padding: 32, textAlign: 'center', color: 'var(--tool-hex-737373)', background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11, fontSize: 13 }}>
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-muted)', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, fontSize: 13 }}>
           Scanning school data…
         </div>
       ) : filtered.length === 0 ? (
-        <div style={{ padding: 32, textAlign: 'center', color: 'var(--tool-hex-737373)', background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11 }}>
-          <div style={{ fontSize: 24, marginBottom: 8 }}>✅</div>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>{filter === 'all' ? 'No active alerts — all good!' : `No ${filter} alerts`}</div>
+        <div style={{ padding: 32, textAlign: 'center', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11 }}>
+          <CheckCircle size={22} color="#10b981" style={{ margin: '0 auto 10px', display: 'block' }} />
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text)' }}>{filter === 'all' ? 'No active alerts — all good!' : `No ${filter} alerts`}</div>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {filtered.map((a, i) => {
             const cfg = ALERT_CONFIG[a.type] || ALERT_CONFIG.info;
+            const CatIcon = CATEGORY_ICON_MAP[a.category] || FileText;
             return (
               <div key={i} style={{
-                background: cfg.bg,
-                border: `1px solid ${cfg.border}`,
+                background: 'var(--c-bg)',
+                border: `1px solid var(--c-border)`,
                 borderLeft: `3px solid ${cfg.color}`,
                 borderRadius: 10, padding: '11px 14px',
                 display: 'flex', alignItems: 'center', gap: 12,
               }}>
-                <span style={{ fontSize: 16, flexShrink: 0 }}>{CATEGORY_ICONS[a.category] || '•'}</span>
+                <div style={{
+                  width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                  background: cfg.bg, border: `1px solid ${cfg.border}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <CatIcon size={14} color={cfg.color} />
+                </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, color: 'var(--tool-hex-e5e5e5)', lineHeight: 1.4 }}>{a.text}</div>
-                  <div style={{ fontSize: 11, color: 'var(--tool-hex-737373)', marginTop: 3 }}>{a.category}</div>
+                  <div style={{ fontSize: 13, color: 'var(--c-text)', lineHeight: 1.4 }}>{a.text}</div>
+                  <div style={{ fontSize: 11, color: 'var(--c-muted)', marginTop: 3 }}>{a.category}</div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.border}`, padding: '2px 7px', borderRadius: 6 }}>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, color: cfg.color,
+                    background: cfg.bg, border: `1px solid ${cfg.border}`,
+                    padding: '2px 7px', borderRadius: 5,
+                  }}>
                     {cfg.label}
                   </span>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: PRIORITY_COLORS[a.priority] || '#737373' }}>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: PRIORITY_COLORS[a.priority] || 'var(--c-muted)' }}>
                     {PRIORITY_LABELS[a.priority] || a.priority}
                   </span>
                 </div>
@@ -1529,7 +1540,7 @@ export function SmartAlerts() {
 
       {/* Footer timestamp */}
       {data?.generated_at && (
-        <div style={{ marginTop: 12, fontSize: 11, color: 'var(--tool-hex-737373)', textAlign: 'right' }}>
+        <div style={{ marginTop: 12, fontSize: 11, color: 'var(--c-muted)', textAlign: 'right' }}>
           Last checked: {data.generated_at}
         </div>
       )}

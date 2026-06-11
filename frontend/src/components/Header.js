@@ -3,6 +3,7 @@ import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { Search, Bell, ChevronLeft, Menu, X } from 'lucide-react';
 import { getAuthHeaders } from '../lib/authSession';
+import NotificationDetailModal from './NotificationDetailModal';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -95,24 +96,32 @@ const TYPE_CONFIG = {
   error:   { bg: '#ef4444', icon: '!', light: '#ef444415', border: '#ef444430' },
 };
 
-function NotificationsPanel({ user, onClose, isDark }) {
+function NotificationsPanel({ user, onClose, isDark, onOpenDetail }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
-  const [read, setRead] = useState(new Set());
+  const [readIds, setReadIds] = useState(new Set());
+  const [markingAll, setMarkingAll] = useState(false);
 
-  useEffect(() => {
+  const load = () => {
     setLoading(true);
     setFetchError(false);
     fetch(`${API}/notifications`, { headers: getH(user) })
       .then(r => r.json())
       .then(r => {
-        if (r.success) setNotifications(r.data || []);
-        else setFetchError(true);
+        if (r.success) {
+          const data = r.data || [];
+          setNotifications(data);
+          setReadIds(new Set(data.filter(n => n.read || n.is_digest).map(n => n.id).filter(Boolean)));
+        } else {
+          setFetchError(true);
+        }
       })
       .catch(() => setFetchError(true))
       .finally(() => setLoading(false));
-  }, [user.id, user.role]);
+  };
+
+  useEffect(() => { load(); }, [user.id, user.role]); // eslint-disable-line
 
   const bg = isDark ? '#161616' : '#ffffff';
   const surface = isDark ? '#1e1e1e' : '#f8f9fa';
@@ -121,20 +130,26 @@ function NotificationsPanel({ user, onClose, isDark }) {
   const muted = isDark ? '#777' : '#6b7280';
   const subtext = isDark ? '#555' : '#9ca3af';
 
-  const adminRouteMap = { 'Pending Leave Requests': 'staff-leave-manager', 'Fee Overdue': 'fee-collection', 'Announcement': 'announcement-broadcaster' };
-  const teacherRouteMap = { 'Leave Status': 'leave-application' };
-  const studentRouteMap = { 'Low Attendance': 'attendance-self-check', 'Fee Due': 'fee-status-viewer', 'Announcement': 'announcement-broadcaster' };
-
-  const handleNotifClick = (n, i) => {
-    setRead(prev => new Set([...prev, i]));
-    let tool = null;
-    if (user.role === 'owner' || user.role === 'admin') tool = adminRouteMap[n.title];
-    else if (user.role === 'teacher') tool = teacherRouteMap[n.title];
-    else if (user.role === 'student') tool = studentRouteMap[n.title];
-    if (tool) { onClose(); window.dispatchEvent(new CustomEvent('open-tool', { detail: tool })); }
+  const markRead = (n) => {
+    if (!n.id || n.is_digest || readIds.has(n.id)) return;
+    setReadIds(prev => new Set([...prev, n.id]));
+    fetch(`${API}/notifications/${n.id}/read`, { method: 'PATCH', headers: getH(user) }).catch(() => {});
   };
 
-  const unreadCount = notifications.filter((_, i) => !read.has(i)).length;
+  const handleMarkAllRead = async () => {
+    if (markingAll) return;
+    setMarkingAll(true);
+    setReadIds(new Set(notifications.map(n => n.id).filter(Boolean)));
+    try { await fetch(`${API}/notifications/mark-all-read`, { method: 'PATCH', headers: getH(user) }); } catch {}
+    setMarkingAll(false);
+  };
+
+  const handleNotifClick = (n) => {
+    markRead(n);
+    onOpenDetail(n);
+  };
+
+  const unreadCount = notifications.filter(n => n.id && !n.is_digest && !readIds.has(n.id)).length;
 
   return (
     <div className="fade-in-scale" style={{
@@ -172,12 +187,13 @@ function NotificationsPanel({ user, onClose, isDark }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {unreadCount > 0 && (
             <button
-              onClick={() => setRead(new Set(notifications.map((_, i) => i)))}
+              onClick={handleMarkAllRead}
+              disabled={markingAll}
               style={{
                 background: isDark ? '#252525' : '#f0f4ff', border: 'none',
                 color: isDark ? '#818cf8' : '#4f8ff7',
-                cursor: 'pointer', padding: '4px 10px', borderRadius: 8,
-                fontSize: 11, fontWeight: 600,
+                cursor: markingAll ? 'wait' : 'pointer', padding: '4px 10px', borderRadius: 8,
+                fontSize: 11, fontWeight: 600, opacity: markingAll ? 0.6 : 1,
               }}>
               Mark all read
             </button>
@@ -207,7 +223,7 @@ function NotificationsPanel({ user, onClose, isDark }) {
           </div>
         ) : notifications.length === 0 ? (
           <div style={{ padding: '48px 20px', textAlign: 'center' }}>
-            <div style={{ fontSize: 32, marginBottom: 12 }}>🔔</div>
+            <Bell size={28} color={subtext} style={{ display: 'block', margin: '0 auto 12px' }} />
             <div style={{ color: text, fontSize: 13, fontWeight: 600, marginBottom: 4 }}>You're all caught up!</div>
             <div style={{ color: subtext, fontSize: 12 }}>No new notifications right now</div>
           </div>
@@ -215,28 +231,21 @@ function NotificationsPanel({ user, onClose, isDark }) {
           <div style={{ padding: '8px 0' }}>
             {notifications.map((n, i) => {
               const cfg = TYPE_CONFIG[n.type] || TYPE_CONFIG.info;
-              const isRead = read.has(i);
-              const isClickable = (() => {
-                if (user.role === 'owner' || user.role === 'admin') return !!adminRouteMap[n.title];
-                if (user.role === 'teacher') return !!teacherRouteMap[n.title];
-                if (user.role === 'student') return !!studentRouteMap[n.title];
-                return false;
-              })();
+              const isRead = n.is_digest || readIds.has(n.id);
               return (
-                <div key={i}
-                  onClick={() => handleNotifClick(n, i)}
+                <div key={n.id || i}
+                  onClick={() => handleNotifClick(n)}
                   style={{
                     padding: '12px 18px',
                     display: 'flex', gap: 12, alignItems: 'flex-start',
-                    cursor: isClickable ? 'pointer' : 'default',
+                    cursor: 'pointer',
                     background: isRead ? 'transparent' : (isDark ? 'rgba(79,143,247,0.04)' : 'rgba(79,143,247,0.03)'),
                     borderBottom: i < notifications.length - 1 ? `1px solid ${border}` : 'none',
                     transition: 'background 0.15s ease',
                   }}
-                  onMouseEnter={e => { if (isClickable) e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'; }}
+                  onMouseEnter={e => { e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = isRead ? 'transparent' : (isDark ? 'rgba(79,143,247,0.04)' : 'rgba(79,143,247,0.03)'); }}
                 >
-                  {/* Type icon */}
                   <div style={{
                     width: 34, height: 34, borderRadius: 10, flexShrink: 0,
                     background: cfg.light, border: `1px solid ${cfg.border}`,
@@ -245,8 +254,6 @@ function NotificationsPanel({ user, onClose, isDark }) {
                   }}>
                     {cfg.icon}
                   </div>
-
-                  {/* Content */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
                       <span style={{ fontSize: 13, color: text, fontWeight: isRead ? 500 : 600, lineHeight: 1.3, flex: 1 }}>{n.title}</span>
@@ -255,13 +262,11 @@ function NotificationsPanel({ user, onClose, isDark }) {
                       )}
                     </div>
                     <div style={{ fontSize: 12, color: muted, lineHeight: 1.45 }}>{n.message}</div>
-                    <div style={{ fontSize: 11, color: subtext, marginTop: 5 }}>{n.time}</div>
+                    <div style={{ fontSize: 11, color: subtext, marginTop: 5 }}>
+                      {n.created_at ? new Date(n.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : (n.time || '')}
+                    </div>
                   </div>
-
-                  {/* Arrow if clickable */}
-                  {isClickable && (
-                    <div style={{ color: subtext, fontSize: 16, flexShrink: 0, alignSelf: 'center', opacity: 0.6 }}>›</div>
-                  )}
+                  <div style={{ color: subtext, fontSize: 16, flexShrink: 0, alignSelf: 'center', opacity: 0.5 }}>›</div>
                 </div>
               );
             })}
@@ -288,6 +293,7 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
   const { isDark } = useTheme();
   const [showSearch, setShowSearch] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
+  const [detailNotif, setDetailNotif] = useState(null);
   const notifRef = useRef(null);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -387,12 +393,13 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
               <Bell size={17} />
               <span style={{ position: 'absolute', top: 5, right: 5, width: 6, height: 6, background: '#f87171', borderRadius: '50%', border: `2px solid ${bg}` }} />
             </button>
-            {showNotif && <NotificationsPanel user={currentUser} onClose={() => setShowNotif(false)} isDark={isDark} />}
+            {showNotif && <NotificationsPanel user={currentUser} onClose={() => setShowNotif(false)} isDark={isDark} onOpenDetail={n => { setShowNotif(false); setDetailNotif(n); }} />}
           </div>
         </div>
       </header>
 
       {showSearch && <SearchPanel user={currentUser} onClose={() => setShowSearch(false)} isDark={isDark} />}
+      {detailNotif && <NotificationDetailModal notification={detailNotif} onClose={() => setDetailNotif(null)} />}
     </>
   );
 }

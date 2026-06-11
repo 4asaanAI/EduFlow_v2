@@ -128,6 +128,228 @@ async def mark_all_read(request: Request):
     return {"success": True}
 
 
+_SOURCE_COLLECTION = {
+    "facility_request":  "facility_requests",
+    "incident":          "incidents",
+    "announcement":      "announcements",
+    "certificate":       "certificates",
+    "substitution":      "substitutions",
+    "approval_request":  "approval_requests",
+    "tech_request":      "tech_requests",
+    "leave_request":     "leave_requests",
+    "fee_transaction":   "fee_transactions",
+    "visitor":           "visitor_log",
+}
+
+_ACTION_LABELS = {
+    "leave_approved":      "Leave request approved",
+    "leave_rejected":      "Leave request rejected",
+    "leave_created":       "Leave request submitted",
+    "facility_created":    "Facility request raised",
+    "facility_resolved":   "Facility request resolved",
+    "facility_updated":    "Facility request updated",
+    "incident_created":    "Incident reported",
+    "incident_resolved":   "Incident resolved",
+    "incident_updated":    "Incident updated",
+    "announcement_published": "Announcement published",
+    "announcement_created":   "Announcement created",
+    "cert_created":        "Certificate requested",
+    "cert_approved":       "Certificate approved",
+    "cert_rejected":       "Certificate rejected",
+    "substitution_assigned": "Substitute assigned",
+    "fee_paid":            "Payment received",
+    "fee_overdue":         "Marked overdue",
+    "approval_created":    "Approval request submitted",
+    "approval_approved":   "Request approved",
+    "approval_rejected":   "Request rejected",
+}
+
+
+def _build_timeline_from_record(rec: dict, source_type: str) -> list[dict]:
+    """Synthesize baseline creation event from source record fields."""
+    events = []
+    created_at = rec.get("created_at") or rec.get("applied_at") or rec.get("reported_at") or ""
+    if created_at:
+        label_map = {
+            "leave_request":   "Leave request submitted",
+            "facility_request": "Facility request raised",
+            "incident":        "Incident reported",
+            "announcement":    "Announcement created",
+            "certificate":     "Certificate requested",
+            "substitution":    "Substitution created",
+            "approval_request": "Approval request submitted",
+            "tech_request":    "Tech request raised",
+            "fee_transaction": "Fee transaction created",
+            "visitor":         "Visitor checked in",
+        }
+        events.append({
+            "event_type": "created",
+            "label": label_map.get(source_type, "Record created"),
+            "detail": None,
+            "actor": rec.get("created_by_name") or rec.get("staff_name") or rec.get("student_name") or rec.get("requested_by") or "",
+            "actor_role": rec.get("created_by_role") or "",
+            "timestamp": created_at,
+            "is_current": False,
+        })
+    return events
+
+
+def _build_current_status_event(rec: dict, source_type: str) -> dict | None:
+    """Build a terminal event from the record's current status."""
+    status = rec.get("status", "")
+    if not status or status in ("pending", "open", "active"):
+        return None
+    status_label = {
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "resolved": "Resolved",
+        "closed":   "Closed",
+        "paid":     "Payment received",
+        "overdue":  "Marked overdue",
+        "in_progress": "Work started",
+        "assigned": "Substitute assigned",
+        "published": "Published",
+        "completed": "Completed",
+    }.get(status, status.replace("_", " ").title())
+
+    timestamp = (
+        rec.get("resolved_at") or rec.get("approved_at") or
+        rec.get("rejected_at") or rec.get("paid_at") or
+        rec.get("updated_at") or rec.get("modified_at") or ""
+    )
+    detail = rec.get("rejection_reason") or rec.get("resolution_notes") or rec.get("resolution") or None
+    actor = (
+        rec.get("approved_by_name") or rec.get("resolved_by_name") or
+        rec.get("rejected_by_name") or rec.get("assigned_by_name") or ""
+    )
+    return {
+        "event_type": "status_change",
+        "label": status_label,
+        "detail": detail,
+        "actor": actor,
+        "actor_role": rec.get("approved_by_role") or rec.get("resolved_by_role") or "",
+        "timestamp": timestamp,
+        "is_current": True,
+    }
+
+
+def _source_summary(rec: dict, source_type: str) -> dict:
+    """Extract key display fields from a source record."""
+    status = rec.get("status", "")
+    base = {"source_type": source_type, "status": status, "id": rec.get("id", "")}
+
+    if source_type == "leave_request":
+        return {**base, "title": f"{rec.get('leave_type', 'Leave')} request", "subtitle": f"{rec.get('start_date', '')} → {rec.get('end_date', '')}", "detail": rec.get("reason", "")}
+    if source_type == "facility_request":
+        return {**base, "title": rec.get("title") or rec.get("description", "Facility request"), "subtitle": f"Location: {rec.get('location', '—')}", "detail": rec.get("description", "")}
+    if source_type == "incident":
+        return {**base, "title": rec.get("title") or rec.get("incident_type", "Incident"), "subtitle": f"Severity: {rec.get('severity', '—')}", "detail": rec.get("description", "")}
+    if source_type == "announcement":
+        audience = ", ".join(rec.get("audience_roles") or ["All"])
+        return {**base, "title": rec.get("title", "Announcement"), "subtitle": f"Audience: {audience}", "detail": rec.get("body") or rec.get("content", "")}
+    if source_type == "certificate":
+        return {**base, "title": f"{rec.get('cert_type') or rec.get('type', 'Certificate')} certificate", "subtitle": f"Student: {rec.get('student_name', '—')}", "detail": rec.get("purpose") or rec.get("reason", "")}
+    if source_type == "substitution":
+        return {**base, "title": f"Period {rec.get('period_number', '—')} substitution", "subtitle": f"Substitute: {rec.get('substitute_teacher_name', '—')}", "detail": f"Class: {rec.get('class_name', '—')}"}
+    if source_type in ("tech_request", "approval_request"):
+        return {**base, "title": rec.get("title") or rec.get("description", source_type.replace("_", " ").title()), "subtitle": rec.get("category") or rec.get("type", ""), "detail": rec.get("description", "")}
+    if source_type == "fee_transaction":
+        return {**base, "title": f"Fee — ₹{rec.get('amount', 0):,}", "subtitle": f"Student: {rec.get('student_name', '—')}", "detail": rec.get("fee_type", "")}
+    if source_type == "visitor":
+        return {**base, "title": f"Visitor: {rec.get('visitor_name', '—')}", "subtitle": f"Purpose: {rec.get('purpose', '—')}", "detail": ""}
+    return {**base, "title": rec.get("title") or source_type.replace("_", " ").title(), "subtitle": "", "detail": ""}
+
+
+@router.get("/{notification_id}/detail")
+async def get_notification_detail(notification_id: str, request: Request):
+    db = get_db()
+    user = get_user(request)
+    school_id = get_school_id()
+
+    notif = await db.notifications.find_one(
+        scoped_filter({"id": notification_id, "user_id": user["id"]}, school_id), {"_id": 0}
+    )
+    if not notif:
+        raise HTTPException(404, "Notification not found")
+
+    # Mark read as side-effect
+    if not notif.get("read"):
+        await db.notifications.update_one(
+            {"id": notification_id},
+            {"$set": {"read": True, "read_at": datetime.now().isoformat()}}
+        )
+
+    source_type = notif.get("source_record_type") or ""
+    source_id   = notif.get("source_record_id") or ""
+    source = None
+    timeline = []
+
+    if source_type and source_id:
+        coll_name = _SOURCE_COLLECTION.get(source_type)
+        if coll_name:
+            coll = getattr(db, coll_name, None)
+            if coll is not None:
+                source = await coll.find_one(
+                    scoped_filter({"id": source_id}, school_id), {"_id": 0}
+                )
+
+        if source:
+            # Baseline creation event from the record itself
+            timeline = _build_timeline_from_record(source, source_type)
+
+            # Audit log events for this record
+            audit_entries = await db.audit_logs.find(
+                scoped_filter({"entity_id": source_id}, school_id), {"_id": 0}
+            ).sort("created_at", 1).to_list(50)
+
+            for entry in audit_entries:
+                action = entry.get("action", "")
+                label = _ACTION_LABELS.get(action) or action.replace("_", " ").title()
+                changes = entry.get("changes") or {}
+                detail_parts = []
+                if changes.get("status"):
+                    detail_parts.append(f"Status → {changes['status']}")
+                if changes.get("rejection_reason"):
+                    detail_parts.append(f"Reason: {changes['rejection_reason']}")
+                if changes.get("resolution"):
+                    detail_parts.append(changes["resolution"])
+                timeline.append({
+                    "event_type": action,
+                    "label": label,
+                    "detail": "; ".join(detail_parts) or None,
+                    "actor": entry.get("changed_by_name") or entry.get("changed_by") or "",
+                    "actor_role": entry.get("changed_by_role") or "",
+                    "timestamp": entry.get("created_at") or entry.get("timestamp") or "",
+                    "is_current": False,
+                })
+
+            # Terminal status event from record
+            terminal = _build_current_status_event(source, source_type)
+            if terminal and terminal.get("timestamp"):
+                timeline.append(terminal)
+
+            # Deduplicate by timestamp+label, keep order
+            seen = set()
+            deduped = []
+            for ev in timeline:
+                key = (ev["timestamp"], ev["label"])
+                if key not in seen:
+                    seen.add(key)
+                    deduped.append(ev)
+            timeline = sorted(deduped, key=lambda e: e["timestamp"])
+            if timeline:
+                timeline[-1]["is_current"] = True
+
+    return {
+        "success": True,
+        "data": {
+            "notification": notif,
+            "source": _source_summary(source, source_type) if source else None,
+            "timeline": timeline,
+        }
+    }
+
+
 @router.post("")
 async def create_notification(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     """Internal endpoint: create a notification for a specific user."""
