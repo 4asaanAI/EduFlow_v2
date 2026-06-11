@@ -80,7 +80,7 @@ const TOOL_SETS = {
     'custom-form-builder','raise-maintenance',
   ],
   admin_it_tech: [
-    'tech-issues','raise-maintenance','custom-form-builder',
+    'tech-issues','raise-maintenance','custom-form-builder','query-section',
   ],
   admin_maintenance: [
     'facility-requests','raise-maintenance',
