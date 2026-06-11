@@ -31,17 +31,29 @@ from services.token_service import DEFAULT_ROLE_LIMITS, PACKS
 logger = logging.getLogger(__name__)
 
 SUBSCRIPTION_PLANS: dict[str, dict] = {
-    "monthly_school_starter": {
-        "tokens_per_month": 2_000_000,
-        "price_inr": 2499,
-        "label": "Starter School — 2M tokens/month",
-        "razorpay_plan_env": "RAZORPAY_PLAN_MONTHLY_SCHOOL_STARTER",
+    "monthly_starter": {
+        "tokens_per_month": 1_000_000,
+        "price_inr": 999,
+        "label": "Starter",
+        "subtitle": "Up to 200 students",
+        "razorpay_plan_env": "RAZORPAY_PLAN_MONTHLY_STARTER",
+        "popular": False,
     },
-    "monthly_school_pro": {
-        "tokens_per_month": 5_000_000,
+    "monthly_growth": {
+        "tokens_per_month": 3_000_000,
+        "price_inr": 2499,
+        "label": "Growth",
+        "subtitle": "200–500 students",
+        "razorpay_plan_env": "RAZORPAY_PLAN_MONTHLY_GROWTH",
+        "popular": True,
+    },
+    "monthly_enterprise": {
+        "tokens_per_month": 8_000_000,
         "price_inr": 4999,
-        "label": "Pro School — 5M tokens/month",
-        "razorpay_plan_env": "RAZORPAY_PLAN_MONTHLY_SCHOOL_PRO",
+        "label": "Enterprise",
+        "subtitle": "500+ students",
+        "razorpay_plan_env": "RAZORPAY_PLAN_MONTHLY_ENTERPRISE",
+        "popular": False,
     },
 }
 

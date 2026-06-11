@@ -717,4 +717,42 @@ export async function sendAttendanceAlerts(recipients) {
   return res.json();
 }
 
+export async function getMyTokenUsage() {
+  const res = await apiFetch(`${API}/tokens/usage/me`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function getTokenPlans() {
+  const res = await apiFetch(`${API}/tokens/packs`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function createSubscriptionCheckout(planId) {
+  const origin = window.location.origin;
+  const res = await apiFetch(`${API}/tokens/create-subscription-session`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({
+      plan_id: planId,
+      success_url: `${origin}?recharge=success`,
+      cancel_url: `${origin}?recharge=cancel`,
+    }),
+  });
+  return res.json();
+}
+
+export async function createTopupCheckout(packId) {
+  const origin = window.location.origin;
+  const res = await apiFetch(`${API}/tokens/create-checkout-session`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({
+      pack_id: packId,
+      success_url: `${origin}?recharge=success`,
+      cancel_url: `${origin}?recharge=cancel`,
+    }),
+  });
+  return res.json();
+}
+
 

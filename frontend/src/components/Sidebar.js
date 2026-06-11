@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { getConversations, updateConversation, deleteConversation } from '../lib/api';
+import { getConversations, updateConversation, deleteConversation, getMyTokenUsage } from '../lib/api';
+import TokenUpgradeModal from './TokenUpgradeModal';
 import {
   Activity, IndianRupee, Users, BarChart2, Bell, FileText, HeartPulse, Megaphone,
   CalendarDays, UserPlus, MessageSquare, Pin, Star, Trash2, Plus, BookOpen,
@@ -257,6 +258,8 @@ function ConvMenu({ conv, onClose, onRename, onPin, onStar, onDelete, isDark }) 
 
 export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeTool, activeConvId, convRefresh, sidebarOpen, setSidebarOpen, onOpenProfile, onOpenSettings, isToolDashboardRole }) {
   const { currentUser, logout } = useUser();
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [tokenUsage, setTokenUsage] = useState(null);
   const { isDark, toggleTheme } = useTheme();
   const [conversations, setConversations] = useState([]);
   const [menuConvId, setMenuConvId] = useState(null);
@@ -301,6 +304,12 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
+
+  useEffect(() => {
+    getMyTokenUsage()
+      .then(r => { if (r.success) setTokenUsage(r.data); })
+      .catch(() => {});
+  }, [currentUser.id]);
 
   const loadConversations = async () => {
     try { const r = await getConversations(); if (r.success) setConversations(r.data || []); } catch {}
@@ -572,6 +581,15 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
           </div>
         )}
 
+        {/* Token usage badge */}
+        <TokenUsageBadge
+          usage={tokenUsage}
+          role={currentUser.role}
+          isDark={isDark}
+          border={border}
+          onClick={() => setShowUpgradeModal(true)}
+        />
+
         {/* Bottom user section */}
         <div style={{ borderTop: `1px solid ${border}`, padding: '8px' }} ref={userMenuRef}>
           {showUserMenu && (
@@ -628,6 +646,85 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
           </button>
         </div>
       </aside>
+
+      {showUpgradeModal && (
+        <TokenUpgradeModal
+          onClose={() => setShowUpgradeModal(false)}
+          currentUsage={tokenUsage?.total_used || 0}
+          roleLimit={tokenUsage?.role_limit || 0}
+          isOwner={currentUser.role === 'owner'}
+        />
+      )}
     </>
+  );
+}
+
+function TokenUsageBadge({ usage, role, isDark, border, onClick }) {
+  if (!usage) return null;
+
+  const limit = usage.role_limit;
+  const used = usage.total_used || 0;
+  const isUnlimited = limit === -1 || role === 'owner';
+
+  const pct = isUnlimited ? 0 : Math.min(100, Math.round((used / limit) * 100));
+  const barColor = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#10b981';
+  const textColor = isDark ? '#a0a0a0' : '#6b7280';
+  const bg = isDark ? '#1a1a1a' : '#f9fafb';
+  const hoverBg = isDark ? '#222' : '#f3f4f6';
+
+  function fmt(n) {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+    return `${n}`;
+  }
+
+  return (
+    <div style={{ padding: '4px 8px', borderTop: `1px solid ${border}` }}>
+      <button
+        onClick={onClick}
+        title={isUnlimited ? 'Unlimited AI tokens' : `${used.toLocaleString()} / ${limit.toLocaleString()} tokens used — Click to manage`}
+        style={{
+          width: '100%', border: 'none', cursor: 'pointer',
+          background: bg, borderRadius: 10, padding: '8px 10px',
+          display: 'flex', flexDirection: 'column', gap: 5,
+          transition: 'background 0.15s',
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = hoverBg}
+        onMouseLeave={e => e.currentTarget.style.background = bg}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: textColor, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            AI Tokens
+          </span>
+          {isUnlimited ? (
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#10b981', background: '#10b98115', padding: '1px 7px', borderRadius: 6 }}>∞ Unlimited</span>
+          ) : (
+            <span style={{ fontSize: 10, fontWeight: 700, color: barColor }}>{pct}%</span>
+          )}
+        </div>
+
+        {!isUnlimited && (
+          <>
+            <div style={{ height: 4, borderRadius: 3, background: isDark ? '#2a2a2a' : '#e5e7eb', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 3, transition: 'width 0.5s ease' }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 10, color: textColor }}>
+                {fmt(used)} / {fmt(limit)}
+              </span>
+              <span style={{ fontSize: 10, color: isDark ? '#4f8ff7' : '#4f8ff7', fontWeight: 600 }}>
+                {pct >= 80 ? '⚡ Top up →' : 'Manage →'}
+              </span>
+            </div>
+          </>
+        )}
+
+        {isUnlimited && (
+          <div style={{ fontSize: 10, color: textColor, textAlign: 'left' }}>
+            {fmt(used)} tokens used this month · <span style={{ color: isDark ? '#4f8ff7' : '#4f8ff7', fontWeight: 600 }}>Manage plans →</span>
+          </div>
+        )}
+      </button>
+    </div>
   );
 }

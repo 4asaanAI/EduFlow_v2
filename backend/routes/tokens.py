@@ -118,6 +118,8 @@ async def packs_endpoint(request: Request):
             "tokens_per_month": info["tokens_per_month"],
             "price_inr": info["price_inr"],
             "label": info["label"],
+            "subtitle": info.get("subtitle", ""),
+            "popular": info.get("popular", False),
         }
         for plan_id, info in SUBSCRIPTION_PLANS.items()
     ]

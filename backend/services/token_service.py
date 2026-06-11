@@ -34,10 +34,15 @@ PACKS = {
 
 # Default per-role monthly token limits (can be overridden per branch)
 DEFAULT_ROLE_LIMITS = {
-    "owner":   -1,       # unlimited
-    "admin":   100_000,
-    "teacher": 50_000,
-    "student": 20_000,
+    "owner":   -1,        # unlimited — strategic oversight + purchasing
+    "admin":   75_000,    # operational use (non-principal sub-categories)
+    "teacher": 75_000,    # daily teaching aids, assignments, lesson plans
+    "student": 8_000,     # limited AI tutor + doubt-solving access
+}
+
+# Sub-category overrides — checked before the role-level limit
+DEFAULT_SUBCATEGORY_LIMITS: dict[str, int] = {
+    "principal": 250_000,  # heavy — AI reports, staff analysis, academic planning
 }
 
 # Warning threshold — flag when usage exceeds this fraction of the limit
@@ -94,9 +99,14 @@ async def check_and_reserve_tokens(
             "can_recharge": False,
         }
 
-    # 2. Per-role monthly limit
+    # 2. Per-role monthly limit (sub_category overrides role if defined)
+    sub_category = user.get("sub_category") or ""
     role_limits = balance_doc.get("role_limits", DEFAULT_ROLE_LIMITS)
-    role_limit = role_limits.get(role, DEFAULT_ROLE_LIMITS.get(role, 20_000))
+    sub_limits = balance_doc.get("sub_category_limits", DEFAULT_SUBCATEGORY_LIMITS)
+    if sub_category and sub_category in sub_limits:
+        role_limit = sub_limits[sub_category]
+    else:
+        role_limit = role_limits.get(role, DEFAULT_ROLE_LIMITS.get(role, 20_000))
 
     # -1 means unlimited for this role
     if role_limit == -1:
@@ -200,6 +210,7 @@ async def record_usage(
         "branch_id": branch_id,
         "user_id": user_id,
         "role": user.get("role", "unknown"),
+        "sub_category": user.get("sub_category") or "",
         "month": month,
         "tokens_used": tokens_used,
         "source": source,
@@ -301,14 +312,19 @@ async def get_usage_stats(
         # Look up the user's role limit
         balance_doc = await db.token_balances.find_one({"branch_id": branch_id})
         if balance_doc:
-            # Try to determine role from the most recent usage entry
+            # Try to determine role/sub_category from the most recent usage entry
             last_entry = await db.token_usage.find_one(
                 {"branch_id": branch_id, "user_id": user_id, "month": month},
                 sort=[("created_at", -1)],
             )
             role = last_entry["role"] if last_entry else "student"
+            sub_category = last_entry.get("sub_category", "") if last_entry else ""
             role_limits = balance_doc.get("role_limits", DEFAULT_ROLE_LIMITS)
-            role_limit = role_limits.get(role, DEFAULT_ROLE_LIMITS.get(role, 20_000))
+            sub_limits = balance_doc.get("sub_category_limits", DEFAULT_SUBCATEGORY_LIMITS)
+            if sub_category and sub_category in sub_limits:
+                role_limit = sub_limits[sub_category]
+            else:
+                role_limit = role_limits.get(role, DEFAULT_ROLE_LIMITS.get(role, 20_000))
             personal_topup = balance_doc.get("personal_topups", {}).get(user_id, 0)
             self_recharge_enabled = balance_doc.get("self_recharge_enabled", True)
         else:
