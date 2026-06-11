@@ -34,15 +34,15 @@ PACKS = {
 
 # Default per-role monthly token limits (can be overridden per branch)
 DEFAULT_ROLE_LIMITS = {
-    "owner":   -1,        # unlimited — strategic oversight + purchasing
-    "admin":   75_000,    # operational use (non-principal sub-categories)
+    "owner":   500_000,   # school owner — strategic oversight, full AI access
+    "admin":   100_000,   # operational admin roles (non-principal)
     "teacher": 75_000,    # daily teaching aids, assignments, lesson plans
-    "student": 8_000,     # limited AI tutor + doubt-solving access
+    "student": 10_000,    # AI tutor + doubt-solving (cannot self-purchase)
 }
 
 # Sub-category overrides — checked before the role-level limit
 DEFAULT_SUBCATEGORY_LIMITS: dict[str, int] = {
-    "principal": 250_000,  # heavy — AI reports, staff analysis, academic planning
+    "principal": 300_000,  # heavy — AI reports, staff analysis, academic planning
 }
 
 # Warning threshold — flag when usage exceeds this fraction of the limit

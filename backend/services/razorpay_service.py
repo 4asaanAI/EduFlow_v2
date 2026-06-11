@@ -98,11 +98,11 @@ async def create_checkout_session(
 async def create_subscription_session(
     plan_id: str,
     branch_id: str,
-    owner_id: str,
+    user_id: str,
     success_url: str,
     cancel_url: str,
 ) -> dict:
-    """Create a Razorpay Subscription for a recurring school plan."""
+    """Create a Razorpay Subscription for an individual monthly token plan."""
     plan = SUBSCRIPTION_PLANS.get(plan_id)
     if not plan:
         raise ValueError(f"Unknown subscription plan: {plan_id}")
@@ -120,7 +120,7 @@ async def create_subscription_session(
             "plan_id": razorpay_plan_id,
             "total_count": SUBSCRIPTION_TOTAL_COUNT,
             "customer_notify": 1,
-            "notes": {"branch_id": branch_id, "owner_id": owner_id, "plan_id": plan_id, "kind": "subscription"},
+            "notes": {"branch_id": branch_id, "user_id": user_id, "plan_id": plan_id, "kind": "subscription"},
         }
     )
     return {"checkout_url": subscription["short_url"], "session_id": subscription["id"]}
@@ -174,6 +174,7 @@ async def handle_subscription_activated(subscription: dict) -> None:
     notes = subscription.get("notes") or {}
     branch_id = notes.get("branch_id")
     plan_id = notes.get("plan_id")
+    user_id = notes.get("user_id")
     subscription_id = subscription.get("id")
     customer_id = subscription.get("customer_id")
     status = subscription.get("status", "active")
@@ -194,6 +195,7 @@ async def handle_subscription_activated(subscription: dict) -> None:
         {
             "$set": {
                 "subscription_id": subscription_id,
+                "subscription_user_id": user_id,
                 "subscription_status": status,
                 "subscription_plan": plan_id,
                 "subscription_current_period_end": period_end_iso,
@@ -239,6 +241,9 @@ async def handle_subscription_charged(subscription: dict, payment_id: str | None
         return
 
     branch_id = balance_doc["branch_id"]
+    # user_id comes from notes stored when the subscription was created
+    notes = subscription.get("notes") or {}
+    user_id = notes.get("user_id") or balance_doc.get("subscription_user_id", "unknown")
     plan_id = balance_doc.get("subscription_plan")
     plan = SUBSCRIPTION_PLANS.get(plan_id) if plan_id else None
     tokens = plan["tokens_per_month"] if plan else 0
@@ -257,7 +262,7 @@ async def handle_subscription_charged(subscription: dict, payment_id: str | None
         await db.token_purchases.insert_one(
             {
                 "branch_id": branch_id,
-                "user_id": "subscription_renewal",
+                "user_id": user_id,
                 "pack_id": plan_id,
                 "tokens": tokens,
                 "price_inr": plan["price_inr"] if plan else 0,
@@ -273,7 +278,7 @@ async def handle_subscription_charged(subscription: dict, payment_id: str | None
     await db.token_balances.update_one(
         {"branch_id": branch_id},
         {
-            "$inc": {"school_topup_pool": tokens},
+            "$inc": {f"personal_topups.{user_id}": tokens},
             "$set": {
                 "updated_at": now_iso,
                 **({"subscription_current_period_end": period_end_iso} if period_end_iso else {}),
@@ -344,7 +349,7 @@ async def purchase_topup_razorpay(
     await db.token_balances.update_one(
         {"branch_id": branch_id},
         {
-            "$inc": {"school_topup_pool": tokens},
+            "$inc": {f"personal_topups.{user_id}": tokens},
             "$set": {"updated_at": now_iso},
             "$setOnInsert": {
                 "branch_id": branch_id,

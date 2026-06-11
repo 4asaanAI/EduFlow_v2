@@ -652,21 +652,19 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
           onClose={() => setShowUpgradeModal(false)}
           currentUsage={tokenUsage?.total_used || 0}
           roleLimit={tokenUsage?.role_limit || 0}
-          isOwner={currentUser.role === 'owner'}
+          canPurchase={currentUser.role !== 'student'}
         />
       )}
     </>
   );
 }
 
-function TokenUsageBadge({ usage, role, isDark, border, onClick }) {
+function TokenUsageBadge({ usage, isDark, border, onClick }) {
   if (!usage) return null;
 
-  const limit = usage.role_limit;
+  const limit = usage.role_limit || 0;
   const used = usage.total_used || 0;
-  const isUnlimited = limit === -1 || role === 'owner';
-
-  const pct = isUnlimited ? 0 : Math.min(100, Math.round((used / limit) * 100));
+  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
   const barColor = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#10b981';
   const textColor = isDark ? '#a0a0a0' : '#6b7280';
   const bg = isDark ? '#1a1a1a' : '#f9fafb';
@@ -682,7 +680,7 @@ function TokenUsageBadge({ usage, role, isDark, border, onClick }) {
     <div style={{ padding: '4px 8px', borderTop: `1px solid ${border}` }}>
       <button
         onClick={onClick}
-        title={isUnlimited ? 'Unlimited AI tokens' : `${used.toLocaleString()} / ${limit.toLocaleString()} tokens used — Click to manage`}
+        title={`${used.toLocaleString()} / ${limit.toLocaleString()} tokens used — Click to manage`}
         style={{
           width: '100%', border: 'none', cursor: 'pointer',
           background: bg, borderRadius: 10, padding: '8px 10px',
@@ -696,34 +694,19 @@ function TokenUsageBadge({ usage, role, isDark, border, onClick }) {
           <span style={{ fontSize: 10, fontWeight: 700, color: textColor, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             AI Tokens
           </span>
-          {isUnlimited ? (
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#10b981', background: '#10b98115', padding: '1px 7px', borderRadius: 6 }}>∞ Unlimited</span>
-          ) : (
-            <span style={{ fontSize: 10, fontWeight: 700, color: barColor }}>{pct}%</span>
-          )}
+          <span style={{ fontSize: 10, fontWeight: 700, color: barColor }}>{pct}%</span>
         </div>
-
-        {!isUnlimited && (
-          <>
-            <div style={{ height: 4, borderRadius: 3, background: isDark ? '#2a2a2a' : '#e5e7eb', overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 3, transition: 'width 0.5s ease' }} />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 10, color: textColor }}>
-                {fmt(used)} / {fmt(limit)}
-              </span>
-              <span style={{ fontSize: 10, color: isDark ? '#4f8ff7' : '#4f8ff7', fontWeight: 600 }}>
-                {pct >= 80 ? '⚡ Top up →' : 'Manage →'}
-              </span>
-            </div>
-          </>
-        )}
-
-        {isUnlimited && (
-          <div style={{ fontSize: 10, color: textColor, textAlign: 'left' }}>
-            {fmt(used)} tokens used this month · <span style={{ color: isDark ? '#4f8ff7' : '#4f8ff7', fontWeight: 600 }}>Manage plans →</span>
-          </div>
-        )}
+        <div style={{ height: 4, borderRadius: 3, background: isDark ? '#2a2a2a' : '#e5e7eb', overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 3, transition: 'width 0.5s ease' }} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 10, color: textColor }}>
+            {fmt(used)} / {fmt(limit)}
+          </span>
+          <span style={{ fontSize: 10, color: '#4f8ff7', fontWeight: 600 }}>
+            {pct >= 80 ? '⚡ Top up →' : 'Manage →'}
+          </span>
+        </div>
       </button>
     </div>
   );

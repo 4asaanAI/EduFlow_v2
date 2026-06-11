@@ -19,7 +19,7 @@ import os
 import razorpay
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from middleware.auth import get_current_user, require_owner
+from middleware.auth import get_current_user, require_owner, require_role
 from services.razorpay_service import (
     SUBSCRIPTION_PLANS,
     create_checkout_session,
@@ -150,9 +150,12 @@ async def limits_endpoint(request: Request, user: dict = Depends(require_owner))
 
 # ─── POST /api/tokens/create-checkout-session ────────────────────────────────
 
+_require_can_purchase = require_role("owner", "admin", "teacher")
+
+
 @router.post("/create-checkout-session")
 async def create_checkout_session_endpoint(
-    request: Request, user: dict = Depends(require_owner)
+    request: Request, user: dict = Depends(_require_can_purchase)
 ):
     branch_id = _resolve_branch(user)
     body = await request.json()
@@ -192,7 +195,7 @@ async def create_checkout_session_endpoint(
 
 @router.post("/create-subscription-session")
 async def create_subscription_session_endpoint(
-    request: Request, user: dict = Depends(require_owner)
+    request: Request, user: dict = Depends(_require_can_purchase)
 ):
     branch_id = _resolve_branch(user)
     body = await request.json()
@@ -216,7 +219,7 @@ async def create_subscription_session_endpoint(
         result = await create_subscription_session(
             plan_id=plan_id,
             branch_id=branch_id,
-            owner_id=user["id"],
+            user_id=user["id"],
             success_url=success_url or "https://app.eduflow.in?recharge=success",
             cancel_url=cancel_url or "https://app.eduflow.in?recharge=cancel",
         )
