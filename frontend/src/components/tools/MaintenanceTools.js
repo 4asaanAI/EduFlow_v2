@@ -304,21 +304,25 @@ function OwnerFacilityAndTechTracker() {
     { id: 'tech', label: 'Tech Issues' },
   ];
   return (
-    <div>
-      <div style={{ display: 'flex', gap: 4, padding: 4, background: isDark ? 'var(--tool-hex-141414)' : 'var(--tool-hex-f5f5f5)', borderRadius: 10, width: 'fit-content', marginBottom: 18 }}>
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
-            padding: '6px 16px', borderRadius: 7, border: 'none',
-            background: activeTab === t.id ? (isDark ? 'var(--tool-hex-252525)' : '#fff') : 'transparent',
-            color: activeTab === t.id ? (isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)') : (isDark ? 'var(--tool-hex-888)' : 'var(--tool-hex-737373)'),
-            fontSize: 12, fontWeight: activeTab === t.id ? 600 : 500, cursor: 'pointer',
-            boxShadow: activeTab === t.id ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
-          }}>
-            {t.label}
-          </button>
-        ))}
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flexShrink: 0, padding: '14px 16px 0' }}>
+        <div style={{ display: 'flex', gap: 4, padding: 4, background: isDark ? 'var(--tool-hex-141414)' : 'var(--tool-hex-f5f5f5)', borderRadius: 10, width: 'fit-content' }}>
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
+              padding: '6px 16px', borderRadius: 7, border: 'none',
+              background: activeTab === t.id ? (isDark ? 'var(--tool-hex-252525)' : '#fff') : 'transparent',
+              color: activeTab === t.id ? (isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)') : (isDark ? 'var(--tool-hex-888)' : 'var(--tool-hex-737373)'),
+              fontSize: 12, fontWeight: activeTab === t.id ? 600 : 500, cursor: 'pointer',
+              boxShadow: activeTab === t.id ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
+            }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
-      <IssuePanel type={activeTab} title={activeTab === 'facility' ? 'Facility Requests' : 'Tech Issues'} />
+      <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
+        <IssuePanel type={activeTab === 'facility' ? 'facility' : 'tech'} title={activeTab === 'facility' ? 'Facility Requests' : 'Tech Issues'} />
+      </div>
     </div>
   );
 }
@@ -608,22 +612,32 @@ export function RaiseMaintenanceRequest() {
   const [myRequests, setMyRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ description: '', location: '', category: 'other', priority: 'medium' });
+  const [form, setForm] = useState({ request_type: 'facility', description: '', location: '', category: 'other', priority: 'medium' });
   const [formPhotos, setFormPhotos] = useState([]);
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
-  const f = k => v => setForm(p => ({ ...p, [k]: v }));
+  const f = k => v => setForm(p => {
+    const next = { ...p, [k]: v };
+    if (k === 'request_type') next.category = v === 'facility' ? 'other' : 'hardware';
+    return next;
+  });
 
   const facilityCategories = ['plumbing', 'electrical', 'civil', 'cleaning', 'security', 'carpentry', 'painting', 'pest_control', 'hvac', 'fire_safety', 'landscaping', 'other'];
+  const techCategories = ['hardware', 'software', 'network', 'printer', 'projector', 'other'];
   const priorities = ['low', 'medium', 'high', 'urgent'];
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/issues/facility?limit=20`, { headers: h() });
-      const data = await res.json();
-      if (data.success) setMyRequests(data.data || []);
+      const [facRes, techRes] = await Promise.all([
+        fetch(`${API}/issues/facility?limit=20`, { headers: h() }),
+        fetch(`${API}/issues/tech?limit=20`, { headers: h() }),
+      ]);
+      const [facData, techData] = await Promise.all([facRes.json(), techRes.json()]);
+      const fac = (facData.success ? facData.data || [] : []).map(i => ({ ...i, issue_type: 'facility' }));
+      const tech = (techData.success ? techData.data || [] : []).map(i => ({ ...i, issue_type: 'tech' }));
+      setMyRequests([...fac, ...tech].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')));
     } catch {}
     setLoading(false);
   }, []);
@@ -636,18 +650,24 @@ export function RaiseMaintenanceRequest() {
     setSaving(true);
     setFormError('');
     setSuccess('');
+    const endpoint = form.request_type === 'tech' ? `${API}/issues/tech` : `${API}/issues/facility`;
+    const payload = form.request_type === 'tech'
+      ? { description: form.description, location: form.location, category: form.category }
+      : { description: form.description, location: form.location, category: form.category, priority: form.priority, photos: formPhotos };
     try {
-      const res = await fetch(`${API}/issues/facility`, {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { ...h(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, photos: formPhotos }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.success) {
         setShowForm(false);
-        setForm({ description: '', location: '', category: 'other', priority: 'medium' });
+        setForm({ request_type: 'facility', description: '', location: '', category: 'other', priority: 'medium' });
         setFormPhotos([]);
-        setSuccess('Request submitted! The maintenance team has been notified.');
+        setSuccess(form.request_type === 'tech'
+          ? 'Tech issue submitted! The IT team has been notified.'
+          : 'Request submitted! The maintenance team has been notified.');
         load();
         setTimeout(() => setSuccess(''), 5000);
       } else setFormError(data.detail || 'Failed to submit');
@@ -681,13 +701,32 @@ export function RaiseMaintenanceRequest() {
         <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 11, padding: 16, marginBottom: 16 }}>
           <h3 style={{ fontSize: 14, fontWeight: 600, color: text, marginBottom: 14 }}>Report an Issue</h3>
           <form onSubmit={handleCreate}>
-            <FormField label="What's the issue?" value={form.description} onChange={f('description')} placeholder="e.g. Leaking tap in Classroom 5A..." required />
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 10, color: isDark ? 'var(--tool-hex-888)' : 'var(--tool-hex-737373)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 8 }}>Request Type</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {[{ value: 'facility', label: 'Facility Issue' }, { value: 'tech', label: 'Tech Issue' }].map(opt => (
+                  <button key={opt.value} type="button" onClick={() => f('request_type')(opt.value)} style={{
+                    padding: '7px 16px', borderRadius: 8, border: `1px solid ${form.request_type === opt.value ? 'var(--tool-hex-4f8ff7)' : border}`,
+                    background: form.request_type === opt.value ? 'var(--tool-hex-4f8ff7)' : 'transparent',
+                    color: form.request_type === opt.value ? '#fff' : text,
+                    fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                  }}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <FormField label="What's the issue?" value={form.description} onChange={f('description')} placeholder={form.request_type === 'tech' ? 'e.g. Projector not working in Lab 2...' : 'e.g. Leaking tap in Classroom 5A...'} required />
             <FormField label="Location" value={form.location} onChange={f('location')} placeholder="Room number, floor, wing..." />
             <FormField label="Category" type="select" value={form.category} onChange={f('category')}
-              options={facilityCategories.map(c => ({ value: c, label: c.replace(/_/g, ' ').replace(/\b\w/g, x => x.toUpperCase()) }))} />
-            <FormField label="How urgent is it?" type="select" value={form.priority} onChange={f('priority')}
-              options={priorities.map(p => ({ value: p, label: p.replace(/\b\w/g, x => x.toUpperCase()) }))} />
-            <PhotoUploader photos={formPhotos} onChange={setFormPhotos} isDark={isDark} />
+              options={(form.request_type === 'tech' ? techCategories : facilityCategories).map(c => ({ value: c, label: c.replace(/_/g, ' ').replace(/\b\w/g, x => x.toUpperCase()) }))} />
+            {form.request_type === 'facility' && (
+              <>
+                <FormField label="How urgent is it?" type="select" value={form.priority} onChange={f('priority')}
+                  options={priorities.map(p => ({ value: p, label: p.replace(/\b\w/g, x => x.toUpperCase()) }))} />
+                <PhotoUploader photos={formPhotos} onChange={setFormPhotos} isDark={isDark} />
+              </>
+            )}
             {formError && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 8 }}>{formError}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
               <ActionBtn label={saving ? 'Submitting...' : 'Submit Request'} type="submit" disabled={saving} />
@@ -700,7 +739,7 @@ export function RaiseMaintenanceRequest() {
       {loading ? (
         <div style={{ color: muted, textAlign: 'center', padding: 40 }}>Loading...</div>
       ) : myRequests.length === 0 ? (
-        <div style={{ color: muted, textAlign: 'center', padding: 40 }}>No requests yet. Use the button above to report an issue.</div>
+        <div style={{ color: muted, textAlign: 'center', padding: 40 }}>No requests yet. Use "New Request" above to report a facility or tech issue.</div>
       ) : (
         <>
           {open.length > 0 && (
@@ -710,8 +749,9 @@ export function RaiseMaintenanceRequest() {
                 <div key={item.id} style={{ background: bg, border: `1px solid ${border}`, borderRadius: 10, padding: 12, marginBottom: 8 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: text, flex: 1 }}>{item.description}</span>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <PriorityBadge priority={item.priority} />
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <Badge label={item.issue_type === 'tech' ? 'Tech' : 'Facility'} color={item.issue_type === 'tech' ? 'var(--tool-hex-818cf8)' : 'var(--tool-hex-fb923c)'} />
+                      {item.priority && item.issue_type !== 'tech' && <PriorityBadge priority={item.priority} />}
                       <StatusBadge status={item.status} />
                     </div>
                   </div>
@@ -727,7 +767,10 @@ export function RaiseMaintenanceRequest() {
                 <div key={item.id} style={{ background: bg, border: `1px solid ${border}`, borderRadius: 10, padding: 12, marginBottom: 8, opacity: 0.7 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <span style={{ fontSize: 13, color: text }}>{item.description}</span>
-                    <StatusBadge status={item.status} />
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <Badge label={item.issue_type === 'tech' ? 'Tech' : 'Facility'} color={item.issue_type === 'tech' ? 'var(--tool-hex-818cf8)' : 'var(--tool-hex-fb923c)'} />
+                      <StatusBadge status={item.status} />
+                    </div>
                   </div>
                 </div>
               ))}

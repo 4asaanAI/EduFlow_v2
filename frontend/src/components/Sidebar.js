@@ -53,7 +53,6 @@ const TOOLS_BY_ROLE = {
     { id: 'enquiry-register', name: 'Enquiry Register', subtitle: 'Admission leads', icon: UserPlus, color: '#a78bfa' },
     { id: 'document-scanner', name: 'Doc Scanner', subtitle: 'Extract & file', icon: FileCheck, color: '#737373' },
     { id: 'smart-fee-defaulter', name: 'Fee Defaulters', subtitle: 'Smart reminders', icon: Bell, color: '#f87171' },
-    { id: 'admission-pipeline', name: 'Admission Pipeline', subtitle: 'Track conversions', icon: Target, color: '#4f8ff7' },
     { id: 'parent-message', name: 'Parent Messages', subtitle: 'Compose & send', icon: MessageSquare, color: '#34d399' },
     { id: 'student-transfer', name: 'Student Transfer', subtitle: 'Withdrawal & TC', icon: UserPlus, color: '#fb923c' },
     { id: 'id-card-generator', name: 'ID Cards', subtitle: 'Generate & print', icon: Printer, color: '#a78bfa' },
@@ -120,12 +119,12 @@ const ADMIN_SUBCATEGORY_TOOLS = {
   principal: [
     'student-database', 'attendance-recorder', 'attendance-overview', 'principal-daily',
     'timetable-builder', 'certificate-generator', 'circular-sender', 'parent-message',
-    'enquiry-register', 'admission-pipeline', 'smart-fee-defaulter', 'staff-tracker',
+    'enquiry-register', 'smart-fee-defaulter', 'staff-tracker',
     'staff-performance', 'staff-leave-manager', 'incident-tracker', 'smart-alerts',
     'transport-manager', 'school-activities', 'document-scanner', 'audit-log',
     'facility-requests', 'raise-maintenance', 'custom-form-builder', 'query-section',
   ],
-  receptionist: ['student-database', 'enquiry-register', 'admission-pipeline', 'parent-message', 'student-transfer', 'id-card-generator', 'asset-tracker', 'incident-tracker', 'raise-maintenance', 'custom-form-builder'],
+  receptionist: ['student-database', 'enquiry-register', 'parent-message', 'student-transfer', 'id-card-generator', 'asset-tracker', 'incident-tracker', 'raise-maintenance', 'custom-form-builder'],
   it_tech: ['tech-issues', 'raise-maintenance', 'custom-form-builder', 'query-section'],
   maintenance: ['maintenance-schedule', 'vendor-log', 'raise-maintenance'],
 };
@@ -154,7 +153,7 @@ const TOOL_GROUPS = {
     top: ['principal-daily'],
     groups: [
       { id: 'students', name: 'Students', icon: Users, color: '#4f8ff7',
-        tools: ['student-database', 'certificate-generator', 'admission-pipeline', 'enquiry-register', 'document-scanner', 'id-card-generator'] },
+        tools: ['student-database', 'certificate-generator', 'enquiry-register', 'document-scanner', 'id-card-generator'] },
       { id: 'attendance', name: 'Attendance', icon: ClipboardList, color: '#a78bfa',
         tools: ['attendance-recorder', 'attendance-overview'] },
       { id: 'staff', name: 'Staff', icon: UserCheck, color: '#34d399',

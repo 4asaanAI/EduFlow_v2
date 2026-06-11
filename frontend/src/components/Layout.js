@@ -63,9 +63,11 @@ function ToolView({ toolId }) {
     </div>
   );
   return (
-    <ErrorBoundary name={toolId}>
-      <Comp />
-    </ErrorBoundary>
+    <div style={{ height: '100%' }}>
+      <ErrorBoundary name={toolId}>
+        <Comp />
+      </ErrorBoundary>
+    </div>
   );
 }
 

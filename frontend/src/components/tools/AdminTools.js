@@ -1005,6 +1005,7 @@ export function EnquiryRegister() {
 
   const stages = ['new', 'contacted', 'visit_scheduled', 'visited', 'documents_submitted', 'fee_paid', 'enrolled', 'lost'];
   const stageLabels = { new: 'New', contacted: 'Contacted', visit_scheduled: 'Visit Scheduled', visited: 'Visited', documents_submitted: 'Documents', fee_paid: 'Fee Paid', enrolled: 'Enrolled ✓', lost: 'Lost ✗' };
+  const stageFunnelColors = { new: '#4f8ff7', contacted: '#818cf8', visit_scheduled: '#a78bfa', visited: '#c084fc', documents_submitted: '#fbbf24', fee_paid: '#34d399', enrolled: '#10b981', lost: '#f87171' };
   const statusColors = { new: 'blue', contacted: 'yellow', visit_scheduled: 'purple', visited: 'purple', documents_submitted: 'yellow', fee_paid: 'green', enrolled: 'green', lost: 'red' };
 
   useEffect(() => { load(); }, []);
@@ -1036,9 +1037,35 @@ export function EnquiryRegister() {
     } catch { }
   };
 
+  const counts = stages.reduce((acc, s) => { acc[s] = enquiries.filter(e => e.status === s).length; return acc; }, {});
+  const total = enquiries.length;
+  const conversionRate = total > 0 ? Math.round((counts.enrolled / total) * 100) : 0;
+
   return (
     <ToolPage title="Enquiry Register" subtitle="Track admission leads through pipeline" onRefresh={load} loading={loading}
       actions={<ActionBtn label="New Enquiry" onClick={() => setShowForm(true)} icon={<Plus size={11} />} />}>
+
+      {/* Admission Pipeline Funnel */}
+      {!loading && enquiries.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Admission Pipeline</span>
+            <span style={{ fontSize: 11, color: 'var(--c-faint)' }}>{total} leads · <span style={{ color: '#10b981', fontWeight: 600 }}>{conversionRate}% conversion</span></span>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {stages.map(s => (
+              <div key={s} style={{
+                background: 'var(--c-bg)', border: `1px solid var(--c-border)`,
+                borderRadius: 10, padding: '10px 14px', textAlign: 'center', minWidth: 82, flex: '1 1 82px',
+                borderTop: `3px solid ${stageFunnelColors[s]}`,
+              }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: stageFunnelColors[s], fontFamily: 'Inter, sans-serif', letterSpacing: '-0.02em' }}>{counts[s] || 0}</div>
+                <div style={{ fontSize: 9, color: 'var(--c-faint)', textTransform: 'capitalize', fontWeight: 600, marginTop: 2 }}>{s.replace(/_/g, ' ')}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {showForm && (
         <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
           <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Add New Enquiry</h3>

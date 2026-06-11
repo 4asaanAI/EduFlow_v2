@@ -62,7 +62,7 @@ const TOOL_SETS = {
   admin_principal: [
     'student-database','fee-tracker','attendance-recorder','certificate-generator',
     'circular-sender','enquiry-register','document-scanner','smart-fee-defaulter',
-    'admission-pipeline','parent-message','student-transfer','id-card-generator',
+    'parent-message','student-transfer','id-card-generator',
     'principal-daily','timetable-builder','asset-tracker','transport-manager','incident-tracker',
     'school-activities','automated-report','custom-form-builder','attendance-alerts',
     'query-section','audit-log',
@@ -75,7 +75,7 @@ const TOOL_SETS = {
     'student-database','transport-manager','asset-tracker','custom-form-builder','raise-maintenance',
   ],
   admin_receptionist: [
-    'student-database','enquiry-register','admission-pipeline','parent-message',
+    'student-database','enquiry-register','parent-message',
     'student-transfer','id-card-generator','asset-tracker','incident-tracker',
     'custom-form-builder','raise-maintenance',
   ],
@@ -112,7 +112,7 @@ const SUB_ROLE_LABELS = {
 
 const OWNER_TOOLS = [
   'student-database','fee-tracker','attendance-recorder','certificate-generator',
-  'circular-sender','enquiry-register','smart-fee-defaulter','admission-pipeline',
+  'circular-sender','enquiry-register','smart-fee-defaulter',
   'parent-message','id-card-generator','timetable-builder','asset-tracker',
   'transport-manager','incident-tracker','facility-requests',
   'fee-receipts','school-activities','audit-log','automated-report',

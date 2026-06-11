@@ -88,10 +88,18 @@ function SearchPanel({ user, onClose, isDark }) {
   );
 }
 
+const TYPE_CONFIG = {
+  info:    { bg: '#4f8ff7', icon: 'ℹ', light: '#4f8ff715', border: '#4f8ff730' },
+  warning: { bg: '#f59e0b', icon: '⚠', light: '#f59e0b15', border: '#f59e0b30' },
+  success: { bg: '#10b981', icon: '✓', light: '#10b98115', border: '#10b98130' },
+  error:   { bg: '#ef4444', icon: '!', light: '#ef444415', border: '#ef444430' },
+};
+
 function NotificationsPanel({ user, onClose, isDark }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
+  const [read, setRead] = useState(new Set());
 
   useEffect(() => {
     setLoading(true);
@@ -106,17 +114,19 @@ function NotificationsPanel({ user, onClose, isDark }) {
       .finally(() => setLoading(false));
   }, [user.id, user.role]);
 
-  const bg = isDark ? '#1e1e1e' : '#fff';
-  const border = isDark ? '#2e2e2e' : '#e5e5e5';
-  const text = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#888' : '#525252';
-  const typeColors = { info: '#4f8ff7', warning: '#fbbf24', success: '#34d399', error: '#f87171' };
+  const bg = isDark ? '#161616' : '#ffffff';
+  const surface = isDark ? '#1e1e1e' : '#f8f9fa';
+  const border = isDark ? '#2a2a2a' : '#e8eaed';
+  const text = isDark ? '#f0f0f0' : '#111827';
+  const muted = isDark ? '#777' : '#6b7280';
+  const subtext = isDark ? '#555' : '#9ca3af';
 
   const adminRouteMap = { 'Pending Leave Requests': 'staff-leave-manager', 'Fee Overdue': 'fee-collection', 'Announcement': 'announcement-broadcaster' };
   const teacherRouteMap = { 'Leave Status': 'leave-application' };
   const studentRouteMap = { 'Low Attendance': 'attendance-self-check', 'Fee Due': 'fee-status-viewer', 'Announcement': 'announcement-broadcaster' };
 
-  const handleNotifClick = (n) => {
+  const handleNotifClick = (n, i) => {
+    setRead(prev => new Set([...prev, i]));
     let tool = null;
     if (user.role === 'owner' || user.role === 'admin') tool = adminRouteMap[n.title];
     else if (user.role === 'teacher') tool = teacherRouteMap[n.title];
@@ -124,46 +134,151 @@ function NotificationsPanel({ user, onClose, isDark }) {
     if (tool) { onClose(); window.dispatchEvent(new CustomEvent('open-tool', { detail: tool })); }
   };
 
+  const unreadCount = notifications.filter((_, i) => !read.has(i)).length;
+
   return (
-    <div className="fade-in-scale" style={{ position: 'absolute', top: 'calc(100% + 8px)', right: -8, width: 340, background: bg, border: `1px solid ${border}`, borderRadius: 14, boxShadow: 'var(--shadow-lg)', zIndex: 100, overflow: 'hidden' }}>
-      <div style={{ padding: '14px 16px', borderBottom: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 14, fontWeight: 600, color: text }}>Notifications</span>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', color: muted, cursor: 'pointer', padding: 2, borderRadius: 4 }}><X size={14} /></button>
+    <div className="fade-in-scale" style={{
+      position: 'absolute', top: 'calc(100% + 10px)', right: -4, width: 380,
+      background: bg, border: `1px solid ${border}`,
+      borderRadius: 18, zIndex: 100, overflow: 'hidden',
+      boxShadow: isDark
+        ? '0 20px 60px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)'
+        : '0 20px 60px rgba(0,0,0,0.12), 0 4px 16px rgba(0,0,0,0.06)',
+    }}>
+      {/* Header */}
+      <div style={{
+        padding: '16px 18px 14px',
+        background: isDark ? '#1a1a1a' : '#ffffff',
+        borderBottom: `1px solid ${border}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 10,
+            background: isDark ? '#252525' : '#f0f4ff',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Bell size={15} color={isDark ? '#818cf8' : '#4f8ff7'} />
+          </div>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: text, letterSpacing: '-0.01em' }}>Notifications</div>
+            {!loading && !fetchError && (
+              <div style={{ fontSize: 11, color: muted, marginTop: 1 }}>
+                {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
+              </div>
+            )}
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {unreadCount > 0 && (
+            <button
+              onClick={() => setRead(new Set(notifications.map((_, i) => i)))}
+              style={{
+                background: isDark ? '#252525' : '#f0f4ff', border: 'none',
+                color: isDark ? '#818cf8' : '#4f8ff7',
+                cursor: 'pointer', padding: '4px 10px', borderRadius: 8,
+                fontSize: 11, fontWeight: 600,
+              }}>
+              Mark all read
+            </button>
+          )}
+          <button onClick={onClose} style={{
+            background: isDark ? '#252525' : '#f3f4f6', border: 'none',
+            color: muted, cursor: 'pointer', padding: 6, borderRadius: 8,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <X size={13} />
+          </button>
+        </div>
       </div>
-      <div style={{ maxHeight: 380, overflowY: 'auto' }}>
+
+      {/* Body */}
+      <div style={{ maxHeight: 420, overflowY: 'auto' }}>
         {loading ? (
-          <div style={{ padding: 32, textAlign: 'center' }}>
-            <div className="spinner" style={{ margin: '0 auto 8px', width: 18, height: 18 }} />
-            <span style={{ color: muted, fontSize: 13 }}>Loading...</span>
+          <div style={{ padding: '40px 20px', textAlign: 'center' }}>
+            <div className="spinner" style={{ margin: '0 auto 12px', width: 20, height: 20 }} />
+            <span style={{ color: muted, fontSize: 13 }}>Loading notifications...</span>
           </div>
         ) : fetchError ? (
-          <div style={{ padding: 32, textAlign: 'center', color: '#f87171', fontSize: 13 }}>Could not load notifications.</div>
+          <div style={{ padding: '40px 20px', textAlign: 'center' }}>
+            <div style={{ fontSize: 28, marginBottom: 10 }}>⚡</div>
+            <div style={{ color: '#ef4444', fontSize: 13, fontWeight: 500 }}>Could not load notifications</div>
+            <div style={{ color: subtext, fontSize: 12, marginTop: 4 }}>Check your connection and try again</div>
+          </div>
         ) : notifications.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: muted, fontSize: 13 }}>No new notifications</div>
+          <div style={{ padding: '48px 20px', textAlign: 'center' }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>🔔</div>
+            <div style={{ color: text, fontSize: 13, fontWeight: 600, marginBottom: 4 }}>You're all caught up!</div>
+            <div style={{ color: subtext, fontSize: 12 }}>No new notifications right now</div>
+          </div>
         ) : (
-          notifications.map((n, i) => {
-            const isClickable = (() => {
-              if (user.role === 'owner' || user.role === 'admin') return !!adminRouteMap[n.title];
-              if (user.role === 'teacher') return !!teacherRouteMap[n.title];
-              if (user.role === 'student') return !!studentRouteMap[n.title];
-              return false;
-            })();
-            return (
-              <div key={i} onClick={() => handleNotifClick(n)}
-                style={{ padding: '12px 16px', borderBottom: i < notifications.length - 1 ? `1px solid ${border}` : 'none', display: 'flex', gap: 12, alignItems: 'flex-start', cursor: isClickable ? 'pointer' : 'default', transition: 'var(--transition-fast)' }}
-                onMouseEnter={e => { if (isClickable) e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'; }}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: typeColors[n.type] || '#666', marginTop: 6, flexShrink: 0 }} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, color: text, fontWeight: 500, lineHeight: 1.3 }}>{n.title}</div>
-                  <div style={{ fontSize: 12, color: muted, marginTop: 3, lineHeight: 1.4 }}>{n.message}</div>
-                  <div style={{ fontSize: 11, color: muted, marginTop: 4, opacity: 0.7 }}>{n.time}</div>
+          <div style={{ padding: '8px 0' }}>
+            {notifications.map((n, i) => {
+              const cfg = TYPE_CONFIG[n.type] || TYPE_CONFIG.info;
+              const isRead = read.has(i);
+              const isClickable = (() => {
+                if (user.role === 'owner' || user.role === 'admin') return !!adminRouteMap[n.title];
+                if (user.role === 'teacher') return !!teacherRouteMap[n.title];
+                if (user.role === 'student') return !!studentRouteMap[n.title];
+                return false;
+              })();
+              return (
+                <div key={i}
+                  onClick={() => handleNotifClick(n, i)}
+                  style={{
+                    padding: '12px 18px',
+                    display: 'flex', gap: 12, alignItems: 'flex-start',
+                    cursor: isClickable ? 'pointer' : 'default',
+                    background: isRead ? 'transparent' : (isDark ? 'rgba(79,143,247,0.04)' : 'rgba(79,143,247,0.03)'),
+                    borderBottom: i < notifications.length - 1 ? `1px solid ${border}` : 'none',
+                    transition: 'background 0.15s ease',
+                  }}
+                  onMouseEnter={e => { if (isClickable) e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = isRead ? 'transparent' : (isDark ? 'rgba(79,143,247,0.04)' : 'rgba(79,143,247,0.03)'); }}
+                >
+                  {/* Type icon */}
+                  <div style={{
+                    width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+                    background: cfg.light, border: `1px solid ${cfg.border}`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 14, color: cfg.bg, fontWeight: 700,
+                  }}>
+                    {cfg.icon}
+                  </div>
+
+                  {/* Content */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                      <span style={{ fontSize: 13, color: text, fontWeight: isRead ? 500 : 600, lineHeight: 1.3, flex: 1 }}>{n.title}</span>
+                      {!isRead && (
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: cfg.bg, flexShrink: 0, display: 'inline-block' }} />
+                      )}
+                    </div>
+                    <div style={{ fontSize: 12, color: muted, lineHeight: 1.45 }}>{n.message}</div>
+                    <div style={{ fontSize: 11, color: subtext, marginTop: 5 }}>{n.time}</div>
+                  </div>
+
+                  {/* Arrow if clickable */}
+                  {isClickable && (
+                    <div style={{ color: subtext, fontSize: 16, flexShrink: 0, alignSelf: 'center', opacity: 0.6 }}>›</div>
+                  )}
                 </div>
-              </div>
-            );
-          })
+              );
+            })}
+          </div>
         )}
       </div>
+
+      {/* Footer */}
+      {!loading && !fetchError && notifications.length > 0 && (
+        <div style={{
+          padding: '10px 18px', borderTop: `1px solid ${border}`,
+          background: isDark ? '#1a1a1a' : '#fafafa',
+          display: 'flex', justifyContent: 'center',
+        }}>
+          <span style={{ fontSize: 11, color: subtext }}>{notifications.length} notification{notifications.length !== 1 ? 's' : ''} total</span>
+        </div>
+      )}
     </div>
   );
 }
