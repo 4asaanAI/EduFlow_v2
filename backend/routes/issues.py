@@ -567,6 +567,126 @@ async def list_all_issues(request: Request, type: str = "all", status: str = Non
     return {"success": True, "data": paginated, "meta": {"page": page, "limit": limit, "total": total}}
 
 
+# ─── Request History (audit trail) ───────────────────────────────────────────
+
+_HISTORY_ACTION_LABELS = {
+    "facility_request_update":   "Request updated",
+    "facility_request_escalate": "Escalated to owner",
+    "tech_request_update":       "Tech issue updated",
+}
+
+# Actions to skip in history (creation already synthesised from record)
+_HISTORY_SKIP_ACTIONS = {"facility_request_create", "tech_request_create"}
+
+
+def _extract_status_from_audit(changes: dict) -> str | None:
+    """Handle both flat (escalate) and nested (update) change structures."""
+    nested = (changes.get("changes") or {})
+    return nested.get("status") or changes.get("status")
+
+
+def _extract_detail_from_audit(action: str, changes: dict) -> str | None:
+    inner = changes.get("changes") or changes
+    parts = []
+    status = _extract_status_from_audit(changes)
+    if status:
+        parts.append(f"Status → {status.replace('_', ' ')}")
+    if action == "facility_request_escalate":
+        reason = changes.get("escalation_reason")
+        priority = changes.get("priority")
+        if priority:
+            parts.append(f"Priority set to {priority}")
+        if reason:
+            parts.append(f"Reason: {reason}")
+    if not parts:
+        for key in ("rejection_reason", "resolution", "note"):
+            val = inner.get(key) or changes.get(key)
+            if val:
+                parts.append(str(val))
+                break
+    return " · ".join(parts) if parts else None
+
+
+@router.get("/{issue_type}/{request_id}/history")
+async def get_request_history(issue_type: str, request_id: str, request: Request):
+    """Full audit trail for a facility or tech request. Owner/admin only."""
+    if issue_type not in ("facility", "tech"):
+        raise HTTPException(400, "issue_type must be 'facility' or 'tech'")
+    db = get_db()
+    user = get_user(request)
+    bid = user.get("branch_id")
+    school_id = get_school_id()
+
+    can_see = _can_view_all(user) or (_is_maint(user) and issue_type == "facility") or (_is_it(user) and issue_type == "tech")
+    if not can_see:
+        raise HTTPException(403, "Forbidden")
+
+    coll = db.facility_requests if issue_type == "facility" else db.tech_requests
+    record = await coll.find_one(scoped_query({"id": request_id}, branch_id=bid), {"_id": 0})
+    if not record:
+        raise HTTPException(404, f"{issue_type.title()} request not found")
+
+    timeline = []
+
+    # 1. Creation event from the record itself
+    timeline.append({
+        "event_type": "created",
+        "label": "Request raised",
+        "detail": record.get("description", ""),
+        "actor": record.get("logged_by_name", ""),
+        "actor_role": record.get("logged_by_role", ""),
+        "timestamp": record.get("created_at", ""),
+        "is_current": False,
+    })
+
+    # 2. Audit log events (sorted ascending — history order)
+    audit_entries = await db.audit_logs.find(
+        scoped_filter({"entity_id": request_id}, school_id), {"_id": 0}
+    ).sort("created_at", 1).to_list(200)
+
+    for entry in audit_entries:
+        action = entry.get("action", "")
+        if action in _HISTORY_SKIP_ACTIONS:
+            continue
+        label = _HISTORY_ACTION_LABELS.get(action) or action.replace("_", " ").title()
+        changes = entry.get("changes") or {}
+        detail = _extract_detail_from_audit(action, changes)
+        timeline.append({
+            "event_type": action,
+            "label": label,
+            "detail": detail,
+            "actor": entry.get("changed_by_name", ""),
+            "actor_role": entry.get("changed_by_role", ""),
+            "timestamp": entry.get("created_at") or entry.get("timestamp") or "",
+            "is_current": False,
+        })
+
+    # 3. Notes as timeline events (stored inline on the record)
+    for note in (record.get("notes") or []):
+        timeline.append({
+            "event_type": "note",
+            "label": "Note added",
+            "detail": note.get("content", ""),
+            "actor": note.get("author_name", ""),
+            "actor_role": "",
+            "timestamp": note.get("timestamp", ""),
+            "is_current": False,
+        })
+
+    # Sort all events chronologically; mark the last one as current
+    timeline.sort(key=lambda e: e.get("timestamp", ""))
+    if timeline:
+        timeline[-1]["is_current"] = True
+
+    return {
+        "success": True,
+        "data": {
+            "record": record,
+            "timeline": timeline,
+        },
+    }
+
+
 # ─── Maintenance Schedule ─────────────────────────────────────────────────────
 
 @router.get("/maintenance/schedule/upcoming")

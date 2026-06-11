@@ -7,10 +7,197 @@ import { useUser } from '../../contexts/UserContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, Badge, ActionBtn, FormField, DataTable } from './ToolPage';
-import { Plus, RefreshCw, MessageSquare, CheckCircle, Calendar, Users, Wrench, AlertTriangle, ClipboardList, Camera, X as XIcon } from 'lucide-react';
+import { Plus, RefreshCw, MessageSquare, CheckCircle, Calendar, Users, Wrench, AlertTriangle, ClipboardList, Camera, X as XIcon, Clock, User, History } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function h() { return getAuthHeaders(); }
+
+// ─── Request History Modal ────────────────────────────────────────────────────
+
+const EV_COLORS = {
+  created:                    '#737373',
+  facility_request_update:    '#4f8ff7',
+  facility_request_escalate:  '#f59e0b',
+  tech_request_update:        '#4f8ff7',
+  note:                       '#a78bfa',
+};
+
+function fmtTs(iso) {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch { return iso.slice(0, 16).replace('T', ' '); }
+}
+
+function relTs(iso) {
+  if (!iso) return '';
+  try {
+    const diff = Date.now() - new Date(iso).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return `${m}m ago`;
+    const hh = Math.floor(m / 60);
+    if (hh < 24) return `${hh}h ago`;
+    return `${Math.floor(hh / 24)}d ago`;
+  } catch { return ''; }
+}
+
+function HistoryTimeline({ timeline, isDark }) {
+  if (!timeline || timeline.length === 0) {
+    return <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--c-muted)', fontSize: 13 }}>No history available.</div>;
+  }
+  return (
+    <div style={{ padding: '4px 0' }}>
+      {timeline.map((ev, idx) => {
+        const color = EV_COLORS[ev.event_type] || (ev.is_current ? '#10b981' : '#737373');
+        const isLast = idx === timeline.length - 1;
+        return (
+          <div key={idx} style={{ display: 'flex', gap: 0 }}>
+            {/* connector */}
+            <div style={{ width: 28, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div style={{
+                width: 10, height: 10, borderRadius: '50%', marginTop: 3, zIndex: 1, flexShrink: 0,
+                background: ev.is_current ? color : 'var(--c-bg)',
+                border: `2px solid ${color}`,
+                boxShadow: ev.is_current ? `0 0 0 3px ${color}20` : 'none',
+              }} />
+              {!isLast && <div style={{ width: 2, flex: 1, minHeight: 18, background: `${color}30`, marginTop: 2 }} />}
+            </div>
+            {/* content */}
+            <div style={{ flex: 1, paddingBottom: isLast ? 0 : 14, paddingLeft: 10 }}>
+              <div style={{
+                borderRadius: 8, padding: '8px 12px',
+                background: ev.is_current ? `color-mix(in srgb, ${color} 6%, var(--c-bg))` : 'var(--c-bg)',
+                border: `1px solid ${ev.is_current ? `color-mix(in srgb, ${color} 25%, transparent)` : 'var(--c-border)'}`,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: ev.is_current ? color : 'var(--c-text)', marginBottom: ev.detail || ev.actor ? 3 : 0 }}>
+                      {ev.label}
+                    </div>
+                    {ev.detail && <div style={{ fontSize: 11, color: 'var(--c-muted)', lineHeight: 1.5, marginBottom: ev.actor ? 3 : 0 }}>{ev.detail}</div>}
+                    {ev.actor && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <User size={9} color="var(--c-faint)" />
+                        <span style={{ fontSize: 10, color: 'var(--c-faint)' }}>{ev.actor}{ev.actor_role ? ` · ${ev.actor_role.replace(/_/g, ' ')}` : ''}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: 10, color: 'var(--c-faint)', whiteSpace: 'nowrap' }}>{relTs(ev.timestamp)}</div>
+                    <div style={{ fontSize: 9, color: 'var(--c-faint)', opacity: 0.7, whiteSpace: 'nowrap' }}>{fmtTs(ev.timestamp)}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function RequestHistoryModal({ item, issueType, onClose, isDark }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setLoading(true);
+    setError('');
+    fetch(`${API}/issues/${issueType}/${item.id}/history`, { headers: h() })
+      .then(r => r.json())
+      .then(r => { if (r.success) setData(r.data); else setError(r.detail || 'Failed to load history'); })
+      .catch(() => setError('Network error'))
+      .finally(() => setLoading(false));
+  }, [item.id, issueType]);
+
+  const typeColor = issueType === 'facility' ? '#fb923c' : '#818cf8';
+  const bg = isDark ? '#111' : '#f8f9fb';
+  const surface = isDark ? '#161616' : '#ffffff';
+  const border = isDark ? '#222' : '#e5e7eb';
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="fade-in-scale" style={{
+        background: bg, border: `1px solid ${border}`, borderRadius: 22,
+        width: '100%', maxWidth: 500, maxHeight: '86vh',
+        display: 'flex', flexDirection: 'column',
+        boxShadow: isDark ? '0 32px 80px rgba(0,0,0,0.7)' : '0 32px 80px rgba(0,0,0,0.12)',
+        overflow: 'hidden',
+      }}>
+        {/* Header */}
+        <div style={{ padding: '18px 20px 14px', background: surface, borderBottom: `1px solid ${border}`, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            <div style={{
+              width: 38, height: 38, borderRadius: 11, flexShrink: 0,
+              background: `color-mix(in srgb, ${typeColor} 12%, transparent)`,
+              border: `1.5px solid color-mix(in srgb, ${typeColor} 35%, transparent)`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <History size={17} color={typeColor} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '-0.01em', marginBottom: 3 }}>Request History</div>
+              <div style={{ fontSize: 12, color: 'var(--c-muted)', lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {item.description}
+              </div>
+            </div>
+            <button onClick={onClose} style={{ background: isDark ? '#222' : '#f3f4f6', border: 'none', color: 'var(--c-muted)', cursor: 'pointer', padding: 6, borderRadius: 8, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+              <XIcon size={13} />
+            </button>
+          </div>
+
+          {/* Record meta */}
+          <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: '0.06em',
+              padding: '2px 8px', borderRadius: 20, textTransform: 'uppercase',
+              color: typeColor, background: `color-mix(in srgb, ${typeColor} 12%, transparent)`,
+              border: `1px solid color-mix(in srgb, ${typeColor} 30%, transparent)`,
+            }}>
+              {issueType === 'facility' ? 'Facility' : 'Tech'} Request
+            </span>
+            <span style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: '0.06em',
+              padding: '2px 8px', borderRadius: 20, textTransform: 'uppercase',
+              color: STATUS_COLORS[item.status] || 'var(--c-muted)',
+              background: `color-mix(in srgb, ${STATUS_COLORS[item.status] || '#737373'} 12%, transparent)`,
+              border: `1px solid color-mix(in srgb, ${STATUS_COLORS[item.status] || '#737373'} 30%, transparent)`,
+            }}>
+              {item.status?.replace(/_/g, ' ')}
+            </span>
+            {item.location && (
+              <span style={{ fontSize: 10, color: 'var(--c-faint)' }}>@ {item.location}</span>
+            )}
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 20px' }}>
+          {loading ? (
+            <div style={{ padding: '28px 0', textAlign: 'center' }}>
+              <div className="spinner" style={{ width: 18, height: 18, margin: '0 auto 8px' }} />
+              <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Loading history…</div>
+            </div>
+          ) : error ? (
+            <div style={{ padding: '20px 0', textAlign: 'center', color: '#ef4444', fontSize: 13 }}>{error}</div>
+          ) : (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', color: 'var(--c-faint)', textTransform: 'uppercase', marginBottom: 12 }}>
+                Activity Timeline
+              </div>
+              <HistoryTimeline timeline={data?.timeline} isDark={isDark} />
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const STATUS_COLORS = {
   open: 'var(--tool-hex-fb923c)',
@@ -31,7 +218,7 @@ function StatusBadge({ status }) {
   );
 }
 
-function RequestCard({ item, onUpdate, onConfirm, role, subCategory, isDark }) {
+function RequestCard({ item, onUpdate, onConfirm, onViewHistory, role, subCategory, isDark }) {
   const [showNote, setShowNote] = useState(false);
   const [note, setNote] = useState('');
   const [newStatus, setNewStatus] = useState(item.status);
@@ -134,6 +321,22 @@ function RequestCard({ item, onUpdate, onConfirm, role, subCategory, isDark }) {
           )}
         </div>
       )}
+
+      {(isOwner || role === 'admin') && onViewHistory && (
+        <div style={{ marginTop: item.status !== 'closed' ? 8 : 0, borderTop: `1px solid ${border}`, paddingTop: 8 }}>
+          <button
+            onClick={() => onViewHistory(item, type)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0',
+              display: 'flex', alignItems: 'center', gap: 5,
+              color: muted, fontSize: 11, fontWeight: 500,
+            }}
+          >
+            <History size={11} />
+            View History
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -148,6 +351,7 @@ function IssuePanel({ type, title }) {
   const [form, setForm] = useState({ description: '', location: '', category: type === 'facility' ? 'plumbing' : 'hardware', priority: 'medium' });
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [historyItem, setHistoryItem] = useState(null);
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
 
   const facilityCategories = ['plumbing', 'electrical', 'civil', 'cleaning', 'security', 'carpentry', 'painting', 'pest_control', 'hvac', 'fire_safety', 'landscaping', 'other'];
@@ -266,6 +470,7 @@ function IssuePanel({ type, title }) {
                   item={item}
                   onUpdate={handleUpdate}
                   onConfirm={handleConfirm}
+                  onViewHistory={(it, t) => setHistoryItem({ item: it, issueType: t || type })}
                   role={currentUser.role}
                   subCategory={currentUser.sub_category}
                   isDark={isDark}
@@ -282,6 +487,7 @@ function IssuePanel({ type, title }) {
                   item={item}
                   onUpdate={handleUpdate}
                   onConfirm={handleConfirm}
+                  onViewHistory={(it, t) => setHistoryItem({ item: it, issueType: t || type })}
                   role={currentUser.role}
                   subCategory={currentUser.sub_category}
                   isDark={isDark}
@@ -290,6 +496,15 @@ function IssuePanel({ type, title }) {
             </>
           )}
         </>
+      )}
+
+      {historyItem && (
+        <RequestHistoryModal
+          item={historyItem.item}
+          issueType={historyItem.issueType}
+          onClose={() => setHistoryItem(null)}
+          isDark={isDark}
+        />
       )}
     </ToolPage>
   );

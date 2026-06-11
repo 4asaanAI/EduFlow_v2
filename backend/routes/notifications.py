@@ -142,23 +142,34 @@ _SOURCE_COLLECTION = {
 }
 
 _ACTION_LABELS = {
+    # facility requests (exact strings from issues.py _write_audit calls)
+    "facility_request_create":   "Facility request raised",
+    "facility_request_update":   "Request updated",
+    "facility_request_escalate": "Escalated to owner",
+    # tech requests
+    "tech_request_create":       "Tech issue raised",
+    "tech_request_update":       "Tech issue updated",
+    # leave
     "leave_approved":      "Leave request approved",
     "leave_rejected":      "Leave request rejected",
     "leave_created":       "Leave request submitted",
-    "facility_created":    "Facility request raised",
-    "facility_resolved":   "Facility request resolved",
-    "facility_updated":    "Facility request updated",
+    # incidents
     "incident_created":    "Incident reported",
     "incident_resolved":   "Incident resolved",
     "incident_updated":    "Incident updated",
+    # announcements
     "announcement_published": "Announcement published",
     "announcement_created":   "Announcement created",
+    # certificates
     "cert_created":        "Certificate requested",
     "cert_approved":       "Certificate approved",
     "cert_rejected":       "Certificate rejected",
+    # substitutions
     "substitution_assigned": "Substitute assigned",
+    # fees
     "fee_paid":            "Payment received",
     "fee_overdue":         "Marked overdue",
+    # approvals
     "approval_created":    "Approval request submitted",
     "approval_approved":   "Request approved",
     "approval_rejected":   "Request rejected",
@@ -304,15 +315,25 @@ async def get_notification_detail(notification_id: str, request: Request):
 
             for entry in audit_entries:
                 action = entry.get("action", "")
+                # Skip create events — already synthesised from record itself
+                if action in ("facility_request_create", "tech_request_create"):
+                    continue
                 label = _ACTION_LABELS.get(action) or action.replace("_", " ").title()
                 changes = entry.get("changes") or {}
+                # updates wrap their payload in a nested "changes" key; escalate/create are flat
+                inner = changes.get("changes") or changes
                 detail_parts = []
-                if changes.get("status"):
-                    detail_parts.append(f"Status → {changes['status']}")
-                if changes.get("rejection_reason"):
-                    detail_parts.append(f"Reason: {changes['rejection_reason']}")
-                if changes.get("resolution"):
-                    detail_parts.append(changes["resolution"])
+                status_val = inner.get("status")
+                if status_val:
+                    detail_parts.append(f"Status → {status_val.replace('_', ' ')}")
+                priority_val = inner.get("priority") or changes.get("priority")
+                if priority_val and not status_val:
+                    detail_parts.append(f"Priority → {priority_val}")
+                for reason_key in ("rejection_reason", "escalation_reason", "resolution"):
+                    val = inner.get(reason_key) or changes.get(reason_key)
+                    if val:
+                        detail_parts.append(val)
+                        break
                 timeline.append({
                     "event_type": action,
                     "label": label,
