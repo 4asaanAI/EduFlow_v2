@@ -1398,33 +1398,139 @@ export function AiHealthReport() {
 }
 
 // 12. Smart Alerts
+const ALERT_CONFIG = {
+  critical: { color: '#ef4444', bg: '#ef444412', border: '#ef444430', label: 'Critical' },
+  warning:  { color: '#f59e0b', bg: '#f59e0b12', border: '#f59e0b30', label: 'Warning'  },
+  info:     { color: '#4f8ff7', bg: '#4f8ff712', border: '#4f8ff730', label: 'Info'     },
+  success:  { color: '#10b981', bg: '#10b98112', border: '#10b98130', label: 'Good'     },
+};
+const CATEGORY_ICONS = {
+  'Attendance': '🎓', 'Staff': '👤', 'Fees': '₹', 'Leaves': '📅',
+  'Maintenance': '🔧', 'Tech Issues': '💻', 'Incidents': '⚠️',
+  'Visitors': '🚶', 'Admissions': '📋',
+};
+const PRIORITY_LABELS = { high: 'HIGH', medium: 'MED', low: 'LOW', info: 'INFO' };
+const PRIORITY_COLORS = { high: '#ef4444', medium: '#f59e0b', low: '#737373', info: '#4f8ff7' };
+
 export function SmartAlerts() {
   const { currentUser } = useUser();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all');
+
   useEffect(() => { load(); }, []);
-  const load = async () => { setLoading(true); try { const r = await executeTool('get_smart_alerts', {}, currentUser); if (r.success) setData(r.data); } catch {} setLoading(false); };
-  const alerts = data?.alerts || [];
-  const colors = { critical: 'red', warning: 'yellow', success: 'green', info: 'blue' };
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await executeTool('get_smart_alerts', {}, currentUser);
+      if (r.success) setData(r.data);
+    } catch {}
+    setLoading(false);
+  };
+
+  const allAlerts = data?.alerts || [];
+  const filtered = filter === 'all' ? allAlerts : allAlerts.filter(a => a.type === filter);
+
+  const counts = {
+    critical: allAlerts.filter(a => a.type === 'critical').length,
+    warning:  allAlerts.filter(a => a.type === 'warning').length,
+    info:     allAlerts.filter(a => a.type === 'info').length,
+    success:  allAlerts.filter(a => a.type === 'success').length,
+  };
+
   return (
-    <ToolPage title="Smart Alerts" subtitle="Active exceptions & flags" onRefresh={load} loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 18 }}>
-        <StatCard value={data?.total_alerts || 0} label="TOTAL ALERTS" color="var(--tool-hex-fbbf24)" />
-        <StatCard value={data?.critical_count || 0} label="CRITICAL" color="var(--tool-hex-f87171)" />
+    <ToolPage title="Smart Alerts" subtitle="Live exceptions, flags & health indicators" onRefresh={load} loading={loading}>
+      {/* Summary cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 16 }}>
+        {[
+          { key: 'all',      value: allAlerts.length, label: 'TOTAL',    color: 'var(--tool-hex-fbbf24)' },
+          { key: 'critical', value: counts.critical,  label: 'CRITICAL', color: '#ef4444' },
+          { key: 'warning',  value: counts.warning,   label: 'WARNINGS', color: '#f59e0b' },
+          { key: 'success',  value: counts.success,   label: 'POSITIVE', color: '#10b981' },
+        ].map(s => (
+          <div
+            key={s.key}
+            onClick={() => setFilter(f => f === s.key ? 'all' : s.key)}
+            style={{
+              background: filter === s.key ? `${s.color}15` : 'var(--tool-hex-1e1e1e)',
+              border: `1px solid ${filter === s.key ? s.color + '50' : 'var(--tool-hex-2e2e2e)'}`,
+              borderRadius: 10, padding: '12px 14px', cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}
+          >
+            <div style={{ fontSize: 22, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.value}</div>
+            <div style={{ fontSize: 10, color: 'var(--tool-hex-737373)', fontWeight: 600, letterSpacing: '0.05em', marginTop: 4 }}>{s.label}</div>
+          </div>
+        ))}
       </div>
+
+      {/* Category filter pills */}
+      {allAlerts.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+          {['all', 'critical', 'warning', 'info', 'success'].map(t => {
+            const cfg = t === 'all' ? { color: '#737373', label: 'All' } : { color: ALERT_CONFIG[t]?.color, label: ALERT_CONFIG[t]?.label };
+            const active = filter === t;
+            return (
+              <button key={t} onClick={() => setFilter(f => f === t ? 'all' : t)}
+                style={{
+                  fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20,
+                  border: `1px solid ${active ? cfg.color : 'var(--tool-hex-2e2e2e)'}`,
+                  background: active ? `${cfg.color}20` : 'transparent',
+                  color: active ? cfg.color : 'var(--tool-hex-737373)',
+                  cursor: 'pointer', transition: 'all 0.15s',
+                }}
+              >{cfg.label}</button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Alert list */}
       {loading ? (
         <div style={{ padding: 32, textAlign: 'center', color: 'var(--tool-hex-737373)', background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11, fontSize: 13 }}>
-          Loading alerts...
+          Scanning school data…
         </div>
-      ) : alerts.length === 0 ? <div style={{ padding: 32, textAlign: 'center', color: 'var(--tool-hex-737373)', background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11, fontSize: 13 }}>No active alerts — all good!</div> : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {alerts.map((a, i) => (
-            <div key={i} style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Badge text={a.category} color={colors[a.type] || 'blue'} />
-              <span style={{ fontSize: 13, color: 'var(--tool-hex-e5e5e5)', flex: 1 }}>{a.text}</span>
-              <Badge text={a.priority} color={a.priority === 'high' ? 'red' : a.priority === 'medium' ? 'yellow' : 'gray'} />
-            </div>
-          ))}
+      ) : filtered.length === 0 ? (
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--tool-hex-737373)', background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11 }}>
+          <div style={{ fontSize: 24, marginBottom: 8 }}>✅</div>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>{filter === 'all' ? 'No active alerts — all good!' : `No ${filter} alerts`}</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+          {filtered.map((a, i) => {
+            const cfg = ALERT_CONFIG[a.type] || ALERT_CONFIG.info;
+            return (
+              <div key={i} style={{
+                background: cfg.bg,
+                border: `1px solid ${cfg.border}`,
+                borderLeft: `3px solid ${cfg.color}`,
+                borderRadius: 10, padding: '11px 14px',
+                display: 'flex', alignItems: 'center', gap: 12,
+              }}>
+                <span style={{ fontSize: 16, flexShrink: 0 }}>{CATEGORY_ICONS[a.category] || '•'}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, color: 'var(--tool-hex-e5e5e5)', lineHeight: 1.4 }}>{a.text}</div>
+                  <div style={{ fontSize: 11, color: 'var(--tool-hex-737373)', marginTop: 3 }}>{a.category}</div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.border}`, padding: '2px 7px', borderRadius: 6 }}>
+                    {cfg.label}
+                  </span>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: PRIORITY_COLORS[a.priority] || '#737373' }}>
+                    {PRIORITY_LABELS[a.priority] || a.priority}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Footer timestamp */}
+      {data?.generated_at && (
+        <div style={{ marginTop: 12, fontSize: 11, color: 'var(--tool-hex-737373)', textAlign: 'right' }}>
+          Last checked: {data.generated_at}
         </div>
       )}
     </ToolPage>

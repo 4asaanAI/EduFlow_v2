@@ -451,66 +451,181 @@ async def tool_get_attendance_overview(params: dict, user: dict, scope=None) -> 
 
 async def tool_get_smart_alerts(params: dict, user: dict, scope=None) -> dict:
     db = get_db()
-    today = date.today().strftime("%Y-%m-%d")
+    today = date.today()
+    today_str = today.strftime("%Y-%m-%d")
     alerts = []
 
-    # Chronic absentees (3+ days)
-    students = await db.students.find(_tenant_query(scope, {"is_active": True})).to_list(500)
+    # ── 1. Chronic absentees — batched (fixes N+1 and 100-student cap) ──────
+    date_window = [(today - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(5)]
+    raw_att = await db.student_attendance.find(
+        _tenant_query(scope, {"date": {"$in": date_window}})
+    ).to_list(20000)
+    att_by_student: dict[str, dict[str, str]] = {}
+    for rec in raw_att:
+        sid = rec["student_id"]
+        if sid not in att_by_student:
+            att_by_student[sid] = {}
+        att_by_student[sid][rec["date"]] = rec.get("status", "")
     chronic = 0
-    for st in students[:100]:
-        abs_count = 0
+    for sid, day_map in att_by_student.items():
+        consec = 0
         for i in range(5):
-            d = (date.today() - timedelta(days=i)).strftime("%Y-%m-%d")
-            rec = await db.student_attendance.find_one(_tenant_query(scope, {"student_id": st["id"], "date": d}))
-            if rec and rec["status"] == "absent":
-                abs_count += 1
+            if day_map.get((today - timedelta(days=i)).strftime("%Y-%m-%d")) == "absent":
+                consec += 1
             else:
                 break
-        if abs_count >= 3:
+        if consec >= 3:
             chronic += 1
-
     if chronic > 0:
-        alerts.append({"type": "warning", "category": "Attendance", "text": f"{chronic} students absent 3+ consecutive days", "priority": "high"})
+        alerts.append({"type": "warning", "category": "Attendance",
+                        "text": f"{chronic} students absent 3+ consecutive days", "priority": "high"})
 
-    # Staff absent today
-    staff_absent = await db.staff_attendance.count_documents(_tenant_query(scope, {"date": today, "status": "absent"}))
+    # ── 2. Students below 75% attendance this month ──────────────────────────
+    month_start = today.replace(day=1).strftime("%Y-%m-%d")
+    monthly_agg = await db.student_attendance.aggregate([
+        {"$match": _tenant_query(scope, {"date": {"$gte": month_start, "$lte": today_str}})},
+        {"$group": {"_id": "$student_id", "total": {"$sum": 1},
+                    "present": {"$sum": {"$cond": [{"$eq": ["$status", "present"]}, 1, 0]}}}},
+    ]).to_list(5000)
+    low_att = sum(1 for s in monthly_agg if s["total"] >= 5 and (s["present"] / s["total"]) < 0.75)
+    if low_att > 0:
+        alerts.append({"type": "warning", "category": "Attendance",
+                        "text": f"{low_att} students below 75% attendance this month", "priority": "high"})
+
+    # ── 3. Today's overall attendance rate ───────────────────────────────────
+    today_att = await db.student_attendance.find(
+        _tenant_query(scope, {"date": today_str})
+    ).to_list(5000)
+    if today_att:
+        present_today = sum(1 for r in today_att if r.get("status") == "present")
+        rate_today = present_today / len(today_att)
+        if rate_today >= 0.95:
+            alerts.append({"type": "success", "category": "Attendance",
+                            "text": f"Excellent attendance today — {rate_today*100:.0f}% students present", "priority": "info"})
+        elif rate_today < 0.70:
+            alerts.append({"type": "warning", "category": "Attendance",
+                            "text": f"Today's attendance only {rate_today*100:.0f}% — below 70% threshold", "priority": "medium"})
+
+    # ── 4. Staff absence ─────────────────────────────────────────────────────
+    total_staff = await db.staff.count_documents(_tenant_query(scope, {"is_active": True}))
+    staff_absent = await db.staff_attendance.count_documents(
+        _tenant_query(scope, {"date": today_str, "status": "absent"})
+    )
     if staff_absent > 0:
-        alerts.append({"type": "warning", "category": "Staff", "text": f"{staff_absent} staff absent today", "priority": "medium"})
+        if total_staff > 0 and (staff_absent / total_staff) >= 0.20:
+            pct = int(staff_absent / total_staff * 100)
+            alerts.append({"type": "critical", "category": "Staff",
+                            "text": f"High staff absence: {staff_absent}/{total_staff} staff absent today ({pct}%)", "priority": "high"})
+        else:
+            alerts.append({"type": "warning", "category": "Staff",
+                            "text": f"{staff_absent} staff absent today", "priority": "medium"})
 
-    # Overdue fees 60+ days
-    overdue_60 = 0
-    overdue_txns = await db.fee_transactions.find(_tenant_query(scope, {"status": "overdue"})).to_list(200)
+    # ── 5. Fee overdue — split 30-59 days (warning) and 60+ days (critical) ──
+    overdue_txns = await db.fee_transactions.find(
+        _tenant_query(scope, {"status": "overdue"})
+    ).to_list(1000)
+    overdue_60, overdue_30 = 0, 0
     for txn in overdue_txns:
         if txn.get("due_date"):
             try:
-                due_dt = datetime.strptime(txn["due_date"], "%Y-%m-%d").date()
-                if (date.today() - due_dt).days >= 60:
+                days_late = (today - datetime.strptime(txn["due_date"], "%Y-%m-%d").date()).days
+                if days_late >= 60:
                     overdue_60 += 1
-            except:
+                elif days_late >= 30:
+                    overdue_30 += 1
+            except Exception:
                 pass
-
     if overdue_60 > 0:
-        alerts.append({"type": "critical", "category": "Fees", "text": f"{overdue_60} fee transactions overdue 60+ days", "priority": "high"})
+        alerts.append({"type": "critical", "category": "Fees",
+                        "text": f"{overdue_60} fee transactions overdue 60+ days", "priority": "high"})
+    if overdue_30 > 0:
+        alerts.append({"type": "warning", "category": "Fees",
+                        "text": f"{overdue_30} fee transactions overdue 30–59 days", "priority": "medium"})
 
-    # Pending leave requests
-    pending_leaves = await db.leave_requests.count_documents(_tenant_query(scope, {"status": "pending"}))
-    if pending_leaves > 0:
-        alerts.append({"type": "info", "category": "Leaves", "text": f"{pending_leaves} leave requests pending approval", "priority": "low"})
-
-    # Positive alerts
-    fee_pipeline = [
+    # ── 6. Fee collection rate ───────────────────────────────────────────────
+    fee_stats = await db.fee_transactions.aggregate([
         {"$match": _tenant_query(scope, {})},
         {"$group": {"_id": "$status", "total": {"$sum": "$amount"}}},
-    ]
-    fee_stats = await db.fee_transactions.aggregate(fee_pipeline).to_list(10)
+    ]).to_list(10)
     fee_dict = {f["_id"]: f["total"] for f in fee_stats}
-    total = sum(fee_dict.values())
-    if total > 0:
-        rate = fee_dict.get("paid", 0) / total * 100
-        if rate >= 80:
-            alerts.append({"type": "success", "category": "Fees", "text": f"Fee collection at {rate:.1f}% — excellent!", "priority": "info"})
+    grand_total = sum(fee_dict.values())
+    if grand_total > 0:
+        coll_rate = fee_dict.get("paid", 0) / grand_total * 100
+        if coll_rate >= 80:
+            alerts.append({"type": "success", "category": "Fees",
+                            "text": f"Fee collection at {coll_rate:.1f}% — excellent!", "priority": "info"})
+        elif coll_rate < 30:
+            alerts.append({"type": "critical", "category": "Fees",
+                            "text": f"Fee collection critically low at {coll_rate:.1f}%", "priority": "high"})
 
-    return {"alerts": alerts, "total_alerts": len(alerts), "critical_count": sum(1 for a in alerts if a["type"] == "critical")}
+    # ── 7. Leave requests — stale (3+ days) vs fresh pending ────────────────
+    pending_leaves = await db.leave_requests.find(
+        _tenant_query(scope, {"status": "pending"})
+    ).to_list(200)
+    stale_cutoff = (today - timedelta(days=3)).isoformat()
+    stale_leaves = [l for l in pending_leaves if l.get("created_at", "9999") < stale_cutoff]
+    if stale_leaves:
+        alerts.append({"type": "warning", "category": "Leaves",
+                        "text": f"{len(stale_leaves)} leave request(s) pending 3+ days — decision overdue", "priority": "medium"})
+    elif pending_leaves:
+        alerts.append({"type": "info", "category": "Leaves",
+                        "text": f"{len(pending_leaves)} leave request(s) pending approval", "priority": "low"})
+
+    # ── 8. Facility requests open > 3 days ───────────────────────────────────
+    fac_cutoff = (today - timedelta(days=3)).isoformat()
+    open_facility = await db.facility_requests.count_documents(
+        _tenant_query(scope, {"status": {"$nin": ["done", "closed"]}, "created_at": {"$lt": fac_cutoff}})
+    )
+    if open_facility > 0:
+        alerts.append({"type": "warning", "category": "Maintenance",
+                        "text": f"{open_facility} facility request(s) open for 3+ days unresolved", "priority": "medium"})
+
+    # ── 9. Tech requests unresolved ──────────────────────────────────────────
+    open_tech = await db.tech_requests.count_documents(
+        _tenant_query(scope, {"status": {"$nin": ["done", "closed"]}})
+    )
+    if open_tech > 0:
+        alerts.append({"type": "info", "category": "Tech Issues",
+                        "text": f"{open_tech} tech request(s) awaiting resolution", "priority": "low"})
+
+    # ── 10. Incidents unresolved > 7 days ────────────────────────────────────
+    inc_cutoff = (today - timedelta(days=7)).isoformat()
+    old_incidents = await db.incidents.count_documents(
+        _tenant_query(scope, {"status": {"$nin": ["resolved", "closed"]}, "created_at": {"$lt": inc_cutoff}})
+    )
+    if old_incidents > 0:
+        alerts.append({"type": "critical", "category": "Incidents",
+                        "text": f"{old_incidents} incident(s) unresolved for 7+ days", "priority": "high"})
+
+    # ── 11. Visitors still checked in ────────────────────────────────────────
+    visitors_in = await db.visitor_log.count_documents(
+        _tenant_query(scope, {"time_out": None})
+    )
+    if visitors_in > 0:
+        alerts.append({"type": "info", "category": "Visitors",
+                        "text": f"{visitors_in} visitor(s) still checked in — checkout not recorded", "priority": "low"})
+
+    # ── 12. Stale admissions enquiries (new, no follow-up 7+ days) ───────────
+    enq_cutoff = (today - timedelta(days=7)).isoformat()
+    stale_enq = await db.enquiries.count_documents(
+        _tenant_query(scope, {"status": "new", "created_at": {"$lt": enq_cutoff}})
+    )
+    if stale_enq > 0:
+        alerts.append({"type": "warning", "category": "Admissions",
+                        "text": f"{stale_enq} enquiry/enquiries with no follow-up for 7+ days", "priority": "medium"})
+
+    # Sort: critical → warning → info → success, then high → medium → low
+    _type_order = {"critical": 0, "warning": 1, "info": 2, "success": 3}
+    _pri_order = {"high": 0, "medium": 1, "low": 2, "info": 3}
+    alerts.sort(key=lambda a: (_type_order.get(a["type"], 4), _pri_order.get(a["priority"], 4)))
+
+    return {
+        "alerts": alerts,
+        "total_alerts": len(alerts),
+        "critical_count": sum(1 for a in alerts if a["type"] == "critical"),
+        "warning_count": sum(1 for a in alerts if a["type"] == "warning"),
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    }
 
 
 async def tool_search_students(params: dict, user: dict, scope=None) -> dict:
