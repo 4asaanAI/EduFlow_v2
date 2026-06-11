@@ -290,12 +290,16 @@ async def record_usage(
 async def get_usage_stats(
     branch_id: str,
     user_id: str = None,
+    role: str = None,
+    sub_category: str = None,
 ) -> dict:
     """
     Returns usage statistics for dashboard display.
 
     If user_id is given  -> that user's usage this month.
     If user_id is None   -> branch-level stats (for owner dashboard).
+    role / sub_category  -> caller should pass these so the correct limit
+                            is returned even when the user has zero usage.
     """
     db = get_db()
     month = _current_month_key()
@@ -311,14 +315,20 @@ async def get_usage_stats(
 
         # Look up the user's role limit
         balance_doc = await db.token_balances.find_one({"branch_id": branch_id})
-        if balance_doc:
-            # Try to determine role/sub_category from the most recent usage entry
+
+        # Resolve role: prefer caller-supplied, fall back to last usage entry
+        if not role:
             last_entry = await db.token_usage.find_one(
                 {"branch_id": branch_id, "user_id": user_id, "month": month},
                 sort=[("created_at", -1)],
             )
             role = last_entry["role"] if last_entry else "student"
-            sub_category = last_entry.get("sub_category", "") if last_entry else ""
+            if not sub_category:
+                sub_category = last_entry.get("sub_category", "") if last_entry else ""
+
+        sub_category = sub_category or ""
+
+        if balance_doc:
             role_limits = balance_doc.get("role_limits", DEFAULT_ROLE_LIMITS)
             sub_limits = balance_doc.get("sub_category_limits", DEFAULT_SUBCATEGORY_LIMITS)
             if sub_category and sub_category in sub_limits:
@@ -328,7 +338,11 @@ async def get_usage_stats(
             personal_topup = balance_doc.get("personal_topups", {}).get(user_id, 0)
             self_recharge_enabled = balance_doc.get("self_recharge_enabled", True)
         else:
-            role_limit = -1  # unlimited (no budget doc)
+            # No budget doc — use default limits (dev / new branch), never -1
+            if sub_category and sub_category in DEFAULT_SUBCATEGORY_LIMITS:
+                role_limit = DEFAULT_SUBCATEGORY_LIMITS[sub_category]
+            else:
+                role_limit = DEFAULT_ROLE_LIMITS.get(role, 20_000)
             personal_topup = 0
             self_recharge_enabled = True
 

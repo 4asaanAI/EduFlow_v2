@@ -52,7 +52,7 @@ function PlanCard({ plan, meta, isDark, onSelect, busy, isSelected }) {
       onClick={() => onSelect(plan.id)}
       style={{
         position: 'relative', cursor: 'pointer',
-        flex: '1 1 0', minWidth: 0,
+        flex: '1 1 220px', minWidth: 220,
         background: cardBg,
         border: `2px solid ${borderCol}`,
         borderRadius: 20,
@@ -191,10 +191,18 @@ export default function TokenUpgradeModal({ onClose, currentUsage, roleLimit, ca
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="fade-in-scale" style={{
+      <style>{`
+        @media (max-width: 600px) {
+          .token-upgrade-modal { border-radius: 18px !important; }
+          .token-upgrade-modal .modal-header { padding: 16px 16px 14px !important; }
+          .token-upgrade-modal .modal-plans { padding: 16px 16px 14px !important; }
+          .token-upgrade-modal .modal-footer { padding: 10px 16px 16px !important; flex-direction: column !important; gap: 6px !important; }
+        }
+      `}</style>
+      <div className="fade-in-scale token-upgrade-modal" style={{
         background: bg, border: `1px solid ${border}`,
         borderRadius: 26, width: '100%', maxWidth: 860,
         maxHeight: '90vh', overflowY: 'auto',

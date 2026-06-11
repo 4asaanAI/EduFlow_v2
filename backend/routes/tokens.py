@@ -89,7 +89,12 @@ async def my_usage_endpoint(request: Request):
     user = get_current_user(request)
     branch_id = _resolve_branch(user)
     try:
-        data = await get_usage_stats(branch_id, user_id=user["id"])
+        data = await get_usage_stats(
+            branch_id,
+            user_id=user["id"],
+            role=user.get("role"),
+            sub_category=user.get("sub_category"),
+        )
         return {"success": True, "data": data}
     except Exception:
         logger.error("my_token_usage_fetch_failed", exc_info=True)
