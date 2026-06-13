@@ -4,6 +4,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { Search, Bell, ChevronLeft, Menu, X } from 'lucide-react';
 import { getAuthHeaders } from '../lib/authSession';
 import NotificationDetailModal from './NotificationDetailModal';
+import { getToolForNotification } from '../lib/notifRouting';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -96,7 +97,7 @@ const TYPE_CONFIG = {
   error:   { bg: '#ef4444', icon: '!', light: '#ef444415', border: '#ef444430' },
 };
 
-function NotificationsPanel({ user, onClose, isDark, onOpenDetail }) {
+function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToTool }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
@@ -146,7 +147,13 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail }) {
 
   const handleNotifClick = (n) => {
     markRead(n);
-    onOpenDetail(n);
+    const toolId = getToolForNotification(n, user.role);
+    if (toolId) {
+      onClose();
+      onNavigateToTool(toolId);
+    } else {
+      onOpenDetail(n);
+    }
   };
 
   const unreadCount = notifications.filter(n => n.id && !n.is_digest && !readIds.has(n.id)).length;
@@ -393,7 +400,18 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
               <Bell size={17} />
               <span style={{ position: 'absolute', top: 5, right: 5, width: 6, height: 6, background: '#f87171', borderRadius: '50%', border: `2px solid ${bg}` }} />
             </button>
-            {showNotif && <NotificationsPanel user={currentUser} onClose={() => setShowNotif(false)} isDark={isDark} onOpenDetail={n => { setShowNotif(false); setDetailNotif(n); }} />}
+            {showNotif && (
+              <NotificationsPanel
+                user={currentUser}
+                onClose={() => setShowNotif(false)}
+                isDark={isDark}
+                onOpenDetail={n => { setShowNotif(false); setDetailNotif(n); }}
+                onNavigateToTool={toolId => {
+                  setShowNotif(false);
+                  window.dispatchEvent(new CustomEvent('eduflow-navigate', { detail: { toolId } }));
+                }}
+              />
+            )}
           </div>
         </div>
       </header>

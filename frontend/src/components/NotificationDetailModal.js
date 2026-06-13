@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { X, Info, AlertTriangle, CheckCircle, AlertCircle, Clock, User, Tag, ArrowRight } from 'lucide-react';
+import { X, Info, AlertTriangle, CheckCircle, AlertCircle, Clock, User, Tag, ArrowRight, ExternalLink } from 'lucide-react';
 import { getAuthHeaders } from '../lib/authSession';
+import { getToolForNotification, TOOL_LABELS } from '../lib/notifRouting';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -219,6 +221,7 @@ function SourceCard({ source, isDark }) {
 }
 
 export default function NotificationDetailModal({ notification, onClose }) {
+  const { currentUser } = useUser();
   const { isDark } = useTheme();
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -401,25 +404,48 @@ export default function NotificationDetailModal({ notification, onClose }) {
         </div>
 
         {/* Footer */}
-        {notif?.id && (
-          <div style={{
-            padding: '10px 22px 14px',
-            borderTop: `1px solid ${border}`,
-            background: surface,
-            flexShrink: 0,
-            display: 'flex', alignItems: 'center', gap: 6,
-          }}>
+        {notif?.id && (() => {
+          const navToolId = getToolForNotification(notif, currentUser?.role);
+          const toolLabel = navToolId ? (TOOL_LABELS[navToolId] || navToolId.replace(/-/g, ' ')) : null;
+          return (
             <div style={{
-              width: 6, height: 6, borderRadius: '50%',
-              background: notif?.read ? '#10b981' : typeColor,
+              padding: '10px 22px 14px',
+              borderTop: `1px solid ${border}`,
+              background: surface,
               flexShrink: 0,
-            }} />
-            <span style={{ fontSize: 11, color: 'var(--c-faint)' }}>
-              {notif?.read ? `Read ${notif.read_at ? relativeTime(notif.read_at) : ''}` : 'Unread'}
-              {notif?.source_record_type ? ` · ${notif.source_record_type.replace(/_/g, ' ')}` : ''}
-            </span>
-          </div>
-        )}
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: notif?.read ? '#10b981' : typeColor, flexShrink: 0 }} />
+                <span style={{ fontSize: 11, color: 'var(--c-faint)' }}>
+                  {notif?.read ? `Read ${notif.read_at ? relativeTime(notif.read_at) : ''}` : 'Unread'}
+                  {notif?.source_record_type ? ` · ${notif.source_record_type.replace(/_/g, ' ')}` : ''}
+                </span>
+              </div>
+              {toolLabel && (
+                <button
+                  onClick={() => {
+                    onClose();
+                    window.dispatchEvent(new CustomEvent('eduflow-navigate', { detail: { toolId: navToolId } }));
+                  }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    background: `color-mix(in srgb, ${typeColor} 10%, transparent)`,
+                    border: `1px solid color-mix(in srgb, ${typeColor} 25%, transparent)`,
+                    color: typeColor, borderRadius: 8, padding: '4px 10px',
+                    fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                    transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = `color-mix(in srgb, ${typeColor} 18%, transparent)`}
+                  onMouseLeave={e => e.currentTarget.style.background = `color-mix(in srgb, ${typeColor} 10%, transparent)`}
+                >
+                  <ExternalLink size={10} />
+                  Go to {toolLabel}
+                </button>
+              )}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
