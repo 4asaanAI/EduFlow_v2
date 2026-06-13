@@ -3,7 +3,7 @@ import { useUser } from '../contexts/UserContext';
 import {
   Activity, AlertTriangle, Award, BarChart2, Bell, BookOpen, CalendarDays,
   ClipboardList, Command, Database, FileCheck, FilePlus, FileText, IndianRupee,
-  LifeBuoy, Megaphone, MessageSquare, Monitor, Package, Printer, RefreshCw,
+  LifeBuoy, Megaphone, MessageSquare, Monitor, Package, PenTool, Printer, RefreshCw,
   ScrollText, Shield, Target, Trash2, Truck, Trophy, Users, UserCheck, UserPlus,
   Wrench, X,
 } from 'lucide-react';
@@ -44,6 +44,34 @@ const ALL_TOOLS = [
   { id: 'staff-leave-manager',    name: 'Leave Manager',         subtitle: 'Approve & reject',         icon: CalendarDays,  roles: ['owner','admin'] },
   { id: 'staff-performance',      name: 'Staff Performance',     subtitle: 'Overview & analytics',     icon: BarChart2,     roles: ['owner','admin'] },
   { id: 'smart-alerts',           name: 'Smart Alerts',          subtitle: 'Exceptions & flags',       icon: Bell,          roles: ['owner','admin'] },
+
+  // Teacher tools
+  { id: 'class-attendance-marker',     name: 'Attendance',           subtitle: 'Mark my class',            icon: ClipboardList, roles: ['teacher'] },
+  { id: 'assignment-generator',        name: 'Assignments',          subtitle: 'Create & manage',          icon: BookOpen,      roles: ['teacher'] },
+  { id: 'question-paper-creator',      name: 'Question Papers',      subtitle: 'Create & export',          icon: PenTool,       roles: ['teacher'] },
+  { id: 'report-card-builder',         name: 'Report Cards',         subtitle: 'Enter & generate',         icon: FileText,      roles: ['teacher'] },
+  { id: 'student-performance-viewer',  name: 'Student Performance',  subtitle: 'Marks & trends',           icon: BarChart2,     roles: ['teacher'] },
+  { id: 'leave-application',           name: 'Leave Application',    subtitle: 'Apply for leave',          icon: CalendarDays,  roles: ['teacher'] },
+  { id: 'lesson-plan-generator',       name: 'Lesson Plans',         subtitle: 'Plan chapters',            icon: BookOpen,      roles: ['teacher'] },
+  { id: 'worksheet-creator',           name: 'Worksheets',           subtitle: 'Practice sheets',          icon: FilePlus,      roles: ['teacher'] },
+  { id: 'class-performance-analytics', name: 'Class Analytics',      subtitle: 'Trends & insights',        icon: BarChart2,     roles: ['teacher'] },
+  { id: 'substitution-viewer',         name: 'Substitutions',        subtitle: 'My schedule changes',      icon: CalendarDays,  roles: ['teacher'] },
+  { id: 'ptm-notes',                   name: 'PTM Notes',            subtitle: 'Parent meet notes',        icon: MessageSquare, roles: ['teacher'] },
+  { id: 'curriculum-tracker',          name: 'Curriculum',           subtitle: 'Progress tracking',        icon: Target,        roles: ['teacher'] },
+  { id: 'raise-maintenance',           name: 'Report an Issue',      subtitle: 'Raise maintenance request', icon: Wrench,       roles: ['teacher','student'] },
+  { id: 'form-submissions',            name: 'Forms',                subtitle: 'Surveys & forms',          icon: FileText,      roles: ['teacher','student'] },
+
+  // Student tools
+  { id: 'ai-tutor',            name: 'AI Tutor',          subtitle: 'Study help & tutoring',     icon: MessageSquare,  roles: ['student'] },
+  { id: 'doubt-solver',        name: 'Doubt Solver',      subtitle: 'Ask any doubt',             icon: MessageSquare,  roles: ['student'] },
+  { id: 'homework-viewer',     name: 'Homework',          subtitle: 'My assignments',            icon: BookOpen,       roles: ['student'] },
+  { id: 'attendance-self-check', name: 'My Attendance',  subtitle: 'View attendance records',   icon: ClipboardList,  roles: ['student'] },
+  { id: 'result-viewer',       name: 'My Results',        subtitle: 'Exam marks & grades',       icon: BarChart2,      roles: ['student'] },
+  { id: 'practice-test',       name: 'Practice Tests',    subtitle: 'Self-assessment quizzes',   icon: PenTool,        roles: ['student'] },
+  { id: 'study-planner',       name: 'Study Planner',     subtitle: 'Plan your week',            icon: Target,         roles: ['student'] },
+  { id: 'career-guidance',     name: 'Career Guidance',   subtitle: 'Future planning',           icon: Target,         roles: ['student'] },
+  { id: 'fee-status-viewer',   name: 'My Fees',           subtitle: 'Payment status',            icon: IndianRupee,    roles: ['student'] },
+  { id: 'ptm-summary-viewer',  name: 'PTM Summary',       subtitle: 'Teacher notes',             icon: MessageSquare,  roles: ['student'] },
 ];
 
 function scoreMatch(tool, query) {

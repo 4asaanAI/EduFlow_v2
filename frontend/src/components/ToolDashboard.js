@@ -6,7 +6,7 @@ import {
   CalendarDays, UserPlus, MessageSquare, BookOpen, ClipboardList,
   PenTool, BarChart, Award, Truck, Package, Printer, FilePlus,
   Target, FileCheck, LifeBuoy, Wrench, Monitor, AlertTriangle,
-  ScrollText, Shield, Trophy,
+  ScrollText, Shield, Trophy, Brain, HelpCircle, Compass,
 } from 'lucide-react';
 
 // ─── All tool definitions ──────────────────────────────────────────────────────
@@ -39,6 +39,18 @@ const T = {
   'fee-receipts':          { id: 'fee-receipts',          name: 'Fee Receipts',        subtitle: 'PDF & export',          icon: FileText,      color: '#34d399' },
   'principal-daily':       { id: 'principal-daily',       name: 'Principal Daily',     subtitle: 'Absences & subs',       icon: CalendarDays,  color: '#fbbf24' },
   'school-activities':     { id: 'school-activities',     name: 'School Activities',   subtitle: 'Houses, sports, awards', icon: Trophy,         color: '#f59e0b' },
+
+  // Student tools
+  'ai-tutor':               { id: 'ai-tutor',               name: 'AI Tutor',            subtitle: 'Study help',             icon: Brain,         color: '#a78bfa' },
+  'doubt-solver':           { id: 'doubt-solver',           name: 'Doubt Solver',        subtitle: 'Ask any doubt',          icon: HelpCircle,    color: '#4f8ff7' },
+  'homework-viewer':        { id: 'homework-viewer',        name: 'Homework',            subtitle: 'My assignments',         icon: BookOpen,      color: '#fb923c' },
+  'attendance-self-check':  { id: 'attendance-self-check',  name: 'My Attendance',       subtitle: 'View records',           icon: ClipboardList, color: '#34d399' },
+  'result-viewer':          { id: 'result-viewer',          name: 'My Results',          subtitle: 'Exam marks',             icon: BarChart2,     color: '#f472b6' },
+  'practice-test':          { id: 'practice-test',          name: 'Practice Tests',      subtitle: 'Self-assessment',        icon: PenTool,       color: '#fbbf24' },
+  'study-planner':          { id: 'study-planner',          name: 'Study Planner',       subtitle: 'Plan your week',         icon: Target,        color: '#22d3ee' },
+  'career-guidance':        { id: 'career-guidance',        name: 'Career Guidance',     subtitle: 'Future planning',        icon: Compass,       color: '#a78bfa' },
+  'fee-status-viewer':      { id: 'fee-status-viewer',      name: 'My Fees',             subtitle: 'Payment status',         icon: IndianRupee,   color: '#4f8ff7' },
+  'ptm-summary-viewer':     { id: 'ptm-summary-viewer',     name: 'PTM Summary',         subtitle: 'Teacher notes',          icon: MessageSquare, color: '#34d399' },
 
   // Teacher-only tools
   'class-attendance-marker':     { id: 'class-attendance-marker',     name: 'Attendance',           subtitle: 'Mark my class',        icon: ClipboardList, color: '#fb923c' },
@@ -84,6 +96,13 @@ const TOOL_SETS = {
   ],
   admin_maintenance: [
     'facility-requests','raise-maintenance',
+  ],
+
+  // Student
+  student: [
+    'ai-tutor', 'doubt-solver', 'homework-viewer', 'attendance-self-check',
+    'result-viewer', 'practice-test', 'study-planner', 'career-guidance',
+    'fee-status-viewer', 'ptm-summary-viewer', 'form-submissions', 'raise-maintenance',
   ],
 
   // Teacher

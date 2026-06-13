@@ -38,7 +38,7 @@ const loadTool = async (toolId) => {
 
   const OWNERS = ['school-pulse','fee-collection','fee-sync','student-strength','data-import','attendance-overview','staff-tracker','staff-attendance-tracker','financial-reports','announcement-broadcaster','admission-funnel','staff-leave-manager','staff-performance','ai-health-report','smart-alerts','expense-tracker','custom-report-builder','board-report','smart-fee-defaulter','attendance-alerts','reports-trends','platform-health-dashboard'];
   const ADMINS = ['fee-tracker','certificate-generator','circular-sender','enquiry-register','document-scanner','smart-fee-defaulter','admission-pipeline','parent-message','student-transfer','id-card-generator','asset-tracker','transport-manager','automated-report','custom-form-builder','report-card-builder','student-performance-viewer','attendance-alerts','reports-trends','timetable-builder'];
-  const TEACHERS = ['class-attendance-marker','assignment-generator','question-paper-creator','leave-application','lesson-plan-generator','worksheet-creator','class-performance-analytics','substitution-viewer','ptm-notes','curriculum-tracker','form-submissions'];
+  const TEACHERS = ['class-attendance-marker','assignment-generator','question-paper-creator','report-card-builder','student-performance-viewer','leave-application','lesson-plan-generator','worksheet-creator','class-performance-analytics','substitution-viewer','ptm-notes','curriculum-tracker','form-submissions'];
   const STUDENTS = ['ai-tutor','doubt-solver','homework-viewer','attendance-self-check','result-viewer','practice-test','study-planner','career-guidance','fee-status-viewer','ptm-summary-viewer','form-submissions'];
 
   const toComp = (id) => id.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join('');
@@ -71,7 +71,7 @@ function ToolView({ toolId }) {
   );
 }
 
-const TOOL_DASHBOARD_ROLES = ['admin', 'teacher', 'owner'];
+const TOOL_DASHBOARD_ROLES = ['admin', 'teacher', 'owner', 'student'];
 
 export default function Layout() {
   const { currentUser } = useUser();
@@ -197,7 +197,7 @@ export default function Layout() {
         setSidebarOpen={setSidebarOpen}
         onOpenProfile={() => setShowProfile(true)}
         onOpenSettings={() => setShowSettings(true)}
-        isToolDashboardRole={false}
+        isToolDashboardRole={isToolDashboardRole}
       />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>

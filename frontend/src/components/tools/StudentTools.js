@@ -10,45 +10,67 @@ import { Brain, HelpCircle, Send } from 'lucide-react';
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function h() { return getAuthHeaders(); }
 
+async function createConv(title = 'AI Session') {
+  const res = await fetch(`${API}/chat/conversations`, {
+    method: 'POST',
+    headers: { ...h(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  });
+  const data = await res.json();
+  return data.success ? data.data.id : null;
+}
+
+async function* streamChat(convId, text) {
+  const res = await fetch(`${API}/chat/conversations/${convId}/messages`, {
+    method: 'POST',
+    headers: { ...h(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) { yield '[Error: could not connect. Please try again.]'; return; }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunk = decoder.decode(value, { stream: true });
+    for (const line of chunk.split('\n\n')) {
+      if (!line.startsWith('data: ')) continue;
+      try {
+        const d = JSON.parse(line.slice(6));
+        if (d.type === 'text_delta' && d.delta) yield d.delta;
+      } catch {}
+    }
+  }
+}
+
 // 1. AI Tutor
 export function AiTutor() {
   const { currentUser } = useUser();
   const [messages, setMessages] = useState([{ role: 'ai', text: `Hello ${currentUser.name}! I'm your AI tutor. I can help you understand concepts, solve doubts, and study smarter. What would you like to learn today?` }]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [convId, setConvId] = useState(null);
+
+  useEffect(() => {
+    const key = `tutor_conv_${currentUser.id}`;
+    const stored = localStorage.getItem(key);
+    if (stored) { setConvId(stored); return; }
+    createConv('AI Tutor').then(id => { if (id) { localStorage.setItem(key, id); setConvId(id); } });
+  }, [currentUser.id]);
 
   const sendMessage = async () => {
-    if (!input.trim() || loading) return;
+    if (!input.trim() || loading || !convId) return;
     const userMsg = input.trim();
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+    setMessages(prev => [...prev, { role: 'user', text: userMsg }, { role: 'ai', text: '' }]);
     setLoading(true);
     try {
-      const res = await fetch(`${API}/chat/conversations/tutor/messages`, {
-        method: 'POST',
-        headers: h(currentUser),
-        body: JSON.stringify({ text: userMsg }),
-      });
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
       let aiText = '';
-      setMessages(prev => [...prev, { role: 'ai', text: '' }]);
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        const events = chunk.split('\n\n').filter(e => e.startsWith('data: '));
-        for (const event of events) {
-          try {
-            const data = JSON.parse(event.slice(6));
-            if (data.type === 'text_delta') {
-              aiText += data.delta;
-              setMessages(prev => { const n = [...prev]; n[n.length - 1] = { role: 'ai', text: aiText }; return n; });
-            }
-          } catch {}
-        }
+      for await (const delta of streamChat(convId, userMsg)) {
+        aiText += delta;
+        setMessages(prev => { const n = [...prev]; n[n.length - 1] = { role: 'ai', text: aiText }; return n; });
       }
-    } catch (err) {
+    } catch {
       setMessages(prev => [...prev, { role: 'ai', text: 'Sorry, I had trouble connecting. Please try again.' }]);
     }
     setLoading(false);
@@ -113,23 +135,12 @@ export function DoubtSolver() {
     setLoading(true);
     setResponse('');
     try {
-      const convId = `doubt-${Date.now()}`;
-      const res = await fetch(`${API}/chat/conversations/${convId}/messages`, { method: 'POST', headers: h(currentUser), body: JSON.stringify({ text: `Doubt: ${doubt}` }) });
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
+      const cid = await createConv('Doubt Session');
+      if (!cid) { setResponse('Could not connect. Please try again.'); setLoading(false); return; }
       let text = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split('\n\n')) {
-          if (line.startsWith('data: ')) {
-            try {
-              const d = JSON.parse(line.slice(6));
-              if (d.type === 'text_delta') { text += d.delta; setResponse(text); }
-            } catch {}
-          }
-        }
+      for await (const delta of streamChat(cid, `Doubt: ${doubt}`)) {
+        text += delta;
+        setResponse(text);
       }
     } catch { setResponse('Could not solve doubt. Please try again.'); }
     setLoading(false);
@@ -313,42 +324,21 @@ export function PracticeTest() {
     setAnswers({});
 
     try {
-      const convId = `practice-${Date.now()}`;
-
-      // ✅ UPDATED PROMPT (topic added safely)
       const prompt = `Generate 5 multiple-choice questions for a CBSE student on subject: ${selectedSubject}${topic ? `, topic: ${topic}` : ''}. Difficulty: ${difficulty}. Format each question as:
 Q: [question text]
 A) [option A]
-B) [option B]  
+B) [option B]
 C) [option C]
 D) [option D]
 Answer: [correct letter]
 
 Generate exactly 5 questions in this format.`;
 
-      const res = await fetch(`${API}/chat/conversations/${convId}/messages`, {
-        method: 'POST',
-        headers: h(currentUser),
-        body: JSON.stringify({ text: prompt }),
-      });
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
+      const cid = await createConv('Practice Test');
+      if (!cid) { setGenerating(false); return; }
       let fullText = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-
-        for (const line of chunk.split('\n\n')) {
-          if (line.startsWith('data: ')) {
-            try {
-              const d = JSON.parse(line.slice(6));
-              if (d.type === 'text_delta') fullText += d.delta;
-            } catch {}
-          }
-        }
+      for await (const delta of streamChat(cid, prompt)) {
+        fullText += delta;
       }
 
       const qBlocks = fullText.split(/Q:/).filter(b => b.trim());
@@ -602,20 +592,12 @@ export function CareerGuidance() {
     try {
       const context = results?.length > 0 ? `Student's results: ${results.map(r => `${r.subject_name}: ${r.marks_obtained}/${r.max_marks}`).join(', ')}.` : '';
       const prompt = `${context} Student asks: ${input}. Provide thoughtful career guidance for a CBSE school student in India, considering their academic performance and interests. Suggest specific career paths, required subjects, and entrance exams.`;
-      const convId = `career-${Date.now()}`;
-      const res = await fetch(`${API}/chat/conversations/${convId}/messages`, { method: 'POST', headers: h(currentUser), body: JSON.stringify({ text: prompt }) });
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
+      const cid = await createConv('Career Guidance');
+      if (!cid) { setResponse('Could not connect. Please try again.'); setLoading(false); return; }
       let text = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split('\n\n')) {
-          if (line.startsWith('data: ')) {
-            try { const d = JSON.parse(line.slice(6)); if (d.type === 'text_delta') { text += d.delta; setResponse(text); } } catch {}
-          }
-        }
+      for await (const delta of streamChat(cid, prompt)) {
+        text += delta;
+        setResponse(text);
       }
     } catch { setResponse('Could not load guidance. Please try again.'); }
     setLoading(false);
