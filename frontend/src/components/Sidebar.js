@@ -268,6 +268,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   const [toolsExpanded, setToolsExpanded] = useState(false);
   const [chatsExpanded, setChatsExpanded] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [openGroups, setOpenGroups] = useState(() => {
     const cfg = getGroupConfig(currentUser);
     if (!cfg) return new Set();
@@ -300,7 +301,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   }, [onSelectTool]);
 
   useEffect(() => {
-    const h = (e) => { if (userMenuRef.current && !userMenuRef.current.contains(e.target)) setShowUserMenu(false); };
+    const h = (e) => { if (userMenuRef.current && !userMenuRef.current.contains(e.target)) { setShowUserMenu(false); setShowHelp(false); } };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
@@ -463,8 +464,8 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
         .sidebar-scroll::-webkit-scrollbar-thumb { background: ${isDark ? '#333' : '#ddd'}; border-radius: 4px; }
         .sidebar-scroll::-webkit-scrollbar-thumb:hover { background: ${isDark ? '#444' : '#ccc'}; }
         .new-chat-btn {
-          width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
-          padding: 11px 16px;
+          width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px;
+          padding: 9px 14px;
           background: linear-gradient(135deg, #4f8ff7 0%, #7c6af7 60%, #a78bfa 100%);
           border: none; border-radius: 12px; color: #fff;
           font-size: 13px; font-weight: 700; cursor: pointer;
@@ -515,9 +516,9 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
           </div>
 
           {/* New Chat CTA */}
-          <button data-testid="new-chat-btn" onClick={onNewChat} className="new-chat-btn">
-            <div style={{ width: 20, height: 20, borderRadius: 6, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Plus size={13} strokeWidth={2.5} color="#fff" />
+          <button data-testid="new-chat-btn" onClick={onNewChat} className="new-chat-btn" style={{ marginTop: 5 }}>
+            <div style={{ width: 18, height: 18, borderRadius: 5, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Plus size={11} strokeWidth={2.5} color="#fff" />
             </div>
             New Chat
           </button>
@@ -601,13 +602,6 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
           )}
         </div>
 
-        {/* ── Pinned bottom tools ── */}
-        {bottomTools.length > 0 && (
-          <div style={{ borderTop: `1px solid ${border}`, padding: '4px 8px 2px', flexShrink: 0 }}>
-            {bottomTools.map(t => renderToolItem(t))}
-          </div>
-        )}
-
         {/* ── Token usage badge ── */}
         <TokenUsageBadge
           usage={tokenUsage}
@@ -625,6 +619,15 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
               background: isDark ? '#252525' : '#ffffff', border: `1px solid ${border}`,
               borderRadius: 12, padding: 6, boxShadow: 'var(--shadow-lg)', zIndex: 100,
             }}>
+              {/* Profile */}
+              <button onClick={() => { onOpenProfile(); setShowUserMenu(false); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', background: 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', color: secondary, fontSize: 13, fontWeight: 500, transition: 'var(--transition-fast)' }}
+                onMouseEnter={e => e.currentTarget.style.background = hover}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                <User size={14} />
+                <span>Profile</span>
+              </button>
+              {/* Dark Mode */}
               <button onClick={toggleTheme}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', background: 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', color: secondary, fontSize: 13, fontWeight: 500, transition: 'var(--transition-fast)' }}
                 onMouseEnter={e => e.currentTarget.style.background = hover}
@@ -632,14 +635,42 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
                 {isDark ? <Sun size={14} /> : <Moon size={14} />}
                 <span>{isDark ? 'Light Mode' : 'Dark Mode'}</span>
               </button>
-              <button onClick={onOpenSettings}
+              {/* Settings */}
+              <button onClick={() => { onOpenSettings(); setShowUserMenu(false); }}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', background: 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', color: secondary, fontSize: 13, fontWeight: 500, transition: 'var(--transition-fast)' }}
                 onMouseEnter={e => e.currentTarget.style.background = hover}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                 <Settings size={14} />
                 <span>Settings</span>
               </button>
+              {/* Help — expandable, contains bottomTools */}
+              <button onClick={() => setShowHelp(v => !v)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', background: showHelp ? hover : 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', color: secondary, fontSize: 13, fontWeight: 500, transition: 'var(--transition-fast)' }}
+                onMouseEnter={e => e.currentTarget.style.background = hover}
+                onMouseLeave={e => { if (!showHelp) e.currentTarget.style.background = 'transparent'; }}>
+                <LifeBuoy size={14} />
+                <span style={{ flex: 1, textAlign: 'left' }}>Help & Support</span>
+                <ChevronDown size={12} color={muted} style={{ transform: showHelp ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s ease' }} />
+              </button>
+              {showHelp && bottomTools.length > 0 && (
+                <div style={{ paddingLeft: 8, paddingBottom: 2 }}>
+                  {bottomTools.map(t => {
+                    const Icon = t.icon;
+                    const isActive = activeTool === t.id;
+                    return (
+                      <button key={t.id} onClick={() => { onSelectTool(t.id); setShowUserMenu(false); setShowHelp(false); }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 10px', background: isActive ? `${t.color}12` : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', color: isActive ? t.color : secondary, fontSize: 12, fontWeight: isActive ? 600 : 500, transition: 'var(--transition-fast)' }}
+                        onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = hover; }}
+                        onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}>
+                        <Icon size={13} color={isActive ? t.color : muted} />
+                        <span>{t.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
               <div style={{ borderTop: `1px solid ${border}`, margin: '4px 0' }} />
+              {/* Sign Out */}
               <button onClick={() => { logout(); setShowUserMenu(false); }}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', background: 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', color: '#f87171', fontSize: 13, fontWeight: 500, transition: 'var(--transition-fast)' }}
                 onMouseEnter={e => e.currentTarget.style.background = hover}
