@@ -280,8 +280,8 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   const groupConfig = getGroupConfig(currentUser);
 
   useEffect(() => {
-    if (!isToolDashboardRole) loadConversations();
-  }, [currentUser.id, convRefresh, isToolDashboardRole]);
+    loadConversations();
+  }, [currentUser.id, convRefresh]);
 
   // Auto-open the group that contains the currently active tool
   useEffect(() => {
@@ -447,7 +447,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
       }}>
         {/* Logo */}
         <div style={{ padding: '16px 16px 12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isToolDashboardRole ? 4 : 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, #4f8ff7, #a78bfa)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <span style={{ fontSize: 14, fontWeight: 800, color: '#fff', fontFamily: 'Inter, sans-serif' }}>E</span>
@@ -461,8 +461,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
             </button>
           </div>
 
-          {!isToolDashboardRole && (
-            <button data-testid="new-chat-btn" onClick={onNewChat} style={{
+          <button data-testid="new-chat-btn" onClick={onNewChat} style={{
               width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               padding: '10px', background: isDark ? '#252525' : '#f5f5f5',
               border: `1px solid ${border}`, borderRadius: 10, color: tp,
@@ -472,105 +471,73 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
               onMouseLeave={e => { e.currentTarget.style.background = isDark ? '#252525' : '#f5f5f5'; }}>
               <Plus size={15} strokeWidth={2.5} /> New Chat
             </button>
-          )}
         </div>
 
         {/* Scrollable area */}
         <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '0 8px' }}>
-          {isToolDashboardRole ? (
-            renderGroupedNav()
-          ) : (
-            <>
-              {/* Grouped Tools Section — shown ABOVE chat history */}
-              <div style={{ marginBottom: 4 }}>
+          {/* Tool navigation — always shown */}
+          {renderGroupedNav()}
+
+          {/* Chat History — shown for all roles below tool nav */}
+          {conversations.length > 0 && (
+            <div style={{ borderTop: `1px solid ${border}`, marginTop: 4, paddingTop: 4 }}>
+              <div style={{ padding: '8px 8px 6px', fontSize: 11, fontWeight: 600, color: muted, letterSpacing: '0.03em' }}>
+                Chats
+              </div>
+              {(chatsExpanded ? conversations : conversations.slice(0, 5)).map(conv => (
+                <div key={conv.id} style={{ position: 'relative' }}>
+                  {renamingId === conv.id ? (
+                    <div style={{ padding: '3px 4px' }}>
+                      <input autoFocus value={renameVal} onChange={e => setRenameVal(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') commitRename(conv.id); if (e.key === 'Escape') setRenamingId(null); }}
+                        onBlur={() => commitRename(conv.id)}
+                        style={{ width: '100%', background: isDark ? '#252525' : '#fafafa', border: `1px solid ${isDark ? '#4f8ff7' : '#4f8ff7'}`, borderRadius: 8, padding: '6px 10px', color: tp, fontSize: 12, outline: 'none' }}
+                      />
+                    </div>
+                  ) : (
+                    <button data-testid={`conv-btn-${conv.id}`}
+                      onClick={() => onSelectConv(conv.id)}
+                      onContextMenu={e => { e.preventDefault(); setMenuConvId(conv.id); }}
+                      style={{
+                        display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%',
+                        padding: '8px 10px', background: activeConvId === conv.id ? activeBg : 'transparent',
+                        border: 'none', borderRadius: 8, cursor: 'pointer',
+                        transition: 'all var(--transition-fast)', textAlign: 'left', gap: 2,
+                      }}
+                      onMouseEnter={e => { if (activeConvId !== conv.id) e.currentTarget.style.background = hover; }}
+                      onMouseLeave={e => { if (activeConvId !== conv.id) e.currentTarget.style.background = 'transparent'; }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, width: '100%' }}>
+                        <MessageCircle size={12} color={activeConvId === conv.id ? '#4f8ff7' : muted} style={{ flexShrink: 0 }} />
+                        {conv.is_pinned && <Pin size={9} color="#fbbf24" />}
+                        {conv.is_starred && <Star size={9} color="#fbbf24" />}
+                        <span style={{ fontSize: 13, fontWeight: 500, color: activeConvId === conv.id ? tp : secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                          {conv.title || 'New conversation'}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: 11, color: muted, paddingLeft: 17 }}>{timeAgo(conv.updated_at)}</span>
+                    </button>
+                  )}
+                  {menuConvId === conv.id && (
+                    <ConvMenu conv={conv} onClose={() => setMenuConvId(null)} isDark={isDark}
+                      onRename={() => { setRenamingId(conv.id); setRenameVal(conv.title || ''); setMenuConvId(null); }}
+                      onPin={() => handlePin(conv)} onStar={() => handleStar(conv)}
+                      onDelete={() => handleDelete(conv.id)}
+                    />
+                  )}
+                </div>
+              ))}
+              {conversations.length > 5 && (
                 <button
-                  onClick={() => setToolsExpanded(v => !v)}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '8px 8px', background: 'transparent', border: 'none', cursor: 'pointer', color: muted, borderRadius: 6, transition: 'var(--transition-fast)' }}
+                  onClick={() => setChatsExpanded(v => !v)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '6px 10px', background: 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', color: muted, fontSize: 11, fontWeight: 600, transition: 'var(--transition-fast)' }}
                   onMouseEnter={e => e.currentTarget.style.background = hover}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
-                  <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.03em' }}>Tools ({tools.length})</span>
-                  {toolsExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                  {chatsExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                  {chatsExpanded ? 'Show less' : `${conversations.length - 5} more chats`}
                 </button>
-                {toolsExpanded && (
-                  <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    {groupConfig ? (
-                      <>
-                        {groupConfig.top.map(id => renderToolItem(tools.find(t => t.id === id)))}
-                        {groupConfig.top.length > 0 && <div style={{ height: 4 }} />}
-                        {groupConfig.groups.map(renderGroup)}
-                        {groupConfig.bottom.length > 0 && <div style={{ borderTop: `1px solid ${border}`, margin: '4px 0' }} />}
-                        {groupConfig.bottom.map(id => renderToolItem(tools.find(t => t.id === id)))}
-                      </>
-                    ) : (
-                      tools.map(t => renderToolItem(t))
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Chat History — below tools, capped at 5 with expand */}
-              {conversations.length > 0 && (
-                <div style={{ borderTop: `1px solid ${border}`, marginTop: 4, paddingTop: 4 }}>
-                  <div style={{ padding: '8px 8px 6px', fontSize: 11, fontWeight: 600, color: muted, letterSpacing: '0.03em' }}>
-                    Chats
-                  </div>
-                  {(chatsExpanded ? conversations : conversations.slice(0, 5)).map(conv => (
-                    <div key={conv.id} style={{ position: 'relative' }}>
-                      {renamingId === conv.id ? (
-                        <div style={{ padding: '3px 4px' }}>
-                          <input autoFocus value={renameVal} onChange={e => setRenameVal(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') commitRename(conv.id); if (e.key === 'Escape') setRenamingId(null); }}
-                            onBlur={() => commitRename(conv.id)}
-                            style={{ width: '100%', background: isDark ? '#252525' : '#fafafa', border: `1px solid ${isDark ? '#4f8ff7' : '#4f8ff7'}`, borderRadius: 8, padding: '6px 10px', color: tp, fontSize: 12, outline: 'none' }}
-                          />
-                        </div>
-                      ) : (
-                        <button data-testid={`conv-btn-${conv.id}`}
-                          onClick={() => onSelectConv(conv.id)}
-                          onContextMenu={e => { e.preventDefault(); setMenuConvId(conv.id); }}
-                          style={{
-                            display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%',
-                            padding: '8px 10px', background: activeConvId === conv.id ? activeBg : 'transparent',
-                            border: 'none', borderRadius: 8, cursor: 'pointer',
-                            transition: 'all var(--transition-fast)', textAlign: 'left', gap: 2,
-                          }}
-                          onMouseEnter={e => { if (activeConvId !== conv.id) e.currentTarget.style.background = hover; }}
-                          onMouseLeave={e => { if (activeConvId !== conv.id) e.currentTarget.style.background = 'transparent'; }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, width: '100%' }}>
-                            <MessageCircle size={12} color={activeConvId === conv.id ? '#4f8ff7' : muted} style={{ flexShrink: 0 }} />
-                            {conv.is_pinned && <Pin size={9} color="#fbbf24" />}
-                            {conv.is_starred && <Star size={9} color="#fbbf24" />}
-                            <span style={{ fontSize: 13, fontWeight: 500, color: activeConvId === conv.id ? tp : secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                              {conv.title || 'New conversation'}
-                            </span>
-                          </div>
-                          <span style={{ fontSize: 11, color: muted, paddingLeft: 17 }}>{timeAgo(conv.updated_at)}</span>
-                        </button>
-                      )}
-                      {menuConvId === conv.id && (
-                        <ConvMenu conv={conv} onClose={() => setMenuConvId(null)} isDark={isDark}
-                          onRename={() => { setRenamingId(conv.id); setRenameVal(conv.title || ''); setMenuConvId(null); }}
-                          onPin={() => handlePin(conv)} onStar={() => handleStar(conv)}
-                          onDelete={() => handleDelete(conv.id)}
-                        />
-                      )}
-                    </div>
-                  ))}
-                  {conversations.length > 5 && (
-                    <button
-                      onClick={() => setChatsExpanded(v => !v)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '6px 10px', background: 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', color: muted, fontSize: 11, fontWeight: 600, transition: 'var(--transition-fast)' }}
-                      onMouseEnter={e => e.currentTarget.style.background = hover}
-                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                    >
-                      {chatsExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                      {chatsExpanded ? 'Show less' : `${conversations.length - 5} more chats`}
-                    </button>
-                  )}
-                </div>
               )}
-            </>
+            </div>
           )}
         </div>
 
