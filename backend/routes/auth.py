@@ -232,6 +232,8 @@ async def login(body: LoginRequest, request: Request, response: Response):
             "ip": _client_ip(request),
         },
     )
+    from services.layaastat import emit_event
+    await emit_event("user_login", distinct_id=jwt_payload["user_id"], payload={"role": user_info.get("role", "")})
 
     response_data = {
         "success": True,

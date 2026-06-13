@@ -2385,6 +2385,8 @@ async def send_message(conv_id: str, request: Request):
         session_id = str(uuid.uuid4())
         logger.warning("chat_sse_session_id_missing", extra={"conversation_id": conv_id, "generated_session_id": session_id})
 
+    from services.layaastat import emit_event
+    await emit_event("ai_chat_message", distinct_id=user.get("user_id"), payload={"role": user.get("role", "")})
     return StreamingResponse(
         _generate_chat_sse(conv_id, user_text, user, session_id=session_id, request=request),
         media_type="text/event-stream",
