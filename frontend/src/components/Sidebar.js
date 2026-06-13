@@ -411,15 +411,15 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   const renderGroupedNav = () => {
     if (!groupConfig) {
       return (
-        <div style={{ paddingTop: 4, display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           {tools.map(t => renderToolItem(t))}
         </div>
       );
     }
     return (
-      <div style={{ paddingTop: 4 }}>
+      <div>
         {groupConfig.top.map(id => renderToolItem(tools.find(t => t.id === id)))}
-        {groupConfig.top.length > 0 && <div style={{ height: 6 }} />}
+        {groupConfig.top.length > 0 && <div style={{ height: 4 }} />}
         {groupConfig.groups.map(renderGroup)}
       </div>
     );
@@ -430,125 +430,185 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
     ? groupConfig.bottom.map(id => tools.find(t => t.id === id)).filter(Boolean)
     : [];
 
+  // Section zone backgrounds — distinct but subtle
+  const toolsZoneBg = isDark ? '#161b27' : '#f5f7ff';          // cool blue tint
+  const chatsZoneBg = isDark ? '#1a1510' : '#fffbf5';          // warm amber tint
+  const toolsZoneBorder = isDark ? '#1e2540' : '#e8eeff';
+  const chatsZoneBorder = isDark ? '#2a2010' : '#ffefd4';
+
   return (
     <>
       <style>{`
         @media (max-width: 768px) {
-          .sidebar-wrapper { transform: ${sidebarOpen ? 'translateX(0)' : 'translateX(-100%)'}; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); position: fixed; left: 0; top: 0; z-index: 50; height: 100vh; }
+          .sidebar-wrapper {
+            transform: ${sidebarOpen ? 'translateX(0)' : 'translateX(-100%)'};
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: fixed; left: 0; top: 0; z-index: 50; height: 100vh;
+            width: 280px !important; min-width: 280px !important;
+          }
+          .mobile-close { display: flex !important; }
+          .sidebar-overlay {
+            display: ${sidebarOpen ? 'block' : 'none'};
+            position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+            z-index: 49; backdrop-filter: blur(2px);
+          }
         }
         @media (min-width: 769px) {
           .sidebar-wrapper { transform: translateX(0) !important; position: relative !important; }
+          .sidebar-overlay { display: none !important; }
         }
         .hide-emergent-badge, [class*="emergent-badge"], .emergent-watermark { display: none !important; }
+        .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+        .sidebar-scroll::-webkit-scrollbar-thumb { background: ${isDark ? '#333' : '#ddd'}; border-radius: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-thumb:hover { background: ${isDark ? '#444' : '#ccc'}; }
+        .new-chat-btn {
+          width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
+          padding: 11px 16px;
+          background: linear-gradient(135deg, #4f8ff7 0%, #7c6af7 60%, #a78bfa 100%);
+          border: none; border-radius: 12px; color: #fff;
+          font-size: 13px; font-weight: 700; cursor: pointer;
+          box-shadow: 0 2px 12px rgba(79,143,247,0.35);
+          transition: all 0.2s ease; letter-spacing: 0.01em;
+        }
+        .new-chat-btn:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 18px rgba(79,143,247,0.45);
+          background: linear-gradient(135deg, #5e9bff 0%, #8b79f9 60%, #b99bff 100%);
+        }
+        .new-chat-btn:active { transform: translateY(0); box-shadow: 0 2px 8px rgba(79,143,247,0.3); }
+        .zone-header {
+          display: flex; align-items: center; gap: 6px;
+          padding: 8px 10px 6px;
+          font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+        }
+        .conv-btn-row { display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 8px 10px; border: none; border-radius: 8px; cursor: pointer; transition: all 0.15s ease; text-align: left; gap: 2px; }
       `}</style>
+
+      {/* Mobile overlay */}
+      <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
+
       <aside className="sidebar-wrapper" data-testid="sidebar" style={{
         width: 260, minWidth: 260, background: bg, borderRight: `1px solid ${border}`,
         display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', flexShrink: 0,
       }}>
-        {/* Logo */}
-        <div style={{ padding: '16px 16px 12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, #4f8ff7, #a78bfa)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontSize: 14, fontWeight: 800, color: '#fff', fontFamily: 'Inter, sans-serif' }}>E</span>
+
+        {/* ── Header: Logo + New Chat ── */}
+        <div style={{ padding: '14px 12px 10px', flexShrink: 0 }}>
+          {/* Logo row */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 9, background: 'linear-gradient(135deg, #4f8ff7, #a78bfa)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(79,143,247,0.3)' }}>
+                <span style={{ fontSize: 15, fontWeight: 800, color: '#fff', fontFamily: 'Inter, sans-serif' }}>E</span>
               </div>
-              <span style={{ fontWeight: 700, fontSize: 16, color: tp, letterSpacing: '-0.02em' }}>EduFlow</span>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 15, color: tp, letterSpacing: '-0.02em', lineHeight: 1 }}>EduFlow</div>
+                <div style={{ fontSize: 10, color: muted, fontWeight: 500, marginTop: 1 }}>School Management</div>
+              </div>
             </div>
-            <button onClick={() => setSidebarOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: muted, padding: 4, borderRadius: 6, display: 'none', transition: 'var(--transition-fast)' }} className="mobile-close"
-              onMouseEnter={e => e.currentTarget.style.background = hover}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-              <X size={16} />
+            <button onClick={() => setSidebarOpen(false)} className="mobile-close"
+              style={{ background: isDark ? '#252525' : '#f0f0f0', border: 'none', cursor: 'pointer', color: muted, padding: '5px', borderRadius: 7, display: 'none', alignItems: 'center', justifyContent: 'center', transition: 'var(--transition-fast)' }}
+              onMouseEnter={e => e.currentTarget.style.background = isDark ? '#333' : '#e0e0e0'}
+              onMouseLeave={e => e.currentTarget.style.background = isDark ? '#252525' : '#f0f0f0'}>
+              <X size={15} />
             </button>
           </div>
 
-          <button data-testid="new-chat-btn" onClick={onNewChat} style={{
-              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              padding: '10px', background: isDark ? '#252525' : '#f5f5f5',
-              border: `1px solid ${border}`, borderRadius: 10, color: tp,
-              fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all var(--transition-fast)',
-            }}
-              onMouseEnter={e => { e.currentTarget.style.background = isDark ? '#2e2e2e' : '#ebebeb'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = isDark ? '#252525' : '#f5f5f5'; }}>
-              <Plus size={15} strokeWidth={2.5} /> New Chat
-            </button>
+          {/* New Chat CTA */}
+          <button data-testid="new-chat-btn" onClick={onNewChat} className="new-chat-btn">
+            <div style={{ width: 20, height: 20, borderRadius: 6, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Plus size={13} strokeWidth={2.5} color="#fff" />
+            </div>
+            New Chat
+          </button>
         </div>
 
-        {/* Scrollable area */}
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '0 8px' }}>
-          {/* Tool navigation — always shown */}
-          {renderGroupedNav()}
+        {/* ── Scrollable body ── */}
+        <div className="sidebar-scroll" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '0 8px 8px' }}>
 
-          {/* Chat History — shown for all roles below tool nav */}
+          {/* Tools zone — cool blue tint */}
+          <div style={{ borderRadius: 12, background: toolsZoneBg, border: `1px solid ${toolsZoneBorder}`, marginBottom: 8, overflow: 'hidden' }}>
+            <div className="zone-header" style={{ color: isDark ? '#6b8fd4' : '#4f6bbf' }}>
+              <Wrench size={11} />
+              Tools
+            </div>
+            <div style={{ padding: '0 6px 6px' }}>
+              {renderGroupedNav()}
+            </div>
+          </div>
+
+          {/* Chat history zone — warm amber tint */}
           {conversations.length > 0 && (
-            <div style={{ borderTop: `1px solid ${border}`, marginTop: 4, paddingTop: 4 }}>
-              <div style={{ padding: '8px 8px 6px', fontSize: 11, fontWeight: 600, color: muted, letterSpacing: '0.03em' }}>
-                Chats
+            <div style={{ borderRadius: 12, background: chatsZoneBg, border: `1px solid ${chatsZoneBorder}`, overflow: 'hidden' }}>
+              <div className="zone-header" style={{ color: isDark ? '#c9954a' : '#9a6520' }}>
+                <MessageCircle size={11} />
+                Recent Chats
               </div>
-              {(chatsExpanded ? conversations : conversations.slice(0, 5)).map(conv => (
-                <div key={conv.id} style={{ position: 'relative' }}>
-                  {renamingId === conv.id ? (
-                    <div style={{ padding: '3px 4px' }}>
-                      <input autoFocus value={renameVal} onChange={e => setRenameVal(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') commitRename(conv.id); if (e.key === 'Escape') setRenamingId(null); }}
-                        onBlur={() => commitRename(conv.id)}
-                        style={{ width: '100%', background: isDark ? '#252525' : '#fafafa', border: `1px solid ${isDark ? '#4f8ff7' : '#4f8ff7'}`, borderRadius: 8, padding: '6px 10px', color: tp, fontSize: 12, outline: 'none' }}
-                      />
-                    </div>
-                  ) : (
-                    <button data-testid={`conv-btn-${conv.id}`}
-                      onClick={() => onSelectConv(conv.id)}
-                      onContextMenu={e => { e.preventDefault(); setMenuConvId(conv.id); }}
-                      style={{
-                        display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%',
-                        padding: '8px 10px', background: activeConvId === conv.id ? activeBg : 'transparent',
-                        border: 'none', borderRadius: 8, cursor: 'pointer',
-                        transition: 'all var(--transition-fast)', textAlign: 'left', gap: 2,
-                      }}
-                      onMouseEnter={e => { if (activeConvId !== conv.id) e.currentTarget.style.background = hover; }}
-                      onMouseLeave={e => { if (activeConvId !== conv.id) e.currentTarget.style.background = 'transparent'; }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, width: '100%' }}>
-                        <MessageCircle size={12} color={activeConvId === conv.id ? '#4f8ff7' : muted} style={{ flexShrink: 0 }} />
-                        {conv.is_pinned && <Pin size={9} color="#fbbf24" />}
-                        {conv.is_starred && <Star size={9} color="#fbbf24" />}
-                        <span style={{ fontSize: 13, fontWeight: 500, color: activeConvId === conv.id ? tp : secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                          {conv.title || 'New conversation'}
-                        </span>
+              <div style={{ padding: '0 6px 6px' }}>
+                {(chatsExpanded ? conversations : conversations.slice(0, 5)).map(conv => (
+                  <div key={conv.id} style={{ position: 'relative' }}>
+                    {renamingId === conv.id ? (
+                      <div style={{ padding: '3px 4px' }}>
+                        <input autoFocus value={renameVal} onChange={e => setRenameVal(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') commitRename(conv.id); if (e.key === 'Escape') setRenamingId(null); }}
+                          onBlur={() => commitRename(conv.id)}
+                          style={{ width: '100%', background: isDark ? '#252525' : '#fafafa', border: `1px solid #4f8ff7`, borderRadius: 8, padding: '6px 10px', color: tp, fontSize: 12, outline: 'none' }}
+                        />
                       </div>
-                      <span style={{ fontSize: 11, color: muted, paddingLeft: 17 }}>{timeAgo(conv.updated_at)}</span>
-                    </button>
-                  )}
-                  {menuConvId === conv.id && (
-                    <ConvMenu conv={conv} onClose={() => setMenuConvId(null)} isDark={isDark}
-                      onRename={() => { setRenamingId(conv.id); setRenameVal(conv.title || ''); setMenuConvId(null); }}
-                      onPin={() => handlePin(conv)} onStar={() => handleStar(conv)}
-                      onDelete={() => handleDelete(conv.id)}
-                    />
-                  )}
-                </div>
-              ))}
-              {conversations.length > 5 && (
-                <button
-                  onClick={() => setChatsExpanded(v => !v)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '6px 10px', background: 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', color: muted, fontSize: 11, fontWeight: 600, transition: 'var(--transition-fast)' }}
-                  onMouseEnter={e => e.currentTarget.style.background = hover}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                >
-                  {chatsExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                  {chatsExpanded ? 'Show less' : `${conversations.length - 5} more chats`}
-                </button>
-              )}
+                    ) : (
+                      <button data-testid={`conv-btn-${conv.id}`}
+                        onClick={() => onSelectConv(conv.id)}
+                        onContextMenu={e => { e.preventDefault(); setMenuConvId(conv.id); }}
+                        className="conv-btn-row"
+                        style={{ background: activeConvId === conv.id ? (isDark ? 'rgba(79,143,247,0.12)' : 'rgba(79,143,247,0.08)') : 'transparent' }}
+                        onMouseEnter={e => { if (activeConvId !== conv.id) e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'; }}
+                        onMouseLeave={e => { if (activeConvId !== conv.id) e.currentTarget.style.background = 'transparent'; }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+                          <div style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, background: activeConvId === conv.id ? 'rgba(79,143,247,0.15)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <MessageCircle size={11} color={activeConvId === conv.id ? '#4f8ff7' : muted} />
+                          </div>
+                          {conv.is_pinned && <Pin size={9} color="#fbbf24" />}
+                          {conv.is_starred && <Star size={9} color="#fbbf24" />}
+                          <span style={{ fontSize: 12, fontWeight: activeConvId === conv.id ? 600 : 500, color: activeConvId === conv.id ? tp : secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                            {conv.title || 'New conversation'}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: 10, color: muted, paddingLeft: 28 }}>{timeAgo(conv.updated_at)}</span>
+                      </button>
+                    )}
+                    {menuConvId === conv.id && (
+                      <ConvMenu conv={conv} onClose={() => setMenuConvId(null)} isDark={isDark}
+                        onRename={() => { setRenamingId(conv.id); setRenameVal(conv.title || ''); setMenuConvId(null); }}
+                        onPin={() => handlePin(conv)} onStar={() => handleStar(conv)}
+                        onDelete={() => handleDelete(conv.id)}
+                      />
+                    )}
+                  </div>
+                ))}
+                {conversations.length > 5 && (
+                  <button
+                    onClick={() => setChatsExpanded(v => !v)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '6px 10px', background: 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', color: isDark ? '#c9954a' : '#9a6520', fontSize: 11, fontWeight: 600, transition: 'var(--transition-fast)' }}
+                    onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    {chatsExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                    {chatsExpanded ? 'Show less' : `${conversations.length - 5} more chats`}
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
 
-        {/* Pinned bottom tools: Audit Log + Query & Support */}
+        {/* ── Pinned bottom tools ── */}
         {bottomTools.length > 0 && (
-          <div style={{ borderTop: `1px solid ${border}`, padding: '4px 8px 2px' }}>
+          <div style={{ borderTop: `1px solid ${border}`, padding: '4px 8px 2px', flexShrink: 0 }}>
             {bottomTools.map(t => renderToolItem(t))}
           </div>
         )}
 
-        {/* Token usage badge */}
+        {/* ── Token usage badge ── */}
         <TokenUsageBadge
           usage={tokenUsage}
           role={currentUser.role}
@@ -557,11 +617,11 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
           onClick={() => setShowUpgradeModal(true)}
         />
 
-        {/* Bottom user section */}
-        <div style={{ borderTop: `1px solid ${border}`, padding: '8px' }} ref={userMenuRef}>
+        {/* ── User section ── */}
+        <div style={{ borderTop: `1px solid ${border}`, padding: '8px', flexShrink: 0 }} ref={userMenuRef}>
           {showUserMenu && (
             <div className="fade-in-scale" style={{
-              position: 'absolute', bottom: 64, left: 8, right: 8,
+              position: 'absolute', bottom: 68, left: 8, right: 8,
               background: isDark ? '#252525' : '#ffffff', border: `1px solid ${border}`,
               borderRadius: 12, padding: 6, boxShadow: 'var(--shadow-lg)', zIndex: 100,
             }}>
@@ -592,24 +652,25 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
 
           <button onClick={() => setShowUserMenu(v => !v)} data-testid="role-switcher-btn"
             style={{
-              display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px',
+              display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 10px',
               background: showUserMenu ? hover : 'transparent',
               border: 'none', borderRadius: 10, cursor: 'pointer', transition: 'all var(--transition-fast)',
             }}
             onMouseEnter={e => e.currentTarget.style.background = hover}
             onMouseLeave={e => { if (!showUserMenu) e.currentTarget.style.background = 'transparent'; }}>
             <div style={{
-              width: 32, height: 32, borderRadius: 8, background: ROLE_COLORS[currentUser.role],
+              width: 32, height: 32, borderRadius: 9, background: `linear-gradient(135deg, ${ROLE_COLORS[currentUser.role]}, ${ROLE_COLORS[currentUser.role]}aa)`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0,
+              boxShadow: `0 2px 6px ${ROLE_COLORS[currentUser.role]}44`,
             }}>
               {currentUser.initials}
             </div>
             <div style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: tp, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{currentUser.name}</div>
-              <div style={{ fontSize: 11, color: ROLE_COLORS[currentUser.role], fontWeight: 600, lineHeight: 1.2, marginTop: 1 }}>{ROLE_LABELS[currentUser.role]}</div>
+              <div style={{ fontSize: 10, color: ROLE_COLORS[currentUser.role], fontWeight: 600, lineHeight: 1.2, marginTop: 2 }}>{ROLE_LABELS[currentUser.role]}</div>
             </div>
-            <ChevronDown size={14} color={muted} style={{ transform: showUserMenu ? 'rotate(180deg)' : 'none', transition: 'var(--transition-fast)' }} />
+            <ChevronDown size={13} color={muted} style={{ transform: showUserMenu ? 'rotate(180deg)' : 'none', transition: 'var(--transition-fast)' }} />
           </button>
         </div>
       </aside>
