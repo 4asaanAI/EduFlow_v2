@@ -2907,4 +2907,16 @@ async def confirm_action(conv_id: str, request: Request):
             status_code=429,
             content=exc.payload,
             headers={"Retry-After": str(exc.retry_after)},
+
+
+@router.post("/feedback")
+async def submit_feedback(request: Request):
+    user = get_current_user(request)
+    body = await request.json()
+    rating = body.get("rating")
+    if rating not in (0, 1):
+        raise HTTPException(400, "rating must be 0 or 1")
+    from services.layaastat import emit_event
+    await emit_event("ai_feedback", distinct_id=user.get("user_id"), payload={"rating": rating})
+    return {"success": True}
         )
