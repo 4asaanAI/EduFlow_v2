@@ -755,4 +755,14 @@ export async function createTopupCheckout(packId) {
   return res.json();
 }
 
+export async function emitFeedback(rating) {
+  try {
+    await apiFetch(`${API}/chat/feedback`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ rating }),
+    });
+  } catch {}
+}
+
 
