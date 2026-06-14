@@ -2907,6 +2907,7 @@ async def confirm_action(conv_id: str, request: Request):
             status_code=429,
             content=exc.payload,
             headers={"Retry-After": str(exc.retry_after)},
+        )
 
 
 @router.post("/feedback")
@@ -2919,4 +2920,3 @@ async def submit_feedback(request: Request):
     from services.layaastat import emit_event
     await emit_event("ai_feedback", distinct_id=user.get("user_id"), payload={"rating": rating})
     return {"success": True}
-        )
