@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import DOMPurify from 'dompurify';
 import { useTheme } from '../contexts/ThemeContext';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { emitFeedback } from '../lib/api';
 
 const MARKDOWN_SANITIZE_CONFIG = {
   FORBID_ATTR: ['style', 'class', 'onerror', 'onload', 'onfocus'],
@@ -201,6 +202,31 @@ function getToolCount(call) {
   return null;
 }
 
+function FeedbackButtons({ messageId, isDark }) {
+  const [voted, setVoted] = useState(null);
+  const handleVote = async (rating) => {
+    setVoted(rating);
+    await emitFeedback(rating);
+  };
+  const btnStyle = (isActive) => ({
+    display: 'flex', alignItems: 'center', gap: 4,
+    padding: '6px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
+    background: isActive ? (isDark ? 'rgba(79,143,247,0.15)' : 'rgba(79,143,247,0.1)') : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'),
+    color: isActive ? '#4f8ff7' : (isDark ? '#888' : '#888'),
+    fontSize: 12, fontWeight: 500, transition: 'all 0.2s',
+  });
+  return (
+    <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+      <button onClick={() => handleVote(1)} disabled={voted !== null} style={{ ...btnStyle(voted === 1), opacity: voted !== null && voted !== 1 ? 0.5 : 1 }}>
+        <ThumbsUp size={14} /> Helpful
+      </button>
+      <button onClick={() => handleVote(0)} disabled={voted !== null} style={{ ...btnStyle(voted === 0), opacity: voted !== null && voted !== 0 ? 0.5 : 1 }}>
+        <ThumbsDown size={14} /> Improve
+      </button>
+    </div>
+  );
+}
+
 function ToolTraceSummary({ calls, isDark }) {
   const validCalls = (calls || []).filter(call => call?.tool);
   if (validCalls.length === 0) return null;
@@ -321,6 +347,7 @@ export default function MessageRenderer({ message, isStreaming, onActionButton }
         })}
         {actionButtons?.length > 0 && <ActionButtons buttons={actionButtons} onActionButton={onActionButton} isDark={isDark} />}
         <ToolTraceSummary calls={message.tool_calls || message.toolCalls} isDark={isDark} />
+        <FeedbackButtons messageId={message.id} isDark={isDark} />
       </div>
     </div>
   );
