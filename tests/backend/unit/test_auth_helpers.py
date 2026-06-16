@@ -109,3 +109,42 @@ def test_require_owner_or_principal_handles_missing_keys(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         auth_module.require_owner_or_principal(_fake_request())
     assert exc.value.status_code == 403
+
+
+# ─── require_owner_principal_or_management (academic structure section) ───────
+
+def test_require_opm_allows_owner(monkeypatch):
+    _patched_get_current_user(monkeypatch, {"role": "owner", "id": "u1"})
+    assert auth_module.require_owner_principal_or_management(_fake_request())["id"] == "u1"
+
+
+def test_require_opm_allows_principal(monkeypatch):
+    _patched_get_current_user(monkeypatch, {"role": "admin", "sub_category": "principal"})
+    assert auth_module.require_owner_principal_or_management(_fake_request())["role"] == "admin"
+
+
+def test_require_opm_allows_management(monkeypatch):
+    _patched_get_current_user(monkeypatch, {"role": "admin", "sub_category": "management"})
+    assert auth_module.require_owner_principal_or_management(_fake_request())["role"] == "admin"
+
+
+def test_require_opm_denies_accountant(monkeypatch):
+    _patched_get_current_user(monkeypatch, {"role": "admin", "sub_category": "accountant"})
+    with pytest.raises(HTTPException) as exc:
+        auth_module.require_owner_principal_or_management(_fake_request())
+    assert exc.value.status_code == 403
+    assert exc.value.detail == "Forbidden"
+
+
+def test_require_opm_denies_teacher(monkeypatch):
+    _patched_get_current_user(monkeypatch, {"role": "teacher"})
+    with pytest.raises(HTTPException) as exc:
+        auth_module.require_owner_principal_or_management(_fake_request())
+    assert exc.value.status_code == 403
+
+
+def test_require_opm_handles_missing_keys(monkeypatch):
+    _patched_get_current_user(monkeypatch, {})
+    with pytest.raises(HTTPException) as exc:
+        auth_module.require_owner_principal_or_management(_fake_request())
+    assert exc.value.status_code == 403

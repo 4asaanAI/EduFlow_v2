@@ -1,7 +1,10 @@
 from __future__ import annotations
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
-from middleware.auth import get_current_user, require_role, require_owner, require_owner_or_principal
+from middleware.auth import (
+    get_current_user, require_role, require_owner, require_owner_or_principal,
+    require_owner_principal_or_management,
+)
 from tenant import get_school_id, scoped_filter
 from services.audit_service import write_audit
 from services.actor_context import actor_ctx_from_user
@@ -266,7 +269,7 @@ async def update_settings(request: Request):
 
 
 @router.get("/school")
-async def get_school_settings(request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff"))):
+async def get_school_settings(request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff", "student"))):
     db = get_db()
     settings = await db.school_settings.find_one(_settings_query({"id": "main"}), {"_id": 0})
     if not settings:
@@ -290,7 +293,7 @@ async def get_classes(request: Request, user: dict = Depends(require_role("admin
 # ── Class CRUD (Story K.2) — service-backed parity reference for the AI tools ──
 # No new UI: these wrap the academic_structure_service single write path.
 @router.post("/classes")
-async def create_class(request: Request, user: dict = Depends(require_owner_or_principal)):
+async def create_class(request: Request, user: dict = Depends(require_owner_principal_or_management)):
     db = get_db()
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
@@ -302,7 +305,7 @@ async def create_class(request: Request, user: dict = Depends(require_owner_or_p
 
 
 @router.patch("/classes/{class_id}")
-async def update_class(class_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
+async def update_class(class_id: str, request: Request, user: dict = Depends(require_owner_principal_or_management)):
     db = get_db()
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
@@ -316,7 +319,7 @@ async def update_class(class_id: str, request: Request, user: dict = Depends(req
 
 
 @router.delete("/classes/{class_id}")
-async def delete_class(class_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
+async def delete_class(class_id: str, request: Request, user: dict = Depends(require_owner_principal_or_management)):
     db = get_db()
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
     try:
@@ -441,7 +444,8 @@ async def delete_form(form_id: str, request: Request, user: dict = Depends(requi
     return {"success": True}
 
 
-async def get_academic_year(request: Request):
+@router.get("/academic-year")
+async def get_academic_year(request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff", "student"))):
     db = get_db()
     ay = await db.academic_years.find_one(_settings_query({"is_current": True}), {"_id": 0})
     return {"success": True, "data": ay}

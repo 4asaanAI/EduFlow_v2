@@ -2,11 +2,22 @@ from __future__ import annotations
 """Routes: assignments, exams, results, subjects, timetable"""
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
-from middleware.auth import get_current_user, require_role, require_owner_or_principal
+from middleware.auth import (
+    get_current_user, require_role, require_owner_or_principal,
+    require_owner_principal_or_management,
+)
 from datetime import datetime
 from services.audit_service import write_audit_doc
 from services.actor_context import actor_ctx_from_user
 from services.substitution_service import initiate_substitution
+from services.academic_structure_service import (
+    create_subject as svc_create_subject,
+    update_subject as svc_update_subject,
+    delete_subject as svc_delete_subject,
+    AcademicStructureValidationError,
+    AcademicStructureNotFoundError,
+    AcademicStructureConflictError,
+)
 from tenant import get_school_id, scoped_query, scoped_filter
 import uuid
 
@@ -543,6 +554,48 @@ async def list_subjects(request: Request, class_id: str = None, user: dict = Dep
         query["class_id"] = class_id
     subjects = await db.subjects.find(query, {"_id": 0}).to_list(100)
     return {"success": True, "data": subjects}
+
+
+@router.post("/subjects")
+async def create_subject(request: Request, user: dict = Depends(require_owner_principal_or_management)):
+    """Create a subject under a class (Principal/Management/Owner). Service-backed."""
+    db = get_db()
+    body = await request.json()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_create_subject(db, actor_ctx, body)
+    except AcademicStructureValidationError as e:
+        raise HTTPException(400, str(e))
+    except AcademicStructureNotFoundError as e:
+        raise HTTPException(404, str(e))
+    return {"success": True, "data": result["subject"]}
+
+
+@router.patch("/subjects/{subject_id}")
+async def update_subject(subject_id: str, request: Request, user: dict = Depends(require_owner_principal_or_management)):
+    db = get_db()
+    body = await request.json()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_update_subject(db, actor_ctx, {**body, "subject_id": subject_id})
+    except AcademicStructureNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except AcademicStructureValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["subject"]}
+
+
+@router.delete("/subjects/{subject_id}")
+async def delete_subject(subject_id: str, request: Request, user: dict = Depends(require_owner_principal_or_management)):
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_delete_subject(db, actor_ctx, {"subject_id": subject_id})
+    except AcademicStructureNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except AcademicStructureConflictError as e:
+        raise HTTPException(409, str(e))
+    return {"success": True, "data": result}
 
 
 # --- Timetable ---

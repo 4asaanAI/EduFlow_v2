@@ -145,7 +145,7 @@ async def create_facility_request(request: Request):
     # Allow: maintenance admin, owner, teacher, or any staff raising a request
     role = user.get("role")
     sub = user.get("sub_category")
-    allowed = role in ("owner", "teacher") or (role == "admin" and sub in ("maintenance", "principal", "receptionist", None))
+    allowed = role in ("owner", "teacher") or (role == "admin" and sub in ("maintenance", "principal", "receptionist", "management", None))
     if not allowed:
         raise HTTPException(403, "You are not permitted to raise facility requests")
     body = await request.json()

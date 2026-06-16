@@ -23,6 +23,8 @@ const loadTool = async (toolId) => {
   if (toolId === 'incident-tracker') return (await import('./tools/IncidentTracker')).default;
   if (toolId === 'timetable-builder') return (await import('./tools/TimetableBuilder')).default;
   if (toolId === 'audit-log') return (await import('./tools/AuditLog')).default;
+  if (toolId === 'school-settings') return (await import('./tools/SchoolSettings')).default;
+  if (toolId === 'academic-structure') return (await import('./tools/AcademicStructure')).default;
   if (toolId === 'fee-receipts') return (await import('./tools/FeeCollection')).default;
   if (toolId === 'principal-daily') return (await import('./tools/PrincipalDailyOps')).default;
 

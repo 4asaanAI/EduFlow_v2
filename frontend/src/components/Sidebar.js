@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { getConversations, updateConversation, deleteConversation, getMyTokenUsage } from '../lib/api';
+import { getConversations, updateConversation, deleteConversation, getMyTokenUsage, getSchoolSettings } from '../lib/api';
 import TokenUpgradeModal from './TokenUpgradeModal';
 import {
   Activity, IndianRupee, Users, BarChart2, Bell, FileText, HeartPulse, Megaphone,
@@ -42,8 +42,10 @@ const TOOLS_BY_ROLE = {
     { id: 'audit-log', name: 'Audit Log', subtitle: 'Who did what', icon: ScrollText, color: '#737373' },
     { id: 'fee-receipts', name: 'Fee Receipts', subtitle: 'PDF & export', icon: FileText, color: '#34d399' },
     { id: 'query-section', name: 'Query & Support', subtitle: 'Tickets & issues', icon: LifeBuoy, color: '#22d3ee' },
+    { id: 'school-settings', name: 'School Settings', subtitle: 'Identity & profile', icon: Settings, color: '#737373' },
   ],
   admin: [
+    { id: 'academic-structure', name: 'Academic Structure', subtitle: 'Classes, subjects & teachers', icon: BookOpen, color: '#4f8ff7' },
     { id: 'student-database', name: 'Student Database', subtitle: 'Manage & search', icon: Users, color: '#4f8ff7' },
     { id: 'fee-tracker', name: 'Fee Tracker', subtitle: 'Reminders & dues', icon: IndianRupee, color: '#34d399' },
     { id: 'fee-receipts', name: 'Fee Receipts', subtitle: 'PDF & export', icon: FileText, color: '#34d399' },
@@ -118,7 +120,7 @@ const ADMIN_SUBCATEGORY_TOOLS = {
   accountant: ['student-database', 'fee-tracker', 'smart-fee-defaulter', 'fee-receipts', 'custom-form-builder', 'raise-maintenance'],
   transport_head: ['student-database', 'transport-manager', 'transport-optimisation', 'asset-tracker', 'custom-form-builder', 'raise-maintenance'],
   principal: [
-    'student-database', 'attendance-recorder', 'attendance-overview', 'principal-daily',
+    'academic-structure', 'student-database', 'attendance-recorder', 'attendance-overview', 'principal-daily',
     'timetable-builder', 'certificate-generator', 'circular-sender', 'parent-message',
     'enquiry-register', 'smart-fee-defaulter', 'staff-tracker',
     'staff-performance', 'staff-leave-manager', 'incident-tracker', 'smart-alerts',
@@ -128,6 +130,7 @@ const ADMIN_SUBCATEGORY_TOOLS = {
   receptionist: ['student-database', 'enquiry-register', 'parent-message', 'student-transfer', 'id-card-generator', 'asset-tracker', 'incident-tracker', 'raise-maintenance', 'custom-form-builder'],
   it_tech: ['tech-issues', 'raise-maintenance', 'custom-form-builder', 'query-section'],
   maintenance: ['maintenance-schedule', 'vendor-log', 'raise-maintenance'],
+  management: ['academic-structure', 'timetable-builder', 'raise-maintenance', 'audit-log', 'query-section'],
 };
 
 // ─── Grouped navigation config per role ──────────────────────────────────────
@@ -142,7 +145,7 @@ const TOOL_GROUPS = {
       { id: 'attendance', name: 'Attendance', icon: ClipboardList, color: '#a78bfa',
         tools: ['attendance-overview', 'staff-attendance-tracker', 'staff-performance', 'attendance-alerts'] },
       { id: 'internals', name: 'School Internals', icon: Megaphone, color: '#fbbf24',
-        tools: ['announcement-broadcaster', 'staff-leave-manager', 'custom-report-builder', 'board-report', 'school-activities'] },
+        tools: ['announcement-broadcaster', 'staff-leave-manager', 'custom-report-builder', 'board-report', 'school-activities', 'school-settings'] },
       { id: 'ai', name: 'Smart AI', icon: Brain, color: '#f472b6',
         tools: ['ai-health-report', 'smart-alerts'] },
       { id: 'queries', name: 'Queries', icon: Wrench, color: '#fb923c',
@@ -162,7 +165,7 @@ const TOOL_GROUPS = {
       { id: 'communication', name: 'Communication', icon: MessageSquare, color: '#fbbf24',
         tools: ['circular-sender', 'parent-message'] },
       { id: 'operations', name: 'Operations', icon: CalendarDays, color: '#f472b6',
-        tools: ['timetable-builder', 'transport-manager', 'school-activities', 'incident-tracker', 'smart-alerts'] },
+        tools: ['academic-structure', 'timetable-builder', 'transport-manager', 'school-activities', 'incident-tracker', 'smart-alerts'] },
       { id: 'facilities', name: 'Facilities', icon: Wrench, color: '#fb923c',
         tools: ['facility-requests', 'raise-maintenance', 'smart-fee-defaulter'] },
     ],
@@ -269,6 +272,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   const [chatsExpanded, setChatsExpanded] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [schoolName, setSchoolName] = useState('');
   const [openGroups, setOpenGroups] = useState(() => {
     const cfg = getGroupConfig(currentUser);
     if (!cfg) return new Set();
@@ -310,6 +314,18 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
     getMyTokenUsage()
       .then(r => { if (r.success) setTokenUsage(r.data); })
       .catch(() => {});
+  }, [currentUser.id]);
+
+  // School identity — fetched for every role, refreshes when the owner saves settings
+  useEffect(() => {
+    const loadSchool = () => {
+      getSchoolSettings()
+        .then(r => { if (r.success && r.data?.school_name) setSchoolName(r.data.school_name); })
+        .catch(() => {});
+    };
+    loadSchool();
+    window.addEventListener('school-settings-updated', loadSchool);
+    return () => window.removeEventListener('school-settings-updated', loadSchool);
   }, [currentUser.id]);
 
   const loadConversations = async () => {
@@ -504,7 +520,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
               </div>
               <div>
                 <div style={{ fontWeight: 800, fontSize: 15, color: tp, letterSpacing: '-0.02em', lineHeight: 1 }}>EduFlow</div>
-                <div style={{ fontSize: 10, color: muted, fontWeight: 500, marginTop: 1 }}>School Management</div>
+                <div style={{ fontSize: 10, color: muted, fontWeight: 500, marginTop: 1, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={schoolName || 'School Management'}>{schoolName || 'School Management'}</div>
               </div>
             </div>
             <button onClick={() => setSidebarOpen(false)} className="mobile-close"

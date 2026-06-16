@@ -37,7 +37,11 @@ class OrgConfigConflictError(Exception):
     """Duplicate branch code, or deletion blocked by referential integrity → 409."""
 
 
-SCHOOL_SETTINGS_FIELDS = {"attendance_threshold", "school_name", "board", "city", "ai_context"}
+SCHOOL_SETTINGS_FIELDS = {
+    "attendance_threshold", "school_name", "board", "city", "ai_context",
+    # Part 1-A school identity & profile (owner-managed, all roles read)
+    "state", "address", "established", "principal", "phone", "email", "website", "logo_url",
+}
 
 
 def _session_kwargs(session) -> dict:

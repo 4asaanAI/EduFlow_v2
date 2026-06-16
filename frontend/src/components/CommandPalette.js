@@ -4,7 +4,7 @@ import {
   Activity, AlertTriangle, Award, BarChart2, Bell, BookOpen, CalendarDays,
   ClipboardList, Command, Database, FileCheck, FilePlus, FileText, IndianRupee,
   LifeBuoy, Megaphone, MessageSquare, Monitor, Package, PenTool, Printer, RefreshCw,
-  ScrollText, Shield, Target, Trash2, Truck, Trophy, Users, UserCheck, UserPlus,
+  ScrollText, Settings, Shield, Target, Trash2, Truck, Trophy, Users, UserCheck, UserPlus,
   Wrench, X,
 } from 'lucide-react';
 
@@ -27,6 +27,8 @@ const ALL_TOOLS = [
   { id: 'facility-requests',      name: 'Facility Requests',     subtitle: 'Maintenance queue',        icon: Wrench,        roles: ['owner','admin'] },
   { id: 'tech-issues',            name: 'Tech Issues',           subtitle: 'IT request tracker',       icon: Monitor,       roles: ['admin'] },
   { id: 'audit-log',              name: 'Audit Log',             subtitle: 'Who did what',             icon: ScrollText,    roles: ['owner','admin'] },
+  { id: 'academic-structure',     name: 'Academic Structure',    subtitle: 'Classes, subjects & teachers', icon: BookOpen,  roles: ['admin'] },
+  { id: 'school-settings',        name: 'School Settings',       subtitle: 'Identity & profile',       icon: Settings,      roles: ['owner'] },
   { id: 'school-activities',      name: 'School Activities',     subtitle: 'Houses, sports, awards',   icon: Trophy,        roles: ['owner','admin'] },
   { id: 'fee-receipts',           name: 'Fee Receipts',          subtitle: 'PDF & export',             icon: FileText,      roles: ['owner','admin'] },
   { id: 'certificate-generator',  name: 'Certificates',          subtitle: 'TC, Bonafide, etc.',       icon: Award,         roles: ['owner','admin'] },

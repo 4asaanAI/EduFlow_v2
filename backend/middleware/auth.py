@@ -246,6 +246,26 @@ def require_owner_or_principal(request: Request):
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
+def require_owner_principal_or_management(request: Request):
+    """Owner, admin+principal, or admin+management.
+
+    Semantics: owner role is allowed regardless of sub_category; admin is allowed
+    only when sub_category is 'principal' or 'management'. Used for the academic
+    structure (class/subject) management section, which is restricted to the
+    Principal and Management admin sub-roles.
+    """
+    user = get_current_user(request)
+    if user.get("role") == "owner":
+        return user
+    if user.get("role") == "admin" and user.get("sub_category") in ("principal", "management"):
+        return user
+    logger.info(
+        "owner/principal/management gate failed: role=%s sub=%s path=%s",
+        user.get("role"), user.get("sub_category"), request.url.path,
+    )
+    raise HTTPException(status_code=403, detail="Forbidden")
+
+
 def require_owner_or_accountant(request: Request):
     """Owner or admin+accountant.
 

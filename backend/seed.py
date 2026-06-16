@@ -135,6 +135,7 @@ async def seed() -> None:
     admin_reception_id    = "user-admin-004"
     admin_it_id           = "user-admin-005"
     admin_maintenance_id  = "user-admin-006"
+    admin_management_id   = "user-admin-007"
     teacher_ids           = [f"user-teacher-{i:03}" for i in range(1, 8)]
     student_user_ids      = [f"user-student-{i:03}" for i in range(1, 16)]
 
@@ -151,6 +152,7 @@ async def seed() -> None:
         {"id": admin_reception_id,   "schoolId": SCHOOL_ID, "name": "Kavita Singh",        "role": "admin",   "sub_category": "receptionist",  "phone": "9876543214", "email": "kavita@theararyans.edu.in",        "preferred_language": "en", "theme": "light", "is_active": True},
         {"id": admin_it_id,          "schoolId": SCHOOL_ID, "name": "Rahul Tech",          "role": "admin",   "sub_category": "it_tech",       "phone": "9876543215", "email": "rahul.tech@theararyans.edu.in",    "preferred_language": "en", "theme": "light", "is_active": True},
         {"id": admin_maintenance_id, "schoolId": SCHOOL_ID, "name": "Arvind Maintenance",  "role": "admin",   "sub_category": "maintenance",   "phone": "9876543216", "email": "maintenance@theararyans.edu.in",   "preferred_language": "en", "theme": "light", "is_active": True},
+        {"id": admin_management_id,  "schoolId": SCHOOL_ID, "name": "Rohit Management",     "role": "admin",   "sub_category": "management",    "phone": "9876543217", "email": "management@theararyans.edu.in",    "preferred_language": "en", "theme": "light", "is_active": True},
         {"id": "user-student-001",   "schoolId": SCHOOL_ID, "name": "Rahul Singh",         "role": "student", "sub_category": None,            "phone": "9876543220", "preferred_language": "en", "theme": "light", "is_active": True},
     ]
     for i, tid in enumerate(teacher_ids):
@@ -170,6 +172,7 @@ async def seed() -> None:
         {"username": "reception",   "username_lower": "reception",   "password": "reception@123",   "role": "admin",   "sub_category": "receptionist",  "user_id": admin_reception_id,  "name": "Kavita Singh",      "initials": "KS", "phone": "9876543214"},
         {"username": "ittech",      "username_lower": "ittech",      "password": "ittech@123",      "role": "admin",   "sub_category": "it_tech",       "user_id": admin_it_id,         "name": "Rahul Tech",        "initials": "RT", "phone": "9876543215"},
         {"username": "maintenance", "username_lower": "maintenance", "password": "maintenance@123", "role": "admin",   "sub_category": "maintenance",   "user_id": admin_maintenance_id,"name": "Arvind Maintenance","initials": "AM", "phone": "9876543216"},
+        {"username": "management",  "username_lower": "management",  "password": "management@123",  "role": "admin",   "sub_category": "management",    "user_id": admin_management_id, "name": "Rohit Management",  "initials": "RM", "phone": "9876543217"},
     ]
     teacher_auth_meta = [
         (teacher_ids[0], "Rajesh Kumar", "RK", "class_teacher",   "teacher@123"),
@@ -272,6 +275,7 @@ async def seed() -> None:
         {"id": "staff-011", "user_id": admin_reception_id,  "name": "Kavita Singh",       "staff_type": "admin",      "sub_category": "receptionist",  "employee_id": "EMP011", "designation": "Receptionist",      "department": "Administration","salary": 22000, "branch_id": branch_id},
         {"id": "staff-014", "user_id": admin_it_id,         "name": "Rahul Tech",         "staff_type": "admin",      "sub_category": "it_tech",       "employee_id": "EMP014", "designation": "IT & Tech Officer", "department": "IT",            "salary": 28000, "branch_id": branch_id},
         {"id": "staff-015", "user_id": admin_maintenance_id,"name": "Arvind Maintenance",  "staff_type": "admin",      "sub_category": "maintenance",   "employee_id": "EMP015", "designation": "Maintenance Head",  "department": "Facilities",    "salary": 24000, "branch_id": branch_id},
+        {"id": "staff-017", "user_id": admin_management_id, "name": "Rohit Management",     "staff_type": "admin",      "sub_category": "management",    "employee_id": "EMP017", "designation": "Management Officer","department": "Management",    "salary": 40000, "branch_id": branch_id},
         {"id": "staff-003", "user_id": teacher_ids[0],      "name": "Rajesh Kumar",        "staff_type": "teacher",    "sub_category": "class_teacher", "employee_id": "EMP003", "designation": "Class Teacher",     "department": "Mathematics",   "salary": 34000, "subject": "Mathematics", "class_teacher_of": c9a,  "branch_id": branch_id},
         {"id": "staff-004", "user_id": teacher_ids[1],      "name": "Sunita Devi",         "staff_type": "teacher",    "sub_category": "class_teacher", "employee_id": "EMP004", "designation": "Class Teacher",     "department": "English",       "salary": 32000, "subject": "English",     "class_teacher_of": c9b,  "branch_id": branch_id},
         {"id": "staff-005", "user_id": teacher_ids[2],      "name": "Manoj Tiwari",        "staff_type": "teacher",    "sub_category": "subject_teacher","employee_id": "EMP005", "designation": "Science Teacher",   "department": "Science",       "salary": 30000, "subject": "Science",     "assigned_class_ids": [c9a, c10a], "branch_id": branch_id},

@@ -36,7 +36,7 @@ async def list_audit_log(
     is_it_tech = user.get("role") == "admin" and user.get("sub_category") == "it_tech"
     if user.get("role") == "admin":
         sub = user.get("sub_category", "")
-        if sub not in ("principal", "it_tech", None, ""):
+        if sub not in ("principal", "it_tech", "management", None, ""):
             raise HTTPException(403, "Forbidden")
     elif user.get("role") != "owner":
         raise HTTPException(403, "Forbidden")

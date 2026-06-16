@@ -314,6 +314,56 @@ export async function getAllClasses() {
   return res.json();
 }
 
+// --- Academic structure: Classes CRUD ---
+export async function createClass(data) {
+  const res = await apiFetch(`${API}/settings/classes`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function updateClass(classId, data) {
+  const res = await apiFetch(`${API}/settings/classes/${classId}`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function deleteClass(classId) {
+  const res = await apiFetch(`${API}/settings/classes/${classId}`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
+  return res.json();
+}
+
+// --- Academic structure: Subjects CRUD ---
+export async function getSubjects(classId) {
+  const qs = classId ? `?class_id=${encodeURIComponent(classId)}` : '';
+  const res = await apiFetch(`${API}/academics/subjects${qs}`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function createSubject(data) {
+  const res = await apiFetch(`${API}/academics/subjects`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function updateSubject(subjectId, data) {
+  const res = await apiFetch(`${API}/academics/subjects/${subjectId}`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function deleteSubject(subjectId) {
+  const res = await apiFetch(`${API}/academics/subjects/${subjectId}`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
+  return res.json();
+}
+
 // --- Attendance ---
 export async function getTodayAttendance(classId, date) {
   const qs = date ? `?date=${encodeURIComponent(date)}` : '';
@@ -567,6 +617,18 @@ export async function decideApprovalRequest(approvalId, data) {
 // --- Settings ---
 export async function getSchoolSettings() {
   const res = await apiFetch(`${API}/settings/school`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function updateSchoolSettings(data) {
+  const res = await apiFetch(`${API}/settings/school`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function getAcademicYear() {
+  const res = await apiFetch(`${API}/settings/academic-year`, { headers: getHeaders() });
   return res.json();
 }
 

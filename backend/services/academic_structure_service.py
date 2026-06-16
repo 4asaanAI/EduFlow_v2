@@ -42,6 +42,7 @@ class AcademicStructureConflictError(Exception):
 CLASS_UPDATABLE_FIELDS = {
     "name", "section", "academic_year_id", "class_teacher_id", "room_number",
 }
+SUBJECT_UPDATABLE_FIELDS = {"name", "class_id", "teacher_id", "max_marks", "pass_marks"}
 HOUSE_UPDATABLE_FIELDS = {"name", "colour"}
 _IMMUTABLE_KEYS = {"_id", "id", "schoolId", "branch_id"}
 
@@ -98,11 +99,20 @@ async def create_class(db, actor_ctx: ActorContext, params: dict, *, session=Non
         branch_id = params.get("branch_id") or actor_ctx.branch_id or ""
     else:
         branch_id = actor_ctx.branch_id or ""
+    # Default a class to the current academic year when the caller doesn't pin one,
+    # so panel-created classes are tied to the active year exactly like seeded ones.
+    academic_year_id = params.get("academic_year_id")
+    if not academic_year_id:
+        current_ay = await db.academic_years.find_one(
+            scoped_filter({"is_current": True}, actor_ctx.school_id), {"_id": 0, "id": 1},
+            **_session_kwargs(session),
+        )
+        academic_year_id = (current_ay or {}).get("id", "")
     doc = {
         "id": str(uuid.uuid4()),
         "name": params["name"],
         "section": params.get("section", ""),
-        "academic_year_id": params.get("academic_year_id", ""),
+        "academic_year_id": academic_year_id,
         "branch_id": branch_id,
         "class_teacher_id": params.get("class_teacher_id"),
         "room_number": params.get("room_number", ""),
@@ -185,6 +195,133 @@ async def delete_class(db, actor_ctx: ActorContext, params: dict, *, session=Non
         entity_id=class_id, changes={"deleted": existing}, session=session,
     )
     return {"deleted": True, "class_id": class_id}
+
+
+# ───────────────────────────── Subjects ────────────────────────────────────
+
+
+def _coerce_int(value, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+async def create_subject(db, actor_ctx: ActorContext, params: dict, *, session=None) -> dict:
+    """Create a subject under a class, optionally linked to a teacher.
+
+    params: ``{name, class_id, teacher_id?, max_marks?, pass_marks?}``
+    returns: ``{"subject": <doc>}``
+    """
+    name = (params.get("name") or "").strip()
+    class_id = params.get("class_id")
+    if not name:
+        raise AcademicStructureValidationError("name is required")
+    if not class_id:
+        raise AcademicStructureValidationError("class_id is required")
+    cls = await db.classes.find_one(
+        scoped_filter({"id": class_id}, actor_ctx.school_id), {"_id": 0},
+        **_session_kwargs(session),
+    )
+    if not cls:
+        raise AcademicStructureNotFoundError("Class not found")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "class_id": class_id,
+        "name": name,
+        "teacher_id": params.get("teacher_id") or None,
+        "max_marks": _coerce_int(params.get("max_marks"), 100),
+        "pass_marks": _coerce_int(params.get("pass_marks"), 33),
+        "created_by": actor_ctx.user_id,
+        "created_at": actor_ctx.now().isoformat(),
+    }
+    doc = add_school_id(doc, actor_ctx.school_id)
+    await db.subjects.insert_one({**doc, "_id": doc["id"]}, **_session_kwargs(session))
+    await _audit(
+        db, actor_ctx, entity_type="subject", action="subject_create",
+        entity_id=doc["id"], changes={"created": doc}, session=session,
+    )
+    return {"subject": doc}
+
+
+async def update_subject(db, actor_ctx: ActorContext, params: dict, *, session=None) -> dict:
+    """Update a subject's editable fields (incl. its teacher link).
+
+    params: ``{subject_id, **fields}``  returns: ``{"subject": <updated>, "noop": bool}``
+    """
+    subject_id = params.get("subject_id")
+    if not subject_id:
+        raise AcademicStructureValidationError("subject_id is required")
+    existing = await db.subjects.find_one(
+        scoped_filter({"id": subject_id}, actor_ctx.school_id), {"_id": 0},
+        **_session_kwargs(session),
+    )
+    if not existing:
+        raise AcademicStructureNotFoundError("Subject not found")
+    changes = {k: v for k, v in params.items() if k in SUBJECT_UPDATABLE_FIELDS}
+    if "class_id" in changes and changes["class_id"] != existing.get("class_id"):
+        cls = await db.classes.find_one(
+            scoped_filter({"id": changes["class_id"]}, actor_ctx.school_id), {"_id": 0},
+            **_session_kwargs(session),
+        )
+        if not cls:
+            raise AcademicStructureNotFoundError("Class not found")
+    if "max_marks" in changes:
+        changes["max_marks"] = _coerce_int(changes["max_marks"], existing.get("max_marks", 100))
+    if "pass_marks" in changes:
+        changes["pass_marks"] = _coerce_int(changes["pass_marks"], existing.get("pass_marks", 33))
+    if "name" in changes:
+        changes["name"] = (changes["name"] or "").strip() or existing.get("name")
+    effective = {k: v for k, v in changes.items() if existing.get(k) != v}
+    if not effective:
+        return {"subject": existing, "noop": True}
+    effective["updated_at"] = actor_ctx.now().isoformat()
+    await db.subjects.update_one(
+        scoped_filter({"id": subject_id}, actor_ctx.school_id),
+        {"$set": effective}, **_session_kwargs(session),
+    )
+    await _audit(
+        db, actor_ctx, entity_type="subject", action="subject_update",
+        entity_id=subject_id, changes={k: v for k, v in effective.items() if k != "updated_at"},
+        session=session,
+    )
+    updated = await db.subjects.find_one(
+        scoped_filter({"id": subject_id}, actor_ctx.school_id), {"_id": 0},
+        **_session_kwargs(session),
+    )
+    return {"subject": updated, "noop": False}
+
+
+async def delete_subject(db, actor_ctx: ActorContext, params: dict, *, session=None) -> dict:
+    """Delete a subject. Blocked if exam results reference it (preserves academic
+    records). params: ``{subject_id}``  returns: ``{"deleted": True, "subject_id": <id>}``
+    """
+    subject_id = params.get("subject_id")
+    if not subject_id:
+        raise AcademicStructureValidationError("subject_id is required")
+    existing = await db.subjects.find_one(
+        scoped_filter({"id": subject_id}, actor_ctx.school_id), {"_id": 0},
+        **_session_kwargs(session),
+    )
+    if not existing:
+        raise AcademicStructureNotFoundError("Subject not found")
+    result_count = await db.exam_results.count_documents(
+        scoped_filter({"subject_id": subject_id}, actor_ctx.school_id),
+        **_session_kwargs(session),
+    )
+    if result_count:
+        raise AcademicStructureConflictError(
+            f"Cannot delete a subject with {result_count} exam result(s) recorded"
+        )
+    await db.subjects.delete_one(
+        scoped_filter({"id": subject_id}, actor_ctx.school_id),
+        **_session_kwargs(session),
+    )
+    await _audit(
+        db, actor_ctx, entity_type="subject", action="subject_delete",
+        entity_id=subject_id, changes={"deleted": existing}, session=session,
+    )
+    return {"deleted": True, "subject_id": subject_id}
 
 
 # ────────────────────────────── Houses ─────────────────────────────────────
