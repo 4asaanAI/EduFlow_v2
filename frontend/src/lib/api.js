@@ -673,6 +673,32 @@ export async function getExamResults(params = {}) {
   return res.json();
 }
 
+// Full marks sheet for one exam + class (subjects + students auto-fetched).
+export async function getExamSheet(examId, classId) {
+  const res = await apiFetch(
+    `${API}/academics/exams/${examId}/class/${classId}/sheet`,
+    { headers: getHeaders() },
+  );
+  return res.json();
+}
+
+// Upsert per-subject exam dates + max marks for one exam + class.
+export async function saveExamSchedule(examId, classId, subjects) {
+  const res = await apiFetch(
+    `${API}/academics/exams/${examId}/class/${classId}/schedule`,
+    { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ subjects }) },
+  );
+  return res.json();
+}
+
+// Bulk enter/update marks. `results` = [{ exam_id, student_id, subject_id, marks_obtained, max_marks }]
+export async function bulkEnterResults(results) {
+  const res = await apiFetch(`${API}/academics/results/bulk`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify({ results }),
+  });
+  return res.json();
+}
+
 // --- Chat file upload ---
 export async function uploadChatFile(file) {
   const form = new FormData();

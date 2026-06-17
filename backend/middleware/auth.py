@@ -281,6 +281,26 @@ def require_exam_manager(request: Request):
     raise HTTPException(status_code=403, detail="Forbidden")
 
 
+def require_exam_editor(request: Request):
+    """Exam *write* gate — admin+principal, admin+management, or teacher.
+
+    Differs from ``require_exam_manager`` by EXCLUDING the owner: the owner is
+    view-only for exam editing (scheduling subject dates, entering marks). Used
+    for the per-subject datesheet/schedule write endpoints.
+    """
+    user = get_current_user(request)
+    role = user.get("role")
+    if role == "teacher":
+        return user
+    if role == "admin" and user.get("sub_category") in ("principal", "management"):
+        return user
+    logger.info(
+        "exam editor gate failed: role=%s sub=%s path=%s",
+        user.get("role"), user.get("sub_category"), request.url.path,
+    )
+    raise HTTPException(status_code=403, detail="Forbidden")
+
+
 def require_owner_or_accountant(request: Request):
     """Owner or admin+accountant.
 

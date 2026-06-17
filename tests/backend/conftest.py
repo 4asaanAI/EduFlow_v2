@@ -489,6 +489,7 @@ class FakeDb:
         self.announcements = FakeCollection()
         self.exam_results = FakeCollection()
         self.exams = FakeCollection()
+        self.exam_subjects = FakeCollection()
         self.assignments = FakeCollection()
         self.lesson_plans = FakeCollection()
         self.question_papers = FakeCollection()

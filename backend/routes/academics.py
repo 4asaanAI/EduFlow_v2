@@ -5,6 +5,7 @@ from database import get_db
 from middleware.auth import (
     get_current_user, require_role, require_owner_or_principal,
     require_owner_principal_or_management, require_exam_manager,
+    require_exam_editor,
 )
 from datetime import datetime
 from services.audit_service import write_audit_doc
@@ -344,6 +345,169 @@ async def publish_result(result_id: str, request: Request,
     if result.matched_count == 0:
         raise HTTPException(404, "Result not found")
     return {"success": True}
+
+
+# --- Exam class sheet (auto-fetch subjects + students from Academic Structure) ---
+def _is_exam_admin(user: dict) -> bool:
+    """Admin sub-roles allowed to manage every subject's exam (Principal/Management)."""
+    return user.get("role") == "admin" and user.get("sub_category") in ("principal", "management")
+
+
+async def _exam_editable_subjects(db, user: dict, class_id: str):
+    """Which subjects of ``class_id`` the user may edit for an exam.
+
+    Returns a tuple ``(editable_all, editable_subject_ids)``:
+      * owner               → (False, set())            — view only
+      * principal/management → (True, None)             — all subjects
+      * class teacher        → (True, None)             — all subjects of their class
+      * subject teacher      → (False, {their subj ids})
+    """
+    role = user.get("role")
+    if role == "owner":
+        return False, set()
+    if _is_exam_admin(user):
+        return True, None
+    if role == "teacher":
+        scope = await compute_teacher_scope(db, user, get_school_id())
+        if class_id in set(scope["class_teacher_class_ids"]):
+            return True, None
+        return False, {s["id"] for s in scope["subjects"] if s.get("class_id") == class_id}
+    # any other admin sub-role — no edit
+    return False, set()
+
+
+@router.get("/exams/{exam_id}/class/{class_id}/sheet")
+async def get_exam_class_sheet(
+    exam_id: str, class_id: str, request: Request,
+    user: dict = Depends(require_role("admin", "owner", "teacher")),
+):
+    """Full marks sheet for one exam + one class.
+
+    Subjects and students are auto-fetched from the Academic Structure (the
+    single source of truth) so the sheet always reflects the current class roster
+    and curriculum even before any marks exist. Each subject carries its
+    per-exam schedule (exam_date + max_marks) and a ``can_edit`` flag computed
+    from the caller's teaching scope. Owner is always view-only.
+    """
+    db = get_db()
+    exam = await db.exams.find_one(_academic_query({"id": exam_id}), {"_id": 0})
+    if not exam:
+        raise HTTPException(404, "Exam not found")
+    cls = await db.classes.find_one(_academic_query({"id": class_id}), {"_id": 0})
+    if not cls:
+        raise HTTPException(404, "Class not found")
+    await _require_teacher_class_access(db, user, class_id)
+
+    editable_all, editable_subject_ids = await _exam_editable_subjects(db, user, class_id)
+
+    # Subjects from the Academic Structure for this class.
+    subjects = await db.subjects.find(_academic_query({"class_id": class_id}), {"_id": 0}).to_list(200)
+    sched_docs = await db.exam_subjects.find(
+        _academic_query({"exam_id": exam_id, "class_id": class_id}), {"_id": 0},
+    ).to_list(200)
+    sched_map = {d.get("subject_id"): d for d in sched_docs}
+    subject_out = []
+    for s in subjects:
+        sd = sched_map.get(s["id"], {})
+        can_edit_subject = bool(editable_all or (editable_subject_ids and s["id"] in editable_subject_ids))
+        subject_out.append({
+            "id": s["id"],
+            "name": s.get("name"),
+            "exam_date": sd.get("exam_date"),
+            "max_marks": sd.get("max_marks", 100),
+            "can_edit": can_edit_subject,
+        })
+
+    # Students from the Academic Structure for this class (active roster only).
+    students = await db.students.find(
+        _academic_query({"class_id": class_id, "is_active": True}), {"_id": 0, "coordinates": 0},
+    ).to_list(500)
+    students.sort(key=lambda st: (str(st.get("roll_number") or "~"), str(st.get("name") or "")))
+    student_out = [{
+        "id": st["id"], "name": st.get("name"),
+        "admission_number": st.get("admission_number"), "roll_number": st.get("roll_number"),
+    } for st in students]
+
+    student_ids = [st["id"] for st in students]
+    results = await db.exam_results.find(
+        _academic_query({"exam_id": exam_id, "student_id": {"$in": student_ids}}), {"_id": 0},
+    ).to_list(5000) if student_ids else []
+    result_out = [{
+        "student_id": r.get("student_id"), "subject_id": r.get("subject_id"),
+        "marks_obtained": r.get("marks_obtained"), "max_marks": r.get("max_marks", 100),
+        "grade": r.get("grade"), "remarks": r.get("remarks", ""),
+        "is_published": bool(r.get("is_published") or r.get("published")),
+    } for r in results]
+
+    return {"success": True, "data": {
+        "exam": exam,
+        "class": {"id": cls["id"], "name": cls.get("name"), "section": cls.get("section")},
+        "subjects": subject_out,
+        "students": student_out,
+        "results": result_out,
+        "can_edit": bool(editable_all or editable_subject_ids),
+        "is_owner_view": user.get("role") == "owner",
+    }}
+
+
+@router.put("/exams/{exam_id}/class/{class_id}/schedule")
+async def save_exam_schedule(
+    exam_id: str, class_id: str, request: Request,
+    user: dict = Depends(require_exam_editor),
+):
+    """Upsert per-subject exam dates + max marks for one exam + class.
+
+    Owner is excluded by ``require_exam_editor``. Teachers may only schedule the
+    subjects they teach (class teachers may schedule all subjects of their class).
+    """
+    db = get_db()
+    exam = await db.exams.find_one(_academic_query({"id": exam_id}), {"_id": 0})
+    if not exam:
+        raise HTTPException(404, "Exam not found")
+    cls = await db.classes.find_one(_academic_query({"id": class_id}), {"_id": 0})
+    if not cls:
+        raise HTTPException(404, "Class not found")
+    await _require_teacher_class_access(db, user, class_id)
+
+    editable_all, editable_subject_ids = await _exam_editable_subjects(db, user, class_id)
+
+    class_subjects = await db.subjects.find(_academic_query({"class_id": class_id}), {"_id": 0}).to_list(200)
+    valid_ids = {s["id"] for s in class_subjects}
+
+    body = await request.json()
+    rows = body.get("subjects", [])
+    saved = 0
+    for r in rows:
+        sid = r.get("subject_id")
+        if sid not in valid_ids:
+            continue  # ignore subjects that don't belong to this class
+        if not (editable_all or (editable_subject_ids and sid in editable_subject_ids)):
+            raise HTTPException(403, "You can only schedule your own subjects")
+        raw_max = r.get("max_marks")
+        try:
+            max_marks = float(raw_max) if raw_max not in (None, "") else 100.0
+        except (TypeError, ValueError):
+            raise HTTPException(400, "max_marks must be a number")
+        if max_marks <= 0:
+            raise HTTPException(400, "max_marks must be positive")
+        new_id = str(uuid.uuid4())
+        set_fields = {
+            "exam_id": exam_id,
+            "class_id": class_id,
+            "subject_id": sid,
+            "exam_date": (r.get("exam_date") or None),
+            "max_marks": max_marks,
+            "updated_by": user["id"],
+            "updated_at": datetime.now().isoformat(),
+            "schoolId": get_school_id(),
+        }
+        await db.exam_subjects.update_one(
+            _academic_query({"exam_id": exam_id, "class_id": class_id, "subject_id": sid}),
+            {"$set": set_fields, "$setOnInsert": {"_id": new_id, "id": new_id}},
+            upsert=True,
+        )
+        saved += 1
+    return {"success": True, "data": {"saved": saved}}
 
 
 @router.post("/lesson-plans")

@@ -3,9 +3,12 @@ import { useUser } from '../../contexts/UserContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import {
   Plus, ChevronRight, ChevronLeft, Edit2, Trash2, BookOpen,
-  Users, BarChart2, Calendar, CheckCircle, X, ClipboardList, AlertTriangle,
+  Users, BarChart2, Calendar, CheckCircle, X, ClipboardList, AlertTriangle, Save, Eye,
 } from 'lucide-react';
-import { listExams, createExam, updateExam, deleteExam, getExamResults, getAllClasses, getSubjects } from '../../lib/api';
+import {
+  listExams, createExam, updateExam, deleteExam, getAllClasses, getSubjects,
+  getExamSheet, saveExamSchedule, bulkEnterResults,
+} from '../../lib/api';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function _authHeaders(user) {
@@ -135,7 +138,8 @@ export default function ExamManager() {
   const { isDark } = useTheme();
 
   const isOwner = currentUser.role === 'owner';
-  const canManage = isOwner || (currentUser.role === 'admin' && ['principal', 'management'].includes(currentUser.sub_category));
+  // Owner is view-only. Only Principal/Management admins and teachers manage exams.
+  const canManage = currentUser.role === 'admin' && ['principal', 'management'].includes(currentUser.sub_category);
   const isTeacher = currentUser.role === 'teacher';
 
   const [view, setView] = useState('exams');
@@ -143,7 +147,12 @@ export default function ExamManager() {
   const [selectedExam, setSelectedExam] = useState(null);
   const [classes, setClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState(null);
-  const [studentResults, setStudentResults] = useState([]);
+  const [sheet, setSheet] = useState(null);
+  const [marksDraft, setMarksDraft] = useState({});
+  const [scheduleDraft, setScheduleDraft] = useState({});
+  const [savingMarks, setSavingMarks] = useState(false);
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [resultsLoading, setResultsLoading] = useState(false);
@@ -259,28 +268,101 @@ export default function ExamManager() {
   const handleSelectExam = (exam) => {
     setSelectedExam(exam);
     setSelectedClass(null);
-    setStudentResults([]);
+    setSheet(null);
     setView('classes');
   };
+
+  const initDrafts = (s) => {
+    const md = {};
+    for (const r of s.results || []) {
+      if (r.marks_obtained !== null && r.marks_obtained !== undefined) {
+        md[`${r.student_id}|${r.subject_id}`] = String(r.marks_obtained);
+      }
+    }
+    setMarksDraft(md);
+    const sd = {};
+    for (const sub of s.subjects || []) {
+      sd[sub.id] = { exam_date: sub.exam_date || '', max_marks: sub.max_marks ?? 100 };
+    }
+    setScheduleDraft(sd);
+  };
+
+  const loadSheet = useCallback(async (examId, classId) => {
+    const res = await getExamSheet(examId, classId);
+    if (res.success) {
+      setSheet(res.data);
+      initDrafts(res.data);
+      return res.data;
+    }
+    setSheet(null);
+    return null;
+  }, []);
 
   const handleSelectClass = async (cls) => {
     setSelectedClass(cls);
     setResultsLoading(true);
+    setSaveMsg('');
     setView('students');
     try {
-      const res = await getExamResults({ exam_id: selectedExam.id, class_id: cls.id });
-      if (res.success) setStudentResults(res.data || []);
-    } catch {}
+      await loadSheet(selectedExam.id, cls.id);
+    } catch {
+      setSheet(null);
+    }
     setResultsLoading(false);
   };
 
-  const groupByStudent = (results) => {
-    const byStudent = {};
-    for (const r of results) {
-      if (!byStudent[r.student_id]) byStudent[r.student_id] = { student_name: r.student_name, subjects: [] };
-      byStudent[r.student_id].subjects.push(r);
+  const handleSaveSchedule = async () => {
+    if (!sheet) return;
+    setSavingSchedule(true);
+    setSaveMsg('');
+    const subjects = sheet.subjects.filter(s => s.can_edit).map(s => ({
+      subject_id: s.id,
+      exam_date: scheduleDraft[s.id]?.exam_date || null,
+      max_marks: Number(scheduleDraft[s.id]?.max_marks) || 100,
+    }));
+    if (subjects.length === 0) { setSavingSchedule(false); return; }
+    try {
+      const res = await saveExamSchedule(sheet.exam.id, selectedClass.id, subjects);
+      if (res.success) {
+        setSaveMsg('Datesheet saved');
+        await loadSheet(sheet.exam.id, selectedClass.id);
+      } else {
+        setSaveMsg(res.detail || 'Failed to save datesheet');
+      }
+    } catch {
+      setSaveMsg('Network error');
     }
-    return Object.values(byStudent).sort((a, b) => a.student_name.localeCompare(b.student_name));
+    setSavingSchedule(false);
+  };
+
+  const handleSaveMarks = async () => {
+    if (!sheet) return;
+    setSavingMarks(true);
+    setSaveMsg('');
+    const results = [];
+    for (const sub of sheet.subjects) {
+      if (!sub.can_edit) continue;
+      const max = Number(scheduleDraft[sub.id]?.max_marks) || sub.max_marks || 100;
+      for (const st of sheet.students) {
+        const v = marksDraft[`${st.id}|${sub.id}`];
+        if (v === undefined || v === '') continue;
+        results.push({
+          exam_id: sheet.exam.id, student_id: st.id, subject_id: sub.id,
+          marks_obtained: Number(v), max_marks: max,
+        });
+      }
+    }
+    if (results.length === 0) { setSaveMsg('No marks entered yet'); setSavingMarks(false); return; }
+    try {
+      const res = await bulkEnterResults(results);
+      if (res.success === true) setSaveMsg(`Saved marks for ${res.data?.saved ?? results.length} entries`);
+      else if (res.success === 'partial') setSaveMsg(`Saved ${res.saved}; ${res.errors?.length || 0} skipped — check values don't exceed max marks`);
+      else setSaveMsg(res.detail || "Save failed — marks may exceed max marks");
+      await loadSheet(sheet.exam.id, selectedClass.id);
+    } catch {
+      setSaveMsg('Network error');
+    }
+    setSavingMarks(false);
   };
 
   const bg = isDark ? '#111' : '#f5f5f5';
@@ -319,8 +401,8 @@ export default function ExamManager() {
             {view === 'classes' && selectedExam?.name}
             {view === 'students' && (selectedClass?.name + (selectedClass?.section ? ` ${selectedClass.section}` : ''))}
           </h2>
-          {view === 'classes' && <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-text-secondary)' }}>Select a class to view student performance</p>}
-          {view === 'students' && <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-text-secondary)' }}>Subject-wise marks for all students</p>}
+          {view === 'classes' && <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-text-secondary)' }}>{isOwner ? 'Select a class to view student performance' : 'Select a class to set dates and enter marks'}</p>}
+          {view === 'students' && <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-text-secondary)' }}>{isOwner ? 'Subject-wise marks for all students' : 'Set exam dates and enter subject-wise marks'}</p>}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {view !== 'exams' && (
@@ -438,7 +520,7 @@ export default function ExamManager() {
                     </div>
                     <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--color-text-primary)' }}>{cls.name}</div>
                     {cls.section && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>Section {cls.section}</div>}
-                    <div style={{ fontSize: 11, color: '#4f8ff7', marginTop: 8, fontWeight: 600 }}>View Results →</div>
+                    <div style={{ fontSize: 11, color: '#4f8ff7', marginTop: 8, fontWeight: 600 }}>{isOwner ? 'View Results →' : 'Enter Marks →'}</div>
                   </Card>
                 ))}
               </div>
@@ -447,92 +529,200 @@ export default function ExamManager() {
         </>
       )}
 
-      {/* Student subject-wise view */}
+      {/* Marks sheet view — subjects + students auto-fetched from Academic Structure */}
       {view === 'students' && (
         <>
           {resultsLoading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 48, color: 'var(--color-text-secondary)', fontSize: 13 }}>
-              <div className="spinner" style={{ width: 16, height: 16 }} /> Loading results…
+              <div className="spinner" style={{ width: 16, height: 16 }} /> Loading sheet…
             </div>
-          ) : studentResults.length === 0 ? (
-            <EmptyState icon={<BarChart2 size={40} />} message="No results recorded for this class yet." />
+          ) : !sheet ? (
+            <EmptyState icon={<AlertTriangle size={40} />} message="Couldn't load this class sheet." />
           ) : (() => {
-            // Determine subject visibility for teachers:
-            // - Class teachers of this class → see all subjects
-            // - Subject-only teachers → see only their subjects for this class
-            let allowedSubjectIds = null;
+            const canEdit = !!sheet.can_edit;
+            const allSubjects = sheet.subjects || [];
+            const students = sheet.students || [];
+            const resultMap = {};
+            for (const r of sheet.results || []) resultMap[`${r.student_id}|${r.subject_id}`] = r;
+
+            // Privacy: a subject-only teacher (not the class teacher) sees and edits
+            // only their own subjects — never a colleague's columns. Class teachers,
+            // admins and the owner see every subject (owner read-only). The Total
+            // column is shown only on the full-subject view.
+            let restrictToOwn = false;
             if (isTeacher && teachingScope?.is_teacher && selectedClass) {
-              const isClassTeacher = (teachingScope.class_teacher_class_ids || []).includes(selectedClass.id);
-              if (!isClassTeacher) {
-                // Subject teacher: only show their subjects that belong to this class
-                const mySubjectsForClass = (teachingScope.subjects || [])
-                  .filter(s => s.class_id === selectedClass.id)
-                  .map(s => s.id);
-                allowedSubjectIds = new Set(mySubjectsForClass);
-              }
+              restrictToOwn = !(teachingScope.class_teacher_class_ids || []).includes(selectedClass.id);
             }
+            const subjects = restrictToOwn ? allSubjects.filter(s => s.can_edit) : allSubjects;
+            const showTotal = !restrictToOwn;
 
-            const grouped = groupByStudent(studentResults);
-            let allSubjects = [...new Set(studentResults.map(r => r.subject_name))].sort();
+            const updateMark = (sid, subId, val) => {
+              if (val !== '' && !/^\d*\.?\d*$/.test(val)) return;
+              setMarksDraft(d => ({ ...d, [`${sid}|${subId}`]: val }));
+            };
+            const updateSchedule = (subId, field, val) =>
+              setScheduleDraft(d => ({ ...d, [subId]: { ...d[subId], [field]: val } }));
 
-            // Filter columns if subject teacher
-            if (allowedSubjectIds !== null) {
-              const allowedNames = new Set(
-                studentResults
-                  .filter(r => allowedSubjectIds.has(r.subject_id))
-                  .map(r => r.subject_name)
-              );
-              allSubjects = allSubjects.filter(s => allowedNames.has(s));
+            const cellInput = {
+              width: 56, textAlign: 'center', padding: '5px 4px', borderRadius: 6,
+              border: '1px solid var(--color-border)', background: isDark ? '#1a1a1a' : '#fff',
+              color: 'var(--color-text-primary)', fontSize: 13, outline: 'none',
+            };
+
+            if (subjects.length === 0) {
+              return <EmptyState icon={<BookOpen size={40} />} message={
+                allSubjects.length === 0
+                  ? 'No subjects defined for this class in the Academic Structure.'
+                  : 'You are not assigned any subjects in this class.'
+              } />;
             }
-
-            const showTotal = allowedSubjectIds === null;
 
             return (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid var(--color-border)' }}>
-                      <th style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Student</th>
-                      {allSubjects.map(s => (
-                        <th key={s} style={{ textAlign: 'center', padding: '8px 12px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{s}</th>
-                      ))}
-                      {showTotal && <th style={{ textAlign: 'center', padding: '8px 12px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {grouped.map((g, idx) => {
-                      const subjectMap = {};
-                      for (const s of g.subjects) subjectMap[s.subject_name] = s;
-                      const visibleSubjects = allowedSubjectIds !== null
-                        ? g.subjects.filter(s => allowedSubjectIds.has(s.subject_id))
-                        : g.subjects;
-                      const totalObtained = visibleSubjects.reduce((acc, s) => acc + (s.marks_obtained || 0), 0);
-                      const totalMax = visibleSubjects.reduce((acc, s) => acc + (s.max_marks || 100), 0);
-                      return (
-                        <tr key={g.student_name + idx} style={{ borderBottom: '1px solid var(--color-border)', background: idx % 2 === 0 ? 'transparent' : (isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)') }}>
-                          <td style={{ padding: '9px 12px', fontWeight: 600, color: 'var(--color-text-primary)', whiteSpace: 'nowrap' }}>{g.student_name}</td>
-                          {allSubjects.map(s => {
-                            const r = subjectMap[s];
-                            if (!r) return <td key={s} style={{ textAlign: 'center', padding: '9px 12px', color: 'var(--color-text-secondary)' }}>—</td>;
-                            const pct = r.max_marks ? Math.round(r.marks_obtained / r.max_marks * 100) : null;
-                            const color = pct === null ? '#737373' : pct >= 75 ? '#34d399' : pct >= 50 ? '#fbbf24' : '#f87171';
-                            return (
-                              <td key={s} style={{ textAlign: 'center', padding: '9px 12px' }}>
-                                <span style={{ fontWeight: 700, color }}>{r.marks_obtained}</span>
-                                <span style={{ color: 'var(--color-text-secondary)', fontSize: 11 }}>/{r.max_marks || 100}</span>
+              <div style={{ display: 'grid', gap: 18 }}>
+                {/* View-only banner for owner / non-editors */}
+                {!canEdit && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: isDark ? 'rgba(167,139,250,0.08)' : 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: 10, color: '#a78bfa', fontSize: 12, fontWeight: 600 }}>
+                    <Eye size={14} /> View only — marks and dates are managed by teachers and admins.
+                  </div>
+                )}
+
+                {/* Datesheet */}
+                <div style={{ background: surface, border: '1px solid var(--color-border)', borderRadius: 12, padding: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Calendar size={14} color="#4f8ff7" /> Datesheet & Max Marks
+                    </span>
+                    {canEdit && (
+                      <Btn label={savingSchedule ? 'Saving…' : 'Save Datesheet'} icon={<Save size={13} />} size="sm" onClick={handleSaveSchedule} disabled={savingSchedule} />
+                    )}
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+                          <th style={{ textAlign: 'left', padding: '6px 10px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>Subject</th>
+                          <th style={{ textAlign: 'left', padding: '6px 10px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>Exam Date</th>
+                          <th style={{ textAlign: 'left', padding: '6px 10px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>Max Marks</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {subjects.map(sub => {
+                          const editable = canEdit && sub.can_edit;
+                          const draft = scheduleDraft[sub.id] || {};
+                          return (
+                            <tr key={sub.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                              <td style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--color-text-primary)', whiteSpace: 'nowrap' }}>{sub.name}</td>
+                              <td style={{ padding: '8px 10px' }}>
+                                {editable ? (
+                                  <input type="date" value={draft.exam_date || ''} onChange={e => updateSchedule(sub.id, 'exam_date', e.target.value)}
+                                    style={{ ...cellInput, width: 150, textAlign: 'left' }} />
+                                ) : (
+                                  <span style={{ color: sub.exam_date ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}>{sub.exam_date || '—'}</span>
+                                )}
                               </td>
+                              <td style={{ padding: '8px 10px' }}>
+                                {editable ? (
+                                  <input type="number" min="1" value={draft.max_marks ?? ''} onChange={e => updateSchedule(sub.id, 'max_marks', e.target.value)}
+                                    style={{ ...cellInput, width: 80, textAlign: 'left' }} />
+                                ) : (
+                                  <span style={{ color: 'var(--color-text-primary)' }}>{sub.max_marks ?? 100}</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Marks grid */}
+                <div style={{ background: surface, border: '1px solid var(--color-border)', borderRadius: 12, padding: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <BarChart2 size={14} color="#34d399" /> Marks — {students.length} student{students.length === 1 ? '' : 's'}
+                    </span>
+                    {canEdit && (
+                      <Btn label={savingMarks ? 'Saving…' : 'Save Marks'} icon={<Save size={13} />} size="sm" onClick={handleSaveMarks} disabled={savingMarks} />
+                    )}
+                  </div>
+                  {saveMsg && (
+                    <div style={{ marginBottom: 10, fontSize: 12, color: saveMsg.toLowerCase().includes('fail') || saveMsg.toLowerCase().includes('error') || saveMsg.toLowerCase().includes('skipped') ? '#f87171' : '#34d399', fontWeight: 600 }}>
+                      {saveMsg}
+                    </div>
+                  )}
+                  {students.length === 0 ? (
+                    <EmptyState icon={<Users size={36} />} message="No students enrolled in this class yet." />
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead>
+                          <tr style={{ borderBottom: '2px solid var(--color-border)' }}>
+                            <th style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', position: 'sticky', left: 0, background: surface }}>Student</th>
+                            {subjects.map(sub => (
+                              <th key={sub.id} style={{ textAlign: 'center', padding: '8px 12px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
+                                {sub.name}
+                                <div style={{ fontSize: 9, fontWeight: 500, color: 'var(--color-text-secondary)', textTransform: 'none' }}>/{scheduleDraft[sub.id]?.max_marks ?? sub.max_marks ?? 100}</div>
+                              </th>
+                            ))}
+                            {showTotal && <th style={{ textAlign: 'center', padding: '8px 12px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {students.map((st, idx) => {
+                            let totalObtained = 0; let totalMax = 0; let hasAny = false;
+                            const cells = subjects.map(sub => {
+                              const max = Number(scheduleDraft[sub.id]?.max_marks) || sub.max_marks || 100;
+                              const key = `${st.id}|${sub.id}`;
+                              const draftVal = marksDraft[key];
+                              const editable = canEdit && sub.can_edit;
+                              const numeric = draftVal !== undefined && draftVal !== '' ? Number(draftVal) : null;
+                              if (numeric !== null && !Number.isNaN(numeric)) { totalObtained += numeric; totalMax += max; hasAny = true; }
+                              if (editable) {
+                                const over = numeric !== null && numeric > max;
+                                return (
+                                  <td key={sub.id} style={{ textAlign: 'center', padding: '6px 8px' }}>
+                                    <input
+                                      value={draftVal ?? ''} onChange={e => updateMark(st.id, sub.id, e.target.value)}
+                                      placeholder="—" inputMode="decimal"
+                                      style={{ ...cellInput, borderColor: over ? '#f87171' : 'var(--color-border)' }}
+                                    />
+                                  </td>
+                                );
+                              }
+                              const existing = resultMap[key];
+                              if (!existing || existing.marks_obtained === null || existing.marks_obtained === undefined) {
+                                return <td key={sub.id} style={{ textAlign: 'center', padding: '9px 12px', color: 'var(--color-text-secondary)' }}>—</td>;
+                              }
+                              const pct = max ? Math.round(existing.marks_obtained / max * 100) : null;
+                              const color = pct === null ? '#737373' : pct >= 75 ? '#34d399' : pct >= 50 ? '#fbbf24' : '#f87171';
+                              return (
+                                <td key={sub.id} style={{ textAlign: 'center', padding: '9px 12px' }}>
+                                  <span style={{ fontWeight: 700, color }}>{existing.marks_obtained}</span>
+                                  <span style={{ color: 'var(--color-text-secondary)', fontSize: 11 }}>/{max}</span>
+                                </td>
+                              );
+                            });
+                            return (
+                              <tr key={st.id} style={{ borderBottom: '1px solid var(--color-border)', background: idx % 2 === 0 ? 'transparent' : (isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)') }}>
+                                <td style={{ padding: '9px 12px', fontWeight: 600, color: 'var(--color-text-primary)', whiteSpace: 'nowrap', position: 'sticky', left: 0, background: 'inherit' }}>
+                                  {st.roll_number ? <span style={{ color: 'var(--color-text-secondary)', fontWeight: 500, marginRight: 6 }}>{st.roll_number}.</span> : null}
+                                  {st.name}
+                                </td>
+                                {cells}
+                                {showTotal && (
+                                  <td style={{ textAlign: 'center', padding: '9px 12px', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                                    {hasAny ? <>{totalObtained}<span style={{ fontWeight: 400, color: 'var(--color-text-secondary)', fontSize: 11 }}>/{totalMax}</span></> : '—'}
+                                  </td>
+                                )}
+                              </tr>
                             );
                           })}
-                          {showTotal && (
-                            <td style={{ textAlign: 'center', padding: '9px 12px', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                              {totalObtained}<span style={{ fontWeight: 400, color: 'var(--color-text-secondary)', fontSize: 11 }}>/{totalMax}</span>
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })()}
