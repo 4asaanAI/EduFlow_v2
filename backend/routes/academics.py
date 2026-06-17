@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
 from middleware.auth import (
     get_current_user, require_role, require_owner_or_principal,
-    require_owner_principal_or_management,
+    require_owner_principal_or_management, require_exam_manager,
 )
 from datetime import datetime
 from services.audit_service import write_audit_doc
@@ -154,21 +154,61 @@ async def list_exams(request: Request, user: dict = Depends(require_role("admin"
 
 
 @router.post("/exams")
-async def create_exam(request: Request, user: dict = Depends(require_role("admin", "owner"))):
+async def create_exam(request: Request, user: dict = Depends(require_exam_manager)):
     db = get_db()
     body = await request.json()
+    if not (body.get("name") or "").strip():
+        raise HTTPException(400, "Exam name is required")
+    class_id = body.get("class_id") or None
+    if user.get("role") == "teacher" and class_id:
+        scope = await compute_teacher_scope(db, user, get_school_id())
+        if class_id not in set(scope["all_class_ids"]):
+            raise HTTPException(403, "Teacher can only create exams for assigned classes")
     ay = await db.academic_years.find_one(_academic_query({"is_current": True}), {"_id": 0})
     exam = {
         "id": str(uuid.uuid4()),
         "academic_year_id": ay["id"] if ay else None,
-        "name": body.get("name"),
+        "name": body.get("name").strip(),
         "exam_type": body.get("exam_type", "unit_test"),
+        "class_id": class_id,
+        "subject_id": body.get("subject_id") or None,
         "start_date": body.get("start_date"),
         "end_date": body.get("end_date"),
+        "created_by": user["id"],
         "created_at": datetime.now().isoformat(),
     }
     await db.exams.insert_one({**exam, "_id": exam["id"], "schoolId": get_school_id()})
     return {"success": True, "data": exam}
+
+
+@router.patch("/exams/{exam_id}")
+async def update_exam(exam_id: str, request: Request, user: dict = Depends(require_exam_manager)):
+    db = get_db()
+    existing = await db.exams.find_one(_academic_query({"id": exam_id}), {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Exam not found")
+    if user.get("role") == "teacher" and existing.get("created_by") != user["id"]:
+        raise HTTPException(403, "Teachers can only edit their own exams")
+    body = await request.json()
+    allowed = {"name", "exam_type", "class_id", "subject_id", "start_date", "end_date"}
+    update = {k: v for k, v in body.items() if k in allowed}
+    if "class_id" in update and user.get("role") == "teacher" and update["class_id"]:
+        scope = await compute_teacher_scope(db, user, get_school_id())
+        if update["class_id"] not in set(scope["all_class_ids"]):
+            raise HTTPException(403, "Teacher can only assign exams to their own classes")
+    update["updated_at"] = datetime.now().isoformat()
+    await db.exams.update_one(_academic_query({"id": exam_id}), {"$set": update})
+    updated = await db.exams.find_one(_academic_query({"id": exam_id}), {"_id": 0})
+    return {"success": True, "data": updated}
+
+
+@router.delete("/exams/{exam_id}")
+async def delete_exam(exam_id: str, request: Request, user: dict = Depends(require_owner_principal_or_management)):
+    db = get_db()
+    result = await db.exams.delete_one(_academic_query({"id": exam_id}))
+    if result.deleted_count == 0:
+        raise HTTPException(404, "Exam not found")
+    return {"success": True}
 
 
 # --- Exam Results ---

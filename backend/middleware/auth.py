@@ -266,6 +266,21 @@ def require_owner_principal_or_management(request: Request):
     raise HTTPException(status_code=403, detail="Forbidden")
 
 
+def require_exam_manager(request: Request):
+    """Owner, admin+principal, admin+management, or teacher can manage exams."""
+    user = get_current_user(request)
+    role = user.get("role")
+    if role in ("owner", "teacher"):
+        return user
+    if role == "admin" and user.get("sub_category") in ("principal", "management"):
+        return user
+    logger.info(
+        "exam manager gate failed: role=%s sub=%s path=%s",
+        user.get("role"), user.get("sub_category"), request.url.path,
+    )
+    raise HTTPException(status_code=403, detail="Forbidden")
+
+
 def require_owner_or_accountant(request: Request):
     """Owner or admin+accountant.
 

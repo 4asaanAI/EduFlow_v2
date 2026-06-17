@@ -639,6 +639,40 @@ export async function updateAcademicYear(name) {
   return res.json();
 }
 
+// --- Exams ---
+export async function listExams(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  const res = await apiFetch(`${API}/academics/exams${qs ? '?' + qs : ''}`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function createExam(data) {
+  const res = await apiFetch(`${API}/academics/exams`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function updateExam(examId, data) {
+  const res = await apiFetch(`${API}/academics/exams/${examId}`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function deleteExam(examId) {
+  const res = await apiFetch(`${API}/academics/exams/${examId}`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
+  return res.json();
+}
+
+export async function getExamResults(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  const res = await apiFetch(`${API}/academics/results${qs ? '?' + qs : ''}`, { headers: getHeaders() });
+  return res.json();
+}
+
 // --- Chat file upload ---
 export async function uploadChatFile(file) {
   const form = new FormData();
