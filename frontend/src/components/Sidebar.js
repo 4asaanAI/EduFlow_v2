@@ -273,6 +273,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [schoolName, setSchoolName] = useState('');
+  const [schoolMeta, setSchoolMeta] = useState({ city: '', state: '', phone: '', email: '' });
   const [openGroups, setOpenGroups] = useState(() => {
     const cfg = getGroupConfig(currentUser);
     if (!cfg) return new Set();
@@ -320,7 +321,17 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   useEffect(() => {
     const loadSchool = () => {
       getSchoolSettings()
-        .then(r => { if (r.success && r.data?.school_name) setSchoolName(r.data.school_name); })
+        .then(r => {
+          if (r.success && r.data) {
+            if (r.data.school_name) setSchoolName(r.data.school_name);
+            setSchoolMeta({
+              city: r.data.city || '',
+              state: r.data.state || '',
+              phone: r.data.phone || '',
+              email: r.data.email || '',
+            });
+          }
+        })
         .catch(() => {});
     };
     loadSchool();
@@ -510,19 +521,16 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
         display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', flexShrink: 0,
       }}>
 
-        {/* ── Header: Logo + New Chat ── */}
-        <div style={{ padding: '14px 12px 10px', flexShrink: 0 }}>
-          {/* Logo row */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 9, background: 'linear-gradient(135deg, #4f8ff7, #a78bfa)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(79,143,247,0.3)' }}>
-                <span style={{ fontSize: 15, fontWeight: 800, color: '#fff', fontFamily: 'Inter, sans-serif' }}>E</span>
-              </div>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 15, color: tp, letterSpacing: '-0.02em', lineHeight: 1 }}>EduFlow</div>
-                <div style={{ fontSize: 10, color: muted, fontWeight: 500, marginTop: 1, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={schoolName || 'School Management'}>{schoolName || 'School Management'}</div>
-              </div>
-            </div>
+        {/* ── Header: Logo + School Identity + New Chat ── */}
+        <div style={{ padding: '12px 12px 10px', flexShrink: 0 }}>
+
+          {/* Brand row */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <img
+              src="/eduflow-logo.png"
+              alt="EduFlow"
+              style={{ height: 30, width: 'auto', objectFit: 'contain', filter: isDark ? 'brightness(1.1) drop-shadow(0 1px 4px rgba(232,89,12,0.35))' : 'drop-shadow(0 1px 3px rgba(232,89,12,0.2))' }}
+            />
             <button onClick={() => setSidebarOpen(false)} className="mobile-close"
               style={{ background: isDark ? '#252525' : '#f0f0f0', border: 'none', cursor: 'pointer', color: muted, padding: '5px', borderRadius: 7, display: 'none', alignItems: 'center', justifyContent: 'center', transition: 'var(--transition-fast)' }}
               onMouseEnter={e => e.currentTarget.style.background = isDark ? '#333' : '#e0e0e0'}
@@ -531,8 +539,35 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
             </button>
           </div>
 
+          {/* School identity card */}
+          <div style={{
+            background: isDark ? 'rgba(79,143,247,0.06)' : 'rgba(79,143,247,0.05)',
+            border: `1px solid ${isDark ? 'rgba(79,143,247,0.16)' : 'rgba(79,143,247,0.14)'}`,
+            borderRadius: 10, padding: '7px 10px', marginBottom: 10,
+          }}>
+            <div style={{
+              fontSize: 12, fontWeight: 700, color: tp,
+              letterSpacing: '-0.01em', lineHeight: 1.2,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }} title={schoolName || 'School Management'}>
+              {schoolName || 'School Management'}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 4 }}>
+              <span style={{
+                fontSize: 9, fontWeight: 700, color: '#fff',
+                background: 'linear-gradient(135deg, #e8590c, #c94b07)',
+                padding: '1.5px 6px', borderRadius: 4, letterSpacing: '0.05em', flexShrink: 0,
+              }}>CBSE</span>
+              {(schoolMeta.city || schoolMeta.state) && (
+                <span style={{ fontSize: 9.5, color: muted, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {[schoolMeta.city, schoolMeta.state].filter(Boolean).join(', ')}
+                </span>
+              )}
+            </div>
+          </div>
+
           {/* New Chat CTA */}
-          <button data-testid="new-chat-btn" onClick={onNewChat} className="new-chat-btn" style={{ marginTop: 5 }}>
+          <button data-testid="new-chat-btn" onClick={onNewChat} className="new-chat-btn">
             <div style={{ width: 18, height: 18, borderRadius: 5, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Plus size={11} strokeWidth={2.5} color="#fff" />
             </div>
@@ -617,6 +652,30 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
             </div>
           )}
         </div>
+
+        {/* ── School contact strip ── */}
+        {(schoolMeta.phone || schoolMeta.email || schoolMeta.city) && (
+          <div style={{
+            padding: '5px 12px 6px',
+            borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)'}`,
+            flexShrink: 0,
+          }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px 10px' }}>
+              {schoolMeta.phone && (
+                <span style={{ fontSize: 9.5, color: muted, display: 'flex', alignItems: 'center', gap: 3 }}>
+                  <span style={{ fontSize: 9, opacity: 0.6 }}>📞</span>
+                  {schoolMeta.phone}
+                </span>
+              )}
+              {schoolMeta.email && (
+                <span style={{ fontSize: 9.5, color: muted, display: 'flex', alignItems: 'center', gap: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
+                  <span style={{ fontSize: 9, opacity: 0.6 }}>✉</span>
+                  {schoolMeta.email}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ── Token usage badge ── */}
         <TokenUsageBadge
