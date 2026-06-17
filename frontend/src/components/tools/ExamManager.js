@@ -7,6 +7,12 @@ import {
 } from 'lucide-react';
 import { listExams, createExam, updateExam, deleteExam, getExamResults, getAllClasses, getSubjects } from '../../lib/api';
 
+const API = process.env.REACT_APP_BACKEND_URL + '/api';
+function _authHeaders(user) {
+  const token = localStorage.getItem('token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 const EXAM_TYPES = [
   { value: 'unit_test', label: 'Unit Test' },
   { value: 'mid_term', label: 'Mid Term' },
@@ -142,6 +148,19 @@ export default function ExamManager() {
   const [error, setError] = useState(null);
   const [resultsLoading, setResultsLoading] = useState(false);
 
+  // Teaching scope — drives class/subject visibility for teachers
+  const [teachingScope, setTeachingScope] = useState(null);
+
+  useEffect(() => {
+    if (!isTeacher) { setTeachingScope({ is_teacher: false }); return; }
+    let alive = true;
+    fetch(`${API}/academics/my-teaching-scope`, { headers: _authHeaders(currentUser) })
+      .then(r => r.json())
+      .then(r => { if (alive) setTeachingScope(r.success ? r.data : { is_teacher: false }); })
+      .catch(() => { if (alive) setTeachingScope({ is_teacher: false }); });
+    return () => { alive = false; };
+  }, [isTeacher, currentUser]);
+
   const [showForm, setShowForm] = useState(false);
   const [editingExam, setEditingExam] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -158,18 +177,14 @@ export default function ExamManager() {
     setError(null);
     try {
       const [examsRes, classesRes] = await Promise.all([listExams(), getAllClasses()]);
-      if (examsRes.success) {
-        let data = examsRes.data || [];
-        if (isTeacher) data = data.filter(e => e.created_by === currentUser.id);
-        setExams(data);
-      }
+      if (examsRes.success) setExams(examsRes.data || []);
       if (classesRes.success) setClasses(classesRes.data || []);
     } catch {
       setError('Failed to load exams');
     } finally {
       setLoading(false);
     }
-  }, [isTeacher, currentUser.id]);
+  }, []);
 
   useEffect(() => { loadExams(); }, [loadExams]);
 
@@ -334,82 +349,101 @@ export default function ExamManager() {
       {/* Exam list view */}
       {view === 'exams' && (
         <>
-          {loading ? (
+          {loading || (isTeacher && teachingScope === null) ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 48, color: 'var(--color-text-secondary)', fontSize: 13 }}>
               <div className="spinner" style={{ width: 16, height: 16 }} /> Loading exams…
             </div>
-          ) : exams.length === 0 ? (
-            <EmptyState icon={<ClipboardList size={40} />} message={isTeacher ? 'No exams created yet. Click "New Exam" to schedule one.' : 'No exams found.'} />
-          ) : (
-            <div style={{ display: 'grid', gap: 10 }}>
-              {exams.map(exam => {
-                const cls = classes.find(c => c.id === exam.class_id);
-                return (
-                  <Card key={exam.id} onClick={() => !isTeacher && handleSelectExam(exam)}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
-                          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' }}>{exam.name}</span>
-                          <ExamTypeLabel type={exam.exam_type} />
+          ) : (() => {
+            const scopeClassIds = isTeacher && teachingScope?.is_teacher
+              ? new Set(teachingScope.all_class_ids || [])
+              : null;
+            const visibleExams = scopeClassIds
+              ? exams.filter(e => !e.class_id || scopeClassIds.has(e.class_id))
+              : exams;
+            if (visibleExams.length === 0) {
+              return <EmptyState icon={<ClipboardList size={40} />} message={isTeacher ? 'No exams for your assigned classes yet.' : 'No exams found.'} />;
+            }
+            return (
+              <div style={{ display: 'grid', gap: 10 }}>
+                {visibleExams.map(exam => {
+                  const cls = classes.find(c => c.id === exam.class_id);
+                  return (
+                    <Card key={exam.id} onClick={() => handleSelectExam(exam)}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' }}>{exam.name}</span>
+                            <ExamTypeLabel type={exam.exam_type} />
+                          </div>
+                          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                            {cls && (
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <Users size={11} /> {cls.name}{cls.section ? ` ${cls.section}` : ''}
+                              </span>
+                            )}
+                            {exam.start_date && (
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <Calendar size={11} /> {exam.start_date}{exam.end_date && exam.end_date !== exam.start_date ? ` → ${exam.end_date}` : ''}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, color: 'var(--color-text-secondary)' }}>
-                          {cls && (
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <Users size={11} /> {cls.name}{cls.section ? ` ${cls.section}` : ''}
-                            </span>
-                          )}
-                          {exam.start_date && (
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <Calendar size={11} /> {exam.start_date}{exam.end_date && exam.end_date !== exam.start_date ? ` → ${exam.end_date}` : ''}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                        {!isTeacher && (
+                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                           <Btn label="" icon={<BarChart2 size={13} />} variant="ghost" size="sm"
                             onClick={e => { e.stopPropagation(); handleSelectExam(exam); }}
                           />
-                        )}
-                        {(canManage || (isTeacher && exam.created_by === currentUser.id)) && (
-                          <Btn label="" icon={<Edit2 size={13} />} variant="ghost" size="sm"
-                            onClick={e => { e.stopPropagation(); openEdit(exam); }}
-                          />
-                        )}
-                        {canManage && (
-                          <Btn label="" icon={<Trash2 size={13} />} variant="danger" size="sm"
-                            onClick={e => { e.stopPropagation(); setDeleteTarget(exam); }}
-                          />
-                        )}
+                          {(canManage || (isTeacher && exam.created_by === currentUser.id)) && (
+                            <Btn label="" icon={<Edit2 size={13} />} variant="ghost" size="sm"
+                              onClick={e => { e.stopPropagation(); openEdit(exam); }}
+                            />
+                          )}
+                          {canManage && (
+                            <Btn label="" icon={<Trash2 size={13} />} variant="danger" size="sm"
+                              onClick={e => { e.stopPropagation(); setDeleteTarget(exam); }}
+                            />
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
+                    </Card>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </>
       )}
 
       {/* Class performance view */}
       {view === 'classes' && (
         <>
-          {classes.length === 0 ? (
-            <EmptyState icon={<BookOpen size={40} />} message="No classes found." />
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
-              {classes.map(cls => (
-                <Card key={cls.id} onClick={() => handleSelectClass(cls)} style={{ textAlign: 'center', padding: '20px 14px' }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(79,143,247,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
-                    <BookOpen size={18} color="#4f8ff7" />
-                  </div>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--color-text-primary)' }}>{cls.name}</div>
-                  {cls.section && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>Section {cls.section}</div>}
-                  <div style={{ fontSize: 11, color: '#4f8ff7', marginTop: 8, fontWeight: 600 }}>View Results →</div>
-                </Card>
-              ))}
-            </div>
-          )}
+          {(() => {
+            const scopeClassIds = isTeacher && teachingScope?.is_teacher
+              ? new Set(teachingScope.all_class_ids || [])
+              : null;
+            // If exam has a specific class, jump directly to that class for teacher
+            const examClassId = selectedExam?.class_id;
+            let visibleClasses = scopeClassIds
+              ? classes.filter(c => scopeClassIds.has(c.id))
+              : classes;
+            if (examClassId) visibleClasses = visibleClasses.filter(c => c.id === examClassId);
+            if (visibleClasses.length === 0) {
+              return <EmptyState icon={<BookOpen size={40} />} message="No classes found." />;
+            }
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
+                {visibleClasses.map(cls => (
+                  <Card key={cls.id} onClick={() => handleSelectClass(cls)} style={{ textAlign: 'center', padding: '20px 14px' }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(79,143,247,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
+                      <BookOpen size={18} color="#4f8ff7" />
+                    </div>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--color-text-primary)' }}>{cls.name}</div>
+                    {cls.section && <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>Section {cls.section}</div>}
+                    <div style={{ fontSize: 11, color: '#4f8ff7', marginTop: 8, fontWeight: 600 }}>View Results →</div>
+                  </Card>
+                ))}
+              </div>
+            );
+          })()}
         </>
       )}
 
@@ -423,8 +457,36 @@ export default function ExamManager() {
           ) : studentResults.length === 0 ? (
             <EmptyState icon={<BarChart2 size={40} />} message="No results recorded for this class yet." />
           ) : (() => {
+            // Determine subject visibility for teachers:
+            // - Class teachers of this class → see all subjects
+            // - Subject-only teachers → see only their subjects for this class
+            let allowedSubjectIds = null;
+            if (isTeacher && teachingScope?.is_teacher && selectedClass) {
+              const isClassTeacher = (teachingScope.class_teacher_class_ids || []).includes(selectedClass.id);
+              if (!isClassTeacher) {
+                // Subject teacher: only show their subjects that belong to this class
+                const mySubjectsForClass = (teachingScope.subjects || [])
+                  .filter(s => s.class_id === selectedClass.id)
+                  .map(s => s.id);
+                allowedSubjectIds = new Set(mySubjectsForClass);
+              }
+            }
+
             const grouped = groupByStudent(studentResults);
-            const allSubjects = [...new Set(studentResults.map(r => r.subject_name))].sort();
+            let allSubjects = [...new Set(studentResults.map(r => r.subject_name))].sort();
+
+            // Filter columns if subject teacher
+            if (allowedSubjectIds !== null) {
+              const allowedNames = new Set(
+                studentResults
+                  .filter(r => allowedSubjectIds.has(r.subject_id))
+                  .map(r => r.subject_name)
+              );
+              allSubjects = allSubjects.filter(s => allowedNames.has(s));
+            }
+
+            const showTotal = allowedSubjectIds === null;
+
             return (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -434,15 +496,18 @@ export default function ExamManager() {
                       {allSubjects.map(s => (
                         <th key={s} style={{ textAlign: 'center', padding: '8px 12px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{s}</th>
                       ))}
-                      <th style={{ textAlign: 'center', padding: '8px 12px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total</th>
+                      {showTotal && <th style={{ textAlign: 'center', padding: '8px 12px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {grouped.map((g, idx) => {
                       const subjectMap = {};
                       for (const s of g.subjects) subjectMap[s.subject_name] = s;
-                      const totalObtained = g.subjects.reduce((acc, s) => acc + (s.marks_obtained || 0), 0);
-                      const totalMax = g.subjects.reduce((acc, s) => acc + (s.max_marks || 100), 0);
+                      const visibleSubjects = allowedSubjectIds !== null
+                        ? g.subjects.filter(s => allowedSubjectIds.has(s.subject_id))
+                        : g.subjects;
+                      const totalObtained = visibleSubjects.reduce((acc, s) => acc + (s.marks_obtained || 0), 0);
+                      const totalMax = visibleSubjects.reduce((acc, s) => acc + (s.max_marks || 100), 0);
                       return (
                         <tr key={g.student_name + idx} style={{ borderBottom: '1px solid var(--color-border)', background: idx % 2 === 0 ? 'transparent' : (isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)') }}>
                           <td style={{ padding: '9px 12px', fontWeight: 600, color: 'var(--color-text-primary)', whiteSpace: 'nowrap' }}>{g.student_name}</td>
@@ -458,9 +523,11 @@ export default function ExamManager() {
                               </td>
                             );
                           })}
-                          <td style={{ textAlign: 'center', padding: '9px 12px', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                            {totalObtained}<span style={{ fontWeight: 400, color: 'var(--color-text-secondary)', fontSize: 11 }}>/{totalMax}</span>
-                          </td>
+                          {showTotal && (
+                            <td style={{ textAlign: 'center', padding: '9px 12px', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                              {totalObtained}<span style={{ fontWeight: 400, color: 'var(--color-text-secondary)', fontSize: 11 }}>/{totalMax}</span>
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
