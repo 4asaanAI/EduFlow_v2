@@ -22,6 +22,7 @@ const CREDENTIAL_GROUPS = [
       { label: 'Kavita Singh',  username: 'reception',   password: 'reception@123',   note: 'Receptionist · Enquiries' },
       { label: 'Rahul Tech',    username: 'ittech',      password: 'ittech@123',      note: 'IT & Tech · Support' },
       { label: 'Arvind Kumar',  username: 'maintenance', password: 'maintenance@123', note: 'Maintenance · Facility' },
+      { label: 'Rohit Management', username: 'management', password: 'management@123', note: 'Management · Audit & Reports' },
     ],
   },
   {
