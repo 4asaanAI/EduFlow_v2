@@ -632,6 +632,13 @@ export async function getAcademicYear() {
   return res.json();
 }
 
+export async function updateAcademicYear(name) {
+  const res = await apiFetch(`${API}/settings/academic-year`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify({ name }),
+  });
+  return res.json();
+}
+
 // --- Chat file upload ---
 export async function uploadChatFile(file) {
   const form = new FormData();

@@ -1,7 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useUser } from '../contexts/UserContext';
 import { X, Sun, Moon, Bell, Lock, Check, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { getSchoolSettings, getAcademicYear } from '../lib/api';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -67,6 +68,24 @@ export default function SettingsModal({ onClose }) {
   const [showNewPw, setShowNewPw] = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
   const containerRef = useRef(null);
+  const [schoolInfo, setSchoolInfo] = useState({ name: '', city: '', state: '', phone: '', email: '', academicYear: '' });
+
+  useEffect(() => {
+    Promise.all([getSchoolSettings(), getAcademicYear()])
+      .then(([sr, ay]) => {
+        const d = sr.success ? (sr.data || {}) : {};
+        const yearName = ay.success && ay.data ? (ay.data.name || ay.data.year || '') : '';
+        setSchoolInfo({
+          name: d.school_name || '',
+          city: d.city || '',
+          state: d.state || '',
+          phone: d.phone || '',
+          email: d.email || '',
+          academicYear: yearName,
+        });
+      })
+      .catch(() => {});
+  }, []);
 
   const bg = isDark ? '#1e1e1e' : '#fff';
   const border = isDark ? '#2e2e2e' : '#e5e5e5';
@@ -218,8 +237,13 @@ export default function SettingsModal({ onClose }) {
 
         <Section title="About" styles={styles}>
           <Row label="EduFlow Version" control={<span style={{ fontSize: 12, color: muted, fontWeight: 500 }}>v1.1.0</span>} styles={styles} />
-          <Row label="School" control={<span style={{ fontSize: 12, color: muted, fontWeight: 500 }}>The Aaryans, CBSE</span>} styles={styles} />
-          <Row label="Academic Year" control={<span style={{ fontSize: 12, color: muted, fontWeight: 500 }}>2025-26</span>} noBorder styles={styles} />
+          {schoolInfo.name && <Row label="School" control={<span style={{ fontSize: 12, color: muted, fontWeight: 500 }}>{schoolInfo.name}</span>} styles={styles} />}
+          {(schoolInfo.city || schoolInfo.state) && (
+            <Row label="Location" control={<span style={{ fontSize: 12, color: muted, fontWeight: 500 }}>{[schoolInfo.city, schoolInfo.state].filter(Boolean).join(', ')}</span>} styles={styles} />
+          )}
+          {schoolInfo.phone && <Row label="Phone" control={<span style={{ fontSize: 12, color: muted, fontWeight: 500 }}>{schoolInfo.phone}</span>} styles={styles} />}
+          {schoolInfo.email && <Row label="Email" control={<span style={{ fontSize: 12, color: muted, fontWeight: 500 }}>{schoolInfo.email}</span>} styles={styles} />}
+          <Row label="Academic Year" control={<span style={{ fontSize: 12, color: muted, fontWeight: 500 }}>{schoolInfo.academicYear || '—'}</span>} noBorder styles={styles} />
         </Section>
 
         {saved && (

@@ -576,7 +576,15 @@ async def list_subjects(request: Request, class_id: str = None, user: dict = Dep
     query = {}
     if class_id:
         query["class_id"] = class_id
-    subjects = await db.subjects.find(query, {"_id": 0}).to_list(100)
+    # Teachers only ever see the subjects the Academic Structure assigns to them
+    # (subjects.teacher_id == their user_id). Enforced server-side so every
+    # tool/section is scoped regardless of frontend filtering.
+    if user.get("role") == "teacher":
+        scope = await compute_teacher_scope(db, user, get_school_id())
+        if not scope["subject_ids"]:
+            return {"success": True, "data": []}
+        query["id"] = {"$in": scope["subject_ids"]}
+    subjects = await db.subjects.find(_academic_query(query), {"_id": 0}).to_list(100)
     return {"success": True, "data": subjects}
 
 

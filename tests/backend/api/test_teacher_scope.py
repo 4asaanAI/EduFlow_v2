@@ -96,6 +96,58 @@ def test_scope_teacher_with_no_assignment_is_empty(client, fake_db):
     assert data["all_class_ids"] == []
 
 
+# ── Class dropdown scoping (/settings/classes) ────────────────────────────
+
+def test_classes_list_scoped_to_assigned_classes_for_teacher(client, fake_db):
+    _seed_structure(fake_db)
+    resp = client.get("/api/settings/classes", headers=_teacher_h())
+    assert resp.status_code == 200
+    ids = {c["id"] for c in resp.json()["data"]}
+    # cls-1 (class teacher) + cls-2 (subject) only — never cls-3.
+    assert ids == {"cls-1", "cls-2"}
+
+
+def test_classes_list_empty_for_unassigned_teacher(client, fake_db):
+    _seed_structure(fake_db)
+    resp = client.get("/api/settings/classes", headers=_teacher_h("nobody"))
+    assert resp.status_code == 200
+    assert resp.json()["data"] == []
+
+
+def test_classes_list_unscoped_for_admin(client, fake_db):
+    _seed_structure(fake_db)
+    resp = client.get("/api/settings/classes", headers=_admin_h())
+    assert resp.status_code == 200
+    ids = {c["id"] for c in resp.json()["data"]}
+    assert ids == {"cls-1", "cls-2", "cls-3"}
+
+
+# ── Subject dropdown scoping (/academics/subjects) ────────────────────────
+
+def test_subjects_list_scoped_to_assigned_subjects_for_teacher(client, fake_db):
+    _seed_structure(fake_db)
+    resp = client.get("/api/academics/subjects", headers=_teacher_h())
+    assert resp.status_code == 200
+    ids = {s["id"] for s in resp.json()["data"]}
+    # Only sub-1 (teacher_id == t1); sub-2 belongs to another teacher.
+    assert ids == {"sub-1"}
+
+
+def test_subjects_list_empty_for_unassigned_teacher(client, fake_db):
+    _seed_structure(fake_db)
+    resp = client.get("/api/academics/subjects", headers=_teacher_h("nobody"))
+    assert resp.status_code == 200
+    assert resp.json()["data"] == []
+
+
+def test_subjects_list_unscoped_for_admin(client, fake_db):
+    _seed_structure(fake_db)
+    resp = client.get("/api/academics/subjects", headers=_admin_h())
+    assert resp.status_code == 200
+    ids = {s["id"] for s in resp.json()["data"]}
+    assert ids == {"sub-1", "sub-2"}
+
+
 # ── Attendance is class-teacher-only ──────────────────────────────────────
 
 def test_attendance_today_allowed_for_class_teacher(client, fake_db):

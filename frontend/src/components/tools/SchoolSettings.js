@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Save, CheckCircle } from 'lucide-react';
 import { ToolPage, FormField, ActionBtn, ErrorCard, LoadingCard } from './ToolPage';
-import { getSchoolSettings, updateSchoolSettings } from '@/lib/api';
+import { getSchoolSettings, updateSchoolSettings, getAcademicYear, updateAcademicYear } from '@/lib/api';
 
 const EMPTY = {
   school_name: '', board: '', established: '', principal: '',
@@ -35,6 +35,10 @@ export default function SchoolSettings() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
+  const [academicYear, setAcademicYear] = useState('');
+  const [ayError, setAyError] = useState('');
+  const [aySaving, setAySaving] = useState(false);
+  const [aySaved, setAySaved] = useState(false);
 
   const set = (key) => (val) => { setForm((f) => ({ ...f, [key]: val })); setSaved(false); };
   const setAiField = (key) => (val) => { setAi((a) => ({ ...a, [key]: val })); setSaved(false); };
@@ -43,7 +47,7 @@ export default function SchoolSettings() {
     setLoading(true);
     setError(null);
     try {
-      const res = await getSchoolSettings();
+      const [res, ayRes] = await Promise.all([getSchoolSettings(), getAcademicYear()]);
       if (res.success && res.data) {
         const d = res.data;
         setForm({
@@ -61,10 +65,33 @@ export default function SchoolSettings() {
       } else {
         setError(res.detail || 'Unable to load school settings');
       }
+      if (ayRes.success && ayRes.data) {
+        setAcademicYear(ayRes.data.name || ayRes.data.year || '');
+      }
     } catch {
       setError('Network error — please try again');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveAcademicYear = async () => {
+    setAyError('');
+    if (!academicYear.trim()) { setAyError('Academic year cannot be empty'); return; }
+    setAySaving(true);
+    try {
+      const res = await updateAcademicYear(academicYear.trim());
+      if (res.success) {
+        setAySaved(true);
+        setTimeout(() => setAySaved(false), 3000);
+        window.dispatchEvent(new CustomEvent('academic-year-updated'));
+      } else {
+        setAyError(res.detail || 'Failed to save');
+      }
+    } catch {
+      setAyError('Network error');
+    } finally {
+      setAySaving(false);
     }
   };
 
@@ -151,6 +178,36 @@ export default function SchoolSettings() {
           </Section>
         </>
       )}
+
+      {/* Academic Year — separate save, always visible */}
+      <div style={{
+        background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+        borderRadius: 14, padding: '18px 20px', marginBottom: 16,
+      }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: 14 }}>Academic Year</div>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <FormField
+              label="Current Academic Year"
+              value={academicYear}
+              onChange={v => { setAcademicYear(v); setAyError(''); setAySaved(false); }}
+              placeholder="2025-26"
+            />
+          </div>
+          <div style={{ paddingBottom: 2 }}>
+            <ActionBtn
+              label={aySaving ? 'Saving…' : aySaved ? 'Saved!' : 'Update Year'}
+              icon={aySaved ? <CheckCircle size={13} /> : <Save size={13} />}
+              onClick={handleSaveAcademicYear}
+              disabled={aySaving}
+            />
+          </div>
+        </div>
+        {ayError && <div style={{ fontSize: 12, color: '#f87171', marginTop: 6 }}>{ayError}</div>}
+        <div style={{ fontSize: 11, color: 'var(--color-text-secondary, #888)', marginTop: 8 }}>
+          Updates everywhere — header bar, profile, and settings About section.
+        </div>
+      </div>
     </ToolPage>
   );
 }

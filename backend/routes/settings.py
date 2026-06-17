@@ -6,6 +6,7 @@ from middleware.auth import (
     require_owner_principal_or_management,
 )
 from tenant import get_school_id, scoped_filter
+from services.teacher_scope_service import compute_teacher_scope
 from services.audit_service import write_audit
 from services.actor_context import actor_ctx_from_user
 from services.academic_structure_service import (
@@ -286,6 +287,17 @@ async def get_school_settings(request: Request, user: dict = Depends(require_rol
 @router.get("/classes")
 async def get_classes(request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff"))):
     db = get_db()
+    # Teachers only ever see the classes the Academic Structure assigns to them
+    # (class teacher of, or teaching a subject in). Enforced server-side so every
+    # tool/section is scoped regardless of frontend filtering.
+    if user.get("role") == "teacher":
+        scope = await compute_teacher_scope(db, user, get_school_id())
+        if not scope["all_class_ids"]:
+            return {"success": True, "data": []}
+        classes = await db.classes.find(
+            _settings_query({"id": {"$in": scope["all_class_ids"]}}), {"_id": 0},
+        ).to_list(50)
+        return {"success": True, "data": classes}
     classes = await db.classes.find(_settings_query(), {"_id": 0}).to_list(50)
     return {"success": True, "data": classes}
 
@@ -447,5 +459,28 @@ async def delete_form(form_id: str, request: Request, user: dict = Depends(requi
 @router.get("/academic-year")
 async def get_academic_year(request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff", "student"))):
     db = get_db()
+    ay = await db.academic_years.find_one(_settings_query({"is_current": True}), {"_id": 0})
+    return {"success": True, "data": ay}
+
+
+@router.patch("/academic-year")
+async def update_academic_year(request: Request, user: dict = Depends(require_role("owner"))):
+    """Owner sets the current academic year name (e.g. '2025-26').
+    Upserts a single is_current=True record for the school."""
+    db = get_db()
+    body = await request.json()
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "Academic year name is required")
+    school_id = get_school_id()
+    existing = await db.academic_years.find_one(_settings_query({"is_current": True}), {"_id": 0})
+    if existing:
+        await db.academic_years.update_one(
+            _settings_query({"is_current": True}),
+            {"$set": {"name": name, "updated_at": datetime.now().isoformat()}},
+        )
+    else:
+        doc = {"id": str(uuid.uuid4()), "schoolId": school_id, "name": name, "is_current": True, "created_at": datetime.now().isoformat()}
+        await db.academic_years.insert_one({**doc, "_id": doc["id"]})
     ay = await db.academic_years.find_one(_settings_query({"is_current": True}), {"_id": 0})
     return {"success": True, "data": ay}
