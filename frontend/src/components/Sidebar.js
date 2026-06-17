@@ -525,12 +525,12 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
         <div style={{ padding: '12px 12px 10px', flexShrink: 0 }}>
 
           {/* Brand row */}
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
             <img
               src="/eduflow-logo.png"
               alt="EduFlow"
               style={{
-                height: 42, width: 'auto', maxWidth: '100%', objectFit: 'contain',
+                height: 52, width: 'auto', maxWidth: '100%', objectFit: 'contain',
                 filter: isDark
                   ? 'brightness(1.12) drop-shadow(0 2px 8px rgba(232,89,12,0.45))'
                   : 'drop-shadow(0 2px 6px rgba(232,89,12,0.28))',

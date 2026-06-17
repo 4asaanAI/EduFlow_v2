@@ -10,6 +10,7 @@ from datetime import datetime
 from services.audit_service import write_audit_doc
 from services.actor_context import actor_ctx_from_user
 from services.substitution_service import initiate_substitution
+from services.teacher_scope_service import compute_teacher_scope, empty_scope
 from services.academic_structure_service import (
     create_subject as svc_create_subject,
     update_subject as svc_update_subject,
@@ -32,30 +33,38 @@ def _academic_query(extra: dict | None = None) -> dict:
     return scoped_filter(extra or {}, get_school_id())
 
 
-async def _teacher_staff(db, user: dict) -> dict | None:
-    if user.get("role") != "teacher":
-        return None
-    return await db.staff.find_one(_academic_query({"user_id": user["id"]}), {"_id": 0})
-
-
 async def _teacher_can_access_class(db, user: dict, class_id: str | None) -> bool:
+    """A teacher may act on a class only if the Academic Structure assigns it to
+    them — as the class teacher OR by teaching a subject in it. Non-teachers and
+    calls without a class_id pass through (their own gates apply)."""
     if user.get("role") != "teacher" or not class_id:
         return True
-    staff = await _teacher_staff(db, user)
-    if not staff:
-        return False
-    # HoD has cross-class subject authority — skip class_id validation
-    if staff.get("sub_category") == "hod":
-        return True  # rbac: intentional — HoD has cross-class subject authority
-    if class_id in {staff.get("class_id"), staff.get("class_teacher_id"), staff.get("class_teacher_of")}:
-        return True
-    slot = await db.timetable_slots.find_one(_academic_query({"teacher_id": staff.get("id"), "class_id": class_id}), {"_id": 0})
-    return bool(slot)
+    scope = await compute_teacher_scope(db, user, get_school_id())
+    return class_id in set(scope["all_class_ids"])
 
 
 async def _require_teacher_class_access(db, user: dict, class_id: str | None):
     if not await _teacher_can_access_class(db, user, class_id):
         raise HTTPException(403, "Teacher can access only assigned classes")
+
+
+@router.get("/my-teaching-scope")
+async def my_teaching_scope(
+    request: Request,
+    user: dict = Depends(require_role("teacher", "admin", "owner")),
+):
+    """Classes & subjects the current teacher is assigned in the Academic Structure.
+
+    Powers per-section filtering on the frontend (Attendance, Assignments, Student
+    Performance, Curriculum, Class Analytics, Lesson Plans, PTM Notes). For a
+    non-teacher this reports ``is_teacher: False`` with empty lists so the UI knows
+    not to restrict anything.
+    """
+    db = get_db()
+    if user.get("role") != "teacher":
+        return {"success": True, "data": {"is_teacher": False, **empty_scope()}}
+    scope = await compute_teacher_scope(db, user, get_school_id())
+    return {"success": True, "data": {"is_teacher": True, **scope}}
 
 
 def _can_manage_all(user: dict) -> bool:
@@ -179,11 +188,26 @@ async def get_results(request: Request, exam_id: str = None, student_id: str = N
             own = await db.students.find_one(_academic_query({"user_id": user["id"]}), {"_id": 0})
             if not own or own["id"] != student_id:
                 raise HTTPException(403, "Forbidden")
+        elif user["role"] == "teacher":
+            # A teacher may only pull a student's results if that student is in one
+            # of their assigned classes (Academic Structure).
+            target = await db.students.find_one(_academic_query({"id": student_id}), {"_id": 0})
+            await _require_teacher_class_access(db, user, (target or {}).get("class_id"))
         query["student_id"] = student_id
     elif user["role"] == "student" and not class_id:
         own = await db.students.find_one(_academic_query({"user_id": user["id"]}), {"_id": 0})
         if own:
             query["student_id"] = own["id"]
+    elif user["role"] == "teacher" and not class_id:
+        # No explicit class filter — restrict to students in the teacher's assigned
+        # classes so the school-wide results set never leaks across classes.
+        scope = await compute_teacher_scope(db, user, get_school_id())
+        if not scope["all_class_ids"]:
+            return {"success": True, "data": []}
+        scoped_students = await db.students.find(
+            _academic_query({"class_id": {"$in": scope["all_class_ids"]}}), {"_id": 0, "id": 1},
+        ).to_list(2000)
+        query["student_id"] = {"$in": [s["id"] for s in scoped_students]}
     if user["role"] == "student":
         query["published"] = True
     results = await db.exam_results.find(_academic_query(query), {"_id": 0}).to_list(500)

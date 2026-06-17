@@ -14,6 +14,45 @@ export { FormSubmissions } from './StudentTools';
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function h() { return getAuthHeaders(); }
 const tint = (color, amount) => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
+
+// ── Teacher teaching-scope ────────────────────────────────────────────────
+// What classes/subjects the Academic Structure assigns to the logged-in teacher.
+// Drives per-section filtering so a teacher only ever sees their own classes &
+// subjects. For non-teachers it reports is_teacher:false and nothing is filtered.
+function useTeachingScope() {
+  const { currentUser } = useUser();
+  const [scope, setScope] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    if (currentUser?.role !== 'teacher') { setScope({ is_teacher: false }); return undefined; }
+    fetch(`${API}/academics/my-teaching-scope`, { headers: h(currentUser) })
+      .then(r => r.json())
+      .then(r => { if (alive) setScope(r.success ? r.data : { is_teacher: false }); })
+      .catch(() => { if (alive) setScope({ is_teacher: false }); });
+    return () => { alive = false; };
+  }, [currentUser]);
+
+  return scope; // null while loading, then { is_teacher, ...ids/docs }
+}
+
+// Filter a class list down to a teacher's scope. mode 'class_teacher' = only
+// classes they are class teacher of (Attendance); 'all' = any assigned class.
+function filterClasses(allClasses, scope, mode = 'all') {
+  if (!scope || !scope.is_teacher) return allClasses;
+  const ids = new Set(mode === 'class_teacher' ? (scope.class_teacher_class_ids || []) : (scope.all_class_ids || []));
+  return (allClasses || []).filter(c => ids.has(c.id));
+}
+
+// Filter a subject list to the subjects a teacher is assigned to teach.
+function filterSubjects(allSubjects, scope) {
+  if (!scope || !scope.is_teacher) return allSubjects;
+  const ids = new Set(scope.subject_ids || []);
+  return (allSubjects || []).filter(s => ids.has(s.id));
+}
+
+// True once we know the scope is ready to filter with (or no filtering needed).
+const scopeReady = (scope) => scope != null;
 const btnStyle = (color) => ({ background: tint(color, 13), border: `1px solid ${tint(color, 31)}`, borderRadius: 5, padding: '3px 8px', color, fontSize: 11, cursor: 'pointer', fontWeight: 600 });
 
 function markdownToHtml(text) {
@@ -30,6 +69,7 @@ function markdownToHtml(text) {
 // 1. Class Attendance Marker
 export function ClassAttendanceMarker() {
   const { currentUser } = useUser();
+  const scope = useTeachingScope();
   const [classes, setClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -38,8 +78,19 @@ export function ClassAttendanceMarker() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => { getAllClasses(currentUser).then(r => { if (r.success && r.data.length > 0) { setClasses(r.data); setSelectedClass(r.data[0].id); } }); }, []);
-  useEffect(() => { if (selectedClass) { setLoading(true); 
+  // Attendance is class-teacher-only: show solely the classes the teacher is
+  // class teacher of in the Academic Structure.
+  useEffect(() => {
+    if (!scopeReady(scope)) return;
+    getAllClasses(currentUser).then(r => {
+      if (r.success) {
+        const list = filterClasses(r.data || [], scope, 'class_teacher');
+        setClasses(list);
+        setSelectedClass(prev => (prev && list.some(c => c.id === prev) ? prev : (list[0]?.id || '')));
+      }
+    });
+  }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (selectedClass) { setLoading(true);
     fetch(`${API}/attendance/student/today/${selectedClass}?date=${date}`, { headers: h(currentUser) })
       .then(r => r.json()).then(r => { if (r.success) setRecords(r.data || []); }).finally(() => setLoading(false)); 
   } }, [selectedClass, date]);
@@ -54,6 +105,11 @@ export function ClassAttendanceMarker() {
 
   return (
     <ToolPage title="Class Attendance" subtitle="Mark attendance for your class">
+      {scope?.is_teacher && classes.length === 0 && (
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 16, marginBottom: 14, fontSize: 13, color: 'var(--c-muted)' }}>
+          You are not set as the class teacher of any class yet. Ask your admin to assign you a class in Academic Structure to mark attendance.
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
@@ -93,6 +149,7 @@ export function ClassAttendanceMarker() {
 // 2. Assignment Generator
 export function AssignmentGenerator() {
   const { currentUser } = useUser();
+  const scope = useTeachingScope();
   const [assignments, setAssignments] = useState([]);
   const [classes, setClasses] = useState([]);
   const [subjects, setSubjects] = useState([]);
@@ -110,15 +167,16 @@ export function AssignmentGenerator() {
   };
 
   useEffect(() => {
+    if (!scopeReady(scope)) return;
     Promise.all([
-      getAllClasses(currentUser).then(r => { if (r.success) setClasses(r.data || []); }),
+      getAllClasses(currentUser).then(r => { if (r.success) setClasses(filterClasses(r.data || [], scope, 'all')); }),
       load(),
     ]).finally(() => setLoading(false));
-  }, []);
+  }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadSubjects = async (classId) => {
     const r = await fetch(`${API}/academics/subjects?class_id=${classId}`, { headers: h(currentUser) }).then(r => r.json());
-    if (r.success) setSubjects(r.data || []);
+    if (r.success) setSubjects(filterSubjects(r.data || [], scope));
   };
 
   const openCreate = () => { setEditingId(null); setForm({ class_id: '', subject_id: '', title: '', description: '', due_date: '' }); setShowForm(true); setError(''); };
@@ -581,6 +639,7 @@ export function LeaveApplication() {
 // 7. Lesson Plan Generator
 export function LessonPlanGenerator() {
   const { currentUser } = useUser();
+  const scope = useTeachingScope();
   const [subjects, setSubjects] = useState([]);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -597,12 +656,13 @@ export function LessonPlanGenerator() {
   };
 
   useEffect(() => {
+    if (!scopeReady(scope)) return;
     Promise.all([
-      getAllClasses(currentUser).then(r => { if (r.success) setClasses(r.data || []); }),
-      fetch(`${API}/academics/subjects`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setSubjects(r.data || []); }),
+      getAllClasses(currentUser).then(r => { if (r.success) setClasses(filterClasses(r.data || [], scope, 'all')); }),
+      fetch(`${API}/academics/subjects`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setSubjects(filterSubjects(r.data || [], scope)); }),
       load(),
     ]).finally(() => setLoading(false));
-  }, []);
+  }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openCreate = () => { setEditingId(null); setForm({ class_id: '', subject_id: '', week: new Date().toISOString().slice(0, 10), chapter: '', content: '' }); setShowForm(true); };
   const openEdit = (p) => { setEditingId(p.id); setForm({ class_id: p.class_id || '', subject_id: p.subject_id || '', week: p.week || '', chapter: p.chapter || '', content: typeof p.content === 'object' ? (p.content.description || '') : (p.content || '') }); setShowForm(true); };
@@ -800,6 +860,7 @@ export function SubstitutionViewer() {
 }
 export function ClassPerformanceAnalytics() {
   const { currentUser } = useUser();
+  const scope = useTeachingScope();
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
   const [selectedClass, setSelectedClass] = useState('');
@@ -808,8 +869,9 @@ export function ClassPerformanceAnalytics() {
   const [loadingResults, setLoadingResults] = useState(false);
 
   useEffect(() => {
-    getAllClasses(currentUser).then(r => { if (r.success) setClasses(r.data || []); }).finally(() => setLoading(false));
-  }, []);
+    if (!scopeReady(scope)) return;
+    getAllClasses(currentUser).then(r => { if (r.success) setClasses(filterClasses(r.data || [], scope, 'all')); }).finally(() => setLoading(false));
+  }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleClassChange = async (classId) => {
     setSelectedClass(classId);
@@ -872,6 +934,7 @@ export function ClassPerformanceAnalytics() {
 }
 export function PtmNotes() {
   const { currentUser } = useUser();
+  const scope = useTeachingScope();
   const [notes, setNotes] = useState([]);
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
@@ -889,12 +952,13 @@ export function PtmNotes() {
   };
 
   useEffect(() => {
+    if (!scopeReady(scope)) return;
     Promise.all([
-      getAllClasses(currentUser).then(r => { if (r.success) setClasses(r.data || []); }),
+      getAllClasses(currentUser).then(r => { if (r.success) setClasses(filterClasses(r.data || [], scope, 'all')); }),
       getStudents(currentUser).then(r => { if (r.success) setStudents(r.data || []); }),
       load(),
     ]).finally(() => setLoading(false));
-  }, []);
+  }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleClassChange = (classId) => {
     setForm(p => ({ ...p, class_id: classId, student_id: '' }));
@@ -975,6 +1039,7 @@ export function PtmNotes() {
 }
 export function CurriculumTracker() {
   const { currentUser } = useUser();
+  const scope = useTeachingScope();
   const [progress, setProgress] = useState([]);
   const [classes, setClasses] = useState([]);
   const [subjects, setSubjects] = useState([]);
@@ -992,12 +1057,13 @@ export function CurriculumTracker() {
   };
 
   useEffect(() => {
+    if (!scopeReady(scope)) return;
     Promise.all([
-      getAllClasses(currentUser).then(r => { if (r.success) setClasses(r.data || []); }),
-      fetch(`${API}/academics/subjects`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setSubjects(r.data || []); }),
+      getAllClasses(currentUser).then(r => { if (r.success) setClasses(filterClasses(r.data || [], scope, 'all')); }),
+      fetch(`${API}/academics/subjects`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setSubjects(filterSubjects(r.data || [], scope)); }),
       load(),
     ]).finally(() => setLoading(false));
-  }, []);
+  }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openCreate = () => { setEditingId(null); setForm({ class_id: '', subject_id: '', topic: '', status: 'not_started' }); setShowForm(true); };
   const openEdit = (p) => { setEditingId(p.id); setForm({ class_id: p.class_id || '', subject_id: p.subject_id || '', topic: p.topic || '', status: p.status || 'not_started' }); setShowForm(true); };

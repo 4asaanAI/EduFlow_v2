@@ -29,6 +29,7 @@ from services.s3_storage import (
     infer_content_type,
     upload_bytes,
 )
+from services.teacher_scope_service import compute_teacher_scope
 from tenant import get_school_id, scoped_filter
 
 
@@ -178,17 +179,22 @@ async def list_students(
             {"admission_number": {"$regex": safe_search, "$options": "i"}},
         ]
 
-    # Part 14 + 15: Teacher should only see students in their assigned classes
-    bid = user.get("branch_id")
+    # Part 14 + 15: Teacher should only see students in their assigned classes.
+    # Assignments come from the Academic Structure (classes.class_teacher_id +
+    # subjects.teacher_id) — the single source of truth that the admin edits.
     if user.get("role") == "teacher":
-        staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})
-        if staff:
-            teacher_class_ids = staff.get("class_teacher_of") or ([staff.get("class_id")] if staff.get("class_id") else [])
-            if teacher_class_ids:
-                query["class_id"] = {"$in": teacher_class_ids}
-            # If teacher has no class assignment, return empty (don't expose all students)
-        else:
+        scope = await compute_teacher_scope(db, user, get_school_id())
+        teacher_class_ids = scope["all_class_ids"]
+        if not teacher_class_ids:
+            # No assignment → expose nothing rather than the whole school.
             return {"success": True, "data": [], "meta": {"page": page, "total": 0, "per_page": per_page, "sort": sort}}
+        if class_id:
+            # An explicit class filter must stay inside the teacher's scope.
+            if class_id not in set(teacher_class_ids):
+                return {"success": True, "data": [], "meta": {"page": page, "total": 0, "per_page": per_page, "sort": sort}}
+            query["class_id"] = class_id
+        else:
+            query["class_id"] = {"$in": teacher_class_ids}
 
     sort_field, sort_dir = SORT_FIELDS.get(sort, SORT_FIELDS["created_at"])
     scoped_query = _student_query(query)

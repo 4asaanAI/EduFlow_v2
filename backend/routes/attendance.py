@@ -20,6 +20,7 @@ from services.staff_attendance_service import (
     StaffAttendanceValidationError,
 )
 from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, normalize_session_id, publish
+from services.teacher_scope_service import compute_teacher_scope
 import asyncio
 import csv
 import io
@@ -47,30 +48,14 @@ def _can_admin_attendance(user: dict) -> bool:
     return user.get("role") == "owner" or (user.get("role") == "admin" and user.get("sub_category", "principal") == "principal")
 
 
-async def _teacher_staff(db, user: dict) -> dict | None:
-    if user.get("role") != "teacher":
-        return None
-    return await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})
-
-
 async def _teacher_can_access_class(db, user: dict, class_id: str | None) -> bool:
+    """Attendance is class-teacher-only: a teacher may view/mark attendance solely
+    for the class(es) the Academic Structure names them class teacher of. Teaching
+    a subject in a class does NOT grant attendance access."""
     if user.get("role") != "teacher" or not class_id:
         return True
-    staff = await _teacher_staff(db, user)
-    if not staff:
-        return False
-    direct_classes = {
-        staff.get("class_id"),
-        staff.get("class_teacher_id"),
-        staff.get("class_teacher_of"),
-    }
-    if class_id in direct_classes:
-        return True
-    slot = await db.timetable_slots.find_one(
-        scoped_filter({"teacher_id": staff.get("id"), "class_id": class_id}, get_school_id()),
-        {"_id": 0},
-    )
-    return bool(slot)
+    scope = await compute_teacher_scope(db, user, get_school_id())
+    return class_id in set(scope["class_teacher_class_ids"])
 
 
 async def _require_teacher_class_access(db, user: dict, class_id: str | None):
