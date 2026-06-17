@@ -525,21 +525,19 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
         <div style={{ padding: '12px 12px 10px', flexShrink: 0 }}>
 
           {/* Brand row */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <div style={{ flex: 1, display: 'flex', justifyContent: 'center', paddingLeft: 4 }}>
-              <img
-                src="/eduflow-logo.png"
-                alt="EduFlow"
-                style={{
-                  height: 42, width: 'auto', objectFit: 'contain',
-                  filter: isDark
-                    ? 'brightness(1.12) drop-shadow(0 2px 8px rgba(232,89,12,0.45))'
-                    : 'drop-shadow(0 2px 6px rgba(232,89,12,0.28))',
-                }}
-              />
-            </div>
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+            <img
+              src="/eduflow-logo.png"
+              alt="EduFlow"
+              style={{
+                height: 42, width: 'auto', maxWidth: '100%', objectFit: 'contain',
+                filter: isDark
+                  ? 'brightness(1.12) drop-shadow(0 2px 8px rgba(232,89,12,0.45))'
+                  : 'drop-shadow(0 2px 6px rgba(232,89,12,0.28))',
+              }}
+            />
             <button onClick={() => setSidebarOpen(false)} className="mobile-close"
-              style={{ background: isDark ? '#252525' : '#f0f0f0', border: 'none', cursor: 'pointer', color: muted, padding: '5px', borderRadius: 7, display: 'none', alignItems: 'center', justifyContent: 'center', transition: 'var(--transition-fast)', flexShrink: 0 }}
+              style={{ position: 'absolute', right: 0, background: isDark ? '#252525' : '#f0f0f0', border: 'none', cursor: 'pointer', color: muted, padding: '5px', borderRadius: 7, display: 'none', alignItems: 'center', justifyContent: 'center', transition: 'var(--transition-fast)' }}
               onMouseEnter={e => e.currentTarget.style.background = isDark ? '#333' : '#e0e0e0'}
               onMouseLeave={e => e.currentTarget.style.background = isDark ? '#252525' : '#f0f0f0'}>
               <X size={15} />
