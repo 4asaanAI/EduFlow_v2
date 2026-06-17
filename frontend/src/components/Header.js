@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { Search, Bell, ChevronLeft, Menu, X } from 'lucide-react';
+import { Search, Bell, ChevronLeft, Menu, X, Phone, Mail } from 'lucide-react';
 import { getAuthHeaders } from '../lib/authSession';
 import NotificationDetailModal from './NotificationDetailModal';
 import { getToolForNotification } from '../lib/notifRouting';
+import { getSchoolSettings } from '../lib/api';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -303,6 +304,24 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
   const [detailNotif, setDetailNotif] = useState(null);
   const notifRef = useRef(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [schoolContact, setSchoolContact] = useState({ phone: '', email: '' });
+
+  useEffect(() => {
+    getSchoolSettings()
+      .then(r => {
+        if (r.success && r.data) {
+          setSchoolContact({ phone: r.data.phone || '', email: r.data.email || '' });
+        }
+      })
+      .catch(() => {});
+    const handler = () => {
+      getSchoolSettings()
+        .then(r => { if (r.success && r.data) setSchoolContact({ phone: r.data.phone || '', email: r.data.email || '' }); })
+        .catch(() => {});
+    };
+    window.addEventListener('school-settings-updated', handler);
+    return () => window.removeEventListener('school-settings-updated', handler);
+  }, [currentUser?.id]);
 
   useEffect(() => {
     const h = (e) => { if (notifRef.current && !notifRef.current.contains(e.target)) setShowNotif(false); };
@@ -390,6 +409,37 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
 
         {/* Right */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+
+          {/* School contact — subtle, only when data is set */}
+          {(schoolContact.phone || schoolContact.email) && !isMobile && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 12, marginRight: 6,
+              padding: '4px 10px', borderRadius: 8,
+              background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
+              border: `1px solid ${isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)'}`,
+            }}>
+              {schoolContact.phone && (
+                <a href={`tel:${schoolContact.phone}`} style={{ display: 'flex', alignItems: 'center', gap: 5, textDecoration: 'none' }}>
+                  <Phone size={11} color={isDark ? '#6b8fd4' : '#4f6bbf'} />
+                  <span style={{ fontSize: 11, color: isDark ? '#888' : '#555', fontWeight: 500, letterSpacing: '0.01em' }}>
+                    {schoolContact.phone}
+                  </span>
+                </a>
+              )}
+              {schoolContact.phone && schoolContact.email && (
+                <span style={{ width: 1, height: 12, background: isDark ? '#333' : '#ddd' }} />
+              )}
+              {schoolContact.email && (
+                <a href={`mailto:${schoolContact.email}`} style={{ display: 'flex', alignItems: 'center', gap: 5, textDecoration: 'none' }}>
+                  <Mail size={11} color={isDark ? '#6b8fd4' : '#4f6bbf'} />
+                  <span style={{ fontSize: 11, color: isDark ? '#888' : '#555', fontWeight: 500 }}>
+                    {schoolContact.email}
+                  </span>
+                </a>
+              )}
+            </div>
+          )}
+
           <div ref={notifRef} style={{ position: 'relative' }}>
             <button data-testid="notifications-btn" onClick={() => setShowNotif(v => !v)} style={{
               background: 'none', border: 'none', cursor: 'pointer', color: muted,

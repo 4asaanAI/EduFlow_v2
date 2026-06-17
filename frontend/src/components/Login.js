@@ -122,37 +122,25 @@ export default function Login() {
       <div style={{ width: '100%', maxWidth: 440 }}>
         {/* Logo */}
         <div className="fade-in" style={{ textAlign: 'center', marginBottom: 36 }}>
-          {/* Logo image with subtle glow */}
-          <div style={{ display: 'inline-block', marginBottom: 18, position: 'relative' }}>
+          {/* Logo image with glow halo */}
+          <div style={{ display: 'inline-block', marginBottom: 8, position: 'relative' }}>
             <div style={{
-              position: 'absolute', inset: -12, borderRadius: 24,
-              background: 'radial-gradient(ellipse at center, rgba(232,89,12,0.12) 0%, transparent 70%)',
+              position: 'absolute', inset: -20, borderRadius: 32,
+              background: 'radial-gradient(ellipse at center, rgba(232,89,12,0.18) 0%, transparent 70%)',
               pointerEvents: 'none',
             }} />
             <img
               src="/eduflow-logo.png"
               alt="EduFlow"
               style={{
-                height: 56, width: 'auto', objectFit: 'contain', display: 'block',
+                height: 80, width: 'auto', objectFit: 'contain', display: 'block',
                 filter: isDark
-                  ? 'brightness(1.1) drop-shadow(0 4px 16px rgba(232,89,12,0.4))'
-                  : 'drop-shadow(0 4px 12px rgba(232,89,12,0.25))',
+                  ? 'brightness(1.15) drop-shadow(0 6px 20px rgba(232,89,12,0.5))'
+                  : 'drop-shadow(0 6px 16px rgba(232,89,12,0.35))',
               }}
             />
           </div>
 
-          {/* School name */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{
-              fontSize: 10, fontWeight: 700, color: '#fff', letterSpacing: '0.06em',
-              background: 'linear-gradient(135deg, #e8590c, #c94b07)',
-              padding: '2px 8px', borderRadius: 5,
-            }}>CBSE</span>
-            <span style={{ fontSize: 10, color: muted, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Affiliated</span>
-          </div>
-          <p style={{ fontSize: 14, color: muted, margin: 0, fontWeight: 500, letterSpacing: '-0.01em' }}>
-            The Aaryans School
-          </p>
         </div>
 
         {/* Login Card */}

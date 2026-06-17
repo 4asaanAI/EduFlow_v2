@@ -526,13 +526,20 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
 
           {/* Brand row */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <img
-              src="/eduflow-logo.png"
-              alt="EduFlow"
-              style={{ height: 30, width: 'auto', objectFit: 'contain', filter: isDark ? 'brightness(1.1) drop-shadow(0 1px 4px rgba(232,89,12,0.35))' : 'drop-shadow(0 1px 3px rgba(232,89,12,0.2))' }}
-            />
+            <div style={{ flex: 1, display: 'flex', justifyContent: 'center', paddingLeft: 4 }}>
+              <img
+                src="/eduflow-logo.png"
+                alt="EduFlow"
+                style={{
+                  height: 42, width: 'auto', objectFit: 'contain',
+                  filter: isDark
+                    ? 'brightness(1.12) drop-shadow(0 2px 8px rgba(232,89,12,0.45))'
+                    : 'drop-shadow(0 2px 6px rgba(232,89,12,0.28))',
+                }}
+              />
+            </div>
             <button onClick={() => setSidebarOpen(false)} className="mobile-close"
-              style={{ background: isDark ? '#252525' : '#f0f0f0', border: 'none', cursor: 'pointer', color: muted, padding: '5px', borderRadius: 7, display: 'none', alignItems: 'center', justifyContent: 'center', transition: 'var(--transition-fast)' }}
+              style={{ background: isDark ? '#252525' : '#f0f0f0', border: 'none', cursor: 'pointer', color: muted, padding: '5px', borderRadius: 7, display: 'none', alignItems: 'center', justifyContent: 'center', transition: 'var(--transition-fast)', flexShrink: 0 }}
               onMouseEnter={e => e.currentTarget.style.background = isDark ? '#333' : '#e0e0e0'}
               onMouseLeave={e => e.currentTarget.style.background = isDark ? '#252525' : '#f0f0f0'}>
               <X size={15} />
@@ -653,29 +660,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
           )}
         </div>
 
-        {/* ── School contact strip ── */}
-        {(schoolMeta.phone || schoolMeta.email || schoolMeta.city) && (
-          <div style={{
-            padding: '5px 12px 6px',
-            borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)'}`,
-            flexShrink: 0,
-          }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px 10px' }}>
-              {schoolMeta.phone && (
-                <span style={{ fontSize: 9.5, color: muted, display: 'flex', alignItems: 'center', gap: 3 }}>
-                  <span style={{ fontSize: 9, opacity: 0.6 }}>📞</span>
-                  {schoolMeta.phone}
-                </span>
-              )}
-              {schoolMeta.email && (
-                <span style={{ fontSize: 9.5, color: muted, display: 'flex', alignItems: 'center', gap: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
-                  <span style={{ fontSize: 9, opacity: 0.6 }}>✉</span>
-                  {schoolMeta.email}
-                </span>
-              )}
-            </div>
-          </div>
-        )}
+
 
         {/* ── Token usage badge ── */}
         <TokenUsageBadge
