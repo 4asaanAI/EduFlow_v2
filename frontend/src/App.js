@@ -1,5 +1,5 @@
 import './App.css';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import './theme.css';
@@ -9,7 +9,6 @@ import { ToastProvider } from './components/Toast';
 import Layout from './components/Layout';
 import Login from './components/Login';
 import ChangePassword from './components/ChangePassword';
-import Homepage from './components/home/Homepage';
 import { purgeExpiredAttendanceDrafts } from './lib/attendanceDrafts';
 
 function AppContent() {
@@ -25,12 +24,6 @@ function AppContent() {
     const onPop = () => setPath(window.location.pathname);
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, []);
-
-  const navigate = useCallback((to) => {
-    if (window.location.pathname !== to) window.history.pushState(null, '', to);
-    setPath(to);
-    window.scrollTo(0, 0);
   }, []);
 
   if (loading) {
@@ -54,11 +47,8 @@ function AppContent() {
   }
 
   // ---- Public surface ----
-  // Marketing homepage lives at the root; the existing Login is reachable at
-  // /login (and any other deep link still redirects to it, as before).
-  if (path === '/' || path === '') {
-    return <Homepage onLogin={() => navigate('/login')} />;
-  }
+  // The marketing homepage is now a separate project in ../homepage.
+  // This app keeps auth/login and the authenticated dashboard separate.
   if (path !== '/login') {
     window.history.replaceState(null, '', '/login');
   }
