@@ -50,7 +50,12 @@ GUARDIAN_UPDATABLE_FIELDS = {
     "name", "phone", "alt_phone", "whatsapp_phone",
     "email", "occupation", "annual_income", "is_primary",
 }
-SELF_UPDATABLE_FIELDS = {"phone", "email", "preferred_name", "emergency_contact"}
+SELF_UPDATABLE_FIELDS = {
+    "phone", "email", "preferred_name", "emergency_contact",
+    "address", "dob", "gender",
+    "blood_group", "height_cm", "weight_kg", "medical_notes",
+}
+GUARDIAN_SELF_UPDATABLE_FIELDS = {"name", "phone", "whatsapp_phone", "email", "occupation"}
 PHOTO_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "heic"}
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
 
@@ -278,6 +283,38 @@ async def update_my_profile(request: Request, user: dict = Depends(require_role(
         changes={k: {"previous": student.get(k), "new": v} for k, v in update.items() if k != "updated_at"},
     )
     updated = await db.students.find_one(_student_query({"id": student["id"]}), {"_id": 0})
+    return {"success": True, "data": updated}
+
+
+@router.patch("/me/guardians/{guardian_id}")
+async def update_my_guardian(guardian_id: str, request: Request, user: dict = Depends(require_role("student"))):
+    db = get_db()
+    student = await db.students.find_one(_student_query({"user_id": user["id"]}), {"_id": 0})
+    if not student:
+        raise HTTPException(404, "Student record not found")
+    guardian = await db.guardians.find_one(
+        scoped_filter({"id": guardian_id, "student_id": student["id"]}, get_school_id()), {"_id": 0}
+    )
+    if not guardian:
+        raise HTTPException(404, "Guardian not found")
+    body = await request.json()
+    update = {k: v for k, v in body.items() if k in GUARDIAN_SELF_UPDATABLE_FIELDS}
+    if not update:
+        raise HTTPException(400, "No updatable guardian fields provided")
+    update["updated_at"] = datetime.now().isoformat()
+    await db.guardians.update_one(
+        scoped_filter({"id": guardian_id}, get_school_id()), {"$set": update}
+    )
+    await _audit(
+        db,
+        action="student_guardian_self_update",
+        student_id=student["id"],
+        user=user,
+        changes={k: {"previous": guardian.get(k), "new": v} for k, v in update.items() if k != "updated_at"},
+    )
+    updated = await db.guardians.find_one(
+        scoped_filter({"id": guardian_id}, get_school_id()), {"_id": 0}
+    )
     return {"success": True, "data": updated}
 
 

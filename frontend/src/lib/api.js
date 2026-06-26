@@ -252,6 +252,25 @@ export async function updateStudent(studentId, data) {
   return res.json();
 }
 
+export async function getMyStudentProfile() {
+  const res = await apiFetch(`${API}/students/me`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function updateMyStudentProfile(data) {
+  const res = await apiFetch(`${API}/students/me`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function updateMyGuardian(guardianId, data) {
+  const res = await apiFetch(`${API}/students/me/guardians/${guardianId}`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
 export async function getStudentStrengthStats() {
   const res = await apiFetch(`${API}/students/strength`, { headers: getHeaders() });
   return res.json();
