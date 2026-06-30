@@ -350,13 +350,16 @@ async def tool_get_fee_structures(params: dict, user: dict, scope: dict = None) 
     _apply_branch_filter(query, scope)
 
     if params.get("class_group"):
-        query["class_group"] = {"$regex": re.escape(params["class_group"]), "$options": "i"}
+        query["$or"] = [
+            {"class_group": {"$regex": re.escape(params["class_group"]), "$options": "i"}},
+            {"name": {"$regex": re.escape(params["class_group"]), "$options": "i"}},
+        ]
 
     structures = await db.fee_structures.find(query).to_list(100)
 
     results = []
     for fs in structures:
-        components = fs.get("components", [])
+        components = fs.get("components", fs.get("fee_heads", []))
         total_annual = sum(c.get("amount", 0) for c in components)
         results.append({
             "class_group": fs.get("class_group", fs.get("name", "N/A")),

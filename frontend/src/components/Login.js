@@ -29,22 +29,18 @@ const CREDENTIAL_GROUPS = [
     role: 'Teacher',
     color: '#34d399',
     accounts: [
-      { label: 'Vikash Singh',  username: 'Vikash Singh',  password: 'hod@123',      note: 'HOD · Mathematics' },
-      { label: 'Deepa Verma',   username: 'Deepa Verma',   password: 'teacher@123',  note: 'Coordinator · Class 9-12' },
-      { label: 'Rajesh Kumar',  username: 'Rajesh Kumar',  password: 'teacher@123',  note: 'Class Teacher · 9A' },
-      { label: 'Sunita Devi',   username: 'Sunita Devi',   password: 'teacher@123',  note: 'Class Teacher · 9B' },
-      { label: 'Manoj Tiwari',  username: 'Manoj Tiwari',  password: 'teacher@123',  note: 'Subject Teacher · Science' },
-      { label: 'Ankit Sharma',  username: 'Ankit Sharma',  password: 'teacher@123',  note: 'Subject Teacher · SST' },
-      { label: 'Nisha Verma',   username: 'Nisha Verma',   password: 'kg@123',       note: 'KG In-charge · Nursery' },
+      { label: 'Vidhi Maheshwari', username: 'VIDHI MAHESHWARI', password: '8077254612', note: 'Class Teacher · 3rd C' },
+      { label: 'Rahul',            username: 'RAHUL',             password: '8126965555', note: 'Class Teacher · 7th B' },
+      { label: 'Shubham Pandey',   username: 'SHUBHAM PANDEY',   password: '7456835053', note: 'Class Teacher · 12th A' },
     ],
   },
   {
     role: 'Student',
     color: '#a78bfa',
     accounts: [
-      { label: 'Rahul Singh',   username: 'ADM20250001', password: 'student@123', note: 'Class 9A · Roll 1' },
-      { label: 'Sneha Kumari',  username: 'ADM20250002', password: 'student@123', note: 'Class 9A · Roll 2' },
-      { label: 'Sohail Khan',   username: 'ADM20250011', password: 'student@123', note: 'Class 9B · Roll 1' },
+      { label: 'Rutvik',          username: 'RUTVIK',          password: '211261', note: 'Class 3rd A' },
+      { label: 'Ansh Deol',       username: 'ANSH DEOL',       password: '16237',  note: 'Class 7th A' },
+      { label: 'Kunal Chaudhary', username: 'KUNAL CHAUDHARY', password: '15022',  note: 'Class 12th A' },
     ],
   },
 ];
