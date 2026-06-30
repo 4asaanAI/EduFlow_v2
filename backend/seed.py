@@ -333,7 +333,7 @@ async def seed() -> None:
                 "address": f"{10 + idx} Sector Road, Lucknow",
                 "transport_opted": idx % 4 == 0,
                 "route_id": "route-001" if idx % 4 == 0 else None,
-                "house": ["Red", "Blue", "Green", "Yellow"][idx % 4],
+                "house": ["Atulya", "Agrim", "Agamya", "Aprajit"][idx % 4],
                 "created_at": dt_minus(300),
                 "updated_at": dt_minus(1),
             })
@@ -1009,10 +1009,10 @@ async def seed() -> None:
 
     # ── Houses (activities) ────────────────────────────────────────────────────
     house_data = [
-        ("house-red",    "Red House",    "#E53E3E", 1250),
-        ("house-blue",   "Blue House",   "#3182CE", 1180),
-        ("house-green",  "Green House",  "#38A169", 1320),
-        ("house-yellow", "Yellow House", "#D69E2E", 1100),
+        ("house-atulya",  "Atulya",  "#E53E3E", 1250),
+        ("house-agrim",   "Agrim",   "#3182CE", 1180),
+        ("house-agamya",  "Agamya",  "#38A169", 1320),
+        ("house-aprajit", "Aprajit", "#D69E2E", 1100),
     ]
     for hid, hname, colour, points in house_data:
         await db.houses.insert_one({
@@ -1046,8 +1046,8 @@ async def seed() -> None:
     position_data = [
         (student_ids[0][0],  student_ids[0][2],  "Head Boy",           "2025-26"),
         (student_ids[1][0],  student_ids[1][2],  "Head Girl",          "2025-26"),
-        (student_ids[2][0],  student_ids[2][2],  "House Captain — Red","2025-26"),
-        (student_ids[5][0],  student_ids[5][2],  "House Captain — Blue","2025-26"),
+        (student_ids[2][0],  student_ids[2][2],  "House Captain — Atulya", "2025-26"),
+        (student_ids[5][0],  student_ids[5][2],  "House Captain — Agrim",  "2025-26"),
         (student_ids[9][0],  student_ids[9][2],  "Class Monitor 9-A",  "2025-26"),
     ]
     for sid2, sname, position, ay_name in position_data:

@@ -72,10 +72,10 @@ function ErrorMsg({ msg }) {
 // ─── House colour mapping ─────────────────────────────────────────────────────
 
 const HOUSE_STYLES = {
-  Blue:   { bg: 'rgba(59,130,246,0.12)',  border: 'rgba(59,130,246,0.35)',  text: '#3b82f6' },
-  Green:  { bg: 'rgba(34,197,94,0.12)',   border: 'rgba(34,197,94,0.35)',   text: '#22c55e' },
-  Red:    { bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.35)',   text: '#ef4444' },
-  Yellow: { bg: 'rgba(234,179,8,0.12)',   border: 'rgba(234,179,8,0.35)',   text: '#eab308' },
+  Atulya:  { bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.35)',   text: '#ef4444' },
+  Agrim:   { bg: 'rgba(59,130,246,0.12)',  border: 'rgba(59,130,246,0.35)',  text: '#3b82f6' },
+  Agamya:  { bg: 'rgba(34,197,94,0.12)',   border: 'rgba(34,197,94,0.35)',   text: '#22c55e' },
+  Aprajit: { bg: 'rgba(234,179,8,0.12)',   border: 'rgba(234,179,8,0.35)',   text: '#eab308' },
 };
 
 // ─── Houses tab ───────────────────────────────────────────────────────────────
@@ -136,7 +136,7 @@ function HousesTab({ canManage }) {
           {/* Leaderboard podium */}
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: 12, marginBottom: 28, padding: '0 8px' }}>
             {sorted.slice(0, 4).map((house, i) => {
-              const style = HOUSE_STYLES[house.name] || HOUSE_STYLES.Blue;
+              const style = HOUSE_STYLES[house.name] || HOUSE_STYLES.Atulya;
               const heights = [120, 90, 75, 60];
               return (
                 <div key={house.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flex: 1 }}>
@@ -154,7 +154,7 @@ function HousesTab({ canManage }) {
           {/* Cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
             {sorted.map(house => {
-              const style = HOUSE_STYLES[house.name] || HOUSE_STYLES.Blue;
+              const style = HOUSE_STYLES[house.name] || HOUSE_STYLES.Atulya;
               const pct = maxPoints > 0 ? Math.round((house.points / maxPoints) * 100) : 0;
               return (
                 <div key={house.id} style={{ background: style.bg, border: `1px solid ${style.border}`, borderRadius: 12, padding: '16px 18px' }}>
@@ -366,7 +366,7 @@ function PositionsTab({ canManage }) {
                   style={{ ...inp, marginTop: 5 }}
                 >
                   <option value="">No house</option>
-                  {['Blue', 'Green', 'Red', 'Yellow'].map(h => <option key={h} value={h}>{h}</option>)}
+                  {['Atulya', 'Agrim', 'Agamya', 'Aprajit'].map(h => <option key={h} value={h}>{h}</option>)}
                 </select>
               </label>
               <label style={{ display: 'block', fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Academic Year

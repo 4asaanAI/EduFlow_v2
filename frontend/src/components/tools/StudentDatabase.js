@@ -102,12 +102,12 @@ const ALL_MODAL_TABS = [
 ];
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
-const HOUSES = ['Blue', 'Green', 'Red', 'Yellow'];
+const HOUSES = ['Atulya', 'Agrim', 'Agamya', 'Aprajit'];
 const HOUSE_COLORS = {
-  Blue:   { bg: 'rgba(59,130,246,0.12)',  color: '#3b82f6' },
-  Green:  { bg: 'rgba(34,197,94,0.12)',   color: '#22c55e' },
-  Red:    { bg: 'rgba(239,68,68,0.12)',   color: '#ef4444' },
-  Yellow: { bg: 'rgba(234,179,8,0.12)',   color: '#eab308' },
+  Atulya:  { bg: 'rgba(239,68,68,0.12)',   color: '#ef4444' },
+  Agrim:   { bg: 'rgba(59,130,246,0.12)',  color: '#3b82f6' },
+  Agamya:  { bg: 'rgba(34,197,94,0.12)',   color: '#22c55e' },
+  Aprajit: { bg: 'rgba(234,179,8,0.12)',   color: '#eab308' },
 };
 
 function blankGuardian(relation) {
