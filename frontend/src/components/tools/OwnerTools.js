@@ -1173,7 +1173,7 @@ export function StaffPerformance() {
     setLoading(true);
     try {
       const [staffRes, attRes] = await Promise.all([
-        getStaff(currentUser),
+        getStaff({ limit: 500 }),
         fetch(`${API}/attendance/staff`, { headers: h() }).then(r => r.json()),
       ]);
       const staffList = staffRes.success ? (staffRes.data || []) : [];

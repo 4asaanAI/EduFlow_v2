@@ -94,7 +94,7 @@ async def list_staff(request: Request, page: int = 1, limit: int = 20, sort: str
         raise HTTPException(403, "Forbidden")
 
     page = max(1, page)
-    per_page = max(1, min(limit, 20))
+    per_page = max(1, min(limit, 500))
     query = {} if include_inactive else {"is_active": True}
     sort_field, sort_dir = SORT_FIELDS.get(sort, SORT_FIELDS["name"])
     scoped = _staff_query(query)
