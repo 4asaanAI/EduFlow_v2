@@ -731,12 +731,20 @@ export async function uploadChatFile(file) {
   const form = new FormData();
   form.append('file', file);
   const token = getAccessToken();
-  const res = await fetch(`${UPLOAD_API}/chat/upload`, {
-    method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: form,
-  });
-  return res.json();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  try {
+    const res = await fetch(`${UPLOAD_API}/chat/upload`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+    return res.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // --- Payroll ---
