@@ -202,7 +202,7 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
     try {
       const res = await uploadChatFile(file);
       if (res.success) {
-        setAttachedFile({ filename: res.filename, extractedText: res.extracted_text, sizeBytes: res.size_bytes });
+        setAttachedFile({ filename: res.filename, extractedText: res.extracted_text, sizeBytes: res.size_bytes, imageData: res.image_data || null });
       } else {
         setUploadError(res.detail || 'Upload failed');
       }
@@ -226,7 +226,7 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
       const fileContext = `[File attached: ${attachedFile.filename}]\n\n${attachedFile.extractedText}`;
       finalText = trimmed ? `${trimmed}\n\n---\n${fileContext}` : fileContext;
     }
-    onSend(finalText);
+    onSend(finalText, attachedFile?.imageData || null);
     setText('');
     setAttachedFile(null);
     setUploadError('');
@@ -315,7 +315,7 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
         )}
 
         <input ref={fileInputRef} type="file" onChange={handleFileSelect} style={{ display: 'none' }} data-testid="file-input"
-          accept=".txt,.md,.html,.htm,.csv,.json,.xml,.pdf,.docx,.xlsx,.xls,.pptx,.png,.jpg,.jpeg,.heic,.webp,.gif,.zip,.py,.js,.ts,.sql,.log"
+          accept=".txt,.md,.html,.htm,.csv,.json,.xml,.pdf,.doc,.docx,.xlsx,.xls,.pptx,.png,.jpg,.jpeg,.heic,.webp,.gif,.zip,.py,.js,.ts,.sql,.log"
         />
 
         <div style={{

@@ -1493,7 +1493,17 @@ async def _thinking_delay():
 
 # ─── SSE Generator (main pipeline) ───────────────────────────────────────────
 
-async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_id: str = None, request=None):
+def _user_content(text: str, image_data: str | None):
+    """Build user message content — plain string or multimodal list if image attached."""
+    if not image_data:
+        return text
+    return [
+        {"type": "text", "text": text},
+        {"type": "image_url", "image_url": {"url": image_data}},
+    ]
+
+
+async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_id: str = None, request=None, image_data: str = None):
     """
     SSE generator for chat streaming.
 
@@ -1695,7 +1705,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
     except Exception as e:
         logger.error(f"Phase 5 (load history) error: {e}")
         # Fall back to just the current message
-        messages_for_llm = [{"role": "user", "content": user_text}]
+        messages_for_llm = [{"role": "user", "content": _user_content(user_text, image_data)}]
 
     # ── Phase 6: Resolve scope ────────────────────────────────────────────
     try:
@@ -1879,7 +1889,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                 f"Include a <<<RICH_CONTENT>>> block if you have stats or tables to show."
             )
             messages_for_llm_final = messages_for_llm[:-1] + [
-                {"role": "user", "content": user_text},
+                {"role": "user", "content": _user_content(user_text, image_data)},
                 {"role": "assistant", "content": f"Fetching {tool_name} data..."},
                 {"role": "user", "content": tool_result_msg},
             ]
@@ -2147,7 +2157,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                 f"Do NOT output any JSON tool calls."
             )
             messages_for_llm_final = messages_for_llm[:-1] + [
-                {"role": "user", "content": user_text},
+                {"role": "user", "content": _user_content(user_text, image_data)},
                 {"role": "assistant", "content": "Fetching data..."},
                 {"role": "user", "content": tool_msg},
             ]
@@ -2377,8 +2387,11 @@ async def send_message(conv_id: str, request: Request):
     _raw_text = body.get("text", "") or ""
     # Strip zero-width and normal whitespace before empty-message check (P11 E7)
     user_text = re.sub(r"[​‌‍⁠﻿\s]+", " ", _raw_text).strip()
-    if not user_text:
+    image_data = body.get("image_data") or None  # base64 data URL for vision
+    if not user_text and not image_data:
         return {"success": False, "error": "Empty message"}
+    if not user_text:
+        user_text = "[Image attached — please describe or ask about the image]"
     raw_session_id = body.get("session_id") or request.headers.get("x-session-id") or request.headers.get("X-SSE-Session-ID")
     session_id = (raw_session_id or "").strip()
     if not session_id:
@@ -2388,7 +2401,7 @@ async def send_message(conv_id: str, request: Request):
     from services.layaastat import emit_event
     await emit_event("ai_chat_message", distinct_id=user.get("user_id"), payload={"role": user.get("role", "")})
     return StreamingResponse(
-        _generate_chat_sse(conv_id, user_text, user, session_id=session_id, request=request),
+        _generate_chat_sse(conv_id, user_text, user, session_id=session_id, request=request, image_data=image_data),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

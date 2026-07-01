@@ -328,7 +328,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     } catch {}
   };
 
-  const handleSend = async (text) => {
+  const handleSend = async (text, imageData = null) => {
     if (!text.trim() || streaming) return;
 
     let cid = convId;
@@ -499,7 +499,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           });
           setStreaming(false);
         }
-      }, chatSessionIdRef.current);
+      }, chatSessionIdRef.current, imageData);
       if (streamErrored) return;
       setStreaming(prev => {
         if (prev) {

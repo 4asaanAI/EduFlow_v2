@@ -180,15 +180,28 @@ def _extract_text(data: bytes, filename: str, suffix: str) -> str:
     if suffix == ".pptx":
         return _extract_pptx(data, filename)
 
+    if suffix == ".doc":
+        try:
+            from docx import Document
+            doc = Document(io.BytesIO(data))
+            paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+            return "\n\n".join(paragraphs) if paragraphs else f"[DOC: {filename} — no text found]"
+        except Exception:
+            return f"[DOC: {filename} — old .doc format could not be read. Please save as .docx and re-upload.]"
+
     if suffix == ".zip":
         return _extract_zip(data, filename)
 
     if suffix in IMAGE_EXTENSIONS:
-        return (
-            f"[Image: {filename}]\n"
-            "Note: Image content cannot be read as text. "
-            "If you need the AI to analyse this image, please describe what is in it."
-        )
+        import base64
+        mime_map = {
+            ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".gif": "image/gif", ".webp": "image/webp",
+            ".heic": "image/heic", ".bmp": "image/bmp", ".tiff": "image/tiff",
+        }
+        mime = mime_map.get(suffix, "image/jpeg")
+        b64 = base64.b64encode(data).decode()
+        return f"__IMAGE_DATA__data:{mime};base64,{b64}__FILENAME__{filename}"
 
     if suffix in MEDIA_EXTENSIONS:
         return (
@@ -215,7 +228,14 @@ async def upload_chat_file(request: Request, file: UploadFile = File(...)):
 
     extracted = _extract_text(data, filename, suffix)
 
-    if len(extracted) > MAX_TEXT_LENGTH:
+    # Images return a special sentinel with the base64 data URL
+    image_data = None
+    if extracted.startswith("__IMAGE_DATA__"):
+        parts = extracted.split("__FILENAME__")
+        image_data = parts[0].replace("__IMAGE_DATA__", "")
+        extracted = f"[Image attached: {filename}]"
+
+    if not image_data and len(extracted) > MAX_TEXT_LENGTH:
         extracted = extracted[:MAX_TEXT_LENGTH] + f"\n\n[... truncated — original {len(extracted):,} chars]"
 
     return {
@@ -224,4 +244,5 @@ async def upload_chat_file(request: Request, file: UploadFile = File(...)):
         "size_bytes": len(data),
         "extracted_text": extracted,
         "char_count": len(extracted),
+        "image_data": image_data,
     }

@@ -62,7 +62,9 @@ class LLMClient:
             msg_role = msg.get("role", "user")
             if msg_role == "model":
                 msg_role = "assistant"
-            az_messages.append({"role": msg_role, "content": msg.get("content", "")})
+            content = msg.get("content", "")
+            # content may be a str (text-only) or a list (multimodal with image)
+            az_messages.append({"role": msg_role, "content": content})
 
         def _call():
             logger.debug(

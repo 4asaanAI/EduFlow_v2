@@ -81,7 +81,7 @@ export async function getMessages(convId) {
   return res.json();
 }
 
-export function sendMessageStream(convId, text, user, onEvent, sessionId = null) {
+export function sendMessageStream(convId, text, user, onEvent, sessionId = null, imageData = null) {
   const headers = getHeaders();
   const chatSessionId = sessionId || getBrowserSseSessionId();
 
@@ -92,7 +92,7 @@ export function sendMessageStream(convId, text, user, onEvent, sessionId = null)
       'X-SSE-Session-ID': chatSessionId,
     },
     credentials: 'include',
-    body: JSON.stringify({ text, session_id: chatSessionId }),
+    body: JSON.stringify({ text, session_id: chatSessionId, image_data: imageData || undefined }),
   }).then(async (res) => {
     if (res.status === 401) {
       // SSE chat path: 401 mid-stream redirects immediately; retrying would
