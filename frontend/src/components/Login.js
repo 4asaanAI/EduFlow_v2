@@ -1,49 +1,7 @@
 import React, { useState } from 'react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { Sparkles, KeyRound, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
-
-// All seeded accounts — grouped by role (with sub-roles)
-const CREDENTIAL_GROUPS = [
-  {
-    role: 'Owner',
-    color: '#fb923c',
-    accounts: [
-      { label: 'Aman Sharma', username: 'owner', password: 'owner@123', note: 'Full access · All data' },
-    ],
-  },
-  {
-    role: 'Admin',
-    color: '#4f8ff7',
-    accounts: [
-      { label: 'Priya Sharma',  username: 'admin',       password: 'admin@123',       note: 'Principal · Full ops' },
-      { label: 'Meena Gupta',   username: 'accountant',  password: 'accountant@123',  note: 'Accountant · Fees only' },
-      { label: 'Suresh Yadav',  username: 'transport',   password: 'transport@123',   note: 'Transport Head' },
-      { label: 'Kavita Singh',  username: 'reception',   password: 'reception@123',   note: 'Receptionist · Enquiries' },
-      { label: 'Rahul Tech',    username: 'ittech',      password: 'ittech@123',      note: 'IT & Tech · Support' },
-      { label: 'Arvind Kumar',  username: 'maintenance', password: 'maintenance@123', note: 'Maintenance · Facility' },
-      { label: 'Rohit Management', username: 'management', password: 'management@123', note: 'Management · Audit & Reports' },
-    ],
-  },
-  {
-    role: 'Teacher',
-    color: '#34d399',
-    accounts: [
-      { label: 'Vidhi Maheshwari', username: 'VIDHI MAHESHWARI', password: '8077254612', note: 'Class Teacher · 3rd C' },
-      { label: 'Rahul',            username: 'RAHUL',             password: '8126965555', note: 'Class Teacher · 7th B' },
-      { label: 'Shubham Pandey',   username: 'SHUBHAM PANDEY',   password: '7456835053', note: 'Class Teacher · 12th A' },
-    ],
-  },
-  {
-    role: 'Student',
-    color: '#a78bfa',
-    accounts: [
-      { label: 'Rutvik',          username: 'RUTVIK',          password: '211261', note: 'Class 3rd A' },
-      { label: 'Ansh Deol',       username: 'ANSH DEOL',       password: '16237',  note: 'Class 7th A' },
-      { label: 'Kunal Chaudhary', username: 'KUNAL CHAUDHARY', password: '15022',  note: 'Class 12th A' },
-    ],
-  },
-];
+import { KeyRound, Loader2 } from 'lucide-react';
 
 export default function Login() {
   const { loginPassword } = useUser();
@@ -53,7 +11,6 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [expandedGroup, setExpandedGroup] = useState(null);
 
   const bg = isDark ? '#111111' : '#f5f5f5';
   const card = isDark ? '#1a1a1a' : '#ffffff';
@@ -63,7 +20,6 @@ export default function Login() {
   const secondary = isDark ? '#a0a0a0' : '#525252';
   const inputBg = isDark ? '#252525' : '#fafafa';
   const inputBorder = isDark ? '#333' : '#e5e5e5';
-  const rowHover = isDark ? '#252525' : '#f9fafb';
   const accent = '#4f8ff7';
 
   const inputStyle = {
@@ -99,16 +55,6 @@ export default function Login() {
       setError(err.message);
     }
     setLoading(false);
-  };
-
-  const fillCredentials = (account) => {
-    setUsername(account.username);
-    setPassword(account.password);
-    setError('');
-  };
-
-  const toggleGroup = (role) => {
-    setExpandedGroup(prev => prev === role ? null : role);
   };
 
   return (
@@ -216,94 +162,6 @@ export default function Login() {
           </div>
         </div>
 
-        {/* Demo Credentials — grouped by role */}
-        <div className="fade-in" style={{
-          marginTop: 20, background: card, border: `1px solid ${border}`,
-          borderRadius: 16, overflow: 'hidden',
-        }}>
-          <div style={{ padding: '14px 18px 10px', borderBottom: `1px solid ${border}` }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: muted, margin: 0, letterSpacing: '0.06em' }}>
-              DEMO CREDENTIALS — CLICK TO FILL
-            </p>
-          </div>
-
-          {CREDENTIAL_GROUPS.map((group, gi) => {
-            const isExpanded = expandedGroup === group.role;
-            const isLast = gi === CREDENTIAL_GROUPS.length - 1;
-
-            return (
-              <div key={group.role} style={{ borderBottom: isLast ? 'none' : `1px solid ${border}` }}>
-                {/* Role header — clickable to expand/collapse */}
-                <button
-                  onClick={() => toggleGroup(group.role)}
-                  style={{
-                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '12px 18px', background: 'transparent', border: 'none',
-                    cursor: 'pointer', transition: 'background 0.15s ease',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = rowHover}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{
-                      width: 8, height: 8, borderRadius: '50%', background: group.color, flexShrink: 0,
-                    }} />
-                    <span style={{ fontSize: 13, fontWeight: 600, color: group.color }}>{group.role}</span>
-                    <span style={{ fontSize: 11, color: muted }}>
-                      {group.accounts.length} account{group.accounts.length > 1 ? 's' : ''}
-                    </span>
-                    {/* Quick-fill for single-account roles */}
-                    {group.accounts.length === 1 && (
-                      <span
-                        style={{ fontSize: 11, color: secondary, fontFamily: 'monospace' }}
-                        onClick={e => { e.stopPropagation(); fillCredentials(group.accounts[0]); }}
-                      >
-                        {group.accounts[0].username}
-                      </span>
-                    )}
-                  </div>
-                  {group.accounts.length > 1
-                    ? (isExpanded ? <ChevronUp size={14} color={muted} /> : <ChevronDown size={14} color={muted} />)
-                    : null}
-                </button>
-
-                {/* Expanded account list */}
-                {(isExpanded || group.accounts.length === 1) && (
-                  <div style={{ paddingBottom: 6 }}>
-                    {group.accounts.map((account, ai) => (
-                      <div
-                        key={ai}
-                        onClick={() => fillCredentials(account)}
-                        style={{
-                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          padding: '8px 18px 8px 36px', cursor: 'pointer',
-                          transition: 'background 0.15s ease',
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.background = rowHover}
-                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                      >
-                        <div>
-                          <p style={{ fontSize: 12, color: text, fontWeight: 500, margin: '0 0 2px' }}>
-                            {account.label}
-                          </p>
-                          <p style={{ fontSize: 11, color: muted, margin: 0 }}>{account.note}</p>
-                        </div>
-                        <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
-                          <p style={{ fontSize: 11, color: secondary, margin: '0 0 2px', fontFamily: 'monospace' }}>
-                            {account.username}
-                          </p>
-                          <p style={{ fontSize: 10, color: muted, margin: 0, fontFamily: 'monospace' }}>
-                            {account.password}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
       </div>
 
       <style>{`

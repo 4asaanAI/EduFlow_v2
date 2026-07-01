@@ -1,9 +1,7 @@
 """
-Clear seeded demo data from specific sections of EduFlow.
-Keeps core data: users, auth_users, students, staff, classes, subjects,
-attendance, fee structures, transactions, exams, assignments, announcements,
-conversations, notifications, school_settings, branches, academic_years,
-guardians, timetable_slots, leave_requests.
+Clear seeded demo data from EduFlow.
+SAFE — never touches: users, auth_users, students, staff, classes, subjects,
+period_links, guardians, school_settings, branches, academic_years.
 """
 from __future__ import annotations
 import asyncio
@@ -20,6 +18,14 @@ DB_NAME = os.environ["DB_NAME"]
 SCHOOL_ID = os.environ.get("SCHOOL_ID", "aaryans-joya")
 
 SECTIONS = {
+    "Fees": ["fee_transactions", "fee_structures", "fee_heads", "fee_payment_plans", "fee_discounts", "student_fee_profiles"],
+    "Announcements": ["announcements"],
+    "Chat / Conversations": ["conversations", "messages"],
+    "Notifications": ["notifications"],
+    "Attendance": ["student_attendance", "staff_attendance"],
+    "Exams & Assignments": ["exams", "exam_results", "assignments"],
+    "Timetable": ["timetable_slots"],
+    "Leave Requests": ["leave_requests", "staff_availability"],
     "Staff Salary": ["salary_structures", "salary_disbursements"],
     "Financial Reports & Expenses": ["expenses", "expense_budgets"],
     "School Activities": ["houses", "house_points_log", "student_positions", "sports_teams"],
@@ -32,6 +38,9 @@ SECTIONS = {
     "Transport": ["transport_routes", "vehicles"],
     "Incidents & Reports": ["incidents", "complaints"],
     "Facility Requests": ["facility_requests"],
+    "Assets & Visitors": ["assets", "visitor_log"],
+    "Forms": ["custom_forms", "form_responses"],
+    "Misc": ["login_attempts", "approval_requests", "audit_log"],
 }
 
 
