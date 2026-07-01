@@ -7,6 +7,14 @@ const BACKEND = typeof window !== 'undefined' && window.location.protocol === 'h
   : _rawBackend;
 const API = `${BACKEND}/api`;
 
+// REACT_APP_UPLOAD_URL: direct EB URL for file uploads, bypassing CloudFront (which
+// blocks POST multipart). Falls back to BACKEND if not set (works fine in local dev).
+const _rawUpload = process.env.REACT_APP_UPLOAD_URL || _rawBackend;
+const UPLOAD_BACKEND = typeof window !== 'undefined' && window.location.protocol === 'https:'
+  ? _rawUpload.replace(/^http:\/\/(?!localhost)/, 'https://')
+  : _rawUpload;
+const UPLOAD_API = `${UPLOAD_BACKEND}/api`;
+
 /**
  * Build headers for API requests.
  * Uses the in-memory JWT access token.
@@ -723,7 +731,7 @@ export async function uploadChatFile(file) {
   const form = new FormData();
   form.append('file', file);
   const token = getAccessToken();
-  const res = await fetch(`${API}/chat/upload`, {
+  const res = await fetch(`${UPLOAD_API}/chat/upload`, {
     method: 'POST',
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: form,

@@ -40,6 +40,8 @@ SECTIONS = {
     "Facility Requests": ["facility_requests"],
     "Assets & Visitors": ["assets", "visitor_log"],
     "Forms": ["custom_forms", "form_responses"],
+    "SMS Logs": ["sms_logs"],
+    "Audit Logs": ["audit_logs", "ai_dispatch_audit_log"],
     "Misc": ["login_attempts", "approval_requests", "audit_log"],
 }
 
