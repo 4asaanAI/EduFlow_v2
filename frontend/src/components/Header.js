@@ -392,7 +392,7 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
             onMouseEnter={e => e.currentTarget.style.borderColor = isDark ? '#444' : '#ccc'}
             onMouseLeave={e => e.currentTarget.style.borderColor = border}>
             <Search size={14} />
-            <span style={{ flex: 1, textAlign: 'left' }}>Search students, staff\u2026</span>
+            <span style={{ flex: 1, textAlign: 'left' }}>Search students, staff 2026</span>
             <div style={{ display: 'flex', gap: 4 }}>
               <kbd style={{ fontSize: 10, color: muted, background: isDark ? '#333' : '#e5e5e5', padding: '1px 5px', borderRadius: 4, fontFamily: 'Inter, sans-serif' }}>
                 {navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}/
@@ -414,7 +414,7 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
             }}>
               <CalendarDays size={11} color={isDark ? '#6b8fd4' : '#4f6bbf'} />
               <span style={{ fontSize: 11, color: isDark ? '#8baee8' : '#3b5fc0', fontWeight: 600, letterSpacing: '0.01em' }}>
-                AY {academicYear}
+                Academic Year {academicYear}
               </span>
             </div>
           )}

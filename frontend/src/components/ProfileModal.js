@@ -6,7 +6,7 @@ import { getMyTokenUsage } from '../lib/api';
 import StudentProfileEditor from './StudentProfileEditor';
 
 const ROLE_COLORS = { owner: '#fb923c', admin: '#4f8ff7', teacher: '#34d399', student: '#a78bfa' };
-const ROLE_LABELS = { owner: 'Owner / Principal', admin: 'Admin Staff', teacher: 'Teacher', student: 'Student' };
+const ROLE_LABELS = { owner: 'Owner', admin: 'Admin Staff', teacher: 'Teacher', student: 'Student' };
 
 function TokenCard({ isDark, currentUser }) {
   const [tokenUsage, setTokenUsage] = useState(null);
@@ -114,7 +114,6 @@ export default function ProfileModal({ onClose }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 20 }}>
               {[
                 { icon: Shield, label: 'Role',   value: ROLE_LABELS[currentUser.role] },
-                { icon: Mail,   label: 'Email',  value: `${currentUser.name.toLowerCase().replace(' ', '.')}@theararyans.edu.in` },
                 { icon: Phone,  label: 'School', value: 'The Aaryans, Lucknow, CBSE' },
               ].map(item => (
                 <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 0', borderBottom: `1px solid ${border}` }}>
