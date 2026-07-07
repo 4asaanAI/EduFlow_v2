@@ -2,8 +2,8 @@
 
 **Date:** 2026-07-08 · **Source:** `audit-ai-layer-reliability-2026-07-08.md` · **Architecture:** `architecture-ai-layer-reliability.md`
 **Execution:** ONE EPIC PER CONTEXT WINDOW per `_bmad-output/EPIC-EXECUTION-PROTOCOL.md`. Explicit user greenlight before each epic. Baseline `python -m pytest tests/backend/ -x -q` before and after every epic; the 25 pinned pre-existing failures stay deferred to the end.
-**Build order:** R1 → R2 → R3 → R4 → R5 → R6 → R7 → R8 → R9 → (Phase 2, gated) R10. R1+R2 are the incident fix and ship first. R3 (parity gate) is the permanent regression backstop and must ship before any new tools are added. R10 (self-learning Phase 2) is gated on R1–R9 shipping and R6's safety fixes being verified.
-**Total: 10 epics / 45 stories (R10 is Phase-2 gated).** Every story lists exact files and acceptance criteria (AC). Audit finding IDs (RC/S/C/H/M/X/F*) refer to the audit doc.
+**Build order:** R1 → R2 → R3 → R4 → R5 → R6 → R7 → R8 → R9 → (gated) R10 → R11 — except R11.1 (eval corpus), which should land immediately after R3 so all later epics are quality-guarded. R1+R2 are the incident fix and ship first. R3 (parity gate) is the permanent regression backstop and must ship before any new tools are added. R10 (self-learning Phase 2) is gated on R1–R9 shipping and R6's safety fixes being verified.
+**Total: 11 epics / 51 stories (R10/R11 are gated follow-ons).** Every story lists exact files and acceptance criteria (AC). Audit finding IDs (RC/S/C/H/M/X/F*) refer to the audit doc.
 
 ---
 
@@ -300,7 +300,8 @@ Files: `backend/routes/image_gen.py:29, 99, 115-117, 138, 377-415`
 | R8 | 4 | Frontend resilience |
 | R9 | 5 | Guardrails/config/adjacent |
 | R10 | 5 | Self-learning Phase 2 (gated) |
-| **Total** | **45** | |
+| R11 | 6 | Excellence & evaluation (gated; R11.1 early) |
+| **Total** | **51** | |
 
 ## EPIC R10 — Self-Learning Phase 2 (memory-driven improvement with usage)
 *Goal: the AI measurably gets better with usage — durable memory, feedback loop, wider rollout. Builds on R6 (which makes the existing subsystem safe); R10 makes it genuinely self-improving. **Gated: implement only after R1–R9 ship and R6's safety fixes are verified.***
@@ -338,6 +339,54 @@ Files: `backend/services/ai_action_policy.py`-style single switch in memory `cha
 - AC1: A single `MEMORY_ROLES` policy switch (mirroring the `LOCKDOWN_ENABLED` pattern) controls which roles get memory/skills; widening to teachers/accountants is a config change, not an engine change.
 - AC2: Non-privileged roles get **read-recall only** at first (no auto-extraction) — capture for them requires a separate explicit decision.
 - AC3: Per-role prompt disclosure updated via the R3.4 parity gate so advertised behavior matches actual gating.
+
+---
+
+## EPIC R11 — Excellence & Evaluation (quality, latency, language, debuggability)
+*Goal: beyond correct-and-safe → measurably excellent. **Gated: after R1–R3 minimum (R11.1 ideally lands right after R3 so every later epic is quality-guarded).***
+
+**R11.1 — Golden eval corpus + LLM-judge CI (quality regression gate)**
+Files: new `tests/backend/evals/` + corpus `_bmad-output/test-artifacts/eval-corpus/`
+- AC1: ≥40 golden conversations covering every role/sub_category, incl. the incident conversation, follow-ups referencing prior turns, ambiguous asks, denials, and Hinglish variants (see R11.4).
+- AC2: Nightly/pre-release CI runs the corpus against the live pipeline (faked DB, real prompts + parsing) and an LLM judge scores correctness/completeness/tone per rubric; score drop > threshold blocks release.
+- AC3: Every future prompt change to `prompts.py` requires a green eval run (documented in EPIC-EXECUTION-PROTOCOL).
+
+**R11.2 — Migrate to native Azure OpenAI function calling**
+Files: `backend/ai/llm_client.py`, `backend/routes/chat.py` (tool-loop Phases 7–10), `backend/ai/prompts.py` (tool schemas → JSON Schema `tools` param)
+- AC1: Tool calls arrive as structured `tool_calls` from the API — the JSON-in-text emission, regex parsing, and `_strip_tool_json_from_text` layer are deleted.
+- AC2: Tool schemas generated from `TOOL_REGISTRY` (single source — makes R3's parity gate structural rather than test-enforced).
+- AC3: Invented tool names become impossible (API constrains to provided tools); eval corpus (R11.1) passes at equal-or-better scores.
+- AC4: Confirm-card, kill-switch, lockdown, and audit flows unchanged and re-verified.
+
+**R11.3 — True token streaming from Azure**
+Files: `backend/ai/llm_client.py`, `backend/routes/chat.py` final-answer phase
+- AC1: Final-answer LLM call uses `stream=True`; deltas forwarded through existing `text_delta` SSE events.
+- AC2: First-token p95 < 3s on the standard turn; keepalives unnecessary during active streaming.
+- AC3: Mid-stream provider errors surface via the R1 turn contract (partial text kept + interrupted marker).
+
+**R11.4 — Hindi/Hinglish competence**
+Files: `backend/ai/prompts.py` (language directive), eval corpus
+- AC1: System prompt instructs reply-in-user's-language (Hindi/Hinglish/English) while keeping data fields (names, amounts) exact.
+- AC2: ≥8 Hinglish golden conversations in the eval corpus (e.g. "class 5 ka attendance batao", "Rahul ki fees kitni bachi hai") pass tool-routing and judge scoring.
+- AC3: Content filter and redaction verified non-degraded on Devanagari/romanized input.
+
+**R11.5 — Conversation trace viewer for support**
+Files: new `frontend/src/components/tools/` panel (Owner + platform-operator), backend endpoint over existing `layaastat` spans + audit rows
+- AC1: Given a conversation id, show per-turn timeline: phases hit, tools called (params redacted per DPDP), LLM spans (model, tokens, duration, finish_reason, error_type), outcome (`ai_turn_outcome`).
+- AC2: RBAC: owner sees own school only; standard 401/403 test pair; no PII beyond what the role already accesses.
+- AC3: The incident class ("user says AI didn't reply") is diagnosable from the panel alone, without server log access.
+
+**R11.6 — Residual audit sweep (close the blind spots)**
+Files: `backend/services/{ai_rate_limiter,ai_metrics,ai_shadow_mode,actor_context,txn_context,idempotency}.py`, `backend/services/sse.py`, domain service write paths dispatched by AI tools
+- AC1: Each file audited with the same severity rubric; findings either fixed in-story (if small) or appended to this doc as new stories.
+- AC2: Audit doc §6 "residual blind spots" section updated to empty or to a justified accepted-risk list.
+
+---
+
+## Considered and deliberately excluded (revisit only with a product reason)
+- **Model fine-tuning** — memory/skills (R10) + evals (R11.1) capture the benefit without training-ops burden.
+- **Multi-model routing / fallback provider** — adds failure modes; single well-monitored Azure deployment is right at this scale.
+- **RAG over school documents** — a product feature (separate PRD), not an AI-layer reliability/excellence item.
 
 ---
 
