@@ -6,13 +6,15 @@
 
 ---
 
-> ## 🚧 ACTIVE INITIATIVE — AI Layer Hardening (read before "what's the next step?")
+> ## 🚧 ACTIVE INITIATIVE — AI Layer Reliability (Zero Silent Failures) — 2026-07-08
 >
-> Planning is **complete and adversarially audited**; implementation is **paused, awaiting Shubham's review**. If a user asks what to work on / what's next / for an overview of the current effort, **open and present [`AI-LAYER-HARDENING-HANDOFF.md`](./AI-LAYER-HARDENING-HANDOFF.md)** (repo root) in plain language — lead with its TL;DR and "THE NEXT STEP", and surface the "Important — don't miss" section (3 found defects, key decisions, clone-from-Odysseus directive, DPDP/Azure-residency note).
+> A production incident (owner's chat turn got NO reply, no error) triggered a four-pass adversarial audit of the entire AI layer. Planning is complete; implementation has NOT started. If a user asks what to work on / what's next, present these docs in `_bmad-output/planning-artifacts/`:
+> 1. `audit-ai-layer-reliability-2026-07-08.md` — incident root cause + full findings inventory (Critical: silent-empty-turn contract gap, plan-executor false success, memory pre-turn hijack of "delete student…" commands, `import json` NameError in recall_history, Azure key env-var mismatch, accountant→principal prompt leak, corrupted question-paper output).
+> 2. `architecture-ai-layer-reliability.md` — target design (Turn Completion Contract, single tool envelope, prompt↔registry parity gate, fail-closed scoping).
+> 3. `epics-ai-layer-reliability.md` — 9 epics / 40 stories with exact file:line + ACs. Build order R1 → R9; R1+R2 are the incident fix.
 >
-> Plan artifacts: `_bmad-output/planning-artifacts/{prd,architecture,epics}-ai-layer-hardening.md` + the readiness reports. Tracker: `_bmad-output/platform-quality-sweep.md` row 17.
-> Review gate is CLEARED and readiness is **GO** (report dated 2026-06-08). Build order: Epic A (A.1 first) → B → C → D → E → I → F → J → K → G → (Phase 2, gated) H.
-> **Execution is ONE EPIC PER CONTEXT WINDOW.** Follow [`_bmad-output/EPIC-EXECUTION-PROTOCOL.md`](./_bmad-output/EPIC-EXECUTION-PROTOCOL.md): implement one epic, then emit the next-epic handoff prompt using its **fixed template** (verbatim, only the epic IDs change — prevents drift). Still requires the user's explicit greenlight before each epic's coding begins. (Shubham review applied 2026-06-07: A.0 dropped; added Epics J/K for student/fee/school-internals CRUD + Story F.10 destructive two-step confirm; 11 epics / 53 stories.)
+> **Execution is ONE EPIC PER CONTEXT WINDOW** per [`_bmad-output/EPIC-EXECUTION-PROTOCOL.md`](./_bmad-output/EPIC-EXECUTION-PROTOCOL.md) with explicit user greenlight before each epic. The 25 pinned baseline failures stay deferred to the end.
+> The previous initiative (AI Layer Hardening, 11 epics) SHIPPED and is merged; its planning docs live in `_bmad-output/outdated/`.
 
 ---
 
