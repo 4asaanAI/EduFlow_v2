@@ -2,8 +2,8 @@
 
 **Date:** 2026-07-08 · **Source:** `audit-ai-layer-reliability-2026-07-08.md` · **Architecture:** `architecture-ai-layer-reliability.md`
 **Execution:** ONE EPIC PER CONTEXT WINDOW per `_bmad-output/EPIC-EXECUTION-PROTOCOL.md`. Explicit user greenlight before each epic. Baseline `python -m pytest tests/backend/ -x -q` before and after every epic; the 25 pinned pre-existing failures stay deferred to the end.
-**Build order:** R1 → R2 → R3 → R4 → R5 → R6 → R7 → R8 → R9. R1+R2 are the incident fix and ship first. R3 (parity gate) is the permanent regression backstop and must ship before any new tools are added.
-**Total: 9 epics / 42 stories.** Every story lists exact files and acceptance criteria (AC). Audit finding IDs (RC/S/C/H/M/X/F*) refer to the audit doc.
+**Build order:** R1 → R2 → R3 → R4 → R5 → R6 → R7 → R8 → R9 → (Phase 2, gated) R10. R1+R2 are the incident fix and ship first. R3 (parity gate) is the permanent regression backstop and must ship before any new tools are added. R10 (self-learning Phase 2) is gated on R1–R9 shipping and R6's safety fixes being verified.
+**Total: 10 epics / 45 stories (R10 is Phase-2 gated).** Every story lists exact files and acceptance criteria (AC). Audit finding IDs (RC/S/C/H/M/X/F*) refer to the audit doc.
 
 ---
 
@@ -299,7 +299,47 @@ Files: `backend/routes/image_gen.py:29, 99, 115-117, 138, 377-415`
 | R7 | 3 | Data correctness & perf |
 | R8 | 4 | Frontend resilience |
 | R9 | 5 | Guardrails/config/adjacent |
-| **Total** | **40** | |
+| R10 | 5 | Self-learning Phase 2 (gated) |
+| **Total** | **45** | |
+
+## EPIC R10 — Self-Learning Phase 2 (memory-driven improvement with usage)
+*Goal: the AI measurably gets better with usage — durable memory, feedback loop, wider rollout. Builds on R6 (which makes the existing subsystem safe); R10 makes it genuinely self-improving. **Gated: implement only after R1–R9 ship and R6's safety fixes are verified.***
+
+**R10.1 — Durable, scalable recall (prerequisite for "learns over time")**
+Files: `backend/services/memory/vector.py`, `store.py`, `database.py → _create_indexes()`
+- AC1: Vector index persists across deploys — either ChromaDB persistent storage on a mounted volume or (recommended, one less moving part) MongoDB Atlas Vector Search on the existing cluster; index rebuild job on startup as fallback.
+- AC2: Recall no longer does full `.to_list(2000)` scans — indexed queries; memories beyond any cap are still recallable (paginated / scored retrieval).
+- AC3: Per-user memory cap with LRU/importance eviction (never a silent hard wall); eviction is logged and auditable.
+- AC4: Recall latency budget: pre-turn memory phase ≤ 1 extra LLM call and ≤ 300ms retrieval p95; measured via `layaastat` span.
+
+**R10.2 — Feedback loop: Helpful/Improve buttons feed learning**
+Files: `frontend/src/components/ChatInterface.js` (feedback handlers), new `backend/routes/feedback.py` or extend chat routes, `backend/services/memory/`
+- AC1: Helpful/Improve clicks persist a feedback record `{schoolId, user_id, conversation_id, message_id, verdict, tool_names_used, created_at}` (branch-scoped where applicable).
+- AC2: "Improve" opens an optional one-line reason; the reason + turn context is stored as a **candidate correction memory** (pending, not auto-active).
+- AC3: Owner/Principal can review pending corrections via a "What I've learned" surface (see R10.4) and activate/reject — activated corrections are recalled on matching future turns (fenced per R6.3, never as instructions with authority over policy/guardrails).
+- AC4: Feedback records are DPDP-erasable and included in the tenant erasure path.
+- AC5: Aggregate metric `ai_feedback_ratio` per school emitted; regression alarm if helpful-rate drops after a deploy.
+
+**R10.3 — Skill acquisition from repeated usage**
+Files: `backend/services/memory/` (skills store), `backend/routes/chat.py` post-turn hook
+- AC1: After a successful multi-step/confirmed flow, the AI may propose saving it as a named skill ("Every month-end you ask for X then Y — save as a one-command routine?") — explicit user confirm required, two-step per F.10 for anything embedding write actions.
+- AC2: Saved skills are recallable by name/intent and pre-fill the plan for confirmation — they never bypass confirm-token/kill-switch/lockdown gates.
+- AC3: Skills are versioned; invoking a skill whose underlying tool schema drifted (parity gate data) surfaces "this routine needs updating" instead of failing silently.
+- AC4: Tenanted + role-gated identically to memories; erasure wired.
+
+**R10.4 — Transparency & control surface ("What I've learned")**
+Files: `frontend/src/components/tools/` (new panel), backend list/activate/delete endpoints
+- AC1: Owner/Principal panel lists active memories, skills, and pending correction candidates with source turn links; supports edit, deactivate, delete (two-step for bulk delete).
+- AC2: Every recalled memory used in a reply is disclosed in the "Data used" footer (extends the existing "Data used · N tools" chip).
+- AC3: Standard 401/403 security test pair on every new endpoint; cross-tenant fixture test.
+
+**R10.5 — Widen rollout beyond Owner/Principal (gated)**
+Files: `backend/services/ai_action_policy.py`-style single switch in memory `chat_integration.py`
+- AC1: A single `MEMORY_ROLES` policy switch (mirroring the `LOCKDOWN_ENABLED` pattern) controls which roles get memory/skills; widening to teachers/accountants is a config change, not an engine change.
+- AC2: Non-privileged roles get **read-recall only** at first (no auto-extraction) — capture for them requires a separate explicit decision.
+- AC3: Per-role prompt disclosure updated via the R3.4 parity gate so advertised behavior matches actual gating.
+
+---
 
 ## Finding → fix traceability (nothing may be skipped)
 
