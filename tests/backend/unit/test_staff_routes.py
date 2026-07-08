@@ -96,3 +96,22 @@ def test_owner_can_change_salary(client, fake_db):
     assert resp.status_code == 200
     staff = next((s for s in fake_db.staff.docs if s["id"] == "s4"), None)
     assert staff.get("salary") == 45000
+
+
+def test_delete_staff_erases_ai_memories(client, fake_db):
+    """R6.4 (XM5, DPDP §12): deactivating a staff account erases that user's
+    AI-learned memories AND skills — proves the erasure hooks are invoked."""
+    fake_db.staff.docs = [{
+        "id": "s5", "schoolId": "aaryans-joya", "name": "Eve",
+        "role": "admin", "sub_category": "principal", "user_id": "u-eve", "is_active": True,
+    }]
+    fake_db.ai_memories.docs[:] = [
+        {"id": "m1", "schoolId": "aaryans-joya", "user_id": "u-eve", "text": "Eve prefers X", "superseded": False},
+    ]
+    fake_db.ai_skills.docs[:] = [
+        {"id": "sk1", "schoolId": "aaryans-joya", "user_id": "u-eve", "title": "monthly close"},
+    ]
+    resp = client.delete("/api/staff/s5", headers=_owner_headers())
+    assert resp.status_code == 200
+    assert [m for m in fake_db.ai_memories.docs if m.get("user_id") == "u-eve"] == []
+    assert [s for s in fake_db.ai_skills.docs if s.get("user_id") == "u-eve"] == []

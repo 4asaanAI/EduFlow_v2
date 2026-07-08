@@ -123,6 +123,46 @@ class MemoryVectorStore:
             return []
 
 
+    def rebuild_from(self, memories: List[Dict]) -> int:
+        """R6.4 (XM10): repopulate the in-memory index from durable Mongo rows.
+
+        The Chroma client here is in-process and empty after every redeploy, so on
+        startup we re-embed the owner memories from `ai_memories` (the source of
+        truth). No-op when the vector path is disabled/unhealthy. Returns count added.
+        """
+        if not self._healthy:
+            return 0
+        added = 0
+        for m in memories or []:
+            text = m.get("text")
+            sid, uid, mid = m.get("schoolId"), m.get("user_id"), m.get("id")
+            if not (text and sid and uid and mid):
+                continue
+            self.add(school_id=sid, user_id=uid, memory_id=mid, text=text)
+            added += 1
+        logger.info("MemoryVectorStore rebuilt from Mongo: %d memories re-indexed", added)
+        return added
+
+
+async def rebuild_index_from_mongo(db) -> int:
+    """Startup hook: re-index all owner memories into the vector store (XM10).
+
+    Only does work when the vector path is enabled AND healthy; otherwise it is a
+    cheap no-op and recall runs keyword-only (which is visibly logged at recall).
+    """
+    store = get_memory_vector_store()
+    if not store.healthy:
+        return 0
+    try:
+        memories = await db.ai_memories.find(
+            {"superseded": {"$ne": True}}, {"_id": 0, "id": 1, "schoolId": 1, "user_id": 1, "text": 1}
+        ).to_list(100000)
+        return store.rebuild_from(memories)
+    except Exception as e:  # never block startup
+        logger.warning("vector rebuild_from_mongo skipped: %s", e)
+        return 0
+
+
 _singleton: Optional[MemoryVectorStore] = None
 
 

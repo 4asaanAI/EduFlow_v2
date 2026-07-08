@@ -18,7 +18,7 @@ import httpx
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
-from database import connect_db, disconnect_db, get_raw_db
+from database import connect_db, disconnect_db, get_db, get_raw_db
 from tenant import validate_school_id
 from logging_config import (
     configure_logging,
@@ -271,6 +271,17 @@ async def startup():
 
     await connect_db()
     app.state.sse_keepalive_task = asyncio.create_task(sse_keepalive_loop())
+
+    # R6.4 (XM10): the memory vector index is in-process and empty after a redeploy.
+    # Rebuild it from the durable Mongo memories so recall isn't silently degraded.
+    # No-op (and cheap) when the vector path is disabled — the common default.
+    try:
+        from services.memory.vector import rebuild_index_from_mongo
+
+        await rebuild_index_from_mongo(get_db())
+    except Exception:
+        logger.warning("memory vector rebuild on startup failed", exc_info=True)
+
     logger.info("EduFlow API started")
 
 
