@@ -252,7 +252,7 @@ WRITE_TOOL_PARAM_LABELS = {
     "points": "points",
     "reason": "reason",
     "title": "announcement title",
-    "content": "announcement content",
+    # NOTE: "content" is defined once above (generic label) — do not redefine per tool.
     # Epic J — student & staff CRUD
     "name": "name",
     "status": "status",
@@ -275,7 +275,7 @@ WRITE_TOOL_PARAM_LABELS = {
     # Operations + fee-record tools
     "category": "expense category",
     "expense_id": "expense",
-    "student_name": "student name",
+    # NOTE: "student_name" is defined once above ("student") — do not redefine.
     "enquiry_id": "enquiry",
     "description": "description",
     "transaction_id": "fee transaction",

@@ -30,6 +30,7 @@ READ_ONLY_ALLOWLIST = frozenset({
     "get_class_list",
     "get_class_wise_attendance",
     "get_daily_brief",
+    "get_announcements",
     "get_enquiries",
     "get_exam_results_summary",
     "get_expenses",

@@ -961,7 +961,6 @@ async def tool_award_house_points(params: dict, user: dict, scope: dict = None) 
 
     student_name = params.get("student_name", "")
     points = params.get("points", 0)
-    category = params.get("category", "general")
     reason = params.get("reason", "")
 
     if not student_name or not points:
@@ -1006,12 +1005,11 @@ async def tool_award_house_points(params: dict, user: dict, scope: dict = None) 
             "student_name": student["name"],
             "house_name": house_name,
             "points_awarded": points,
-            "category": category,
             "reason": reason,
             "new_total": result["points"],
         }],
         "meta": {"count": 1, "query_time_ms": round(elapsed, 2)},
-        "message": f"Awarded {points} points to {student['name']} ({house_name}) for {category}.",
+        "message": f"Awarded {points} points to {student['name']} ({house_name}).",
     }
 
 
@@ -2276,6 +2274,58 @@ async def tool_create_announcement(params: dict, user: dict, scope: dict = None)
     return {"success": True, "data": {k: v for k, v in announcement.items() if k != "_id"}, "message": f"Announcement '{title}' published successfully to {audience_type}."}
 
 
+async def tool_get_announcements(params: dict, user: dict, scope: dict = None) -> dict:
+    """Read published school announcements visible to the caller (R3.3/H2).
+
+    Previously advertised to students but ABSENT from the registry — a guaranteed
+    dead tool call. Now implemented student-safe: only announcements that have
+    actually been sent (never drafts or pending-approval) whose audience includes
+    the caller's role. School-scoped automatically via the scoped db; the
+    announcement data model is school-wide (no per-branch targeting)."""
+    t0 = time.time()
+    db = get_db()
+    try:
+        days = int(params.get("days", 7) or 7)
+    except (TypeError, ValueError):
+        days = 7
+    role = user.get("role", "")
+    # A published announcement is one that is not a draft and has been sent
+    # (sent_at set) — pending-approval / draft announcements are never visible.
+    query = {
+        "is_draft": {"$ne": True},
+        "sent_at": {"$ne": None},
+        "$or": [
+            {"target_roles": role},
+            {"audience_type": "all"},
+        ],
+    }
+    anns = await db.announcements.find(query, {"_id": 0}).to_list(200)
+    cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+    visible = [a for a in anns if str(a.get("created_at", "")) >= cutoff]
+    # Most recent first (created_at is an ISO string → lexicographic == chronological).
+    visible.sort(key=lambda a: str(a.get("created_at", "")), reverse=True)
+    data = [
+        {
+            "id": a.get("id"),
+            "title": a.get("title"),
+            "content": a.get("content"),
+            "audience_type": a.get("audience_type"),
+            "sent_at": a.get("sent_at"),
+            "created_at": a.get("created_at"),
+        }
+        for a in visible[:50]
+    ]
+    elapsed = (time.time() - t0) * 1000
+    if not data:
+        return _empty_result(f"No announcements in the last {days} days.", elapsed)
+    return {
+        "success": True,
+        "data": data,
+        "meta": {"count": len(data), "query_time_ms": round(elapsed, 2)},
+        "message": f"{len(data)} announcement(s) in the last {days} days.",
+    }
+
+
 # =========================================================================
 #  G.5 — On-demand recall & synthesis (the pre-meeting briefing)
 # =========================================================================
@@ -3177,6 +3227,14 @@ TOOL_REGISTRY = {
         "description": "Student's own exam results and grades.",
         "params_schema": {},
     },
+    "get_announcements": {
+        "fn": tool_get_announcements,
+        "roles": ["student"],
+        "description": "School announcements and notices visible to the student.",
+        "params_schema": {
+            "days": {"type": "integer", "description": "How many days back to look (default 7)"},
+        },
+    },
 
     # ---- 15 new scope-aware tools ----
     "get_student_database": {
@@ -3284,7 +3342,6 @@ TOOL_REGISTRY = {
         "params_schema": {
             "student_name": {"type": "string", "description": "Student name (required)"},
             "points": {"type": "integer", "description": "Points to award (required)"},
-            "category": {"type": "string", "description": "Category: academics, sports, discipline, cultural, general"},
             "reason": {"type": "string", "description": "Reason for awarding points"},
         },
     },
@@ -3824,7 +3881,9 @@ TOOL_REGISTRY = {
     "query_maintenance_requests": {
         "fn": tool_query_maintenance_requests,
         "roles": ["owner", "admin"],
-        "sub_categories": ["maintenance"],
+        # R3.2: IT-tech support reads the same ticket queue (read-only), matching the
+        # prompt that advertises this tool to both maintenance and it_tech admins.
+        "sub_categories": ["maintenance", "it_tech"],
         "description": "Open facility requests by status, date, or location.",
         "params_schema": {
             "status": {"type": "string", "description": "Optional status"},

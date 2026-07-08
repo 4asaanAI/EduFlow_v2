@@ -534,7 +534,7 @@ async def build_school_context(role: str, user_id: str) -> dict:
     if role == "admin":
         if sub_category == "principal":
             return _with_school(await _build_principal_context(db, today))
-        if sub_category == "accounts":
+        if sub_category == "accountant":
             return _with_school(await _build_accounts_context(db, today))
         if sub_category == "transport_head":
             return _with_school(await _build_transport_head_context(db, today))

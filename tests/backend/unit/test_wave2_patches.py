@@ -85,7 +85,7 @@ def test_registry_tools_have_sub_categories_where_expected():
         "query_fee_status": ["accountant", "principal"],
         "query_incidents": ["principal"],
         "query_staff_availability": ["principal"],
-        "query_maintenance_requests": ["maintenance"],
+        "query_maintenance_requests": ["maintenance", "it_tech"],  # R3.2: it_tech reads tickets too
         "query_student_record": ["principal", "accountant", "transport_head"],
         "create_announcement": ["principal"],
     }

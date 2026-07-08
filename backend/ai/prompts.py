@@ -81,12 +81,12 @@ TOOL_GET_FINANCIAL_REPORT = {
 TOOL_SEARCH_STUDENTS = {
     "name": "search_students",
     "description": "Search students by name, admission number, or class.",
-    "params_schema": {"search_term": "optional name or adm no", "class_name": "optional e.g. '4B'"},
+    "params_schema": {"query": "optional name or adm no", "class_name": "optional e.g. '4B'"},
 }
 TOOL_GET_FEE_TRANSACTIONS = {
     "name": "get_fee_transactions",
     "description": "Fee payment history / transaction log.",
-    "params_schema": {"student_id": "optional", "class_name": "optional", "status": "optional: 'paid' | 'pending' | 'overdue'", "days": "optional int"},
+    "params_schema": {"student_id": "optional", "status": "optional: 'paid' | 'pending' | 'overdue'"},
 }
 TOOL_GET_ENQUIRIES = {
     "name": "get_enquiries",
@@ -131,7 +131,7 @@ TOOL_GET_FEE_DEFAULTERS = {
 TOOL_GET_STUDENT_PROFILE = {
     "name": "get_student_profile",
     "description": "Detailed profile for one student — academics, attendance, fees, notes.",
-    "params_schema": {"student_id": "required", "sections": "optional list: 'academics','attendance','fees','personal','notes'"},
+    "params_schema": {"student_id": "optional — exact student ID", "search_term": "optional — name or admission number to look up"},
 }
 TOOL_GET_HOUSE_STANDINGS = {
     "name": "get_house_standings",
@@ -145,8 +145,8 @@ TOOL_GET_HOUSE_DETAILS = {
 }
 TOOL_AWARD_HOUSE_POINTS = {
     "name": "award_house_points",
-    "description": "Award or deduct house points. Write action — requires confirmation.",
-    "params_schema": {"house_name": "required", "points": "required int (negative to deduct)", "reason": "required"},
+    "description": "Award or deduct house points for a student (their house is resolved automatically). Write action — requires confirmation.",
+    "params_schema": {"student_name": "required — the student's name", "points": "required int (negative to deduct)", "reason": "required"},
 }
 TOOL_GET_STUDENT_COUNCIL = {
     "name": "get_student_council",
@@ -814,6 +814,9 @@ _PRINCIPAL_TOOLS = [
     TOOL_GET_EXAM_RESULTS_SUMMARY,
     TOOL_GET_UPCOMING_EVENTS,
     TOOL_DRAFT_PARENT_MESSAGE,
+    # L5: the registry authorizes recall_history for principals — advertise it so the
+    # capability the principal is allowed to use is actually offered.
+    TOOL_RECALL_HISTORY,
 ]
 
 _ACCOUNTS_TOOLS = [
@@ -834,7 +837,8 @@ _RECEPTIONIST_TOOLS = [
 ]
 
 _CLASS_TEACHER_TOOLS = [
-    TOOL_GET_SCHOOL_PULSE,
+    # NOTE: get_school_pulse is owner/admin-only in the registry — not advertised to
+    # teachers (R3.2: it would 403). Teachers use their class-scoped read tools below.
     TOOL_GET_ATTENDANCE_OVERVIEW,
     TOOL_GET_CLASS_WISE_ATTENDANCE,
     TOOL_GET_MY_CLASS_STUDENTS,
@@ -855,7 +859,7 @@ _HOD_TOOLS = list(_CLASS_TEACHER_TOOLS)  # same base + subject-wide note in role
 _COORDINATOR_TOOLS = list(_CLASS_TEACHER_TOOLS)  # same base + class-range note in role rules
 
 _SUBJECT_TEACHER_TOOLS = [
-    TOOL_GET_SCHOOL_PULSE,
+    # NOTE: get_school_pulse is owner/admin-only in the registry — not advertised to teachers.
     TOOL_GET_ATTENDANCE_OVERVIEW,
     TOOL_GET_CLASS_WISE_ATTENDANCE,
     TOOL_GET_MY_CLASS_STUDENTS,
@@ -885,30 +889,21 @@ _STUDENT_TOOLS = [
 _SUPPORT_STAFF_TOOLS = []  # own data only — no AI tools, handled via role rules
 
 # ---- IT & Tech Support tools ----
-TOOL_QUERY_MAINTENANCE_REQUESTS = {
-    "name": "query_maintenance_requests",
-    "description": "View tech support / maintenance tickets — filter by status or category.",
-    "params_schema": {"status": "optional: 'open' | 'in_progress' | 'resolved'", "category": "optional: 'tech' | 'facility' | 'all'"},
-}
-TOOL_QUERY_AUDIT_LOG = {
-    "name": "query_audit_log",
-    "description": "View system audit log entries (excludes financial transactions and personal fee data).",
-    "params_schema": {"days": "optional int, default 7", "event_type": "optional e.g. 'login' | 'export' | 'import'"},
-}
-TOOL_CONFIRM_RESOLUTION = {
-    "name": "confirm_resolution",
-    "description": "Mark a maintenance or tech ticket as resolved. Write action — requires confirmation.",
-    "params_schema": {"ticket_id": "required", "resolution_note": "optional"},
-}
-
+# R3.2/H3/L4: these three tools are defined ONCE above (TOOL_QUERY_MAINTENANCE_REQUESTS,
+# TOOL_QUERY_AUDIT_LOG, TOOL_CONFIRM_RESOLUTION). The former mid-module rebind here drifted
+# their schemas away from the registry/impl (e.g. confirm_resolution taught
+# `ticket_id/resolution_note` while the impl requires `request_id/confirmation_note`, and it
+# is registry-restricted to owner). The single canonical definitions are reused below.
 _IT_TECH_TOOLS = [
     TOOL_QUERY_MAINTENANCE_REQUESTS,
     TOOL_QUERY_AUDIT_LOG,
 ]
 
+# Maintenance admins READ facility requests via AI; marking a request complete and the
+# owner's confirm_resolution are owner-scoped (registry) and handled outside the AI tool
+# surface, so confirm_resolution is intentionally NOT advertised here.
 _MAINTENANCE_TOOLS = [
     TOOL_QUERY_MAINTENANCE_REQUESTS,
-    TOOL_CONFIRM_RESOLUTION,
 ]
 
 TOOLS_BY_ROLE = {
@@ -917,7 +912,7 @@ TOOLS_BY_ROLE = {
     ("owner", "owner"): _OWNER_TOOLS,
     # Admin sub-categories
     ("admin", "principal"): _PRINCIPAL_TOOLS,
-    ("admin", "accounts"): _ACCOUNTS_TOOLS,
+    ("admin", "accountant"): _ACCOUNTS_TOOLS,
     ("admin", "transport_head"): _TRANSPORT_HEAD_TOOLS,
     ("admin", "receptionist"): _RECEPTIONIST_TOOLS,
     ("admin", "it_tech"): _IT_TECH_TOOLS,
@@ -1104,7 +1099,7 @@ For parent complaints, list open/unresolved cases with priority and days pending
 """,
 
     # ---- Admin: Accounts ----
-    ("admin", "accounts"): """
+    ("admin", "accountant"): """
 ROLE: Accounts Staff — Financial Data Only
 - You can ONLY access financial/fee-related data: fee summary, fee transactions, fee structures, fee defaulters, record fee payments.
 - You can access the student database but ONLY for names and fee data. You CANNOT see personal info (phone, address, DOB, guardian), attendance records, or academic results.
