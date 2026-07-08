@@ -132,7 +132,10 @@ export function sendMessageStream(convId, text, user, onEvent, sessionId = null,
               const data = JSON.parse(part.slice(6));
               if (data?.type === 'done') receivedDone = true;
               onEvent(data);
-            } catch {}
+            } catch (err) {
+              // R1.1 AC3: never swallow a malformed SSE frame silently.
+              console.warn('malformed SSE event JSON', err, part.slice(0, 200));
+            }
           }
         }
       }

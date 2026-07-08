@@ -363,9 +363,17 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     setCurrentStreamMsg({ id: 'streaming', role: 'assistant', content: '', toolCall: null, richBlocks: [], actionButtons: [] });
 
     let streamErrored = false;
+    let producedOutput = false;   // R1.2 AC2: did this turn render anything at all?
     try {
       await sendMessageStream(cid, text, currentUser, (event) => {
         const parsed = event;
+
+        // R1.2 AC2: mark that the turn produced *something* user-visible. Purely
+        // internal events (thinking/keepalive) don't count — if only those fire
+        // and the stream then resolves, the post-await backstop shows a fallback.
+        if (!['thinking', 'thinking_clear', 'keepalive'].includes(event.type)) {
+          producedOutput = true;
+        }
 
         if (event.type === 'thinking_clear') {
           setThinkingSteps([]);
@@ -447,6 +455,38 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           );
         } else if (event.type === 'keepalive') {
           // Ignore - just prevents SSE timeout
+        } else if (event.type === 'error') {
+          // R1.1 AC1: a turn-level error from the backend. Render an interrupted
+          // assistant bubble (reusing the stream_error affordance) with the
+          // server message + retry, so the user is never left staring at silence.
+          streamErrored = true;
+          setThinkingSteps([]);
+          setThinkingCollapsed(false);
+          const errText = (typeof event.message === 'string' && event.message)
+            ? event.message
+            : 'The assistant hit a problem. Please try again.';
+          setCurrentStreamMsg(prev => {
+            const interruptedId = `err-${Date.now()}`;
+            if (prev?.content) {
+              pendingFinalMsgRef.current = {
+                ...prev,
+                id: interruptedId,
+                role: 'assistant',
+                content: `${prev.content}\n\n${errText}`,
+                interrupted: true,
+              };
+            } else {
+              setMessages(current => [...current, {
+                id: interruptedId,
+                role: 'assistant',
+                content: errText,
+                interrupted: true,
+                created_at: new Date().toISOString(),
+              }]);
+            }
+            return null;
+          });
+          setStreaming(false);
         } else if (event.type === 'stream_error') {
           streamErrored = true;
           setThinkingSteps([]);
@@ -491,13 +531,21 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           // Finalize thinking - mark all steps as done
           setThinkingSteps(prev => prev.map(s => ({ ...s, status: 'done' })));
           setCurrentStreamMsg(prev => {
-            if (prev && !processedMessageIds.current.has(messageId)) {
+            // R1.2 AC3: finalize the streamed body whenever there is one — do NOT
+            // gate on processedMessageIds (an id-only check silently dropped
+            // streamed content, audit S10/FM2). The flush effect dedupes by id,
+            // so a genuinely-identical message is still not double-rendered.
+            if (prev) {
               processedMessageIds.current.add(messageId);
               pendingFinalMsgRef.current = { ...prev, id: messageId, role: 'assistant' };
             }
             return null;
           });
           setStreaming(false);
+        } else {
+          // R1.1 AC2: an event type the client doesn't recognise — log it (for
+          // telemetry / future compatibility) rather than dropping it silently.
+          console.warn('unhandled SSE event', event.type, event);
         }
       }, chatSessionIdRef.current, imageData);
       if (streamErrored) return;
@@ -516,6 +564,18 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
         }
         return false;
       });
+      // R1.2 AC2: terminal-state backstop. If the stream resolved without
+      // producing any assistant message or error bubble (a silent resolve —
+      // audit S12), render the generic fallback so the turn is never blank.
+      if (!producedOutput && !pendingFinalMsgRef.current) {
+        setMessages(cur => [...cur, {
+          id: `ai-fallback-${Date.now()}`,
+          role: 'assistant',
+          content: "The assistant couldn't produce a reply. Try again.",
+          interrupted: true,
+          created_at: new Date().toISOString(),
+        }]);
+      }
     } catch {
       // On SSE error: append "(Response interrupted)" and show Retry
       setCurrentStreamMsg(prev => {
@@ -646,12 +706,19 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
             </div>
           )}
 
-          {messages.filter(msg => {
-            if (msg.role !== 'assistant') return true;
-            const hasContent = msg.content && msg.content.trim();
-            const richBlocks = msg.richBlocks || msg.rich_content?.rich_blocks || [];
-            const actionButtons = msg.actionButtons || msg.rich_content?.action_buttons || msg.actions || [];
-            return hasContent || richBlocks.length > 0 || actionButtons.length > 0;
+          {messages.map(msg => {
+            // R1.2 AC1: a finalized assistant turn with no content, blocks, or
+            // buttons must NOT be filtered out (that silent drop was the visible
+            // half of the incident) — render a fallback line instead.
+            if (msg.role === 'assistant') {
+              const hasContent = msg.content && msg.content.trim();
+              const richBlocks = msg.richBlocks || msg.rich_content?.rich_blocks || [];
+              const actionButtons = msg.actionButtons || msg.rich_content?.action_buttons || msg.actions || [];
+              if (!hasContent && richBlocks.length === 0 && actionButtons.length === 0) {
+                return { ...msg, content: "The assistant couldn't produce a reply. Try again." };
+              }
+            }
+            return msg;
           }).map((msg, idx) => (
             <div key={msg.id || idx} className="fade-in">
               <div className="prose-chat">

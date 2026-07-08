@@ -27,7 +27,7 @@ from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from database import get_db
 from models.schemas import Conversation, Message, ConversationUpdate
-from ai.llm_client import ai_unavailable_result, llm_client
+from ai.llm_client import llm_client, AI_UNAVAILABLE_MESSAGE
 from ai.prompts import build_system_prompt
 from ai.context_builder import build_school_context, detect_language
 from ai.tool_functions_v2 import TOOL_REGISTRY, WRITE_TOOL_NAMES
@@ -82,6 +82,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 # ─── Constants ────────────────────────────────────────────────────────────────
+
+# R1.3 Turn Completion Contract: a user turn can NEVER end with nothing on screen.
+# Any turn that would otherwise finish empty (LLM produced no content, all tool
+# rounds dead-ended, content-policy boilerplate stripped, etc.) substitutes this
+# text — streamed and persisted like any real answer — instead of a silent blank.
+FALLBACK_TEXT = "I wasn't able to produce an answer for that. Please try again or rephrase."
 
 MAX_TOOL_ROUNDS = 3  # AD2/FR5: bounds planning/read iterations ONLY (not confirmed writes)
 MAX_PLAN_STEPS = ai_planner.MAX_PLAN_STEPS  # AD2/FR5: bounds plan SIZE
@@ -788,6 +794,20 @@ def _is_tool_authorized(user: dict, tool_def: dict) -> bool:
     return True
 
 
+def _close_tool_matches(name: str, user: dict, limit: int = 3) -> list:
+    """R1.5: closest AUTHORIZED tool names to a mistaken/unknown tool name.
+
+    Suggestions are filtered to tools the caller is actually allowed to use, so an
+    'unknown capability' hint never leaks the existence of tools for other roles.
+    """
+    import difflib
+    candidates = [
+        tname for tname, tdef in TOOL_REGISTRY.items()
+        if _is_tool_authorized(user, tdef)
+    ]
+    return difflib.get_close_matches(name or "", candidates, n=limit, cutoff=0.6)
+
+
 # ─── Keyword detection ────────────────────────────────────────────────────────
 
 def detect_tool_from_keywords(text: str, user: dict) -> Optional[str]:
@@ -1476,12 +1496,8 @@ async def _stream_plan(calls, user, db, scope, session_id, conv_id, lang, total_
         yield ev
 
 
-def _is_ai_unavailable(result) -> bool:
-    return isinstance(result, dict) and result.get("type") == "ai_unavailable"
-
-
-def _ai_unavailable_event(result: dict) -> str:
-    return f"data: {json.dumps({'type': 'ai_unavailable', 'message': result.get('message', 'AI is temporarily unavailable.')})}\n\n"
+def _ai_unavailable_event(message: str = AI_UNAVAILABLE_MESSAGE) -> str:
+    return f"data: {json.dumps({'type': 'ai_unavailable', 'message': message})}\n\n"
 
 
 # ─── Thinking delay helper ────────────────────────────────────────────────────
@@ -1752,7 +1768,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                         [{"role": "user", "content": extraction_prompt}],
                         f"{conv_id}-extract-{uuid.uuid4()}",
                     )
-                    extraction_text = extraction_result[0] if isinstance(extraction_result, tuple) else extraction_result
+                    extraction_text = extraction_result.text
                     extracted_call = _parse_tool_call(extraction_text if isinstance(extraction_text, str) else "")
                     if extracted_call and extracted_call.get("action") == tool_name:
                         params = extracted_call.get("params", {}) or {}
@@ -1909,22 +1925,22 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         llm_task_done = asyncio.Event()
         llm_response = ""
         llm_tokens = 0
+        llm_ok = True           # R1.7: availability tracked explicitly, not by result type
         # LLM_WALLCLOCK_BUDGET is a module constant (see top of file)
 
         async def _llm_call():
-            nonlocal llm_response, llm_tokens
+            nonlocal llm_response, llm_tokens, llm_ok
             try:
                 session_id = f"{conv_id}-{uuid.uuid4()}"
                 result = await llm_client.chat(system_prompt, messages_for_llm_final, session_id)
-                if isinstance(result, tuple):
-                    llm_response, llm_tokens = result
-                else:
-                    llm_response = result
-                    llm_tokens = 0
+                llm_response = result.text
+                llm_tokens = result.tokens
+                llm_ok = result.ok
             except Exception:
                 logger.exception("LLM call raised unexpectedly in Phase 8")
-                llm_response = ai_unavailable_result("call_failed")
+                llm_response = ""
                 llm_tokens = 0
+                llm_ok = False
             finally:
                 # ALWAYS set the event so the keepalive loop never spins.
                 llm_task_done.set()
@@ -1943,8 +1959,9 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                     elapsed += KEEPALIVE_INTERVAL
                     if elapsed >= LLM_WALLCLOCK_BUDGET:
                         logger.warning("LLM wallclock budget exceeded (%ds) — bailing", elapsed)
-                        llm_response = ai_unavailable_result("timeout_wallclock")
+                        llm_response = ""
                         llm_tokens = 0
+                        llm_ok = False
                         break
                     if request is not None:
                         try:
@@ -1958,12 +1975,12 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             if not llm_task.done():
                 llm_task.cancel()
 
-        if _is_ai_unavailable(llm_response):
-            yield _ai_unavailable_event(llm_response)
+        if not llm_ok:
+            yield _ai_unavailable_event()
             ai_msg = Message(
                 conversation_id=conv_id,
                 role="assistant",
-                content=llm_response.get("message", "AI is temporarily unavailable."),
+                content=AI_UNAVAILABLE_MESSAGE,
                 language_detected=lang,
             )
             await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
@@ -1976,7 +1993,21 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
     except Exception as e:
         logger.error(f"Phase 8 (first LLM call) error: {e}")
         yield f"data: {json.dumps({'type': 'error', 'phase': 'llm_call', 'message': 'Failed to generate response. Please try again.'})}\n\n"
-        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        # R1.3 AC3: an error event also persists an assistant message with the
+        # same text, so a reload shows the failure and history is never poisoned
+        # with a user question that has no reply.
+        try:
+            err_msg = Message(
+                conversation_id=conv_id,
+                role="assistant",
+                content="Failed to generate response. Please try again.",
+                language_detected=lang,
+            )
+            await db.messages.insert_one({**err_msg.dict(), "_id": err_msg.id})
+            yield f"data: {json.dumps({'type': 'done', 'message_id': err_msg.id, 'tokens_used': total_tokens_used})}\n\n"
+        except Exception as persist_err:
+            logger.error(f"Phase 8 error-path persistence failed: {persist_err}")
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
         return
 
     # ── Phase 8.5: agentic planner (Epic E) — whole-job-by-instruction ────
@@ -2026,8 +2057,19 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             llm_tool_params = llm_tool_call.get("params", {})
 
             tool_def = TOOL_REGISTRY.get(llm_tool_name)
-            if not tool_def or not _is_tool_authorized(user, tool_def):
-                break  # Not allowed
+            if not tool_def:
+                # R1.5 AC1: name the missing capability + suggest close authorized
+                # matches. Setting llm_response (not a bare break) means Phase 14
+                # streams + persists this explanation instead of a silent dead end.
+                _close = _close_tool_matches(llm_tool_name, user)
+                _suffix = f" Did you mean: {', '.join(_close)}?" if _close else ""
+                llm_response = f'I don\'t have a capability called "{llm_tool_name}".{_suffix}'
+                break
+            if not _is_tool_authorized(user, tool_def):
+                # R1.5 AC2: a real capability the caller's role can't use — distinct
+                # message from "unknown" so we don't imply the feature doesn't exist.
+                llm_response = "That action isn't available for your role."
+                break
 
             tool_name = llm_tool_name
 
@@ -2166,22 +2208,22 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             llm_task_done = asyncio.Event()
             llm_response = ""
             llm_tokens = 0
+            llm_ok = True           # R1.7: availability tracked explicitly, not by result type
             # LLM_WALLCLOCK_BUDGET is a module constant (see top of file)
 
             async def _llm_followup():
-                nonlocal llm_response, llm_tokens
+                nonlocal llm_response, llm_tokens, llm_ok
                 try:
                     session_id = f"{conv_id}-{uuid.uuid4()}"
                     result = await llm_client.chat(system_prompt, messages_for_llm_final, session_id)
-                    if isinstance(result, tuple):
-                        llm_response, llm_tokens = result
-                    else:
-                        llm_response = result
-                        llm_tokens = 0
+                    llm_response = result.text
+                    llm_tokens = result.tokens
+                    llm_ok = result.ok
                 except Exception:
                     logger.exception("LLM follow-up call raised unexpectedly")
-                    llm_response = ai_unavailable_result("call_failed")
+                    llm_response = ""
                     llm_tokens = 0
+                    llm_ok = False
                 finally:
                     llm_task_done.set()
 
@@ -2198,8 +2240,9 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                     except asyncio.TimeoutError:
                         elapsed += KEEPALIVE_INTERVAL
                         if elapsed >= LLM_WALLCLOCK_BUDGET:
-                            llm_response = ai_unavailable_result("timeout_wallclock")
+                            llm_response = ""
                             llm_tokens = 0
+                            llm_ok = False
                             break
                         if request is not None:
                             try:
@@ -2212,12 +2255,12 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                 if not llm_task.done():
                     llm_task.cancel()
 
-            if _is_ai_unavailable(llm_response):
-                yield _ai_unavailable_event(llm_response)
+            if not llm_ok:
+                yield _ai_unavailable_event()
                 ai_msg = Message(
                     conversation_id=conv_id,
                     role="assistant",
-                    content=llm_response.get("message", "AI is temporarily unavailable."),
+                    content=AI_UNAVAILABLE_MESSAGE,
                     tool_calls=all_tool_calls if all_tool_calls else None,
                     language_detected=lang,
                 )
@@ -2229,10 +2272,25 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
 
             # Check if LLM wants yet another tool (will loop back)
             # The while condition + _parse_tool_call at top of loop handles this
+        else:
+            # R1.5 AC3: while-else runs only when the loop exits by exhausting
+            # MAX_TOOL_ROUNDS (no break). If the model STILL wants another tool,
+            # we've hit the chaining limit — narrate it instead of ending on the
+            # dangling tool-call JSON (which Phase 10 would strip to nothing).
+            if _parse_tool_call(llm_response):
+                llm_response = (
+                    "This request needs more steps than I can chain in one go — "
+                    "try narrowing it or asking for one part at a time."
+                )
 
     except Exception as e:
         logger.error(f"Phase 9 (multi-tool chaining) error: {e}")
-        # Continue with whatever llm_response we have
+        # R1.5 AC4: surface an error event; Phase 14's contract then persists a
+        # fallback assistant message so the turn is never silent and history is
+        # not poisoned with an unanswered question.
+        yield f"data: {json.dumps({'type': 'error', 'phase': 'tool_chaining', 'message': 'I hit a problem while working through that request.'})}\n\n"
+        if not (llm_response and _strip_tool_json_from_text(llm_response).strip()):
+            llm_response = FALLBACK_TEXT
 
     # ── Phase 9b: Memory auto-save + skill distillation (Epic G) ──────────
     # Owner/Principal only. Auto-saves clearly-durable info, distills a skill from
@@ -2270,16 +2328,17 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
     # Strip content-policy hallucination — the LLM occasionally generates this
     # boilerplate from poisoned conversation history. Detect and remove it so
     # it never reaches the user regardless of role.
+    # R1.4: keep ONLY true content-policy boilerplate. The removed markers
+    # ("try rephrasing your question", "wasn't able to process that") are ordinary
+    # phrases a genuine answer may contain — matching them nuked real replies.
     _CONTENT_POLICY_MARKERS = [
         "content policy settings on the AI service",
         "school management tools in the sidebar are fully available",
-        "try rephrasing your question",
-        "wasn't able to process that",
-        "wasn’t able to process that",
     ]
     if any(marker.lower() in clean_response.lower() for marker in _CONTENT_POLICY_MARKERS):
-        logger.warning("LLM generated content-policy boilerplate; stripping | conv=%s", conv_id)
-        clean_response = ""
+        # R1.4: replace with the fallback, NEVER blank the response to "".
+        logger.warning("LLM generated content-policy boilerplate; replacing with fallback | conv=%s", conv_id)
+        clean_response = FALLBACK_TEXT
 
     # ── Phase 12: Parse rich content ──────────────────────────────────────
     clean_text, rich_content = _extract_rich_content(clean_response)
@@ -2289,6 +2348,16 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
     # already some answer text, so we don't surface a bare question.
     if memory_followup_question and clean_text and clean_text.strip():
         clean_text = clean_text + memory_followup_question
+
+    # ── R1.3 Turn Completion Contract: substitute the fallback BEFORE streaming ──
+    # This is the choke point for the silent-empty-turn incident. If the turn has
+    # neither text nor rich blocks (confirm/error/tool paths already returned with
+    # their own persisted message above), the user still gets words — streamed and
+    # persisted below with a real message id (never the old f"empty-{conv_id}").
+    _has_rich = bool(rich_content and (rich_content.get('rich_blocks') or rich_content.get('action_buttons')))
+    if not (clean_text and clean_text.strip()) and not _has_rich:
+        logger.warning("Empty final turn — substituting FALLBACK_TEXT | conv=%s", conv_id)
+        clean_text = FALLBACK_TEXT
 
     # ── Phase 13: Stream text response ────────────────────────────────────
     yield thinking_event("composing", "Writing your answer...")
@@ -2321,12 +2390,12 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         yield f"data: {json.dumps({'type': 'error', 'phase': 'streaming', 'message': 'Error while streaming response.'})}\n\n"
 
     # ── Phase 14: Save AI message to DB (BUG FIX #7: persist BEFORE done event) ──
+    # R1.3: single completion choke point. clean_text is guaranteed non-empty by
+    # the fallback substitution above, so this ALWAYS persists a real assistant
+    # message with a real uuid and ALWAYS debits tokens — the old
+    # empty-turn short-circuit (done + f"empty-{conv_id}", no persist, no debit)
+    # is gone. A turn can no longer end silently or escape token accounting.
     try:
-        has_content = bool(clean_text and clean_text.strip())
-        has_rich = bool(rich_content and (rich_content.get('rich_blocks') or rich_content.get('action_buttons')))
-        if not has_content and not has_rich:
-            yield f"data: {json.dumps({'type': 'done', 'message_id': f'empty-{conv_id}', 'tokens_used': total_tokens_used})}\n\n"
-            return
         ai_msg = Message(
             conversation_id=conv_id,
             role="assistant",

@@ -104,8 +104,9 @@ async def test_g3_recall_keyword_only_when_vector_disabled():
 # ── G.4: auto-save + uncertain confirm + inline commands ──────────────────────
 
 def _patch_llm(monkeypatch, payload):
+    from ai.llm_client import LLMResult
     async def fake_chat(system_prompt, messages, session_id=None, role=None):
-        return (payload, 5)
+        return LLMResult(text=payload, tokens=5, ok=True)  # R1.7: LLMResult, not tuple
     monkeypatch.setattr("services.memory.extractor.llm_client.chat", fake_chat)
 
 
@@ -255,9 +256,10 @@ async def test_g5_recall_history_in_minor_read_audit_set():
 async def test_g6_skill_below_complexity_threshold_dropped(monkeypatch):
     called = {"n": 0}
 
+    from ai.llm_client import LLMResult
     async def fake_chat(*a, **k):
         called["n"] += 1
-        return ("{}", 1)
+        return LLMResult(text="{}", tokens=1, ok=True)  # R1.7: LLMResult, not tuple
     monkeypatch.setattr("services.memory.extractor.llm_client.chat", fake_chat)
     out = await extractor.extract_skill([{"role": "user", "content": "hi"}], round_count=1, tool_count=1)
     assert out is None

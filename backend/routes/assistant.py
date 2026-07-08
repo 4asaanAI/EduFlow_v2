@@ -229,12 +229,12 @@ async def assistant_chat(
         return JSONResponse(status_code=400, content={"success": False, "detail": "Last message must be from user"})
 
     try:
+        # R1.7 AC3: chat() returns an LLMResult — an unavailable model is a real
+        # error payload, never success:True wrapping the failure object.
         result = await llm_client.chat(SYSTEM_PROMPT, clean)
-        if isinstance(result, tuple):
-            reply, _ = result
-        else:
-            reply = result
-        return {"success": True, "reply": reply}
+        if not result.ok:
+            return JSONResponse(status_code=503, content={"success": False, "detail": "Assistant is temporarily unavailable. Please try again."})
+        return {"success": True, "reply": result.text}
     except Exception as e:
         logger.error(f"Assistant error: {e}")
         return JSONResponse(status_code=500, content={"success": False, "detail": "Assistant unavailable"})

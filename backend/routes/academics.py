@@ -692,11 +692,17 @@ Make questions appropriate for Classes 9-12 CBSE standard."""
     import uuid
     session_id = f"qp-{uuid.uuid4()}"
     try:
-        paper_text = await llm_client.chat(
+        # R1.7 AC2: chat() returns an LLMResult — persist/return result.text ONLY
+        # (audit X1: the raw tuple/dict was previously saved as paper content),
+        # and surface a real 503 when the model was unavailable.
+        result = await llm_client.chat(
             "You are an expert CBSE question paper setter. Generate well-structured, academically accurate question papers.",
             [{"role": "user", "content": prompt}],
             session_id
         )
+        if not result.ok:
+            raise HTTPException(503, "AI is temporarily unavailable — could not generate the question paper. Please try again.")
+        paper_text = result.text
         # Save to DB
         db = get_db()
         import re as _re
@@ -715,6 +721,8 @@ Make questions appropriate for Classes 9-12 CBSE standard."""
         }
         await db.question_papers.insert_one({**qp, "_id": qp["id"], "schoolId": get_school_id()})
         return {"success": True, "data": {"content": paper_text, "id": qp["id"]}}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, f"Generation failed: {str(e)}")
 

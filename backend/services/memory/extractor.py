@@ -71,10 +71,9 @@ def _parse_json_blob(response: str) -> Optional[Any]:
 async def _llm_json(system_prompt: str, user_content: str, session_id: str) -> Optional[Any]:
     try:
         result = await llm_client.chat(system_prompt, [{"role": "user", "content": user_content}], session_id)
-        if isinstance(result, dict) and result.get("type") == "ai_unavailable":
+        if not result.ok:  # R1.7: LLMResult, not tuple|dict
             return None
-        text = result[0] if isinstance(result, tuple) else result
-        return _parse_json_blob(text)
+        return _parse_json_blob(result.text)
     except Exception as e:
         logger.warning("[memory-extract] LLM JSON call failed: %s", e)
         return None

@@ -5,7 +5,7 @@ import uuid
 import asyncio
 import logging
 import time
-from typing import Any
+from dataclasses import dataclass
 
 try:
     from openai import OpenAI
@@ -14,15 +14,33 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# R1.6 AC2: reasoning-family deployments spend budget on hidden reasoning before
+# emitting visible content, so a low ceiling yields empty replies. 4000 is the
+# floor for a normal call; the empty+length retry (R1.6 AC1) goes higher still.
+DEFAULT_MAX_COMPLETION_TOKENS = 4000
+RETRY_MAX_COMPLETION_TOKENS = 8000
 
-def ai_unavailable_result(reason: str) -> dict[str, Any]:
-    return {
-        "type": "ai_unavailable",
-        "degraded": True,
-        "message": "AI is temporarily unavailable. Core school tools remain available.",
-        "reason": reason,
-        "tokens": 0,
-    }
+# Human-facing text for a degraded/unavailable turn (used by the SSE adapters).
+AI_UNAVAILABLE_MESSAGE = "AI is temporarily unavailable. Core school tools remain available."
+
+
+@dataclass
+class LLMResult:
+    """Single return type for LLMClient.chat() (R1.7).
+
+    Kills the old tuple|dict dual return that caused audit X1 (a tuple/dict was
+    persisted as question-paper content). Callers read `.text`/`.tokens` and
+    branch on `.ok` — never isinstance/tuple/dict gymnastics.
+    """
+    text: str
+    tokens: int = 0
+    ok: bool = True
+    reason: str | None = None
+
+
+def ai_unavailable_result(reason: str) -> LLMResult:
+    """A typed, not-ok result for a degraded/failed LLM turn."""
+    return LLMResult(text="", tokens=0, ok=False, reason=reason)
 
 
 class LLMClient:
@@ -50,7 +68,7 @@ class LLMClient:
         messages: list,
         session_id: str = None,
         role: str = None,
-    ) -> tuple:
+    ) -> LLMResult:
         if not session_id:
             session_id = f"sess-{uuid.uuid4()}"
 
@@ -66,10 +84,10 @@ class LLMClient:
             # content may be a str (text-only) or a list (multimodal with image)
             az_messages.append({"role": msg_role, "content": content})
 
-        def _call():
+        def _call(max_tokens: int):
             logger.debug(
-                "Azure LLM call | session=%s | deployment=%s | messages=%d",
-                session_id, self.deployment, len(az_messages),
+                "Azure LLM call | session=%s | deployment=%s | messages=%d | max_tokens=%d",
+                session_id, self.deployment, len(az_messages), max_tokens,
             )
             # Part 2 Patch P5: hard per-call timeout. The OpenAI SDK's
             # synchronous client default is ~600s which is far too long for
@@ -78,21 +96,43 @@ class LLMClient:
                 model=self.deployment,
                 messages=az_messages,
                 timeout=45,
-                max_completion_tokens=1200,
+                max_completion_tokens=max_tokens,
             )
-            text = response.choices[0].message.content or ""
+            choice = response.choices[0]
+            text = choice.message.content or ""
+            finish_reason = getattr(choice, "finish_reason", None)
             input_tok = output_tok = 0
             try:
                 input_tok = response.usage.prompt_tokens or 0
                 output_tok = response.usage.completion_tokens or 0
             except Exception:
                 output_tok = max(1, len(text) // 4)
-            logger.debug("Azure LLM done | session=%s | tokens=%d", session_id, input_tok + output_tok)
-            return text, input_tok + output_tok, input_tok, output_tok
+            logger.debug(
+                "Azure LLM done | session=%s | tokens=%d | finish=%s",
+                session_id, input_tok + output_tok, finish_reason,
+            )
+            return text, input_tok + output_tok, input_tok, output_tok, finish_reason
 
         t0 = time.perf_counter()
         try:
-            text, tokens, input_tok, output_tok = await asyncio.to_thread(_call)
+            text, tokens, input_tok, output_tok, finish_reason = await asyncio.to_thread(
+                _call, DEFAULT_MAX_COMPLETION_TOKENS
+            )
+            # R1.6 AC1: an empty reply truncated by the token ceiling ("length")
+            # is almost always the reasoning family exhausting budget before any
+            # visible content. Retry ONCE with more headroom.
+            if not text.strip() and finish_reason == "length":
+                logger.warning(
+                    "Azure LLM empty content, finish_reason=length; retrying with headroom | session=%s",
+                    session_id,
+                )
+                r_text, r_tokens, r_in, r_out, finish_reason = await asyncio.to_thread(
+                    _call, RETRY_MAX_COMPLETION_TOKENS
+                )
+                text = r_text
+                tokens += r_tokens
+                input_tok += r_in
+                output_tok += r_out
             duration = round((time.perf_counter() - t0) * 1000, 1)
             from services.layaastat import emit_llm_span
             await emit_llm_span(
@@ -103,7 +143,12 @@ class LLMClient:
                 duration_ms=duration,
                 trace_id=session_id,
             )
-            return text, tokens
+            # R1.6 AC3: empty content (even after retry) is a typed FAILURE, never
+            # a "successful" empty string — the turn contract (R1.3) surfaces a
+            # fallback instead of a silent blank.
+            if not text.strip():
+                return LLMResult(text="", tokens=tokens, ok=False, reason=f"empty_{finish_reason or 'unknown'}")
+            return LLMResult(text=text, tokens=tokens, ok=True, reason=finish_reason)
         except Exception as e:
             duration = round((time.perf_counter() - t0) * 1000, 1)
             error_str = str(e).lower()
