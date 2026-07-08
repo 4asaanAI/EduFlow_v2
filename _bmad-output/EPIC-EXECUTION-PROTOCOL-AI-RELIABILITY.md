@@ -6,6 +6,21 @@
 
 ---
 
+## Portability guarantee — no dependence on any account, machine, or model
+
+Everything an executing agent needs is **committed to this repository**; nothing required lives in any personal account memory, local settings, or a specific machine:
+- The BMAD method itself: `_bmad/` (workflows/config) and `.claude/commands/bmad-*.md` (skill wrappers) are tracked in git. Agents without the Claude Code skill mechanism follow the `_bmad/` workflow files directly.
+- All plan/audit/protocol docs use repo-relative paths only.
+- The pinned test baseline is committed (`_bmad-output/ai-hardening-epic-a-baseline.txt`).
+- Standing directives previously held in session memory are restated here as the source of truth:
+  1. **Git push via the git CLI only** (authenticated as `4asaanAI`); never use a GitHub MCP/integration for pushes.
+  2. **The 25 pinned pre-existing test failures are fixed LAST**, after all epics — never mid-epic.
+  3. **DPDP guardrails stay surgical** — never over-block the LLM into refusals/non-compliance.
+  4. **AI-write scope Phase 1 = Owner + Principal only** (lockdown policy); widening is a config/policy change, never an engine change.
+- Environment note: local secrets (`backend/.env`) are machine-local by design and never required by these docs — tests run against fakes; anything needing real credentials must say so in plain English rather than assume them.
+
+If a future session learns a NEW standing directive from Abhishek or Shubham, it must be added to this section (and committed) — never only to personal/session memory.
+
 ## The 7 standing rules (set by Abhishek, 2026-07-08 — do not relax)
 
 1. **One run = one full Epic** (never one story, never two epics). A run ends only when the whole epic passes the epic-close gate (STEP 5).
