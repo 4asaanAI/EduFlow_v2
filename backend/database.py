@@ -174,6 +174,15 @@ def get_raw_db():
     return _db
 
 
+class TransactionUnavailableError(RuntimeError):
+    """A real Motor session could not be started outside development (X5).
+
+    Rather than silently falling back to a non-transactional `_NoopSession`
+    (which loses atomicity, idempotency rollback, and honest dry-run), the
+    executor refuses to run confirmed writes. The confirm endpoint maps this to a
+    visible 503 — nothing is applied and the user can retry."""
+
+
 class _NoopTransaction:
     """No-op async-context transaction for environments without a replica set
     (FakeDb test tier, single-node dev Mongo). Asserts nothing about atomicity —
@@ -228,12 +237,29 @@ async def get_txn_session():
     inside a transaction — that would bypass `schoolId` injection.
     """
     if _client is None:
+        # No Mongo client at all — the FakeDb test tier / single-node dev with no
+        # configured client. This is never the case in staging/production (connect_db
+        # always sets `_client`), so a no-op session here is the legitimate test path.
         return _NoopSession()
     try:
         return await _client.start_session()
-    except Exception:
-        logger.warning("start_session unavailable; falling back to no-op session", exc_info=True)
-        return _NoopSession()
+    except Exception as exc:
+        # X5: a `start_session()` failure means we cannot run a real transaction.
+        # In development we tolerate a non-transactional no-op session so a
+        # single-node local Mongo still works; in staging/production we FAIL LOUD
+        # rather than commit partial, non-atomic, non-idempotent writes.
+        if os.environ.get("ENVIRONMENT") == "development":
+            logger.warning(
+                "start_session unavailable in development; using no-op session", exc_info=True
+            )
+            return _NoopSession()
+        logger.error(
+            "start_session failed outside development; refusing non-transactional writes",
+            exc_info=True,
+        )
+        raise TransactionUnavailableError(
+            "Could not start a database transaction; write refused."
+        ) from exc
 
 
 async def _create_indexes():

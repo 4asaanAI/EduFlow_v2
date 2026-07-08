@@ -325,7 +325,9 @@ async def test_consume_confirm_token_rejects_school_id_mismatch():
             db=FakeDb(),
         )
     assert exc_info.value.status_code == 409
-    assert "mismatch" in exc_info.value.detail
+    # XM6: tenant-mismatch now returns a typed reason code (was a bare string).
+    assert exc_info.value.detail["code"] == "token_tenant_mismatch"
+    assert "mismatch" in exc_info.value.detail["message"]
 
 
 @pytest.mark.asyncio

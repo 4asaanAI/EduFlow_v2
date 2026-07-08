@@ -60,11 +60,13 @@ async def test_builds_ordered_resolved_plan_with_preconditions():
         request_plan=_fixture(steps),
     )
     assert res.status == planner.PLAN
-    assert [s["idx"] for s in res.steps] == [0, 1, 2]
-    assert res.steps[0]["kind"] == planner.READ
-    assert res.steps[1]["kind"] == planner.WRITE
+    # XM2: the leading READ step is dropped (it never executes); the two WRITE
+    # steps are re-indexed sequentially.
+    assert [s["kind"] for s in res.steps] == [planner.WRITE, planner.WRITE]
+    assert [s["idx"] for s in res.steps] == [0, 1]
+    assert [s["tool"] for s in res.steps] == ["approve_leave", "create_announcement"]
     # The write step targeting a leave_id gets a freshness precondition.
-    assert res.steps[1]["precondition"] == {"collection": "leaves", "id": "lv-9"}
+    assert res.steps[0]["precondition"] == {"collection": "leaves", "id": "lv-9"}
     assert res.has_writes
 
 

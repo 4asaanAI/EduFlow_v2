@@ -59,7 +59,9 @@ from ai.plan_executor import (
     NeedsManualReconciliationError,
     SagaCompensatedError,
     PlanScopeViolationError,
+    StepExecutionError,
 )
+from database import TransactionUnavailableError
 from ai.plan_schema import single_write_plan, plan_from_steps
 from ai import planner as ai_planner
 
@@ -2654,10 +2656,14 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
             # incremented for this request but the dispatch won't happen. Undo the
             # increment so the losing request doesn't permanently reduce the budget.
             await _ai_rate_decrement(user_id=user["id"], db=db)
-        # E.5: a token that expired while the user was reading the plan should
-        # get a clear, re-planable message — not a bare generic 400.
-        if exc.status_code == 400 and isinstance(exc.detail, str) and "expired" in exc.detail.lower():
+        # XM6/E.5: a token that expired while the user was reading the plan gets a
+        # clear, re-planable message — keyed off the TYPED reason code, never a
+        # brittle string-match on the detail text. The original intent is echoed
+        # so the client can re-issue in one tap.
+        detail_code = exc.detail.get("code") if isinstance(exc.detail, dict) else None
+        if exc.status_code == 400 and detail_code == "token_expired":
             await _ai_rate_decrement(user_id=user["id"], db=db)
+            intent = exc.detail.get("intent") if isinstance(exc.detail, dict) else None
             raise HTTPException(
                 status_code=409,
                 detail={
@@ -2666,6 +2672,7 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
                         "This plan expired before it was confirmed. Just ask again "
                         "and I'll rebuild it for you."
                     ),
+                    "intent": intent,
                 },
             ) from exc
         raise
@@ -2795,31 +2802,41 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
             result = exec_result.step_results[0].get("result")
         else:
             result = None
-        # F.7: pilot observability — one confirmation + plan_executed event per
-        # dispatch, plus a per-step outcome. PII-free (tool names + statuses only).
-        await record_ai_metric(
-            db, event="confirmation", user_id=user["id"], tool_name=tool_name,
-            status=exec_result.status, school_id=get_school_id(), branch_id=user.get("branch_id"),
-        )
-        await record_ai_metric(
-            db, event="plan_executed", user_id=user["id"], tool_name=tool_name,
-            status=exec_result.status, school_id=get_school_id(), branch_id=user.get("branch_id"),
-            count=len(exec_result.step_results) or 1,
-        )
-        await record_ai_metric(
-            db, event="ai_action", user_id=user["id"], tool_name=tool_name,
-            school_id=get_school_id(), branch_id=user.get("branch_id"),
-        )
-        for sr in exec_result.step_results:
+        # XM9: everything below runs AFTER the transaction committed. A failure in
+        # a post-commit metric/audit write must NEVER turn a committed plan into a
+        # user-facing 500 — the writes are already durable. Catch + log loudly and
+        # still return the success reply.
+        try:
+            # F.7: pilot observability — one confirmation + plan_executed event per
+            # dispatch, plus a per-step outcome. PII-free (tool names + statuses only).
             await record_ai_metric(
-                db, event="step_outcome", user_id=user["id"], tool_name=sr.get("tool", tool_name),
-                status=sr.get("status", "ok"), school_id=get_school_id(), branch_id=user.get("branch_id"),
+                db, event="confirmation", user_id=user["id"], tool_name=tool_name,
+                status=exec_result.status, school_id=get_school_id(), branch_id=user.get("branch_id"),
             )
-        # F.10/FR42: actor-tagged deletion audit per destructive step — only when
-        # the dispatch actually committed (not on an idempotent no-op replay).
-        if exec_result.status == "committed":
-            for ds in destructive_steps:
-                await _audit_destructive_step(db, user, ds)
+            await record_ai_metric(
+                db, event="plan_executed", user_id=user["id"], tool_name=tool_name,
+                status=exec_result.status, school_id=get_school_id(), branch_id=user.get("branch_id"),
+                count=len(exec_result.step_results) or 1,
+            )
+            await record_ai_metric(
+                db, event="ai_action", user_id=user["id"], tool_name=tool_name,
+                school_id=get_school_id(), branch_id=user.get("branch_id"),
+            )
+            for sr in exec_result.step_results:
+                await record_ai_metric(
+                    db, event="step_outcome", user_id=user["id"], tool_name=sr.get("tool", tool_name),
+                    status=sr.get("status", "ok"), school_id=get_school_id(), branch_id=user.get("branch_id"),
+                )
+            # F.10/FR42: actor-tagged deletion audit per destructive step — only when
+            # the dispatch actually committed (not on an idempotent no-op replay).
+            if exec_result.status == "committed":
+                for ds in destructive_steps:
+                    await _audit_destructive_step(db, user, ds)
+        except Exception:
+            logger.warning(
+                "post_commit_bookkeeping_failed tool=%s user=%s — plan already committed",
+                tool_name, user.get("id"), exc_info=True,
+            )
     except PlanStaleError as stale:
         await audit_ai_dispatch_finalize(
             audit_id=audit_id, result=None, error="plan_stale", db=db,
@@ -2863,6 +2880,49 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
             branch_id=user.get("branch_id"),
         )
         raise HTTPException(status_code=502, detail={"code": "side_effect_failed", "message": str(saga)})
+    except StepExecutionError as step_err:
+        # X2/X4: a confirmed step reported failure — the transaction aborted and
+        # NOTHING was applied. The audit row records the real failure and the user
+        # reply names the failed step, so reply and audit always agree.
+        await audit_ai_dispatch_finalize(
+            audit_id=audit_id,
+            result=step_err.result if isinstance(step_err.result, dict) else {"success": False},
+            error=f"step_failed:{step_err.tool}", db=db,
+        )
+        await record_ai_metric(
+            db, event="plan_executed", user_id=user["id"], tool_name=tool_name,
+            status="failed", school_id=get_school_id(), branch_id=user.get("branch_id"),
+        )
+        logger.info(
+            "confirmed_step_failed tool=%s step=%s user=%s",
+            step_err.tool, step_err.step_idx, user.get("id"),
+        )
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "step_failed",
+                "message": f"{step_err} No changes were applied.",
+                "failed_tool": step_err.tool,
+                "failed_step": step_err.step_idx,
+            },
+        )
+    except TransactionUnavailableError:
+        # X5: outside development we refuse to run writes without a real
+        # transaction. Nothing was applied; the user can retry.
+        await audit_ai_dispatch_finalize(
+            audit_id=audit_id, result=None, error="txn_unavailable", db=db,
+        )
+        logger.error("txn_unavailable — refused non-transactional confirmed write tool=%s", tool_name)
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "txn_unavailable",
+                "message": (
+                    "We couldn't guarantee transactional safety, so nothing was "
+                    "applied. Please try again in a moment."
+                ),
+            },
+        )
     except HTTPException as http_exc:
         await audit_ai_dispatch_finalize(
             audit_id=audit_id, result=None,
@@ -2895,19 +2955,28 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
     )
     message_id = None
     if conv_id:
-        ai_msg = Message(
-            conversation_id=conv_id,
-            role="assistant",
-            content=msg_content,
-            tool_calls=[{"tool": tool_name, "params": params, "result": result, "token": token}],
-            language_detected="en",
-        )
-        await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
-        await db.conversations.update_one(
-            _owned_conversation_filter(conv_id, user),
-            {"$set": {"updated_at": datetime.now().isoformat()}},
-        )
-        message_id = ai_msg.id
+        # XM9: the plan already committed. Persisting the assistant transcript
+        # message is best-effort — a Mongo hiccup here must NOT turn a durable,
+        # committed action into a user-facing 500.
+        try:
+            ai_msg = Message(
+                conversation_id=conv_id,
+                role="assistant",
+                content=msg_content,
+                tool_calls=[{"tool": tool_name, "params": params, "result": result, "token": token}],
+                language_detected="en",
+            )
+            await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
+            await db.conversations.update_one(
+                _owned_conversation_filter(conv_id, user),
+                {"$set": {"updated_at": datetime.now().isoformat()}},
+            )
+            message_id = ai_msg.id
+        except Exception:
+            logger.warning(
+                "post_commit_message_persist_failed tool=%s user=%s — action already committed",
+                tool_name, user.get("id"), exc_info=True,
+            )
 
     return {
         "success": True,

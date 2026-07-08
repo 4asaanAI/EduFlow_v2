@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import logging
+import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -12,6 +14,23 @@ from fastapi import HTTPException
 from database import get_db
 
 logger = logging.getLogger(__name__)
+
+
+def _hmac_key() -> bytes:
+    """Resolve the signing key for the plan-integrity MAC (XM6).
+
+    Keyed with the same `JWT_SECRET` used for auth so a tampered persisted plan
+    cannot be re-MAC'd by anyone without the server secret. Read via
+    `middleware.auth` (which handles dev generation/caching) with an env
+    fallback, at call time, so a test-set secret is honoured."""
+    try:
+        from middleware import auth as _auth
+
+        if getattr(_auth, "JWT_SECRET", None):
+            return _auth.JWT_SECRET.encode("utf-8")
+    except Exception:  # pragma: no cover - defensive; auth import should not fail
+        pass
+    return (os.environ.get("JWT_SECRET") or "eduflow-dev-plan-mac").encode("utf-8")
 
 TOKEN_TTL_SECONDS = 5 * 60
 
@@ -25,19 +44,40 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _intent_summary(doc: dict[str, Any]) -> dict[str, Any]:
+    """PII-free echo of what the token was going to do (XM6/AC3).
+
+    Attached to post-consume validation-failure responses so the frontend can
+    offer a one-tap "ask again" without the user re-typing. Only tool/action
+    labels are echoed — never resolved params (which may carry student PII)."""
+    plan = doc.get("plan")
+    if plan:
+        tools = [
+            s.get("tool")
+            for s in plan
+            if s.get("kind", "write") == "write" and s.get("tool")
+        ]
+        return {"kind": "plan", "tools": tools}
+    return {"kind": "action", "action": doc.get("action")}
+
+
 def compute_plan_hash(
     plan: list[dict[str, Any]] | None,
     *,
     school_id: str | None,
     branch_id: str | None,
 ) -> str:
-    """Canonical sha256 over the resolved plan + tenant binding (AD3/P4).
+    """Canonical HMAC-SHA256 over the resolved plan + tenant binding (AD3/P4/XM6).
 
     The SAME helper is used at issue and consume so a tampered persisted plan
-    (DB-level edit, mismatched tenant) is detected. Canonicalization is a
-    sorted-key, separator-tight JSON dump; entity IDs already live inside each
-    step's resolved `params`, so they are covered. `default=str` keeps it total
-    for any stray datetime/UUID that slips into params.
+    (DB-level edit, mismatched tenant) is detected. Prior to XM6 this was an
+    UNKEYED sha256 stored beside the plan — anyone able to edit the stored plan
+    could recompute a matching digest. It is now an HMAC keyed with the server's
+    `JWT_SECRET`, so a valid MAC cannot be forged without the secret.
+    Canonicalization is a sorted-key, separator-tight JSON dump; entity IDs
+    already live inside each step's resolved `params`, so they are covered.
+    `default=str` keeps it total for any stray datetime/UUID that slips into
+    params.
     """
     payload = {
         "plan": plan or [],
@@ -47,7 +87,7 @@ def compute_plan_hash(
     canonical = json.dumps(
         payload, sort_keys=True, separators=(",", ":"), default=str
     )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return hmac.new(_hmac_key(), canonical.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 async def issue_confirm_token(
@@ -190,10 +230,24 @@ async def consume_confirm_token(
         # the tenant context at token-issue time.
         if school_id is not None and doc.get("school_id") is not None:
             if doc["school_id"] != school_id:
-                raise HTTPException(status_code=409, detail="Confirmation token tenant mismatch")
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "token_tenant_mismatch",
+                        "message": "Confirmation token tenant mismatch",
+                        "intent": _intent_summary(doc),
+                    },
+                )
         if branch_id is not None and doc.get("branch_id") is not None:
             if doc["branch_id"] != branch_id:
-                raise HTTPException(status_code=409, detail="Confirmation token tenant mismatch")
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "token_tenant_mismatch",
+                        "message": "Confirmation token tenant mismatch",
+                        "intent": _intent_summary(doc),
+                    },
+                )
         # Epic E (AD3/P4): plan-hash revalidation. A token carrying a multi-step
         # `plan` must hash to exactly what was stored at issue — a tampered
         # persisted plan (or a tenant the plan was not bound to) is rejected with
@@ -205,7 +259,8 @@ async def consume_confirm_token(
                 school_id=doc.get("school_id"),
                 branch_id=doc.get("branch_id"),
             )
-            if expected_hash != doc.get("plan_hash"):
+            # Constant-time compare — the MAC is a secret-derived value (XM6).
+            if not hmac.compare_digest(expected_hash, str(doc.get("plan_hash") or "")):
                 raise HTTPException(
                     status_code=409,
                     detail={
@@ -214,6 +269,9 @@ async def consume_confirm_token(
                             "The approved plan could not be verified and was "
                             "rejected. Please ask again so a fresh plan can be built."
                         ),
+                        # AC3: echo the original intent so the client can re-issue
+                        # in one tap (the token is already consumed here).
+                        "intent": _intent_summary(doc),
                     },
                 )
         return doc
@@ -234,7 +292,16 @@ async def consume_confirm_token(
     if doc.get("user_id") != user_id or doc.get("session_id") != session_id:
         raise HTTPException(status_code=401, detail="Confirmation token does not belong to this session")
     if doc.get("expires_at") and doc["expires_at"] <= now:
-        raise HTTPException(status_code=400, detail="Confirmation token has expired")
+        # AC2: typed reason code so the caller/frontend never string-matches on
+        # "expired". The intent echo lets the user re-issue in one tap.
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "token_expired",
+                "message": "Confirmation token has expired",
+                "intent": _intent_summary(doc),
+            },
+        )
 
     raise HTTPException(status_code=400, detail="Confirmation token is invalid")
 
