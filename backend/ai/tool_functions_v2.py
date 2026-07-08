@@ -203,14 +203,11 @@ logger = logging.getLogger(__name__)
 #  Helpers
 # =========================================================================
 
-def _apply_branch_filter(query: dict, scope: dict) -> dict:
-    """If scope carries a branch_id, inject it into the Mongo query."""
-    branch_id = None
-    if scope:
-        branch_id = scope.get("branch_id") if isinstance(scope, dict) else getattr(scope, "branch_id", None)
-    if branch_id:
-        query["branch_id"] = branch_id
-    return query
+# R5.1 (H4): `_apply_branch_filter` was removed. It consulted ONLY the resolved
+# `scope`, never the JWT, so a branch-bound admin whose scope lacked a branch_id
+# read every branch's data. All read tools now use
+# `scoped_query(query, branch_id=_branch_id(user, scope))`, which prefers the
+# JWT branch and fails closed (owner/principal without a branch stay school-wide).
 
 
 def _apply_class_filter(query: dict, scope: dict, field: str = "class_id") -> dict:
@@ -310,7 +307,7 @@ async def tool_get_student_database(params: dict, user: dict, scope: dict = None
     db = get_db()
 
     query: dict = {}
-    _apply_branch_filter(query, scope)
+    query = scoped_query(query, branch_id=_branch_id(user, scope))
 
     # Scope-based class restriction for teachers
     if _scope_class_ids(scope) is not None:
@@ -378,7 +375,7 @@ async def tool_get_fee_structures(params: dict, user: dict, scope: dict = None) 
     db = get_db()
 
     query: dict = {}
-    _apply_branch_filter(query, scope)
+    query = scoped_query(query, branch_id=_branch_id(user, scope))
 
     if params.get("class_group"):
         query["$or"] = [
@@ -421,7 +418,7 @@ async def tool_get_class_wise_attendance(params: dict, user: dict, scope: dict =
     end = params.get("end_date", date.today().strftime("%Y-%m-%d"))
 
     class_query: dict = {}
-    _apply_branch_filter(class_query, scope)
+    class_query = scoped_query(class_query, branch_id=_branch_id(user, scope))
     if _scope_class_ids(scope) is not None:
         class_query["id"] = {"$in": _scope_class_ids(scope)}
 
@@ -549,7 +546,7 @@ async def tool_get_class_list(params: dict, user: dict, scope: dict = None) -> d
     db = get_db()
 
     query: dict = {}
-    _apply_branch_filter(query, scope)
+    query = scoped_query(query, branch_id=_branch_id(user, scope))
 
     classes = await db.classes.find(query).to_list(50)
 
@@ -588,7 +585,7 @@ async def tool_get_fee_defaulters(params: dict, user: dict, scope: dict = None) 
     db = get_db()
 
     overdue_query: dict = {"status": "overdue"}
-    _apply_branch_filter(overdue_query, scope)
+    overdue_query = scoped_query(overdue_query, branch_id=_branch_id(user, scope))
 
     overdue_txns = await db.fee_transactions.find(overdue_query).to_list(500)
 
@@ -657,17 +654,20 @@ async def tool_get_student_profile(params: dict, user: dict, scope: dict = None)
     t0 = time.time()
     db = get_db()
 
+    # R5.2 (H4): branch-scope the lookup so a branch-bound admin cannot read a
+    # student in another branch. Owner/principal (no JWT branch) stay school-wide.
+    bid = _branch_id(user, scope)
     student = None
     if params.get("student_id"):
-        student = await db.students.find_one({"id": params["student_id"]})
+        student = await db.students.find_one(scoped_query({"id": params["student_id"]}, branch_id=bid))
     elif params.get("search_term"):
         safe_term = re.escape(params["search_term"])
-        student = await db.students.find_one({
+        student = await db.students.find_one(scoped_query({
             "$or": [
                 {"name": {"$regex": safe_term, "$options": "i"}},
                 {"admission_number": {"$regex": safe_term, "$options": "i"}},
             ]
-        })
+        }, branch_id=bid))
 
     if not student:
         elapsed = (time.time() - t0) * 1000
@@ -888,7 +888,7 @@ async def tool_get_house_standings(params: dict, user: dict, scope: dict = None)
     db = get_db()
 
     query: dict = {}
-    _apply_branch_filter(query, scope)
+    query = scoped_query(query, branch_id=_branch_id(user, scope))
 
     houses = await db.houses.find(query).to_list(20)
 
@@ -997,8 +997,12 @@ async def tool_award_house_points(params: dict, user: dict, scope: dict = None) 
         elapsed = (time.time() - t0) * 1000
         return _failed("student_name and points are required parameters.", elapsed)
 
-    # Find the student
-    student = await db.students.find_one({"name": {"$regex": re.escape(student_name), "$options": "i"}, "is_active": True})
+    # Find the student — R5.2 (H4): branch-scope so a branch-bound user cannot
+    # award points to (or misfire a write against) another branch's student.
+    student = await db.students.find_one(scoped_query(
+        {"name": {"$regex": re.escape(student_name), "$options": "i"}, "is_active": True},
+        branch_id=_branch_id(user, scope),
+    ))
     if not student:
         # R4.3/L1: a not-found on a WRITE is a failure, not a benign empty read.
         elapsed = (time.time() - t0) * 1000
@@ -1049,7 +1053,7 @@ async def tool_get_student_council(params: dict, user: dict, scope: dict = None)
     db = get_db()
 
     query: dict = {}
-    _apply_branch_filter(query, scope)
+    query = scoped_query(query, branch_id=_branch_id(user, scope))
 
     # Try dedicated council collection first
     council_members = await db.student_council.find(query).to_list(100)
@@ -1070,7 +1074,7 @@ async def tool_get_student_council(params: dict, user: dict, scope: dict = None)
     else:
         # Fallback: check for council roles on student records
         council_query = {"council_role": {"$exists": True, "$ne": None, "$ne": ""}}
-        _apply_branch_filter(council_query, scope)
+        council_query = scoped_query(council_query, branch_id=_branch_id(user, scope))
         council_students = await db.students.find(council_query).to_list(100)
         results = []
         for s in council_students:
@@ -1100,7 +1104,7 @@ async def tool_get_library_status(params: dict, user: dict, scope: dict = None) 
     db = get_db()
 
     query: dict = {}
-    _apply_branch_filter(query, scope)
+    query = scoped_query(query, branch_id=_branch_id(user, scope))
 
     # Overall book counts
     total_books = await db.library_books.count_documents(query)
@@ -1886,12 +1890,26 @@ async def tool_mark_attendance(params: dict, user: dict, scope: dict = None) -> 
     if not params.get("attendance"):
         return {"success": False, "message": "attendance list is required."}
     db = get_db()
+    bid = _branch_id(user, scope)
     class_id = params.get("class_id")
     if not class_id and params.get("class_name"):
-        cls = await db.classes.find_one({"name": {"$regex": re.escape(params["class_name"]), "$options": "i"}}, {"_id": 0})
+        # R5.2 (H4): branch-scope the class name lookup so a branch-bound user
+        # cannot resolve (and then mark attendance against) another branch's class.
+        cls = await db.classes.find_one(scoped_query(
+            {"name": {"$regex": re.escape(params["class_name"]), "$options": "i"}},
+            branch_id=bid,
+        ), {"_id": 0})
         class_id = (cls or {}).get("id")
     if not class_id:
         return _empty_result("Class not found.")
+    # R5.2 defense-in-depth: whether class_id was supplied directly or resolved
+    # by name, confirm it exists in the caller's branch before writing —
+    # student_attendance carries no branch_id, so the service cannot re-check.
+    class_in_branch = await db.classes.find_one(
+        scoped_query({"id": class_id}, branch_id=bid), {"_id": 0, "id": 1}
+    )
+    if not class_in_branch:
+        return _failed("Class not found in your branch.")
     target_date = params.get("date", date.today().isoformat())
     actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
     service_params = {
@@ -2440,7 +2458,7 @@ async def tool_get_transport_status(params: dict, user: dict, scope: dict = None
     t0 = time.time()
     db = get_db()
     query: dict = {}
-    _apply_branch_filter(query, scope)
+    query = scoped_query(query, branch_id=_branch_id(user, scope))
     route_filter = params.get("route_id")
 
     routes = await db.transport_routes.find(query, {"_id": 0}).to_list(100)
@@ -2481,7 +2499,7 @@ async def tool_get_inventory_status(params: dict, user: dict, scope: dict = None
     t0 = time.time()
     db = get_db()
     query: dict = {}
-    _apply_branch_filter(query, scope)
+    query = scoped_query(query, branch_id=_branch_id(user, scope))
 
     category_filter = params.get("category")
     if category_filter:

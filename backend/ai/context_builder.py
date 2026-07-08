@@ -540,8 +540,20 @@ async def build_school_context(role: str, user_id: str) -> dict:
             return _with_school(await _build_transport_head_context(db, today))
         if sub_category == "receptionist":
             return _with_school(await _build_receptionist_context(db, today))
-        # Default admin (e.g. sub_category == "admin") gets principal-level view
-        return _with_school(await _build_principal_context(db, today))
+        # R5 (fail-closed, DEFERRED row 18): admin sub_categories WITHOUT an
+        # explicit operational context (it_tech, maintenance, management,
+        # support_staff, or an unrecognised/legacy value) must NOT inherit the
+        # principal's school-wide view. scope_resolver already denies them
+        # principal-level tool access; the chat context is aligned to that —
+        # minimal, not principal (was a silent over-exposure of school-wide data).
+        return _with_school({
+            "role": "admin",
+            "sub_category": sub_category,
+            "note": (
+                "Limited administrative access — no school-wide operational data "
+                "in context. Ask the principal or owner for school-wide reports."
+            ),
+        })
 
     # Teacher sub-categories
     if role == "teacher":
