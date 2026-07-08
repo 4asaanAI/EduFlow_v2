@@ -114,8 +114,8 @@ async def test_build_accounts_context_uses_school_wide_scope(monkeypatch):
     today = date.today().strftime("%Y-%m-%d")
     db = _make_db(
         fee_transactions=FakeCollection([
-            {"id": "t1", "schoolId": "aaryans-joya", "status": "overdue", "amount": 500, "paid_date": today},
-            {"id": "t2", "schoolId": "aaryans-joya", "status": "pending", "amount": 200},
+            {"id": "t1", "schoolId": "aaryans-joya", "student_id": "s1", "status": "overdue", "amount": 500, "paid_date": today},
+            {"id": "t2", "schoolId": "aaryans-joya", "student_id": "s2", "status": "pending", "amount": 200},
         ]),
         student_attendance=FakeCollection([]),
         staff_attendance=FakeCollection([]),

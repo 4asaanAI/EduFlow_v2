@@ -26,6 +26,11 @@ from services.leave_service import (
 import logging, re
 
 from ai.redaction import _mask_phone  # canonical phone mask (first-2 + last-3)
+from ai.fee_metrics import (
+    DEFAULTER_STATUSES,
+    compute_fee_totals,
+    student_outstanding_from_txns,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,30 +105,11 @@ async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
         if st:
             staff_absent_names.append(st.get("name", "Unknown"))
 
-    # Fee stats — canonical formula (same as _fee_summary_payload + tool_get_fee_summary)
-    fee_pipeline = [
-        {"$match": _tenant_query(scope, {})},
-        {
-            "$group": {
-                "_id": "$status",
-                "total_amount": {"$sum": "$amount"},
-                "total_paid_amount": {"$sum": {"$ifNull": ["$paid_amount", 0]}},
-                "count": {"$sum": 1},
-            }
-        },
-    ]
-    fee_stats = await db.fee_transactions.aggregate(fee_pipeline).to_list(20)
-    fd = {f["_id"]: f for f in fee_stats}
-
-    def _fa(status: str) -> float:
-        return float(fd.get(status, {}).get("total_amount", 0))
-
-    def _fp(status: str) -> float:
-        return float(fd.get(status, {}).get("total_paid_amount", 0))
-
-    total_paid = _fa("paid") + _fp("partial")
-    partial_remaining = max(0.0, _fa("partial") - _fp("partial"))
-    total_outstanding = _fa("overdue") + _fa("pending") + _fa("unpaid") + partial_remaining
+    # Fee stats — canonical shared helper (R7.1/M5).
+    _fee = await compute_fee_totals(db, _tenant_query(scope, {}))
+    total_paid = _fee["collected"]
+    total_outstanding = _fee["outstanding"]
+    _pending_amount = _fee["by_status_amount"].get("pending", 0.0)
 
     # Pending leaves
     pending_leaves = await db.leave_requests.find(_tenant_query(scope, {"status": "pending"})).to_list(20)
@@ -139,24 +125,35 @@ async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
             "reason": lr.get("reason", ""),
         })
 
-    # Students absent 3+ consecutive days
+    # Students absent 3+ consecutive days — M4/AC2: batched, covers ALL students
+    # (the old [:50] cap made the result wrong, not just slow).
+    check_date = date.today()
+    date_window = [(check_date - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(5)]
+    students_list = await db.students.find(_tenant_query(scope, {"is_active": True})).to_list(5000)
+    student_name_map = {st.get("id"): st.get("name", "Unknown") for st in students_list}
+    raw_att = await db.student_attendance.find(
+        _tenant_query(scope, {"date": {"$in": date_window}})
+    ).to_list(50000)
+    att_by_student: dict = {}
+    for rec in raw_att:
+        sid = rec.get("student_id")
+        if sid is None:
+            continue
+        att_by_student.setdefault(sid, {})[rec.get("date")] = rec.get("status", "")
     chronic_absent = []
-    students_list = await db.students.find(_tenant_query(scope, {"is_active": True})).to_list(500)
-    for st in students_list[:50]:  # limit for performance
+    for sid, day_map in att_by_student.items():
+        if sid not in student_name_map:
+            continue
         absent_count = 0
-        check_date = date.today()
         for i in range(5):
-            d = (check_date - timedelta(days=i)).strftime("%Y-%m-%d")
-            rec = await db.student_attendance.find_one(_tenant_query(scope, {"student_id": st.get("id"), "date": d}))
-            if rec and rec.get("status") == "absent":
+            if day_map.get((check_date - timedelta(days=i)).strftime("%Y-%m-%d")) == "absent":
                 absent_count += 1
             else:
                 break
         if absent_count >= 3:
-            chronic_absent.append({"name": st.get("name", "Unknown"), "days": absent_count})
+            chronic_absent.append({"name": student_name_map[sid], "days": absent_count})
 
-    fee_total_all = total_paid + total_outstanding
-    fee_collection_rate = round(total_paid / fee_total_all * 100, 1) if fee_total_all > 0 else 0.0
+    fee_collection_rate = _fee["collection_rate"]
 
     def fmt_amount(a):
         if a >= 100000:
@@ -183,7 +180,7 @@ async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
         "fee_stats": {
             "paid": fmt_amount(total_paid),
             "overdue": fmt_amount(total_outstanding),
-            "pending": fmt_amount(_fa("pending")),
+            "pending": fmt_amount(_pending_amount),
             "collection_rate": f"{fee_collection_rate}%",
         }
     }, count=total_students)
@@ -200,58 +197,19 @@ async def tool_get_fee_summary(params: dict, user: dict, scope=None) -> dict:
     db = get_db()
     today_dt = date.today()
 
-    # 1. Aggregate stats by status (canonical — same pipeline as REST API)
-    pipeline = [
-        {"$match": _tenant_query(scope, {})},
-        {
-            "$group": {
-                "_id": "$status",
-                "total_amount": {"$sum": "$amount"},
-                "total_paid_amount": {"$sum": {"$ifNull": ["$paid_amount", 0]}},
-                "count": {"$sum": 1},
-                "student_ids": {"$addToSet": "$student_id"},
-            }
-        },
-    ]
-    rows = await db.fee_transactions.aggregate(pipeline).to_list(20)
-    s = {r["_id"]: r for r in rows}
+    # 1. Canonical totals via the shared helper (R7.1/M5).
+    _fee = await compute_fee_totals(db, _tenant_query(scope, {}))
+    total_collected = _fee["collected"]
+    total_outstanding = _fee["outstanding"]
+    collection_rate = _fee["collection_rate"]
 
-    def _a(status: str) -> float:
-        return float(s.get(status, {}).get("total_amount", 0))
-
-    def _p(status: str) -> float:
-        return float(s.get(status, {}).get("total_paid_amount", 0))
-
-    def _sids(status: str) -> set:
-        return {sid for sid in s.get(status, {}).get("student_ids", []) if sid}
-
-    total_collected = _a("paid") + _p("partial")
-    partial_remaining = max(0.0, _a("partial") - _p("partial"))
-    total_outstanding = _a("overdue") + _a("pending") + _a("unpaid") + partial_remaining
-    total_all = total_collected + total_outstanding
-    collection_rate = round(total_collected / total_all * 100, 1) if total_all > 0 else 0.0
-
-    # 2. All outstanding transactions for defaulters list (pending/overdue/unpaid/partial)
+    # 2. All outstanding transactions for defaulters list (overdue/pending/unpaid/partial)
     outstanding_txns = await db.fee_transactions.find(
-        _tenant_query(scope, {"status": {"$in": ["overdue", "pending", "unpaid", "partial"]}})
+        _tenant_query(scope, {"status": {"$in": list(DEFAULTER_STATUSES)}})
     ).to_list(1000)
 
-    # Build per-student outstanding balance
-    student_dues: dict = {}
-    for txn in outstanding_txns:
-        sid = txn.get("student_id")
-        if not sid:
-            continue
-        status = txn.get("status", "")
-        amount = float(txn.get("amount", 0))
-        paid_amt = float(txn.get("paid_amount") or 0) if status == "partial" else 0.0
-        owed = max(0.0, amount - paid_amt)
-        due = txn.get("due_date", "")
-        if sid not in student_dues:
-            student_dues[sid] = {"owed": 0.0, "oldest_due": due}
-        student_dues[sid]["owed"] += owed
-        if due and (not student_dues[sid]["oldest_due"] or due < student_dues[sid]["oldest_due"]):
-            student_dues[sid]["oldest_due"] = due
+    # Build per-student outstanding balance (shared defaulter math).
+    student_dues = student_outstanding_from_txns(outstanding_txns)
 
     # 3. Batch-fetch student + class + guardian info (no N+1 queries)
     if student_dues:
@@ -571,15 +529,10 @@ async def tool_get_smart_alerts(params: dict, user: dict, scope=None) -> dict:
         alerts.append({"type": "warning", "category": "Fees",
                         "text": f"{overdue_30} fee transactions overdue 30–59 days", "priority": "medium"})
 
-    # ── 6. Fee collection rate ───────────────────────────────────────────────
-    fee_stats = await db.fee_transactions.aggregate([
-        {"$match": _tenant_query(scope, {})},
-        {"$group": {"_id": "$status", "total": {"$sum": "$amount"}}},
-    ]).to_list(10)
-    fee_dict = {f["_id"]: f["total"] for f in fee_stats}
-    grand_total = sum(fee_dict.values())
-    if grand_total > 0:
-        coll_rate = fee_dict.get("paid", 0) / grand_total * 100
+    # ── 6. Fee collection rate ── canonical shared helper (R7.1/M5) ──────────
+    _fee = await compute_fee_totals(db, _tenant_query(scope, {}))
+    if (_fee["collected"] + _fee["outstanding"]) > 0:
+        coll_rate = _fee["collection_rate"]
         if coll_rate >= 80:
             alerts.append({"type": "success", "category": "Fees",
                             "text": f"Fee collection at {coll_rate:.1f}% — excellent!", "priority": "info"})

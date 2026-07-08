@@ -825,11 +825,31 @@ def detect_tool_from_keywords(text: str, user: dict) -> Optional[str]:
 
 # ─── Navigate detection ──────────────────────────────────────────────────────
 
+# Polite/filler lead-ins stripped before anchoring a navigation command, so
+# "please open library" still navigates but "why can't we open library on Sundays"
+# does not (the verb no longer leads the sentence).
+_NAV_LEAD_INS = ("please ", "can you ", "could you ", "kindly ", "hey ", "hi ", "ok ", "okay ", "now ", "just ")
+
+
 def detect_navigate(text: str) -> Optional[str]:
-    """Detect if user wants to navigate to a specific tool/page."""
+    """Detect if the user is issuing a navigation COMMAND (verb-led), not merely
+    mentioning a panel name somewhere in a sentence (R7.3/AC3).
+
+    Anchors on the navigation verb: the phrase must lead the message (after
+    stripping polite lead-ins), rather than matching as a substring anywhere.
+    """
     text_lower = text.lower().strip()
+    # Strip a leading politeness/filler token (repeatedly, e.g. "hey can you ...").
+    changed = True
+    while changed:
+        changed = False
+        for lead in _NAV_LEAD_INS:
+            if text_lower.startswith(lead):
+                text_lower = text_lower[len(lead):].lstrip()
+                changed = True
     for phrase, tool_id in NAVIGATE_MAP.items():
-        if phrase in text_lower:
+        # Prefix match anchored to the verb; allow exact or phrase-then-boundary.
+        if text_lower == phrase or text_lower.startswith(phrase + " "):
             return tool_id
     return None
 
@@ -927,6 +947,12 @@ def _extract_result_count(result: dict) -> Optional[int]:
     meta = result.get("meta")
     if isinstance(meta, dict) and isinstance(meta.get("count"), (int, float)):
         return int(meta["count"])
+
+    # R7.3/AC4: count the envelope's own `data` list, never a stray first list
+    # field (e.g. a nested "action_buttons" or a per-row list) which mis-counted.
+    data = result.get("data")
+    if isinstance(data, list):
+        return len(data)
 
     # Legacy fallback (pre-envelope shapes) — retained defensively.
     for key in ("total", "count", "total_alerts", "total_defaulters",
@@ -1849,20 +1875,26 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
 
             yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'running'})}\n\n"
 
-            # Start keepalive task
-            keepalive_stop = asyncio.Event()
-
-            async def _keepalive_sender():
-                while not keepalive_stop.is_set():
-                    try:
-                        await asyncio.wait_for(keepalive_stop.wait(), timeout=KEEPALIVE_INTERVAL)
-                    except asyncio.TimeoutError:
-                        pass  # keepalive will be yielded in the main loop
-                    if keepalive_stop.is_set():
-                        break
-
+            # R7.3/AC5: actually START a keepalive — run the read tool as a task and
+            # emit keepalive frames while it runs, so a slow query can't stall the SSE
+            # stream into an idle-timeout. (Previously the keepalive coroutine was
+            # defined but never scheduled, and yielded nothing.)
             try:
-                raw_tool_result = await tool_def["fn"]({}, user, scope) if _tool_accepts_scope(tool_def) else await tool_def["fn"]({}, user)
+                if _tool_accepts_scope(tool_def):
+                    tool_task = asyncio.create_task(tool_def["fn"]({}, user, scope))
+                else:
+                    tool_task = asyncio.create_task(tool_def["fn"]({}, user))
+                try:
+                    while not tool_task.done():
+                        try:
+                            await asyncio.wait_for(asyncio.shield(tool_task), timeout=KEEPALIVE_INTERVAL)
+                        except asyncio.TimeoutError:
+                            yield keepalive_event()
+                    raw_tool_result = tool_task.result()
+                finally:
+                    if not tool_task.done():
+                        tool_task.cancel()
+
                 await _audit_minor_read(db, user, tool_name, raw_tool_result)
                 result_count = _extract_result_count(raw_tool_result)
                 tool_result = _safe_tool_result_for_chat(raw_tool_result)
@@ -2468,7 +2500,9 @@ async def send_message(conv_id: str, request: Request):
         logger.warning("chat_sse_session_id_missing", extra={"conversation_id": conv_id, "generated_session_id": session_id})
 
     from services.layaastat import emit_event
-    await emit_event("ai_chat_message", distinct_id=user.get("user_id"), payload={"role": user.get("role", "")})
+    # R7.3/AC5: the auth user dict keys id as "id" (not "user_id"), so the old
+    # user.get("user_id") sent distinct_id=None — anonymising every analytics event.
+    await emit_event("ai_chat_message", distinct_id=user["id"], payload={"role": user.get("role", "")})
     return StreamingResponse(
         _generate_chat_sse(conv_id, user_text, user, session_id=session_id, request=request, image_data=image_data),
         media_type="text/event-stream",

@@ -259,7 +259,9 @@ async def test_get_upcoming_events_returns_announcement_events(monkeypatch):
                 "id": "ann-1",
                 "title": "Sports Day",
                 "event_date": tomorrow,
-                "status": "published",
+                # M6: real announcements are stored active + sent_at (never "published").
+                "status": "active",
+                "sent_at": "2026-07-08T09:00:00+00:00",
                 "audience": "all",
                 "schoolId": "aaryans-joya",
                 "branch_id": "branch-a",
