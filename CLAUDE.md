@@ -13,7 +13,7 @@
 > 2. `architecture-ai-layer-reliability.md` — target design (Turn Completion Contract, single tool envelope, prompt↔registry parity gate, fail-closed scoping).
 > 3. `epics-ai-layer-reliability.md` — 11 epics / 51 stories with exact file:line + ACs. Build order R1 → R9 → (gated) R10 → R11, with R11.1 (eval corpus) pulled forward after R3; R1+R2 are the incident fix.
 >
-> **Execution is ONE EPIC PER RUN** per [`_bmad-output/EPIC-EXECUTION-PROTOCOL-AI-RELIABILITY.md`](./_bmad-output/EPIC-EXECUTION-PROTOCOL-AI-RELIABILITY.md) — it carries the 7 standing rules (per-epic quality gate, fixed no-drift handoff prompt, mandatory completed/deferred/review logs, plain-English reporting to Abhishek/Shubham) and is written for ANY executing model (Anthropic or others). The 25 pinned baseline failures stay deferred to the end.
+> **Execution is ONE EPIC PER RUN** per [`_bmad-output/EPIC-EXECUTION-PROTOCOL-AI-RELIABILITY.md`](./_bmad-output/EPIC-EXECUTION-PROTOCOL-AI-RELIABILITY.md) — it carries the 7 standing rules (per-epic quality gate, fixed no-drift handoff prompt, mandatory completed/deferred/review logs, plain-English reporting to Abhimanyu/Shubham) and is written for ANY executing model (Anthropic or others). The 25 pinned baseline failures stay deferred to the end.
 > The previous initiative (AI Layer Hardening, 11 epics) SHIPPED and is merged; its planning docs live in `_bmad-output/outdated/`.
 
 ---

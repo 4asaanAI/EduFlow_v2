@@ -19,9 +19,9 @@ Everything an executing agent needs is **committed to this repository**; nothing
   4. **AI-write scope Phase 1 = Owner + Principal only** (lockdown policy); widening is a config/policy change, never an engine change.
 - Environment note: local secrets (`backend/.env`) are machine-local by design and never required by these docs — tests run against fakes; anything needing real credentials must say so in plain English rather than assume them.
 
-If a future session learns a NEW standing directive from Abhishek or Shubham, it must be added to this section (and committed) — never only to personal/session memory.
+If a future session learns a NEW standing directive from Abhimanyu or Shubham, it must be added to this section (and committed) — never only to personal/session memory.
 
-## The 7 standing rules (set by Abhishek, 2026-07-08 — do not relax)
+## The 7 standing rules (set by Abhimanyu, 2026-07-08 — do not relax)
 
 1. **One run = one full Epic** (never one story, never two epics). A run ends only when the whole epic passes the epic-close gate (STEP 5).
 2. **BMAD workflow steps are followed for every story and every epic** — even though the whole epic is done in one run, each story still individually goes through story-creation and dev-story discipline (context load, AC-driven implementation, self-review). No story is "just coded".
@@ -29,7 +29,7 @@ If a future session learns a NEW standing directive from Abhishek or Shubham, it
 4. **Every run ends by emitting the next-epic handoff prompt in the FIXED format below, verbatim** — only the `{...}` slots change. This is what prevents drift across many fresh sessions and different models.
 5. **Every run ends with the three log docs updated** (see "Logging" below): what was completed, what is pending/deferred, and every bug/finding from the epic-close review. Nothing lives only in the chat transcript.
 6. **Anything new discovered mid-run** (a bug, a gap, a smell, a question) is either **fixed in this run** or **explicitly logged in the deferred log with a reason and a pointer** — never silently skipped.
-7. **All communication with Abhishek or Shubham is in plain English.** Explain what happened and what it means for the school/product, not stack traces or jargon. Example: say "the assistant will now always answer or clearly say it hit a problem — it can no longer go silent" — not "Phase 14 now yields a fallback text_delta before done". Technical detail goes in the log docs, not in messages to people.
+7. **All communication with Abhimanyu or Shubham is in plain English.** Explain what happened and what it means for the school/product, not stack traces or jargon. Example: say "the assistant will now always answer or clearly say it hit a problem — it can no longer go silent" — not "Phase 14 now yields a fallback text_delta before done". Technical detail goes in the log docs, not in messages to people.
 
 ## Epic order (deterministic — do not reorder)
 
@@ -45,11 +45,11 @@ If a future session learns a NEW standing directive from Abhishek or Shubham, it
 | 8 | **R7** | Data Correctness & Performance | R8 |
 | 9 | **R8** | Frontend Chat Resilience | R9 |
 | 10 | **R9** | Guardrails, Config & Adjacent Surfaces | R10 (GATED) |
-| 11 | **R10** | Self-Learning Phase 2 — GATED: needs Abhishek's go-ahead after R1–R9 verified | R11 |
+| 11 | **R10** | Self-Learning Phase 2 — GATED: needs Abhimanyu's go-ahead after R1–R9 verified | R11 |
 | 12 | **R11** | Excellence & Evaluation (remaining stories R11.2–R11.6) | — initiative complete |
 
 *R11.1 runs as its own mini-run right after R3 so every later epic is guarded by the quality-eval gate.
-After **R9**, do NOT auto-start R10 — the end-of-R9 handoff must state in plain English that the remaining two epics need Abhishek's explicit go-ahead, and stop.
+After **R9**, do NOT auto-start R10 — the end-of-R9 handoff must state in plain English that the remaining two epics need Abhimanyu's explicit go-ahead, and stop.
 
 ## Logging (rule 5) — the three docs, updated at the END of every epic
 
@@ -96,7 +96,7 @@ STEP 5 — Epic DONE criteria (all must hold):
 
 STEP 6 — MANDATORY FINAL STEP: emit the next-epic prompt.
 - Copy this template VERBATIM from _bmad-output/EPIC-EXECUTION-PROTOCOL-AI-RELIABILITY.md, fill ONLY {EPIC_ID}/{EPIC_NAME} from the epic-order table, and output it in a code block for the user to paste into a fresh session. Do NOT reword any step.
-- If the finished epic is R9: do NOT emit the R10 prompt; state in plain English that the remaining self-learning and excellence epics need Abhishek's go-ahead, and stop.
+- If the finished epic is R9: do NOT emit the R10 prompt; state in plain English that the remaining self-learning and excellence epics need Abhimanyu's go-ahead, and stop.
 
 STEP 7 — Report to the humans in PLAIN ENGLISH (rule 7): 2–6 sentences on what the assistant/platform now does better for the school, anything they should know or decide, and what comes next. No jargon, no file paths, no stack traces — that detail lives in the log docs.
 ```
