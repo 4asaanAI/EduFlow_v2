@@ -2,7 +2,7 @@
 
 **Model:** Claude Sonnet 4.6 (1M context)
 **Last updated:** 2026-06-07
-**Working agent:** Sonnet handles all implementation from Part 5 onward
+**Working agent:** any capable coding model (Anthropic Sonnet/Opus or other providers) — execution protocols are written model-agnostically
 
 ---
 
@@ -11,9 +11,9 @@
 > A production incident (owner's chat turn got NO reply, no error) triggered a four-pass adversarial audit of the entire AI layer. Planning is complete; implementation has NOT started. If a user asks what to work on / what's next, present these docs in `_bmad-output/planning-artifacts/`:
 > 1. `audit-ai-layer-reliability-2026-07-08.md` — incident root cause + full findings inventory (Critical: silent-empty-turn contract gap, plan-executor false success, memory pre-turn hijack of "delete student…" commands, `import json` NameError in recall_history, Azure key env-var mismatch, accountant→principal prompt leak, corrupted question-paper output).
 > 2. `architecture-ai-layer-reliability.md` — target design (Turn Completion Contract, single tool envelope, prompt↔registry parity gate, fail-closed scoping).
-> 3. `epics-ai-layer-reliability.md` — 9 epics / 40 stories with exact file:line + ACs. Build order R1 → R9; R1+R2 are the incident fix.
+> 3. `epics-ai-layer-reliability.md` — 11 epics / 51 stories with exact file:line + ACs. Build order R1 → R9 → (gated) R10 → R11, with R11.1 (eval corpus) pulled forward after R3; R1+R2 are the incident fix.
 >
-> **Execution is ONE EPIC PER CONTEXT WINDOW** per [`_bmad-output/EPIC-EXECUTION-PROTOCOL.md`](./_bmad-output/EPIC-EXECUTION-PROTOCOL.md) with explicit user greenlight before each epic. The 25 pinned baseline failures stay deferred to the end.
+> **Execution is ONE EPIC PER RUN** per [`_bmad-output/EPIC-EXECUTION-PROTOCOL-AI-RELIABILITY.md`](./_bmad-output/EPIC-EXECUTION-PROTOCOL-AI-RELIABILITY.md) — it carries the 7 standing rules (per-epic quality gate, fixed no-drift handoff prompt, mandatory completed/deferred/review logs, plain-English reporting to Abhishek/Shubham) and is written for ANY executing model (Anthropic or others). The 25 pinned baseline failures stay deferred to the end.
 > The previous initiative (AI Layer Hardening, 11 epics) SHIPPED and is merged; its planning docs live in `_bmad-output/outdated/`.
 
 ---

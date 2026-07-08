@@ -1,7 +1,7 @@
 # Epics & Stories — AI Layer Reliability (Zero Silent Failures)
 
 **Date:** 2026-07-08 · **Source:** `audit-ai-layer-reliability-2026-07-08.md` · **Architecture:** `architecture-ai-layer-reliability.md`
-**Execution:** ONE EPIC PER CONTEXT WINDOW per `_bmad-output/EPIC-EXECUTION-PROTOCOL.md`. Explicit user greenlight before each epic. Baseline `python -m pytest tests/backend/ -x -q` before and after every epic; the 25 pinned pre-existing failures stay deferred to the end.
+**Execution:** ONE EPIC PER RUN per `_bmad-output/EPIC-EXECUTION-PROTOCOL-AI-RELIABILITY.md` (the 7 standing rules, fixed handoff prompt, and per-epic quality gate live THERE — read it first). This doc is written for **any executing agent/model** (Anthropic Sonnet/Opus or others incl. OpenAI): every story carries exact files, line numbers, and acceptance criteria so no model has to guess. Baseline `python -m pytest tests/backend/ -x -q` before and after every epic; the 25 pinned pre-existing failures stay deferred to the end.
 **Build order:** R1 → R2 → R3 → R4 → R5 → R6 → R7 → R8 → R9 → (gated) R10 → R11 — except R11.1 (eval corpus), which should land immediately after R3 so all later epics are quality-guarded. R1+R2 are the incident fix and ship first. R3 (parity gate) is the permanent regression backstop and must ship before any new tools are added. R10 (self-learning Phase 2) is gated on R1–R9 shipping and R6's safety fixes being verified.
 **Total: 11 epics / 51 stories (R10/R11 are gated follow-ons).** Every story lists exact files and acceptance criteria (AC). Audit finding IDs (RC/S/C/H/M/X/F*) refer to the audit doc.
 
