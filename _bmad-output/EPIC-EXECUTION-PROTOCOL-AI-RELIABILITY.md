@@ -17,6 +17,7 @@ Everything an executing agent needs is **committed to this repository**; nothing
   2. **The 25 pinned pre-existing test failures are fixed LAST**, after all epics — never mid-epic.
   3. **DPDP guardrails stay surgical** — never over-block the LLM into refusals/non-compliance.
   4. **AI-write scope Phase 1 = Owner + Principal only** (lockdown policy); widening is a config/policy change, never an engine change.
+  5. **Prompt/tool changes require a green golden-eval run (R11.1, AC3).** Any change to `ai/prompts.py`, `ai/tool_functions*.py`, `ai/context_builder.py`, `ai/llm_client.py`, or the chat tool-loop must (a) keep the always-on structural + judge-logic evals green, and (b) before merge, run the credentialed LLM-judge tier (`pytest -m llm_eval tests/backend/evals`) with scores equal-or-better than the recorded baseline. The corpus lives in `_bmad-output/test-artifacts/eval-corpus/`; see `tests/backend/evals/README.md`.
 - Environment note: local secrets (`backend/.env`) are machine-local by design and never required by these docs — tests run against fakes; anything needing real credentials must say so in plain English rather than assume them.
 
 If a future session learns a NEW standing directive from Abhimanyu or Shubham, it must be added to this section (and committed) — never only to personal/session memory.
