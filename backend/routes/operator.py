@@ -9,6 +9,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
+import secrets
+import string
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -17,8 +20,8 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from database import get_db, get_school_id
-from middleware.auth import require_owner
+from database import get_db, get_raw_db, get_school_id
+from middleware.auth import hash_password, require_owner
 from services.ai_rate_limiter import get_current_count, resolve_limit
 from tenant import scoped_filter
 
@@ -33,6 +36,64 @@ router = APIRouter(prefix="/api/operator", tags=["operator"])
 # matches. If a school needs a sub_category-specific ceiling the schema needs
 # a new (role, sub_category) tuple — out of scope for Part 1.5.
 ALLOWED_ROLES = {"owner", "admin", "teacher", "student"}
+
+# ─── School onboarding helpers ────────────────────────────────────────────────
+
+# Slug for a school_id: lowercase alphanumerics separated by single hyphens.
+# Rejects spaces and uppercase ("My School", "SunriseAcademy").
+_SCHOOL_ID_SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+# The onboarding steps a school must complete before it auto-activates. Each maps
+# to the collection whose first document marks that step done.
+_ONBOARDING_COLLECTIONS = {
+    "first_staff_added": "staff",
+    "first_class_configured": "classes",
+    "first_student_imported": "students",
+    "first_fee_record_created": "fee_structures",
+}
+
+
+def _generate_temp_password(length: int = 12) -> str:
+    """A 12-char temporary password from a URL-safe alphanumeric alphabet."""
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def send_welcome_email(owner_email: str, username: str, temp_password: str) -> None:
+    """Best-effort onboarding notice to a new school owner.
+
+    EduFlow has no SMTP service on `main` (``services/email_service.py`` was
+    intentionally removed — the temporary password is returned directly in the
+    provisioning API response, and owners/admins manage passwords from there).
+    This is therefore a log-only hook kept as a module-level function so a real
+    provider can be wired in later and so tests can monkeypatch it. Never logs
+    the password itself.
+    """
+    logger.info(
+        "school onboarding: welcome notice for %s (temp password delivered via API response)",
+        owner_email,
+    )
+
+
+def send_operator_completion_email(school_name: str) -> None:
+    """Best-effort 'onboarding complete' notice (log-only — see send_welcome_email)."""
+    logger.info("school onboarding complete: %s", school_name)
+
+
+async def _send_operator_slack(school_name: str, school_id: str) -> None:
+    """Best-effort Slack ping when a school finishes onboarding (env-gated, fail-open)."""
+    webhook = os.environ.get("OPERATOR_SLACK_WEBHOOK")
+    if not webhook:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            await client.post(
+                webhook,
+                json={"text": f"🎉 School onboarded & activated: {school_name} ({school_id})"},
+            )
+    except Exception:
+        logger.warning("operator slack notify failed school=%s", school_id, exc_info=True)
+
 
 def _parse_iso(value: Any) -> datetime | None:
     if value is None or value == "":
@@ -160,6 +221,158 @@ async def get_ai_action_counts(
             "queried_by": operator.get("id"),
         },
     }
+
+
+# ─── School onboarding (owner-only SaaS provisioning) ─────────────────────────
+
+@router.post("/schools")
+async def create_school(request: Request, user: dict = Depends(require_owner)):
+    """Provision a new school (owner-only): registry + settings + owner account.
+
+    The generated temporary password is returned in the response — that IS the
+    delivery channel (see send_welcome_email). Welcome-email failure is fail-open:
+    provisioning must not roll back because a best-effort notice raised.
+    """
+    raw_db = get_raw_db()
+    body = await request.json()
+
+    school_name = (body.get("school_name") or "").strip()
+    school_id = (body.get("school_id") or "").strip()
+    owner_email = (body.get("owner_email") or "").strip()
+    plan_tier = (body.get("plan_tier") or "starter").strip()
+
+    if not school_name:
+        raise HTTPException(status_code=400, detail="school_name is required")
+    if not owner_email:
+        raise HTTPException(status_code=400, detail="owner_email is required")
+    if not _SCHOOL_ID_SLUG.match(school_id):
+        raise HTTPException(
+            status_code=400,
+            detail="school_id must be a lowercase slug (alphanumerics and single hyphens, e.g. 'sunrise-academy')",
+        )
+
+    if await raw_db.schools.find_one({"school_id": school_id}):
+        raise HTTPException(status_code=409, detail=f"School '{school_id}' already exists")
+
+    now = datetime.now(timezone.utc)
+    temp_password = _generate_temp_password()
+
+    await raw_db.schools.insert_one({
+        "_id": school_id,
+        "school_id": school_id,
+        "school_name": school_name,
+        "owner_email": owner_email,
+        "plan_tier": plan_tier,
+        "status": "onboarding",
+        "created_at": now,
+        "created_by": user.get("id"),
+    })
+
+    await raw_db.school_settings.insert_one({
+        "_id": f"settings-{school_id}",
+        "schoolId": school_id,
+        "school_name": school_name,
+        "plan_tier": plan_tier,
+        "created_at": now,
+    })
+
+    owner_user_id = f"user-{uuid.uuid4()}"
+    await raw_db.auth_users.insert_one({
+        "_id": owner_user_id,
+        "id": owner_user_id,
+        "schoolId": school_id,
+        "username": owner_email,
+        "role": "owner",
+        "password_hash": hash_password(temp_password),
+        "must_change_password": True,
+        "is_active": True,
+        "created_at": now,
+    })
+
+    # Welcome notice is best-effort — provisioning must not fail if it raises.
+    try:
+        send_welcome_email(owner_email, owner_email, temp_password)
+    except Exception:
+        logger.warning("send_welcome_email failed for school=%s (fail-open)", school_id, exc_info=True)
+
+    return {
+        "success": True,
+        "data": {
+            "school_id": school_id,
+            "owner_username": owner_email,
+            "temporary_password": temp_password,
+        },
+    }
+
+
+@router.get("/schools/{school_id}/onboarding-status")
+async def get_onboarding_status(school_id: str, user: dict = Depends(require_owner)):
+    """Report onboarding step completion; auto-activate once every step is done."""
+    raw_db = get_raw_db()
+    school = await raw_db.schools.find_one({"school_id": school_id})
+    if not school:
+        raise HTTPException(status_code=404, detail=f"School '{school_id}' not found")
+
+    steps: dict[str, bool] = {"profile_created": True}
+    for step_name, collection in _ONBOARDING_COLLECTIONS.items():
+        count = await getattr(raw_db, collection).count_documents({"schoolId": school_id})
+        steps[step_name] = count > 0
+
+    completed = all(steps.values())
+    status = school.get("status", "onboarding")
+
+    if completed and status != "active":
+        now = datetime.now(timezone.utc)
+        status = "active"
+        await raw_db.schools.update_one(
+            {"school_id": school_id},
+            {"$set": {"status": "active", "activated_at": now}},
+        )
+        try:
+            send_operator_completion_email(school.get("school_name") or school_id)
+        except Exception:
+            logger.warning("operator completion email failed school=%s", school_id, exc_info=True)
+        await _send_operator_slack(school.get("school_name") or school_id, school_id)
+
+    return {
+        "success": True,
+        "data": {
+            "school_id": school_id,
+            "completed": completed,
+            "status": status,
+            "steps": steps,
+        },
+    }
+
+
+@router.patch("/schools/{school_id}/deactivate")
+async def deactivate_school(school_id: str, user: dict = Depends(require_owner)):
+    """Deactivate a school (owner-only) and revoke all its users' refresh tokens."""
+    raw_db = get_raw_db()
+    school = await raw_db.schools.find_one({"school_id": school_id})
+    if not school:
+        raise HTTPException(status_code=404, detail=f"School '{school_id}' not found")
+
+    await raw_db.schools.update_one(
+        {"school_id": school_id},
+        {"$set": {"status": "deactivated", "deactivated_at": datetime.now(timezone.utc)}},
+    )
+
+    # Revoke every refresh token for this school's users so deactivation takes
+    # effect immediately (no lingering sessions until access-token expiry).
+    members = await raw_db.auth_users.find({"schoolId": school_id}).to_list(10000)
+    user_ids: set[str] = set()
+    for m in members:
+        for candidate in (m.get("id"), m.get("user_id"), (m.get("user_info") or {}).get("id")):
+            if candidate:
+                user_ids.add(candidate)
+    if user_ids:
+        try:
+            await raw_db.refresh_tokens.delete_many({"user_id": {"$in": list(user_ids)}})
+        except Exception:
+            logger.warning("refresh-token revoke failed on deactivate school=%s", school_id, exc_info=True)
+
+    return {"success": True, "data": {"school_id": school_id, "status": "deactivated"}}
 
 
 # ─── Platform Health helpers ──────────────────────────────────────────────────

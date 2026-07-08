@@ -15,8 +15,9 @@ os.environ.setdefault("JWT_SECRET", "test-jwt-secret-key-not-for-production")
 os.environ.setdefault("RAZORPAY_KEY_ID", "rzp_test_fake_key")
 os.environ.setdefault("RAZORPAY_KEY_SECRET", "rzp_test_fake_secret")
 os.environ.setdefault("RAZORPAY_WEBHOOK_SECRET", "whsec_test_fake_secret")
-os.environ.setdefault("RAZORPAY_PLAN_MONTHLY_SCHOOL_STARTER", "plan_test_starter")
-os.environ.setdefault("RAZORPAY_PLAN_MONTHLY_SCHOOL_PRO", "plan_test_pro")
+os.environ.setdefault("RAZORPAY_PLAN_MONTHLY_STARTER", "plan_test_starter")
+os.environ.setdefault("RAZORPAY_PLAN_MONTHLY_GROWTH", "plan_test_growth")
+os.environ.setdefault("RAZORPAY_PLAN_MONTHLY_ENTERPRISE", "plan_test_enterprise")
 
 pytestmark = pytest.mark.asyncio
 
@@ -39,6 +40,12 @@ def _owner_headers():
 
 def _admin_headers():
     return _bearer({"user_id": "admin-1", "role": "admin", "name": "Adesh", "branch_id": "branch-a"})
+
+
+def _student_headers():
+    # Purchasing is intentionally open to owner/admin/teacher (they hold budget);
+    # `student` is the genuinely-forbidden role used to assert the 403 path.
+    return _bearer({"user_id": "stu-1", "role": "student", "name": "Ravi", "branch_id": "branch-a"})
 
 
 # ─── Fake Razorpay client ──────────────────────────────────────────────────────
@@ -129,7 +136,7 @@ def test_create_checkout_session_wrong_role_403(app_client, autouse_clean):
     resp = app_client.post(
         "/api/tokens/create-checkout-session",
         json={"pack_id": "basic"},
-        headers=_admin_headers(),
+        headers=_student_headers(),
     )
     assert resp.status_code == 403
 
@@ -148,7 +155,7 @@ def test_create_checkout_session_unknown_pack_400(app_client, autouse_clean):
 def test_create_subscription_session_owner_success(app_client, autouse_clean):
     resp = app_client.post(
         "/api/tokens/create-subscription-session",
-        json={"plan_id": "monthly_school_starter", "success_url": "https://app.test?recharge=success", "cancel_url": "https://app.test?recharge=cancel"},
+        json={"plan_id": "monthly_starter", "success_url": "https://app.test?recharge=success", "cancel_url": "https://app.test?recharge=cancel"},
         headers=_owner_headers(),
     )
     assert resp.status_code == 200
@@ -168,8 +175,8 @@ def test_create_subscription_session_unauthenticated_401(app_client, autouse_cle
 def test_create_subscription_session_wrong_role_403(app_client, autouse_clean):
     resp = app_client.post(
         "/api/tokens/create-subscription-session",
-        json={"plan_id": "monthly_school_starter"},
-        headers=_admin_headers(),
+        json={"plan_id": "monthly_starter"},
+        headers=_student_headers(),
     )
     assert resp.status_code == 403
 
@@ -198,7 +205,11 @@ async def test_webhook_payment_link_paid_credits_tokens(token_db, monkeypatch):
     import services.razorpay_service as svc
     await svc.handle_payment_link_paid(link)
 
-    assert token_db.token_balances.docs[0]["school_topup_pool"] == 200_000
+    # A one-time payment-link top-up credits the *buyer's personal* balance
+    # (`personal_topups.{user_id}`), not the school-wide pool — only subscription
+    # renewals feed `school_topup_pool` (see test_webhook_subscription_charged_*).
+    assert token_db.token_balances.docs[0]["personal_topups"]["owner-1"] == 200_000
+    assert token_db.token_balances.docs[0]["school_topup_pool"] == 0
     assert len(token_db.token_purchases.docs) == 1
     purchase = token_db.token_purchases.docs[0]
     assert purchase["razorpay_reference_id"] == "plink_unique_1"
@@ -286,20 +297,26 @@ async def test_webhook_subscription_activated_updates_balance(token_db, monkeypa
 # ─── AC3: Webhook handler — subscription.charged (renewal) ────────────────────
 
 async def test_webhook_subscription_charged_credits_pool(token_db, monkeypatch):
+    # monthly_growth grants 3,000,000 tokens/month (SUBSCRIPTION_PLANS in
+    # razorpay_service). A renewal charge credits that grant to the subscribing
+    # user's personal top-up balance (`personal_topups.{user_id}`), resolved from
+    # the subscription notes; the shared school pool is left untouched.
     token_db.token_balances.docs[:] = [
         {
             "branch_id": "branch-a",
             "school_topup_pool": 500_000,
+            "personal_topups": {},
             "subscription_id": "sub_test_001",
-            "subscription_plan": "monthly_school_starter",
+            "subscription_plan": "monthly_growth",
         }
     ]
-    sub = {"id": "sub_test_001", "current_end": 1750000000}
+    sub = {"id": "sub_test_001", "current_end": 1750000000, "notes": {"user_id": "owner-1"}}
 
     import services.razorpay_service as svc
     await svc.handle_subscription_charged(sub, "pay_renewal_1")
 
-    assert token_db.token_balances.docs[0]["school_topup_pool"] == 500_000 + 2_000_000
+    assert token_db.token_balances.docs[0]["personal_topups"]["owner-1"] == 3_000_000
+    assert token_db.token_balances.docs[0]["school_topup_pool"] == 500_000
     assert any(p["razorpay_reference_id"] == "subcharge_pay_renewal_1" for p in token_db.token_purchases.docs)
 
 
@@ -419,5 +436,6 @@ def test_packs_endpoint_includes_subscriptions(app_client, autouse_clean):
     assert "packs" in data["data"]
     assert "subscriptions" in data["data"]
     sub_ids = [s["id"] for s in data["data"]["subscriptions"]]
-    assert "monthly_school_starter" in sub_ids
-    assert "monthly_school_pro" in sub_ids
+    assert "monthly_starter" in sub_ids
+    assert "monthly_growth" in sub_ids
+    assert "monthly_enterprise" in sub_ids

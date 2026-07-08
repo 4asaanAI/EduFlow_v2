@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
@@ -77,12 +78,16 @@ def test_whatsapp_defaulters_owner_returns_ok():
     _fake_db.fee_transactions.docs = [
         {"student_id": "stu-1", "amount": 5000, "status": "pending", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
     ]
+    # Attendance defaulters are computed for the CURRENT month (endpoint filters
+    # date >= month_start), so seed dates in this month rather than hardcoding a
+    # fixed month that silently ages out of the window.
+    _m = datetime.now(timezone.utc).strftime("%Y-%m")
     _fake_db.student_attendance.docs = [
-        {"student_id": "stu-2", "status": "absent", "date": "2026-05-01", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
-        {"student_id": "stu-2", "status": "absent", "date": "2026-05-02", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
-        {"student_id": "stu-2", "status": "absent", "date": "2026-05-03", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
-        {"student_id": "stu-2", "status": "absent", "date": "2026-05-04", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
-        {"student_id": "stu-2", "status": "present", "date": "2026-05-05", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
+        {"student_id": "stu-2", "status": "absent", "date": f"{_m}-01", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
+        {"student_id": "stu-2", "status": "absent", "date": f"{_m}-02", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
+        {"student_id": "stu-2", "status": "absent", "date": f"{_m}-03", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
+        {"student_id": "stu-2", "status": "absent", "date": f"{_m}-04", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
+        {"student_id": "stu-2", "status": "present", "date": f"{_m}-05", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
     ]
     _fake_db.students.docs = [
         {"id": "stu-1", "name": "Aryan", "class_id": "X", "section": "A", "phone": "+919000000001", "schoolId": "aaryans-joya", "branch_id": "branch-a"},

@@ -66,9 +66,14 @@ async def test_admin_only_announcement_bypasses_approval_gate(client):
     assert resp.json()["data"]["status"] == "active"
 
 
-async def test_teacher_targeted_announcement_lands_in_pending(client):
-    """AC1: target_roles including teacher → status=pending_approval."""
-    token = _login_owner(client)
+async def test_teacher_targeted_announcement_lands_in_pending(client, fake_db):
+    """AC1: a non-owner/principal actor targeting teacher → status=pending_approval.
+
+    Owner/principal are the approvers (EC-9.1) and broadcast directly, so the
+    moderation gate is exercised via a receptionist (a plain, non-exempt admin).
+    """
+    _seed_receptionist(fake_db)
+    token = _login(client, "reception", "rec123")
     resp = client.post(
         "/api/ops/announcements",
         headers={"Authorization": f"Bearer {token}"},
@@ -78,8 +83,9 @@ async def test_teacher_targeted_announcement_lands_in_pending(client):
     assert resp.json()["data"]["status"] == "pending_approval"
 
 
-async def test_student_targeted_also_lands_in_pending(client):
-    token = _login_owner(client)
+async def test_student_targeted_also_lands_in_pending(client, fake_db):
+    _seed_receptionist(fake_db)
+    token = _login(client, "reception", "rec123")
     resp = client.post(
         "/api/ops/announcements",
         headers={"Authorization": f"Bearer {token}"},
@@ -88,8 +94,9 @@ async def test_student_targeted_also_lands_in_pending(client):
     assert resp.json()["data"]["status"] == "pending_approval"
 
 
-async def test_all_audience_requires_approval_and_expands_roles(client):
-    token = _login_owner(client)
+async def test_all_audience_requires_approval_and_expands_roles(client, fake_db):
+    _seed_receptionist(fake_db)
+    token = _login(client, "reception", "rec123")
     resp = client.post(
         "/api/ops/announcements",
         headers={"Authorization": f"Bearer {token}"},
@@ -100,8 +107,9 @@ async def test_all_audience_requires_approval_and_expands_roles(client):
     assert set(data["target_roles"]) == {"teacher", "student", "admin", "parent"}
 
 
-async def test_class_audience_requires_approval_and_targets_students(client):
-    token = _login_owner(client)
+async def test_class_audience_requires_approval_and_targets_students(client, fake_db):
+    _seed_receptionist(fake_db)
+    token = _login(client, "reception", "rec123")
     resp = client.post(
         "/api/ops/announcements",
         headers={"Authorization": f"Bearer {token}"},
@@ -112,9 +120,10 @@ async def test_class_audience_requires_approval_and_targets_students(client):
     assert data["target_roles"] == ["student"]
 
 
-async def test_mixed_admin_teacher_still_pending(client):
-    """Any inclusion of teacher/student forces approval."""
-    token = _login_owner(client)
+async def test_mixed_admin_teacher_still_pending(client, fake_db):
+    """Any inclusion of teacher/student forces approval (non-exempt actor)."""
+    _seed_receptionist(fake_db)
+    token = _login(client, "reception", "rec123")
     resp = client.post(
         "/api/ops/announcements",
         headers={"Authorization": f"Bearer {token}"},

@@ -1182,6 +1182,69 @@ async def create_announcement(request: Request, user: dict = Depends(require_rol
     return {"success": True, "data": announcement}
 
 
+# ─── Complaints (P11: front-desk intake with routing + on-behalf-of capture) ──
+
+# Category → owning department. Receptionists file complaints on a caller's
+# behalf; routing puts each one in front of the right team. Note "fees" →
+# "accountant" (the role), not "accounts" (there is no such role).
+_COMPLAINT_DEPARTMENT = {
+    "fees": "accountant",
+    "academics": "principal",
+    "maintenance": "maintenance",
+    "facility": "maintenance",
+    "it": "ittech",
+    "tech": "ittech",
+    "transport": "transport",
+}
+_DEFAULT_COMPLAINT_DEPARTMENT = "principal"
+
+
+def _mask_phone(phone: str | None) -> str | None:
+    """Mask all but the last 4 digits (DPDP — only the owner sees full numbers)."""
+    if not phone:
+        return phone
+    if len(phone) <= 4:
+        return "*" * len(phone)
+    return "*" * (len(phone) - 4) + phone[-4:]
+
+
+@router.post("/complaints")
+async def create_complaint(request: Request, user: dict = Depends(require_role("admin", "owner"))):
+    """Front-desk complaint intake — routes by category, captures on-behalf-of caller."""
+    db = get_db()
+    body = await request.json()
+    category = (body.get("category") or "general").strip().lower()
+    department = _COMPLAINT_DEPARTMENT.get(category, _DEFAULT_COMPLAINT_DEPARTMENT)
+
+    complaint = add_school_id({
+        "id": str(uuid.uuid4()),
+        "category": category,
+        "description": body.get("description"),
+        "on_behalf_of_name": body.get("on_behalf_of_name"),
+        "on_behalf_of_phone": body.get("on_behalf_of_phone"),
+        "department": department,
+        "status": "open",
+        "created_by": user["id"],
+        "created_by_name": user.get("name", ""),
+        "created_at": datetime.now().isoformat(),
+    })
+    await db.complaints.insert_one({**complaint, "_id": complaint["id"]})
+    return {"success": True, "data": complaint}
+
+
+@router.get("/complaints")
+async def list_complaints(request: Request, user: dict = Depends(require_role("admin", "owner"))):
+    """List complaints; masks caller phone numbers for everyone except the owner (DPDP)."""
+    db = get_db()
+    # branch-scope: intentional — complaints are triaged school-wide by the front desk
+    rows = await db.complaints.find(scoped_filter({}, get_school_id()), {"_id": 0}).to_list(500)
+    if user.get("role") != "owner":
+        for row in rows:
+            if row.get("on_behalf_of_phone"):
+                row["on_behalf_of_phone"] = _mask_phone(row["on_behalf_of_phone"])
+    return {"success": True, "data": rows}
+
+
 @router.get("/announcements/pending")
 async def list_pending_announcements(request: Request, user: dict = Depends(require_owner_or_principal)):
     """Story 7-47: principal-only list of announcements awaiting approval."""

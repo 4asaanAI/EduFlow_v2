@@ -47,7 +47,10 @@ class TestStaffCrud:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["meta"]["per_page"] == 20
+        # per_page honours the requested limit (capped at 500). The frontend
+        # relies on large page sizes (e.g. TimetableBuilder requests limit=100),
+        # so the endpoint must not silently clamp to a small default.
+        assert data["meta"]["per_page"] == 200
         assert data["meta"]["sort"] == "department"
 
     def test_patch_staff_logs_changes_and_updates_role(self, client, auth_headers, fake_db):

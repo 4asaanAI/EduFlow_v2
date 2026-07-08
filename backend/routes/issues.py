@@ -610,10 +610,13 @@ def _extract_detail_from_audit(action: str, changes: dict) -> str | None:
 @router.get("/{issue_type}/{request_id}/history")
 async def get_request_history(issue_type: str, request_id: str, request: Request):
     """Full audit trail for a facility or tech request. Owner/admin only."""
+    # Enforce authentication before any request validation so unauthenticated
+    # callers always get 401 (not a 400 that leaks the endpoint's shape).
+    # Mirrors the get_user()-first ordering used by every other handler here.
+    user = get_user(request)
     if issue_type not in ("facility", "tech"):
         raise HTTPException(400, "issue_type must be 'facility' or 'tech'")
     db = get_db()
-    user = get_user(request)
     bid = user.get("branch_id")
     school_id = get_school_id()
 
