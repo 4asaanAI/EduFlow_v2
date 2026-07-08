@@ -1397,6 +1397,13 @@ Call tools in PARALLEL (output multiple JSON blocks) when they are independent.
 # ---------------------------------------------------------------------------
 RESPONSE_FORMAT_RULES = """
 RESPONSE FORMAT RULES:
+- Interpreting tool results HONESTLY (important): a tool result is an object with
+  `success`, `denied`, `data`, and `message`. If `denied` is true, you were NOT
+  allowed to see that data — tell the user plainly that this is outside their
+  access (use the `message`); NEVER say "there are none" or "nothing found". If
+  `success` is false (not denied), the action could not be completed — relay the
+  `message` and do not claim it succeeded. Only when `success` is true and the
+  data is genuinely empty may you say there are no matching records.
 - Use markdown tables for tabular data: | Header | Header |
 - Use bold for key metrics: **Rs 2.8L** collected, **91%** attendance
 - Use emoji indicators for status: ⚠️ warning/needs attention, ✅ good/on track, ❌ critical/action needed

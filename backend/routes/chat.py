@@ -918,55 +918,53 @@ def _trim_history(messages: list[dict]) -> list[dict]:
 # ─── Extract count from tool result ──────────────────────────────────────────
 
 def _extract_result_count(result: dict) -> Optional[int]:
-    """Try to extract a record count from a tool result dict."""
+    """Record count from a tool result. R4.2: every registry tool now returns the
+    single envelope, so `meta.count` is authoritative. A tiny legacy fallback
+    remains only for any non-envelope dict that might reach here."""
     if not isinstance(result, dict):
         return None
 
-    # Direct count fields
+    meta = result.get("meta")
+    if isinstance(meta, dict) and isinstance(meta.get("count"), (int, float)):
+        return int(meta["count"])
+
+    # Legacy fallback (pre-envelope shapes) — retained defensively.
     for key in ("total", "count", "total_alerts", "total_defaulters",
                 "total_staff", "total_students"):
         if key in result and isinstance(result[key], (int, float)):
             return int(result[key])
-
-    # Check for lists and return their length
     for key, val in result.items():
         if isinstance(val, list) and key not in ("rich_blocks", "action_buttons"):
             return len(val)
-
-    # Check nested summary
-    if "summary" in result and isinstance(result["summary"], dict):
-        for key in ("total_students", "total_staff"):
-            if key in result["summary"]:
-                return int(result["summary"][key])
-
     return None
 
 
 # ─── Extract empty-result message (BUG FIX #6) ───────────────────────────────
 
 def _extract_empty_message(result: dict) -> Optional[str]:
-    """
-    If tool returned an empty data set, extract the context-aware
-    empty message if present.
-    """
+    """The context-aware message for an empty/denied/failed tool result. R4.2:
+    read the single envelope — surface the message when the tool denied, failed,
+    or returned zero records."""
     if not isinstance(result, dict):
         return None
+    message = result.get("message")
+    if not message:
+        return None
 
-    # Check if there's an explicit message with empty data
-    has_empty_data = False
+    # Envelope: a denial/failure or a zero-count read carries a meaningful message.
+    if result.get("denied") or result.get("success") is False:
+        return message
+    meta = result.get("meta")
+    if isinstance(meta, dict) and meta.get("count") == 0:
+        return message
+
+    # Legacy fallback (pre-envelope shapes).
     for key, val in result.items():
         if isinstance(val, list) and len(val) == 0:
-            has_empty_data = True
-            break
-
-    if has_empty_data and "message" in result:
-        return result["message"]
-
-    # Also check total == 0
+            return message
     for count_key in ("total", "count", "total_alerts", "total_defaulters"):
-        if result.get(count_key) == 0 and "message" in result:
-            return result["message"]
-
+        if result.get(count_key) == 0:
+            return message
     return None
 
 

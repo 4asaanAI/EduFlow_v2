@@ -25,7 +25,29 @@ from services.leave_service import (
 )
 import logging, re
 
+from ai.redaction import _mask_phone  # canonical phone mask (first-2 + last-3)
+
 logger = logging.getLogger(__name__)
+
+
+def _env(data, *, message: str = "", count: int | None = None,
+         success: bool = True, denied: bool = False) -> dict:
+    """R4.2/M1: the one tool-result envelope, shared by every v1 tool.
+
+    `data` holds the payload (a list for list-primary tools so `recall_history`
+    and the extractors can read `data`/`meta.count` uniformly; a dict for the
+    composite dashboards). `denied=True` marks an authorization refusal (never an
+    empty success); `success=False` with `denied=False` marks an operation failure.
+    """
+    if count is None:
+        count = len(data) if isinstance(data, (list, dict)) else (1 if data else 0)
+    return {
+        "success": success,
+        "data": data,
+        "meta": {"count": count},
+        "message": message,
+        "denied": denied,
+    }
 
 
 def _scope_branch_id(scope):
@@ -65,18 +87,18 @@ async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
     # Student attendance today
     att_today = await db.student_attendance.find(_tenant_query(scope, {"date": today})).to_list(1000)
     total_marked = len(att_today)
-    present = sum(1 for a in att_today if a["status"] == "present")
-    absent = sum(1 for a in att_today if a["status"] == "absent")
+    present = sum(1 for a in att_today if a.get("status") == "present")
+    absent = sum(1 for a in att_today if a.get("status") == "absent")
     att_rate = round(present / total_marked * 100, 1) if total_marked > 0 else 0
 
     # Staff attendance today
     staff_att = await db.staff_attendance.find(_tenant_query(scope, {"date": today})).to_list(100)
-    staff_absent = [a for a in staff_att if a["status"] == "absent"]
+    staff_absent = [a for a in staff_att if a.get("status") == "absent"]
     staff_absent_names = []
     for sa in staff_absent:
-        st = await db.staff.find_one(_tenant_query(scope, {"id": sa["staff_id"]}))
+        st = await db.staff.find_one(_tenant_query(scope, {"id": sa.get("staff_id")}))
         if st:
-            staff_absent_names.append(st["name"])
+            staff_absent_names.append(st.get("name", "Unknown"))
 
     # Fee stats — canonical formula (same as _fee_summary_payload + tool_get_fee_summary)
     fee_pipeline = [
@@ -107,13 +129,13 @@ async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
     pending_leaves = await db.leave_requests.find(_tenant_query(scope, {"status": "pending"})).to_list(20)
     leave_details = []
     for lr in pending_leaves:
-        staff = await db.staff.find_one(_tenant_query(scope, {"id": lr["staff_id"]}))
+        staff = await db.staff.find_one(_tenant_query(scope, {"id": lr.get("staff_id")}))
         leave_details.append({
-            "id": lr["id"],
-            "staff_name": staff["name"] if staff else "Unknown",
-            "leave_type": lr["leave_type"],
-            "start_date": lr["start_date"],
-            "end_date": lr["end_date"],
+            "id": lr.get("id"),
+            "staff_name": staff.get("name", "Unknown") if staff else "Unknown",
+            "leave_type": lr.get("leave_type", ""),
+            "start_date": lr.get("start_date", ""),
+            "end_date": lr.get("end_date", ""),
             "reason": lr.get("reason", ""),
         })
 
@@ -125,13 +147,13 @@ async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
         check_date = date.today()
         for i in range(5):
             d = (check_date - timedelta(days=i)).strftime("%Y-%m-%d")
-            rec = await db.student_attendance.find_one(_tenant_query(scope, {"student_id": st["id"], "date": d}))
-            if rec and rec["status"] == "absent":
+            rec = await db.student_attendance.find_one(_tenant_query(scope, {"student_id": st.get("id"), "date": d}))
+            if rec and rec.get("status") == "absent":
                 absent_count += 1
             else:
                 break
         if absent_count >= 3:
-            chronic_absent.append({"name": st["name"], "days": absent_count})
+            chronic_absent.append({"name": st.get("name", "Unknown"), "days": absent_count})
 
     fee_total_all = total_paid + total_outstanding
     fee_collection_rate = round(total_paid / fee_total_all * 100, 1) if fee_total_all > 0 else 0.0
@@ -143,7 +165,7 @@ async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
             return f"₹{a/1000:.0f}K"
         return f"₹{a:,.0f}"
 
-    return {
+    return _env({
         "summary": {
             "total_students": total_students,
             "total_staff": total_staff,
@@ -164,7 +186,7 @@ async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
             "pending": fmt_amount(_fa("pending")),
             "collection_rate": f"{fee_collection_rate}%",
         }
-    }
+    }, count=total_students)
 
 
 async def tool_get_fee_summary(params: dict, user: dict, scope=None) -> dict:
@@ -277,9 +299,11 @@ async def tool_get_fee_summary(params: dict, user: dict, scope=None) -> dict:
                 days_overdue = max(0, (today_dt - due_dt).days)
             except Exception:
                 pass
-        phone = guardian_phone_map.get(sid) or student.get("phone", "")
+        # R4.4/DPDP: mask guardian phones AT SOURCE (defense in depth, matching
+        # get_transport_status / redaction.py) — never emit raw numbers from a tool.
+        phone = _mask_phone(guardian_phone_map.get(sid) or student.get("phone", ""))
         defaulters.append({
-            "student_name": student["name"],
+            "student_name": student.get("name", "Unknown"),
             "class": class_name,
             "amount_overdue": dues["owed"],
             "amount_overdue_fmt": f"₹{dues['owed']:,.0f}",
@@ -298,7 +322,7 @@ async def tool_get_fee_summary(params: dict, user: dict, scope=None) -> dict:
             return f"₹{a/100000:.2f}L"
         return f"₹{a:,.0f}"
 
-    return {
+    return _env({
         "stats": {
             "total_collected": fmt(total_collected),
             "total_outstanding": fmt(total_outstanding),
@@ -309,7 +333,7 @@ async def tool_get_fee_summary(params: dict, user: dict, scope=None) -> dict:
         },
         "defaulters": defaulters,
         "total_defaulters": len(defaulters),
-    }
+    }, count=len(defaulters))
 
 
 async def tool_get_staff_status(params: dict, user: dict, scope=None) -> dict:
@@ -325,26 +349,27 @@ async def tool_get_staff_status(params: dict, user: dict, scope=None) -> dict:
     absent_staff = []
 
     for s in all_staff:
-        att = att_by_id.get(s["id"])
-        status = att["status"] if att else "not_marked"
+        att = att_by_id.get(s.get("id"))
+        status = att.get("status", "not_marked") if att else "not_marked"
 
         # tenancy: users collection is global identity; staff row was already
         # scoped above, so the user_id lookup is safe.
         user_rec = await db.users.find_one({"id": s["user_id"]}) if s.get("user_id") else None
-        role_label = user_rec["role"].capitalize() if user_rec else s["staff_type"].capitalize()
+        staff_type = s.get("staff_type", "") or ""
+        role_label = (user_rec.get("role", staff_type) if user_rec else staff_type).capitalize()
 
         entry = {
-            "id": s["id"],
-            "name": s["name"],
+            "id": s.get("id"),
+            "name": s.get("name", "Unknown"),
             "role": role_label,
-            "staff_type": s["staff_type"],
+            "staff_type": staff_type,
             "status": status,
         }
         staff_data.append(entry)
         if status == "absent":
-            absent_staff.append(s["name"])
+            absent_staff.append(s.get("name", "Unknown"))
         elif status == "late":
-            late_staff.append(s["name"])
+            late_staff.append(s.get("name", "Unknown"))
 
     # Late arrivals in last 5 days
     late_patterns = []
@@ -352,28 +377,28 @@ async def tool_get_staff_status(params: dict, user: dict, scope=None) -> dict:
         late_count = 0
         for i in range(5):
             d = (date.today() - timedelta(days=i)).strftime("%Y-%m-%d")
-            rec = await db.staff_attendance.find_one(_tenant_query(scope, {"staff_id": s["id"], "date": d, "status": "late"}))
+            rec = await db.staff_attendance.find_one(_tenant_query(scope, {"staff_id": s.get("id"), "date": d, "status": "late"}))
             if rec:
                 late_count += 1
         if late_count >= 3:
-            late_patterns.append({"name": s["name"], "late_days": late_count})
+            late_patterns.append({"name": s.get("name", "Unknown"), "late_days": late_count})
 
     # Pending leaves
     pending_leaves = await db.leave_requests.find(_tenant_query(scope, {"status": "pending"})).to_list(20)
     leave_details = []
     for lr in pending_leaves:
-        st = await db.staff.find_one(_tenant_query(scope, {"id": lr["staff_id"]}))
+        st = await db.staff.find_one(_tenant_query(scope, {"id": lr.get("staff_id")}))
         leave_details.append({
-            "id": lr["id"],
-            "staff_name": st["name"] if st else "Unknown",
-            "staff_type": st["staff_type"] if st else "",
-            "leave_type": lr["leave_type"].capitalize(),
-            "start_date": lr["start_date"],
-            "end_date": lr["end_date"],
+            "id": lr.get("id"),
+            "staff_name": st.get("name", "Unknown") if st else "Unknown",
+            "staff_type": st.get("staff_type", "") if st else "",
+            "leave_type": (lr.get("leave_type", "") or "").capitalize(),
+            "start_date": lr.get("start_date", ""),
+            "end_date": lr.get("end_date", ""),
             "reason": lr.get("reason", ""),
         })
 
-    return {
+    return _env({
         "total_staff": len(all_staff),
         "present_today": sum(1 for s in staff_data if s["status"] == "present"),
         "absent_today": len(absent_staff),
@@ -382,7 +407,7 @@ async def tool_get_staff_status(params: dict, user: dict, scope=None) -> dict:
         "late_pattern_staff": late_patterns,
         "staff_list": staff_data,
         "pending_leaves": leave_details,
-    }
+    }, count=len(all_staff))
 
 
 async def tool_get_attendance_overview(params: dict, user: dict, scope=None) -> dict:
@@ -407,13 +432,15 @@ async def tool_get_attendance_overview(params: dict, user: dict, scope=None) -> 
     # Daily stats
     daily = {}
     for r in records:
-        d = r["date"]
+        d = r.get("date")
+        if d is None:
+            continue
         if d not in daily:
             daily[d] = {"present": 0, "absent": 0, "total": 0}
         daily[d]["total"] += 1
-        if r["status"] == "present":
+        if r.get("status") == "present":
             daily[d]["present"] += 1
-        elif r["status"] == "absent":
+        elif r.get("status") == "absent":
             daily[d]["absent"] += 1
 
     daily_list = sorted(
@@ -431,22 +458,22 @@ async def tool_get_attendance_overview(params: dict, user: dict, scope=None) -> 
     for cls in classes:
         cls_records = await db.student_attendance.find(_tenant_query(scope, {"date": today, "class_id": cls["id"]})).to_list(100)
         if cls_records:
-            p = sum(1 for r in cls_records if r["status"] == "present")
+            p = sum(1 for r in cls_records if r.get("status") == "present")
             t = len(cls_records)
             class_stats.append({
-                "class": f"{cls['name']}-{cls['section']}",
+                "class": f"{cls.get('name', '')}-{cls.get('section', '')}",
                 "present": p,
                 "total": t,
                 "rate": f"{round(p/t*100,1)}%",
             })
 
-    return {
+    return _env({
         "period": f"Last {days} days",
         "avg_attendance_rate": f"{avg_rate}%",
         "daily_trend": daily_list[-7:],  # last 7 days for conciseness
         "class_stats_today": class_stats,
         "total_records": len(records),
-    }
+    }, count=len(records))
 
 
 async def tool_get_smart_alerts(params: dict, user: dict, scope=None) -> dict:
@@ -462,7 +489,9 @@ async def tool_get_smart_alerts(params: dict, user: dict, scope=None) -> dict:
     ).to_list(20000)
     att_by_student: dict[str, dict[str, str]] = {}
     for rec in raw_att:
-        sid = rec["student_id"]
+        sid = rec.get("student_id")
+        if sid is None:
+            continue
         if sid not in att_by_student:
             att_by_student[sid] = {}
         att_by_student[sid][rec["date"]] = rec.get("status", "")
@@ -619,13 +648,13 @@ async def tool_get_smart_alerts(params: dict, user: dict, scope=None) -> dict:
     _pri_order = {"high": 0, "medium": 1, "low": 2, "info": 3}
     alerts.sort(key=lambda a: (_type_order.get(a["type"], 4), _pri_order.get(a["priority"], 4)))
 
-    return {
+    return _env({
         "alerts": alerts,
         "total_alerts": len(alerts),
         "critical_count": sum(1 for a in alerts if a["type"] == "critical"),
         "warning_count": sum(1 for a in alerts if a["type"] == "warning"),
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
-    }
+    }, count=len(alerts))
 
 
 async def tool_search_students(params: dict, user: dict, scope=None) -> dict:
@@ -649,17 +678,18 @@ async def tool_search_students(params: dict, user: dict, scope=None) -> dict:
     result = []
     for s in students:
         cls = await db.classes.find_one(_tenant_query(scope, {"id": s.get("class_id")}))
-        class_label = f"{cls['name']}-{cls['section']}" if cls else "N/A"
+        class_label = f"{cls.get('name', '')}-{cls.get('section', '')}" if cls else "N/A"
         result.append({
-            "id": s["id"],
-            "name": s["name"],
+            "id": s.get("id"),
+            "name": s.get("name", "Unknown"),
             "class": class_label,
             "admission_number": s.get("admission_number", "N/A"),
             "roll_number": s.get("roll_number", "N/A"),
             "status": s.get("status", "active"),
         })
 
-    return {"students": result, "total": len(result), "query": query_str}
+    msg = "" if result else f"No students matched '{query_str}'." if query_str else "No students found."
+    return _env(result, message=msg, count=len(result))
 
 
 async def tool_get_fee_transactions(params: dict, user: dict, scope=None) -> dict:
@@ -676,19 +706,19 @@ async def tool_get_fee_transactions(params: dict, user: dict, scope=None) -> dic
     txns = await db.fee_transactions.find(_tenant_query(scope, query)).to_list(50)
     result = []
     for t in txns:
-        student = await db.students.find_one(_tenant_query(scope, {"id": t["student_id"]}))
+        student = await db.students.find_one(_tenant_query(scope, {"id": t.get("student_id")}))
         result.append({
-            "id": t["id"],
-            "student_name": student["name"] if student else "Unknown",
-            "fee_type": t["fee_type"],
-            "amount": f"₹{t['amount']:,.0f}",
+            "id": t.get("id"),
+            "student_name": student.get("name", "Unknown") if student else "Unknown",
+            "fee_type": t.get("fee_type", "N/A"),
+            "amount": f"₹{float(t.get('amount', 0)):,.0f}",
             "due_date": t.get("due_date", "N/A"),
             "paid_date": t.get("paid_date", "N/A"),
-            "status": t["status"],
+            "status": t.get("status", "N/A"),
             "payment_mode": t.get("payment_mode", "N/A"),
         })
 
-    return {"transactions": result, "total": len(result)}
+    return _env(result, count=len(result))
 
 
 async def tool_approve_leave(params: dict, user: dict, scope=None) -> dict:
@@ -698,7 +728,7 @@ async def tool_approve_leave(params: dict, user: dict, scope=None) -> dict:
     # a rejection reason, and stamps a UTC approved_at — identical to the panel.
     leave_id = params.get("leave_id")
     if not leave_id:
-        return {"error": "leave_id is required"}
+        return _env(None, success=False, message="leave_id is required", count=0)
     action = params.get("action", "approve")
     reason = params.get("reason", "")
     new_status = "approved" if action == "approve" else "rejected"
@@ -712,20 +742,20 @@ async def tool_approve_leave(params: dict, user: dict, scope=None) -> dict:
     try:
         result = await decide_leave(db, actor_ctx, service_params)
     except LeaveNotFoundError:
-        return {"success": False, "error": "Leave request not found"}
+        return _env(None, success=False, message="Leave request not found", count=0)
     except (LeaveValidationError, LeaveConflictError) as e:
-        return {"success": False, "error": str(e)}
+        return _env(None, success=False, message=str(e), count=0)
 
-    leave = result["leave"]
+    leave = result.get("leave") if isinstance(result, dict) else None
     staff = None
     if leave and leave.get("staff_id"):
         staff = await db.staff.find_one(_tenant_query(scope, {"id": leave["staff_id"]}))
-    return {
-        "success": True,
-        "message": f"Leave request {new_status} for {staff['name'] if staff else 'staff member'}",
-        "leave_id": leave_id,
-        "new_status": new_status,
-    }
+    staff_name = staff.get("name", "staff member") if staff else "staff member"
+    return _env(
+        {"leave_id": leave_id, "new_status": new_status},
+        message=f"Leave request {new_status} for {staff_name}",
+        count=1,
+    )
 
 
 async def tool_get_enquiries(params: dict, user: dict, scope=None) -> dict:
@@ -740,26 +770,28 @@ async def tool_get_enquiries(params: dict, user: dict, scope=None) -> dict:
     status_counts = {}
     all_enquiries = await db.enquiries.find(_tenant_query(scope, {})).to_list(200)
     for e in all_enquiries:
-        s = e["status"]
+        s = e.get("status", "unknown")
         status_counts[s] = status_counts.get(s, 0) + 1
 
-    return {
-        "enquiries": [
-            {
-                "id": e["id"],
-                "student_name": e["student_name"],
-                "parent_name": e["parent_name"],
-                "phone": e["phone"][:5] + "XXXXX",
-                "class_applying": e.get("class_applying", "N/A"),
-                "status": e["status"],
-                "source": e.get("source", "N/A"),
-                "created_at": e["created_at"][:10],
-            }
-            for e in enquiries
-        ],
-        "funnel": status_counts,
-        "total": len(all_enquiries),
-    }
+    data = [
+        {
+            "id": e.get("id"),
+            "student_name": e.get("student_name", "Unknown"),
+            "parent_name": e.get("parent_name", "Unknown"),
+            # R4.4/AC2: mask to the canonical last-3 rule (was first-5 exposed).
+            "phone": _mask_phone(e.get("phone", "")),
+            "class_applying": e.get("class_applying", "N/A"),
+            "status": e.get("status", "unknown"),
+            "source": e.get("source", "N/A"),
+            "created_at": (e.get("created_at") or "")[:10],
+        }
+        for e in enquiries
+    ]
+    return _env(
+        data,
+        count=len(all_enquiries),
+        message="" if data else "No admission enquiries found.",
+    ) | {"funnel": status_counts}
 
 
 async def tool_get_my_attendance(params: dict, user: dict, scope=None) -> dict:
@@ -767,7 +799,7 @@ async def tool_get_my_attendance(params: dict, user: dict, scope=None) -> dict:
     # Tenancy: locate the student row in the requester's tenant.
     student = await db.students.find_one(_tenant_query(scope, {"user_id": user["id"]}))
     if not student:
-        return {"error": "Student record not found"}
+        return _env(None, success=False, message="Student record not found", count=0)
 
     end_date = date.today()
     start_date = end_date - timedelta(days=30)
@@ -776,45 +808,45 @@ async def tool_get_my_attendance(params: dict, user: dict, scope=None) -> dict:
         "date": {"$gte": start_date.strftime("%Y-%m-%d"), "$lte": end_date.strftime("%Y-%m-%d")},
     })).to_list(100)
 
-    present = sum(1 for r in records if r["status"] == "present")
+    present = sum(1 for r in records if r.get("status") == "present")
     total = len(records)
     rate = round(present / total * 100, 1) if total > 0 else 0
 
-    return {
-        "student_name": student["name"],
+    return _env({
+        "student_name": student.get("name", "Student"),
         "period": "Last 30 days",
         "total_days": total,
         "present": present,
         "absent": total - present,
         "attendance_rate": f"{rate}%",
-        "records": [{"date": r["date"], "status": r["status"]} for r in records[-7:]],
-    }
+        "records": [{"date": r.get("date"), "status": r.get("status")} for r in records[-7:]],
+    }, count=total)
 
 
 async def tool_get_my_fees(params: dict, user: dict, scope=None) -> dict:
     db = get_db()
     student = await db.students.find_one(_tenant_query(scope, {"user_id": user["id"]}))
     if not student:
-        return {"error": "Student record not found"}
+        return _env(None, success=False, message="Student record not found", count=0)
 
     txns = await db.fee_transactions.find(_tenant_query(scope, {"student_id": student["id"]})).to_list(50)
-    return {
-        "student_name": student["name"],
+    return _env({
+        "student_name": student.get("name", "Student"),
         "transactions": [
-            {"fee_type": t["fee_type"], "amount": f"₹{t['amount']:,.0f}",
-             "status": t["status"], "due_date": t.get("due_date", "N/A"),
+            {"fee_type": t.get("fee_type", "N/A"), "amount": f"₹{float(t.get('amount', 0)):,.0f}",
+             "status": t.get("status", "N/A"), "due_date": t.get("due_date", "N/A"),
              "paid_date": t.get("paid_date", "N/A")} for t in txns
         ],
-        "total_paid": f"₹{sum(t['amount'] for t in txns if t['status'] == 'paid'):,.0f}",
-        "total_pending": f"₹{sum(t['amount'] for t in txns if t['status'] in ['pending', 'overdue']):,.0f}",
-    }
+        "total_paid": f"₹{sum(float(t.get('amount', 0)) for t in txns if t.get('status') == 'paid'):,.0f}",
+        "total_pending": f"₹{sum(float(t.get('amount', 0)) for t in txns if t.get('status') in ['pending', 'overdue']):,.0f}",
+    }, count=len(txns))
 
 
 async def tool_get_my_results(params: dict, user: dict, scope=None) -> dict:
     db = get_db()
     student = await db.students.find_one(_tenant_query(scope, {"user_id": user["id"]}))
     if not student:
-        return {"error": "Student record not found"}
+        return _env(None, success=False, message="Student record not found", count=0)
 
     results = await db.exam_results.find(_tenant_query(scope, {"student_id": student["id"]})).to_list(50)
     enriched = []
@@ -822,13 +854,16 @@ async def tool_get_my_results(params: dict, user: dict, scope=None) -> dict:
         subj = await db.subjects.find_one(_tenant_query(scope, {"id": r.get("subject_id")}))
         exam = await db.exams.find_one(_tenant_query(scope, {"id": r.get("exam_id")}))
         enriched.append({
-            "exam": exam["name"] if exam else "N/A",
-            "subject": subj["name"] if subj else "N/A",
+            "exam": exam.get("name", "N/A") if exam else "N/A",
+            "subject": subj.get("name", "N/A") if subj else "N/A",
             "marks": f"{r.get('marks_obtained', 0)}/{r.get('max_marks', 100)}",
             "grade": r.get("grade", "N/A"),
         })
 
-    return {"student_name": student["name"], "results": enriched, "total_exams": len(enriched)}
+    return _env(
+        {"student_name": student.get("name", "Student"), "results": enriched, "total_exams": len(enriched)},
+        count=len(enriched),
+    )
 
 
 async def tool_get_financial_report(params: dict, user: dict, scope=None) -> dict:
@@ -873,15 +908,15 @@ async def tool_get_financial_report(params: dict, user: dict, scope=None) -> dic
             return f"₹{a/100000:.2f}L"
         return f"₹{a:,.0f}"
 
-    return {
+    return _env({
         "total_expected": fmt(total_expected),
         "total_collected": fmt(total_collected),
         "collection_rate": f"{round(total_collected/total_expected*100,1)}%" if total_expected else "N/A",
         "by_fee_type": [
-            {"fee_type": f["_id"], "expected": fmt(f["total"]), "collected": fmt(paid_by_type.get(f["_id"], 0))}
+            {"fee_type": f.get("_id"), "expected": fmt(f.get("total", 0)), "collected": fmt(paid_by_type.get(f.get("_id"), 0))}
             for f in fee_by_type
         ],
-    }
+    }, count=len(fee_by_type))
 
 
 async def tool_get_daily_brief(params: dict, user: dict, scope=None) -> dict:
@@ -891,9 +926,10 @@ async def tool_get_daily_brief(params: dict, user: dict, scope=None) -> dict:
     day_name = date.today().strftime("%A, %d %B %Y")
 
     # Get core data in parallel-style sequence — propagate scope to each sub-tool.
-    pulse = await tool_get_school_pulse({}, user, scope)
-    alerts = await tool_get_smart_alerts({}, user, scope)
-    fee = await tool_get_fee_summary({}, user, scope)
+    # R4.2: sub-tools now return the envelope, so read their payloads from `data`.
+    pulse = (await tool_get_school_pulse({}, user, scope)).get("data", {})
+    alerts = (await tool_get_smart_alerts({}, user, scope)).get("data", {})
+    fee = (await tool_get_fee_summary({}, user, scope)).get("data", {})
 
     # Upcoming events/announcements
     upcoming = await db.announcements.find(
@@ -901,7 +937,7 @@ async def tool_get_daily_brief(params: dict, user: dict, scope=None) -> dict:
         {"_id": 0, "title": 1, "created_at": 1},
     ).sort("created_at", -1).to_list(3)
 
-    return {
+    return _env({
         "date": day_name,
         "greeting": f"Good morning! Here's your daily brief for {day_name}.",
         "attendance": {
@@ -922,8 +958,8 @@ async def tool_get_daily_brief(params: dict, user: dict, scope=None) -> dict:
         },
         "alerts": alerts.get("alerts", [])[:5],
         "chronic_absent_students": pulse.get("chronic_absent_students", []),
-        "announcements": [a["title"] for a in upcoming],
-    }
+        "announcements": [a.get("title") for a in upcoming],
+    }, count=1)
 
 
 # Tool registry

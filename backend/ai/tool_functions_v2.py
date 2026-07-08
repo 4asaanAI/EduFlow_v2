@@ -6,9 +6,11 @@ from __future__ import annotations
 
 from datetime import datetime, date, timedelta
 from database import get_db
+import json
 import time, re
 import uuid
 import logging
+from ai.redaction import _mask_phone  # canonical phone mask (first-2 + last-3)
 from tenant import add_school_id, get_school_id, scoped_filter, scoped_query
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
@@ -256,6 +258,7 @@ def _empty_result(message: str, query_time_ms: float = 0) -> dict:
         "data": [],
         "meta": {"count": 0, "query_time_ms": round(query_time_ms, 2)},
         "message": message,
+        "denied": False,
     }
 
 
@@ -265,6 +268,34 @@ def _ok(data: list, query_time_ms: float, message: str = "") -> dict:
         "data": data,
         "meta": {"count": len(data), "query_time_ms": round(query_time_ms, 2)},
         "message": message,
+        "denied": False,
+    }
+
+
+def _denied(message: str, query_time_ms: float = 0) -> dict:
+    """R4.3/M2: an authorization/permission failure — NOT an empty result.
+
+    `denied: True` + `success: False` so the LLM relays "you don't have access"
+    honestly instead of answering "there are none"."""
+    return {
+        "success": False,
+        "data": [],
+        "meta": {"count": 0, "query_time_ms": round(query_time_ms, 2)},
+        "message": message,
+        "denied": True,
+    }
+
+
+def _failed(message: str, query_time_ms: float = 0) -> dict:
+    """R4.3/L1: an operation that could not complete (bad input, not-found on a
+    write, downstream error) — `success: False` but NOT a denial. Distinct from an
+    empty read so a failed write is never reported as a benign empty success."""
+    return {
+        "success": False,
+        "data": [],
+        "meta": {"count": 0, "query_time_ms": round(query_time_ms, 2)},
+        "message": message,
+        "denied": False,
     }
 
 
@@ -310,7 +341,7 @@ async def tool_get_student_database(params: dict, user: dict, scope: dict = None
                 if cls["id"] in _scope_class_ids(scope):
                     query["class_id"] = cls["id"]
                 else:
-                    return _empty_result(
+                    return _denied(
                         "You do not have access to this class.",
                         (time.time() - t0) * 1000,
                     )
@@ -440,7 +471,10 @@ async def tool_get_leave_requests(params: dict, user: dict, scope: dict = None) 
     for lr in leaves:
         staff = await db.staff.find_one(scoped_query({"id": lr.get("staff_id")}, branch_id=bid))
         results.append({
-            "staff_name": staff["name"] if staff else "Unknown",
+            # L3/R4.4: include the leave id — approve_leave needs it to act.
+            "id": lr.get("id"),
+            "leave_id": lr.get("id"),
+            "staff_name": staff.get("name", "Unknown") if staff else "Unknown",
             "staff_type": staff.get("staff_type", "") if staff else "",
             "leave_type": lr.get("leave_type", ""),
             "start_date": lr.get("start_date", ""),
@@ -599,10 +633,11 @@ async def tool_get_fee_defaulters(params: dict, user: dict, scope: dict = None) 
             "amount_due_fmt": f"\u20b9{dues['amount']:,.0f}",
             "days_overdue": days_overdue,
             "student_id": sid,
-            "father_phone": student.get("father_phone", ""),
-            "mother_phone": student.get("mother_phone", ""),
-            "guardian_phone": student.get("guardian_phone", ""),
-            "phone": student.get("phone", ""),
+            # R4.4/AC3/DPDP: mask guardian phones AT SOURCE (like get_transport_status).
+            "father_phone": _mask_phone(student.get("father_phone", "")),
+            "mother_phone": _mask_phone(student.get("mother_phone", "")),
+            "guardian_phone": _mask_phone(student.get("guardian_phone", "")),
+            "phone": _mask_phone(student.get("phone", "")),
         })
 
     results.sort(key=lambda x: x["amount_due"], reverse=True)
@@ -641,7 +676,7 @@ async def tool_get_student_profile(params: dict, user: dict, scope: dict = None)
     # Scope check: self_only means student can only view their own profile
     if _scope_student_id(scope) and _scope_student_id(scope) != student["id"]:
         elapsed = (time.time() - t0) * 1000
-        return _empty_result("You do not have permission to view this student's profile.", elapsed)
+        return _denied("You do not have permission to view this student's profile.", elapsed)
 
     # Scope check: teacher can only see students in their classes
     if _scope_class_ids(scope) is not None:
@@ -802,7 +837,7 @@ async def tool_get_today_class_attendance(params: dict, user: dict, scope: dict 
     # Scope check
     if _scope_class_ids(scope) is not None and class_id not in _scope_class_ids(scope):
         elapsed = (time.time() - t0) * 1000
-        return _empty_result("You do not have access to this class.", elapsed)
+        return _denied("You do not have access to this class.", elapsed)
 
     cls = await db.classes.find_one({"id": class_id})
     class_label = f"{cls['name']}-{cls['section']}" if cls else "Unknown"
@@ -952,12 +987,7 @@ async def tool_award_house_points(params: dict, user: dict, scope: dict = None) 
     # Validate write permission
     if scope and not _scope_bool(scope, "can_write", True):
         elapsed = (time.time() - t0) * 1000
-        return {
-            "success": False,
-            "data": [],
-            "meta": {"count": 0, "query_time_ms": round(elapsed, 2)},
-            "message": "You do not have permission to award house points.",
-        }
+        return _denied("You do not have permission to award house points.", elapsed)
 
     student_name = params.get("student_name", "")
     points = params.get("points", 0)
@@ -965,23 +995,19 @@ async def tool_award_house_points(params: dict, user: dict, scope: dict = None) 
 
     if not student_name or not points:
         elapsed = (time.time() - t0) * 1000
-        return {
-            "success": False,
-            "data": [],
-            "meta": {"count": 0, "query_time_ms": round(elapsed, 2)},
-            "message": "student_name and points are required parameters.",
-        }
+        return _failed("student_name and points are required parameters.", elapsed)
 
     # Find the student
     student = await db.students.find_one({"name": {"$regex": re.escape(student_name), "$options": "i"}, "is_active": True})
     if not student:
+        # R4.3/L1: a not-found on a WRITE is a failure, not a benign empty read.
         elapsed = (time.time() - t0) * 1000
-        return _empty_result(f"Student '{student_name}' not found.", elapsed)
+        return _failed(f"Student '{student_name}' not found.", elapsed)
 
     house_id = student.get("house_id")
     if not house_id:
         elapsed = (time.time() - t0) * 1000
-        return _empty_result(f"Student '{student['name']}' is not assigned to any house.", elapsed)
+        return _failed(f"Student '{student['name']}' is not assigned to any house.", elapsed)
 
     # Story B.3: route through the shared house-points service so the AI award updates
     # the real standings (houses.points + house_points_log + audit) exactly like the
@@ -992,9 +1018,9 @@ async def tool_award_house_points(params: dict, user: dict, scope: dict = None) 
         result = await award_points(db, actor_ctx, service_params)
     except HouseNotFoundError:
         elapsed = (time.time() - t0) * 1000
-        return _empty_result("House not found.", elapsed)
+        return _failed("House not found.", elapsed)
     except HousePointsValidationError as e:
-        return {"success": False, "message": str(e)}
+        return _failed(str(e))
 
     house_name = result["house_name"] or "Unknown"
     elapsed = (time.time() - t0) * 1000
@@ -1436,7 +1462,7 @@ async def tool_decide_approval_request(params: dict, user: dict, scope: dict = N
     except ApprovalNotFoundError:
         return _empty_result("Approval request not found.")
     except ApprovalAuthorizationError:
-        return {"success": False, "message": "You are not authorized to decide this approval request."}
+        return _denied("You are not authorized to decide this approval request.")
     except ApprovalValidationError as e:
         return {"success": False, "message": str(e)}
 
@@ -1516,7 +1542,7 @@ async def tool_update_student(params: dict, user: dict, scope: dict = None) -> d
     # Thin adapter over services.student_service.update_student — the SAME write path
     # as PATCH /api/students/{id} (Story J.1 / AD7).
     if not params.get("student_id"):
-        return {"success": False, "message": "student_id is required."}
+        return _failed("student_id is required.")
     db = get_db()
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
     try:
@@ -1555,7 +1581,7 @@ async def tool_manage_student_guardians(params: dict, user: dict, scope: dict = 
     # Thin adapter over services.student_service.upsert_guardians — the SAME write path
     # as PUT /api/students/{id}/guardians (Story J.1 / AD7). Replaces all guardians.
     if not params.get("student_id"):
-        return {"success": False, "message": "student_id is required."}
+        return _failed("student_id is required.")
     guardians = params.get("guardians")
     if not isinstance(guardians, list):
         return {"success": False, "message": "guardians must be a list of guardian objects."}
@@ -1944,7 +1970,7 @@ async def tool_query_maintenance_requests(params: dict, user: dict, scope: dict 
 
 async def tool_query_student_record(params: dict, user: dict, scope: dict = None) -> dict:
     if not params.get("student_id"):
-        return {"success": False, "message": "student_id is required."}
+        return _failed("student_id is required.")
     db = get_db()
     bid = _branch_id(user, scope)
     student = await db.students.find_one(scoped_query({"id": params["student_id"]}, branch_id=bid), {"_id": 0})
@@ -2318,12 +2344,7 @@ async def tool_get_announcements(params: dict, user: dict, scope: dict = None) -
     elapsed = (time.time() - t0) * 1000
     if not data:
         return _empty_result(f"No announcements in the last {days} days.", elapsed)
-    return {
-        "success": True,
-        "data": data,
-        "meta": {"count": len(data), "query_time_ms": round(elapsed, 2)},
-        "message": f"{len(data)} announcement(s) in the last {days} days.",
-    }
+    return _ok(data, elapsed, f"{len(data)} announcement(s) in the last {days} days.")
 
 
 # =========================================================================
@@ -2428,13 +2449,12 @@ async def tool_get_transport_status(params: dict, user: dict, scope: dict = None
         routes = [r for r in routes if r.get("id") == route_filter]
 
     def _fmt(r: dict) -> dict:
-        phone = r.get("driver_phone", "")
-        masked = (phone[:-3] + "XXX") if len(phone) >= 4 else phone
         return {
             "id": r.get("id"),
             "route_name": r.get("route_name"),
             "driver_name": r.get("driver_name"),
-            "driver_phone": masked,
+            # R4.4: canonical mask (first-2 + last-3), matching redaction.py.
+            "driver_phone": _mask_phone(r.get("driver_phone", "")),
             "vehicle_number": r.get("vehicle_number"),
             "stops_count": len(r.get("stops", [])),
             "fare": r.get("fare"),
@@ -2452,6 +2472,7 @@ async def tool_get_transport_status(params: dict, user: dict, scope: dict = None
         },
         "meta": {"count": len(active), "query_time_ms": round(elapsed, 2)},
         "message": "",
+        "denied": False,
     }
 
 
@@ -2576,8 +2597,9 @@ async def tool_get_expenses(params: dict, user: dict, scope: dict = None) -> dic
     return {
         "success": True,
         "data": {"expenses": expenses, "total_amount": round(total, 2), "count": len(expenses)},
-        "meta": {"query_time_ms": round(elapsed, 2)},
+        "meta": {"count": len(expenses), "query_time_ms": round(elapsed, 2)},
         "message": f"{len(expenses)} expense(s) totalling ₹{total:,.2f}",
+        "denied": False,
     }
 
 
@@ -2792,12 +2814,12 @@ async def tool_get_fee_sync_status(params: dict, user: dict, scope: dict = None)
     elapsed = (time.time() - t0) * 1000
     if not jobs:
         return {"success": True, "data": {"jobs": []}, "meta": {"count": 0, "query_time_ms": round(elapsed, 2)},
-                "message": "No fee sync has been run yet."}
+                "message": "No fee sync has been run yet.", "denied": False}
     latest = jobs[0]
     msg = (f"Latest sync: {latest.get('status')} — {latest.get('synced_count', 0)} synced, "
            f"{latest.get('conflict_count', 0)} conflict(s).")
     return {"success": True, "data": {"jobs": jobs, "latest": latest},
-            "meta": {"count": len(jobs), "query_time_ms": round(elapsed, 2)}, "message": msg}
+            "meta": {"count": len(jobs), "query_time_ms": round(elapsed, 2)}, "message": msg, "denied": False}
 
 
 

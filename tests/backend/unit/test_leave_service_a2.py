@@ -107,4 +107,5 @@ async def test_ai_double_approve_now_guarded(fake_db, monkeypatch):
     monkeypatch.setattr(tool_functions, "get_db", lambda: fake_db)
     out = await tool_functions.tool_approve_leave({"leave_id": "lr-8", "action": "approve"}, PRINCIPAL, None)
     assert out["success"] is False
-    assert "already" in out["error"].lower()
+    # R4.2: v1 tools now use the single envelope — the reason is in `message`.
+    assert "already" in out["message"].lower()
