@@ -25,7 +25,7 @@ from ai.redaction import redact_text_for_memory
 from services.actor_context import ActorContext
 from services.audit_service import write_audit
 from services.memory.retrieval import score_memories
-from services.memory.vector import get_memory_vector_store
+from services.memory.vector import get_memory_vector_store, vector_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -213,9 +213,18 @@ async def recall(db, ctx: ActorContext, query: str, *, k: int = RECALL_K) -> Lis
     by_id = {m["id"]: m for m in all_mems}
     vstore = get_memory_vector_store()
     if not vstore.healthy:
-        # R6.4 (XM10): make degraded (keyword-only) recall VISIBLE rather than silent
-        # so operators can see when the semantic index is unavailable.
-        logger.debug("memory recall running keyword-only (vector index unavailable)")
+        # R6.4 (XM10): make degraded (keyword-only) recall VISIBLE rather than
+        # silent so operators can see when the semantic index is unavailable.
+        # Only WARN when vectors are meant to be on but the index is down (a real
+        # degradation); when the path is intentionally disabled (the default),
+        # keyword-only is expected — log at debug so we don't spam every turn.
+        if vector_enabled():
+            logger.warning(
+                "memory recall degraded to keyword-only (MEMORY_VECTOR_ENABLED "
+                "is on but the vector index is unavailable)"
+            )
+        else:
+            logger.debug("memory recall keyword-only (vector path disabled by config)")
     if vstore.healthy:
         # Pull vector hits and ensure they're in the candidate pool (they already are,
         # since list_memories returns all). Vector mainly helps when lexical overlap is

@@ -125,8 +125,15 @@ async def extract_memory_items(user_text: str, assistant_text: str, *, session_i
 # self / a note" phrasing, saves a memory.
 _INLINE_RE = re.compile(r"^(?:remember|memorize|memorise)\b[:\-]?\s+(?:that\s+)?(.+)$", re.IGNORECASE)
 _INLINE_NOTE_RE = re.compile(
-    r"^(?:note to self|make a note|take a note|save a note|jot down|note down)"
-    r"(?:\s+(?:that|to|about|of))?[:\-]?\s+(.+)$",
+    r"^(?:"
+    # Explicit note-noun / to-self phrasings — self-evidently a memory save.
+    r"(?:note to self|make a note|take a note|save a note)(?:\s+(?:that|to|about|of))?"
+    # Bare "jot down"/"note down" are ambiguous with operational commands
+    # ("note down attendance for class 5", "jot down the marks"): only treat
+    # them as a memory save when a memory connector (that/about) follows, so
+    # domain imperatives fall through to the tool/LLM pipeline (X3).
+    r"|(?:jot down|note down)\s+(?:that|about)"
+    r")[:\-]?\s+(.+)$",
     re.IGNORECASE,
 )
 # R6.1 (X3): inline FORGET requires an explicit memory-note cue. Bare "delete …"

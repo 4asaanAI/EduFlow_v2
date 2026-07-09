@@ -536,15 +536,22 @@ async def build_school_context(role: str, user_id: str) -> dict:
     if role == "owner":
         return _with_school(await _build_owner_context(db, today))
 
-    # Admin sub-categories
+    # Admin sub-categories.
+    # Normalize + alias-map the raw sub_category the SAME way scope_resolver
+    # does (._resolve_admin_scope), so a legacy/mis-cased value like
+    # "Accountant", "accounts", "transport", or "front_desk" gets its proper
+    # operational context instead of falling through to the minimal context
+    # (which would under-inform a user the resolver has already granted tool
+    # access to).
     if role == "admin":
-        if sub_category == "principal":
+        effective = str(sub_category or "").strip().lower()
+        if effective == "principal":
             return _with_school(await _build_principal_context(db, today))
-        if sub_category == "accountant":
+        if effective in ("accountant", "accounts"):
             return _with_school(await _build_accounts_context(db, today))
-        if sub_category == "transport_head":
+        if effective in ("transport_head", "transport"):
             return _with_school(await _build_transport_head_context(db, today))
-        if sub_category == "receptionist":
+        if effective in ("receptionist", "front_desk"):
             return _with_school(await _build_receptionist_context(db, today))
         # R5 (fail-closed, DEFERRED row 18): admin sub_categories WITHOUT an
         # explicit operational context (it_tech, maintenance, management,

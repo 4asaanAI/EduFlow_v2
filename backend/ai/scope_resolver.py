@@ -854,7 +854,10 @@ async def _resolve_teacher_scope(
             ct_ids = [i for i in (user_id, staff.get("id")) if i]
             kg_classes = await db.classes.find(_branch_scoped(
                 {
-                    "name": {"$regex": "^(KG|Nursery|LKG|UKG)", "$options": "i"},
+                    # \b-anchored (consistent with the coordinator-range regex,
+                    # AC4) so "KG"/"Nursery" match "KG-A"/"Nursery A" but never
+                    # "KGeography"/"Nurseryland".
+                    "name": {"$regex": r"^(KG|Nursery|LKG|UKG)\b", "$options": "i"},
                     "class_teacher_id": {"$in": ct_ids},
                 },
                 branch_id=branch_id,
@@ -929,6 +932,13 @@ async def _parse_custom_range(
             return []
         low, high = int(parts[0].strip()), int(parts[1].strip())
         prefixes = [f"Class {n}" for n in range(low, high + 1)]
+        # Fail-closed: a reversed/degenerate range ("5-1", "9-6") yields NO
+        # prefixes → the alternation would collapse to "^()\b", which matches
+        # every class name and would widen a coordinator to the whole branch
+        # (the exact X6/L6 leak class). Deny by default instead.
+        if not prefixes:
+            logger.warning("_parse_custom_range: empty/reversed range %r -> no classes", range_str)
+            return []
         # R5.3 (X6 AC1/AC4): anchored + escaped so "Class 1" never widens into
         # "Class 10/11/12"; branch-scoped so only own-branch classes resolve.
         regex_pattern = "^(" + "|".join(re.escape(p) for p in prefixes) + r")\b"

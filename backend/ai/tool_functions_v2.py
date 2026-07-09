@@ -250,6 +250,29 @@ def _branch_id(user: dict | None, scope: dict | None = None) -> str | None:
     return None
 
 
+def _normalize_iso_date(value) -> str | None:
+    """Coerce a user/LLM-supplied date to ISO ``YYYY-MM-DD`` or return None.
+
+    Calendar comparisons in the AI layer are lexicographic string compares that
+    only behave correctly on zero-padded ISO dates. A non-ISO or unparseable
+    value becomes ``None`` (dateless) rather than a corrupt sort key.
+    """
+    if not value:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    # Already ISO (accept a full ISO datetime by taking the date part).
+    head = s[:10]
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%m/%d/%Y"):
+        try:
+            src = head if fmt == "%Y-%m-%d" else s
+            return datetime.strptime(src, fmt).date().isoformat()
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
 def _empty_result(message: str, query_time_ms: float = 0) -> dict:
     return {
         "success": True,
@@ -665,7 +688,10 @@ async def tool_get_fee_defaulters(params: dict, user: dict, scope: dict = None) 
         if dues["oldest_due"]:
             try:
                 due_dt = datetime.strptime(dues["oldest_due"], "%Y-%m-%d").date()
-                days_overdue = (date.today() - due_dt).days
+                # AC3 widened "defaulter" to include PENDING invoices, which may
+                # carry a future due_date; clamp at 0 so we never report a
+                # nonsensical "overdue -20 days".
+                days_overdue = max(0, (date.today() - due_dt).days)
             except (ValueError, TypeError):
                 days_overdue = 0
 
@@ -2218,7 +2244,13 @@ async def tool_get_exam_results_summary(params: dict, user: dict, scope: dict = 
         scorable = [r for r in exam_results
                     if r.get("marks_obtained") is not None and _row_max(r) not in (None, 0)]
         passed = sum(1 for r in scorable if r["marks_obtained"] >= _row_max(r) * 0.33)
-        pass_rate = f"{round(passed / len(scorable) * 100, 1)}%" if scorable else "N/A"
+        # Report a pass-rate ONLY when every graded student is scorable — otherwise
+        # a rate computed over a subset would read as if it covered all `students`
+        # (shown alongside), which is misleading. Partial coverage → "N/A".
+        pass_rate = (
+            f"{round(passed / len(scorable) * 100, 1)}%"
+            if scorable and len(scorable) == len(marks) else "N/A"
+        )
 
         avg_display = f"{avg}/{exam_max}" if exam_max is not None else f"{avg}"
 
@@ -2396,9 +2428,11 @@ async def tool_create_announcement(params: dict, user: dict, scope: dict = None)
         "is_draft": False,
         "status": initial_status,
         # M6: persist an optional event_date so calendar-style announcements surface
-        # in get_upcoming_events. When omitted, the announcement is dateless (news,
-        # not a scheduled event) and events falls back to sent_at.
-        "event_date": (params.get("event_date") or "").strip() or None,
+        # in get_upcoming_events. Normalize to ISO (YYYY-MM-DD) — the events window
+        # does a lexicographic compare, so a non-ISO date (e.g. "15/07/2026") would
+        # be silently dropped/mis-ordered. Unparseable → dateless (falls back to
+        # sent_at), never a corrupt sort key.
+        "event_date": _normalize_iso_date(params.get("event_date")),
         # sent_at is intentionally omitted for pending_approval announcements;
         # it will be set when the principal approves via /announcements/{id}/approve.
         "sent_at": None if requires_approval else now,
