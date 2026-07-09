@@ -226,13 +226,26 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
       const fileContext = `[File attached: ${attachedFile.filename}]\n\n${attachedFile.extractedText}`;
       finalText = trimmed ? `${trimmed}\n\n---\n${fileContext}` : fileContext;
     }
-    onSend(finalText, attachedFile?.imageData || null);
+    // Snapshot the raw input so we can put it back if the turn can't even start.
+    const snapshotText = text;
+    const snapshotFile = attachedFile;
+    const result = onSend(finalText, attachedFile?.imageData || null);
+    // Optimistic clear.
     setText('');
     setAttachedFile(null);
     setUploadError('');
     setShowSlash(false);
     setShowAt(false);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
+    // FH2 (R8.1 AC2): if handleSend reports it couldn't start (e.g. the
+    // conversation failed to create), restore what the user typed so it isn't
+    // silently lost. A normal send resolves undefined and nothing is restored.
+    Promise.resolve(result).then((ok) => {
+      if (ok === false) {
+        setText(snapshotText);
+        setAttachedFile(snapshotFile);
+      }
+    }).catch(() => {});
   };
 
   const inputBg = isDark ? '#252525' : '#ffffff';

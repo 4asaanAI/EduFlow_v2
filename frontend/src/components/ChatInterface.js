@@ -18,7 +18,9 @@ function getHeaders() {
 }
 
 async function executeAction(convId, action, params, label, user) {
-  const res = await fetch(`${API}/chat/conversations/${convId}/action`, {
+  // FL (R8.4): route through apiFetch so a 401 gets one refresh + retry instead
+  // of a raw fetch that would fail the action silently on an expired token.
+  const res = await apiFetch(`${API}/chat/conversations/${convId}/action`, {
     method: 'POST', headers: getHeaders(user),
     body: JSON.stringify({ action, params, label }),
   });
@@ -194,6 +196,17 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   const justCreatedRef = useRef(false);
   const pendingFinalMsgRef = useRef(null);
   const processedMessageIds = useRef(new Set());
+  // FM4 (R8.2 AC2): the live stream message is mirrored in a ref so terminal
+  // handlers can read the accumulated content and run side effects OUTSIDE a
+  // setState updater (StrictMode double-invokes updaters).
+  const streamMsgRef = useRef(null);
+  // FH3 (R8.4 AC1): one-shot automatic reconnect budget for a transient drop.
+  const autoRetryRef = useRef(0);
+
+  // R8.1/R8.3: visible, recoverable failure surfaces (never silent).
+  const [sendError, setSendError] = useState('');       // FH2 — couldn't start a turn
+  const [loadError, setLoadError] = useState(false);     // FM3 — history load failed
+  const [rechargeError, setRechargeError] = useState(''); // FH5 — checkout failed
 
   // New state variables for thinking, confirm action
   const [thinkingSteps, setThinkingSteps] = useState([]);
@@ -232,20 +245,48 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     }
   }, [activeConvId]);
 
+  // FH4 (R8.2 AC1): wipe ALL turn-scoped UI state when the conversation changes,
+  // so a stale confirm card / followup / error / half-streamed message from the
+  // previous thread can't leak into (or post an action against) the new one.
+  const resetTurnState = () => {
+    setConfirmAction(null);
+    setFollowup(null);
+    setAiUnavailable(false);
+    setAiUnavailableMessage('');
+    setThinkingSteps([]);
+    setThinkingCollapsed(false);
+    setThinkingStartTime(null);
+    setCurrentStreamMsg(null);
+    setStreaming(false);
+    setSendError('');
+    setLoadError(false);
+    setRechargeError('');
+    streamMsgRef.current = null;
+    pendingFinalMsgRef.current = null;
+    autoRetryRef.current = 0;
+    thinkingStartTimeRef.current = null;
+    thinkingCollapsedRef.current = false;
+    thinkingStepsRef.current = [];
+  };
+
   useEffect(() => {
     if (convId) {
       if (justCreatedRef.current) {
+        // The conversation was just created by an in-flight send — do NOT reset
+        // or reload, that would abort the stream we just started.
         justCreatedRef.current = false;
         return;
       }
       processedMessageIds.current.clear();
       setMessages([]);
+      resetTurnState();
       loadMessages(convId);
     } else {
       setMessages([]);
       processedMessageIds.current.clear();
+      resetTurnState();
     }
-  }, [convId, currentUser.id]);
+  }, [convId, currentUser.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!streaming && pendingFinalMsgRef.current) {
@@ -298,6 +339,9 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRecharge = async (packId) => {
+    // FH5 (R8.3 AC2): a failed checkout must NOT be swallowed — the user is stuck
+    // with a disabled input otherwise. Surface an error + let them retry.
+    setRechargeError('');
     try {
       const res = await apiFetch(`${API}/tokens/create-checkout-session`, {
         method: 'POST',
@@ -311,41 +355,69 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
       const data = await res.json();
       if (data.success && data.data && data.data.checkout_url) {
         window.location.href = data.data.checkout_url;
+        return;
       }
+      setRechargeError('Could not start checkout. Please try again.');
     } catch {
-      // Payment initiation error — silently ignore (token bar stays visible)
+      setRechargeError('Could not start checkout — please check your connection and try again.');
     }
   };
 
   const loadMessages = async (id) => {
+    // FM3 (R8.1 AC3): a failed history load must be distinguishable from an empty
+    // conversation — show a retry affordance instead of a silent blank screen.
+    setLoadError(false);
     try {
       const res = await getMessages(id, currentUser);
-      if (res.success) {
+      if (res && res.success) {
         const msgs = res.data || [];
         msgs.forEach(m => processedMessageIds.current.add(m.id));
         setMessages(msgs);
+      } else {
+        setLoadError(true);
       }
-    } catch {}
+    } catch {
+      setLoadError(true);
+    }
   };
 
-  const handleSend = async (text, imageData = null) => {
+  const handleSend = async (text, imageData = null, opts = {}) => {
     if (!text.trim() || streaming) return;
+    const { skipUserBubble = false, forceCid = null } = opts;
 
-    let cid = convId;
+    // A fresh user turn resets the one-shot auto-reconnect budget; a retry
+    // (manual or automatic) preserves it so we can't loop forever.
+    if (!skipUserBubble) autoRetryRef.current = 0;
+    setSendError('');
+
+    let cid = forceCid || convId;
 
     if (!cid) {
-      const res = await createConversation(currentUser);
-      if (!res.success) return;
+      // FH2 (R8.1 AC2): a failed createConversation must be VISIBLE and must not
+      // eat the user's text. Return false so InputBar restores what was typed.
+      let res;
+      try {
+        res = await createConversation(currentUser);
+      } catch {
+        setSendError("Couldn't start a new conversation — check your connection and try again.");
+        return false;
+      }
+      if (!res || !res.success || !res.data?.id) {
+        setSendError("Couldn't start a new conversation — please try again.");
+        return false;
+      }
       cid = res.data.id;
       justCreatedRef.current = true;
       setConvId(cid);
       onConvCreated(cid);
     }
 
-    const tempId = `tmp-${Date.now()}`;
-    const userMsg = { id: tempId, role: 'user', content: text, created_at: new Date().toISOString() };
-    processedMessageIds.current.add(tempId);
-    setMessages(prev => [...prev, userMsg]);
+    if (!skipUserBubble) {
+      const tempId = `tmp-${Date.now()}`;
+      const userMsg = { id: tempId, role: 'user', content: text, created_at: new Date().toISOString() };
+      processedMessageIds.current.add(tempId);
+      setMessages(prev => [...prev, userMsg]);
+    }
 
     // Reset thinking state before starting SSE
     setThinkingSteps([]);
@@ -359,8 +431,17 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     thinkingCollapsedRef.current = false;
     thinkingStepsRef.current = [];
 
+    const initialStream = { id: 'streaming', role: 'assistant', content: '', toolCall: null, richBlocks: [], actionButtons: [] };
+    streamMsgRef.current = initialStream;
     setStreaming(true);
-    setCurrentStreamMsg({ id: 'streaming', role: 'assistant', content: '', toolCall: null, richBlocks: [], actionButtons: [] });
+    setCurrentStreamMsg(initialStream);
+
+    // FM4 (R8.2 AC2): mutate the stream message via a ref + one setState — never
+    // with side effects inside a state updater (StrictMode double-invokes them).
+    const setStream = (next) => {
+      streamMsgRef.current = next;
+      setCurrentStreamMsg(next);
+    };
 
     let streamErrored = false;
     let producedOutput = false;   // R1.2 AC2: did this turn render anything at all?
@@ -414,14 +495,16 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
             setThinkingSteps(prev => prev.map(s => ({ ...s, status: s.status === 'active' ? 'done' : s.status })));
           }
           // Existing text_delta handling
-          setCurrentStreamMsg(prev => {
-            if (!prev) return prev;
-            return { ...prev, content: (prev.content || '') + event.delta };
-          });
+          {
+            const prev = streamMsgRef.current;
+            if (prev) setStream({ ...prev, content: (prev.content || '') + event.delta });
+          }
         } else if (event.type === 'tool_call') {
-          setCurrentStreamMsg(prev => prev ? ({ ...prev, toolCall: { tool: event.tool, status: event.status } }) : prev);
+          const prev = streamMsgRef.current;
+          if (prev) setStream({ ...prev, toolCall: { tool: event.tool, status: event.status } });
         } else if (event.type === 'rich_blocks') {
-          setCurrentStreamMsg(prev => prev ? ({ ...prev, richBlocks: event.blocks || [], actionButtons: event.action_buttons || [] }) : prev);
+          const prev = streamMsgRef.current;
+          if (prev) setStream({ ...prev, richBlocks: event.blocks || [], actionButtons: event.action_buttons || [] });
         } else if (event.type === 'confirm_action') {
           setConfirmAction(parsed);
         } else if (event.type === 'disambiguation') {
@@ -442,17 +525,34 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           setTokenExhausted(true);
           setTokenCanRecharge(!!event.can_recharge);
           fetchTokenUsage();
+          // FM1 (R8.3 AC1): render a visible assistant bubble so the question
+          // never just disappears when the budget runs out before any text.
+          {
+            const notice = event.can_recharge
+              ? "You've reached your AI usage limit for now. Recharge from the bar below to keep chatting."
+              : "You've reached your AI usage limit. Please ask your administrator to increase it.";
+            const prev = streamMsgRef.current;
+            setStream(null);
+            setMessages(cur => {
+              const out = [...cur];
+              if (prev && prev.content) out.push({ ...prev, id: `ai-${Date.now()}`, role: 'assistant' });
+              out.push({ id: `tok-${Date.now() + 1}`, role: 'assistant', content: notice, created_at: new Date().toISOString() });
+              return out;
+            });
+            setStreaming(false);
+          }
         } else if (event.type === 'ai_unavailable') {
           // Defensive: ensure message is always a plain string (never an object)
           const rawMsg = event.message;
           const message = typeof rawMsg === 'string' ? rawMsg : (rawMsg ? String(rawMsg) : 'AI is temporarily unavailable. Core school tools remain available.');
           setAiUnavailable(true);
           setAiUnavailableMessage(message);
-          setCurrentStreamMsg(prev =>
-            prev
+          {
+            const prev = streamMsgRef.current;
+            setStream(prev
               ? { ...prev, content: message }
-              : { id: `ai-unavail-${Date.now()}`, role: 'assistant', content: message, created_at: new Date().toISOString() }
-          );
+              : { id: `ai-unavail-${Date.now()}`, role: 'assistant', content: message, created_at: new Date().toISOString() });
+          }
         } else if (event.type === 'keepalive') {
           // Ignore - just prevents SSE timeout
         } else if (event.type === 'error') {
@@ -465,56 +565,58 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           const errText = (typeof event.message === 'string' && event.message)
             ? event.message
             : 'The assistant hit a problem. Please try again.';
-          setCurrentStreamMsg(prev => {
+          {
+            const prev = streamMsgRef.current;
+            setStream(null);
             const interruptedId = `err-${Date.now()}`;
             if (prev?.content) {
               pendingFinalMsgRef.current = {
-                ...prev,
-                id: interruptedId,
-                role: 'assistant',
-                content: `${prev.content}\n\n${errText}`,
-                interrupted: true,
+                ...prev, id: interruptedId, role: 'assistant',
+                content: `${prev.content}\n\n${errText}`, interrupted: true,
               };
             } else {
               setMessages(current => [...current, {
-                id: interruptedId,
-                role: 'assistant',
-                content: errText,
-                interrupted: true,
-                created_at: new Date().toISOString(),
+                id: interruptedId, role: 'assistant', content: errText,
+                interrupted: true, created_at: new Date().toISOString(),
               }]);
             }
-            return null;
-          });
+          }
           setStreaming(false);
         } else if (event.type === 'stream_error') {
           streamErrored = true;
           setThinkingSteps([]);
           setThinkingCollapsed(false);
-          setCurrentStreamMsg(prev => {
+          // FH3 (R8.4 AC1): one automatic reconnect for a transient network drop,
+          // then fall back to the manual Retry button.
+          const transient = event.retryable && event.reason === 'stream_network_error';
+          if (transient && autoRetryRef.current < 1) {
+            autoRetryRef.current += 1;
+            setStream(null);
+            setMessages(prev => prev.filter(m => !(m.role === 'assistant' && m.interrupted)));
+            setStreaming(false);
+            setTimeout(() => { handleSend(text, imageData, { skipUserBubble: true, forceCid: cid }); }, 600);
+            return;
+          }
+          {
+            const prev = streamMsgRef.current;
+            setStream(null);
             const interruptedId = `err-${Date.now()}`;
-            const suffix = event.retryCount ? `Connection interrupted - retrying (${event.retryCount}/3)...` : 'Connection lost. Tap retry.';
+            const suffix = 'Connection lost. Tap retry.';
             if (prev?.content) {
               pendingFinalMsgRef.current = {
-                ...prev,
-                id: interruptedId,
-                role: 'assistant',
-                content: `${prev.content}\n\n${suffix}`,
-                interrupted: true,
+                ...prev, id: interruptedId, role: 'assistant',
+                content: `${prev.content}\n\n${suffix}`, interrupted: true,
               };
             } else {
               setMessages(current => [...current, {
-                id: interruptedId,
-                role: 'assistant',
-                content: suffix,
-                interrupted: true,
-                created_at: new Date().toISOString(),
+                id: interruptedId, role: 'assistant', content: suffix,
+                interrupted: true, created_at: new Date().toISOString(),
               }]);
             }
-            return null;
-          });
+          }
           setStreaming(false);
         } else if (event.type === 'done') {
+          autoRetryRef.current = 0;  // a completed turn clears the reconnect budget
           const messageId = event.message_id || `ai-${Date.now()}`;
           if (event.tokens_used) {
             // Update token usage locally for immediate bar feedback
@@ -530,17 +632,18 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           }
           // Finalize thinking - mark all steps as done
           setThinkingSteps(prev => prev.map(s => ({ ...s, status: 'done' })));
-          setCurrentStreamMsg(prev => {
-            // R1.2 AC3: finalize the streamed body whenever there is one — do NOT
-            // gate on processedMessageIds (an id-only check silently dropped
-            // streamed content, audit S10/FM2). The flush effect dedupes by id,
-            // so a genuinely-identical message is still not double-rendered.
+          // R1.2 AC3: finalize the streamed body whenever there is one — do NOT
+          // gate on processedMessageIds (an id-only check silently dropped
+          // streamed content, audit S10/FM2). The flush effect dedupes by id.
+          // FM4: side effects run OUTSIDE the state updater (read from the ref).
+          {
+            const prev = streamMsgRef.current;
+            setStream(null);
             if (prev) {
               processedMessageIds.current.add(messageId);
               pendingFinalMsgRef.current = { ...prev, id: messageId, role: 'assistant' };
             }
-            return null;
-          });
+          }
           setStreaming(false);
         } else {
           // R1.1 AC2: an event type the client doesn't recognise — log it (for
@@ -549,24 +652,30 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
         }
       }, chatSessionIdRef.current, imageData);
       if (streamErrored) return;
-      setStreaming(prev => {
+      // R1.2 AC2: terminal-state backstop (FM4: no side effects inside updaters).
+      // If a live stream message is still open, finalize it; if the stream
+      // resolved having produced nothing at all (a silent resolve — audit S12),
+      // render the generic fallback so the turn is never blank.
+      {
+        const prev = streamMsgRef.current;
         if (prev) {
-          setCurrentStreamMsg(cm => {
-            if (cm) {
-              const fallbackId = `ai-${Date.now()}`;
-              if (!processedMessageIds.current.has(fallbackId)) {
-                processedMessageIds.current.add(fallbackId);
-                pendingFinalMsgRef.current = { ...cm, id: fallbackId, role: 'assistant' };
-              }
-            }
-            return null;
-          });
+          const fallbackId = `ai-${Date.now()}`;
+          processedMessageIds.current.add(fallbackId);
+          pendingFinalMsgRef.current = { ...prev, id: fallbackId, role: 'assistant' };
+          setStream(null);
         }
-        return false;
-      });
-      // R1.2 AC2: terminal-state backstop. If the stream resolved without
-      // producing any assistant message or error bubble (a silent resolve —
-      // audit S12), render the generic fallback so the turn is never blank.
+      }
+      setStreaming(false);
+      // R8: flush a finalized message DIRECTLY here rather than depending only on
+      // the streaming-transition effect. If every SSE frame (incl. `done`) arrived
+      // in one React batch, `streaming` never committed `true`, so that effect sees
+      // no transition and would otherwise silently drop the reply. Dedupe by id so
+      // this and the effect can't double-append.
+      if (pendingFinalMsgRef.current) {
+        const finalMsg = pendingFinalMsgRef.current;
+        pendingFinalMsgRef.current = null;
+        setMessages(m => (m.some(x => x.id === finalMsg.id) ? m : [...m, finalMsg]));
+      }
       if (!producedOutput && !pendingFinalMsgRef.current) {
         setMessages(cur => [...cur, {
           id: `ai-fallback-${Date.now()}`,
@@ -577,51 +686,48 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
         }]);
       }
     } catch {
-      // On SSE error: append "(Response interrupted)" and show Retry
-      setCurrentStreamMsg(prev => {
-        if (prev && prev.content) {
-          const interruptedId = `err-${Date.now()}`;
-          if (!processedMessageIds.current.has(interruptedId)) {
-            processedMessageIds.current.add(interruptedId);
-            pendingFinalMsgRef.current = {
-              ...prev,
-              id: interruptedId,
-              role: 'assistant',
-              content: prev.content + '\n\n*(Response interrupted)*',
-              interrupted: true,
-            };
-          }
-        }
-        return null;
-      });
+      // On SSE error: append "(Response interrupted)" and show Retry.
+      // FM4: read the accumulated body from the ref; no side effects in updaters.
+      const prev = streamMsgRef.current;
+      setStream(null);
+      if (prev && prev.content) {
+        const interruptedId = `err-${Date.now()}`;
+        processedMessageIds.current.add(interruptedId);
+        pendingFinalMsgRef.current = {
+          ...prev,
+          id: interruptedId,
+          role: 'assistant',
+          content: prev.content + '\n\n*(Response interrupted)*',
+          interrupted: true,
+        };
+      }
       setStreaming(false);
       // Finalize thinking on error
-      setThinkingSteps(prev => prev.map(s => ({ ...s, status: 'done' })));
+      setThinkingSteps(ts => ts.map(s => ({ ...s, status: 'done' })));
       // If there was no content at all, show a plain error message with retry
-      setMessages(prev => {
-        // Only add fallback error if pendingFinalMsgRef was not set (no partial content)
-        if (!pendingFinalMsgRef.current) {
-          return [...prev, {
-            id: `err-${Date.now()}`,
-            role: 'assistant',
-            content: 'Something went wrong. Please try again.',
-            interrupted: true,
-            created_at: new Date().toISOString(),
-          }];
-        }
-        return prev;
-      });
+      if (!pendingFinalMsgRef.current) {
+        setMessages(cur => [...cur, {
+          id: `err-${Date.now()}`,
+          role: 'assistant',
+          content: 'Something went wrong. Please try again.',
+          interrupted: true,
+          created_at: new Date().toISOString(),
+        }]);
+      }
     }
   };
 
   const handleRetry = () => {
-    // Find the last user message and resend it
+    // FL (R8.4 AC2): resend the last user turn WITHOUT stacking a duplicate user
+    // bubble, and clear the interrupted error bubble(s) first.
+    autoRetryRef.current = 0;
+    let lastUserText = null;
     for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'user') {
-        handleSend(messages[i].content);
-        break;
-      }
+      if (messages[i].role === 'user') { lastUserText = messages[i].content; break; }
     }
+    if (lastUserText == null) return;
+    setMessages(prev => prev.filter(m => !(m.role === 'assistant' && m.interrupted)));
+    handleSend(lastUserText, null, { skipUserBubble: true });
   };
 
   const handleActionButton = async (action, params, label) => {
@@ -679,6 +785,35 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
             }}>
               <span>{typeof aiUnavailableMessage === 'string' && aiUnavailableMessage ? aiUnavailableMessage : 'AI is temporarily unavailable. Core school tools remain available.'}</span>
               <button onClick={() => setAiUnavailable(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 16, lineHeight: 1, flexShrink: 0 }}>×</button>
+            </div>
+          )}
+
+          {/* FM3 (R8.1 AC3): history load failed — distinct from an empty chat. */}
+          {loadError && (
+            <div data-testid="load-error-banner" style={{
+              border: '1px solid var(--border)', background: 'var(--bg-card)',
+              color: 'var(--text-primary)', borderRadius: 8, padding: '12px 14px',
+              marginBottom: 16, fontSize: 13, lineHeight: 1.45,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+            }}>
+              <span>Couldn't load this conversation's history.</span>
+              <button onClick={() => loadMessages(convId)} style={{
+                background: 'none', border: '1px solid var(--border)', borderRadius: 8,
+                padding: '4px 12px', cursor: 'pointer', color: '#4f8ff7', fontSize: 12, fontWeight: 500, flexShrink: 0,
+              }}>Retry</button>
+            </div>
+          )}
+
+          {/* FH2 (R8.1 AC2): couldn't even start a turn — text was restored to input. */}
+          {sendError && (
+            <div data-testid="send-error-banner" style={{
+              border: '1px solid var(--border)', background: 'var(--bg-card)',
+              color: 'var(--text-primary)', borderRadius: 8, padding: '12px 14px',
+              marginBottom: 16, fontSize: 13, lineHeight: 1.45,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+            }}>
+              <span>{sendError}</span>
+              <button onClick={() => setSendError('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 16, lineHeight: 1, flexShrink: 0 }}>×</button>
             </div>
           )}
 
@@ -825,6 +960,14 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
         position: 'absolute', bottom: 0, left: 0, right: 0,
         padding: '0 24px 4px', zIndex: 39, pointerEvents: 'auto',
       }}>
+        {/* FH5 (R8.3 AC2): a failed checkout is shown here (not swallowed); the
+            recharge button stays live so the user can retry — never a dead-end. */}
+        {rechargeError && (
+          <div data-testid="recharge-error" style={{
+            maxWidth: 760, margin: '0 auto 6px', fontSize: 12, color: '#f87171',
+            textAlign: 'center',
+          }}>{rechargeError}</div>
+        )}
         <TokenBudgetBar
           used={tokenUsed}
           limit={tokenLimit}
