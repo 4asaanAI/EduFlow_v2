@@ -43,9 +43,45 @@ def ai_unavailable_result(reason: str) -> LLMResult:
     return LLMResult(text="", tokens=0, ok=False, reason=reason)
 
 
+def get_azure_key() -> str:
+    """Read the Azure OpenAI key, accepting BOTH documented names (R9.1/C2).
+
+    The incident-class config bug: code read only ``AZURE_OPENAI_API_KEY`` while
+    CLAUDE.md/.env.example documented ``AZURE_OPENAI_KEY`` — a mismatch that left
+    the client silently unconfigured (every turn degraded, no error). Accept
+    either, preferring the SDK-native ``AZURE_OPENAI_API_KEY``.
+    """
+    return os.environ.get("AZURE_OPENAI_API_KEY") or os.environ.get("AZURE_OPENAI_KEY", "")
+
+
+def validate_ai_config() -> None:
+    """Fail LOUD at startup when the AI config is missing outside development.
+
+    Same posture as ``tenant.validate_school_id`` (R9.1/C2 AC2): a
+    non-development environment with no Azure key or endpoint is a
+    misconfiguration that would otherwise surface only as silent AI degradation,
+    so we raise here and refuse to boot.
+    """
+    env = os.environ.get("ENVIRONMENT", "development").strip().lower()
+    if env in ("development", "test", "testing"):
+        return
+    missing = []
+    if not get_azure_key():
+        missing.append("AZURE_OPENAI_API_KEY (or AZURE_OPENAI_KEY)")
+    if not os.environ.get("AZURE_OPENAI_ENDPOINT"):
+        missing.append("AZURE_OPENAI_ENDPOINT")
+    if missing:
+        raise ValueError(
+            "Azure OpenAI configuration is required outside development. Missing: "
+            + ", ".join(missing)
+            + ". The AI assistant cannot function without it; refusing to start "
+            "rather than degrade silently."
+        )
+
+
 class LLMClient:
     def __init__(self):
-        self.api_key = os.environ.get("AZURE_OPENAI_API_KEY", "")
+        self.api_key = get_azure_key()
         self.endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
         self.deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-5.3-chat")
         self.api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2026-03-03")

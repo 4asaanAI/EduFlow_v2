@@ -258,6 +258,11 @@ app.include_router(federation_router)
 async def startup():
     validate_school_id()
 
+    # R9.1 (C2): fail loud on missing Azure config outside development, the same
+    # way SCHOOL_ID does — a silently-unconfigured AI client was the incident.
+    from ai.llm_client import validate_ai_config
+    validate_ai_config()
+
     # EC-15.1: SKIP_CONSENT_CHECK cannot be enabled in production/staging
     if os.getenv("SKIP_CONSENT_CHECK", "").lower() == "true":
         env = os.getenv("ENVIRONMENT", "development").lower()
@@ -313,7 +318,10 @@ async def _check_db() -> str:
 
 async def _check_ai() -> str:
     endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
-    if not endpoint:
+    # R9.1 (C2 AC3): the readiness check must also verify the KEY is present —
+    # a configured endpoint with no key still can't call the model.
+    from ai.llm_client import get_azure_key
+    if not endpoint or not get_azure_key():
         return "degraded"
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:

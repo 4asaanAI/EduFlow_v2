@@ -34,7 +34,11 @@ _RESTRICTED_EXACT = {
     "father_aadhaar",
     "mother_aadhaar",
     "guardian_aadhaar",
-    "blood_group",
+    # R9.2 AC3: `blood_group` intentionally NOT restricted. It is standard,
+    # low-sensitivity operational data already printed on the school's physical
+    # ID cards, and `get_student_profile` legitimately surfaces it — permanently
+    # masking it to "[restricted in chat]" was an over-block. Genuine health data
+    # (medical/allergies/disability, below) stays restricted.
     "religion",
     "caste",
     "social_category",

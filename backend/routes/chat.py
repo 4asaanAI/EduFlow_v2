@@ -16,6 +16,7 @@ Handles:
 """
 import json
 import asyncio
+import base64
 import random
 import re
 import time
@@ -1545,6 +1546,32 @@ def _user_content(text: str, image_data: str | None):
     ]
 
 
+# R9.4 (X8) AC3: chat `image_data` re-enters POST /chat as a client-supplied base64
+# data URL — validate its format and decoded size server-side (the upload endpoint's
+# checks don't apply to a value posted directly to /chat).
+_MAX_IMAGE_BYTES = 20 * 1024 * 1024  # 20 MB decoded
+_IMAGE_DATA_URL_RE = re.compile(
+    r"^data:image/(?:png|jpe?g|gif|webp|heic|bmp|tiff);base64,", re.IGNORECASE
+)
+
+
+def _validate_image_data(image_data) -> str | None:
+    """Return an error message if the image data URL is invalid, else None."""
+    if not isinstance(image_data, str) or not _IMAGE_DATA_URL_RE.match(image_data):
+        return "Invalid image format"
+    b64 = image_data.split(",", 1)[1] if "," in image_data else ""
+    if not b64:
+        return "Invalid image data"
+    # Size from base64 length (≈3/4) BEFORE decoding a potentially huge blob.
+    if (len(b64) * 3) // 4 > _MAX_IMAGE_BYTES:
+        return f"Image too large (max {_MAX_IMAGE_BYTES // (1024*1024)} MB)"
+    try:
+        base64.b64decode(b64, validate=True)
+    except Exception:
+        return "Invalid image encoding"
+    return None
+
+
 async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_id: str = None, request=None, image_data: str = None):
     """
     SSE generator for chat streaming.
@@ -1925,9 +1952,12 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             if empty_msg:
                 empty_note = f"\n\nNote: The tool returned no data with this message: \"{empty_msg}\". Relay this to the user helpfully."
 
+            # R9.2 AC1 (M10): do NOT run topic-blocking over serialized tool JSON —
+            # `tool_result` is ALREADY PII-redacted (_safe_tool_result_for_chat →
+            # redact_for_llm above), and running filter_response over the JSON would
+            # let one blocked word in legitimate data nuke the ENTIRE dataset. The
+            # LLM's natural-language prose is topic-filtered downstream (clean_response).
             tool_data_str = json.dumps(tool_result, ensure_ascii=False, indent=2)
-            if user.get("role") == "student":
-                tool_data_str = filter_response(tool_data_str, "student")
             tool_result_msg = (
                 f"Tool '{tool_name}' returned the following data:\n"
                 f"{tool_data_str}"
@@ -2220,9 +2250,9 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             if empty_msg:
                 empty_note = f"\n\nNote: The tool returned no data with this message: \"{empty_msg}\". Relay this to the user helpfully."
 
+            # R9.2 AC1 (M10): tool JSON is already PII-redacted upstream; topic-
+            # blocking over it would nuke legitimate data on one stray keyword.
             tool_data_str = json.dumps(tool_result, ensure_ascii=False, indent=2)
-            if user.get("role") == "student":
-                tool_data_str = filter_response(tool_data_str, "student")
             tool_msg = (
                 f"Tool '{tool_name}' data:\n"
                 f"{tool_data_str}"
@@ -2402,17 +2432,15 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             yield f"data: {json.dumps({'type': 'text_delta', 'delta': chunk})}\n\n"
             await asyncio.sleep(0.008)
 
-        # Send rich content block (P8: filter rich_blocks AND action_buttons for students)
+        # Send rich content block. R9.2 AC1 (M10): structured output gets a narrow
+        # PII-only pass (redact_for_llm), NOT topic-blocking — a blocked word inside
+        # a legitimate table cell must not nuke the whole block. The LLM's prose is
+        # already topic-filtered above (clean_response).
         if rich_content:
             if user.get("role") == "student":
                 try:
-                    filtered_str = filter_response(json.dumps(rich_content.get("rich_blocks", [])), "student")
-                    rich_content["rich_blocks"] = json.loads(filtered_str)
-                except Exception:
-                    pass
-                try:
-                    filtered_btn = filter_response(json.dumps(rich_content.get("action_buttons", [])), "student")
-                    rich_content["action_buttons"] = json.loads(filtered_btn)
+                    rich_content["rich_blocks"] = redact_for_llm(rich_content.get("rich_blocks", []))
+                    rich_content["action_buttons"] = redact_for_llm(rich_content.get("action_buttons", []))
                 except Exception:
                     pass
             yield f"data: {json.dumps({'type': 'rich_blocks', 'blocks': rich_content.get('rich_blocks', []), 'action_buttons': rich_content.get('action_buttons', [])})}\n\n"
@@ -2448,6 +2476,17 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             )
         except Exception as e:
             logger.error(f"Phase 14b (record token usage) error: {e}")
+
+        # ── Phase 14c: turn-outcome metric (R9.3 AC3 / architecture §8) ──
+        # The permanent alarm for the silent-empty-turn incident class: a spike in
+        # `fallback`/`error` relative to `answered` is the regression signal.
+        # Fail-open (record_ai_metric never raises).
+        outcome = "fallback" if clean_text == FALLBACK_TEXT else "answered"
+        await record_ai_metric(
+            db, event="ai_turn_outcome", status=outcome,
+            user_id=user["id"], tool_name=tool_name or "",
+            school_id=get_school_id(), branch_id=branch_id,
+        )
 
         # BUG FIX #7: done event comes AFTER persistence
         yield f"data: {json.dumps({'type': 'done', 'message_id': ai_msg.id, 'tokens_used': total_tokens_used})}\n\n"
@@ -2489,6 +2528,11 @@ async def send_message(conv_id: str, request: Request):
     # Strip zero-width and normal whitespace before empty-message check (P11 E7)
     user_text = re.sub(r"[​‌‍⁠﻿\s]+", " ", _raw_text).strip()
     image_data = body.get("image_data") or None  # base64 data URL for vision
+    if image_data is not None:
+        # R9.4 (X8) AC3: reject a malformed/oversized image before it reaches the LLM.
+        img_err = _validate_image_data(image_data)
+        if img_err:
+            return {"success": False, "error": img_err}
     if not user_text and not image_data:
         return {"success": False, "error": "Empty message"}
     if not user_text:
@@ -2612,7 +2656,10 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
     # F.4/AD9: AI-write kill-switch. Checked BEFORE the rate gate AND token consume
     # so a blocked write neither burns the one-shot token nor a rate slot — the user
     # can retry once an operator re-enables writes. Reads never reach this path.
-    if not await ai_writes_enabled(db):
+    # R9.3 (M8): force_fresh bypasses the per-worker cache and reads Mongo directly,
+    # so an operator's disable takes effect on the next confirmed write across ALL
+    # workers (not up to CACHE_TTL_SECONDS later on a stale worker).
+    if not await ai_writes_enabled(db, force_fresh=True):
         await record_ai_metric(
             db, event="kill_switch_blocked",
             user_id=user["id"], tool_name=token_meta.get("action", "<unknown>"),
