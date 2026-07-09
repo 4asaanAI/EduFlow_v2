@@ -184,6 +184,7 @@ async def delete_staff(staff_id: str, request: Request):
         try:
             from services.memory.store import erase_owner_memories
             from services.memory.skills_store import erase_owner_skills
+            from services.memory.feedback_store import erase_owner_feedback
 
             await erase_owner_memories(
                 db, school_id=get_school_id(), user_id=staff["user_id"], changed_by=user.get("id", "system")
@@ -191,9 +192,13 @@ async def delete_staff(staff_id: str, request: Request):
             await erase_owner_skills(
                 db, school_id=get_school_id(), user_id=staff["user_id"], changed_by=user.get("id", "system")
             )
+            # R10.2 AC4: feedback is DPDP-erasable and joins the lifecycle-end path.
+            await erase_owner_feedback(
+                db, school_id=get_school_id(), user_id=staff["user_id"], changed_by=user.get("id", "system")
+            )
         except Exception:
             import logging
-            logging.getLogger(__name__).warning("ai_memory/skill erase on staff delete failed", exc_info=True)
+            logging.getLogger(__name__).warning("ai_memory/skill/feedback erase on staff delete failed", exc_info=True)
     await _audit(db, action="deactivate", staff_id=staff_id, user=user, changes={"is_active": {"previous": staff.get("is_active"), "new": False}})
     return {"success": True}
 

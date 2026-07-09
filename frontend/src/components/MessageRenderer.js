@@ -206,11 +206,23 @@ function getToolCount(call) {
   return null;
 }
 
-function FeedbackButtons({ messageId, isDark }) {
+function FeedbackButtons({ message, isDark }) {
   const [voted, setVoted] = useState(null);
-  const handleVote = async (rating) => {
-    setVoted(rating);
-    await emitFeedback(rating);
+  const [showReason, setShowReason] = useState(false);
+  const [reason, setReason] = useState('');
+  // R10.2 AC1: send the turn context so feedback is attributable + tool-aware.
+  const meta = () => ({
+    message_id: message.id,
+    conversation_id: message.conversation_id || undefined,
+    tool_names: (message.tool_calls || message.toolCalls || [])
+      .map(c => c && c.tool).filter(Boolean),
+  });
+  const sendHelpful = async () => { setVoted(1); await emitFeedback(1, meta()); };
+  // R10.2 AC2: "Improve" opens an optional one-line reason before sending.
+  const sendImprove = async () => {
+    setVoted(0);
+    setShowReason(false);
+    await emitFeedback(0, { ...meta(), reason: reason.trim() || undefined });
   };
   const btnStyle = (isActive) => ({
     display: 'flex', alignItems: 'center', gap: 4,
@@ -220,13 +232,32 @@ function FeedbackButtons({ messageId, isDark }) {
     fontSize: 12, fontWeight: 500, transition: 'all 0.2s',
   });
   return (
-    <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-      <button onClick={() => handleVote(1)} disabled={voted !== null} style={{ ...btnStyle(voted === 1), opacity: voted !== null && voted !== 1 ? 0.5 : 1 }}>
-        <ThumbsUp size={14} /> Helpful
-      </button>
-      <button onClick={() => handleVote(0)} disabled={voted !== null} style={{ ...btnStyle(voted === 0), opacity: voted !== null && voted !== 0 ? 0.5 : 1 }}>
-        <ThumbsDown size={14} /> Improve
-      </button>
+    <div style={{ marginTop: 10 }}>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button data-testid="feedback-helpful" onClick={sendHelpful} disabled={voted !== null} style={{ ...btnStyle(voted === 1), opacity: voted !== null && voted !== 1 ? 0.5 : 1 }}>
+          <ThumbsUp size={14} /> Helpful
+        </button>
+        <button data-testid="feedback-improve" onClick={() => (voted === null && setShowReason(s => !s))} disabled={voted !== null} style={{ ...btnStyle(voted === 0), opacity: voted !== null && voted !== 0 ? 0.5 : 1 }}>
+          <ThumbsDown size={14} /> Improve
+        </button>
+      </div>
+      {showReason && voted === null && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+          <input
+            data-testid="feedback-reason"
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            maxLength={500}
+            placeholder="Optional: what could be better?"
+            style={{
+              flex: 1, fontSize: 12, padding: '6px 10px', borderRadius: 6,
+              border: `1px solid ${isDark ? '#333' : '#e5e5e5'}`,
+              background: isDark ? '#1e1e1e' : '#fff', color: isDark ? '#f5f5f5' : '#171717',
+            }}
+          />
+          <button data-testid="feedback-reason-send" onClick={sendImprove} style={{ ...btnStyle(false), background: '#4f8ff7', color: '#fff' }}>Send</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -351,7 +382,7 @@ export default function MessageRenderer({ message, isStreaming, onActionButton }
         })}
         {actionButtons?.length > 0 && <ActionButtons buttons={actionButtons} onActionButton={onActionButton} isDark={isDark} />}
         <ToolTraceSummary calls={message.tool_calls || message.toolCalls} isDark={isDark} />
-        <FeedbackButtons messageId={message.id} isDark={isDark} />
+        <FeedbackButtons message={message} isDark={isDark} />
       </div>
     </div>
   );

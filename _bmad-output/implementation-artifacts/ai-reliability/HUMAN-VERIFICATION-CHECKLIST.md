@@ -83,7 +83,7 @@ trusting the loop; (2) the feedback-learning and saved-routines once the panel s
 surprising. Widening beyond owner/principal (R10.5) stays a separate later decision.
 
 **Decision log:**
-- _(unfilled)_ — R10 go/no-go decision: ____ (date / who / notes)
+- **2026-07-10 — Abhimanyu GAVE THE GO-AHEAD for FULL R10** (R10.1–R10.4 built now; R10.5 role-*widening* stays OFF — owner/principal only). Decision made before the ~2-week real-use verification in Section C was ticked — an owner override. **Action for Abhimanyu:** still work through Sections A/B/C in real use as R10 rolls out, and keep learning DISABLED via the kill-switch until you've watched the "What I've learned" panel and the turn-outcome + feedback-ratio signals for a couple of weeks.
 
 ---
 

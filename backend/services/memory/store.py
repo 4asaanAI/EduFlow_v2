@@ -206,6 +206,7 @@ async def recall(db, ctx: ActorContext, query: str, *, k: int = RECALL_K) -> Lis
     """
     if not ctx.user_id or not query or not query.strip():
         return []
+    t0 = time.perf_counter()
     all_mems = await list_memories(db, ctx)
     if not all_mems:
         return []
@@ -252,6 +253,18 @@ async def recall(db, ctx: ActorContext, query: str, *, k: int = RECALL_K) -> Lis
 
     top = scored[:k]
     await increment_uses(db, ctx, [m["id"] for m in top])
+    # R10.1 AC4: record retrieval latency (budget ≤300ms p95) as a layaastat span,
+    # so the pre-turn memory phase is measurable, not a guess. Fire-and-forget.
+    try:
+        from services.layaastat import emit_event
+        await emit_event("ai_memory_recall", distinct_id=ctx.user_id, payload={
+            "duration_ms": round((time.perf_counter() - t0) * 1000, 1),
+            "candidates": len(all_mems),
+            "returned": len(top),
+            "vector": bool(vstore.healthy),
+        })
+    except Exception:
+        pass
     return top
 
 

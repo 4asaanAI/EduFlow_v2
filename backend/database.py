@@ -324,6 +324,9 @@ async def _create_indexes():
     except Exception:
         logger.warning("ai_memories TTL index creation failed", exc_info=True)
     await db.ai_skills.create_index([("schoolId", 1), ("user_id", 1), ("updated_at_ts", -1)])
+    # R10.2: AI feedback (Helpful/Improve) — per-user history + pending-correction lookups.
+    await db.ai_feedback.create_index([("schoolId", 1), ("user_id", 1), ("created_at", -1)])
+    await db.ai_feedback.create_index([("schoolId", 1), ("status", 1)])
     await db.notifications.create_index(
         [("schoolId", 1), ("user_id", 1), ("read", 1), ("created_at", -1)]
     )

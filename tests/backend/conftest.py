@@ -515,6 +515,8 @@ class FakeDb:
         self.ai_skills = FakeCollection()
         # AI Reliability — R9.5 image-gen daily quota counter
         self.image_gen_quota = FakeCollection()
+        # AI Reliability — R10.2 feedback (Helpful/Improve) store
+        self.ai_feedback = FakeCollection()
 
     async def command(self, command_name):
         if command_name == "ping":

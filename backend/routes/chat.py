@@ -3143,10 +3143,24 @@ async def confirm_action(conv_id: str, request: Request):
 @router.post("/feedback")
 async def submit_feedback(request: Request):
     user = get_current_user(request)
+    db = get_db()
     body = await request.json()
     rating = body.get("rating")
     if rating not in (0, 1):
         raise HTTPException(400, "rating must be 0 or 1")
+    # R10.2 AC1/AC2: persist a tenant-scoped feedback record; an "Improve" (0) with
+    # a one-line reason is parked as a PENDING candidate correction (never
+    # auto-active, never recalled until an owner/principal activates it via R10.4).
+    from services.memory.feedback_store import record_feedback
+    await record_feedback(
+        db, user,
+        verdict=int(rating),
+        conversation_id=(body.get("conversation_id") or "").strip() or None,
+        message_id=(body.get("message_id") or "").strip() or None,
+        reason=body.get("reason") or "",
+        tool_names=body.get("tool_names") if isinstance(body.get("tool_names"), list) else None,
+    )
     from services.layaastat import emit_event
-    await emit_event("ai_feedback", distinct_id=user.get("user_id"), payload={"rating": rating})
+    # R7.3/AC5 parity: distinct_id keys on "id" (user.get("user_id") was always None).
+    await emit_event("ai_feedback", distinct_id=user.get("id"), payload={"rating": rating})
     return {"success": True}

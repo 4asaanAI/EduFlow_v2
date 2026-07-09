@@ -940,12 +940,15 @@ export async function createTopupCheckout(packId) {
   return res.json();
 }
 
-export async function emitFeedback(rating) {
+export async function emitFeedback(rating, meta = {}) {
   try {
+    // R10.2: carry turn context (message_id, conversation_id, tool_names) and an
+    // optional Improve reason so feedback is attributable and can seed a pending
+    // candidate correction server-side.
     await apiFetch(`${API}/chat/feedback`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ rating }),
+      body: JSON.stringify({ rating, ...meta }),
     });
   } catch {}
 }
