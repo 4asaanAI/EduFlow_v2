@@ -21,6 +21,7 @@ from services.academic_structure_service import (
     AcademicStructureConflictError,
 )
 from tenant import get_school_id, scoped_query, scoped_filter
+import re
 import uuid
 
 router = APIRouter(prefix="/api/academics", tags=["academics"])
@@ -616,6 +617,8 @@ async def get_lesson_plan_completion(
     bid = user.get("branch_id")
 
     current_month = month or _dt.now().strftime("%Y-%m")
+    if not re.fullmatch(r"\d{4}-\d{2}", current_month):
+        raise HTTPException(400, "month must be in YYYY-MM format")
 
     # Get all classes
     classes = await db.classes.find(
@@ -628,7 +631,7 @@ async def get_lesson_plan_completion(
 
         # Count lesson plans for this class this month
         total_plans = await db.lesson_plans.count_documents(
-            scoped_query({"class_id": class_id, "week": {"$regex": f"^{current_month}"}}, branch_id=bid)
+            scoped_query({"class_id": class_id, "week": {"$regex": f"^{re.escape(current_month)}"}}, branch_id=bid)
         )
 
         # Count completed plans (those with content or marked_complete)

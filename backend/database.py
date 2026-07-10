@@ -111,6 +111,35 @@ class ScopedCollection:
             scoped_pipeline = [{"$match": scoped_filter({}, self._school_id)}, *(pipeline or [])]
         return self._collection.aggregate(scoped_pipeline, *args, **kwargs)
 
+    async def find_one_and_update(self, filter, update, *args, **kwargs):
+        query = {**(filter or {}), "schoolId": self._school_id} if kwargs.get("upsert") else scoped_filter(filter, self._school_id)
+        if kwargs.get("upsert"):
+            update = {**update, "$setOnInsert": {**update.get("$setOnInsert", {}), "schoolId": self._school_id}}
+        return await self._collection.find_one_and_update(query, update, *args, **kwargs)
+
+    async def find_one_and_delete(self, filter, *args, **kwargs):
+        return await self._collection.find_one_and_delete(scoped_filter(filter, self._school_id), *args, **kwargs)
+
+    async def find_one_and_replace(self, filter, replacement, *args, **kwargs):
+        if "schoolId" not in replacement:
+            replacement = {**replacement, "schoolId": self._school_id}
+        return await self._collection.find_one_and_replace(scoped_filter(filter, self._school_id), replacement, *args, **kwargs)
+
+    async def replace_one(self, filter, replacement, *args, **kwargs):
+        if "schoolId" not in replacement:
+            replacement = {**replacement, "schoolId": self._school_id}
+        return await self._collection.replace_one(scoped_filter(filter, self._school_id), replacement, *args, **kwargs)
+
+    async def distinct(self, key, filter=None, *args, **kwargs):
+        return await self._collection.distinct(key, scoped_filter(filter, self._school_id), *args, **kwargs)
+
+    def bulk_write(self, requests, *args, **kwargs):
+        raise NotImplementedError(
+            "ScopedCollection.bulk_write is not supported — use insert_many / update_many / "
+            "delete_many to keep schoolId scoping. If bulk_write is truly needed, use get_raw_db() "
+            "and inject schoolId into every request manually."
+        )
+
 
 class ScopedDatabase:
     def __init__(self, db, school_id: str):

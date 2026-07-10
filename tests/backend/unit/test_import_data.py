@@ -16,6 +16,14 @@ def _get_nested(doc, key):
 
 def _matches(doc, query):
     for key, expected in query.items():
+        if key == "$and":
+            if not all(_matches(doc, clause) for clause in expected):
+                return False
+            continue
+        if key == "$or":
+            if not any(_matches(doc, clause) for clause in expected):
+                return False
+            continue
         actual = _get_nested(doc, key)
         if isinstance(expected, dict):
             for op, value in expected.items():
@@ -49,11 +57,11 @@ class FakeCollection:
         docs = [doc for doc in self.docs if _matches(doc, query)]
         return FakeCursor(docs)
 
-    async def insert_one(self, doc):
+    async def insert_one(self, doc, **kwargs):
         self.docs.append(doc)
         return type("Result", (), {"inserted_id": doc.get("_id")})()
 
-    async def update_one(self, query, update, upsert=False):
+    async def update_one(self, query, update, upsert=False, **kwargs):
         for doc in self.docs:
             if _matches(doc, query):
                 doc.update(update.get("$set", {}))
@@ -67,9 +75,9 @@ class FakeCollection:
 
 class FakeDb:
     def __init__(self):
-        self.classes = FakeCollection([{"id": "class-1", "name": "5", "section": "A"}])
+        self.classes = FakeCollection([{"id": "class-1", "name": "5", "section": "A", "schoolId": "aaryans-joya"}])
         self.students = FakeCollection(
-            [{"id": "student-1", "name": "Existing Student", "class_id": "class-1", "is_active": True}]
+            [{"id": "student-1", "name": "Existing Student", "class_id": "class-1", "is_active": True, "schoolId": "aaryans-joya"}]
         )
         self.guardians = FakeCollection()
         self.audit_logs = FakeCollection()

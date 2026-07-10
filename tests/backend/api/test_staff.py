@@ -75,7 +75,8 @@ class TestStaffCrud:
     def test_delete_staff_soft_deactivates_and_revokes_sessions(self, client, auth_headers, fake_db):
         create = client.post("/api/staff/", json=_staff_payload("104"), headers=auth_headers)
         staff = create.json()["data"]
-        fake_db.refresh_tokens.docs.append({"id": "rt-1", "user_id": staff["user_id"], "revoked": False})
+        # Seed token using canonical schema (revoked_at: None = active token)
+        fake_db.refresh_tokens.docs.append({"id": "rt-1", "user_id": staff["user_id"], "revoked_at": None})
 
         response = client.delete(f"/api/staff/{staff['id']}", headers=auth_headers)
 
@@ -84,4 +85,6 @@ class TestStaffCrud:
         auth_doc = next(doc for doc in fake_db.auth_users.docs if doc["id"] == staff["user_id"])
         assert staff_doc["is_active"] is False
         assert auth_doc["is_active"] is False
-        assert fake_db.refresh_tokens.docs[-1]["revoked"] is True
+        # revoke_user_refresh_tokens (canonical helper) sets revoked_at, not revoked field
+        token_doc = next(doc for doc in fake_db.refresh_tokens.docs if doc.get("id") == "rt-1")
+        assert token_doc.get("revoked_at") is not None

@@ -9,10 +9,10 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
-from database import get_db
+from database import get_db, get_txn_session
 from middleware.auth import get_current_user
 from services.audit_service import write_audit_doc
-from tenant import get_school_id
+from tenant import get_school_id, scoped_query
 
 router = APIRouter(prefix="/api/import", tags=["import"])
 
@@ -92,7 +92,7 @@ def _parse_rows(ext: str, content: bytes) -> list[dict]:
     return [row for row in rows if any(value for value in row.values())]
 
 
-async def _validate_rows(db, rows: list[dict]) -> dict:
+async def _validate_rows(db, rows: list[dict], branch_id: str | None = None) -> dict:
     errors = []
     valid_rows = []
     duplicates = []
@@ -109,7 +109,9 @@ async def _validate_rows(db, rows: list[dict]) -> dict:
         class_key = (class_name.lower(), section.lower())
         cls = class_cache.get(class_key)
         if class_key not in class_cache:
-            cls = await db.classes.find_one({"name": class_name, "section": section}, {"_id": 0})
+            cls = await db.classes.find_one(
+                scoped_query({"name": class_name, "section": section}, branch_id=branch_id), {"_id": 0}
+            )
             class_cache[class_key] = cls
         if class_name and section and not cls:
             row_errors.append({"row": index, "field": "class", "message": "Class and section do not exist"})
@@ -117,7 +119,7 @@ async def _validate_rows(db, rows: list[dict]) -> dict:
         duplicate = None
         if cls and row.get("name"):
             duplicate = await db.students.find_one(
-                {"name": row["name"], "class_id": cls["id"], "is_active": True},
+                scoped_query({"name": row["name"], "class_id": cls["id"], "is_active": True}, branch_id=branch_id),
                 {"_id": 0},
             )
 
@@ -163,7 +165,7 @@ async def _validate_rows(db, rows: list[dict]) -> dict:
 
 def _student_doc(row: dict, user: dict) -> dict:
     now = datetime.now().isoformat()
-    return {
+    doc = {
         "id": str(uuid.uuid4()),
         "schoolId": get_school_id(),
         "class_id": row["class_id"],
@@ -180,6 +182,9 @@ def _student_doc(row: dict, user: dict) -> dict:
         "created_at": now,
         "updated_at": now,
     }
+    if user.get("branch_id"):
+        doc["branch_id"] = user["branch_id"]
+    return doc
 
 
 def _guardian_doc(student_id: str, row: dict) -> dict:
@@ -219,7 +224,7 @@ async def validate_import(request: Request = None, file: UploadFile = File(...),
     db = get_db()
     ext, content = await _read_file(file)
     rows = _parse_rows(ext, content)
-    report = await _validate_rows(db, rows)
+    report = await _validate_rows(db, rows, branch_id=user.get("branch_id"))
     return {key: value for key, value in report.items() if key != "valid_rows"}
 
 
@@ -236,7 +241,8 @@ async def commit_import(
     db = get_db()
     ext, content = await _read_file(file)
     rows = _parse_rows(ext, content)
-    report = await _validate_rows(db, rows)
+    branch_id = user.get("branch_id")
+    report = await _validate_rows(db, rows, branch_id=branch_id)
 
     imported_count = 0
     skipped_count = report["error_count"]
@@ -246,36 +252,41 @@ async def commit_import(
             skipped_count += 1
             continue
 
-        if duplicate_id:
-            student_update = _student_doc(row, user)
-            student_update["id"] = duplicate_id
-            student_update.pop("created_at", None)
-            student_update.pop("created_by", None)
-            await db.students.update_one({"id": duplicate_id}, {"$set": student_update})
-            guardian_update_doc = _guardian_update(row)
-            # Try to update an existing Father or Parent guardian (from prior imports)
-            existing_g = await db.guardians.find_one(
-                {"student_id": duplicate_id, "is_primary": True, "relation": {"$in": ["Father", "Parent"]}}
-            )
-            if existing_g:
-                await db.guardians.update_one(
-                    {"id": existing_g["id"]},
-                    {"$set": guardian_update_doc},
+        session = await get_txn_session()
+        async with session:
+            if duplicate_id:
+                student_update = _student_doc(row, user)
+                student_update["id"] = duplicate_id
+                student_update.pop("created_at", None)
+                student_update.pop("created_by", None)
+                await db.students.update_one({"id": duplicate_id}, {"$set": student_update}, session=session)
+                guardian_update_doc = _guardian_update(row)
+                # Try to update an existing Father or Parent guardian (from prior imports)
+                existing_g = await db.guardians.find_one(
+                    {"student_id": duplicate_id, "is_primary": True, "relation": {"$in": ["Father", "Parent"]}},
+                    session=session,
                 )
+                if existing_g:
+                    await db.guardians.update_one(
+                        {"id": existing_g["id"]},
+                        {"$set": guardian_update_doc},
+                        session=session,
+                    )
+                else:
+                    await db.guardians.update_one(
+                        {"student_id": duplicate_id, "is_primary": True},
+                        {
+                            "$set": guardian_update_doc,
+                            "$setOnInsert": {"id": str(uuid.uuid4()), "student_id": duplicate_id, "created_at": datetime.now().isoformat()},
+                        },
+                        upsert=True,
+                        session=session,
+                    )
             else:
-                await db.guardians.update_one(
-                    {"student_id": duplicate_id, "is_primary": True},
-                    {
-                        "$set": guardian_update_doc,
-                        "$setOnInsert": {"id": str(uuid.uuid4()), "student_id": duplicate_id, "created_at": datetime.now().isoformat()},
-                    },
-                    upsert=True,
-                )
-        else:
-            student = _student_doc(row, user)
-            await db.students.insert_one({**student, "_id": student["id"]})
-            guardian = _guardian_doc(student["id"], row)
-            await db.guardians.insert_one({**guardian, "_id": guardian["id"]})
+                student = _student_doc(row, user)
+                await db.students.insert_one({**student, "_id": student["id"]}, session=session)
+                guardian = _guardian_doc(student["id"], row)
+                await db.guardians.insert_one({**guardian, "_id": guardian["id"]}, session=session)
         imported_count += 1
 
     audit = {

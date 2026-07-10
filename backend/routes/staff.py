@@ -25,6 +25,7 @@ from services.staff_service import (
     LinkedUserNotFoundError,
 )
 from tenant import get_school_id, scoped_filter, scoped_query
+from services.auth_tokens import revoke_user_refresh_tokens
 
 
 router = APIRouter(prefix="/api/staff", tags=["staff"])
@@ -177,7 +178,7 @@ async def delete_staff(staff_id: str, request: Request):
     await db.staff.update_one(_staff_query({"id": staff_id}), {"$set": update})
     if staff.get("user_id"):
         await db.auth_users.update_one({"id": staff["user_id"]}, {"$set": {"is_active": False}})
-        await db.refresh_tokens.update_many({"user_id": staff["user_id"], "revoked": False}, {"$set": {"revoked": True, "revoked_at": datetime.now().isoformat()}})
+        await revoke_user_refresh_tokens(db, staff["user_id"], reason="staff_deactivated")
         # R6.4 (XM5, DPDP §12): when a staff account is retired, erase the AI's
         # learned memories AND skills for that user — the assistant must not retain
         # what it learned about a person who has left. Best-effort, audited inside.

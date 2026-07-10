@@ -16,6 +16,10 @@ def _headers(role="owner", sub_category=None):
 @pytest.fixture(autouse=True)
 def _sms_db(monkeypatch, fake_db):
     fake_db.sms_logs.docs[:] = []
+    fake_db.students.docs[:] = [
+        {"id": "stu-1", "schoolId": "aaryans-joya", "name": "Asha"},
+        {"id": "stu-2", "schoolId": "aaryans-joya", "name": "Ravi"},
+    ]
     monkeypatch.setattr(sms_routes, "get_db", lambda: fake_db)
     return fake_db
 

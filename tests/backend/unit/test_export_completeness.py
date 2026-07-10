@@ -11,7 +11,7 @@ def _owner_headers():
 
 
 def _accountant_headers():
-    t = create_jwt({"user_id": "a1", "role": "admin", "name": "Acct", "sub_category": "accounts"})
+    t = create_jwt({"user_id": "a1", "role": "admin", "name": "Acct", "sub_category": "accountant"})
     return {"Authorization": f"Bearer {t}"}
 
 

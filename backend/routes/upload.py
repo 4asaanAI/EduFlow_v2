@@ -205,7 +205,11 @@ async def serve_file(filename: str, user: dict = Depends(get_current_user)):
     )
     if not record:
         raise HTTPException(404, "File not found")
-    if record.get("uploaded_by") != user.get("id") and user.get("role") not in ["owner", "admin"]:
+    can_cross_user = (
+        user.get("role") == "owner"
+        or (user.get("role") == "admin" and user.get("sub_category") == "principal")
+    )
+    if record.get("uploaded_by") != user.get("id") and not can_cross_user:
         raise HTTPException(403, "Forbidden")
     if not record.get("s3_key"):
         raise HTTPException(409, "File has not been migrated to S3")
@@ -225,12 +229,16 @@ async def list_uploads(
 ):
     db = get_db()
     user = get_user(request)
+    can_cross_user = (
+        user.get("role") == "owner"
+        or (user.get("role") == "admin" and user.get("sub_category") == "principal")
+    )
     query = {"uploaded_by": user["id"]}
     if entity_type:
         query["linked_table"] = entity_type
     if entity_id:
         query["linked_id"] = entity_id
-    if user["role"] in ["owner", "admin"]:
+    if can_cross_user:
         query = {}
         if entity_type:
             query["linked_table"] = entity_type

@@ -159,8 +159,11 @@ async def login(body: LoginRequest, request: Request, response: Response):
     username = body.username
     password = body.password
 
-    # Rate limiting: check login attempts
-    attempt_key = f"login:{username.lower()}"
+    # Rate limiting: check login attempts (key includes school so one tenant's
+    # failed attempts don't lock the same username at another tenant)
+    from tenant import get_school_id as _get_sid
+    _attempt_school = body.school_id or _get_sid()
+    attempt_key = f"login:{username.lower()}:{_attempt_school}"
     attempts = await db.login_attempts.find_one({"key": attempt_key})
     if attempts:
         if attempts.get("count", 0) >= MAX_LOGIN_ATTEMPTS:

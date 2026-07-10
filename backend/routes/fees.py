@@ -43,6 +43,7 @@ from services.payroll_service import (
 from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, normalize_session_id, publish
 from pymongo import ReturnDocument
 import asyncio
+import re
 import uuid
 import os
 import io
@@ -1002,9 +1003,11 @@ async def export_fee_transactions(request: Request, period: str = None, format: 
     db = get_db()
     query = _fee_query({})
     if period:
+        if not re.fullmatch(r"\d{4}-\d{2}", period):
+            raise HTTPException(400, "period must be in YYYY-MM format")
         query["$and"] = query.get("$and", []) + [{"$or": [
             {"fee_period": period},
-            {"paid_date": {"$regex": f"^{period}"}},
+            {"paid_date": {"$regex": f"^{re.escape(period)}"}},
         ]}]
     txns = await db.fee_transactions.find(query, {"_id": 0}).sort("paid_date", -1).to_list(500)
     output = io.StringIO()

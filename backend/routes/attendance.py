@@ -25,6 +25,7 @@ import asyncio
 import csv
 import io
 import os
+import re
 import uuid
 
 router = APIRouter(prefix="/api/attendance", tags=["attendance"])
@@ -337,6 +338,8 @@ async def export_attendance_summary(request: Request, class_id: str, month: str,
         raise HTTPException(400, "Only csv export is supported")
     if not class_id or not month:
         raise HTTPException(400, "class_id and month=YYYY-MM are required")
+    if not re.fullmatch(r"\d{4}-\d{2}", month):
+        raise HTTPException(400, "month must be in YYYY-MM format")
 
     students = await db.students.find(
         scoped_filter({"class_id": class_id, "is_active": {"$ne": False}}, get_school_id()),
@@ -344,7 +347,7 @@ async def export_attendance_summary(request: Request, class_id: str, month: str,
     ).sort("roll_number", 1).to_list(500)
     student_ids = [s["id"] for s in students]
     records = await db.student_attendance.find(
-        scoped_filter({"class_id": class_id, "student_id": {"$in": student_ids}, "date": {"$regex": f"^{month}"}}, get_school_id()),
+        scoped_filter({"class_id": class_id, "student_id": {"$in": student_ids}, "date": {"$regex": f"^{re.escape(month)}"}}, get_school_id()),
         {"_id": 0},
     ).to_list(5000)
     by_student = {}

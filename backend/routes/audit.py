@@ -1,5 +1,6 @@
 from __future__ import annotations
 """Audit Log UI — Story 33"""
+import re
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import TimedQuery, get_db
 from middleware.auth import get_current_user, require_role
@@ -75,10 +76,11 @@ async def list_audit_log(
             date_query["$lte"] = date_to + "T23:59:59"
         query["created_at"] = date_query
     if q:
+        safe_q = re.escape(q)
         query["$or"] = [
-            {"changed_by": {"$regex": q, "$options": "i"}},
-            {"entity_id": {"$regex": q, "$options": "i"}},
-            {"action": {"$regex": q, "$options": "i"}},
+            {"changed_by": {"$regex": safe_q, "$options": "i"}},
+            {"entity_id": {"$regex": safe_q, "$options": "i"}},
+            {"action": {"$regex": safe_q, "$options": "i"}},
         ]
 
     skip = (page - 1) * limit

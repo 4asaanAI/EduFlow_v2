@@ -216,8 +216,11 @@ async def list_leave_requests(request: Request, status: str = None, page: int = 
         query["user_id"] = user["id"]
     limit = min(max(limit, 1), 20)
     skip = max(page - 1, 0) * limit
-    total = await db.leave_requests.count_documents(scoped_filter(query, get_school_id()))
-    items = await db.leave_requests.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("applied_at", -1).skip(skip).limit(limit).to_list(limit)
+    # Branch-scoped for deciders (principal sees own branch; owner has no branch_id so sees all).
+    # Non-deciders already have query["user_id"] set, so branch further scopes them correctly.
+    bid = user.get("branch_id")
+    total = await db.leave_requests.count_documents(scoped_query(query, branch_id=bid))
+    items = await db.leave_requests.find(scoped_query(query, branch_id=bid), {"_id": 0}).sort("applied_at", -1).skip(skip).limit(limit).to_list(limit)
     return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
 
 
@@ -324,7 +327,8 @@ async def list_approval_requests(request: Request, status: str = None, user: dic
         query["routing"] = "owner_and_principal"
     else:
         query["submitted_by"] = user["id"]
-    items = await db.approval_requests.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("submitted_at", -1).to_list(100)
+    # Branch-scoped: principal sees only their branch; owner (no branch_id) sees all.
+    items = await db.approval_requests.find(scoped_query(query, branch_id=user.get("branch_id")), {"_id": 0}).sort("submitted_at", -1).to_list(100)
     role_key = "owner" if user.get("role") == "owner" else "principal"
     unread = sum(1 for item in items if role_key in item.get("unread_for", []))
     return {"success": True, "data": items, "meta": {"unread_count": unread}}
@@ -489,9 +493,10 @@ async def list_incidents(request: Request, status: str = None, q: str = None, pa
     if status:
         query["status"] = status
     if q:
+        safe_q = re.escape(q)
         query["$or"] = [
-            {"description": {"$regex": q, "$options": "i"}},
-            {"involved_parties": {"$regex": q, "$options": "i"}},
+            {"description": {"$regex": safe_q, "$options": "i"}},
+            {"involved_parties": {"$regex": safe_q, "$options": "i"}},
         ]
     is_principal = user.get("role") == "admin" and user.get("sub_category") == "principal"
     if is_principal:

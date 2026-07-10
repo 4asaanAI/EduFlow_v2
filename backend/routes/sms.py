@@ -13,9 +13,22 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/sms", tags=["sms"])
 
+# Per-school daily SMS send cap (configurable via env var; default 1000)
+SMS_DAILY_CAP = int(os.environ.get("SMS_DAILY_CAP_PER_SCHOOL", "1000"))
+
 
 def get_user(req: Request):
     return get_current_user(req)
+
+
+async def _check_daily_cap(db, school_id: str, new_count: int) -> None:
+    """Raise 429 if adding new_count messages would exceed the daily school cap."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    sent_today = await db.sms_logs.count_documents(
+        {"schoolId": school_id, "sent_at": {"$regex": f"^{today}"}}
+    )
+    if sent_today + new_count > SMS_DAILY_CAP:
+        raise HTTPException(429, f"Daily SMS limit of {SMS_DAILY_CAP} reached for this school")
 
 
 def get_twilio_client():
@@ -123,6 +136,7 @@ async def send_fee_reminder(request: Request, user: dict = Depends(require_role(
 @router.post("/send-bulk")
 async def send_bulk_reminders(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
+    bid = user.get("branch_id")
     body = await request.json()
     recipients = body.get("recipients", [])   # [{student_id, phone, student_name, amount}]
     message_template = body.get("message_template", "")
@@ -131,6 +145,20 @@ async def send_bulk_reminders(request: Request, user: dict = Depends(require_rol
         raise HTTPException(400, "No recipients provided")
     if len(recipients) > 500:
         raise HTTPException(400, "Bulk SMS is limited to 500 recipients per request")
+
+    # Validate student_ids belong to caller's school (and branch for branch-bound users)
+    student_ids_in = [r.get("student_id") for r in recipients if r.get("student_id")]
+    if student_ids_in:
+        valid_students = await db.students.find(
+            scoped_query({"id": {"$in": student_ids_in}}, branch_id=bid),
+            {"_id": 0, "id": 1},
+        ).to_list(500)
+        valid_ids = {s["id"] for s in valid_students}
+        recipients = [r for r in recipients if not r.get("student_id") or r.get("student_id") in valid_ids]
+        if not recipients:
+            raise HTTPException(400, "No valid recipients found in this school/branch")
+
+    await _check_daily_cap(db, get_school_id(), len(recipients))
 
     twilio_phone = os.environ.get("TWILIO_PHONE_NUMBER", "")
     client = get_twilio_client()
@@ -197,6 +225,7 @@ async def send_bulk_reminders(request: Request, user: dict = Depends(require_rol
 async def send_parent_message(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     """Send SMS to parents of selected students via Twilio."""
     db = get_db()
+    bid = user.get("branch_id")
     body = await request.json()
     student_ids = body.get("student_ids", [])
     message_text = body.get("message", "").strip()
@@ -208,13 +237,25 @@ async def send_parent_message(request: Request, user: dict = Depends(require_rol
     if not message_text:
         raise HTTPException(400, "Message is required")
 
+    # Pre-validate all student_ids belong to caller's school/branch
+    valid_students_list = await db.students.find(
+        scoped_query({"id": {"$in": student_ids}}, branch_id=bid),
+        {"_id": 0, "id": 1},
+    ).to_list(500)
+    valid_ids = {s["id"] for s in valid_students_list}
+    student_ids = [sid for sid in student_ids if sid in valid_ids]
+    if not student_ids:
+        raise HTTPException(400, "No valid students found in this school/branch")
+
+    await _check_daily_cap(db, get_school_id(), len(student_ids))
+
     twilio_phone = os.environ.get("TWILIO_PHONE_NUMBER", "")
     client = get_twilio_client()
 
     results = {"sent": 0, "failed": 0, "no_phone": 0, "not_configured": 0, "logs": []}
 
     for sid in student_ids:
-        student = await db.students.find_one({"id": sid}, {"_id": 0})
+        student = await db.students.find_one(scoped_query({"id": sid}, branch_id=bid), {"_id": 0})
         if not student:
             continue
 
@@ -287,7 +328,8 @@ async def send_parent_message(request: Request, user: dict = Depends(require_rol
 @router.get("/logs")
 async def get_sms_logs(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    logs = await db.sms_logs.find(scoped_filter({}, get_school_id()), {"_id": 0}).sort("sent_at", -1).to_list(100)
+    bid = user.get("branch_id")
+    logs = await db.sms_logs.find(scoped_query({}, branch_id=bid), {"_id": 0}).sort("sent_at", -1).to_list(100)
     return {"success": True, "data": logs}
 
 

@@ -320,6 +320,12 @@ class FakeCollection:
         self.docs[:] = [doc for doc in self.docs if not _matches(doc, query)]
         return type("Result", (), {"deleted_count": before - len(self.docs)})()
 
+    async def distinct(self, key, query=None, **kwargs):
+        return list({
+            doc.get(key) for doc in self.docs
+            if _matches(doc, query or {}) and doc.get(key) is not None
+        })
+
     async def create_index(self, *args, **kwargs):
         name = kwargs.get("name") or str(args[0] if args else f"index_{len(self.indexes) + 1}")
         self.indexes[name] = {"key": args[0] if args else None, **kwargs}

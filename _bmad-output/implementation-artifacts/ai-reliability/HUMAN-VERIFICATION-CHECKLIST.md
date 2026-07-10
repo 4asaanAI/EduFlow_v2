@@ -153,7 +153,29 @@ These checks require the real running product; tests don't cover them.
 
 ---
 
-## F. Future items — added as the initiative progresses
+## F. Platform Reliability — R13 (Tenancy & RBAC Fail-Closed)
+
+### R13.2 — File serve over-exposure
+- [ ] Log in as a teacher. Try to access a file URL (`/api/files/serve/{file_id}`) uploaded by a different teacher in the same school. The response must be **403 Forbidden**, not the file contents. *(Pre-R13, any authenticated user in the school could download any file by guessing the UUID.)*
+- [ ] Log in as a principal. Confirm you **can** view files uploaded by any teacher in your school (cross-user access permitted for owner/principal).
+
+### R13.3 — Export RBAC
+- [ ] Log in as a teacher. Confirm the student export (`/api/export/students`) returns **403** — teachers do not have export access.
+- [ ] Log in as an admin with `sub_category: accountant`. Confirm you can export fee transactions but **cannot** export the student list (owner/principal only).
+- [ ] Log in as an admin with the old `sub_category: accounts` (if any such users remain in production). Confirm whether they can still export expenses. *(If they can, the data migration to rename `accounts → accountant` has not been run yet — that migration is intentionally deferred.)*
+
+### R13.4 — Login lockout is per-school
+- [ ] If you run a multi-school instance: trigger several bad-password attempts for a user in School A. Confirm the **same email in School B is not locked out**. *(Pre-R13, a global lockout key was shared across all schools.)*
+
+### R13.7 — Staff deactivation kills sessions
+- [ ] Deactivate a staff member's account from the staff management panel. Then log in as that staff member (or have them attempt to use an existing session). Their **existing session must be rejected** — they cannot continue using a tab that was open before deactivation. *(Pre-R13, refresh tokens were not revoked on deactivation.)*
+
+### R13.8 — SMS daily cap
+- [ ] If possible in staging: send bulk SMS reminders until you approach the daily cap (default 1000 per school). The API should return a **429 "Daily SMS limit reached"** response rather than continuing to charge. The cap is configurable via `SMS_DAILY_CAP_PER_SCHOOL` env var.
+
+---
+
+## G. Future items — added as the initiative progresses
 
 _(The executing agent appends new human-verification items here at each epic close.
 Nothing that needs your eyes should live only in a chat transcript.)_
@@ -165,3 +187,4 @@ Nothing that needs your eyes should live only in a chat transcript.)_
 - **2026-07-10** — R10 shipped (full self-learning phase 2). Appended §C-post: concrete real-use checks for the new "What I've Learned" panel, feedback→learning loop, routine saving, recalled-memory disclosure, and the cross-user/role privacy checks. Keep learning paused via kill-switch until the panel + signals are watched for ~2 weeks. — executing agent
 - **2026-07-10** — R11 shipped (excellence & evaluation — final epic). Replaced §D placeholder with concrete real-use checks for native FC (R11.2), streaming latency (R11.3), Hinglish/Hindi (R11.4), conversation trace viewer + confidentiality (R11.5), residual hardening (R11.6). Confidentiality standing check added as a permanent verification item. **Initiative complete.** — executing agent
 - **2026-07-10** — R12 shipped (onboarding, billing & payroll integrity). Added §E with 5 real-product verification items: owner login, Razorpay cross-tenant isolation, first-topup success, provisioning resume, and payroll double-submit + role enforcement. — executing agent
+- **2026-07-10** — R13 shipped (tenancy & RBAC fail-closed). Added §F with 6 real-product checks: file serve over-exposure (least-exposure), export RBAC, per-school login lockout, staff-deactivation session revocation, SMS daily cap. — executing agent
