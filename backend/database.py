@@ -276,6 +276,8 @@ async def _create_indexes():
     await db.fee_transactions.create_index("status")
     await db.messages.create_index("conversation_id")
     await db.conversations.create_index("user_id")
+    # R11.5: conversation trace viewer — per-turn diagnostic rows keyed by conversation
+    await db.ai_turn_traces.create_index([("conversation_id", 1), ("created_at", 1)])
     await db.assignments.create_index("class_id")
     await db.leave_requests.create_index("staff_id")
     await db.enquiries.create_index("status")

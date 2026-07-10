@@ -518,6 +518,8 @@ class FakeDb:
         self.image_gen_quota = FakeCollection()
         # AI Reliability — R10.2 feedback (Helpful/Improve) store
         self.ai_feedback = FakeCollection()
+        # AI Reliability — R11.5 conversation trace viewer
+        self.ai_turn_traces = FakeCollection()
 
     async def command(self, command_name):
         if command_name == "ping":

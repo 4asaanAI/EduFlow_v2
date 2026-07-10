@@ -946,6 +946,12 @@ export async function getLearningOverview() {
   return res.json();
 }
 
+// ── R11.5: Conversation Trace (owner-only support/diagnostics view) ──────────
+export async function getConversationTrace(convId) {
+  const res = await apiFetch(`${API}/chat/conversations/${convId}/trace`, { headers: getHeaders() });
+  return res.json();
+}
+
 export async function activateCorrection(feedbackId) {
   const res = await apiFetch(`${API}/learning/corrections/${feedbackId}/activate`, {
     method: 'POST', headers: getHeaders(),

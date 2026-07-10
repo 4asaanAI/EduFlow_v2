@@ -99,13 +99,37 @@ These are the real-use checks only a human can decide, now that R10 code is merg
 
 ---
 
-## D. 🚦 GATE — R11 (Excellence & Evaluation) — human checks _(to be detailed when R11 is scheduled)_
+## D. 🚦 GATE — R11 (Excellence & Evaluation) — concrete post-ship checks
 
-R11 is about quality, speed, language, and debuggability. Human checks will likely include:
-- [ ] Replies read well and are genuinely helpful (not just correct) across roles.
-- [ ] Hinglish / Hindi questions are handled naturally (UP school context).
-- [ ] The assistant feels fast enough in day-to-day use.
-- [ ] (Agent to expand this section with concrete items when R11 stories are executed.)
+R11 shipped 2026-07-10. All stories are unit/integration tested. The checks below are what **only you and Shubham can confirm in the real running product**.
+
+### R11.2 — Native Function Calling (the AI no longer guesses tool names)
+- [ ] Ask the assistant a few typical queries (attendance summary, fee status, leave status). Confirm it replies with real data, not "I tried to call X" or a blank.
+- [ ] Ask the assistant something off-topic ("write me a poem about Mathura"). Confirm it replies in plain text without tool errors.
+- [ ] Ask something that sounds like a write action (e.g. "mark Rahul absent today") — confirm the **confirmation card** appears before anything is recorded (unchanged from before R11).
+- [ ] Ask something genuinely impossible ("book me a flight") — confirm the assistant politely says it can't, rather than trying a tool and failing.
+
+### R11.3 — True Token Streaming (faster visible replies)
+- [ ] Submit a query that needs a medium-length answer (e.g. "summarise this month's attendance"). Confirm the reply **starts appearing character-by-character** (not all at once at the end). The first word should appear within a few seconds of sending.
+- [ ] While a reply is streaming, let it complete normally. Confirm the message is saved in the conversation — no blank or lost reply.
+
+### R11.4 — Hinglish / Hindi Responses
+- [ ] Type a message in Hinglish (e.g. "class 5 ka attendance batao"). Confirm the reply comes back in the **same casual Hinglish register**, not pure English or formal Hindi.
+- [ ] Type a message in Devanagari (e.g. "आज की हाज़िरी बताओ"). Confirm the reply is in **Devanagari Hindi**.
+- [ ] Confirm that student names, amounts (₹), class labels, and dates in the answer are **not translated or transliterated** — they appear verbatim as stored in the system.
+
+### R11.5 — Conversation Trace Viewer ("why didn't the AI reply?")
+- [ ] Open the **Conversation Trace** panel (owner role only — other roles should not see it). Find a recent conversation and open its trace.
+- [ ] Confirm the panel shows a timeline of turns: outcome (answered / unavailable), language detected, and which tools were called.
+- [ ] Confirm the panel shows **"Layaa AI"** as the assistant name — NOT "Azure", "OpenAI", "GPT-4", or any model name. This is a confidentiality requirement.
+- [ ] If you can reproduce the original incident (chat where owner got NO reply), check the trace — you should see `outcome: unavailable` with an `error_type` that explains what went wrong, visible without opening any server log.
+- [ ] Confirm a teacher or accountant logged in as that role **cannot see** the Conversation Trace option in the panel menu.
+
+### R11.6 — Residual Audit Hardening (background — no visible changes)
+- [ ] No visible change expected. If you notice any fee/attendance/staff data unexpectedly appearing in an AI action log or metric panel that looks like a student name or phone number, report it — this epic tightened the PII filter.
+
+### Confidentiality standing check (R11 permanently owns this)
+- [ ] Open browser dev-tools → Network while using the chat. Confirm no response body or event-stream frame contains the words "azure", "openai", "gpt-4", or "gpt-5" (case-insensitive). The assistant must always identify as Layaa AI.
 
 ---
 
@@ -119,3 +143,4 @@ Nothing that needs your eyes should live only in a chat transcript.)_
 ## Change log
 - **2026-07-10** — Document created (after R9 shipped). Seeded sections A–D: standing checks, R1–R9 post-ship spot-checks, the R10 go/no-go gate, and an R11 placeholder. — executing agent
 - **2026-07-10** — R10 shipped (full self-learning phase 2). Appended §C-post: concrete real-use checks for the new "What I've Learned" panel, feedback→learning loop, routine saving, recalled-memory disclosure, and the cross-user/role privacy checks. Keep learning paused via kill-switch until the panel + signals are watched for ~2 weeks. — executing agent
+- **2026-07-10** — R11 shipped (excellence & evaluation — final epic). Replaced §D placeholder with concrete real-use checks for native FC (R11.2), streaming latency (R11.3), Hinglish/Hindi (R11.4), conversation trace viewer + confidentiality (R11.5), residual hardening (R11.6). Confidentiality standing check added as a permanent verification item. **Initiative complete.** — executing agent

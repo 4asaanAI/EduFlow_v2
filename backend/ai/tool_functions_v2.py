@@ -4567,3 +4567,35 @@ WRITE_TOOL_NAMES = {
     name for name, tool in TOOL_REGISTRY.items()
     if tool.get("requires_confirmation") or tool.get("dispatch_type") == "write"
 }
+
+
+def openai_tool_schema(name: str, tool_def: dict, required: "tuple | list" = ()) -> dict:
+    """R11.2 AC2: derive a native function-calling schema from ONE registry entry.
+
+    TOOL_REGISTRY is the single source of truth — the same `params_schema` that
+    documents each tool becomes the JSON Schema the provider validates against.
+    Because the provider constrains the model to the advertised tool names,
+    invented tool names become impossible (AC3), and the R3 prompt↔registry
+    parity gate becomes structural rather than only test-enforced.
+    """
+    props = {}
+    for key, spec in (tool_def.get("params_schema") or {}).items():
+        spec = dict(spec) if isinstance(spec, dict) else {"type": "string"}
+        spec.setdefault("type", "string")
+        # JSON Schema requires an `items` schema for arrays; supply a permissive
+        # default when the registry entry omits it (e.g. attendance rows).
+        if spec.get("type") == "array" and "items" not in spec:
+            spec["items"] = {}
+        props[key] = spec
+    parameters = {"type": "object", "properties": props}
+    req = [k for k in (required or ()) if k in props]
+    if req:
+        parameters["required"] = req
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": tool_def.get("description", "") or name.replace("_", " "),
+            "parameters": parameters,
+        },
+    }

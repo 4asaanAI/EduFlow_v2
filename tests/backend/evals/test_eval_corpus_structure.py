@@ -49,7 +49,8 @@ def test_corpus_covers_required_scenario_tags():
     tags = [t for c in CORPUS for t in c.tags]
     for required in ("incident", "followup", "ambiguous", "denial", "hinglish"):
         assert required in tags, f"corpus missing a '{required}' scenario"
-    assert tags.count("hinglish") >= 4, "need >= 4 Hinglish conversations"
+    assert tags.count("hinglish") >= 8, "need >= 8 Hinglish conversations (R11.4 AC2)"
+    assert tags.count("devanagari") >= 1, "need >= 1 Devanagari-script conversation (R11.4 AC3)"
     assert tags.count("denial") >= 3, "need >= 3 denial conversations"
 
 
