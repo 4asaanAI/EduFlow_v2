@@ -19,6 +19,11 @@ from tenant import get_school_id
 logger = logging.getLogger(__name__)
 
 IDEMPOTENCY_TTL_HOURS = 24
+# R15.4 (P-L2): cap the stored response body so a large payload can't bloat the
+# idempotency doc past MongoDB's 16MB BSON limit (which would raise on write and
+# leave the key unstored). An oversized response is simply not cached — the retry
+# re-executes normally rather than replaying a truncated (corrupt) body.
+MAX_IDEMPOTENCY_BODY_BYTES = 512 * 1024  # 512 KB
 MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 EXCLUDED_PATHS = {
     "/api/chat/confirm",
@@ -87,6 +92,15 @@ async def store_response(
     if response.status_code < 200 or response.status_code >= 300:
         return
     if "text/event-stream" in content_type:
+        return
+    # R15.4 (P-L2): never store an oversized body — cap, don't truncate. A
+    # truncated JSON body would replay as corrupt; skipping storage just makes
+    # the (rare) large response non-idempotent, which is the safe failure mode.
+    if len(body) > MAX_IDEMPOTENCY_BODY_BYTES:
+        logger.warning(
+            "idempotency response too large to cache (%d bytes > %d) — not stored",
+            len(body), MAX_IDEMPOTENCY_BODY_BYTES,
+        )
         return
 
     try:

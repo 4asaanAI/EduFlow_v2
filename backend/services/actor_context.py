@@ -19,7 +19,11 @@ from tenant import get_school_id
 
 
 def _now() -> datetime:
-    return datetime.now()
+    # R15.4 (P-L1): return tz-aware UTC. The service layer persists `now_iso()`
+    # into ~40 collections; a naive stamp made BSON date comparisons ambiguous
+    # (naive vs aware mix). On our servers (UTC) this preserves the same instant
+    # and only tags the timezone, so `now()` and `now_utc()` now agree.
+    return datetime.now(timezone.utc)
 
 
 def _now_utc() -> datetime:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import uuid
 
@@ -42,7 +42,9 @@ async def create_notification(
         "source_record_id": source_id,
         "source_record_type": source_type,
         "read": False,
-        "created_at": datetime.now().isoformat(),
+        # R15.4 (P-L1): persist a tz-aware UTC timestamp so notification ordering
+        # and TTL comparisons are unambiguous across workers/timezones.
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }, school_id or get_school_id())
 
     try:

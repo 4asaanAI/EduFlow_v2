@@ -87,6 +87,42 @@ def _inc_nested(doc, key, value):
     _set_nested(doc, key, current + value)
 
 
+def _eval_agg_expr(expr, doc):
+    """Minimal aggregation-expression evaluator for pipeline updates.
+
+    Supports the operators the product code uses in `update_one` pipelines
+    ($max/$min/$subtract/$add/$ifNull, field refs `$path`, and literals).
+    Only reached when an update is passed as a list (aggregation pipeline);
+    plain-dict updates never touch this path.
+    """
+    if isinstance(expr, str) and expr.startswith("$"):
+        return _get_nested(doc, expr[1:])
+    if isinstance(expr, dict):
+        if "$max" in expr:
+            vals = [_eval_agg_expr(e, doc) for e in expr["$max"]]
+            vals = [v for v in vals if v is not None]
+            return max(vals) if vals else None
+        if "$min" in expr:
+            vals = [_eval_agg_expr(e, doc) for e in expr["$min"]]
+            vals = [v for v in vals if v is not None]
+            return min(vals) if vals else None
+        if "$subtract" in expr:
+            a, b = (_eval_agg_expr(e, doc) for e in expr["$subtract"])
+            return (a or 0) - (b or 0)
+        if "$add" in expr:
+            return sum((_eval_agg_expr(e, doc) or 0) for e in expr["$add"])
+        if "$ifNull" in expr:
+            primary = _eval_agg_expr(expr["$ifNull"][0], doc)
+            return primary if primary is not None else _eval_agg_expr(expr["$ifNull"][1], doc)
+    return expr
+
+
+def _apply_pipeline(doc, pipeline):
+    for stage in pipeline:
+        for key, expr in stage.get("$set", {}).items():
+            _set_nested(doc, key, _eval_agg_expr(expr, doc))
+
+
 def _matches(doc, query):
     for key, expected in (query or {}).items():
         if key == "$and":
@@ -235,6 +271,18 @@ class FakeCollection:
                     )
 
     async def update_one(self, query, update, upsert=False, **kwargs):
+        if isinstance(update, list):
+            # Aggregation-pipeline update (e.g. atomic clamp via $max/$subtract).
+            for doc in self.docs:
+                if _matches(doc, query):
+                    _apply_pipeline(doc, update)
+                    return type("Result", (), {"matched_count": 1, "modified_count": 1})()
+            if upsert:
+                doc = dict(query)
+                _apply_pipeline(doc, update)
+                self.docs.append(doc)
+                return type("Result", (), {"matched_count": 1, "modified_count": 1})()
+            return type("Result", (), {"matched_count": 0, "modified_count": 0})()
         for doc in self.docs:
             if _matches(doc, query):
                 for key, value in update.get("$set", {}).items():

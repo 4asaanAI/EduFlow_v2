@@ -104,6 +104,35 @@ async def test_record_usage_logs_usage_deducts_topups_and_sets_warning(token_db)
 
 
 @pytest.mark.asyncio
+async def test_record_usage_personal_topup_floors_at_zero(token_db):
+    """R15.1 (P-L6): a debit larger than the remaining balance clamps at 0.
+
+    Before the fix `$inc: -tokens_used` could drive the balance negative (a
+    single big turn or a burst of concurrent turns). The atomic `$max`-clamp
+    pipeline guarantees the personal top-up never goes below zero.
+    """
+    token_db.token_balances.docs[:] = [
+        {
+            "branch_id": "branch-1",
+            "role_limits": {"teacher": 100},
+            "personal_topups": {"teacher-1": 30},
+            "school_topup_pool": 1000,
+            "self_recharge_enabled": True,
+        }
+    ]
+    user = {"id": "teacher-1", "role": "teacher"}
+
+    # Debit 200 against a 30-token balance — must floor at 0, never -170.
+    await token_service.record_usage(user, "branch-1", 200, "personal_topup", conversation_id="c1")
+
+    assert token_db.token_balances.docs[0]["personal_topups"]["teacher-1"] == 0
+
+    # A subsequent debit stays at 0 (idempotent floor, no drift into negatives).
+    await token_service.record_usage(user, "branch-1", 75, "personal_topup", conversation_id="c2")
+    assert token_db.token_balances.docs[0]["personal_topups"]["teacher-1"] == 0
+
+
+@pytest.mark.asyncio
 async def test_purchase_topup_is_idempotent_by_payment_id(token_db):
     first = await token_service.purchase_topup("branch-1", "teacher-1", "micro", "pay-1")
     duplicate = await token_service.purchase_topup("branch-1", "teacher-1", "micro", "pay-1")

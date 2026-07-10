@@ -638,7 +638,7 @@ async def get_lesson_plan_completion(
         completed = await db.lesson_plans.count_documents(
             scoped_query({
                 "class_id": class_id,
-                "week": {"$regex": f"^{current_month}"},
+                "week": {"$regex": f"^{re.escape(current_month)}"},
                 "$or": [{"is_complete": True}, {"content": {"$exists": True, "$ne": ""}}]
             }, branch_id=bid)
         )

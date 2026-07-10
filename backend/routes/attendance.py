@@ -21,6 +21,7 @@ from services.staff_attendance_service import (
 )
 from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, normalize_session_id, publish
 from services.teacher_scope_service import compute_teacher_scope
+from pymongo.errors import DuplicateKeyError
 import asyncio
 import csv
 import io
@@ -104,7 +105,23 @@ async def manual_student_attendance(request: Request):
         marked_by=user["id"],
     )
     doc = {**_serialize(att), "_id": att.id, "source": "manual", "manual_reason": body["reason"], "schoolId": get_school_id()}
-    await db.student_attendance.insert_one(doc)
+    try:
+        await db.student_attendance.insert_one(doc)
+    except DuplicateKeyError:
+        # R15.5 (P-L7): a unique index on (student_id, date) means a repeat manual
+        # entry for the same student+day previously surfaced as a 500. Resolve it
+        # deterministically: a byte-for-byte replay (same status) is idempotent
+        # (return the existing row); a differing status is a real conflict (409 →
+        # the caller must use the correction endpoint, which keeps an audit trail).
+        existing = await db.student_attendance.find_one(
+            _attendance_query({"student_id": body["student_id"], "date": body["date"]}), {"_id": 0}
+        )
+        if existing and existing.get("status") == body["status"]:
+            return {"success": True, "data": existing}
+        raise HTTPException(
+            409,
+            "Attendance for this student on this date already exists; use the correction endpoint to change it",
+        )
     await _audit(db, action="manual_entry", attendance_id=att.id, user=user, changes={"created": doc}, reason=body["reason"])
     return {"success": True, "data": {k: v for k, v in doc.items() if k != "_id"}}
 

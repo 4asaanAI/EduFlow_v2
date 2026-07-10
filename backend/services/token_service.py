@@ -226,9 +226,14 @@ async def record_usage(
     # 2. Update balance depending on source
     if source == "personal_topup":
         try:
+            # R15.1 (P-L6): floor the debit at 0 so a burst of concurrent calls
+            # can never drive a personal top-up balance negative. An aggregation
+            # pipeline update keeps this atomic (single server-side op) while
+            # clamping — mirrors R12.3's atomic credit path on the spend side.
+            field = f"personal_topups.{user_id}"
             await db.token_balances.update_one(
                 {"branch_id": branch_id},
-                {"$inc": {f"personal_topups.{user_id}": -tokens_used}},
+                [{"$set": {field: {"$max": [0, {"$subtract": [{"$ifNull": [f"${field}", 0]}, tokens_used]}]}}}],
             )
         except Exception:
             logger.error("personal_topup_balance_update_failed", exc_info=True)

@@ -308,6 +308,9 @@ async def _create_indexes():
     # R11.5: conversation trace viewer — per-turn diagnostic rows keyed by conversation
     await db.ai_turn_traces.create_index([("conversation_id", 1), ("created_at", 1)])
     await db.assignments.create_index("class_id")
+    # R15.5 (P-L8): unique (schoolId, name) backs the idempotent house seed so a
+    # concurrent first-load can never create duplicate houses.
+    await db.houses.create_index([("schoolId", 1), ("name", 1)], unique=True)
     await db.leave_requests.create_index("staff_id")
     await db.enquiries.create_index("status")
     # Token budget indexes

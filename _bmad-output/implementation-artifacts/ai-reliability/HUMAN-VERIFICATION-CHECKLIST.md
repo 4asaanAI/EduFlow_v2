@@ -185,7 +185,26 @@ These checks require the real running product; tests don't cover them.
 
 ---
 
-## H. Future items — added as the initiative progresses
+## H. Platform Reliability — R15 (Residual Confirmatory Sweep)
+
+### R15.5 — Manual attendance duplicate no longer errors
+- [ ] Record a manual attendance entry for a student on a date, then submit the **same** entry again. The second submit should be accepted quietly (no error). Now submit a **different status** for the same student+date — you should get a clear "already exists — use correction" message (not a server error), and be able to change it via the correction flow. *(Pre-R15 the duplicate surfaced as a generic 500.)*
+
+### R15.5 — Houses page shows exactly four
+- [ ] On a brand-new school, open the Activities / Houses screen. Confirm exactly **four houses** (Blue, Green, Red, Yellow) appear — never duplicates — even if two people open it at the same moment on first load.
+
+### R15.4 — Seed-status locked down in production
+- [ ] In production, open `/api/auth/seed-status` in a browser **without logging in**. It must be **refused** (not show row counts). Only a logged-in owner can see it. In dev/staging it stays open (used by seed scripts). *(Pre-R15 it exposed user/student/staff counts to anyone.)*
+
+### R15.3 — In-app help assistant is capped + metered
+- [ ] The floating in-app help assistant (the "how do I…" helper, not the main chat) now allows about **20 questions per hour per person**; a heavy user gets a polite "try again later" after that. Confirm normal use is unaffected. Its usage now also shows in the token ledger (source "assistant"), so its cost is visible. *(Pre-R15 it had no limit and no metering — a runaway cost surface.)*
+
+### R15.2 — Guardian contact visibility (PRODUCT DECISION NEEDED)
+- [ ] **Decide:** should a **teacher** be able to see a student's guardian **phone/email** in the student record? Today staff (owner/admin/teacher) can, because contacting guardians is a normal need; the student's own self-view already hides income/occupation. If you want guardian contact restricted to certain roles only, that's a small follow-up change — flag it and we'll scope it. (No code changed in R15; this is a policy call, not a bug.)
+
+---
+
+## I. Future items — added as the initiative progresses
 
 _(The executing agent appends new human-verification items here at each epic close.
 Nothing that needs your eyes should live only in a chat transcript.)_
@@ -199,3 +218,4 @@ Nothing that needs your eyes should live only in a chat transcript.)_
 - **2026-07-10** — R12 shipped (onboarding, billing & payroll integrity). Added §E with 5 real-product verification items: owner login, Razorpay cross-tenant isolation, first-topup success, provisioning resume, and payroll double-submit + role enforcement. — executing agent
 - **2026-07-10** — R13 shipped (tenancy & RBAC fail-closed). Added §F with 6 real-product checks: file serve over-exposure (least-exposure), export RBAC, per-school login lockout, staff-deactivation session revocation, SMS daily cap. — executing agent
 - **2026-07-10** — R14 shipped (multi-worker correctness). No new human-verification items — the SSE startup guard is an ops/config concern (set WEB_CONCURRENCY=1 or REDIS_URL); the school status cache change is invisible to end users (same behavior, bounded latency). The §F R14 check below covers the one observable change. — executing agent
+- **2026-07-10** — R15 shipped (residual confirmatory sweep — final epic of the Platform Reliability initiative). Added §H with 5 checks: manual-attendance-duplicate no longer errors, houses page shows exactly four, seed-status locked down in production, in-app help assistant is capped + metered, and one **product decision** (guardian contact visibility to teachers). Relabeled the future-items placeholder to §I. — executing agent

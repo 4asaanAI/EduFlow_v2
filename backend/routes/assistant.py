@@ -4,13 +4,43 @@ Floating AI Assistant — EduFlow admin/teacher knowledge base Q&A
 Strictly scoped to EduFlow dashboard features only.
 """
 import logging
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import JSONResponse
 from middleware.auth import require_role
 from ai.llm_client import llm_client
+from services.token_service import record_usage
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/assistant", tags=["assistant"])
+
+# R15.3 / R15.5 (P-L9): the in-app help assistant previously had NO rate limit and
+# NO token accounting, so it could drive uncapped, invisible Azure spend. Guard it
+# with a per-user hourly ceiling (in-process) and record every call's tokens.
+ASSISTANT_HOURLY_LIMIT = 20
+# user_id -> (hour_bucket, count). One entry per active user, so memory is bounded
+# by the (small, single-school) user count. Per-worker by design: with
+# WEB_CONCURRENCY > 1 the effective ceiling is limit*workers — an acceptable soft
+# cost-guard for this lightweight endpoint (the DB-backed ai_rate_limiter guards
+# the real AI-write dispatch path). Documented in the deployment runbook.
+_assistant_calls: dict[str, tuple[str, int]] = {}
+
+
+def _assistant_hour_bucket() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H")
+
+
+def _allow_assistant_call(user_id: str) -> bool:
+    """Attempt-based per-user hourly limiter. Returns False once the ceiling is hit."""
+    bucket = _assistant_hour_bucket()
+    stored_bucket, count = _assistant_calls.get(user_id, (bucket, 0))
+    if stored_bucket != bucket:
+        count = 0
+    if count >= ASSISTANT_HOURLY_LIMIT:
+        _assistant_calls[user_id] = (bucket, count)
+        return False
+    _assistant_calls[user_id] = (bucket, count + 1)
+    return True
 
 SYSTEM_PROMPT = """You are EduFlow Assistant — a helpful, concise in-app guide embedded inside the EduFlow school management dashboard.
 
@@ -228,12 +258,28 @@ async def assistant_chat(
     if not clean or clean[-1]["role"] != "user":
         return JSONResponse(status_code=400, content={"success": False, "detail": "Last message must be from user"})
 
+    # R15.3 / R15.5 (P-L9): per-user hourly ceiling — checked before the LLM call
+    # so a client can't hammer the (paid) endpoint. Attempt-based on purpose.
+    if not _allow_assistant_call(user.get("id", "anonymous")):
+        return JSONResponse(
+            status_code=429,
+            content={"success": False, "detail": "Assistant hourly limit reached. Please try again later."},
+        )
+
     try:
         # R1.7 AC3: chat() returns an LLMResult — an unavailable model is a real
         # error payload, never success:True wrapping the failure object.
         result = await llm_client.chat(SYSTEM_PROMPT, clean)
         if not result.ok:
             return JSONResponse(status_code=503, content={"success": False, "detail": "Assistant is temporarily unavailable. Please try again."})
+        # R15.3 / R15.5 (P-L9): account for the tokens this call spent so in-app
+        # assistant usage is visible in the ledger (source="assistant" logs to
+        # token_usage without debiting a chat budget). Fail-open — accounting must
+        # never break the user's reply.
+        try:
+            await record_usage(user, user.get("branch_id"), result.tokens, "assistant")
+        except Exception as e:
+            logger.error(f"Assistant token accounting failed: {e}")
         return {"success": True, "reply": result.text}
     except Exception as e:
         logger.error(f"Assistant error: {e}")

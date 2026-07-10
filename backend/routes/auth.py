@@ -7,9 +7,10 @@ Auth routes — Password login and JWT token management.
 Endpoints:
   POST /api/auth/login           — Username/password login (primary)
   GET  /api/auth/me              — Get current user profile from JWT
-  GET  /api/auth/seed-status     — Check seed data counts (public)
+  GET  /api/auth/seed-status     — Check seed data counts (public in dev/staging; owner-only in production)
 """
 
+import os
 import re
 import logging
 import uuid
@@ -470,7 +471,15 @@ async def get_me(request: Request):
 # ─── GET /api/auth/seed-status ────────────────────────────────────────────────
 
 @router.get("/seed-status")
-async def seed_status():
+async def seed_status(request: Request):
+    # R15.4 (P-L5): this returns row counts for auth_users/classes/students/staff,
+    # which is an information-disclosure surface. In production it now requires an
+    # authenticated owner; in dev/staging it stays open as a bootstrap/diagnostic
+    # convenience (the seed scripts run before any owner login exists).
+    if os.environ.get("ENVIRONMENT", "development").lower() == "production":
+        user = get_current_user(request)  # raises 401 when unauthenticated
+        if user.get("role") != "owner":
+            raise HTTPException(status_code=403, detail="Forbidden")
     db = get_db()
     count = await db.auth_users.count_documents({})
     classes = await db.classes.count_documents({})

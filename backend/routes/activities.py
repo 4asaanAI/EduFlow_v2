@@ -1,9 +1,10 @@
 """School activities — houses, student positions, sports teams."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
+from pymongo.errors import DuplicateKeyError
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from typing import List, Optional
@@ -62,21 +63,31 @@ async def list_houses(request: Request, user: dict = Depends(require_role("owner
     db = get_db()
     houses = await db.houses.find(_scope(), {"_id": 0}).to_list(10)
     if not houses:
-        # Seed defaults if none exist
-        houses = []
+        # R15.5 (P-L8): seed the four default houses IDEMPOTENTLY. Seeding inside
+        # this GET handler meant two concurrent first-loads each ran insert_one →
+        # duplicate houses. An upsert keyed on (schoolId, name) makes the seed
+        # safe under concurrency; the unique (schoolId, name) index in
+        # database.py backs it, so a lost race raises DuplicateKeyError which we
+        # swallow and then re-read the authoritative list.
         for colour in sorted(HOUSE_COLOURS):
-            doc = {
-                "_id": str(uuid.uuid4()),
-                "id": str(uuid.uuid4()),
-                "schoolId": get_school_id(),
-                "name": colour,
-                "colour": colour,
-                "points": 0,
-                "created_at": datetime.now().isoformat(),
-            }
-            await db.houses.insert_one(doc)
-            doc.pop("_id", None)
-            houses.append(doc)
+            new_id = str(uuid.uuid4())
+            try:
+                await db.houses.update_one(
+                    {"name": colour},
+                    {"$setOnInsert": {
+                        "_id": new_id,
+                        "id": new_id,
+                        "schoolId": get_school_id(),
+                        "name": colour,
+                        "colour": colour,
+                        "points": 0,
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                    }},
+                    upsert=True,
+                )
+            except DuplicateKeyError:
+                pass  # a concurrent first-load already seeded this colour
+        houses = await db.houses.find(_scope(), {"_id": 0}).to_list(10)
     return {"success": True, "data": houses}
 
 
