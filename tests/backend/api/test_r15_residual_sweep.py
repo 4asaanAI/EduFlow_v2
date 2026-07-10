@@ -5,10 +5,10 @@ from __future__ import annotations
   * R15.5 (P-L7) manual attendance duplicate → idempotent / 409, never a 500
   * R15.5 (P-L8) house seeding is idempotent (no duplicate houses)
   * R15.4 (P-L5) seed-status is gated in production
-  * R15.3/R15.5 (P-L9) assistant rate-limit (429) + token accounting + 503
-"""
 
-from types import SimpleNamespace
+Note: the R15.3/R15.5 (P-L9) in-app help assistant (`/api/assistant`) was retired
+after R15 (redundant with the main AI chat), so its tests were removed with it.
+"""
 
 import pytest
 
@@ -84,81 +84,3 @@ def test_seed_status_requires_owner_in_production(client, monkeypatch):
     assert client.get("/api/auth/seed-status").status_code == 401
     assert client.get("/api/auth/seed-status", headers=_bearer({"user_id": "t1", "role": "teacher", "name": "T"})).status_code == 403
     assert client.get("/api/auth/seed-status", headers=_bearer({"user_id": "o1", "role": "owner", "name": "O"})).status_code == 200
-
-
-# ─── R15.3/R15.5 (P-L9): assistant rate-limit + accounting + 503 ────────────
-
-def _assistant_body():
-    return {"messages": [{"role": "user", "content": "How do I collect a fee?"}]}
-
-
-def test_assistant_records_token_usage(client, fake_db, monkeypatch):
-    from routes import assistant
-    from services import token_service
-
-    assistant._assistant_calls.clear()
-    monkeypatch.setattr(token_service, "get_db", lambda: fake_db)
-
-    async def fake_chat(system, messages):
-        return SimpleNamespace(ok=True, text="Open the Fee Tracker tool.", tokens=123)
-
-    monkeypatch.setattr(assistant.llm_client, "chat", fake_chat)
-
-    headers = _bearer({"user_id": "assist-acct-1", "role": "owner", "name": "O", "branch_id": "branch-a"})
-    r = client.post("/api/assistant", json=_assistant_body(), headers=headers)
-    assert r.status_code == 200
-    assert r.json()["reply"] == "Open the Fee Tracker tool."
-
-    entries = [d for d in fake_db.token_usage.docs
-               if d.get("source") == "assistant" and d.get("user_id") == "assist-acct-1"]
-    assert len(entries) == 1
-    assert entries[0]["tokens_used"] == 123
-
-
-def test_assistant_rate_limit_returns_429(client, fake_db, monkeypatch):
-    from routes import assistant
-    from services import token_service
-
-    assistant._assistant_calls.clear()
-    monkeypatch.setattr(token_service, "get_db", lambda: fake_db)
-
-    async def fake_chat(system, messages):
-        return SimpleNamespace(ok=True, text="ok", tokens=1)
-
-    monkeypatch.setattr(assistant.llm_client, "chat", fake_chat)
-
-    headers = _bearer({"user_id": "assist-rl-1", "role": "teacher", "name": "T"})
-    for _ in range(assistant.ASSISTANT_HOURLY_LIMIT):
-        assert client.post("/api/assistant", json=_assistant_body(), headers=headers).status_code == 200
-
-    throttled = client.post("/api/assistant", json=_assistant_body(), headers=headers)
-    assert throttled.status_code == 429
-    assert throttled.json()["success"] is False
-
-
-def test_assistant_unavailable_returns_503(client, monkeypatch):
-    """R1.7 confirmation (P-L9 AC2): ok=False is a real 503, not success:true."""
-    from routes import assistant
-
-    assistant._assistant_calls.clear()
-
-    async def fake_chat(system, messages):
-        return SimpleNamespace(ok=False, text="", tokens=0)
-
-    monkeypatch.setattr(assistant.llm_client, "chat", fake_chat)
-
-    headers = _bearer({"user_id": "assist-503-1", "role": "admin", "name": "A"})
-    r = client.post("/api/assistant", json=_assistant_body(), headers=headers)
-    assert r.status_code == 503
-    assert r.json()["success"] is False
-
-
-def test_assistant_unauthenticated_returns_401(client):
-    r = client.post("/api/assistant", json=_assistant_body())
-    assert r.status_code == 401
-
-
-def test_assistant_wrong_role_returns_403(client):
-    headers = _bearer({"user_id": "stu-1", "role": "student", "name": "S"})
-    r = client.post("/api/assistant", json=_assistant_body(), headers=headers)
-    assert r.status_code == 403

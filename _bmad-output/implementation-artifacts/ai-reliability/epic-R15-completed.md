@@ -34,6 +34,14 @@
 
 ---
 
+> **POST-R15 FOLLOW-UP (2026-07-10, owner request):** the in-app help chatbot was
+> **fully retired** — the floating widget was removed from all profiles and the
+> `/api/assistant` endpoint + its tests deleted (redundant with the main AI chat,
+> which every dashboard profile already has). The R15.3/R15.5 assistant hardening
+> below (rate limit + token accounting) is therefore superseded — a deleted
+> endpoint can't overspend. The audit portions of R15.3 (sms/settings/import) stand.
+> Suite after retirement: 1625 passed / 0 failed.
+
 ## R15.3 — Messaging, settings & import routes deep audit + assistant hardening
 
 **Files audited:** `routes/{sms,settings,notifications,import_data,reports,queries,assistant}.py`, `services/{org_config_service,announcement_service}.py`.

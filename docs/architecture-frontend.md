@@ -184,7 +184,6 @@ const res = await axios.post(`${API_BASE}/uploads`, formData, {
 | `MessageRenderer.js` | Renders AI messages (markdown, tables, action buttons, artifacts) |
 | `ThinkingProcess.js` | Expandable "thinking steps" display |
 | `ConfirmActionCard.js` | Confirmation prompt for destructive AI actions |
-| `FloatingAssistant.js` | Floating chat button (accessible from any page) |
 | `CommandPalette.js` | ⌘K global command palette |
 | `TokenBudgetBar.js` | AI token remaining budget indicator |
 

@@ -45,7 +45,6 @@ eduflow/                            # Repository root
 │   │   ├── upload.py               # /api/uploads — S3-backed file upload/serve/delete
 │   │   ├── chat.py                 # /api/chat — conversation CRUD + AI message stream
 │   │   ├── chat_upload.py          # /api/chat/upload — file attachment for AI chat
-│   │   ├── assistant.py            # /api/assistant — direct assistant queries
 │   │   ├── tools.py                # /api/tools/{tool_id}/execute — AI tool executor
 │   │   ├── tokens.py               # /api/tokens — AI token budget management
 │   │   ├── operator.py             # /api/operator — super-admin: rate limit overrides
@@ -120,7 +119,6 @@ eduflow/                            # Repository root
 │       │   ├── ResetPassword.js    # Password reset form
 │       │   ├── ChatInterface.js    # AI chat UI (SSE streaming)
 │       │   ├── CommandPalette.js   # ⌘K command palette
-│       │   ├── FloatingAssistant.js # Floating AI assistant button
 │       │   ├── InputBar.js         # Chat input with attachments
 │       │   ├── MessageRenderer.js  # Markdown/artifact renderer for AI messages
 │       │   ├── ThinkingProcess.js  # AI thinking step visualization

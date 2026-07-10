@@ -5,7 +5,10 @@ from __future__ import annotations
 Covers the localized fixes that don't need the HTTP client:
   * R15.4 (P-L2) idempotency response-body size cap
   * R15.4 (P-L1) actor_context timestamps are tz-aware UTC
-  * R15.3/R15.5 (P-L9) assistant per-user hourly rate-limit helper
+  * R15.5 (P-L8) house seed upsert idempotency
+
+Note: the R15.3/R15.5 (P-L9) in-app help assistant was retired after R15
+(redundant with the main AI chat), so its rate-limiter tests were removed.
 """
 
 import json
@@ -81,32 +84,6 @@ async def test_actor_context_now_is_timezone_aware_utc():
     # Persisted ISO strings now carry an explicit UTC offset.
     assert ctx.now_iso().endswith("+00:00")
     assert ctx.now_utc_iso().endswith("+00:00")
-
-
-# ─── R15.3/R15.5 (P-L9): assistant per-user hourly limiter ──────────────────
-
-async def test_assistant_rate_limiter_allows_then_denies(monkeypatch):
-    from routes import assistant
-
-    assistant._assistant_calls.clear()
-    uid = "user-rl-1"
-
-    allowed = [assistant._allow_assistant_call(uid) for _ in range(assistant.ASSISTANT_HOURLY_LIMIT)]
-    assert all(allowed)
-    # One past the ceiling is denied.
-    assert assistant._allow_assistant_call(uid) is False
-    # A different user is unaffected (per-user buckets).
-    assert assistant._allow_assistant_call("user-rl-2") is True
-
-
-async def test_assistant_rate_limiter_resets_on_new_hour(monkeypatch):
-    from routes import assistant
-
-    uid = "user-rl-3"
-    # Simulate a stale bucket at the ceiling; a new hour must reset the count.
-    assistant._assistant_calls[uid] = ("1999-01-01T00", assistant.ASSISTANT_HOURLY_LIMIT)
-    assert assistant._allow_assistant_call(uid) is True
-    assistant._assistant_calls.pop(uid, None)
 
 
 # ─── R15.5 (P-L8): house seed upsert idempotency (concurrency backstop) ─────

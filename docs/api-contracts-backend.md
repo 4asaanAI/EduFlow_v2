@@ -218,11 +218,9 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 |--------|------|------|-------------|
 | `POST` | `/{tool_id}/execute` | Bearer | Execute a named AI tool. |
 
-### AI Assistant — `/api/assistant`
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| `POST` | `/` | Bearer | Send a direct assistant query (non-conversation). |
+> **Removed (2026-07-10):** the standalone in-app help assistant (`POST /api/assistant`)
+> was retired — it duplicated the main AI chat (`/api/chat`), which every dashboard
+> profile already has. Use `/api/chat` for all assistant interactions.
 
 ### Tokens / AI Budget — `/api/tokens`
 
