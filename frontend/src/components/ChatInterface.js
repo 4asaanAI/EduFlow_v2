@@ -772,7 +772,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   return (
     <div data-testid="chat-interface" style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', background: chatBg }}>
       <div data-testid="messages-area" style={{ flex: 1, overflowY: 'auto', padding: '24px 0 200px' }}>
-        <div data-testid="message-list" style={{ maxWidth: 760, margin: '0 auto', padding: '0 24px' }}>
+        <div data-testid="message-list" style={{ width: '100%', margin: '0 auto', padding: '0 32px' }}>
           {aiUnavailable && (
             <div data-testid="ai-unavailable-banner" style={{
               border: '1px solid var(--border)',
@@ -969,7 +969,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
             recharge button stays live so the user can retry — never a dead-end. */}
         {rechargeError && (
           <div data-testid="recharge-error" style={{
-            maxWidth: 760, margin: '0 auto 6px', fontSize: 12, color: '#f87171',
+            width: '100%', margin: '0 auto 6px', fontSize: 12, color: '#f87171',
             textAlign: 'center',
           }}>{rechargeError}</div>
         )}

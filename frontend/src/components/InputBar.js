@@ -265,7 +265,7 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
       background: `linear-gradient(to top, ${gradBg} 75%, transparent)`,
       padding: '32px 24px 20px', zIndex: 40,
     }}>
-      <div style={{ maxWidth: 760, margin: '0 auto', position: 'relative' }}>
+      <div style={{ width: '100%', margin: '0 auto', position: 'relative' }}>
         {showList.length > 0 && (
           <div className="fade-in-scale" style={{
             position: 'absolute', bottom: '100%', left: 0, right: 0,
