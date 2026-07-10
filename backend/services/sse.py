@@ -3,17 +3,50 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import uuid
 from collections import defaultdict
 from contextlib import suppress
 from typing import Any
 
-# In-process SSE fan-out for a single API process. Multi-process deployments
-# should move this channel registry to Redis pub/sub or another shared broker.
+# R14.1 (P-M3): In-process SSE fan-out.
+#
+# HARD CONSTRAINT: this registry lives in a single process. Events published on
+# worker A are invisible to clients connected to worker B. Running with
+# WEB_CONCURRENCY > 1 and no shared broker (REDIS_URL) will silently drop
+# notifications for users whose SSE connection landed on a different worker.
+#
+# Chosen posture: OPTION B — enforce single-worker at startup.
+# Startup refuses to start when WEB_CONCURRENCY > 1 unless REDIS_URL is set.
+# See `validate_multi_worker_config()` below; called from server.py startup.
+# To move to a broker in future, set REDIS_URL and swap `publish` for
+# a redis pub/sub fan-out; `connect/disconnect` remain per-worker.
 KEEPALIVE_SECONDS = 30
 KEEPALIVE_COMMENT = ": keepalive\n\n"
 _connections: dict[str, dict[str, asyncio.Queue]] = defaultdict(dict)
 logger = logging.getLogger(__name__)
+
+
+def validate_multi_worker_config() -> None:
+    """Refuse to start if WEB_CONCURRENCY > 1 and no shared broker is configured.
+
+    The in-process SSE channel registry is per-worker, so a multi-worker deployment
+    will silently drop notifications for users whose connection landed on a different
+    worker. Set REDIS_URL to enable a shared broker path, or keep WEB_CONCURRENCY=1.
+    """
+    try:
+        workers = int(os.environ.get("WEB_CONCURRENCY", "1"))
+    except ValueError:
+        workers = 1
+
+    if workers > 1 and not os.environ.get("REDIS_URL"):
+        raise ValueError(
+            "WEB_CONCURRENCY=%d but REDIS_URL is not set. The SSE channel registry "
+            "is in-process: notifications sent on worker A will not reach clients "
+            "connected to worker B. Either set WEB_CONCURRENCY=1 (recommended for "
+            "this deployment) or set REDIS_URL to a shared broker. "
+            "See docs/deployment-runbook.md §9." % workers
+        )
 
 
 def encode_sse(event: dict[str, Any]) -> str:

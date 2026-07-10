@@ -63,7 +63,7 @@ from services.idempotency import (
     should_handle_idempotency,
     store_response,
 )
-from services.sse import keepalive_loop as sse_keepalive_loop
+from services.sse import keepalive_loop as sse_keepalive_loop, validate_multi_worker_config as _validate_sse_worker_config
 from middleware.auth import get_current_user
 
 configure_logging()
@@ -259,6 +259,7 @@ app.include_router(learning_router)
 @app.on_event("startup")
 async def startup():
     validate_school_id()
+    _validate_sse_worker_config()  # R14.1: refuse multi-worker without shared broker
 
     # R9.1 (C2): fail loud on missing Azure config outside development, the same
     # way SCHOOL_ID does — a silently-unconfigured AI client was the incident.

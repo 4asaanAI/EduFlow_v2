@@ -603,6 +603,16 @@ def fake_db():
     return _fake_db
 
 
+@pytest.fixture(autouse=True)
+def _clear_school_status_cache_between_tests():
+    """R14.2: clear the per-process TTL cache before each test so tests are isolated."""
+    try:
+        from middleware.school_context import _clear_school_status_cache
+        _clear_school_status_cache()
+    except Exception:
+        pass
+
+
 @pytest_asyncio.fixture(scope="session")
 async def async_client() -> AsyncGenerator:
     """

@@ -175,7 +175,17 @@ These checks require the real running product; tests don't cover them.
 
 ---
 
-## G. Future items — added as the initiative progresses
+## G. Platform Reliability — R14 (Multi-Worker Correctness)
+
+### R14.1 — Multi-worker SSE startup guard
+- [ ] **Confirm EB deployment uses WEB_CONCURRENCY=1.** Check the Elastic Beanstalk environment's `WEB_CONCURRENCY` environment variable (or Procfile/gunicorn.conf). It must be 1 (or unset) unless you have Redis configured (`REDIS_URL`). If it is > 1 with no Redis, the app will now refuse to start and return an error — that is the intended behavior. *(Pre-R14, the app would silently start but notifications would be dropped for users on different workers.)*
+
+### R14.2 — School deactivation gate
+- [ ] This check is background-only: the school status lookup is now cached for 30 seconds. If you need a deactivated school to take effect faster, call the operator panel to deactivate and verify that within 30 seconds the affected school's users start receiving 402 responses. No functional change should be visible to users of active schools.
+
+---
+
+## H. Future items — added as the initiative progresses
 
 _(The executing agent appends new human-verification items here at each epic close.
 Nothing that needs your eyes should live only in a chat transcript.)_
@@ -188,3 +198,4 @@ Nothing that needs your eyes should live only in a chat transcript.)_
 - **2026-07-10** — R11 shipped (excellence & evaluation — final epic). Replaced §D placeholder with concrete real-use checks for native FC (R11.2), streaming latency (R11.3), Hinglish/Hindi (R11.4), conversation trace viewer + confidentiality (R11.5), residual hardening (R11.6). Confidentiality standing check added as a permanent verification item. **Initiative complete.** — executing agent
 - **2026-07-10** — R12 shipped (onboarding, billing & payroll integrity). Added §E with 5 real-product verification items: owner login, Razorpay cross-tenant isolation, first-topup success, provisioning resume, and payroll double-submit + role enforcement. — executing agent
 - **2026-07-10** — R13 shipped (tenancy & RBAC fail-closed). Added §F with 6 real-product checks: file serve over-exposure (least-exposure), export RBAC, per-school login lockout, staff-deactivation session revocation, SMS daily cap. — executing agent
+- **2026-07-10** — R14 shipped (multi-worker correctness). No new human-verification items — the SSE startup guard is an ops/config concern (set WEB_CONCURRENCY=1 or REDIS_URL); the school status cache change is invisible to end users (same behavior, bounded latency). The §F R14 check below covers the one observable change. — executing agent
