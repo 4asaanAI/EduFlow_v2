@@ -262,16 +262,24 @@ function FeedbackButtons({ message, isDark }) {
   );
 }
 
-function ToolTraceSummary({ calls, isDark }) {
+function ToolTraceSummary({ calls, recalledMemories, isDark }) {
   const validCalls = (calls || []).filter(call => call?.tool);
-  if (validCalls.length === 0) return null;
+  // R10.4 AC2: recalled memories are disclosed in the same "Data used" footer.
+  // Require text — a ref with no text is nothing to disclose to the user.
+  const memories = (recalledMemories || []).filter(m => m && m.text);
+  if (validCalls.length === 0 && memories.length === 0) return null;
 
   const border = isDark ? '#2e2e2e' : '#e5e5e5';
   const muted = isDark ? '#888' : '#525252';
   const text = isDark ? '#d4d4d4' : '#525252';
 
+  const parts = [];
+  if (validCalls.length) parts.push(`${validCalls.length} tool${validCalls.length === 1 ? '' : 's'}`);
+  if (memories.length) parts.push(`${memories.length} remembered note${memories.length === 1 ? '' : 's'}`);
+  const summaryLabel = `Data used · ${parts.join(' · ')}`;
+
   return (
-    <details style={{
+    <details data-testid="data-used" style={{
       marginTop: 12,
       border: `1px solid ${border}`,
       borderRadius: 10,
@@ -287,9 +295,24 @@ function ToolTraceSummary({ calls, isDark }) {
         color: muted,
         userSelect: 'none',
       }}>
-        Data used · {validCalls.length} tool{validCalls.length === 1 ? '' : 's'}
+        {summaryLabel}
       </summary>
       <div style={{ borderTop: `1px solid ${border}`, padding: '8px 11px', display: 'grid', gap: 6 }}>
+        {memories.length > 0 && (
+          <div data-testid="recalled-memories" style={{ display: 'grid', gap: 4 }}>
+            {memories.map((m, i) => (
+              <div key={`mem-${m.id || i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <span style={{ color: '#a78bfa', fontSize: 11, flexShrink: 0 }}>🧠 remembered</span>
+                <span style={{
+                  minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  color: text, fontSize: 11,
+                }}>
+                  {m.text}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
         {validCalls.map((call, i) => {
           const count = getToolCount(call);
           return (
@@ -381,7 +404,11 @@ export default function MessageRenderer({ message, isStreaming, onActionButton }
           return null;
         })}
         {actionButtons?.length > 0 && <ActionButtons buttons={actionButtons} onActionButton={onActionButton} isDark={isDark} />}
-        <ToolTraceSummary calls={message.tool_calls || message.toolCalls} isDark={isDark} />
+        <ToolTraceSummary
+          calls={message.tool_calls || message.toolCalls}
+          recalledMemories={message.recalled_memories || message.recalledMemories}
+          isDark={isDark}
+        />
         <FeedbackButtons message={message} isDark={isDark} />
       </div>
     </div>

@@ -19,11 +19,26 @@ from typing import Any, Dict, Optional
 
 
 def is_memory_subject(user: Optional[Dict[str, Any]]) -> bool:
-    """True iff self-learning applies to this user (Phase-1: Owner + Principal only).
+    """True iff the assistant may CAPTURE (auto-learn) from this user.
 
-    Reuses the exact Phase-1 pilot predicate so memory/skills can never widen the
-    locked-down surface independently of the action policy.
+    Backward-compatible alias of the R10.5 capture predicate. Default: Owner +
+    Principal only (Phase-1). Widening is a config change in
+    `services.memory.policy` (`MEMORY_CAPTURE_EXTRA_ROLES`), never an engine change.
     """
-    from services.ai_action_policy import is_owner_or_principal
+    from services.memory.policy import can_capture_memories
 
-    return is_owner_or_principal(user or {})
+    return can_capture_memories(user or {})
+
+
+def can_recall_memories(user: Optional[Dict[str, Any]]) -> bool:
+    """True iff learned memories/skills may be recalled into this user's turns (R10.5)."""
+    from services.memory.policy import can_recall_memories as _recall
+
+    return _recall(user or {})
+
+
+def can_capture_memories(user: Optional[Dict[str, Any]]) -> bool:
+    """True iff the assistant may auto-learn from this user (R10.5)."""
+    from services.memory.policy import can_capture_memories as _capture
+
+    return _capture(user or {})

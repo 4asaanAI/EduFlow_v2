@@ -505,6 +505,11 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
         } else if (event.type === 'rich_blocks') {
           const prev = streamMsgRef.current;
           if (prev) setStream({ ...prev, richBlocks: event.blocks || [], actionButtons: event.action_buttons || [] });
+        } else if (event.type === 'recalled_memories') {
+          // R10.4 AC2: memories recalled into this reply — carried on the stream
+          // message so the "Data used" footer discloses them (commits with `done`).
+          const prev = streamMsgRef.current;
+          if (prev) setStream({ ...prev, recalledMemories: event.memories || [] });
         } else if (event.type === 'confirm_action') {
           setConfirmAction(parsed);
         } else if (event.type === 'disambiguation') {

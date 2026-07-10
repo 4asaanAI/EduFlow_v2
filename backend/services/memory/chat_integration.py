@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional
 
 from ai.redaction import redact_text_for_memory
 from services.actor_context import actor_ctx_from_user
-from services.memory import is_memory_subject, skills_store
+from services.memory import can_recall_memories, is_memory_subject, skills_store
 from services.memory import store as memory_store
 from services.memory import extractor
 
@@ -42,10 +42,20 @@ def _ctx(user: dict):
     return actor_ctx_from_user(user, branch_id=user.get("branch_id"))
 
 
-async def recall_context_block(db, user: dict, user_text: str) -> str:
+async def recall_context_block(
+    db, user: dict, user_text: str, *, recalled_sink: Optional[List[Dict]] = None
+) -> str:
     """Return a system-prompt block of recalled memories + skills (G.3). Empty str
-    when nothing relevant, the user isn't a memory subject, or anything fails."""
-    if not is_memory_subject(user) or not user_text:
+    when nothing relevant, the user isn't a memory subject, or anything fails.
+
+    R10.4 AC2: when `recalled_sink` is provided, it is populated with a disclosure-safe
+    ref (`{id, text, category}`) for each recalled MEMORY so the turn can surface them
+    in the "Data used" footer. Text is already redacted at storage time.
+
+    R10.5: gated on the RECALL predicate (read-recall may be widened to more roles by
+    config); capture stays on the narrower `is_memory_subject` predicate.
+    """
+    if not can_recall_memories(user) or not user_text:
         return ""
     try:
         ctx = _ctx(user)
@@ -56,6 +66,13 @@ async def recall_context_block(db, user: dict, user_text: str) -> str:
         return ""
     if not mems and not skills:
         return ""
+    if recalled_sink is not None:
+        for m in mems:
+            recalled_sink.append({
+                "id": m.get("id"),
+                "text": m.get("text"),
+                "category": m.get("category", "fact"),
+            })
 
     # R6.3 (XM3): recalled memories are DATA, not instructions. They are wrapped
     # in an explicit, instruction-inert fence so a memory whose text happens to
@@ -77,7 +94,12 @@ async def recall_context_block(db, user: dict, user_text: str) -> str:
         lines.append("### Learned ways of working")
         for s in skills:
             steps = "; ".join(s.get("steps", [])[:5])
-            lines.append(f"- {s.get('title')}: {steps}" if steps else f"- {s.get('title')}")
+            title = s.get("title") or "routine"
+            # R10.3 AC3: a routine whose underlying tool schema drifted is surfaced as
+            # "needs updating" (never a silent stale replay).
+            if s.get("needs_update"):
+                title = f"{title} (⚠ this routine needs updating — a tool it relies on has changed)"
+            lines.append(f"- {title}: {steps}" if steps else f"- {title}")
     lines.append("<<<end_reference_notes>>>")
     lines.append(
         "Use this background naturally. If the user corrects something here, "
@@ -145,7 +167,35 @@ async def handle_pre_turn(db, user: dict, user_text: str, conv: Optional[dict]) 
                 category=pending.get("category", "fact"), source="user", confidence=0.9,
             )
             await _clear_pending(db, user, conv)
+            # Defense-in-depth: a confirm resolves ONE pending; clear any sibling so a
+            # single "yes" can never also activate a stale routine on a later turn.
+            if conv and conv.get("pending_skill"):
+                await _clear_pending(db, user, conv, key="pending_skill")
             return "Saved — I'll keep that in mind."
+
+        # 3b) Affirmative confirming a PROPOSED routine/skill (R10.3 AC1). Only within
+        #     the freshness window; saving is explicit — never automatic.
+        pending_skill = (conv or {}).get("pending_skill")
+        if pending_skill and affirmative and _pending_fresh(pending_skill):
+            saved = await skills_store.add_skill(
+                db, ctx,
+                title=pending_skill.get("title", ""),
+                problem=pending_skill.get("problem", ""),
+                solution=pending_skill.get("solution", ""),
+                steps=pending_skill.get("steps", []),
+                tags=pending_skill.get("tags", []),
+                source="learned", confidence=pending_skill.get("confidence", 0.7),
+                tool_names=pending_skill.get("tool_names", []),
+            )
+            await _clear_pending(db, user, conv, key="pending_skill")
+            if conv and conv.get("pending_memory"):
+                await _clear_pending(db, user, conv)  # sibling clear (see step 3)
+            if saved:
+                return (
+                    f'Saved — you can ask for "{saved.get("title")}" any time and I\'ll set it up '
+                    "for you (I'll still confirm before making any changes)."
+                )
+            return "I couldn't save that as a routine, but no problem — we can do it step by step next time."
 
         # 4) Correction of an existing memory ("that's not right …")
         if extractor.looks_like_correction(user_text):
@@ -165,6 +215,8 @@ async def handle_pre_turn(db, user: dict, user_text: str, conv: Optional[dict]) 
             await _clear_pending(db, user, conv)
         if conv.get("pending_forget"):
             await _clear_pending(db, user, conv, key="pending_forget")
+        if conv.get("pending_skill"):
+            await _clear_pending(db, user, conv, key="pending_skill")
     return None
 
 
@@ -235,14 +287,53 @@ async def _set_pending_forget(db, user: dict, conv: Optional[dict], matches: Lis
         logger.warning("_set_pending_forget failed: %s", e)
 
 
+def _embeds_write(tool_names: Optional[List[str]]) -> bool:
+    """True iff any tool the routine used is a write/action tool (R10.3 AC1)."""
+    try:
+        from ai.tool_functions_v2 import WRITE_TOOL_NAMES
+    except Exception:
+        return False
+    return any(n in WRITE_TOOL_NAMES for n in (tool_names or []))
+
+
+async def _set_pending_skill(
+    db, user: dict, conv_id: str, skill: Dict[str, Any],
+    tool_names: List[str], embeds_write: bool,
+) -> None:
+    """R10.3 AC1: park a PROPOSED routine on the conversation doc, to be saved only on
+    an explicit affirmative next turn — never silently auto-saved."""
+    try:
+        from tenant import get_school_id, scoped_filter
+
+        await db.conversations.update_one(
+            scoped_filter({"id": conv_id, "user_id": user["id"]}, get_school_id()),
+            {"$set": {"pending_skill": {
+                "title": skill.get("title", ""),
+                "problem": skill.get("problem", ""),
+                "solution": skill.get("solution", ""),
+                "steps": list(skill.get("steps", []) or []),
+                "tags": list(skill.get("tags", []) or []),
+                "confidence": skill.get("confidence", 0.7),
+                "tool_names": [str(t) for t in (tool_names or []) if t],
+                "embeds_write": bool(embeds_write),
+                "set_at_ts": time.time(),
+            }}},
+        )
+    except Exception as e:
+        logger.warning("_set_pending_skill failed: %s", e)
+
+
 async def finalize_turn(
     db, user: dict, *, user_text: str, assistant_text: str, conv_id: str,
     history: List[Dict], round_count: int, tool_count: int,
+    tool_names: Optional[List[str]] = None,
 ) -> Optional[str]:
-    """Post-LLM: auto-save durable info, distill a skill, ask about uncertain items.
+    """Post-LLM: auto-save durable info, PROPOSE a routine, ask about uncertain items.
 
     Returns an in-chat yes/no question string to append to the assistant's reply
-    (None if nothing to ask). Best-effort; never raises.
+    (None if nothing to ask). Best-effort; never raises. At most ONE pending
+    confirmation is created per turn (a memory question takes priority over a skill
+    proposal) so a bare "yes" next turn is never ambiguous.
     """
     if not is_memory_subject(user):
         return None
@@ -267,19 +358,34 @@ async def finalize_turn(
     except Exception as e:
         logger.warning("finalize_turn memory extraction failed: %s", e)
 
-    # Skill distillation (G.6) — only for genuinely complex runs.
-    try:
-        skill = await extractor.extract_skill(
-            history, round_count=round_count, tool_count=tool_count, session_id=conv_id
-        )
-        if skill:
-            await skills_store.add_skill(
-                db, ctx, title=skill["title"], problem=skill.get("problem", ""),
-                solution=skill.get("solution", ""), steps=skill.get("steps", []),
-                tags=skill.get("tags", []), source="learned",
-                confidence=skill.get("confidence", 0.7),
+    # Skill acquisition (R10.3 AC1) — PROPOSE saving a routine; NEVER silently save.
+    # Skipped when a memory question was already asked this turn (one pending
+    # confirmation at a time). Two-step for write-embedding routines: the save
+    # requires the explicit affirmative AND, when invoked later, still runs every
+    # change through the confirm/kill-switch/lockdown gates (F.10).
+    if question is None:
+        try:
+            skill = await extractor.extract_skill(
+                history, round_count=round_count, tool_count=tool_count, session_id=conv_id
             )
-    except Exception as e:
-        logger.warning("finalize_turn skill extraction failed: %s", e)
+            if skill:
+                names = [str(t) for t in (tool_names or []) if t]
+                embeds_write = _embeds_write(names)
+                await _set_pending_skill(db, user, conv_id, skill, names, embeds_write)
+                title = skill.get("title") or "this routine"
+                if embeds_write:
+                    question = (
+                        f"\n\nThis looked like a repeatable routine (\"{title}\"). It includes steps "
+                        f"that change data, so I won't run it on its own — but I can save it so you can "
+                        f"trigger it in one go, and it will still ask you to confirm before every change. "
+                        f"Save it as a routine? (yes/no)"
+                    )
+                else:
+                    question = (
+                        f"\n\nThat looked like a repeatable routine (\"{title}\"). "
+                        f"Want me to save it so you can ask for it in one go next time? (yes/no)"
+                    )
+        except Exception as e:
+            logger.warning("finalize_turn skill proposal failed: %s", e)
 
     return question

@@ -43,6 +43,15 @@ MAX_MEMORIES_PER_USER = 500
 # Page size for full-collection sweeps (erase/purge) — replaces the old hard
 # `.to_list(5000)` truncation that silently skipped memories past 5000 (XM5).
 _SWEEP_PAGE = 1000
+# R10.1 AC2: recall reads candidates via the (schoolId, user_id, updated_at_ts)
+# compound index, paginated freshest-first — NOT a blind full-collection
+# `.to_list(2000)`. The per-owner cap (MAX_MEMORIES_PER_USER) bounds the active set,
+# so this ceiling is not reached in practice; it is a DOCUMENTED, LOGGED upper bound
+# (never a silent hard wall, XM10) so a mis-set/raised cap can't turn recall into an
+# unbounded scan. Candidates are ordered newest-first so, if the ceiling is ever hit,
+# the most-recent (most likely relevant) memories are the ones ranked. Memories past a
+# single page are still reached (paged), satisfying "beyond any cap still recallable".
+RECALL_SCAN_CEILING = 2000
 
 
 async def _paged_find(db, query: Dict[str, Any], projection: Dict[str, Any]) -> List[Dict]:
@@ -58,6 +67,42 @@ async def _paged_find(db, query: Dict[str, Any], projection: Dict[str, Any]) -> 
             break
         skip += _SWEEP_PAGE
     return out
+
+
+async def _recall_candidates(db, ctx: ActorContext) -> List[Dict]:
+    """Index-ordered, paginated fetch of an owner's active memories for recall (R10.1 AC2).
+
+    Reads via the (schoolId, user_id, updated_at_ts) compound index, newest-first, in
+    `_SWEEP_PAGE` batches up to `RECALL_SCAN_CEILING`. Replaces the old blind
+    `list_memories(...).to_list(2000)` on the hot recall path, so recall is an indexed
+    query and memories beyond a single page remain reachable. When the ceiling is hit
+    it is logged (never a silent truncation) and the freshest `RECALL_SCAN_CEILING`
+    are ranked.
+    """
+    q = {**_scope(ctx), "superseded": {"$ne": True}}
+    out: List[Dict] = []
+    skip = 0
+    while skip < RECALL_SCAN_CEILING:
+        page = await (
+            db.ai_memories.find(q, {"_id": 0})
+            .sort([("updated_at_ts", -1)])
+            .skip(skip)
+            .limit(_SWEEP_PAGE)
+            .to_list(_SWEEP_PAGE)
+        )
+        if not page:
+            break
+        out.extend(page)
+        if len(page) < _SWEEP_PAGE:
+            break
+        skip += _SWEEP_PAGE
+    if len(out) >= RECALL_SCAN_CEILING:
+        logger.warning(
+            "memory recall hit the scan ceiling (%d) for user=%s — ranking over the "
+            "freshest %d; raise the cap or enable vector recall if this is expected",
+            RECALL_SCAN_CEILING, ctx.user_id, RECALL_SCAN_CEILING,
+        )
+    return out[:RECALL_SCAN_CEILING]
 
 
 def _scope(ctx: ActorContext) -> Dict[str, str]:
@@ -207,7 +252,8 @@ async def recall(db, ctx: ActorContext, query: str, *, k: int = RECALL_K) -> Lis
     if not ctx.user_id or not query or not query.strip():
         return []
     t0 = time.perf_counter()
-    all_mems = await list_memories(db, ctx)
+    # R10.1 AC2: index-ordered, paginated candidate fetch (not a blind .to_list(2000)).
+    all_mems = await _recall_candidates(db, ctx)
     if not all_mems:
         return []
 
@@ -367,6 +413,36 @@ async def delete_memories(db, ctx: ActorContext, ids: List[str]) -> int:
             changes={"removed": removed, "confirmed": True},
         )
     return removed
+
+
+async def deactivate_memory(db, ctx: ActorContext, memory_id: str, *, superseded: bool = True) -> bool:
+    """R10.4 AC1: soft-deactivate (supersede) a single memory without deleting it.
+
+    A superseded memory is excluded from recall (`list_memories`/`_recall_candidates`
+    filter `superseded != True`) but is retained for audit/history, and can be
+    reactivated (`superseded=False`). Returns True iff a row matched.
+    """
+    if not ctx.user_id or not memory_id:
+        return False
+    res = await db.ai_memories.update_one(
+        {**_scope(ctx), "id": memory_id},
+        {"$set": {"superseded": bool(superseded),
+                  "updated_at": ctx.now().isoformat(), "updated_at_ts": ctx.now().timestamp()}},
+    )
+    matched = bool(getattr(res, "matched_count", 0)) or bool(getattr(res, "modified_count", 0))
+    if matched:
+        if superseded:
+            get_memory_vector_store().remove(
+                school_id=ctx.school_id, user_id=ctx.user_id, memory_id=memory_id
+            )
+        await write_audit(
+            db, action=("ai_memory_deactivate" if superseded else "ai_memory_reactivate"),
+            entity_id=memory_id, collection="ai_memories",
+            changed_by=ctx.user_id, changed_by_role=ctx.role or "",
+            school_id=ctx.school_id, branch_id=ctx.branch_id or "",
+            changes={"superseded": bool(superseded)},
+        )
+    return matched
 
 
 async def erase_owner_memories(db, *, school_id: str, user_id: str, changed_by: str = "system") -> int:

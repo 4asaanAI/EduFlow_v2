@@ -85,6 +85,18 @@ surprising. Widening beyond owner/principal (R10.5) stays a separate later decis
 **Decision log:**
 - **2026-07-10 — Abhimanyu GAVE THE GO-AHEAD for FULL R10** (R10.1–R10.4 built now; R10.5 role-*widening* stays OFF — owner/principal only). Decision made before the ~2-week real-use verification in Section C was ticked — an owner override. **Action for Abhimanyu:** still work through Sections A/B/C in real use as R10 rolls out, and keep learning DISABLED via the kill-switch until you've watched the "What I've learned" panel and the turn-outcome + feedback-ratio signals for a couple of weeks.
 
+### C-post. R10 SHIPPED (2026-07-10) — what to actually check now it's built
+These are the real-use checks only a human can decide, now that R10 code is merged:
+- [ ] **Open the new "What I've Learned" panel** (owner/principal → tools → "What I've Learned"). Confirm what it lists about you looks right and nothing surprising/private is there.
+- [ ] **Deactivate then Reactivate** a note from the panel — confirm it disappears from active use and comes back, and **Delete** removes it for good.
+- [ ] **Bulk delete** shows a preview and only deletes after you confirm (never in one tap).
+- [ ] Tap **👍 Helpful / 👎 Improve** on a few replies; on Improve add a one-line note. Confirm the note shows up as a **pending suggestion** in the panel and is NOT used until you press **Activate**. Press **Reject** on one and confirm it never gets used.
+- [ ] After you Activate a suggestion, confirm a later related question shows a **"🧠 remembered"** line in the reply's "Data used" footer — i.e. you can always see when a saved note influenced an answer.
+- [ ] When the assistant offers to **save a routine**, confirm it only saves after you say yes, and that running it later still asks you to confirm any change it makes.
+- [ ] Confirm **only you and the principal** see this panel (teachers/accountants/students do not).
+- [ ] Confirm a colleague's Improve notes do **not** appear in your panel (each person reviews only what they flagged).
+- [ ] **Kill-switch discipline:** keep self-learning effectively paused until you've watched the panel + the turn-outcome and Helpful/Improve signals for ~2 weeks and nothing looks off.
+
 ---
 
 ## D. 🚦 GATE — R11 (Excellence & Evaluation) — human checks _(to be detailed when R11 is scheduled)_
@@ -106,3 +118,4 @@ Nothing that needs your eyes should live only in a chat transcript.)_
 
 ## Change log
 - **2026-07-10** — Document created (after R9 shipped). Seeded sections A–D: standing checks, R1–R9 post-ship spot-checks, the R10 go/no-go gate, and an R11 placeholder. — executing agent
+- **2026-07-10** — R10 shipped (full self-learning phase 2). Appended §C-post: concrete real-use checks for the new "What I've Learned" panel, feedback→learning loop, routine saving, recalled-memory disclosure, and the cross-user/role privacy checks. Keep learning paused via kill-switch until the panel + signals are watched for ~2 weeks. — executing agent

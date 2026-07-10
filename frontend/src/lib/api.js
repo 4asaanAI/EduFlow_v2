@@ -940,6 +940,61 @@ export async function createTopupCheckout(packId) {
   return res.json();
 }
 
+// ── R10.4: "What I've learned" transparency & control surface ────────────────
+export async function getLearningOverview() {
+  const res = await apiFetch(`${API}/learning/overview`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function activateCorrection(feedbackId) {
+  const res = await apiFetch(`${API}/learning/corrections/${feedbackId}/activate`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  return res.json();
+}
+
+export async function rejectCorrection(feedbackId) {
+  const res = await apiFetch(`${API}/learning/corrections/${feedbackId}/reject`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  return res.json();
+}
+
+export async function editMemory(memoryId, text) {
+  const res = await apiFetch(`${API}/learning/memories/${memoryId}`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify({ text }),
+  });
+  return res.json();
+}
+
+export async function deactivateMemory(memoryId, superseded = true) {
+  const res = await apiFetch(`${API}/learning/memories/${memoryId}/deactivate`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify({ superseded }),
+  });
+  return res.json();
+}
+
+export async function deleteMemory(memoryId) {
+  const res = await apiFetch(`${API}/learning/memories/${memoryId}`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
+  return res.json();
+}
+
+export async function bulkDeleteMemories(ids, confirm = false) {
+  const res = await apiFetch(`${API}/learning/memories/bulk-delete`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify({ ids, confirm }),
+  });
+  return res.json();
+}
+
+export async function deleteSkill(skillId) {
+  const res = await apiFetch(`${API}/learning/skills/${skillId}`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
+  return res.json();
+}
+
 export async function emitFeedback(rating, meta = {}) {
   try {
     // R10.2: carry turn context (message_id, conversation_id, tool_names) and an

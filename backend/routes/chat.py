@@ -1718,14 +1718,19 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         # Non-fatal: continue to normal chat flow
 
     # ── Phase 4: Build context + system prompt ────────────────────────────
+    recalled_memories: list = []  # R10.4 AC2: recalled-memory disclosure (Data used)
     try:
         school_context = await build_school_context(user["role"], user["id"])
         system_prompt = build_system_prompt(user, school_context, lang)
 
         # Epic G (G.3): inject recalled memories/skills for Owner/Principal. Hybrid
         # recall degrades to keyword-only when the vector store is unavailable.
+        # R10.4 AC2: capture the recalled memories so they can be disclosed in the
+        # "Data used" footer of the reply.
         try:
-            recall_block = await chat_memory.recall_context_block(db, user, user_text)
+            recall_block = await chat_memory.recall_context_block(
+                db, user, user_text, recalled_sink=recalled_memories
+            )
             if recall_block:
                 system_prompt += recall_block
         except Exception as e:
@@ -2369,6 +2374,9 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             history=_history_for_skill,
             round_count=tool_rounds,
             tool_count=len(all_tool_calls),
+            # R10.3 AC1/AC3: the tools this turn used anchor the routine proposal +
+            # its drift signature.
+            tool_names=[c.get("tool") for c in all_tool_calls if c.get("tool")],
         )
     except Exception as e:
         logger.warning(f"Phase 9b (memory finalize) non-fatal: {e}")
@@ -2462,9 +2470,15 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             content=clean_text,
             rich_content=rich_content,
             tool_calls=all_tool_calls if all_tool_calls else None,
+            # R10.4 AC2: disclose the memories recalled into this reply.
+            recalled_memories=recalled_memories if recalled_memories else None,
             language_detected=lang,
         )
         await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
+        # R10.4 AC2: surface recalled memories to the live stream so the "Data used"
+        # footer shows them without a reload (matches the persisted message).
+        if recalled_memories:
+            yield f"data: {json.dumps({'type': 'recalled_memories', 'memories': recalled_memories})}\n\n"
 
         # ── Phase 14b: Record token usage ────────────────────────────────
         try:

@@ -2517,7 +2517,7 @@ async def tool_recall_history(params: dict, user: dict, scope: dict = None) -> d
     """
     t0 = time.time()
     from services.actor_context import actor_ctx_from_user
-    from services.memory import is_memory_subject, store as memory_store
+    from services.memory import can_recall_memories, store as memory_store
 
     subject = (params.get("subject") or params.get("query") or params.get("search_term") or "").strip()
     if not subject and not params.get("student_id"):
@@ -2526,8 +2526,9 @@ async def tool_recall_history(params: dict, user: dict, scope: dict = None) -> d
     sections: dict = {}
     student_ids: list = []
 
-    # 1) Memory recall (owner-scoped; only for Owner/Principal per Phase-1 lockdown).
-    if is_memory_subject(user):
+    # 1) Memory recall (owner-scoped; Owner/Principal per Phase-1, plus any roles the
+    #    R10.5 MEMORY_ROLES switch grants read-recall to).
+    if can_recall_memories(user):
         try:
             ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
             mems = await memory_store.recall(get_db(), ctx, subject or params.get("student_id", ""))

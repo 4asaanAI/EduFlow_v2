@@ -56,6 +56,7 @@ from routes.operator import router as operator_router
 from routes.payroll import router as payroll_router
 from routes.reports import router as reports_router
 from routes.federation import router as federation_router
+from routes.learning import router as learning_router
 from services.idempotency import (
     get_replay_response,
     record_key,
@@ -252,6 +253,7 @@ app.include_router(operator_router)
 app.include_router(payroll_router)
 app.include_router(reports_router)
 app.include_router(federation_router)
+app.include_router(learning_router)
 
 
 @app.on_event("startup")

@@ -174,13 +174,20 @@ async def test_g4_non_owner_excluded_from_self_learning():
     assert block == ""
 
 
-async def test_g4_no_memory_ui_surface_exists():
-    """FR32: no memory/skills HTTP surface anywhere."""
+async def test_g4_memory_http_surface_is_only_the_r10_learning_panel():
+    """FR32 was Phase-1: no memory/skills HTTP surface. R10.4 deliberately introduces
+    the owner/principal "What I've learned" control surface under `/api/learning/*`.
+    This test now asserts the CONTRACT: the ONLY memory/skills-touching routes are the
+    R10.4 learning-panel endpoints — nothing leaked one in elsewhere."""
     import server
 
     paths = [getattr(r, "path", "") for r in server.app.routes]
-    offenders = [p for p in paths if "/memory" in p.lower() or "/skills" in p.lower()]
-    assert offenders == [], f"unexpected memory/skills routes: {offenders}"
+    offenders = [
+        p for p in paths
+        if ("/memor" in p.lower() or "/skills" in p.lower())
+        and not p.startswith("/api/learning/")
+    ]
+    assert offenders == [], f"unexpected memory/skills routes outside /api/learning: {offenders}"
 
 
 # ── Regression: conservative intent detection (epic-close review) ────────────

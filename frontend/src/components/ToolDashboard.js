@@ -36,6 +36,7 @@ const T = {
   'tech-issues':           { id: 'tech-issues',           name: 'Tech Issues',         subtitle: 'IT request tracker',    icon: Monitor,       color: '#818cf8' },
   'incident-tracker':      { id: 'incident-tracker',      name: 'Incidents & Visitors',subtitle: 'Log & track',           icon: AlertTriangle, color: '#f87171' },
   'audit-log':             { id: 'audit-log',             name: 'Audit Log',           subtitle: 'Who did what',          icon: ScrollText,    color: '#737373' },
+  'what-ive-learned':      { id: 'what-ive-learned',      name: "What I've Learned",   subtitle: 'Review & control memory', icon: Brain,       color: '#a78bfa' },
   'fee-receipts':          { id: 'fee-receipts',          name: 'Fee Receipts',        subtitle: 'PDF & export',          icon: FileText,      color: '#34d399' },
   'principal-daily':       { id: 'principal-daily',       name: 'Principal Daily',     subtitle: 'Absences & subs',       icon: CalendarDays,  color: '#fbbf24' },
   'school-activities':     { id: 'school-activities',     name: 'School Activities',   subtitle: 'Houses, sports, awards', icon: Trophy,         color: '#f59e0b' },
@@ -77,7 +78,7 @@ const TOOL_SETS = {
     'parent-message','student-transfer','id-card-generator',
     'principal-daily','timetable-builder','asset-tracker','transport-manager','incident-tracker',
     'school-activities','automated-report','custom-form-builder','attendance-alerts',
-    'query-section','audit-log',
+    'query-section','audit-log','what-ive-learned',
   ],
   admin_accountant: [
     'student-database','fee-tracker','smart-fee-defaulter','fee-receipts',
@@ -135,7 +136,7 @@ const OWNER_TOOLS = [
   'parent-message','id-card-generator','timetable-builder','asset-tracker',
   'transport-manager','incident-tracker','facility-requests',
   'fee-receipts','school-activities','audit-log','automated-report',
-  'custom-form-builder','query-section',
+  'custom-form-builder','query-section','what-ive-learned',
 ];
 
 function getTools(user) {

@@ -28,6 +28,7 @@ const loadTool = async (toolId) => {
   if (toolId === 'fee-receipts') return (await import('./tools/FeeCollection')).default;
   if (toolId === 'principal-daily') return (await import('./tools/PrincipalDailyOps')).default;
   if (toolId === 'exam-manager') return (await import('./tools/ExamManager')).default;
+  if (toolId === 'what-ive-learned') return (await import('./tools/LearningTools')).default;
 
   // Existing dedicated tools
   if (toolId === 'query-section') return (await import('./tools/QuerySection')).QuerySection;

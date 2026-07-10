@@ -82,3 +82,40 @@ test('R8.4 AC3: a javascript: markdown link is not rendered as an anchor', () =>
   expect(container.querySelector('a[href^="javascript"]')).toBeNull();
   expect(screen.getByText(/here/)).toBeInTheDocument();
 });
+
+// R10.4 AC2: recalled memories used in a reply are disclosed in the "Data used" footer.
+test('R10.4 AC2: recalled memories are disclosed in the Data used footer', () => {
+  render(
+    <MessageRenderer
+      message={{
+        role: 'assistant',
+        content: 'Here is the fee summary.',
+        recalled_memories: [{ id: 'm1', text: 'owner prefers concise fee summaries', category: 'preference' }],
+      }}
+    />,
+  );
+  const footer = screen.getByTestId('data-used');
+  expect(footer).toHaveTextContent('remembered note');
+  expect(screen.getByTestId('recalled-memories')).toHaveTextContent('owner prefers concise fee summaries');
+});
+
+test('R10.4 AC2: no footer when there are no tools and no recalled memories', () => {
+  render(<MessageRenderer message={{ role: 'assistant', content: 'plain reply' }} />);
+  expect(screen.queryByTestId('data-used')).toBeNull();
+});
+
+test('R10.4 AC2: footer shows both tool count and remembered notes', () => {
+  render(
+    <MessageRenderer
+      message={{
+        role: 'assistant',
+        content: 'done',
+        tool_calls: [{ tool: 'get_fee_summary', result: { meta: { count: 3 } } }],
+        recalled_memories: [{ id: 'm1', text: 'note one', category: 'fact' }],
+      }}
+    />,
+  );
+  const footer = screen.getByTestId('data-used');
+  expect(footer).toHaveTextContent('1 tool');
+  expect(footer).toHaveTextContent('1 remembered note');
+});
