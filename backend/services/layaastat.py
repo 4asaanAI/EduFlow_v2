@@ -19,6 +19,22 @@ _ENABLED = bool(_URL and _KEY)
 
 _client: httpx.AsyncClient | None = None
 
+# R9.3 (M9): hold strong refs to fire-and-forget tasks. `asyncio.ensure_future`
+# without a reference lets the event loop GC a still-pending task, silently
+# dropping the span/event. Tasks self-remove from the set when done.
+_pending_tasks: set = set()
+
+
+def _spawn(coro) -> None:
+    try:
+        task = asyncio.ensure_future(coro)
+    except RuntimeError:
+        # No running loop (e.g. called from sync context/tests) — drop quietly.
+        coro.close()
+        return
+    _pending_tasks.add(task)
+    task.add_done_callback(_pending_tasks.discard)
+
 
 def _get_client() -> httpx.AsyncClient:
     global _client
@@ -37,7 +53,9 @@ async def _post(path: str, payload: dict) -> None:
             headers={"x-ingest-key": _KEY, "content-type": "application/json"},
         )
     except Exception:
-        logger.debug("layaastat post failed", exc_info=True)
+        # R9.3 (M9): a dropped span/event is observability loss — surface it at
+        # warning, not debug (debug is suppressed under the INFO root logger).
+        logger.warning("layaastat post failed for %s", path, exc_info=True)
 
 
 async def emit_llm_span(
@@ -52,7 +70,7 @@ async def emit_llm_span(
     trace_id: str | None = None,
 ) -> None:
     now = datetime.now(timezone.utc).isoformat()
-    asyncio.ensure_future(
+    _spawn(
         _post("/api/otel", {
             "trace_id": trace_id or str(uuid.uuid4()),
             "span_id": str(uuid.uuid4()),
@@ -76,7 +94,7 @@ async def emit_event(
     payload: dict[str, Any] | None = None,
 ) -> None:
     now = datetime.now(timezone.utc).isoformat()
-    asyncio.ensure_future(
+    _spawn(
         _post("/api/ingest", {
             "event_name": event_name,
             "distinct_id": distinct_id,

@@ -4,12 +4,15 @@ Imports all originals from tool_functions and exposes a combined TOOL_REGISTRY (
 """
 from __future__ import annotations
 
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from database import get_db
+import json
 import time, re
 import uuid
 import logging
+from ai.redaction import _mask_phone  # canonical phone mask (first-2 + last-3)
 from tenant import add_school_id, get_school_id, scoped_filter, scoped_query
+from ai.fee_metrics import DEFAULTER_STATUSES, student_outstanding_from_txns
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
 from services.actor_context import actor_ctx_from_user
@@ -201,14 +204,11 @@ logger = logging.getLogger(__name__)
 #  Helpers
 # =========================================================================
 
-def _apply_branch_filter(query: dict, scope: dict) -> dict:
-    """If scope carries a branch_id, inject it into the Mongo query."""
-    branch_id = None
-    if scope:
-        branch_id = scope.get("branch_id") if isinstance(scope, dict) else getattr(scope, "branch_id", None)
-    if branch_id:
-        query["branch_id"] = branch_id
-    return query
+# R5.1 (H4): `_apply_branch_filter` was removed. It consulted ONLY the resolved
+# `scope`, never the JWT, so a branch-bound admin whose scope lacked a branch_id
+# read every branch's data. All read tools now use
+# `scoped_query(query, branch_id=_branch_id(user, scope))`, which prefers the
+# JWT branch and fails closed (owner/principal without a branch stay school-wide).
 
 
 def _apply_class_filter(query: dict, scope: dict, field: str = "class_id") -> dict:
@@ -250,12 +250,36 @@ def _branch_id(user: dict | None, scope: dict | None = None) -> str | None:
     return None
 
 
+def _normalize_iso_date(value) -> str | None:
+    """Coerce a user/LLM-supplied date to ISO ``YYYY-MM-DD`` or return None.
+
+    Calendar comparisons in the AI layer are lexicographic string compares that
+    only behave correctly on zero-padded ISO dates. A non-ISO or unparseable
+    value becomes ``None`` (dateless) rather than a corrupt sort key.
+    """
+    if not value:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    # Already ISO (accept a full ISO datetime by taking the date part).
+    head = s[:10]
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%m/%d/%Y"):
+        try:
+            src = head if fmt == "%Y-%m-%d" else s
+            return datetime.strptime(src, fmt).date().isoformat()
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
 def _empty_result(message: str, query_time_ms: float = 0) -> dict:
     return {
         "success": True,
         "data": [],
         "meta": {"count": 0, "query_time_ms": round(query_time_ms, 2)},
         "message": message,
+        "denied": False,
     }
 
 
@@ -265,6 +289,34 @@ def _ok(data: list, query_time_ms: float, message: str = "") -> dict:
         "data": data,
         "meta": {"count": len(data), "query_time_ms": round(query_time_ms, 2)},
         "message": message,
+        "denied": False,
+    }
+
+
+def _denied(message: str, query_time_ms: float = 0) -> dict:
+    """R4.3/M2: an authorization/permission failure — NOT an empty result.
+
+    `denied: True` + `success: False` so the LLM relays "you don't have access"
+    honestly instead of answering "there are none"."""
+    return {
+        "success": False,
+        "data": [],
+        "meta": {"count": 0, "query_time_ms": round(query_time_ms, 2)},
+        "message": message,
+        "denied": True,
+    }
+
+
+def _failed(message: str, query_time_ms: float = 0) -> dict:
+    """R4.3/L1: an operation that could not complete (bad input, not-found on a
+    write, downstream error) — `success: False` but NOT a denial. Distinct from an
+    empty read so a failed write is never reported as a benign empty success."""
+    return {
+        "success": False,
+        "data": [],
+        "meta": {"count": 0, "query_time_ms": round(query_time_ms, 2)},
+        "message": message,
+        "denied": False,
     }
 
 
@@ -279,7 +331,7 @@ async def tool_get_student_database(params: dict, user: dict, scope: dict = None
     db = get_db()
 
     query: dict = {}
-    _apply_branch_filter(query, scope)
+    query = scoped_query(query, branch_id=_branch_id(user, scope))
 
     # Scope-based class restriction for teachers
     if _scope_class_ids(scope) is not None:
@@ -310,7 +362,7 @@ async def tool_get_student_database(params: dict, user: dict, scope: dict = None
                 if cls["id"] in _scope_class_ids(scope):
                     query["class_id"] = cls["id"]
                 else:
-                    return _empty_result(
+                    return _denied(
                         "You do not have access to this class.",
                         (time.time() - t0) * 1000,
                     )
@@ -347,7 +399,7 @@ async def tool_get_fee_structures(params: dict, user: dict, scope: dict = None) 
     db = get_db()
 
     query: dict = {}
-    _apply_branch_filter(query, scope)
+    query = scoped_query(query, branch_id=_branch_id(user, scope))
 
     if params.get("class_group"):
         query["$or"] = [
@@ -390,25 +442,42 @@ async def tool_get_class_wise_attendance(params: dict, user: dict, scope: dict =
     end = params.get("end_date", date.today().strftime("%Y-%m-%d"))
 
     class_query: dict = {}
-    _apply_branch_filter(class_query, scope)
+    class_query = scoped_query(class_query, branch_id=_branch_id(user, scope))
     if _scope_class_ids(scope) is not None:
         class_query["id"] = {"$in": _scope_class_ids(scope)}
 
     classes = await db.classes.find(class_query).to_list(50)
+    class_ids = [c["id"] for c in classes if c.get("id")]
+
+    # M4: batch attendance + student counts with $in, then aggregate in-memory
+    # (was one find + one count_documents per class).
+    att_records = await db.student_attendance.find(
+        {"class_id": {"$in": class_ids}, "date": {"$gte": start, "$lte": end}}
+    ).to_list(50000)
+    att_by_class: dict = {}
+    for r in att_records:
+        cid = r.get("class_id")
+        bucket = att_by_class.setdefault(cid, {"present": 0, "total": 0})
+        bucket["total"] += 1
+        if r.get("status") == "present":
+            bucket["present"] += 1
+
+    strength_agg = await db.students.aggregate([
+        {"$match": {"class_id": {"$in": class_ids}, "is_active": True}},
+        {"$group": {"_id": "$class_id", "count": {"$sum": 1}}},
+    ]).to_list(len(class_ids) or 1)
+    strength_by_class = {row["_id"]: row["count"] for row in strength_agg}
 
     results = []
     for cls in classes:
-        att_query = {"class_id": cls["id"], "date": {"$gte": start, "$lte": end}}
-        records = await db.student_attendance.find(att_query).to_list(5000)
-        total = len(records)
-        present = sum(1 for r in records if r.get("status") == "present")
+        bucket = att_by_class.get(cls["id"], {"present": 0, "total": 0})
+        total = bucket["total"]
+        present = bucket["present"]
         absent = total - present
         rate = round(present / total * 100, 1) if total > 0 else 0
-
-        total_students = await db.students.count_documents({"class_id": cls["id"], "is_active": True})
         results.append({
             "class_name": f"{cls.get('name', '')}-{cls.get('section', '')}",
-            "total_students": total_students,
+            "total_students": strength_by_class.get(cls["id"], 0),
             "present": present,
             "absent": absent,
             "rate": f"{rate}%",
@@ -436,11 +505,21 @@ async def tool_get_leave_requests(params: dict, user: dict, scope: dict = None) 
     bid = _branch_id(user, scope)
     leaves = await db.leave_requests.find(scoped_query(query, branch_id=bid)).sort("created_at", -1).to_list(100)
 
+    # M4: batch staff lookups (was find_one per leave request).
+    lr_staff_ids = [lr["staff_id"] for lr in leaves if lr.get("staff_id")]
+    lr_staff = await db.staff.find(
+        scoped_query({"id": {"$in": lr_staff_ids}}, branch_id=bid)
+    ).to_list(len(lr_staff_ids) or 1) if lr_staff_ids else []
+    lr_staff_map = {s["id"]: s for s in lr_staff}
+
     results = []
     for lr in leaves:
-        staff = await db.staff.find_one(scoped_query({"id": lr.get("staff_id")}, branch_id=bid))
+        staff = lr_staff_map.get(lr.get("staff_id"))
         results.append({
-            "staff_name": staff["name"] if staff else "Unknown",
+            # L3/R4.4: include the leave id — approve_leave needs it to act.
+            "id": lr.get("id"),
+            "leave_id": lr.get("id"),
+            "staff_name": staff.get("name", "Unknown") if staff else "Unknown",
             "staff_type": staff.get("staff_type", "") if staff else "",
             "leave_type": lr.get("leave_type", ""),
             "start_date": lr.get("start_date", ""),
@@ -479,15 +558,25 @@ async def tool_get_staff_list(params: dict, user: dict, scope: dict = None) -> d
     month_start = today.replace(day=1).strftime("%Y-%m-%d")
     today_str = today.strftime("%Y-%m-%d")
 
+    # M4: batch this month's attendance for all staff (was one find per staff).
+    staff_ids = [s["id"] for s in staff_list if s.get("id")]
+    month_att = await db.staff_attendance.find({
+        "staff_id": {"$in": staff_ids},
+        "date": {"$gte": month_start, "$lte": today_str},
+    }).to_list(50000)
+    att_by_staff: dict = {}
+    for r in month_att:
+        sid = r.get("staff_id")
+        bucket = att_by_staff.setdefault(sid, {"total": 0, "present": 0})
+        bucket["total"] += 1
+        if r.get("status") in ("present", "late"):
+            bucket["present"] += 1
+
     results = []
     for s in staff_list:
-        # Compute attendance rate for current month
-        att_records = await db.staff_attendance.find({
-            "staff_id": s["id"],
-            "date": {"$gte": month_start, "$lte": today_str},
-        }).to_list(31)
-        total_att = len(att_records)
-        present = sum(1 for r in att_records if r.get("status") in ("present", "late"))
+        bucket = att_by_staff.get(s["id"], {"total": 0, "present": 0})
+        total_att = bucket["total"]
+        present = bucket["present"]
         att_rate = round(present / total_att * 100, 1) if total_att > 0 else 0
 
         results.append({
@@ -515,27 +604,38 @@ async def tool_get_class_list(params: dict, user: dict, scope: dict = None) -> d
     db = get_db()
 
     query: dict = {}
-    _apply_branch_filter(query, scope)
+    query = scoped_query(query, branch_id=_branch_id(user, scope))
 
     classes = await db.classes.find(query).to_list(50)
+    class_ids = [c["id"] for c in classes if c.get("id")]
+
+    # M4: batch teacher lookups (by id OR user_id) and per-class strength counts.
+    teacher_ids = [c["class_teacher_id"] for c in classes if c.get("class_teacher_id")]
+    teacher_docs = await db.staff.find(
+        {"$or": [{"id": {"$in": teacher_ids}}, {"user_id": {"$in": teacher_ids}}]}
+    ).to_list(len(teacher_ids) or 1) if teacher_ids else []
+    teacher_by_id = {t["id"]: t for t in teacher_docs if t.get("id")}
+    teacher_by_user = {t["user_id"]: t for t in teacher_docs if t.get("user_id")}
+
+    strength_agg = await db.students.aggregate([
+        {"$match": {"class_id": {"$in": class_ids}, "is_active": True}},
+        {"$group": {"_id": "$class_id", "count": {"$sum": 1}}},
+    ]).to_list(len(class_ids) or 1)
+    strength_by_class = {row["_id"]: row["count"] for row in strength_agg}
 
     results = []
     for cls in classes:
-        # Resolve class teacher name
         teacher_name = "N/A"
-        if cls.get("class_teacher_id"):
-            teacher = await db.staff.find_one({"id": cls["class_teacher_id"]})
-            if not teacher:
-                teacher = await db.staff.find_one({"user_id": cls["class_teacher_id"]})
+        tid = cls.get("class_teacher_id")
+        if tid:
+            teacher = teacher_by_id.get(tid) or teacher_by_user.get(tid)
             if teacher:
                 teacher_name = teacher.get("name", "N/A")
-
-        student_count = await db.students.count_documents({"class_id": cls["id"], "is_active": True})
         results.append({
             "class_name": cls.get("name", ""),
             "section": cls.get("section", ""),
             "class_teacher_name": teacher_name,
-            "student_count": student_count,
+            "student_count": strength_by_class.get(cls["id"], 0),
         })
 
     elapsed = (time.time() - t0) * 1000
@@ -553,27 +653,27 @@ async def tool_get_fee_defaulters(params: dict, user: dict, scope: dict = None) 
     t0 = time.time()
     db = get_db()
 
-    overdue_query: dict = {"status": "overdue"}
-    _apply_branch_filter(overdue_query, scope)
+    # M5/AC3: a defaulter is any student with an outstanding balance
+    # (overdue/pending/unpaid/partial), NOT only status='overdue' \u2014 consistent
+    # with fee_summary. Uses the shared canonical helper.
+    outstanding_query = scoped_query(
+        {"status": {"$in": list(DEFAULTER_STATUSES)}},
+        branch_id=_branch_id(user, scope),
+    )
+    outstanding_txns = await db.fee_transactions.find(outstanding_query).to_list(1000)
+    student_dues = student_outstanding_from_txns(outstanding_txns)
 
-    overdue_txns = await db.fee_transactions.find(overdue_query).to_list(500)
-
-    # Group by student
-    student_dues: dict = {}
-    for txn in overdue_txns:
-        sid = txn.get("student_id")
-        if not sid:
-            continue
-        if sid not in student_dues:
-            student_dues[sid] = {"amount": 0, "oldest_due": txn.get("due_date", "")}
-        student_dues[sid]["amount"] += txn.get("amount", 0)
-        due = txn.get("due_date", "")
-        if due and (not student_dues[sid]["oldest_due"] or due < student_dues[sid]["oldest_due"]):
-            student_dues[sid]["oldest_due"] = due
+    # Batch-fetch students + classes (no N+1) \u2014 M4.
+    sid_list = list(student_dues.keys())
+    students_docs = await db.students.find({"id": {"$in": sid_list}}).to_list(len(sid_list) or 1)
+    student_map = {s["id"]: s for s in students_docs}
+    class_ids = list({s.get("class_id") for s in students_docs if s.get("class_id")})
+    classes_docs = await db.classes.find({"id": {"$in": class_ids}}).to_list(len(class_ids) or 1)
+    class_map = {c["id"]: c for c in classes_docs}
 
     results = []
     for sid, dues in student_dues.items():
-        student = await db.students.find_one({"id": sid})
+        student = student_map.get(sid)
         if not student:
             continue
         # Scope filter: if teacher, only show students in their classes
@@ -581,28 +681,32 @@ async def tool_get_fee_defaulters(params: dict, user: dict, scope: dict = None) 
             if student.get("class_id") not in _scope_class_ids(scope):
                 continue
 
-        cls = await db.classes.find_one({"id": student.get("class_id")})
+        cls = class_map.get(student.get("class_id"))
         class_name = f"{cls['name']}-{cls['section']}" if cls else "N/A"
 
         days_overdue = 0
         if dues["oldest_due"]:
             try:
                 due_dt = datetime.strptime(dues["oldest_due"], "%Y-%m-%d").date()
-                days_overdue = (date.today() - due_dt).days
+                # AC3 widened "defaulter" to include PENDING invoices, which may
+                # carry a future due_date; clamp at 0 so we never report a
+                # nonsensical "overdue -20 days".
+                days_overdue = max(0, (date.today() - due_dt).days)
             except (ValueError, TypeError):
                 days_overdue = 0
 
         results.append({
             "name": student.get("name", ""),
             "class": class_name,
-            "amount_due": dues["amount"],
-            "amount_due_fmt": f"\u20b9{dues['amount']:,.0f}",
+            "amount_due": dues["owed"],
+            "amount_due_fmt": f"\u20b9{dues['owed']:,.0f}",
             "days_overdue": days_overdue,
             "student_id": sid,
-            "father_phone": student.get("father_phone", ""),
-            "mother_phone": student.get("mother_phone", ""),
-            "guardian_phone": student.get("guardian_phone", ""),
-            "phone": student.get("phone", ""),
+            # R4.4/AC3/DPDP: mask guardian phones AT SOURCE (like get_transport_status).
+            "father_phone": _mask_phone(student.get("father_phone", "")),
+            "mother_phone": _mask_phone(student.get("mother_phone", "")),
+            "guardian_phone": _mask_phone(student.get("guardian_phone", "")),
+            "phone": _mask_phone(student.get("phone", "")),
         })
 
     results.sort(key=lambda x: x["amount_due"], reverse=True)
@@ -622,17 +726,20 @@ async def tool_get_student_profile(params: dict, user: dict, scope: dict = None)
     t0 = time.time()
     db = get_db()
 
+    # R5.2 (H4): branch-scope the lookup so a branch-bound admin cannot read a
+    # student in another branch. Owner/principal (no JWT branch) stay school-wide.
+    bid = _branch_id(user, scope)
     student = None
     if params.get("student_id"):
-        student = await db.students.find_one({"id": params["student_id"]})
+        student = await db.students.find_one(scoped_query({"id": params["student_id"]}, branch_id=bid))
     elif params.get("search_term"):
         safe_term = re.escape(params["search_term"])
-        student = await db.students.find_one({
+        student = await db.students.find_one(scoped_query({
             "$or": [
                 {"name": {"$regex": safe_term, "$options": "i"}},
                 {"admission_number": {"$regex": safe_term, "$options": "i"}},
             ]
-        })
+        }, branch_id=bid))
 
     if not student:
         elapsed = (time.time() - t0) * 1000
@@ -641,7 +748,7 @@ async def tool_get_student_profile(params: dict, user: dict, scope: dict = None)
     # Scope check: self_only means student can only view their own profile
     if _scope_student_id(scope) and _scope_student_id(scope) != student["id"]:
         elapsed = (time.time() - t0) * 1000
-        return _empty_result("You do not have permission to view this student's profile.", elapsed)
+        return _denied("You do not have permission to view this student's profile.", elapsed)
 
     # Scope check: teacher can only see students in their classes
     if _scope_class_ids(scope) is not None:
@@ -802,7 +909,7 @@ async def tool_get_today_class_attendance(params: dict, user: dict, scope: dict 
     # Scope check
     if _scope_class_ids(scope) is not None and class_id not in _scope_class_ids(scope):
         elapsed = (time.time() - t0) * 1000
-        return _empty_result("You do not have access to this class.", elapsed)
+        return _denied("You do not have access to this class.", elapsed)
 
     cls = await db.classes.find_one({"id": class_id})
     class_label = f"{cls['name']}-{cls['section']}" if cls else "Unknown"
@@ -815,17 +922,24 @@ async def tool_get_today_class_attendance(params: dict, user: dict, scope: dict 
     att_records = await db.student_attendance.find({"class_id": class_id, "date": today_str}).to_list(200)
     marked_ids = {r["student_id"] for r in att_records}
 
+    # M7/AC2: only count attendance for students who are active in THIS class, so
+    # stray records (transferred/inactive students) can't push the rate above 100%.
     present = []
     absent = []
     for r in att_records:
         s = student_map.get(r["student_id"])
-        name = s["name"] if s else "Unknown"
+        if not s:
+            continue
+        name = s["name"]
         if r.get("status") == "present":
             present.append(name)
         else:
             absent.append(name)
 
     unmarked = [s["name"] for s in all_students if s["id"] not in marked_ids]
+
+    # Defensive clamp: rate is present/total, never above 100.
+    rate_val = min(100.0, round(len(present) / len(all_students) * 100, 1)) if all_students else 0.0
 
     elapsed = (time.time() - t0) * 1000
     data = [{
@@ -835,7 +949,7 @@ async def tool_get_today_class_attendance(params: dict, user: dict, scope: dict 
         "present_count": len(present),
         "absent_count": len(absent),
         "unmarked_count": len(unmarked),
-        "rate": f"{round(len(present) / len(all_students) * 100, 1)}%" if all_students else "0%",
+        "rate": f"{rate_val}%",
         "present": present,
         "absent": absent,
         "unmarked": unmarked,
@@ -853,7 +967,7 @@ async def tool_get_house_standings(params: dict, user: dict, scope: dict = None)
     db = get_db()
 
     query: dict = {}
-    _apply_branch_filter(query, scope)
+    query = scoped_query(query, branch_id=_branch_id(user, scope))
 
     houses = await db.houses.find(query).to_list(20)
 
@@ -861,17 +975,23 @@ async def tool_get_house_standings(params: dict, user: dict, scope: dict = None)
         elapsed = (time.time() - t0) * 1000
         return _empty_result("No houses configured in the system.", elapsed)
 
+    # M4: one query for ALL houses' points (was one aggregate per house), grouped
+    # by house + category in memory.
+    house_ids = [h["id"] for h in houses if h.get("id")]
+    point_rows = await db.house_points.find(
+        {"house_id": {"$in": house_ids}}, {"_id": 0, "house_id": 1, "category": 1, "points": 1}
+    ).to_list(50000)
+    breakdown_by_house: dict = {}
+    for row in point_rows:
+        hid = row.get("house_id")
+        cat = row.get("category")
+        cat_map = breakdown_by_house.setdefault(hid, {})
+        cat_map[cat] = cat_map.get(cat, 0) + (row.get("points") or 0)
+
     results = []
     for h in houses:
-        # Points breakdown by category
-        points_pipeline = [
-            {"$match": {"house_id": h["id"]}},
-            {"$group": {"_id": "$category", "total": {"$sum": "$points"}}},
-        ]
-        breakdown_raw = await db.house_points.aggregate(points_pipeline).to_list(20)
-        breakdown = {b["_id"]: b["total"] for b in breakdown_raw}
+        breakdown = breakdown_by_house.get(h["id"], {})
         points_total = sum(breakdown.values())
-
         results.append({
             "house_name": h.get("name", ""),
             "color": h.get("color", ""),
@@ -911,9 +1031,13 @@ async def tool_get_house_details(params: dict, user: dict, scope: dict = None) -
 
     # Recent points (last 20 entries)
     recent_points = await db.house_points.find({"house_id": house["id"]}).sort("created_at", -1).to_list(20)
+    # M4: batch student name lookups (was find_one per point).
+    rp_sids = [rp["student_id"] for rp in recent_points if rp.get("student_id")]
+    rp_students = await db.students.find({"id": {"$in": rp_sids}}).to_list(len(rp_sids) or 1) if rp_sids else []
+    rp_student_map = {s["id"]: s for s in rp_students}
     recent = []
     for rp in recent_points:
-        student = await db.students.find_one({"id": rp.get("student_id")}) if rp.get("student_id") else None
+        student = rp_student_map.get(rp.get("student_id"))
         recent.append({
             "student_name": student["name"] if student else "N/A",
             "points": rp.get("points", 0),
@@ -952,37 +1076,31 @@ async def tool_award_house_points(params: dict, user: dict, scope: dict = None) 
     # Validate write permission
     if scope and not _scope_bool(scope, "can_write", True):
         elapsed = (time.time() - t0) * 1000
-        return {
-            "success": False,
-            "data": [],
-            "meta": {"count": 0, "query_time_ms": round(elapsed, 2)},
-            "message": "You do not have permission to award house points.",
-        }
+        return _denied("You do not have permission to award house points.", elapsed)
 
     student_name = params.get("student_name", "")
     points = params.get("points", 0)
-    category = params.get("category", "general")
     reason = params.get("reason", "")
 
     if not student_name or not points:
         elapsed = (time.time() - t0) * 1000
-        return {
-            "success": False,
-            "data": [],
-            "meta": {"count": 0, "query_time_ms": round(elapsed, 2)},
-            "message": "student_name and points are required parameters.",
-        }
+        return _failed("student_name and points are required parameters.", elapsed)
 
-    # Find the student
-    student = await db.students.find_one({"name": {"$regex": re.escape(student_name), "$options": "i"}, "is_active": True})
+    # Find the student — R5.2 (H4): branch-scope so a branch-bound user cannot
+    # award points to (or misfire a write against) another branch's student.
+    student = await db.students.find_one(scoped_query(
+        {"name": {"$regex": re.escape(student_name), "$options": "i"}, "is_active": True},
+        branch_id=_branch_id(user, scope),
+    ))
     if not student:
+        # R4.3/L1: a not-found on a WRITE is a failure, not a benign empty read.
         elapsed = (time.time() - t0) * 1000
-        return _empty_result(f"Student '{student_name}' not found.", elapsed)
+        return _failed(f"Student '{student_name}' not found.", elapsed)
 
     house_id = student.get("house_id")
     if not house_id:
         elapsed = (time.time() - t0) * 1000
-        return _empty_result(f"Student '{student['name']}' is not assigned to any house.", elapsed)
+        return _failed(f"Student '{student['name']}' is not assigned to any house.", elapsed)
 
     # Story B.3: route through the shared house-points service so the AI award updates
     # the real standings (houses.points + house_points_log + audit) exactly like the
@@ -993,9 +1111,9 @@ async def tool_award_house_points(params: dict, user: dict, scope: dict = None) 
         result = await award_points(db, actor_ctx, service_params)
     except HouseNotFoundError:
         elapsed = (time.time() - t0) * 1000
-        return _empty_result("House not found.", elapsed)
+        return _failed("House not found.", elapsed)
     except HousePointsValidationError as e:
-        return {"success": False, "message": str(e)}
+        return _failed(str(e))
 
     house_name = result["house_name"] or "Unknown"
     elapsed = (time.time() - t0) * 1000
@@ -1006,12 +1124,11 @@ async def tool_award_house_points(params: dict, user: dict, scope: dict = None) 
             "student_name": student["name"],
             "house_name": house_name,
             "points_awarded": points,
-            "category": category,
             "reason": reason,
             "new_total": result["points"],
         }],
         "meta": {"count": 1, "query_time_ms": round(elapsed, 2)},
-        "message": f"Awarded {points} points to {student['name']} ({house_name}) for {category}.",
+        "message": f"Awarded {points} points to {student['name']} ({house_name}).",
     }
 
 
@@ -1025,18 +1142,23 @@ async def tool_get_student_council(params: dict, user: dict, scope: dict = None)
     db = get_db()
 
     query: dict = {}
-    _apply_branch_filter(query, scope)
+    query = scoped_query(query, branch_id=_branch_id(user, scope))
 
     # Try dedicated council collection first
     council_members = await db.student_council.find(query).to_list(100)
 
     if council_members:
+        # M4: batch student + class lookups (was two find_one per member).
+        cm_sids = [cm["student_id"] for cm in council_members if cm.get("student_id")]
+        cm_students = await db.students.find({"id": {"$in": cm_sids}}).to_list(len(cm_sids) or 1) if cm_sids else []
+        cm_student_map = {s["id"]: s for s in cm_students}
+        cm_class_ids = list({s.get("class_id") for s in cm_students if s.get("class_id")})
+        cm_classes = await db.classes.find({"id": {"$in": cm_class_ids}}).to_list(len(cm_class_ids) or 1) if cm_class_ids else []
+        cm_class_map = {c["id"]: c for c in cm_classes}
         results = []
         for cm in council_members:
-            student = await db.students.find_one({"id": cm.get("student_id")})
-            cls = None
-            if student:
-                cls = await db.classes.find_one({"id": student.get("class_id")})
+            student = cm_student_map.get(cm.get("student_id"))
+            cls = cm_class_map.get(student.get("class_id")) if student else None
             results.append({
                 "name": student["name"] if student else cm.get("student_name", "Unknown"),
                 "class": f"{cls['name']}-{cls['section']}" if cls else "N/A",
@@ -1046,12 +1168,19 @@ async def tool_get_student_council(params: dict, user: dict, scope: dict = None)
     else:
         # Fallback: check for council roles on student records
         council_query = {"council_role": {"$exists": True, "$ne": None, "$ne": ""}}
-        _apply_branch_filter(council_query, scope)
+        council_query = scoped_query(council_query, branch_id=_branch_id(user, scope))
         council_students = await db.students.find(council_query).to_list(100)
+        # M4: batch class + house lookups.
+        cs_class_ids = list({s.get("class_id") for s in council_students if s.get("class_id")})
+        cs_classes = await db.classes.find({"id": {"$in": cs_class_ids}}).to_list(len(cs_class_ids) or 1) if cs_class_ids else []
+        cs_class_map = {c["id"]: c for c in cs_classes}
+        cs_house_ids = list({s.get("house_id") for s in council_students if s.get("house_id")})
+        cs_houses = await db.houses.find({"id": {"$in": cs_house_ids}}).to_list(len(cs_house_ids) or 1) if cs_house_ids else []
+        cs_house_map = {h["id"]: h for h in cs_houses}
         results = []
         for s in council_students:
-            cls = await db.classes.find_one({"id": s.get("class_id")})
-            house = await db.houses.find_one({"id": s.get("house_id")}) if s.get("house_id") else None
+            cls = cs_class_map.get(s.get("class_id"))
+            house = cs_house_map.get(s.get("house_id")) if s.get("house_id") else None
             results.append({
                 "name": s.get("name", ""),
                 "class": f"{cls['name']}-{cls['section']}" if cls else "N/A",
@@ -1076,7 +1205,7 @@ async def tool_get_library_status(params: dict, user: dict, scope: dict = None) 
     db = get_db()
 
     query: dict = {}
-    _apply_branch_filter(query, scope)
+    query = scoped_query(query, branch_id=_branch_id(user, scope))
 
     # Overall book counts
     total_books = await db.library_books.count_documents(query)
@@ -1200,7 +1329,8 @@ def _audit_doc(action: str, entity_type: str, entity_id: str, user: dict, change
         "changed_by_role": user.get("role"),
         "changes": changes,
         "reason": reason,
-        "created_at": datetime.now().isoformat(),
+        # L2: UTC-aware, consistent with the rest of the audit pipeline.
+        "created_at": datetime.now(timezone.utc).isoformat(),
     })
 
 
@@ -1438,7 +1568,7 @@ async def tool_decide_approval_request(params: dict, user: dict, scope: dict = N
     except ApprovalNotFoundError:
         return _empty_result("Approval request not found.")
     except ApprovalAuthorizationError:
-        return {"success": False, "message": "You are not authorized to decide this approval request."}
+        return _denied("You are not authorized to decide this approval request.")
     except ApprovalValidationError as e:
         return {"success": False, "message": str(e)}
 
@@ -1518,7 +1648,7 @@ async def tool_update_student(params: dict, user: dict, scope: dict = None) -> d
     # Thin adapter over services.student_service.update_student — the SAME write path
     # as PATCH /api/students/{id} (Story J.1 / AD7).
     if not params.get("student_id"):
-        return {"success": False, "message": "student_id is required."}
+        return _failed("student_id is required.")
     db = get_db()
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
     try:
@@ -1557,7 +1687,7 @@ async def tool_manage_student_guardians(params: dict, user: dict, scope: dict = 
     # Thin adapter over services.student_service.upsert_guardians — the SAME write path
     # as PUT /api/students/{id}/guardians (Story J.1 / AD7). Replaces all guardians.
     if not params.get("student_id"):
-        return {"success": False, "message": "student_id is required."}
+        return _failed("student_id is required.")
     guardians = params.get("guardians")
     if not isinstance(guardians, list):
         return {"success": False, "message": "guardians must be a list of guardian objects."}
@@ -1862,12 +1992,26 @@ async def tool_mark_attendance(params: dict, user: dict, scope: dict = None) -> 
     if not params.get("attendance"):
         return {"success": False, "message": "attendance list is required."}
     db = get_db()
+    bid = _branch_id(user, scope)
     class_id = params.get("class_id")
     if not class_id and params.get("class_name"):
-        cls = await db.classes.find_one({"name": {"$regex": re.escape(params["class_name"]), "$options": "i"}}, {"_id": 0})
+        # R5.2 (H4): branch-scope the class name lookup so a branch-bound user
+        # cannot resolve (and then mark attendance against) another branch's class.
+        cls = await db.classes.find_one(scoped_query(
+            {"name": {"$regex": re.escape(params["class_name"]), "$options": "i"}},
+            branch_id=bid,
+        ), {"_id": 0})
         class_id = (cls or {}).get("id")
     if not class_id:
         return _empty_result("Class not found.")
+    # R5.2 defense-in-depth: whether class_id was supplied directly or resolved
+    # by name, confirm it exists in the caller's branch before writing —
+    # student_attendance carries no branch_id, so the service cannot re-check.
+    class_in_branch = await db.classes.find_one(
+        scoped_query({"id": class_id}, branch_id=bid), {"_id": 0, "id": 1}
+    )
+    if not class_in_branch:
+        return _failed("Class not found in your branch.")
     target_date = params.get("date", date.today().isoformat())
     actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
     service_params = {
@@ -1946,7 +2090,7 @@ async def tool_query_maintenance_requests(params: dict, user: dict, scope: dict 
 
 async def tool_query_student_record(params: dict, user: dict, scope: dict = None) -> dict:
     if not params.get("student_id"):
-        return {"success": False, "message": "student_id is required."}
+        return _failed("student_id is required.")
     db = get_db()
     bid = _branch_id(user, scope)
     student = await db.students.find_one(scoped_query({"id": params["student_id"]}, branch_id=bid), {"_id": 0})
@@ -2085,22 +2229,40 @@ async def tool_get_exam_results_summary(params: dict, user: dict, scope: dict = 
             continue
 
         marks = [r["marks_obtained"] for r in exam_results if r.get("marks_obtained") is not None]
-        max_marks = exam.get("max_marks", exam_results[0].get("max_marks", 100)) if exam_results else 100
+        # M7/AC2: use the ACTUAL max_marks — exam's, else each result's own — and
+        # never silently assume /100. Pass rate is only reported when max is known.
+        exam_max = exam.get("max_marks")
+
+        def _row_max(r: dict):
+            return exam_max if exam_max is not None else r.get("max_marks")
 
         avg = round(sum(marks) / len(marks), 1) if marks else 0
         highest = max(marks) if marks else 0
         lowest = min(marks) if marks else 0
-        passed = sum(1 for m in marks if m >= max_marks * 0.33)  # 33% passing
+
+        # Only count students whose max_marks is known (33% passing threshold).
+        scorable = [r for r in exam_results
+                    if r.get("marks_obtained") is not None and _row_max(r) not in (None, 0)]
+        passed = sum(1 for r in scorable if r["marks_obtained"] >= _row_max(r) * 0.33)
+        # Report a pass-rate ONLY when every graded student is scorable — otherwise
+        # a rate computed over a subset would read as if it covered all `students`
+        # (shown alongside), which is misleading. Partial coverage → "N/A".
+        pass_rate = (
+            f"{round(passed / len(scorable) * 100, 1)}%"
+            if scorable and len(scorable) == len(marks) else "N/A"
+        )
+
+        avg_display = f"{avg}/{exam_max}" if exam_max is not None else f"{avg}"
 
         results.append({
             "exam": exam.get("name", "Unnamed Exam"),
             "subject": exam.get("subject", ""),
             "date": exam.get("exam_date", ""),
             "students": len(marks),
-            "average": f"{avg}/{max_marks}",
+            "average": avg_display,
             "highest": highest,
             "lowest": lowest,
-            "pass_rate": f"{round(passed/len(marks)*100, 1)}%" if marks else "N/A",
+            "pass_rate": pass_rate,
         })
 
     elapsed = (time.time() - t0) * 1000
@@ -2132,17 +2294,24 @@ async def tool_get_upcoming_events(params: dict, user: dict, scope: dict = None)
     for e in exams:
         events.append({"date": e.get("exam_date"), "type": "exam", "title": f"{e.get('name')} — {e.get('subject')}"})
 
-    # Upcoming announcements / events (from announcements collection)
+    # Upcoming announcements / events (from announcements collection).
+    # M6: match the SAME visibility rule as tool_get_announcements — announcements
+    # are stored with status "active" and sent_at set (never "published"), so the
+    # old status="published" filter matched nothing AI-created. Use event_date when
+    # present, else fall back to the send date, and window-filter in Python.
     announcements = await db.announcements.find(
         scoped_query(
-            {"event_date": {"$gte": today, "$lte": until}, "status": "published"},
+            {"status": "active", "sent_at": {"$ne": None}},
             branch_id=bid
         ),
-        {"_id": 0, "title": 1, "event_date": 1, "audience": 1}
-    ).sort("event_date", 1).to_list(10)
+        {"_id": 0, "title": 1, "event_date": 1, "sent_at": 1}
+    ).to_list(50)
 
     for a in announcements:
-        events.append({"date": a.get("event_date", today), "type": "event", "title": a.get("title", "Event")})
+        eff_date = a.get("event_date") or (a.get("sent_at") or "")[:10]
+        if not eff_date or eff_date < today or eff_date > until:
+            continue
+        events.append({"date": eff_date, "type": "event", "title": a.get("title", "Event")})
 
     # Sort all events by date
     events.sort(key=lambda x: x.get("date", ""))
@@ -2258,6 +2427,12 @@ async def tool_create_announcement(params: dict, user: dict, scope: dict = None)
         "channels": ["push"],
         "is_draft": False,
         "status": initial_status,
+        # M6: persist an optional event_date so calendar-style announcements surface
+        # in get_upcoming_events. Normalize to ISO (YYYY-MM-DD) — the events window
+        # does a lexicographic compare, so a non-ISO date (e.g. "15/07/2026") would
+        # be silently dropped/mis-ordered. Unparseable → dateless (falls back to
+        # sent_at), never a corrupt sort key.
+        "event_date": _normalize_iso_date(params.get("event_date")),
         # sent_at is intentionally omitted for pending_approval announcements;
         # it will be set when the principal approves via /announcements/{id}/approve.
         "sent_at": None if requires_approval else now,
@@ -2274,6 +2449,53 @@ async def tool_create_announcement(params: dict, user: dict, scope: dict = None)
             "message": f"Announcement '{title}' submitted for principal approval (id: {ann_id}). It will be sent once approved.",
         }
     return {"success": True, "data": {k: v for k, v in announcement.items() if k != "_id"}, "message": f"Announcement '{title}' published successfully to {audience_type}."}
+
+
+async def tool_get_announcements(params: dict, user: dict, scope: dict = None) -> dict:
+    """Read published school announcements visible to the caller (R3.3/H2).
+
+    Previously advertised to students but ABSENT from the registry — a guaranteed
+    dead tool call. Now implemented student-safe: only announcements that have
+    actually been sent (never drafts or pending-approval) whose audience includes
+    the caller's role. School-scoped automatically via the scoped db; the
+    announcement data model is school-wide (no per-branch targeting)."""
+    t0 = time.time()
+    db = get_db()
+    try:
+        days = int(params.get("days", 7) or 7)
+    except (TypeError, ValueError):
+        days = 7
+    role = user.get("role", "")
+    # A published announcement is one that is not a draft and has been sent
+    # (sent_at set) — pending-approval / draft announcements are never visible.
+    query = {
+        "is_draft": {"$ne": True},
+        "sent_at": {"$ne": None},
+        "$or": [
+            {"target_roles": role},
+            {"audience_type": "all"},
+        ],
+    }
+    anns = await db.announcements.find(query, {"_id": 0}).to_list(200)
+    cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+    visible = [a for a in anns if str(a.get("created_at", "")) >= cutoff]
+    # Most recent first (created_at is an ISO string → lexicographic == chronological).
+    visible.sort(key=lambda a: str(a.get("created_at", "")), reverse=True)
+    data = [
+        {
+            "id": a.get("id"),
+            "title": a.get("title"),
+            "content": a.get("content"),
+            "audience_type": a.get("audience_type"),
+            "sent_at": a.get("sent_at"),
+            "created_at": a.get("created_at"),
+        }
+        for a in visible[:50]
+    ]
+    elapsed = (time.time() - t0) * 1000
+    if not data:
+        return _empty_result(f"No announcements in the last {days} days.", elapsed)
+    return _ok(data, elapsed, f"{len(data)} announcement(s) in the last {days} days.")
 
 
 # =========================================================================
@@ -2295,7 +2517,7 @@ async def tool_recall_history(params: dict, user: dict, scope: dict = None) -> d
     """
     t0 = time.time()
     from services.actor_context import actor_ctx_from_user
-    from services.memory import is_memory_subject, store as memory_store
+    from services.memory import can_recall_memories, store as memory_store
 
     subject = (params.get("subject") or params.get("query") or params.get("search_term") or "").strip()
     if not subject and not params.get("student_id"):
@@ -2304,8 +2526,9 @@ async def tool_recall_history(params: dict, user: dict, scope: dict = None) -> d
     sections: dict = {}
     student_ids: list = []
 
-    # 1) Memory recall (owner-scoped; only for Owner/Principal per Phase-1 lockdown).
-    if is_memory_subject(user):
+    # 1) Memory recall (owner-scoped; Owner/Principal per Phase-1, plus any roles the
+    #    R10.5 MEMORY_ROLES switch grants read-recall to).
+    if can_recall_memories(user):
         try:
             ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
             mems = await memory_store.recall(get_db(), ctx, subject or params.get("student_id", ""))
@@ -2369,7 +2592,7 @@ async def tool_get_transport_status(params: dict, user: dict, scope: dict = None
     t0 = time.time()
     db = get_db()
     query: dict = {}
-    _apply_branch_filter(query, scope)
+    query = scoped_query(query, branch_id=_branch_id(user, scope))
     route_filter = params.get("route_id")
 
     routes = await db.transport_routes.find(query, {"_id": 0}).to_list(100)
@@ -2378,13 +2601,12 @@ async def tool_get_transport_status(params: dict, user: dict, scope: dict = None
         routes = [r for r in routes if r.get("id") == route_filter]
 
     def _fmt(r: dict) -> dict:
-        phone = r.get("driver_phone", "")
-        masked = (phone[:-3] + "XXX") if len(phone) >= 4 else phone
         return {
             "id": r.get("id"),
             "route_name": r.get("route_name"),
             "driver_name": r.get("driver_name"),
-            "driver_phone": masked,
+            # R4.4: canonical mask (first-2 + last-3), matching redaction.py.
+            "driver_phone": _mask_phone(r.get("driver_phone", "")),
             "vehicle_number": r.get("vehicle_number"),
             "stops_count": len(r.get("stops", [])),
             "fare": r.get("fare"),
@@ -2402,6 +2624,7 @@ async def tool_get_transport_status(params: dict, user: dict, scope: dict = None
         },
         "meta": {"count": len(active), "query_time_ms": round(elapsed, 2)},
         "message": "",
+        "denied": False,
     }
 
 
@@ -2410,7 +2633,7 @@ async def tool_get_inventory_status(params: dict, user: dict, scope: dict = None
     t0 = time.time()
     db = get_db()
     query: dict = {}
-    _apply_branch_filter(query, scope)
+    query = scoped_query(query, branch_id=_branch_id(user, scope))
 
     category_filter = params.get("category")
     if category_filter:
@@ -2475,12 +2698,25 @@ async def tool_get_branch_comparison(params: dict, user: dict, scope: dict = Non
             )
 
         if metric in ("all", "attendance"):
-            today_records = await db.attendance.count_documents(
-                scoped_query({"date": today_str, "status": "present"}, branch_id=bid)
-            )
-            total_today = await db.attendance.count_documents(
-                scoped_query({"date": today_str}, branch_id=bid)
-            )
+            # M3: attendance lives in student_attendance (not `attendance`), and that
+            # collection has no branch_id — scope it via this branch's classes.
+            branch_classes = await db.classes.find(
+                scoped_query({}, branch_id=bid), {"_id": 0, "id": 1}
+            ).to_list(200)
+            branch_class_ids = [c["id"] for c in branch_classes if c.get("id")]
+            if branch_class_ids:
+                att_filter = {"class_id": {"$in": branch_class_ids}, "date": today_str}
+                # branch-scope: intentional — student_attendance has no branch_id;
+                # branch isolation is enforced by restricting class_id to this branch's classes.
+                total_today = await db.student_attendance.count_documents(
+                    scoped_filter(att_filter)
+                )
+                today_records = await db.student_attendance.count_documents(
+                    scoped_filter({**att_filter, "status": "present"})
+                )
+            else:
+                total_today = 0
+                today_records = 0
             entry["attendance_rate_today"] = (
                 round(today_records / total_today * 100, 1) if total_today else None
             )
@@ -2526,8 +2762,9 @@ async def tool_get_expenses(params: dict, user: dict, scope: dict = None) -> dic
     return {
         "success": True,
         "data": {"expenses": expenses, "total_amount": round(total, 2), "count": len(expenses)},
-        "meta": {"query_time_ms": round(elapsed, 2)},
+        "meta": {"count": len(expenses), "query_time_ms": round(elapsed, 2)},
         "message": f"{len(expenses)} expense(s) totalling ₹{total:,.2f}",
+        "denied": False,
     }
 
 
@@ -2742,12 +2979,12 @@ async def tool_get_fee_sync_status(params: dict, user: dict, scope: dict = None)
     elapsed = (time.time() - t0) * 1000
     if not jobs:
         return {"success": True, "data": {"jobs": []}, "meta": {"count": 0, "query_time_ms": round(elapsed, 2)},
-                "message": "No fee sync has been run yet."}
+                "message": "No fee sync has been run yet.", "denied": False}
     latest = jobs[0]
     msg = (f"Latest sync: {latest.get('status')} — {latest.get('synced_count', 0)} synced, "
            f"{latest.get('conflict_count', 0)} conflict(s).")
     return {"success": True, "data": {"jobs": jobs, "latest": latest},
-            "meta": {"count": len(jobs), "query_time_ms": round(elapsed, 2)}, "message": msg}
+            "meta": {"count": len(jobs), "query_time_ms": round(elapsed, 2)}, "message": msg, "denied": False}
 
 
 
@@ -3177,6 +3414,14 @@ TOOL_REGISTRY = {
         "description": "Student's own exam results and grades.",
         "params_schema": {},
     },
+    "get_announcements": {
+        "fn": tool_get_announcements,
+        "roles": ["student"],
+        "description": "School announcements and notices visible to the student.",
+        "params_schema": {
+            "days": {"type": "integer", "description": "How many days back to look (default 7)"},
+        },
+    },
 
     # ---- 15 new scope-aware tools ----
     "get_student_database": {
@@ -3284,7 +3529,6 @@ TOOL_REGISTRY = {
         "params_schema": {
             "student_name": {"type": "string", "description": "Student name (required)"},
             "points": {"type": "integer", "description": "Points to award (required)"},
-            "category": {"type": "string", "description": "Category: academics, sports, discipline, cultural, general"},
             "reason": {"type": "string", "description": "Reason for awarding points"},
         },
     },
@@ -3824,7 +4068,9 @@ TOOL_REGISTRY = {
     "query_maintenance_requests": {
         "fn": tool_query_maintenance_requests,
         "roles": ["owner", "admin"],
-        "sub_categories": ["maintenance"],
+        # R3.2: IT-tech support reads the same ticket queue (read-only), matching the
+        # prompt that advertises this tool to both maintenance and it_tech admins.
+        "sub_categories": ["maintenance", "it_tech"],
         "description": "Open facility requests by status, date, or location.",
         "params_schema": {
             "status": {"type": "string", "description": "Optional status"},
@@ -4321,3 +4567,35 @@ WRITE_TOOL_NAMES = {
     name for name, tool in TOOL_REGISTRY.items()
     if tool.get("requires_confirmation") or tool.get("dispatch_type") == "write"
 }
+
+
+def openai_tool_schema(name: str, tool_def: dict, required: "tuple | list" = ()) -> dict:
+    """R11.2 AC2: derive a native function-calling schema from ONE registry entry.
+
+    TOOL_REGISTRY is the single source of truth — the same `params_schema` that
+    documents each tool becomes the JSON Schema the provider validates against.
+    Because the provider constrains the model to the advertised tool names,
+    invented tool names become impossible (AC3), and the R3 prompt↔registry
+    parity gate becomes structural rather than only test-enforced.
+    """
+    props = {}
+    for key, spec in (tool_def.get("params_schema") or {}).items():
+        spec = dict(spec) if isinstance(spec, dict) else {"type": "string"}
+        spec.setdefault("type", "string")
+        # JSON Schema requires an `items` schema for arrays; supply a permissive
+        # default when the registry entry omits it (e.g. attendance rows).
+        if spec.get("type") == "array" and "items" not in spec:
+            spec["items"] = {}
+        props[key] = spec
+    parameters = {"type": "object", "properties": props}
+    req = [k for k in (required or ()) if k in props]
+    if req:
+        parameters["required"] = req
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": tool_def.get("description", "") or name.replace("_", " "),
+            "parameters": parameters,
+        },
+    }

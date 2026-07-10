@@ -17,6 +17,7 @@ Everything an executing agent needs is **committed to this repository**; nothing
   2. **The 25 pinned pre-existing test failures are fixed LAST**, after all epics — never mid-epic.
   3. **DPDP guardrails stay surgical** — never over-block the LLM into refusals/non-compliance.
   4. **AI-write scope Phase 1 = Owner + Principal only** (lockdown policy); widening is a config/policy change, never an engine change.
+  5. **Prompt/tool changes require a green golden-eval run (R11.1, AC3).** Any change to `ai/prompts.py`, `ai/tool_functions*.py`, `ai/context_builder.py`, `ai/llm_client.py`, or the chat tool-loop must (a) keep the always-on structural + judge-logic evals green, and (b) before merge, run the credentialed LLM-judge tier (`pytest -m llm_eval tests/backend/evals`) with scores equal-or-better than the recorded baseline. The corpus lives in `_bmad-output/test-artifacts/eval-corpus/`; see `tests/backend/evals/README.md`.
 - Environment note: local secrets (`backend/.env`) are machine-local by design and never required by these docs — tests run against fakes; anything needing real credentials must say so in plain English rather than assume them.
 
 If a future session learns a NEW standing directive from Abhimanyu or Shubham, it must be added to this section (and committed) — never only to personal/session memory.
@@ -51,13 +52,14 @@ If a future session learns a NEW standing directive from Abhimanyu or Shubham, i
 *R11.1 runs as its own mini-run right after R3 so every later epic is guarded by the quality-eval gate.
 After **R9**, do NOT auto-start R10 — the end-of-R9 handoff must state in plain English that the remaining two epics need Abhimanyu's explicit go-ahead, and stop.
 
-## Logging (rule 5) — the three docs, updated at the END of every epic
+## Logging (rule 5) — the four docs, updated at the END of every epic
 
 All under `_bmad-output/implementation-artifacts/ai-reliability/`:
 
 1. **`epic-{ID}-completed.md`** — per story: what was built, files touched, ACs met (checklist), tests added. Written fresh each epic.
 2. **`DEFERRED-AND-DISCOVERIES.md`** — ONE running file across the whole initiative. Every mid-run discovery that was not fixed in-run gets a row: `date · epic · what was found · why deferred · where it should be fixed (epic/story or "new story needed")`. Items fixed in-run that were *outside* the epic's scope also get a row marked FIXED (so scope creep is visible). Review this file at the START of every run — if an entry belongs to the current epic, it must be handled now.
 3. **`epic-{ID}-review.md`** — the epic-close quality gate output: findings table (`severity · file · issue · fix · regression test`), dismissed findings with reasons, final test counts, grep-audit results, eval scores (once R11.1 exists).
+4. **`HUMAN-VERIFICATION-CHECKLIST.md`** — ONE running file across the whole initiative (Abhimanyu's checklist). At every epic close, APPEND the human-side / real-use checks the epic introduced (things automated tests can't decide: verify-in-real-use spot-checks, privacy/product judgment calls, and any go/no-go gate items). Add a change-log line with the date. Never delete a human's ticked items. This is the single place Abhimanyu/Shubham look for "what do I need to check from my side."
 
 ## The FIXED handoff-prompt format (copy VERBATIM; fill only the `{...}` slots)
 
@@ -91,7 +93,7 @@ STEP 4 — MANDATORY EPIC-CLOSE QUALITY GATE (the epic is NOT done until this is
 
 STEP 5 — Epic DONE criteria (all must hold):
 - Every story's ACs met; STEP 4 gate fully clean.
-- The three log docs written/updated: epic-{EPIC_ID}-completed.md, epic-{EPIC_ID}-review.md, DEFERRED-AND-DISCOVERIES.md (rule 5/6).
+- The log docs written/updated: epic-{EPIC_ID}-completed.md, epic-{EPIC_ID}-review.md, DEFERRED-AND-DISCOVERIES.md, and HUMAN-VERIFICATION-CHECKLIST.md (append this epic's human/real-use checks) (rule 5/6).
 - Tracker updated: _bmad-output/platform-quality-sweep.md (AI Layer Reliability row). Commit + push to main via git CLI.
 
 STEP 6 — MANDATORY FINAL STEP: emit the next-epic prompt.

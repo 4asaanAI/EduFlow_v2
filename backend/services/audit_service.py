@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from tenant import add_school_id
 from services.txn_context import session_kwargs
@@ -17,7 +17,9 @@ def _normalise_doc(doc: dict, *, school_id: str | None = None, branch_id: str = 
     collection = doc.get("collection") or doc.get("entity_type") or ""
     entity_type = doc.get("entity_type") or collection
     entity_id = doc.get("entity_id") or doc.get("record_id") or ""
-    created_at = doc.get("created_at") or doc.get("timestamp") or datetime.now().isoformat()
+    # L2: audit timestamps are UTC-aware (matching actor_ctx.now()/ai_metrics) so the
+    # audit log is never a mix of naive-local and UTC times.
+    created_at = doc.get("created_at") or doc.get("timestamp") or datetime.now(timezone.utc).isoformat()
     normalised = {
         "_id": doc.get("_id") or str(uuid.uuid4()),
         "id": doc.get("id") or str(uuid.uuid4()),

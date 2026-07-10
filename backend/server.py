@@ -18,7 +18,7 @@ import httpx
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
-from database import connect_db, disconnect_db, get_raw_db
+from database import connect_db, disconnect_db, get_db, get_raw_db
 from tenant import validate_school_id
 from logging_config import (
     configure_logging,
@@ -56,6 +56,7 @@ from routes.operator import router as operator_router
 from routes.payroll import router as payroll_router
 from routes.reports import router as reports_router
 from routes.federation import router as federation_router
+from routes.learning import router as learning_router
 from services.idempotency import (
     get_replay_response,
     record_key,
@@ -252,11 +253,17 @@ app.include_router(operator_router)
 app.include_router(payroll_router)
 app.include_router(reports_router)
 app.include_router(federation_router)
+app.include_router(learning_router)
 
 
 @app.on_event("startup")
 async def startup():
     validate_school_id()
+
+    # R9.1 (C2): fail loud on missing Azure config outside development, the same
+    # way SCHOOL_ID does — a silently-unconfigured AI client was the incident.
+    from ai.llm_client import validate_ai_config
+    validate_ai_config()
 
     # EC-15.1: SKIP_CONSENT_CHECK cannot be enabled in production/staging
     if os.getenv("SKIP_CONSENT_CHECK", "").lower() == "true":
@@ -271,6 +278,17 @@ async def startup():
 
     await connect_db()
     app.state.sse_keepalive_task = asyncio.create_task(sse_keepalive_loop())
+
+    # R6.4 (XM10): the memory vector index is in-process and empty after a redeploy.
+    # Rebuild it from the durable Mongo memories so recall isn't silently degraded.
+    # No-op (and cheap) when the vector path is disabled — the common default.
+    try:
+        from services.memory.vector import rebuild_index_from_mongo
+
+        await rebuild_index_from_mongo(get_db())
+    except Exception:
+        logger.warning("memory vector rebuild on startup failed", exc_info=True)
+
     logger.info("EduFlow API started")
 
 
@@ -302,7 +320,10 @@ async def _check_db() -> str:
 
 async def _check_ai() -> str:
     endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
-    if not endpoint:
+    # R9.1 (C2 AC3): the readiness check must also verify the KEY is present —
+    # a configured endpoint with no key still can't call the model.
+    from ai.llm_client import get_azure_key
+    if not endpoint or not get_azure_key():
         return "degraded"
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:

@@ -82,9 +82,9 @@ async def test_search_students_isolates_branch_a(monkeypatch):
 
     from ai.tool_functions import tool_search_students
     result = await tool_search_students({"query": ""}, {"id": "u-a", "role": "admin"}, _branch_a_scope())
-    names = {s["name"] for s in result["students"]}
+    names = {s["name"] for s in result["data"]}
     assert names == {"Alpha One", "Alpha Two"}, f"branch leak: got {names}"
-    assert result["total"] == 2
+    assert result["meta"]["count"] == 2
 
 
 @_async
@@ -96,7 +96,7 @@ async def test_search_students_owner_sees_all_branches(monkeypatch):
 
     from ai.tool_functions import tool_search_students
     result = await tool_search_students({"query": ""}, {"id": "u-owner", "role": "owner"}, _owner_scope())
-    assert result["total"] == 3
+    assert result["meta"]["count"] == 3
 
 
 @_async
@@ -110,10 +110,11 @@ async def test_school_pulse_aggregates_only_branch_a(monkeypatch):
     result = await tool_get_school_pulse({}, {"id": "u-a", "role": "admin"}, _branch_a_scope())
 
     # 2 branch-A students, 1 branch-A staff, 1 attendance record (present).
-    assert result["summary"]["total_students"] == 2
-    assert result["summary"]["total_staff"] == 1
-    assert result["summary"]["present_today"] == 1
-    assert result["summary"]["absent_today"] == 0
+    summary = result["data"]["summary"]
+    assert summary["total_students"] == 2
+    assert summary["total_staff"] == 1
+    assert summary["present_today"] == 1
+    assert summary["absent_today"] == 0
 
 
 @_async
@@ -124,11 +125,12 @@ async def test_school_pulse_owner_sees_all(monkeypatch):
 
     from ai.tool_functions import tool_get_school_pulse
     result = await tool_get_school_pulse({}, {"id": "u-owner", "role": "owner"}, _owner_scope())
-    assert result["summary"]["total_students"] == 3
-    assert result["summary"]["total_staff"] == 2
+    summary = result["data"]["summary"]
+    assert summary["total_students"] == 3
+    assert summary["total_staff"] == 2
     # 1 present (branch-A) + 1 absent (branch-B) = 2 marked
-    assert result["summary"]["present_today"] == 1
-    assert result["summary"]["absent_today"] == 1
+    assert summary["present_today"] == 1
+    assert summary["absent_today"] == 1
 
 
 @_async
@@ -151,6 +153,6 @@ async def test_approve_leave_rejects_cross_branch(monkeypatch):
     )
     # Don't leak existence: must be "not found", not "approved".
     assert result.get("success") is False
-    assert "not found" in result.get("error", "").lower()
+    assert "not found" in result.get("message", "").lower()
     # Original leave still pending.
     assert db.leave_requests.docs[0]["status"] == "pending"

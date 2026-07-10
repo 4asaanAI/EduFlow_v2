@@ -25,7 +25,7 @@ from ai.redaction import redact_text_for_memory
 from services.actor_context import ActorContext
 from services.audit_service import write_audit
 from services.memory.retrieval import score_memories
-from services.memory.vector import get_memory_vector_store
+from services.memory.vector import get_memory_vector_store, vector_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,74 @@ RECALL_K = 6
 # Retention: memories untouched for this long are pruned (G.7). 18 months mirrors a
 # generous academic-records review cycle; a TTL index also enforces it server-side.
 RETENTION_DAYS = 540
+# R6.4 (XM10): a hard, DOCUMENTED per-owner memory cap. Recall scans all of an
+# owner's memories, so an unbounded store is a latency/cost cliff. When the cap is
+# exceeded the least-valuable memories (lowest confidence, then least-recently
+# updated) are evicted — logged + audited, never a silent hard wall.
+MAX_MEMORIES_PER_USER = 500
+# Page size for full-collection sweeps (erase/purge) — replaces the old hard
+# `.to_list(5000)` truncation that silently skipped memories past 5000 (XM5).
+_SWEEP_PAGE = 1000
+# R10.1 AC2: recall reads candidates via the (schoolId, user_id, updated_at_ts)
+# compound index, paginated freshest-first — NOT a blind full-collection
+# `.to_list(2000)`. The per-owner cap (MAX_MEMORIES_PER_USER) bounds the active set,
+# so this ceiling is not reached in practice; it is a DOCUMENTED, LOGGED upper bound
+# (never a silent hard wall, XM10) so a mis-set/raised cap can't turn recall into an
+# unbounded scan. Candidates are ordered newest-first so, if the ceiling is ever hit,
+# the most-recent (most likely relevant) memories are the ones ranked. Memories past a
+# single page are still reached (paged), satisfying "beyond any cap still recallable".
+RECALL_SCAN_CEILING = 2000
+
+
+async def _paged_find(db, query: Dict[str, Any], projection: Dict[str, Any]) -> List[Dict]:
+    """Fetch ALL docs matching `query`, page by page — no silent 5000 cap (XM5)."""
+    out: List[Dict] = []
+    skip = 0
+    while True:
+        page = await db.ai_memories.find(query, projection).skip(skip).limit(_SWEEP_PAGE).to_list(_SWEEP_PAGE)
+        if not page:
+            break
+        out.extend(page)
+        if len(page) < _SWEEP_PAGE:
+            break
+        skip += _SWEEP_PAGE
+    return out
+
+
+async def _recall_candidates(db, ctx: ActorContext) -> List[Dict]:
+    """Index-ordered, paginated fetch of an owner's active memories for recall (R10.1 AC2).
+
+    Reads via the (schoolId, user_id, updated_at_ts) compound index, newest-first, in
+    `_SWEEP_PAGE` batches up to `RECALL_SCAN_CEILING`. Replaces the old blind
+    `list_memories(...).to_list(2000)` on the hot recall path, so recall is an indexed
+    query and memories beyond a single page remain reachable. When the ceiling is hit
+    it is logged (never a silent truncation) and the freshest `RECALL_SCAN_CEILING`
+    are ranked.
+    """
+    q = {**_scope(ctx), "superseded": {"$ne": True}}
+    out: List[Dict] = []
+    skip = 0
+    while skip < RECALL_SCAN_CEILING:
+        page = await (
+            db.ai_memories.find(q, {"_id": 0})
+            .sort([("updated_at_ts", -1)])
+            .skip(skip)
+            .limit(_SWEEP_PAGE)
+            .to_list(_SWEEP_PAGE)
+        )
+        if not page:
+            break
+        out.extend(page)
+        if len(page) < _SWEEP_PAGE:
+            break
+        skip += _SWEEP_PAGE
+    if len(out) >= RECALL_SCAN_CEILING:
+        logger.warning(
+            "memory recall hit the scan ceiling (%d) for user=%s — ranking over the "
+            "freshest %d; raise the cap or enable vector recall if this is expected",
+            RECALL_SCAN_CEILING, ctx.user_id, RECALL_SCAN_CEILING,
+        )
+    return out[:RECALL_SCAN_CEILING]
 
 
 def _scope(ctx: ActorContext) -> Dict[str, str]:
@@ -106,6 +174,7 @@ async def add_memory(
     get_memory_vector_store().add(
         school_id=ctx.school_id, user_id=ctx.user_id, memory_id=doc["id"], text=clean
     )
+    await _enforce_user_cap(db, ctx)
     await write_audit(
         db,
         action="ai_memory_save",
@@ -118,6 +187,39 @@ async def add_memory(
         changes={"source": source, "category": doc["category"]},
     )
     return {k: v for k, v in doc.items() if k != "_id"}
+
+
+async def _enforce_user_cap(db, ctx: ActorContext) -> int:
+    """R6.4 (XM10): keep an owner's active memory count at/under MAX_MEMORIES_PER_USER.
+
+    Evicts the least-valuable surplus (lowest confidence, then least-recently
+    updated) — logged + audited so eviction is never silent. Returns count evicted.
+    """
+    q = {**_scope(ctx), "superseded": {"$ne": True}}
+    total = await db.ai_memories.count_documents(q)
+    if total <= MAX_MEMORIES_PER_USER:
+        return 0
+    surplus = total - MAX_MEMORIES_PER_USER
+    active = await _paged_find(db, q, {"_id": 0, "id": 1, "confidence": 1, "updated_at_ts": 1})
+    # Least valuable first: lowest confidence, then oldest update.
+    active.sort(key=lambda m: (m.get("confidence", 0), m.get("updated_at_ts", 0)))
+    victims = active[:surplus]
+    for m in victims:
+        await db.ai_memories.delete_one({**_scope(ctx), "id": m["id"]})
+        get_memory_vector_store().remove(
+            school_id=ctx.school_id, user_id=ctx.user_id, memory_id=m["id"]
+        )
+    if victims:
+        logger.info(
+            "ai_memory cap reached (user=%s, cap=%d): evicted %d least-valuable memories",
+            ctx.user_id, MAX_MEMORIES_PER_USER, len(victims),
+        )
+        await write_audit(
+            db, action="ai_memory_evict", entity_id=ctx.user_id, collection="ai_memories",
+            changed_by="system", changed_by_role="system", school_id=ctx.school_id,
+            branch_id=ctx.branch_id or "", changes={"evicted": len(victims), "cap": MAX_MEMORIES_PER_USER},
+        )
+    return len(victims)
 
 
 async def list_memories(db, ctx: ActorContext, *, include_superseded: bool = False) -> List[Dict]:
@@ -149,12 +251,27 @@ async def recall(db, ctx: ActorContext, query: str, *, k: int = RECALL_K) -> Lis
     """
     if not ctx.user_id or not query or not query.strip():
         return []
-    all_mems = await list_memories(db, ctx)
+    t0 = time.perf_counter()
+    # R10.1 AC2: index-ordered, paginated candidate fetch (not a blind .to_list(2000)).
+    all_mems = await _recall_candidates(db, ctx)
     if not all_mems:
         return []
 
     by_id = {m["id"]: m for m in all_mems}
     vstore = get_memory_vector_store()
+    if not vstore.healthy:
+        # R6.4 (XM10): make degraded (keyword-only) recall VISIBLE rather than
+        # silent so operators can see when the semantic index is unavailable.
+        # Only WARN when vectors are meant to be on but the index is down (a real
+        # degradation); when the path is intentionally disabled (the default),
+        # keyword-only is expected — log at debug so we don't spam every turn.
+        if vector_enabled():
+            logger.warning(
+                "memory recall degraded to keyword-only (MEMORY_VECTOR_ENABLED "
+                "is on but the vector index is unavailable)"
+            )
+        else:
+            logger.debug("memory recall keyword-only (vector path disabled by config)")
     if vstore.healthy:
         # Pull vector hits and ensure they're in the candidate pool (they already are,
         # since list_memories returns all). Vector mainly helps when lexical overlap is
@@ -182,6 +299,18 @@ async def recall(db, ctx: ActorContext, query: str, *, k: int = RECALL_K) -> Lis
 
     top = scored[:k]
     await increment_uses(db, ctx, [m["id"] for m in top])
+    # R10.1 AC4: record retrieval latency (budget ≤300ms p95) as a layaastat span,
+    # so the pre-turn memory phase is measurable, not a guess. Fire-and-forget.
+    try:
+        from services.layaastat import emit_event
+        await emit_event("ai_memory_recall", distinct_id=ctx.user_id, payload={
+            "duration_ms": round((time.perf_counter() - t0) * 1000, 1),
+            "candidates": len(all_mems),
+            "returned": len(top),
+            "vector": bool(vstore.healthy),
+        })
+    except Exception:
+        pass
     return top
 
 
@@ -248,10 +377,79 @@ async def correct_memory(
     return {"updated": updated, "removed": removed, "matched_ids": matched_ids}
 
 
+async def find_memories_matching(db, ctx: ActorContext, match_text: str) -> List[Dict]:
+    """R6.2: return the memories whose text contains `match_text` (case-insensitive).
+
+    Discovery-only — used by the two-step forget flow to SHOW the owner exactly
+    what would be deleted before anything is removed. Never mutates.
+    """
+    if not ctx.user_id or not match_text or not match_text.strip():
+        return []
+    ml = match_text.strip().lower()
+    return [m for m in await list_memories(db, ctx) if ml in (m.get("text") or "").lower()]
+
+
+async def delete_memories(db, ctx: ActorContext, ids: List[str]) -> int:
+    """R6.2: delete a SPECIFIC set of memories by id (never a broad substring sweep).
+
+    This is the second step of the destructive forget flow — the ids come from a
+    set the owner was shown and explicitly confirmed.
+    """
+    if not ctx.user_id or not ids:
+        return 0
+    removed = 0
+    for mid in ids:
+        res = await db.ai_memories.delete_one({**_scope(ctx), "id": mid})
+        if getattr(res, "deleted_count", 1):
+            removed += 1
+        get_memory_vector_store().remove(
+            school_id=ctx.school_id, user_id=ctx.user_id, memory_id=mid
+        )
+    if removed:
+        await write_audit(
+            db, action="ai_memory_forget", entity_id=ids[0], collection="ai_memories",
+            changed_by=ctx.user_id, changed_by_role=ctx.role or "",
+            school_id=ctx.school_id, branch_id=ctx.branch_id or "",
+            changes={"removed": removed, "confirmed": True},
+        )
+    return removed
+
+
+async def deactivate_memory(db, ctx: ActorContext, memory_id: str, *, superseded: bool = True) -> bool:
+    """R10.4 AC1: soft-deactivate (supersede) a single memory without deleting it.
+
+    A superseded memory is excluded from recall (`list_memories`/`_recall_candidates`
+    filter `superseded != True`) but is retained for audit/history, and can be
+    reactivated (`superseded=False`). Returns True iff a row matched.
+    """
+    if not ctx.user_id or not memory_id:
+        return False
+    res = await db.ai_memories.update_one(
+        {**_scope(ctx), "id": memory_id},
+        {"$set": {"superseded": bool(superseded),
+                  "updated_at": ctx.now().isoformat(), "updated_at_ts": ctx.now().timestamp()}},
+    )
+    matched = bool(getattr(res, "matched_count", 0)) or bool(getattr(res, "modified_count", 0))
+    if matched:
+        if superseded:
+            get_memory_vector_store().remove(
+                school_id=ctx.school_id, user_id=ctx.user_id, memory_id=memory_id
+            )
+        await write_audit(
+            db, action=("ai_memory_deactivate" if superseded else "ai_memory_reactivate"),
+            entity_id=memory_id, collection="ai_memories",
+            changed_by=ctx.user_id, changed_by_role=ctx.role or "",
+            school_id=ctx.school_id, branch_id=ctx.branch_id or "",
+            changes={"superseded": bool(superseded)},
+        )
+    return matched
+
+
 async def erase_owner_memories(db, *, school_id: str, user_id: str, changed_by: str = "system") -> int:
     """DPDP §12 right-to-erasure: delete ALL memories for one owner (G.7)."""
     q = {"schoolId": school_id, "user_id": user_id}
-    ids = [m["id"] for m in await db.ai_memories.find(q, {"_id": 0, "id": 1}).to_list(5000)]
+    # XM5: page through ALL ids (was capped at 5000, silently skipping the rest).
+    ids = [m["id"] for m in await _paged_find(db, q, {"_id": 0, "id": 1})]
     res = await db.ai_memories.delete_many(q)
     vstore = get_memory_vector_store()
     for mid in ids:
@@ -271,7 +469,8 @@ async def purge_student_references(db, *, school_id: str, student_id: str, chang
     """
     # Filter in Python on array membership so behavior is identical on the FakeDb
     # tier (which doesn't model Mongo array-contains) and real Mongo.
-    candidates = await db.ai_memories.find({"schoolId": school_id}, {"_id": 0}).to_list(5000)
+    # XM5: page through ALL of the school's memories (was capped at 5000).
+    candidates = await _paged_find(db, {"schoolId": school_id}, {"_id": 0})
     docs = [m for m in candidates if student_id in (m.get("student_refs") or [])]
     vstore = get_memory_vector_store()
     for m in docs:
@@ -295,9 +494,9 @@ async def prune_expired(db, ctx: ActorContext) -> int:
     if not ctx.user_id:
         return 0
     cutoff = ctx.now().timestamp() - RETENTION_DAYS * 24 * 3600
-    stale = await db.ai_memories.find(
-        {**_scope(ctx), "updated_at_ts": {"$lt": cutoff}}, {"_id": 0, "id": 1}
-    ).to_list(5000)
+    stale = await _paged_find(
+        db, {**_scope(ctx), "updated_at_ts": {"$lt": cutoff}}, {"_id": 0, "id": 1}
+    )
     for m in stale:
         await db.ai_memories.delete_one({**_scope(ctx), "id": m["id"]})
         get_memory_vector_store().remove(

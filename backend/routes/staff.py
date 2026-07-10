@@ -178,6 +178,27 @@ async def delete_staff(staff_id: str, request: Request):
     if staff.get("user_id"):
         await db.auth_users.update_one({"id": staff["user_id"]}, {"$set": {"is_active": False}})
         await db.refresh_tokens.update_many({"user_id": staff["user_id"], "revoked": False}, {"$set": {"revoked": True, "revoked_at": datetime.now().isoformat()}})
+        # R6.4 (XM5, DPDP §12): when a staff account is retired, erase the AI's
+        # learned memories AND skills for that user — the assistant must not retain
+        # what it learned about a person who has left. Best-effort, audited inside.
+        try:
+            from services.memory.store import erase_owner_memories
+            from services.memory.skills_store import erase_owner_skills
+            from services.memory.feedback_store import erase_owner_feedback
+
+            await erase_owner_memories(
+                db, school_id=get_school_id(), user_id=staff["user_id"], changed_by=user.get("id", "system")
+            )
+            await erase_owner_skills(
+                db, school_id=get_school_id(), user_id=staff["user_id"], changed_by=user.get("id", "system")
+            )
+            # R10.2 AC4: feedback is DPDP-erasable and joins the lifecycle-end path.
+            await erase_owner_feedback(
+                db, school_id=get_school_id(), user_id=staff["user_id"], changed_by=user.get("id", "system")
+            )
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning("ai_memory/skill/feedback erase on staff delete failed", exc_info=True)
     await _audit(db, action="deactivate", staff_id=staff_id, user=user, changes={"is_active": {"previous": staff.get("is_active"), "new": False}})
     return {"success": True}
 

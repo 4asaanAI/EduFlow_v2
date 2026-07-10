@@ -285,12 +285,16 @@ def test_scope_filter_class_list_restricts_by_class_id():
     assert scope.filter(collection="classes") == {"id": {"$in": ["c-1", "c-2"]}}
 
 
-def test_scope_filter_class_list_empty_falls_to_self_only():
-    """Defensive: class_list with no classes resolved is effectively self-only."""
+def test_scope_filter_class_list_empty_yields_impossible_filter():
+    """R5.3 (X6): class_list with zero resolved classes must return the
+    fail-closed impossible filter (no data), NOT self-only and NEVER {}."""
     rl = _import_resolver()
     scope = rl.Scope(type="class_list", role="teacher", user_id="u-empty", class_ids=[])
     result = scope.filter(collection="students")
-    assert result == {"user_id": "u-empty"}
+    assert result == {"id": {"$in": []}}
+    # Fee/exam collections (no class_id) also fail closed for class_list scope.
+    scope2 = rl.Scope(type="class_list", role="teacher", user_id="u2", class_ids=["c-1"])
+    assert scope2.filter(collection="fee_transactions") == {"id": {"$in": []}}
 
 
 def test_scope_filter_subject_type_with_class_ids():

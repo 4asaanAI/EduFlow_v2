@@ -49,12 +49,34 @@ Usage
 """
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from database import get_db
 
 logger = logging.getLogger(__name__)
+
+# R5.3 (X6): the single fail-closed sentinel. An empty ``$in`` matches no
+# document, so a scope that resolves to "no accessible records" returns THIS
+# instead of ``{}`` (which would match every record school-wide). Every UUID
+# doc carries an ``id`` field, so this is a safe universal impossible filter.
+_IMPOSSIBLE_FILTER: Dict[str, Any] = {"id": {"$in": []}}
+
+
+def _branch_scoped(query: Dict[str, Any], branch_id: Optional[str]) -> Dict[str, Any]:
+    """R5.3 (H4/AC5): add a ``branch_id`` clause to a resolver lookup.
+
+    ``schoolId`` is already injected by the ``ScopedCollection`` these queries
+    run against, so we add ONLY the branch axis here (mirroring how ``filter()``
+    composes branch). A ``None`` branch_id (owner, or a branch-agnostic user)
+    is a deliberate no-op — the role legitimately spans branches.
+    """
+    if not branch_id:
+        return query
+    if "branch_id" in query:
+        return query
+    return {"$and": [query, {"branch_id": branch_id}]}
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -222,18 +244,27 @@ class Scope:
             if collection in ("students", "student_attendance", "assignments"):
                 if self.class_ids:
                     return {"class_id": {"$in": self.class_ids}}
-                return {}
-            return {}
+                # R5.3 (X6): a HOD whose subject resolved to ZERO classes must
+                # see NO students — never the school-wide `{}` (fail open).
+                return dict(_IMPOSSIBLE_FILTER)
+            # Any other collection under a subject scope is out of domain.
+            return dict(_IMPOSSIBLE_FILTER)
 
-        if self.type == "class_list" and self.class_ids:
+        if self.type == "class_list":
+            # R5.3 (X6): zero resolved classes = no data, not all data.
+            if not self.class_ids:
+                return dict(_IMPOSSIBLE_FILTER)
             if collection in ("students", "student_attendance", "assignments"):
                 return {"class_id": {"$in": self.class_ids}}
             if collection == "classes":
                 return {"id": {"$in": self.class_ids}}
-            # fee_transactions / exam_results don't carry class_id directly;
-            # caller must join via student_ids.
+            # fee_transactions / exam_results don't carry class_id directly, so
+            # this resolver cannot express the class restriction as a filter.
+            # R5.3 (X6): fail closed with an impossible filter rather than `{}`
+            # (which returned every fee/exam row school-wide). Callers that need
+            # these must join via the scoped student_ids explicitly.
             if collection in ("fee_transactions", "exam_results"):
-                return {}
+                return dict(_IMPOSSIBLE_FILTER)
             return {"class_id": {"$in": self.class_ids}}
 
         # Fallback -- self only.
@@ -302,10 +333,10 @@ class Scope:
                 if self.class_ids:
                     # Check whether the student's class is in our scope.
                     return target.get("class_id") in self.class_ids
-                # HOD with subject scope -- allowed for all students in
-                # subject classes.
-                if self.type == "subject":
-                    return True
+                # R5.3 (X6): a HOD/coordinator whose scope resolved to ZERO
+                # classes (empty class_ids) has no student visibility — the old
+                # blanket `if self.type == "subject": return True` leaked every
+                # student's personal info when no classes could be resolved.
             return False
 
         # Students can only see themselves (handled by the self-check above).
@@ -689,9 +720,13 @@ async def _resolve_teacher_scope(
 
         if subject_name:
             # Resolve all classes that carry this subject.
-            subject_docs = await db.subjects.find(
-                {"name": {"$regex": f"^{subject_name}$", "$options": "i"}}
-            ).to_list(100)
+            # R5.3 (X6 AC4): re.escape the interpolated subject so a name like
+            # "C++" is a literal match, not a regex that 500s the request.
+            # (AC5) branch-scope the lookup so a HOD only resolves own-branch classes.
+            subject_docs = await db.subjects.find(_branch_scoped(
+                {"name": {"$regex": f"^{re.escape(subject_name)}$", "$options": "i"}},
+                branch_id=branch_id,
+            )).to_list(100)
             class_ids = list(
                 {doc["class_id"] for doc in subject_docs if doc.get("class_id")}
             )
@@ -719,14 +754,17 @@ async def _resolve_teacher_scope(
 
         if coordinator_range and coordinator_range in COORDINATOR_RANGES:
             prefixes = COORDINATOR_RANGES[coordinator_range]
-            regex_pattern = "^(" + "|".join(prefixes) + ")"
-            class_docs = await db.classes.find(
-                {"name": {"$regex": regex_pattern}}
-            ).to_list(200)
+            # R5.3 (X6 AC1/AC4): anchor each prefix with a trailing \b and
+            # re.escape it so "Class 1" matches "Class 1"/"Class 1-A" but NOT
+            # "Class 10/11/12" (the old unanchored prefix widened the range).
+            regex_pattern = "^(" + "|".join(re.escape(p) for p in prefixes) + r")\b"
+            class_docs = await db.classes.find(_branch_scoped(
+                {"name": {"$regex": regex_pattern}}, branch_id=branch_id,
+            )).to_list(200)
             class_ids = [doc["id"] for doc in class_docs if doc.get("id")]
         elif coordinator_range:
             # Non-standard range string -- try to parse "N-M" dynamically.
-            class_ids = await _parse_custom_range(coordinator_range, db)
+            class_ids = await _parse_custom_range(coordinator_range, db, branch_id)
 
         logger.debug(
             "resolve_scope: teacher/coordinator range=%s classes=%d",
@@ -752,9 +790,13 @@ async def _resolve_teacher_scope(
             class_ids = [class_teacher_of]
         else:
             # Fallback: look up classes where class_teacher_id matches.
-            class_docs = await db.classes.find(
-                {"class_teacher_id": user_id}
-            ).to_list(10)
+            # R5.3 (L6): `class_teacher_id` may hold EITHER the staff record id
+            # OR the login user_id — match both, exactly like tool_get_class_list.
+            # (AC5) branch-scope so a class teacher only resolves own-branch classes.
+            ct_ids = [i for i in (user_id, staff.get("id")) if i]
+            class_docs = await db.classes.find(_branch_scoped(
+                {"class_teacher_id": {"$in": ct_ids}}, branch_id=branch_id,
+            )).to_list(10)
             class_ids = [doc["id"] for doc in class_docs if doc.get("id")]
 
         logger.debug(
@@ -779,9 +821,11 @@ async def _resolve_teacher_scope(
             class_ids = list(assigned)
         else:
             # Fallback: look up subjects where teacher_id matches.
-            subject_docs = await db.subjects.find(
-                {"teacher_id": user_id}
-            ).to_list(100)
+            # R5.3 (L6/AC5): match staff id OR user_id, and branch-scope.
+            teacher_ids = [i for i in (user_id, staff.get("id")) if i]
+            subject_docs = await db.subjects.find(_branch_scoped(
+                {"teacher_id": {"$in": teacher_ids}}, branch_id=branch_id,
+            )).to_list(100)
             class_ids = list(
                 {doc["class_id"] for doc in subject_docs if doc.get("class_id")}
             )
@@ -806,12 +850,18 @@ async def _resolve_teacher_scope(
 
         if not class_ids and staff.get("is_incharge"):
             # Fallback: find KG/Nursery classes this teacher is linked to.
-            kg_classes = await db.classes.find(
+            # R5.3 (L6/AC5): match staff id OR user_id, and branch-scope.
+            ct_ids = [i for i in (user_id, staff.get("id")) if i]
+            kg_classes = await db.classes.find(_branch_scoped(
                 {
-                    "name": {"$regex": "^(KG|Nursery|LKG|UKG)", "$options": "i"},
-                    "class_teacher_id": user_id,
-                }
-            ).to_list(10)
+                    # \b-anchored (consistent with the coordinator-range regex,
+                    # AC4) so "KG"/"Nursery" match "KG-A"/"Nursery A" but never
+                    # "KGeography"/"Nurseryland".
+                    "name": {"$regex": r"^(KG|Nursery|LKG|UKG)\b", "$options": "i"},
+                    "class_teacher_id": {"$in": ct_ids},
+                },
+                branch_id=branch_id,
+            )).to_list(10)
             class_ids = [doc["id"] for doc in kg_classes if doc.get("id")]
 
         logger.debug(
@@ -829,7 +879,9 @@ async def _resolve_teacher_scope(
 
     # --- No sub_category (legacy teacher records) ---------------------
     if not effective:
-        class_ids = await _resolve_legacy_teacher_classes(user_id, db)
+        class_ids = await _resolve_legacy_teacher_classes(
+            user_id, db, staff.get("id"), branch_id
+        )
         scope_type = "class_list" if class_ids else "self_only"
 
         logger.debug(
@@ -866,7 +918,9 @@ async def _resolve_teacher_scope(
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-async def _parse_custom_range(range_str: str, db: Any) -> List[str]:
+async def _parse_custom_range(
+    range_str: str, db: Any, branch_id: Optional[str] = None
+) -> List[str]:
     """Parse a coordinator range like ``"1-5"`` into class ids.
 
     Returns an empty list if the string is unparseable.
@@ -878,10 +932,19 @@ async def _parse_custom_range(range_str: str, db: Any) -> List[str]:
             return []
         low, high = int(parts[0].strip()), int(parts[1].strip())
         prefixes = [f"Class {n}" for n in range(low, high + 1)]
-        regex_pattern = "^(" + "|".join(prefixes) + ")"
-        class_docs = await db.classes.find(
-            {"name": {"$regex": regex_pattern}}
-        ).to_list(200)
+        # Fail-closed: a reversed/degenerate range ("5-1", "9-6") yields NO
+        # prefixes → the alternation would collapse to "^()\b", which matches
+        # every class name and would widen a coordinator to the whole branch
+        # (the exact X6/L6 leak class). Deny by default instead.
+        if not prefixes:
+            logger.warning("_parse_custom_range: empty/reversed range %r -> no classes", range_str)
+            return []
+        # R5.3 (X6 AC1/AC4): anchored + escaped so "Class 1" never widens into
+        # "Class 10/11/12"; branch-scoped so only own-branch classes resolve.
+        regex_pattern = "^(" + "|".join(re.escape(p) for p in prefixes) + r")\b"
+        class_docs = await db.classes.find(_branch_scoped(
+            {"name": {"$regex": regex_pattern}}, branch_id=branch_id,
+        )).to_list(200)
         return [doc["id"] for doc in class_docs if doc.get("id")]
     except (ValueError, TypeError):
         logger.warning("_parse_custom_range: could not parse %r", range_str)
@@ -889,7 +952,8 @@ async def _parse_custom_range(range_str: str, db: Any) -> List[str]:
 
 
 async def _resolve_legacy_teacher_classes(
-    user_id: str, db: Any
+    user_id: str, db: Any, staff_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
 ) -> List[str]:
     """For teachers without a sub_category, gather all classes they are linked
     to -- either as class teacher or as subject teacher.
@@ -901,15 +965,22 @@ async def _resolve_legacy_teacher_classes(
     """
 
     class_ids: set = set()
+    # R5.3 (L6): `class_teacher_id`/`teacher_id` may hold the staff id or the
+    # login user_id — match both, branch-scoped.
+    linker_ids = [i for i in (user_id, staff_id) if i]
 
     # Classes where this teacher is the class teacher.
-    ct_docs = await db.classes.find({"class_teacher_id": user_id}).to_list(20)
+    ct_docs = await db.classes.find(_branch_scoped(
+        {"class_teacher_id": {"$in": linker_ids}}, branch_id=branch_id,
+    )).to_list(20)
     for doc in ct_docs:
         if doc.get("id"):
             class_ids.add(doc["id"])
 
     # Classes where this teacher teaches a subject.
-    subj_docs = await db.subjects.find({"teacher_id": user_id}).to_list(100)
+    subj_docs = await db.subjects.find(_branch_scoped(
+        {"teacher_id": {"$in": linker_ids}}, branch_id=branch_id,
+    )).to_list(100)
     for doc in subj_docs:
         if doc.get("class_id"):
             class_ids.add(doc["class_id"])

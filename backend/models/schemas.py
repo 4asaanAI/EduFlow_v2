@@ -213,6 +213,9 @@ class Message(SchoolScopedModel):
     rich_content: Optional[Any] = None
     tool_calls: Optional[Any] = None
     actions: Optional[Any] = None
+    # R10.4 AC2: memories recalled into this reply, disclosed in the "Data used"
+    # footer. Text is already PII-redacted at storage time, so safe to surface.
+    recalled_memories: Optional[Any] = None
     language_detected: str = "en"
     is_flagged: bool = False
     flag_reason: Optional[str] = None

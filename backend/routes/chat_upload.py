@@ -29,6 +29,12 @@ router = APIRouter(prefix="/api/chat", tags=["chat-upload"])
 
 MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
 MAX_TEXT_LENGTH = 40_000                # chars forwarded to LLM context
+# R9.4 (X8): zip-bomb guards — a single member and the total decompressed size
+# are both capped using the archive DIRECTORY's declared sizes, BEFORE any member
+# is actually decompressed.
+MAX_ZIP_MEMBER_BYTES = 5 * 1024 * 1024      # 5 MB uncompressed per member
+MAX_ZIP_TOTAL_BYTES = 50 * 1024 * 1024      # 50 MB uncompressed total
+_READ_CHUNK_BYTES = 1024 * 1024             # 1 MB streaming read chunk
 BLOCKED_EXTENSIONS = {
     ".exe", ".bat", ".sh", ".cmd", ".com", ".ps1",
     ".vbs", ".jar", ".msi", ".dll", ".bin", ".scr",
@@ -147,8 +153,23 @@ def _extract_zip(data: bytes, filename: str) -> str:
     parts.append(", ".join(members[:50]) + ("..." if len(members) > 50 else ""))
     parts.append("")
 
+    # R9.4 (X8) AC2: guard against a zip bomb using the archive DIRECTORY's declared
+    # uncompressed sizes (ZipInfo.file_size) — checked BEFORE any member is read, so
+    # a 10 KB archive that expands to gigabytes is never decompressed. Both a
+    # per-member cap and a running total cap apply.
+    info_by_name = {i.filename: i for i in zf.infolist()}
     text_members = [m for m in members if Path(m).suffix.lower() in TEXT_EXTENSIONS]
+    total_uncompressed = 0
     for member in text_members[:10]:  # cap at 10 text files
+        info = info_by_name.get(member)
+        declared = info.file_size if info else 0
+        if declared > MAX_ZIP_MEMBER_BYTES:
+            parts.append(f"=== {member} === [too large to display]")
+            continue
+        total_uncompressed += declared
+        if total_uncompressed > MAX_ZIP_TOTAL_BYTES:
+            parts.append(f"=== {member} === [archive decompression limit reached]")
+            break
         try:
             member_data = zf.read(member)
             if len(member_data) > 200_000:
@@ -217,14 +238,27 @@ async def upload_chat_file(request: Request, file: UploadFile = File(...)):
     """Accept a file and return extracted text for inclusion in the AI conversation context."""
     get_current_user(request)  # auth guard — raises 401 if not authenticated
 
-    data = await file.read()
     filename = file.filename or "uploaded_file"
     suffix = Path(filename).suffix.lower()
     if suffix in BLOCKED_EXTENSIONS:
         raise HTTPException(415, f"File type {suffix} is not permitted")
 
-    if len(data) > MAX_FILE_SIZE_BYTES:
+    # R9.4 (X8) AC1: reject early on the declared Content-Length, then read in
+    # bounded chunks and abort the moment the cap is exceeded — so an oversized
+    # (or lying-about-its-size) upload is never fully buffered into memory.
+    content_length = request.headers.get("content-length")
+    if content_length and content_length.isdigit() and int(content_length) > MAX_FILE_SIZE_BYTES:
         raise HTTPException(413, f"File too large (max {MAX_FILE_SIZE_BYTES // (1024*1024)} MB)")
+
+    buf = bytearray()
+    while True:
+        chunk = await file.read(_READ_CHUNK_BYTES)
+        if not chunk:
+            break
+        buf.extend(chunk)
+        if len(buf) > MAX_FILE_SIZE_BYTES:
+            raise HTTPException(413, f"File too large (max {MAX_FILE_SIZE_BYTES // (1024*1024)} MB)")
+    data = bytes(buf)
 
     extracted = _extract_text(data, filename, suffix)
 

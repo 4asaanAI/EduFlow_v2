@@ -85,7 +85,7 @@ def test_registry_tools_have_sub_categories_where_expected():
         "query_fee_status": ["accountant", "principal"],
         "query_incidents": ["principal"],
         "query_staff_availability": ["principal"],
-        "query_maintenance_requests": ["maintenance"],
+        "query_maintenance_requests": ["maintenance", "it_tech"],  # R3.2: it_tech reads tickets too
         "query_student_record": ["principal", "accountant", "transport_head"],
         "create_announcement": ["principal"],
     }
@@ -325,7 +325,9 @@ async def test_consume_confirm_token_rejects_school_id_mismatch():
             db=FakeDb(),
         )
     assert exc_info.value.status_code == 409
-    assert "mismatch" in exc_info.value.detail
+    # XM6: tenant-mismatch now returns a typed reason code (was a bare string).
+    assert exc_info.value.detail["code"] == "token_tenant_mismatch"
+    assert "mismatch" in exc_info.value.detail["message"]
 
 
 @pytest.mark.asyncio

@@ -57,6 +57,7 @@ try:
     import routes.payroll as payroll_routes
     import routes.queries as queries_routes
     import routes.sms as sms_routes
+    import routes.learning as learning_routes
     from middleware.auth import hash_password
     APP_AVAILABLE = True
 except (ImportError, TypeError) as e:
@@ -513,6 +514,12 @@ class FakeDb:
         self.ai_metrics = FakeCollection()
         self.ai_memories = FakeCollection()
         self.ai_skills = FakeCollection()
+        # AI Reliability — R9.5 image-gen daily quota counter
+        self.image_gen_quota = FakeCollection()
+        # AI Reliability — R10.2 feedback (Helpful/Improve) store
+        self.ai_feedback = FakeCollection()
+        # AI Reliability — R11.5 conversation trace viewer
+        self.ai_turn_traces = FakeCollection()
 
     async def command(self, command_name):
         if command_name == "ping":
@@ -553,6 +560,7 @@ if APP_AVAILABLE:
     payroll_routes.get_db = lambda: _fake_db
     queries_routes.get_db = lambda: _fake_db
     sms_routes.get_db = lambda: _fake_db
+    learning_routes.get_db = lambda: _fake_db
     server.get_raw_db = lambda: _fake_db
     import middleware.school_context as school_context_module
     school_context_module.get_raw_db = lambda: _fake_db

@@ -12,6 +12,8 @@ Collection: `ai_skills`. Document shape:
 
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -26,6 +28,37 @@ MIN_CONFIDENCE = 0.6
 
 def _scope(ctx: ActorContext) -> Dict[str, str]:
     return {"schoolId": ctx.school_id, "user_id": ctx.user_id}
+
+
+def tools_signature(tool_names: Optional[List[str]]) -> str:
+    """Stable hash of the CURRENT registry schemas for `tool_names` (R10.3 AC3).
+
+    A skill stores this at save time; on recall the store recomputes it. A mismatch
+    means the underlying tool schema drifted (a tool was renamed/removed or its
+    params/roles changed), so the routine is surfaced as 'needs updating' instead of
+    silently replaying a stale plan. Returns "" when the skill referenced no tools
+    (nothing to drift-check).
+    """
+    names = sorted({str(t) for t in (tool_names or []) if t})
+    if not names:
+        return ""
+    try:
+        from ai.tool_functions_v2 import TOOL_REGISTRY
+    except Exception:
+        return ""
+    parts: List[str] = []
+    for name in names:
+        entry = TOOL_REGISTRY.get(name)
+        if not entry:
+            parts.append(f"{name}:MISSING")  # removed/renamed → drift
+            continue
+        sig = {
+            "roles": sorted(entry.get("roles", []) or []),
+            "params": entry.get("params_schema", {}) or {},
+            "description": entry.get("description", "") or "",
+        }
+        parts.append(f"{name}:" + json.dumps(sig, sort_keys=True, default=str))
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:16]
 
 
 async def list_skills(db, ctx: ActorContext) -> List[Dict]:
@@ -49,8 +82,13 @@ async def add_skill(
     title: str, problem: str = "", solution: str = "",
     steps: Optional[List[str]] = None, tags: Optional[List[str]] = None,
     source: str = "learned", confidence: float = 0.7,
+    tool_names: Optional[List[str]] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Persist a learned skill. Drops below-threshold and duplicate-title skills."""
+    """Persist a learned skill. Drops below-threshold and duplicate-title skills.
+
+    `tool_names` are the tools the routine relied on; they anchor the R10.3 AC3
+    drift check (a `tool_signature` snapshot is stored and rechecked on recall).
+    """
     if not ctx.user_id:
         return None
     title = (title or "").strip()
@@ -82,6 +120,10 @@ async def add_skill(
         "uses": 0,
         "helpful": 0,
         "not_helpful": 0,
+        # R10.3 AC3: versioning + tool-schema drift anchor.
+        "version": 1,
+        "tool_names": [str(t) for t in (tool_names or []) if t],
+        "tool_signature": tools_signature(tool_names),
         "created_at": now.isoformat(),
         "created_at_ts": now.timestamp(),
         "updated_at": now.isoformat(),
@@ -109,7 +151,15 @@ async def recall_skills(db, ctx: ActorContext, query: str, *, k: int = 3) -> Lis
     ]
     now = ctx.now().timestamp()
     scored = score_memories(query, enriched, now=now)
-    return scored[:k]
+    top = scored[:k]
+    # R10.3 AC3: recompute the tool-schema signature; flag drifted routines so the
+    # recall block can say "this routine needs updating" instead of replaying a
+    # stale plan. Empty stored signature (skill referenced no tools) → no check.
+    for s in top:
+        stored = s.get("tool_signature") or ""
+        current = tools_signature(s.get("tool_names") or [])
+        s["needs_update"] = bool(stored and current and stored != current)
+    return top
 
 
 async def record_feedback(db, ctx: ActorContext, *, skill_id: str, helpful: bool) -> bool:
@@ -125,6 +175,22 @@ async def record_feedback(db, ctx: ActorContext, *, skill_id: str, helpful: bool
         {"$inc": {field: 1}, "$set": {"updated_at_ts": ctx.now().timestamp()}},
     )
     return True
+
+
+async def delete_skill(db, ctx: ActorContext, skill_id: str) -> bool:
+    """R10.4 AC1: delete one skill/routine the owner controls. Returns True iff removed."""
+    if not ctx.user_id or not skill_id:
+        return False
+    res = await db.ai_skills.delete_one({**_scope(ctx), "id": skill_id})
+    removed = bool(getattr(res, "deleted_count", 0))
+    if removed:
+        await write_audit(
+            db, action="ai_skill_delete", entity_id=skill_id, collection="ai_skills",
+            changed_by=ctx.user_id, changed_by_role=ctx.role or "",
+            school_id=ctx.school_id, branch_id=ctx.branch_id or "",
+            changes={"deleted": 1},
+        )
+    return removed
 
 
 async def erase_owner_skills(db, *, school_id: str, user_id: str, changed_by: str = "system") -> int:

@@ -61,29 +61,41 @@ def test_confirm_display_falls_back_for_unknown_tool():
     assert display == 'Execute custom_write_tool with parameters: {"x": 1}'
 
 
-def test_parse_confirm_action_tool_call_from_model_json():
-    parsed = chat._parse_tool_call(
-        '```json\n{"confirm_action": true, "tool": "create_announcement", '
-        '"params": {"title": "Holiday", "content": "School closed tomorrow"}, '
-        '"display": "Publish announcement"}\n```'
-    )
+def test_native_tool_call_maps_write_tool_to_confirm_candidate():
+    """R11.2: a native tool_call for a write tool maps to an internal candidate
+    with confirm_requested=True (the confirm card is issued server-side; the
+    model no longer emits a confirm_action JSON block)."""
+    from ai.llm_client import ToolCall
 
-    assert parsed == {
+    candidates = chat._tool_calls_to_candidates([
+        ToolCall(id="call_1", name="create_announcement",
+                 arguments={"title": "Holiday", "content": "School closed tomorrow"}),
+    ])
+
+    assert candidates == [{
         "action": "create_announcement",
         "params": {"title": "Holiday", "content": "School closed tomorrow"},
-        "reason": "Publish announcement",
+        "reason": "",
         "confirm_requested": True,
-    }
+        "id": "call_1",
+    }]
 
 
-def test_strip_tool_json_removes_confirm_action_blocks():
-    text = (
-        "I will do this.\n"
-        '{"confirm_action": true, "tool": "approve_leave", '
-        '"params": {"leave_id": "L1", "action": "approve"}}'
-    )
+def test_native_tool_call_maps_read_tool_without_confirm():
+    """R11.2: a read tool_call maps to a candidate with confirm_requested=False."""
+    from ai.llm_client import ToolCall
 
-    assert chat._strip_tool_json_from_text(text) == "I will do this."
+    candidates = chat._tool_calls_to_candidates([
+        ToolCall(id="c2", name="search_students", arguments={"query": "Rahul"}),
+    ])
+    assert candidates[0]["action"] == "search_students"
+    assert candidates[0]["confirm_requested"] is False
+
+
+def test_tool_calls_to_candidates_tolerates_empty_and_bad_input():
+    """Non-list / empty / nameless tool calls degrade to [] without raising."""
+    assert chat._tool_calls_to_candidates(None) == []
+    assert chat._tool_calls_to_candidates([]) == []
 
 
 def test_missing_required_params_for_write_actions():

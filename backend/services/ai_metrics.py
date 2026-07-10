@@ -30,7 +30,14 @@ from services.txn_context import session_kwargs
 logger = logging.getLogger(__name__)
 
 # Fields that must NEVER be persisted to a metric row (DPDP — no PII in metrics).
-_FORBIDDEN_KEYS = {"params", "records", "name", "phone", "email", "address", "dob"}
+# R11.6: widened with common PII synonyms a future caller might reach for, so a
+# stray `student`/`guardian`/`title` key can't smuggle a name into ai_metrics.
+_FORBIDDEN_KEYS = {
+    "params", "records", "name", "phone", "email", "address", "dob",
+    "student", "student_name", "guardian", "guardian_name", "guardian_phone",
+    "parent", "contact", "mobile", "title", "content", "message", "reason",
+    "date_of_birth", "aadhaar", "aadhar", "full_name", "label", "query",
+}
 
 
 def _now() -> datetime:

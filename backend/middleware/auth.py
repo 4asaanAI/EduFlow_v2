@@ -74,6 +74,25 @@ if not JWT_SECRET:
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_MINUTES = 60
 
+# ─── Canonical sub_category identifiers ───────────────────────────────────────
+# The single source of truth for every `sub_category` the platform recognizes,
+# grouped by the role it qualifies. The AI prompt↔registry parity gate imports
+# this set and asserts that every prompt tool-list key is a subset — so a legacy
+# or typo'd key (e.g. "accounts" vs the canonical "accountant") can never again
+# silently route an accountant to a fallback tool list / over-exposed context
+# (audit C4). Add new sub_categories here first.
+VALID_SUB_CATEGORIES = frozenset({
+    # owner
+    "owner",
+    # admin departments
+    "principal", "accountant", "transport_head", "receptionist",
+    "it_tech", "maintenance", "management", "support_staff",
+    # teacher designations
+    "class_teacher", "hod", "coordinator", "subject_teacher", "kg_incharge",
+    # student
+    "student",
+})
+
 
 # ─── JWT helpers ─────────────────────────────────────────────────────────────
 

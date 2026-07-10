@@ -25,6 +25,7 @@ Never uses `get_raw_db()` (tenant leak); all reads/writes go through the scoped 
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
@@ -60,6 +61,52 @@ class NeedsManualReconciliationError(Exception):
     requiring an operator (D.5). Never a silent partial success."""
 
     code = NEEDS_MANUAL_RECONCILIATION
+
+
+class StepExecutionError(Exception):
+    """A write step's runner reported failure — either it returned a failure
+    envelope (`success is False`) or its write raised a domain uniqueness
+    collision (X2/X4). The transaction is aborted; NOTHING was applied. The
+    caller composes a user reply naming the failed step + "no changes were
+    applied", so the reply and the audit row always agree."""
+
+    def __init__(self, message: str, *, step_idx: int, tool: Optional[str], result: Any = None):
+        super().__init__(message)
+        self.step_idx = step_idx
+        self.tool = tool
+        self.result = result
+
+
+class _IdempotentReplay(Exception):
+    """Internal sentinel: the per-step idempotency-claim insert raised
+    DuplicateKeyError — this (plan_token, step_idx) was already applied by a
+    prior/concurrent confirm. Distinct from a DOMAIN unique-index collision on
+    the write itself, which is a genuine failure (X4)."""
+
+
+def _dup_detail(exc: DuplicateKeyError) -> str:
+    """Describe a domain unique-index collision naming the collection/index (X4).
+
+    Mongo E11000 messages carry `collection: <db.coll> index: <name>`; we surface
+    those so the user reply and audit row explain *what* collided rather than
+    masquerading as `already_applied`."""
+    text = str(getattr(exc, "details", None) or exc)
+    coll = None
+    index = None
+    m = re.search(r"collection:\s*(\S+)", text)
+    if m:
+        coll = m.group(1)
+    m = re.search(r"index:\s*(\S+)", text)
+    if m:
+        index = m.group(1)
+    if index or coll:
+        parts = []
+        if index:
+            parts.append(f"index {index}")
+        if coll:
+            parts.append(f"in {coll}")
+        return "a record already exists that violates " + " ".join(parts)
+    return "a uniqueness constraint was violated"
 
 
 class SagaCompensatedError(Exception):
@@ -289,16 +336,51 @@ async def run(
                     # Skip the claim in dry-run: on the non-transactional (noop) path the
                     # claim would NOT roll back and would poison the key for a later real run.
                     if key and not dry_run:
-                        await _claim_idempotency(db, plan, step, key)
+                        try:
+                            await _claim_idempotency(db, plan, step, key)
+                        except DuplicateKeyError:
+                            # X4: ONLY the idempotency-claim insert maps to
+                            # already_applied — a replay/concurrent confirm.
+                            raise _IdempotentReplay()
                         claimed.append(key)
-                    result = await step.runner() if step.runner else None
+                    try:
+                        result = await step.runner() if step.runner else None
+                    except DuplicateKeyError as dup:
+                        # X4: a DOMAIN unique-index collision on the write itself is a
+                        # genuine failure (never `already_applied`). Report the
+                        # collection/index, mark the step failed, abort the txn.
+                        detail = _dup_detail(dup)
+                        step_results.append({
+                            "step": step.idx, "tool": step.tool, "status": "failed",
+                            "result": {"success": False, "error": "duplicate_key", "message": detail},
+                        })
+                        raise StepExecutionError(
+                            f"Step {step.idx + 1} ({step.tool}) failed: {detail}.",
+                            step_idx=step.idx, tool=step.tool,
+                            result={"success": False, "error": "duplicate_key", "message": detail},
+                        )
+                    # X2: a runner that RETURNS a failure envelope (success is False)
+                    # aborts the whole transaction — a confirmed action never commits
+                    # around a failed step and never reports "completed" on failure.
+                    if isinstance(result, dict) and result.get("success") is False:
+                        msg = (
+                            result.get("message")
+                            or result.get("error")
+                            or f"Step {step.idx + 1} ({step.tool}) could not be completed."
+                        )
+                        step_results.append({
+                            "step": step.idx, "tool": step.tool, "status": "failed", "result": result,
+                        })
+                        raise StepExecutionError(
+                            msg, step_idx=step.idx, tool=step.tool, result=result,
+                        )
                     step_results.append({"step": step.idx, "tool": step.tool, "status": "ok", "result": result})
                 if dry_run:
                     # Abort the txn so a shadow run commits nothing (F.5 builds the diff).
                     raise _DryRunAbort()
         except _DryRunAbort:
             return ExecutionResult(status="dry_run", step_results=step_results, dry_run=True)
-        except DuplicateKeyError:
+        except _IdempotentReplay:
             # Idempotency claim lost → exactly-once. Nothing committed this round.
             logger.info("idempotent_replay plan_token=%s — already applied", plan.plan_token)
             return ExecutionResult(status="already_applied", step_results=step_results)

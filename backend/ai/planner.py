@@ -158,11 +158,17 @@ async def build_plan(
             )
 
     # ── 4 + 5. Resolve, classify, attach preconditions ──
+    # XM2: the executor runs ONLY write steps — read steps in a confirmed plan
+    # never execute. Advertising them on the confirm card is a false promise, so
+    # read steps are dropped from the resolved plan entirely and write steps are
+    # re-indexed sequentially (idempotency keys derive from `idx`).
     resolved_steps: list = []
-    for idx, raw in enumerate(raw_steps):
+    for raw in raw_steps:
         tool = raw.get("tool") or raw.get("action")
         params = raw.get("params") or {}
         kind = WRITE if tool in write_tools else READ
+        if kind != WRITE:
+            continue
         resolved = await resolve_params(params, db, scope)
         if resolved.get("_resolution_error"):
             return PlannerResult(
@@ -174,17 +180,17 @@ async def build_plan(
         # the plan_hash binds exactly what executes and the card shows nothing
         # internal.
         public = {k: v for k, v in resolved.items() if not k.startswith("_")}
+        idx = len(resolved_steps)
         step: dict[str, Any] = {"idx": idx, "tool": tool, "kind": kind, "params": public}
-        if kind == WRITE:
-            pre = _derive_precondition(tool, resolved)
-            if pre is not None:
-                step["precondition"] = pre
-            else:
-                logger.warning(
-                    "planner: no precondition derivable for write tool %s — "
-                    "executor will stale-guard on existence only",
-                    tool,
-                )
+        pre = _derive_precondition(tool, resolved)
+        if pre is not None:
+            step["precondition"] = pre
+        else:
+            logger.warning(
+                "planner: no precondition derivable for write tool %s — "
+                "executor will stale-guard on existence only",
+                tool,
+            )
         resolved_steps.append(step)
 
     return PlannerResult(status=PLAN, steps=resolved_steps)

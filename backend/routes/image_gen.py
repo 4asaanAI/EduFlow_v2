@@ -10,10 +10,11 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime
-from fastapi import APIRouter, Request, Depends
+from datetime import date
+from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.responses import Response, JSONResponse
 from database import get_db
-from middleware.auth import require_role
+from middleware.auth import require_owner_or_principal
 from tenant import add_school_id, get_school_id
 from services.s3_storage import (
     PRESIGNED_URL_EXPIRY_SECONDS,
@@ -26,7 +27,8 @@ from services.audit_service import write_audit
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/image-gen", tags=["image-gen"])
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+# R9.5 (X9 AC3): per-school, per-kind daily generation cap (abuse guard).
+DAILY_GEN_CAP = 200
 
 CERT_LABELS = {
     "transfer": "Transfer Certificate",
@@ -81,42 +83,16 @@ def _id_card_prompt(school_name: str) -> str:
     )
 
 
-# ─── Gemini Imagen call ───────────────────────────────────────────────────────
-
-async def _gemini_image(prompt: str, aspect_ratio: str = "3:4") -> bytes | None:
-    if not GEMINI_API_KEY:
-        logger.warning("GEMINI_API_KEY not set — background will be plain")
-        return None
-
-    def _call():
-        try:
-            from google import genai
-            from google.genai import types
-            logger.info(
-                "gemini_image_generation_started",
-                extra={"aspect_ratio": aspect_ratio, "prompt_len": len(prompt)},
-            )
-            client = genai.Client(api_key=GEMINI_API_KEY)
-            resp = client.models.generate_images(
-                model="imagen-3.0-generate-012",
-                prompt=prompt,
-                config=types.GenerateImagesConfig(
-                    number_of_images=1,
-                    output_mime_type="image/png",
-                    aspect_ratio=aspect_ratio,
-                ),
-            )
-            data = resp.generated_images[0].image.image_bytes
-            logger.info(
-                "gemini_image_generation_completed",
-                extra={"aspect_ratio": aspect_ratio, "size_bytes": len(data)},
-            )
-            return data
-        except Exception:
-            logger.warning("gemini_image_generation_failed", exc_info=True)
-            return None
-
-    return await asyncio.to_thread(_call)
+# ─── Backgrounds ──────────────────────────────────────────────────────────────
+#
+# R9.5 (X9 AC2): the Google Gemini/Imagen leg was REMOVED. It shipped school data
+# (school name, and the request context) to Google — contradicting the platform's
+# Azure-residency / DPDP ADR — and degraded silently to a plain background on any
+# failure. Certificates and ID cards are decorative-background documents whose text
+# is drawn locally with fpdf2; the locally-drawn `_plain_cert_bg`/`_plain_card`
+# designs are used exclusively now: deterministic, zero external data egress, zero
+# cost, no silent degrade. `_cert_prompt`/`_id_card_prompt` are retained only as
+# documentation of the (now unused) design intent.
 
 
 # ─── PDF builders ─────────────────────────────────────────────────────────────
@@ -131,14 +107,17 @@ def _build_cert_pdf(data: dict, bg: bytes | None) -> bytes:
     name     = data.get("student_name", "")
     cls      = data.get("class", "")
     serial   = data.get("serial_number", "")
-    date     = data.get("issued_date", datetime.now().strftime("%d-%m-%Y"))
+    issued   = data.get("issued_date", datetime.now().strftime("%d-%m-%Y"))
     ay       = data.get("academic_year", "")
 
-    # Strip "Class " prefix to avoid "Class Class 10-A" when class_info.name includes the word
+    # R9.5 AC3: type-guard — `class` may arrive as a non-string (int/None); coerce
+    # before .lower() so it can't raise. Strip a leading "Class " to avoid
+    # "Class Class 10-A" when the class name already includes the word.
+    cls = str(cls or "")
     if cls.lower().startswith("class "):
         cls = cls[6:].strip()
     tmpl = CERT_BODIES.get(ctype, CERT_BODIES["bonafide"])
-    body = tmpl.format(name=name, school=school, cls=cls, date=date, ay=ay)
+    body = tmpl.format(name=name, school=school, cls=cls, date=issued, ay=ay)
 
     pdf = FPDF(orientation="P", unit="mm", format="A4")
     pdf.add_page()
@@ -158,7 +137,7 @@ def _build_cert_pdf(data: dict, bg: bytes | None) -> bytes:
     pdf.set_font("Helvetica", "", 9)
     pdf.set_text_color(70, 70, 70)
     pdf.set_xy(120, 18);  pdf.cell(80, 5, f"Serial No.: {serial}", align="R")
-    pdf.set_xy(120, 24);  pdf.cell(80, 5, f"Date: {date}", align="R")
+    pdf.set_xy(120, 24);  pdf.cell(80, 5, f"Date: {issued}", align="R")
 
     # ── School name ──
     pdf.set_font("Helvetica", "B", 22)
@@ -371,31 +350,99 @@ async def _persist_generated_pdf(
     }
 
 
+# ─── DB resolution + rate cap (R9.5 / X9) ──────────────────────────────────────
+
+async def _enforce_daily_cap(db, school_id: str, kind: str) -> bool:
+    """Per-school, per-kind daily generation cap (X9 AC3). Returns False when over.
+
+    Robust, test-friendly increment: find the day's counter, reject if at the cap,
+    else bump (or create). A tiny race can let a couple past the cap concurrently —
+    acceptable for an abuse brake.
+    """
+    day = date.today().isoformat()
+    q = {"schoolId": school_id, "kind": kind, "day": day}
+    existing = await db.image_gen_quota.find_one(q)
+    if existing:
+        if existing.get("count", 0) >= DAILY_GEN_CAP:
+            return False
+        await db.image_gen_quota.update_one({"_id": existing["_id"]}, {"$inc": {"count": 1}})
+    else:
+        await db.image_gen_quota.insert_one({"_id": str(uuid.uuid4()), **q, "count": 1})
+    return True
+
+
+async def _school_meta(db) -> dict:
+    settings = await db.school_settings.find_one({}, {"_id": 0}) or {}
+    ay_doc = await db.academic_years.find_one({"is_current": True}, {"_id": 0, "name": 1}) or {}
+    return {
+        "school_name": settings.get("school_name") or "School",
+        "affiliation": settings.get("affiliation") or settings.get("board") or "",
+        "academic_year": ay_doc.get("name", ""),
+    }
+
+
+async def _resolve_class_name(db, class_id) -> str:
+    if not class_id:
+        return ""
+    cls = await db.classes.find_one({"id": class_id}, {"_id": 0, "name": 1, "section": 1})
+    if not cls:
+        return ""
+    name = str(cls.get("name", "")).strip()
+    section = str(cls.get("section", "")).strip()
+    return f"{name}-{section}" if section else name
+
+
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 @router.post("/certificate")
-async def generate_certificate(request: Request, user: dict = Depends(require_role("admin", "owner"))):
+async def generate_certificate(request: Request, user: dict = Depends(require_owner_or_principal)):
+    # R9.5 AC1: owner/principal only (was any admin sub_category — a forgery surface).
     try:
         data = await request.json()
     except Exception:
         return JSONResponse(status_code=400, content={"detail": "Invalid JSON"})
 
-    cert_type = data.get("cert_type", "bonafide")
-    title = CERT_LABELS.get(cert_type, "Certificate")
-    prompt = _cert_prompt(cert_type, title)
-    bg = await _gemini_image(prompt, aspect_ratio="3:4")
+    db = get_db()
+    school_id = get_school_id()
 
-    pdf_bytes = _build_cert_pdf(data, bg)
-    student = data.get("student_name", "certificate").replace(" ", "-")
-    filename = f"{title.replace(' ', '-')}-{student}.pdf"
+    # R9.5 AC1: resolve the student's identity from the DB by student_id — NEVER
+    # from client-supplied name/class/marks (those were the forgery vector).
+    student_id = str(data.get("student_id") or "").strip()
+    if not student_id:
+        raise HTTPException(400, "student_id is required")
+    student = await db.students.find_one({"id": student_id}, {"_id": 0})
+    if not student:
+        raise HTTPException(404, "Student not found")
+
+    if not await _enforce_daily_cap(db, school_id, "certificate"):
+        raise HTTPException(429, "Daily certificate generation limit reached — try again tomorrow")
+
+    meta = await _school_meta(db)
+    cert_type = data.get("cert_type", "bonafide")  # selects a template — not identity
+    title = CERT_LABELS.get(cert_type, "Certificate")
+    doc_data = {
+        "cert_type": cert_type,
+        "student_name": student.get("name", ""),
+        "class": await _resolve_class_name(db, student.get("class_id")),
+        "admission_number": student.get("admission_number", ""),
+        "school_name": meta["school_name"],
+        "affiliation": meta["affiliation"],
+        "academic_year": meta["academic_year"],
+        "serial_number": str(data.get("serial_number") or ""),   # cosmetic reference
+        "issued_date": datetime.now().strftime("%d-%m-%Y"),
+    }
+
+    # R9.5 AC2: no external image provider — background is drawn locally.
+    pdf_bytes = _build_cert_pdf(doc_data, None)
+    safe_student = (student.get("name") or "certificate").replace(" ", "-")
+    filename = f"{title.replace(' ', '-')}-{safe_student}.pdf"
     if data.get("persist") is True:
-        linked_id = data.get("student_id") or data.get("admission_number") or data.get("student_name") or ""
         return JSONResponse(content=await _persist_generated_pdf(
             pdf_bytes=pdf_bytes,
             filename=filename,
             user=user,
             linked_table="certificate",
-            linked_id=linked_id,
+            linked_id=student_id,
             audit_action="certificate_generated",
         ))
     return Response(
@@ -406,26 +453,59 @@ async def generate_certificate(request: Request, user: dict = Depends(require_ro
 
 
 @router.post("/id-cards")
-async def generate_id_cards(request: Request, user: dict = Depends(require_role("admin", "owner"))):
+async def generate_id_cards(request: Request, user: dict = Depends(require_owner_or_principal)):
+    # R9.5 AC1: owner/principal only.
     try:
         data = await request.json()
     except Exception:
         return JSONResponse(status_code=400, content={"detail": "Invalid JSON"})
 
-    students = data.get("students", [])
-    school = data.get("school_name", "School")
-    ay = data.get("academic_year", "")
+    db = get_db()
+    school_id = get_school_id()
 
-    if not students:
-        return JSONResponse(status_code=400, content={"detail": "No students provided"})
+    # R9.5 AC1: resolve card content from the DB by student_id — reject client-only
+    # data. Accept a list of {student_id} (or {id}) and fetch the real records.
+    raw = data.get("students", [])
+    ids = [str(s.get("student_id") or s.get("id") or "").strip()
+           for s in raw if isinstance(s, dict)]
+    ids = [i for i in ids if i]
+    if not ids:
+        return JSONResponse(status_code=400, content={"detail": "students with student_id are required"})
 
-    prompt = _id_card_prompt(school)
-    bg = await _gemini_image(prompt, aspect_ratio="16:9")
+    if not await _enforce_daily_cap(db, school_id, "id_card"):
+        raise HTTPException(429, "Daily ID-card generation limit reached — try again tomorrow")
 
-    pdf_bytes = _build_id_cards_pdf(students, school, ay, bg)
+    docs = await db.students.find({"id": {"$in": ids}}, {"_id": 0}).to_list(len(ids))
+    by_id = {d["id"]: d for d in docs if d.get("id")}
+    class_ids = list({d.get("class_id") for d in docs if d.get("class_id")})
+    class_docs = await db.classes.find(
+        {"id": {"$in": class_ids}}, {"_id": 0, "id": 1, "name": 1, "section": 1}
+    ).to_list(len(class_ids) or 1) if class_ids else []
+    cls_by_id = {}
+    for c in class_docs:
+        nm = str(c.get("name", "")).strip()
+        sec = str(c.get("section", "")).strip()
+        cls_by_id[c.get("id")] = f"{nm}-{sec}" if sec else nm
+
+    resolved = []
+    for sid in ids:
+        d = by_id.get(sid)
+        if not d:
+            continue
+        resolved.append({
+            "name": d.get("name", ""),
+            "class": cls_by_id.get(d.get("class_id"), ""),
+            "admission_number": d.get("admission_number", "N/A"),
+            "roll_number": d.get("roll_number", "N/A"),
+        })
+    if not resolved:
+        return JSONResponse(status_code=404, content={"detail": "No matching students found"})
+
+    meta = await _school_meta(db)
+    pdf_bytes = _build_id_cards_pdf(resolved, meta["school_name"], meta["academic_year"], None)
     filename = f"ID-Cards-{datetime.now().strftime('%Y-%m-%d')}.pdf"
     if data.get("persist") is True:
-        linked_id = data.get("batch_id") or data.get("class_id") or "batch"
+        linked_id = str(data.get("batch_id") or data.get("class_id") or "batch")
         return JSONResponse(content=await _persist_generated_pdf(
             pdf_bytes=pdf_bytes,
             filename=filename,

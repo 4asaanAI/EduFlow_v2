@@ -155,10 +155,11 @@ async def test_get_financial_report_excludes_other_school_transactions(fake_db, 
 
     result = await legacy_tools.tool_get_financial_report({}, _owner())
 
-    assert "4,000" in result["total_expected"]
-    assert "1,000" in result["total_collected"]
+    data = result["data"]
+    assert "4,000" in data["total_expected"]
+    assert "1,000" in data["total_collected"]
     assert "9,000" not in str(result)
-    assert result["collection_rate"] == "25.0%"
+    assert data["collection_rate"] == "25.0%"
 
 
 @pytest.mark.asyncio

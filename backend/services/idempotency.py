@@ -58,7 +58,13 @@ def record_key(request: Request) -> str:
 
 async def get_replay_response(db, key: str) -> Response | None:
     now = datetime.now(timezone.utc)
-    doc = await db.idempotency_keys.find_one({"key": key, "expires_at": {"$gt": now}})
+    # R11.6: the key hash already embeds the school, but re-assert schoolId on the
+    # replay read too (defence-in-depth) so a key-hash reuse can never replay one
+    # school's response into another. store_response persists schoolId, so this
+    # only tightens matching — it never drops a legitimate replay.
+    doc = await db.idempotency_keys.find_one(
+        {"key": key, "schoolId": get_school_id(), "expires_at": {"$gt": now}}
+    )
     if not doc:
         return None
     return Response(

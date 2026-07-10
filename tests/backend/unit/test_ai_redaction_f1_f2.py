@@ -39,9 +39,14 @@ def test_special_category_fields_are_masked():
     out = redact_for_llm(_STUDENT)
     for masked_key in (
         "date_of_birth", "dob", "home_address", "aadhaar_number",
-        "blood_group", "medical_conditions", "father_medical_history",
+        "medical_conditions", "father_medical_history",
     ):
         assert out[masked_key] == REDACTED, masked_key
+    # R9.2 AC3: blood_group is intentionally NOT restricted — it's standard,
+    # low-sensitivity operational data (printed on physical ID cards) that
+    # get_student_profile legitimately surfaces; permanently masking it was an
+    # over-block. Genuine health data (medical_*, above) stays masked.
+    assert out["blood_group"] == _STUDENT["blood_group"]
     # phone/contact masked but not fully dropped (keeps last 3 for human reference)
     assert out["guardian_phone"] != "9876543210"
     assert "210" in out["guardian_phone"]

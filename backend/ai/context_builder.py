@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, date
 from database import get_db
 from tenant import get_school_id, scoped_filter, scoped_query
+from ai.fee_metrics import DEFAULTER_STATUSES, compute_fee_totals
 
 # SCOPING NOTE: context_builder deliberately uses school-wide scope (no branch_id filter).
 # Context gives the AI "awareness" of the whole school — staff may ask about any branch.
@@ -49,14 +50,19 @@ def _format_currency(amount: int | float) -> str:
 
 
 async def _get_fee_outstanding(db) -> str:
-    """Return total outstanding (pending + overdue) fees as formatted string."""
-    pipeline = [
-        _tenant_match({"status": {"$in": ["pending", "overdue"]}}),
-        {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
-    ]
-    result = await db.fee_transactions.aggregate(pipeline).to_list(1)
-    outstanding = result[0]["total"] if result else 0
-    return _format_currency(outstanding)
+    """Return total outstanding fees (canonical shared formula, R7.1/M5)."""
+    totals = await compute_fee_totals(db, _tenant_query({}))
+    return _format_currency(totals["outstanding"])
+
+
+async def _get_fee_defaulter_count(db) -> int:
+    """Distinct students carrying any outstanding balance (R7.1/AC3 — canonical
+    defaulter definition, not only status='overdue')."""
+    rows = await db.fee_transactions.find(
+        _tenant_query({"status": {"$in": list(DEFAULTER_STATUSES)}}),
+        {"_id": 0, "student_id": 1},
+    ).to_list(20000)
+    return len({r.get("student_id") for r in rows if r.get("student_id")})
 
 
 async def _get_todays_collections(db, today: str) -> str:
@@ -131,7 +137,7 @@ async def _build_owner_context(db, today: str) -> dict:
     ctx["attendance_rate"] = await _get_attendance_rate(db, today)
     ctx["fee_outstanding"] = await _get_fee_outstanding(db)
     ctx["todays_collections"] = await _get_todays_collections(db, today)
-    ctx["fee_defaulters"] = await db.fee_transactions.count_documents(_tenant_query({"status": "overdue"}))
+    ctx["fee_defaulters"] = await _get_fee_defaulter_count(db)
     ctx["pending_invoices"] = await db.fee_transactions.count_documents(_tenant_query({"status": "pending"}))
     ctx["pending_leaves"] = await db.leave_requests.count_documents(_tenant_query({"status": "pending"}))
     ctx["active_alerts"] = await _get_active_alerts(db, today)
@@ -185,7 +191,7 @@ async def _build_accounts_context(db, today: str) -> dict:
     ctx = {}
     ctx["fee_outstanding"] = await _get_fee_outstanding(db)
     ctx["todays_collections"] = await _get_todays_collections(db, today)
-    ctx["fee_defaulters"] = await db.fee_transactions.count_documents(_tenant_query({"status": "overdue"}))
+    ctx["fee_defaulters"] = await _get_fee_defaulter_count(db)
     ctx["pending_invoices"] = await db.fee_transactions.count_documents(_tenant_query({"status": "pending"}))
     return ctx
 
@@ -530,18 +536,37 @@ async def build_school_context(role: str, user_id: str) -> dict:
     if role == "owner":
         return _with_school(await _build_owner_context(db, today))
 
-    # Admin sub-categories
+    # Admin sub-categories.
+    # Normalize + alias-map the raw sub_category the SAME way scope_resolver
+    # does (._resolve_admin_scope), so a legacy/mis-cased value like
+    # "Accountant", "accounts", "transport", or "front_desk" gets its proper
+    # operational context instead of falling through to the minimal context
+    # (which would under-inform a user the resolver has already granted tool
+    # access to).
     if role == "admin":
-        if sub_category == "principal":
+        effective = str(sub_category or "").strip().lower()
+        if effective == "principal":
             return _with_school(await _build_principal_context(db, today))
-        if sub_category == "accounts":
+        if effective in ("accountant", "accounts"):
             return _with_school(await _build_accounts_context(db, today))
-        if sub_category == "transport_head":
+        if effective in ("transport_head", "transport"):
             return _with_school(await _build_transport_head_context(db, today))
-        if sub_category == "receptionist":
+        if effective in ("receptionist", "front_desk"):
             return _with_school(await _build_receptionist_context(db, today))
-        # Default admin (e.g. sub_category == "admin") gets principal-level view
-        return _with_school(await _build_principal_context(db, today))
+        # R5 (fail-closed, DEFERRED row 18): admin sub_categories WITHOUT an
+        # explicit operational context (it_tech, maintenance, management,
+        # support_staff, or an unrecognised/legacy value) must NOT inherit the
+        # principal's school-wide view. scope_resolver already denies them
+        # principal-level tool access; the chat context is aligned to that —
+        # minimal, not principal (was a silent over-exposure of school-wide data).
+        return _with_school({
+            "role": "admin",
+            "sub_category": sub_category,
+            "note": (
+                "Limited administrative access — no school-wide operational data "
+                "in context. Ask the principal or owner for school-wide reports."
+            ),
+        })
 
     # Teacher sub-categories
     if role == "teacher":

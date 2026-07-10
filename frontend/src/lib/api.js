@@ -90,23 +90,35 @@ export async function getMessages(convId) {
 }
 
 export function sendMessageStream(convId, text, user, onEvent, sessionId = null, imageData = null) {
-  const headers = getHeaders();
   const chatSessionId = sessionId || getBrowserSseSessionId();
+  const body = JSON.stringify({ text, session_id: chatSessionId, image_data: imageData || undefined });
 
-  return fetch(`${API}/chat/conversations/${convId}/messages`, {
+  const doFetch = () => fetch(`${API}/chat/conversations/${convId}/messages`, {
     method: 'POST',
     headers: {
-      ...headers,
+      ...getHeaders(),
       'X-SSE-Session-ID': chatSessionId,
     },
     credentials: 'include',
-    body: JSON.stringify({ text, session_id: chatSessionId, image_data: imageData || undefined }),
-  }).then(async (res) => {
+    body,
+  });
+
+  return doFetch().then(async (res) => {
     if (res.status === 401) {
-      // SSE chat path: 401 mid-stream redirects immediately; retrying would
-      // duplicate the in-progress conversation message and AI token debit.
-      redirectToLoginOnce('/');
-      return;
+      // FH1 (R8.1 AC1): a 401 on the initial response means the session expired
+      // BEFORE any assistant output or token debit — so a single refresh + retry
+      // is safe (it cannot duplicate a write). Only if the retry still fails do we
+      // surface a VISIBLE error event (never a silent redirect/no-op).
+      try {
+        await refreshAccessToken(API);
+        res = await doFetch();
+      } catch {}
+      if (res.status === 401) {
+        onEvent({ type: 'thinking_clear' });
+        onEvent({ type: 'error', message: 'Your session has expired. Please sign in again.' });
+        redirectToLoginOnce('/');
+        return;
+      }
     }
 
     if (!res.ok || !res.body) {
@@ -119,6 +131,18 @@ export function sendMessageStream(convId, text, user, onEvent, sessionId = null,
     let buffer = '';
     let receivedDone = false;
 
+    const processFrame = (part) => {
+      if (!part.startsWith('data: ')) return;
+      try {
+        const data = JSON.parse(part.slice(6));
+        if (data?.type === 'done') receivedDone = true;
+        onEvent(data);
+      } catch (err) {
+        // R1.1 AC3: never swallow a malformed SSE frame silently.
+        console.warn('malformed SSE event JSON', err, part.slice(0, 200));
+      }
+    };
+
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -126,16 +150,13 @@ export function sendMessageStream(convId, text, user, onEvent, sessionId = null,
         buffer += decoder.decode(value, { stream: true });
         const parts = buffer.split('\n\n');
         buffer = parts.pop();
-        for (const part of parts) {
-          if (part.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(part.slice(6));
-              if (data?.type === 'done') receivedDone = true;
-              onEvent(data);
-            } catch {}
-          }
-        }
+        for (const part of parts) processFrame(part);
       }
+      // R8.4 AC4: flush the decoder + buffer tail. A stream whose final frame
+      // (often the terminal `done`) is not followed by a trailing "\n\n" would
+      // otherwise be dropped on the floor — a silent-turn tail-loss.
+      buffer += decoder.decode();
+      for (const part of buffer.split('\n\n')) processFrame(part);
     } catch {
       onEvent({ type: 'thinking_clear' });
       onEvent({ type: 'stream_error', retryable: true, reason: 'stream_network_error' });
@@ -919,12 +940,76 @@ export async function createTopupCheckout(packId) {
   return res.json();
 }
 
-export async function emitFeedback(rating) {
+// ── R10.4: "What I've learned" transparency & control surface ────────────────
+export async function getLearningOverview() {
+  const res = await apiFetch(`${API}/learning/overview`, { headers: getHeaders() });
+  return res.json();
+}
+
+// ── R11.5: Conversation Trace (owner-only support/diagnostics view) ──────────
+export async function getConversationTrace(convId) {
+  const res = await apiFetch(`${API}/chat/conversations/${convId}/trace`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function activateCorrection(feedbackId) {
+  const res = await apiFetch(`${API}/learning/corrections/${feedbackId}/activate`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  return res.json();
+}
+
+export async function rejectCorrection(feedbackId) {
+  const res = await apiFetch(`${API}/learning/corrections/${feedbackId}/reject`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  return res.json();
+}
+
+export async function editMemory(memoryId, text) {
+  const res = await apiFetch(`${API}/learning/memories/${memoryId}`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify({ text }),
+  });
+  return res.json();
+}
+
+export async function deactivateMemory(memoryId, superseded = true) {
+  const res = await apiFetch(`${API}/learning/memories/${memoryId}/deactivate`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify({ superseded }),
+  });
+  return res.json();
+}
+
+export async function deleteMemory(memoryId) {
+  const res = await apiFetch(`${API}/learning/memories/${memoryId}`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
+  return res.json();
+}
+
+export async function bulkDeleteMemories(ids, confirm = false) {
+  const res = await apiFetch(`${API}/learning/memories/bulk-delete`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify({ ids, confirm }),
+  });
+  return res.json();
+}
+
+export async function deleteSkill(skillId) {
+  const res = await apiFetch(`${API}/learning/skills/${skillId}`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
+  return res.json();
+}
+
+export async function emitFeedback(rating, meta = {}) {
   try {
+    // R10.2: carry turn context (message_id, conversation_id, tool_names) and an
+    // optional Improve reason so feedback is attributable and can seed a pending
+    // candidate correction server-side.
     await apiFetch(`${API}/chat/feedback`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ rating }),
+      body: JSON.stringify({ rating, ...meta }),
     });
   } catch {}
 }

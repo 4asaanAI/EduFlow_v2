@@ -104,11 +104,15 @@ BLOCKED_TOPICS: list[dict] = [
     },
     {
         "name": "bombs",
+        # R9.2 AC2 (M10 / DPDP calibration): the bare `\bbomb(?:...)\b` and
+        # `\bexplosive\b` patterns blocked legitimate curriculum ("the atomic
+        # bombing of Hiroshima", "an explosive chemical reaction"). Block only
+        # weaponization how-to and concrete threats, not mere mention.
         "patterns": [
-            r"\bbomb(?:s|ing|ed)?\b",
-            r"\bexplosive(?:s)?\b",
-            r"\bdetona(?:te|tion|tor)\b",
-            r"\bhow\s+to\s+(?:make|build)\s+(?:a\s+)?(?:bomb|explosive)\b",
+            r"\bhow\s+to\s+(?:make|build|create|assemble)\s+(?:a\s+)?(?:bomb|explosive|ied)\b",
+            r"\b(?:make|build|plant|set\s+off|detonate|throw|bring)\s+(?:a\s+)?(?:bomb|explosive)\b",
+            r"\bpipe\s+bomb\b",
+            r"\bbomb\s+(?:the|a|my|our)\s+(?:school|building|class|college|campus)\b",
             r"\bIED\b",
         ],
     },
@@ -372,7 +376,11 @@ _INJECTION_PATTERNS: list[re.Pattern] = [
         r"\bpretend\s+(?:you\s+are|to\s+be|you'?re)\b",
         r"\bact\s+as\s+(?:if\s+you\s+are|a|an)\b",
         r"\bjailbreak\b",
-        r"\bDAN\b",
+        # R9.2 AC2: scope the "DAN" jailbreak persona to actual jailbreak phrasing
+        # so a student named Dan isn't blocked. The classic expansion ("do anything
+        # now") is caught by the next pattern regardless.
+        r"\bDAN\s+mode\b",
+        r"\byou\s+are\s+(?:now\s+)?DAN\b",
         r"\bdo\s+anything\s+now\b",
         r"\byou\s+are\s+now\s+(?:a|an|free|unfiltered|uncensored)\b",
         r"\bdeveloper\s+mode\b",

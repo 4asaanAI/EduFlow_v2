@@ -184,8 +184,15 @@ through the same shared service layer as the UI. Three operator controls govern 
 ### 8.1 Kill-switch — stop all AI writes instantly (Story F.4)
 
 The flag lives in `db.system_flags` keyed `ai_writes_enabled`. When off, the
-`/api/chat/confirm` dispatch refuses every write within ≤30s (the cache TTL) with
-a clear message; **reads keep working**.
+`/api/chat/confirm` dispatch refuses every write; **reads keep working**.
+
+**Cross-worker timing (R9.3 / M8):** the confirm/write path reads the flag
+**fresh from Mongo on every confirmed write** (`ai_writes_enabled(db,
+force_fresh=True)`), so flipping the switch OFF takes effect on the **next
+confirmed write across ALL Elastic Beanstalk workers immediately** — it does not
+wait for any per-worker cache to expire. The ≤30s in-process cache
+(`CACHE_TTL_SECONDS`) now only serves non-write reads; it no longer bounds how
+fast a disable reaches a worker on the write path.
 
 ```js
 // Disable (mongosh)

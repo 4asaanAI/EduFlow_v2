@@ -4,20 +4,24 @@ import { useTheme } from '../contexts/ThemeContext';
 import { Sparkles, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { emitFeedback } from '../lib/api';
 
+// FL (R8.4 AC3): the previous `FORBID_ATTR: ['style']` stripped the renderer's
+// OWN inline styling, so AI markdown rendered as unstyled plain text. Rather than
+// ALLOW `style` (which would let AI-authored content inject a dangerous style
+// value — DOMPurify does NOT reliably neutralize `url(javascript:...)` under
+// jsdom), the markdown functions below emit BARE tags and rely on the existing
+// `.prose-chat` CSS (theme-aware element selectors in index.css) for styling.
+// The sanitizer stays strict: it drops every style/class/event attr (so AI
+// content can't borrow theme CSS or spoof the UI), restricts tags to the safe
+// set the renderer emits (no script/iframe/img/span), keeps the href/target/rel
+// that links need, and constrains link protocols.
 const MARKDOWN_SANITIZE_CONFIG = {
-  FORBID_ATTR: ['style', 'class', 'onerror', 'onload', 'onfocus'],
+  ALLOWED_TAGS: ['h2', 'h3', 'h4', 'p', 'ul', 'ol', 'li', 'hr', 'br', 'strong',
+    'em', 'code', 'pre', 'a', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
+  ALLOWED_ATTR: ['href', 'target', 'rel'],
+  ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|tel:|\/)/i,
 };
 
-function parseMarkdownText(isDark) {
-  const tp = isDark ? '#f5f5f5' : '#171717';
-  const ts = isDark ? '#a0a0a0' : '#525252';
-  const hc = isDark ? '#f5f5f5' : '#171717';
-  const bc = isDark ? '#2e2e2e' : '#e5e5e5';
-  const codeBg = isDark ? '#252525' : '#fafafa';
-  const thBg = isDark ? '#1e1e1e' : '#fafafa';
-  const rowBorder = isDark ? '#252525' : '#f0f0f0';
-  const tableBg = isDark ? '#1e1e1e' : '#fff';
-
+function parseMarkdownText() {
   return function(text) {
     if (!text) return '';
     const lines = text.split('\n');
@@ -30,25 +34,25 @@ function parseMarkdownText(isDark) {
         while (i < lines.length && lines[i].includes('|') && lines[i].trim().startsWith('|')) {
           tableLines.push(lines[i]); i++;
         }
-        result += renderTable(tableLines, { thBg, tableBg, bc, rowBorder, ts });
+        result += renderTable(tableLines);
         continue;
       }
       if (line.startsWith('### ')) {
-        result += `<h4 style="color:${hc};font-size:0.9rem;font-weight:600;margin:14px 0 6px;letter-spacing:-0.01em">${processInline(line.slice(4), isDark)}</h4>`;
+        result += `<h4>${processInline(line.slice(4))}</h4>`;
       } else if (line.startsWith('## ')) {
-        result += `<h3 style="color:${hc};font-size:1rem;font-weight:600;margin:16px 0 8px;letter-spacing:-0.01em">${processInline(line.slice(3), isDark)}</h3>`;
+        result += `<h3>${processInline(line.slice(3))}</h3>`;
       } else if (line.startsWith('# ')) {
-        result += `<h2 style="color:${hc};font-size:1.1rem;font-weight:700;margin:18px 0 8px;letter-spacing:-0.02em">${processInline(line.slice(2), isDark)}</h2>`;
+        result += `<h2>${processInline(line.slice(2))}</h2>`;
       } else if (line.startsWith('- ') || line.startsWith('* ')) {
-        result += `<li style="margin-bottom:4px;color:${ts};line-height:1.7">${processInline(line.slice(2), isDark)}</li>`;
+        result += `<li>${processInline(line.slice(2))}</li>`;
       } else if (line.match(/^\d+\.\s/)) {
-        result += `<li style="margin-bottom:4px;color:${ts};line-height:1.7">${processInline(line.replace(/^\d+\.\s/, ''), isDark)}</li>`;
+        result += `<li>${processInline(line.replace(/^\d+\.\s/, ''))}</li>`;
       } else if (line.trim() === '---' || line.trim() === '***') {
-        result += `<hr style="border:none;border-top:1px solid ${bc};margin:12px 0"/>`;
+        result += `<hr/>`;
       } else if (line.trim() === '') {
         result += '<br/>';
       } else {
-        result += `<p style="margin-bottom:6px;color:${ts};line-height:1.7">${processInline(line, isDark)}</p>`;
+        result += `<p>${processInline(line)}</p>`;
       }
       i++;
     }
@@ -56,36 +60,36 @@ function parseMarkdownText(isDark) {
   };
 }
 
-function renderTable(lines, { thBg, tableBg, bc, rowBorder, ts }) {
+function renderTable(lines) {
   const rows = lines.map(l => l.split('|').filter((_, i, a) => i > 0 && i < a.length - 1).map(c => c.trim()));
   const headers = rows[0] || [];
   const bodyRows = rows.filter((_, i) => i > 1);
-  let html = `<div style="overflow-x:auto;margin:12px 0;border-radius:10px;border:1px solid ${bc};background:${tableBg}"><table style="width:100%;border-collapse:collapse;font-size:13px">`;
-  html += '<thead><tr>';
-  headers.forEach(h => { html += `<th style="padding:8px 14px;text-align:left;font-size:11px;font-weight:600;color:#737373;text-transform:uppercase;letter-spacing:0.05em;background:${thBg};border-bottom:1px solid ${bc}">${h}</th>`; });
+  let html = '<table><thead><tr>';
+  headers.forEach(h => { html += `<th>${h}</th>`; });
   html += '</tr></thead><tbody>';
-  bodyRows.forEach((row, ri) => {
-    html += `<tr style="border-bottom:${ri < bodyRows.length - 1 ? `1px solid ${rowBorder}` : 'none'}">`;
-    row.forEach(cell => {
-      const isAmt = cell.startsWith('\u20B9');
-      const color = isAmt ? '#fbbf24' : ts;
-      html += `<td style="padding:8px 14px;font-size:13px;color:${color}">${processInline(cell, true)}</td>`;
-    });
+  bodyRows.forEach((row) => {
+    html += '<tr>';
+    row.forEach(cell => { html += `<td>${processInline(cell)}</td>`; });
     html += '</tr>';
   });
-  html += '</tbody></table></div>';
+  html += '</tbody></table>';
   return html;
 }
 
-function processInline(text, isDark) {
-  const strongColor = isDark ? '#f5f5f5' : '#171717';
-  const codeColor = '#a78bfa';
-  const codeBg = isDark ? '#252525' : '#f5f5f5';
+function processInline(text) {
   return text
-    .replace(/\*\*(.+?)\*\*/g, `<strong style="color:${strongColor};font-weight:600">$1</strong>`)
-    .replace(/\*(.+?)\*/g, `<em>$1</em>`)
-    .replace(/`(.+?)`/g, `<code style="font-family:JetBrains Mono,monospace;background:${codeBg};padding:2px 6px;border-radius:5px;font-size:0.85em;color:${codeColor};border:1px solid ${isDark ? '#333' : '#e5e5e5'}">$1</code>`)
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '<a style="color:#4f8ff7">$1</a>');
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code>$1</code>')
+    // FL (R8.4 AC3): emit a real href (was a hrefless, unclickable <a>). Only a
+    // safe protocol survives here — DOMPurify's ALLOWED_URI_REGEXP is the backstop.
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label, url) => {
+      const clean = String(url).trim();
+      const safe = /^(?:https?:\/\/|mailto:|tel:|\/)/i.test(clean);
+      return safe
+        ? `<a href="${clean}" target="_blank" rel="noopener noreferrer">${label}</a>`
+        : label;
+    });
 }
 
 function StatGrid({ stats }) {
@@ -202,11 +206,23 @@ function getToolCount(call) {
   return null;
 }
 
-function FeedbackButtons({ messageId, isDark }) {
+function FeedbackButtons({ message, isDark }) {
   const [voted, setVoted] = useState(null);
-  const handleVote = async (rating) => {
-    setVoted(rating);
-    await emitFeedback(rating);
+  const [showReason, setShowReason] = useState(false);
+  const [reason, setReason] = useState('');
+  // R10.2 AC1: send the turn context so feedback is attributable + tool-aware.
+  const meta = () => ({
+    message_id: message.id,
+    conversation_id: message.conversation_id || undefined,
+    tool_names: (message.tool_calls || message.toolCalls || [])
+      .map(c => c && c.tool).filter(Boolean),
+  });
+  const sendHelpful = async () => { setVoted(1); await emitFeedback(1, meta()); };
+  // R10.2 AC2: "Improve" opens an optional one-line reason before sending.
+  const sendImprove = async () => {
+    setVoted(0);
+    setShowReason(false);
+    await emitFeedback(0, { ...meta(), reason: reason.trim() || undefined });
   };
   const btnStyle = (isActive) => ({
     display: 'flex', alignItems: 'center', gap: 4,
@@ -216,27 +232,54 @@ function FeedbackButtons({ messageId, isDark }) {
     fontSize: 12, fontWeight: 500, transition: 'all 0.2s',
   });
   return (
-    <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-      <button onClick={() => handleVote(1)} disabled={voted !== null} style={{ ...btnStyle(voted === 1), opacity: voted !== null && voted !== 1 ? 0.5 : 1 }}>
-        <ThumbsUp size={14} /> Helpful
-      </button>
-      <button onClick={() => handleVote(0)} disabled={voted !== null} style={{ ...btnStyle(voted === 0), opacity: voted !== null && voted !== 0 ? 0.5 : 1 }}>
-        <ThumbsDown size={14} /> Improve
-      </button>
+    <div style={{ marginTop: 10 }}>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button data-testid="feedback-helpful" onClick={sendHelpful} disabled={voted !== null} style={{ ...btnStyle(voted === 1), opacity: voted !== null && voted !== 1 ? 0.5 : 1 }}>
+          <ThumbsUp size={14} /> Helpful
+        </button>
+        <button data-testid="feedback-improve" onClick={() => (voted === null && setShowReason(s => !s))} disabled={voted !== null} style={{ ...btnStyle(voted === 0), opacity: voted !== null && voted !== 0 ? 0.5 : 1 }}>
+          <ThumbsDown size={14} /> Improve
+        </button>
+      </div>
+      {showReason && voted === null && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+          <input
+            data-testid="feedback-reason"
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            maxLength={500}
+            placeholder="Optional: what could be better?"
+            style={{
+              flex: 1, fontSize: 12, padding: '6px 10px', borderRadius: 6,
+              border: `1px solid ${isDark ? '#333' : '#e5e5e5'}`,
+              background: isDark ? '#1e1e1e' : '#fff', color: isDark ? '#f5f5f5' : '#171717',
+            }}
+          />
+          <button data-testid="feedback-reason-send" onClick={sendImprove} style={{ ...btnStyle(false), background: '#4f8ff7', color: '#fff' }}>Send</button>
+        </div>
+      )}
     </div>
   );
 }
 
-function ToolTraceSummary({ calls, isDark }) {
+function ToolTraceSummary({ calls, recalledMemories, isDark }) {
   const validCalls = (calls || []).filter(call => call?.tool);
-  if (validCalls.length === 0) return null;
+  // R10.4 AC2: recalled memories are disclosed in the same "Data used" footer.
+  // Require text — a ref with no text is nothing to disclose to the user.
+  const memories = (recalledMemories || []).filter(m => m && m.text);
+  if (validCalls.length === 0 && memories.length === 0) return null;
 
   const border = isDark ? '#2e2e2e' : '#e5e5e5';
   const muted = isDark ? '#888' : '#525252';
   const text = isDark ? '#d4d4d4' : '#525252';
 
+  const parts = [];
+  if (validCalls.length) parts.push(`${validCalls.length} tool${validCalls.length === 1 ? '' : 's'}`);
+  if (memories.length) parts.push(`${memories.length} remembered note${memories.length === 1 ? '' : 's'}`);
+  const summaryLabel = `Data used · ${parts.join(' · ')}`;
+
   return (
-    <details style={{
+    <details data-testid="data-used" style={{
       marginTop: 12,
       border: `1px solid ${border}`,
       borderRadius: 10,
@@ -252,9 +295,24 @@ function ToolTraceSummary({ calls, isDark }) {
         color: muted,
         userSelect: 'none',
       }}>
-        Data used · {validCalls.length} tool{validCalls.length === 1 ? '' : 's'}
+        {summaryLabel}
       </summary>
       <div style={{ borderTop: `1px solid ${border}`, padding: '8px 11px', display: 'grid', gap: 6 }}>
+        {memories.length > 0 && (
+          <div data-testid="recalled-memories" style={{ display: 'grid', gap: 4 }}>
+            {memories.map((m, i) => (
+              <div key={`mem-${m.id || i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <span style={{ color: '#a78bfa', fontSize: 11, flexShrink: 0 }}>🧠 remembered</span>
+                <span style={{
+                  minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  color: text, fontSize: 11,
+                }}>
+                  {m.text}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
         {validCalls.map((call, i) => {
           const count = getToolCount(call);
           return (
@@ -346,8 +404,12 @@ export default function MessageRenderer({ message, isStreaming, onActionButton }
           return null;
         })}
         {actionButtons?.length > 0 && <ActionButtons buttons={actionButtons} onActionButton={onActionButton} isDark={isDark} />}
-        <ToolTraceSummary calls={message.tool_calls || message.toolCalls} isDark={isDark} />
-        <FeedbackButtons messageId={message.id} isDark={isDark} />
+        <ToolTraceSummary
+          calls={message.tool_calls || message.toolCalls}
+          recalledMemories={message.recalled_memories || message.recalledMemories}
+          isDark={isDark}
+        />
+        <FeedbackButtons message={message} isDark={isDark} />
       </div>
     </div>
   );

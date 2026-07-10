@@ -38,7 +38,7 @@ def reset_cache() -> None:
     _cache = (None, 0.0)
 
 
-async def ai_writes_enabled(db) -> bool:
+async def ai_writes_enabled(db, *, force_fresh: bool = False) -> bool:
     """Return whether AI writes are currently enabled (default: enabled).
 
     Fail-OPEN: if the flag doc is absent we treat writes as enabled (the kill
@@ -46,12 +46,22 @@ async def ai_writes_enabled(db) -> bool:
     error also fails open but is logged loudly; the kill switch is a safety brake,
     not an availability dependency, and a stuck-closed brake would be its own
     incident.
+
+    R9.3 (M8): the in-process cache is per-worker, so on a multi-worker EB
+    deployment a worker whose cache predates an operator disabling the switch
+    would keep accepting writes until its own TTL expires. The actual WRITE path
+    (the confirm/executor gate) passes ``force_fresh=True`` to bypass the cache
+    and read the flag directly from Mongo — the authoritative source shared by
+    all workers — so a disable takes effect on the very next confirmed write
+    everywhere. The cache still serves any non-critical read. See
+    docs/deployment-runbook.md §8.
     """
     global _cache
-    cached_value, expiry = _cache
     now = _monotonic()
-    if cached_value is not None and now < expiry:
-        return cached_value
+    if not force_fresh:
+        cached_value, expiry = _cache
+        if cached_value is not None and now < expiry:
+            return cached_value
 
     enabled = True
     try:

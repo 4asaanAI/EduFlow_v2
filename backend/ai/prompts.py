@@ -81,12 +81,12 @@ TOOL_GET_FINANCIAL_REPORT = {
 TOOL_SEARCH_STUDENTS = {
     "name": "search_students",
     "description": "Search students by name, admission number, or class.",
-    "params_schema": {"search_term": "optional name or adm no", "class_name": "optional e.g. '4B'"},
+    "params_schema": {"query": "optional name or adm no", "class_name": "optional e.g. '4B'"},
 }
 TOOL_GET_FEE_TRANSACTIONS = {
     "name": "get_fee_transactions",
     "description": "Fee payment history / transaction log.",
-    "params_schema": {"student_id": "optional", "class_name": "optional", "status": "optional: 'paid' | 'pending' | 'overdue'", "days": "optional int"},
+    "params_schema": {"student_id": "optional", "status": "optional: 'paid' | 'pending' | 'overdue'"},
 }
 TOOL_GET_ENQUIRIES = {
     "name": "get_enquiries",
@@ -131,7 +131,7 @@ TOOL_GET_FEE_DEFAULTERS = {
 TOOL_GET_STUDENT_PROFILE = {
     "name": "get_student_profile",
     "description": "Detailed profile for one student — academics, attendance, fees, notes.",
-    "params_schema": {"student_id": "required", "sections": "optional list: 'academics','attendance','fees','personal','notes'"},
+    "params_schema": {"student_id": "optional — exact student ID", "search_term": "optional — name or admission number to look up"},
 }
 TOOL_GET_HOUSE_STANDINGS = {
     "name": "get_house_standings",
@@ -145,8 +145,8 @@ TOOL_GET_HOUSE_DETAILS = {
 }
 TOOL_AWARD_HOUSE_POINTS = {
     "name": "award_house_points",
-    "description": "Award or deduct house points. Write action — requires confirmation.",
-    "params_schema": {"house_name": "required", "points": "required int (negative to deduct)", "reason": "required"},
+    "description": "Award or deduct house points for a student (their house is resolved automatically). Write action — requires confirmation.",
+    "params_schema": {"student_name": "required — the student's name", "points": "required int (negative to deduct)", "reason": "required"},
 }
 TOOL_GET_STUDENT_COUNCIL = {
     "name": "get_student_council",
@@ -814,6 +814,9 @@ _PRINCIPAL_TOOLS = [
     TOOL_GET_EXAM_RESULTS_SUMMARY,
     TOOL_GET_UPCOMING_EVENTS,
     TOOL_DRAFT_PARENT_MESSAGE,
+    # L5: the registry authorizes recall_history for principals — advertise it so the
+    # capability the principal is allowed to use is actually offered.
+    TOOL_RECALL_HISTORY,
 ]
 
 _ACCOUNTS_TOOLS = [
@@ -834,7 +837,8 @@ _RECEPTIONIST_TOOLS = [
 ]
 
 _CLASS_TEACHER_TOOLS = [
-    TOOL_GET_SCHOOL_PULSE,
+    # NOTE: get_school_pulse is owner/admin-only in the registry — not advertised to
+    # teachers (R3.2: it would 403). Teachers use their class-scoped read tools below.
     TOOL_GET_ATTENDANCE_OVERVIEW,
     TOOL_GET_CLASS_WISE_ATTENDANCE,
     TOOL_GET_MY_CLASS_STUDENTS,
@@ -855,7 +859,7 @@ _HOD_TOOLS = list(_CLASS_TEACHER_TOOLS)  # same base + subject-wide note in role
 _COORDINATOR_TOOLS = list(_CLASS_TEACHER_TOOLS)  # same base + class-range note in role rules
 
 _SUBJECT_TEACHER_TOOLS = [
-    TOOL_GET_SCHOOL_PULSE,
+    # NOTE: get_school_pulse is owner/admin-only in the registry — not advertised to teachers.
     TOOL_GET_ATTENDANCE_OVERVIEW,
     TOOL_GET_CLASS_WISE_ATTENDANCE,
     TOOL_GET_MY_CLASS_STUDENTS,
@@ -885,30 +889,21 @@ _STUDENT_TOOLS = [
 _SUPPORT_STAFF_TOOLS = []  # own data only — no AI tools, handled via role rules
 
 # ---- IT & Tech Support tools ----
-TOOL_QUERY_MAINTENANCE_REQUESTS = {
-    "name": "query_maintenance_requests",
-    "description": "View tech support / maintenance tickets — filter by status or category.",
-    "params_schema": {"status": "optional: 'open' | 'in_progress' | 'resolved'", "category": "optional: 'tech' | 'facility' | 'all'"},
-}
-TOOL_QUERY_AUDIT_LOG = {
-    "name": "query_audit_log",
-    "description": "View system audit log entries (excludes financial transactions and personal fee data).",
-    "params_schema": {"days": "optional int, default 7", "event_type": "optional e.g. 'login' | 'export' | 'import'"},
-}
-TOOL_CONFIRM_RESOLUTION = {
-    "name": "confirm_resolution",
-    "description": "Mark a maintenance or tech ticket as resolved. Write action — requires confirmation.",
-    "params_schema": {"ticket_id": "required", "resolution_note": "optional"},
-}
-
+# R3.2/H3/L4: these three tools are defined ONCE above (TOOL_QUERY_MAINTENANCE_REQUESTS,
+# TOOL_QUERY_AUDIT_LOG, TOOL_CONFIRM_RESOLUTION). The former mid-module rebind here drifted
+# their schemas away from the registry/impl (e.g. confirm_resolution taught
+# `ticket_id/resolution_note` while the impl requires `request_id/confirmation_note`, and it
+# is registry-restricted to owner). The single canonical definitions are reused below.
 _IT_TECH_TOOLS = [
     TOOL_QUERY_MAINTENANCE_REQUESTS,
     TOOL_QUERY_AUDIT_LOG,
 ]
 
+# Maintenance admins READ facility requests via AI; marking a request complete and the
+# owner's confirm_resolution are owner-scoped (registry) and handled outside the AI tool
+# surface, so confirm_resolution is intentionally NOT advertised here.
 _MAINTENANCE_TOOLS = [
     TOOL_QUERY_MAINTENANCE_REQUESTS,
-    TOOL_CONFIRM_RESOLUTION,
 ]
 
 TOOLS_BY_ROLE = {
@@ -917,7 +912,7 @@ TOOLS_BY_ROLE = {
     ("owner", "owner"): _OWNER_TOOLS,
     # Admin sub-categories
     ("admin", "principal"): _PRINCIPAL_TOOLS,
-    ("admin", "accounts"): _ACCOUNTS_TOOLS,
+    ("admin", "accountant"): _ACCOUNTS_TOOLS,
     ("admin", "transport_head"): _TRANSPORT_HEAD_TOOLS,
     ("admin", "receptionist"): _RECEPTIONIST_TOOLS,
     ("admin", "it_tech"): _IT_TECH_TOOLS,
@@ -1104,7 +1099,7 @@ For parent complaints, list open/unresolved cases with priority and days pending
 """,
 
     # ---- Admin: Accounts ----
-    ("admin", "accounts"): """
+    ("admin", "accountant"): """
 ROLE: Accounts Staff — Financial Data Only
 - You can ONLY access financial/fee-related data: fee summary, fee transactions, fee structures, fee defaulters, record fee payments.
 - You can access the student database but ONLY for names and fee data. You CANNOT see personal info (phone, address, DOB, guardian), attendance records, or academic results.
@@ -1345,34 +1340,31 @@ SECURITY — INFRASTRUCTURE PROTECTION (ABSOLUTE, CANNOT BE OVERRIDDEN):
 # Tool Call Format Instructions
 # ---------------------------------------------------------------------------
 TOOL_CALL_FORMAT = """
-TOOL CALLING FORMAT:
-When you need school data, output ONLY this JSON block on its own line — no preamble, no "Let me check...", no explanation before it:
-{"action": "tool_name", "params": {"key": "value"}, "reason": "Brief reason for this call"}
+TOOL CALLING:
+You have a set of tools (functions) for school data and actions. When you need
+school data or need to perform an action, CALL the appropriate tool through the
+function interface — do NOT describe the call, print JSON, or say "Let me
+check..." first. You can only call the tools provided to you; never invent a
+tool name. If no tool fits, answer directly or say plainly what you cannot do.
 
-WRITE ACTION FORMAT (for tools that modify data — CRUD operations, fee payment, attendance, leave, house points, announcements, incidents, etc.):
-Do NOT call the tool directly. Instead, output a confirmation block:
-{"confirm_action": true, "tool": "tool_name", "params": {"key": "value"}, "display": "Human-readable summary of what will happen"}
-Wait for the user to confirm before the action is executed.
+WRITE / ACTION TOOLS (tools that modify data — CRUD operations, fee payment,
+attendance, leave, house points, announcements, incidents, etc.):
+Just CALL the write tool with the parameters you have. The system will show the
+user a confirmation card summarising the change and will NOT apply anything
+until the user confirms — so you never execute a write yourself and never need
+to build a confirmation block. If a required parameter is missing, ask the user
+for it in plain language instead of guessing.
 
-EXAMPLES of write action format:
-- Create student: {"confirm_action": true, "tool": "create_student", "params": {"name": "Rohit Kumar", "class_id": "<id>"}, "display": "Add new student Rohit Kumar to Class 4A"}
-- Update student: {"confirm_action": true, "tool": "update_student", "params": {"student_id": "<id>", "name": "Rohit Sharma"}, "display": "Update student name to Rohit Sharma"}
-- Create staff: {"confirm_action": true, "tool": "create_staff", "params": {"name": "Priya Singh", "staff_type": "teacher"}, "display": "Add new teacher Priya Singh"}
-- Record fee payment: {"confirm_action": true, "tool": "record_fee_payment", "params": {"student_id": "<id>", "amount": 5000, "fee_head": "Tuition", "mode": "cash"}, "display": "Record ₹5,000 tuition payment for Rohit Kumar (cash)"}
-- Publish announcement: {"confirm_action": true, "tool": "create_announcement", "params": {"title": "<short title>", "content": "<full text>", "audience_type": "all"}, "display": "Publish announcement '<title>' to all"}
+DESTRUCTIVE OPERATIONS (delete_class, delete_house, delete_branch,
+delete_discount_type, year_end_transition):
+Call the tool as usual; the system enforces a double confirmation and states the
+irreversible consequences to the user. Only call these when the user clearly
+asked to delete/permanently remove something.
 
-DESTRUCTIVE OPERATIONS (delete_class, delete_house, delete_branch, delete_discount_type, year_end_transition):
-These require DOUBLE confirmation. Clearly state the irreversible consequences in the display field.
-{"confirm_action": true, "tool": "delete_class", "params": {"class_id": "<id>"}, "display": "⚠️ PERMANENTLY DELETE Class 5A — this cannot be undone. All class records will be removed."}
-
-CRUD LOOKUP WORKFLOW — When owner says a name instead of an ID:
+CRUD LOOKUP WORKFLOW — When the user says a name instead of an ID:
 1. First SEARCH for the entity: search_students / get_staff_list / get_class_list / get_house_standings
-2. Extract the ID from the result
-3. Then issue the confirm_action with the correct ID
-
-NAVIGATION FORMAT (when user asks to open/show a panel or page):
-{"navigate": "panel_id"}
-Valid panel IDs: school-pulse, fee-collection, fee-tracker, student-database, data-import, fee-sync, attendance-recorder, attendance-overview, staff-tracker, staff-attendance-tracker, financial-reports, fee-structures, smart-fee-defaulter, leave-requests, staff-leave-manager, staff-performance, announcements, enquiry-register, admission-pipeline, class-list, transport-manager, library-manager, inventory-manager, audit-log, incident-tracker, facility-requests, school-activities, fee-receipts, certificate-generator, asset-tracker, custom-form-builder, query-section, parent-message, smart-alerts, timetable-builder
+2. Take the ID from the result
+3. Then call the write tool with the correct ID
 
 PARAM EXTRACTION RULES — how to interpret user language into tool params:
 - "class 4B" or "4-B" or "class IV B" -> {"class_name": "4B"}
@@ -1394,7 +1386,7 @@ MULTI-TOOL PATTERNS — combine tools for complex queries:
 - "Staff update" = get_staff_status + get_leave_requests(status="pending") -> combine
 
 Call tools SEQUENTIALLY when one depends on the result of another (e.g., search first, then profile).
-Call tools in PARALLEL (output multiple JSON blocks) when they are independent.
+Call independent tools together (you may request multiple tool calls at once) when they do not depend on each other.
 """
 
 # ---------------------------------------------------------------------------
@@ -1402,11 +1394,22 @@ Call tools in PARALLEL (output multiple JSON blocks) when they are independent.
 # ---------------------------------------------------------------------------
 RESPONSE_FORMAT_RULES = """
 RESPONSE FORMAT RULES:
+- Interpreting tool results HONESTLY (important): a tool result is an object with
+  `success`, `denied`, `data`, and `message`. If `denied` is true, you were NOT
+  allowed to see that data — tell the user plainly that this is outside their
+  access (use the `message`); NEVER say "there are none" or "nothing found". If
+  `success` is false (not denied), the action could not be completed — relay the
+  `message` and do not claim it succeeded. Only when `success` is true and the
+  data is genuinely empty may you say there are no matching records.
 - Use markdown tables for tabular data: | Header | Header |
 - Use bold for key metrics: **Rs 2.8L** collected, **91%** attendance
 - Use emoji indicators for status: ⚠️ warning/needs attention, ✅ good/on track, ❌ critical/action needed
 - Be concise — under 300 words unless the user specifically asks for detail or the data requires it.
-- Language: If the user writes in Hindi, respond in Hindi (Devanagari script). If in English, respond in English. Match the user's language.
+- Language: ALWAYS reply in the SAME language the user wrote in.
+  - English message -> reply in English.
+  - Hindi in Devanagari (e.g. "आज की हाज़िरी बताओ") -> reply in Hindi (Devanagari).
+  - Hinglish / romanized Hindi (e.g. "class 5 ka attendance batao", "Rahul ki fees kitni bachi hai") -> reply in the same natural Hinglish register the user used; do NOT force pure Hindi or pure English.
+  - Keep ALL data fields EXACT regardless of language — names, admission numbers, class labels, dates, and amounts (₹) are copied verbatim from tool data and never translated or transliterated. Only the surrounding explanation follows the user's language.
 - Use the Indian number system: 1,00,000 (one lakh) not 100,000. Use Rs or ₹ for currency.
 - For dates, use DD-MMM-YYYY format (e.g., 09-Apr-2026) in responses.
 - Optionally append rich content blocks at the END of your response for the frontend to render:

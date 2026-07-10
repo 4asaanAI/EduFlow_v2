@@ -71,10 +71,9 @@ def _parse_json_blob(response: str) -> Optional[Any]:
 async def _llm_json(system_prompt: str, user_content: str, session_id: str) -> Optional[Any]:
     try:
         result = await llm_client.chat(system_prompt, [{"role": "user", "content": user_content}], session_id)
-        if isinstance(result, dict) and result.get("type") == "ai_unavailable":
+        if not result.ok:  # R1.7: LLMResult, not tuple|dict
             return None
-        text = result[0] if isinstance(result, tuple) else result
-        return _parse_json_blob(text)
+        return _parse_json_blob(result.text)
     except Exception as e:
         logger.warning("[memory-extract] LLM JSON call failed: %s", e)
         return None
@@ -119,8 +118,36 @@ async def extract_memory_items(user_text: str, assistant_text: str, *, session_i
 
 # ── Inline command (Odysseus parity): "remember: X" ──────────────────────────
 
-_INLINE_RE = re.compile(r"^(?:remember|memorize|memorise|save|note|store)[:\-]?\s+(.+)$", re.IGNORECASE)
-_FORGET_RE = re.compile(r"^(?:forget|delete|remove)\s+(?:that\s+)?(.+)$", re.IGNORECASE)
+# R6.1 (X3): inline memory SAVE requires an EXPLICIT memory cue. Bare imperatives
+# — "save …", "note …", "store …" — are NOT memory commands; they belong to the
+# normal tool/LLM pipeline (e.g. "note attendance for class 5", "save the draft").
+# Only an explicit remember/memorize verb, or an explicit "note/make a note … to
+# self / a note" phrasing, saves a memory.
+_INLINE_RE = re.compile(r"^(?:remember|memorize|memorise)\b[:\-]?\s+(?:that\s+)?(.+)$", re.IGNORECASE)
+_INLINE_NOTE_RE = re.compile(
+    r"^(?:"
+    # Explicit note-noun / to-self phrasings — self-evidently a memory save.
+    r"(?:note to self|make a note|take a note|save a note)(?:\s+(?:that|to|about|of))?"
+    # Bare "jot down"/"note down" are ambiguous with operational commands
+    # ("note down attendance for class 5", "jot down the marks"): only treat
+    # them as a memory save when a memory connector (that/about) follows, so
+    # domain imperatives fall through to the tool/LLM pipeline (X3).
+    r"|(?:jot down|note down)\s+(?:that|about)"
+    r")[:\-]?\s+(.+)$",
+    re.IGNORECASE,
+)
+# R6.1 (X3): inline FORGET requires an explicit memory-note cue. Bare "delete …"
+# / "remove …" are NOT memory commands ("delete student Rahul", "remove fee record
+# for …") and must fall through to the tool/LLM pipeline. "forget <domain thing>"
+# without a note cue also falls through.
+_FORGET_RE = re.compile(
+    r"^forget\s+(?:"
+    r"(?:the|that|my)\s+(?:note|memory|memories)(?:\s+(?:about|that|regarding))?"
+    r"|what\s+i\s+(?:told|said)(?:\s+you)?(?:\s+about)?"
+    r"|that\s+i\b"
+    r")\s*(.*)$",
+    re.IGNORECASE,
+)
 # Affirmative replies that confirm a pending uncertain memory. Anchored as a
 # FULL-MESSAGE match (only trailing courtesy words/punctuation allowed) so a real
 # request that merely starts with "ok" — e.g. "ok show me the fees" — is NOT
@@ -143,7 +170,8 @@ _CORRECT_RE = re.compile(
 def parse_inline_remember(message: str) -> Optional[str]:
     if not message:
         return None
-    m = _INLINE_RE.match(message.strip())
+    stripped = message.strip()
+    m = _INLINE_RE.match(stripped) or _INLINE_NOTE_RE.match(stripped)
     return m.group(1).strip() if m else None
 
 
@@ -151,7 +179,11 @@ def parse_inline_forget(message: str) -> Optional[str]:
     if not message:
         return None
     m = _FORGET_RE.match(message.strip())
-    return m.group(1).strip() if m else None
+    if not m:
+        return None
+    # The cue itself ("forget the note about …") is enough to enter the forget
+    # flow; the captured tail narrows WHICH note (may be empty → list all).
+    return m.group(1).strip()
 
 
 def is_affirmative(message: str) -> bool:
