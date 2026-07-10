@@ -35,6 +35,11 @@ from services.fee_config_service import (
     FeeConfigNotFoundError,
 )
 from services.contact_log_service import log_contact_event, ContactLogValidationError
+from services.payroll_service import (
+    is_owner_or_accountant as _svc_is_owner_or_accountant,
+    disburse_salary,
+    upsert_salary_structure,
+)
 from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, normalize_session_id, publish
 from pymongo import ReturnDocument
 import asyncio
@@ -704,7 +709,8 @@ async def list_salary_structures(request: Request, user: dict = Depends(require_
 
 
 @router.post("/payroll/structures")
-async def upsert_salary_structure(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def fees_upsert_salary_structure(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    """R12.5: delegates to payroll_service.upsert_salary_structure (canonical)."""
     if not _can_fee_write(user):
         raise HTTPException(403, "Forbidden")
     db = get_db()
@@ -712,32 +718,25 @@ async def upsert_salary_structure(request: Request, user: dict = Depends(require
     staff_id = body.get("staff_id")
     if not staff_id or body.get("base_salary") in (None, ""):
         raise HTTPException(400, "staff_id and base_salary are required")
-    now = datetime.now().isoformat()
-    existing = await db.salary_structures.find_one(_fee_query({"staff_id": staff_id}), {"_id": 0})
-    doc = {
-        "id": (existing or {}).get("id") or body.get("id") or str(uuid.uuid4()),
-        "schoolId": get_school_id(),
-        "staff_id": staff_id,
-        "base_salary": float(body["base_salary"]),
-        "allowances": body.get("allowances", {}),
-        "deductions": body.get("deductions", {}),
-        "effective_from": body.get("effective_from") or now[:10],
-        "is_active": body.get("is_active", True),
-        "updated_by": user["id"],
-        "updated_at": now,
-        "created_at": body.get("created_at") or now,
-    }
-    await db.salary_structures.update_one(
-        _fee_query({"staff_id": staff_id}),
-        {"$set": doc, "$setOnInsert": {"_id": existing.get("id") if existing else doc["id"]}},
-        upsert=True,
+    doc = await upsert_salary_structure(
+        db,
+        staff_id=staff_id,
+        base_salary=float(body["base_salary"]),
+        allowances=body.get("allowances"),
+        deductions=body.get("deductions"),
+        effective_from=body.get("effective_from"),
+        is_active=body.get("is_active", True),
+        updated_by=user["id"],
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id"),
     )
     await _audit(db, action="salary_structure_upsert", entity_id=staff_id, user=user, changes=doc)
-    return {"success": True, "data": {k: v for k, v in doc.items() if k != "_id"}}
+    return {"success": True, "data": doc}
 
 
 @router.post("/payroll/disbursements")
-async def create_salary_disbursement(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def fees_create_salary_disbursement(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    """R12.5: delegates to payroll_service.disburse_salary (canonical, idempotent)."""
     if not _can_fee_write(user):
         raise HTTPException(403, "Forbidden")
     db = get_db()
@@ -746,34 +745,32 @@ async def create_salary_disbursement(request: Request, user: dict = Depends(requ
     month = body.get("month")
     if not staff_id or not month:
         raise HTTPException(400, "staff_id and month are required")
-    structure = await db.salary_structures.find_one(_fee_query({"staff_id": staff_id, "is_active": {"$ne": False}}), {"_id": 0})
+    structure = await db.salary_structures.find_one(
+        _fee_query({"staff_id": staff_id, "is_active": {"$ne": False}}), {"_id": 0}
+    )
     base = float(body.get("amount") or (structure or {}).get("base_salary") or 0)
     if base <= 0:
         raise HTTPException(400, "amount is required when no salary structure exists")
-    existing = await db.salary_disbursements.find_one(_fee_query({"staff_id": staff_id, "month": month}), {"_id": 0})
-    if existing:
-        return {"success": True, "data": existing, "idempotent": True}
-    allowances = sum(float(v or 0) for v in (structure or {}).get("allowances", {}).values()) if structure else 0
-    deductions = sum(float(v or 0) for v in (structure or {}).get("deductions", {}).values()) if structure else 0
-    doc = {
-        "_id": str(uuid.uuid4()),
-        "id": str(uuid.uuid4()),
-        "schoolId": get_school_id(),
-        "staff_id": staff_id,
-        "month": month,
-        "base_salary": base,
-        "allowances": allowances,
-        "deductions": deductions,
-        "net_amount": max(base + allowances - deductions, 0),
-        "payment_mode": body.get("payment_mode", "bank_transfer"),
-        "reference": body.get("reference"),
-        "status": body.get("status", "paid"),
-        "paid_by": user["id"],
-        "paid_at": datetime.now().isoformat(),
-    }
-    await db.salary_disbursements.insert_one(doc)
-    await _audit(db, action="salary_disbursement_create", entity_id=doc["id"], user=user, changes={"created": {k: v for k, v in doc.items() if k != "_id"}})
-    return {"success": True, "data": {k: v for k, v in doc.items() if k != "_id"}}
+    allowances = sum(float(v or 0) for v in (structure or {}).get("allowances", {}).values()) if structure else 0.0
+    deductions = sum(float(v or 0) for v in (structure or {}).get("deductions", {}).values()) if structure else 0.0
+
+    doc, idempotent = await disburse_salary(
+        db,
+        staff_id=staff_id,
+        month=month,
+        base_salary=base,
+        allowances=allowances,
+        deductions=deductions,
+        payment_mode=body.get("payment_mode", "bank_transfer"),
+        reference=body.get("reference"),
+        status=body.get("status", "paid"),
+        paid_by=user["id"],
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id"),
+    )
+    if not idempotent:
+        await _audit(db, action="salary_disbursement_create", entity_id=doc["id"], user=user, changes={"created": doc})
+    return {"success": True, "data": doc, **({"idempotent": True} if idempotent else {})}
 
 
 def _fee_sync_config():

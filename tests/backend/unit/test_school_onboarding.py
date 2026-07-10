@@ -132,21 +132,49 @@ def test_create_school_success(client, monkeypatch):
     assert any(d["school_id"] == "sunrise-academy" for d in _fake_db.schools.docs)
     # school_settings created with correct schoolId
     assert any(d.get("schoolId") == "sunrise-academy" for d in _fake_db.school_settings.docs)
-    # auth_users owner created
+    # auth_users owner created with R12.1 fields
     owner_doc = next((d for d in _fake_db.auth_users.docs if d.get("schoolId") == "sunrise-academy"), None)
     assert owner_doc is not None
     assert owner_doc["role"] == "owner"
     assert owner_doc["must_change_password"] is True
     assert owner_doc["is_active"] is True
     assert owner_doc["username"] == "owner@sunrise.edu"
+    # R12.1: username_lower and user_info sub-doc must be present for login to work.
+    assert owner_doc.get("username_lower") == "owner@sunrise.edu"
+    user_info = owner_doc.get("user_info", {})
+    assert user_info.get("role") == "owner"
+    assert user_info.get("id") == owner_doc["id"]
+    assert user_info.get("name")
+    assert user_info.get("initials")
 
 
 def test_create_school_duplicate_id_returns_409(client, monkeypatch):
+    """R12.4: 409 only fires when provisioning is fully complete (owner auth row exists)."""
     monkeypatch.setattr(operator_mod, "send_welcome_email", lambda *a, **kw: None)
-    _fake_db.schools.docs.append({"school_id": "sunrise-academy", "status": "onboarding"})
+    _fake_db.schools.docs.append({"school_id": "sunrise-academy", "status": "active"})
+    _fake_db.auth_users.docs.append({
+        "id": "user-existing",
+        "schoolId": "sunrise-academy",
+        "role": "owner",
+        "username_lower": "owner@sunrise.edu",
+    })
     resp = client.post("/api/operator/schools", json=_VALID_BODY, headers=_owner_headers())
     assert resp.status_code == 409
     assert "already exists" in resp.json()["detail"]
+
+
+def test_create_school_partial_failure_allows_resume(client, monkeypatch):
+    """R12.4 AC2: a stale schools row (no owner auth) lets provisioning resume cleanly."""
+    monkeypatch.setattr(operator_mod, "send_welcome_email", lambda *a, **kw: None)
+    _fake_db.schools.docs.append({"school_id": "sunrise-academy", "status": "onboarding"})
+    # No auth_users row → partial failure state
+    resp = client.post("/api/operator/schools", json=_VALID_BODY, headers=_owner_headers())
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True
+    # Auth row was created on resume
+    owner = next((d for d in _fake_db.auth_users.docs if d.get("schoolId") == "sunrise-academy"), None)
+    assert owner is not None
+    assert owner.get("username_lower") == "owner@sunrise.edu"
 
 
 def test_create_school_invalid_slug_returns_400(client):

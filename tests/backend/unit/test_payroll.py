@@ -11,7 +11,8 @@ def _owner_h():
 
 
 def _accountant_h():
-    t = create_jwt({"user_id": "a1", "role": "admin", "name": "A", "sub_category": "accounts"})
+    # R12.5 AC3: canonical sub_category is "accountant"; "accounts" is legacy (fees domain only).
+    t = create_jwt({"user_id": "a1", "role": "admin", "name": "A", "sub_category": "accountant"})
     return {"Authorization": f"Bearer {t}"}
 
 

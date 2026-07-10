@@ -73,6 +73,7 @@ class FakeRazorpayClient:
 
 @pytest.fixture
 def token_db(monkeypatch):
+    # R12.2: add branches collection so _resolve_school_for_branch works in tests.
     db = type(
         "TokenDb",
         (),
@@ -80,10 +81,12 @@ def token_db(monkeypatch):
             "token_balances": FakeCollection(),
             "token_usage": FakeCollection(),
             "token_purchases": FakeCollection(),
+            "branches": FakeCollection([{"id": "branch-a", "schoolId": "school-a"}]),
         },
     )()
     import services.razorpay_service as svc
     monkeypatch.setattr(svc, "get_db", lambda: db)
+    monkeypatch.setattr(svc, "get_raw_db", lambda: db)
     monkeypatch.setattr(svc, "_razorpay_client", lambda: FakeRazorpayClient())
     import routes.tokens as tok_routes
     monkeypatch.setattr(tok_routes, "get_db", lambda: db, raising=False)

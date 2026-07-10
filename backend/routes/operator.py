@@ -20,10 +20,10 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from database import get_db, get_raw_db, get_school_id
+from database import get_db, get_raw_db, get_txn_session
 from middleware.auth import hash_password, require_owner
 from services.ai_rate_limiter import get_current_count, resolve_limit
-from tenant import scoped_filter
+from tenant import scoped_filter, get_school_id
 
 logger = logging.getLogger(__name__)
 
@@ -251,43 +251,69 @@ async def create_school(request: Request, user: dict = Depends(require_owner)):
             detail="school_id must be a lowercase slug (alphanumerics and single hyphens, e.g. 'sunrise-academy')",
         )
 
-    if await raw_db.schools.find_one({"school_id": school_id}):
-        raise HTTPException(status_code=409, detail=f"School '{school_id}' already exists")
+    existing_school = await raw_db.schools.find_one({"school_id": school_id})
+    if existing_school:
+        # R12.4: distinguish a fully-provisioned school from a partial-failure stub.
+        # A provisioning failure after schools insert but before auth_users insert leaves
+        # a stale schools row with no owner account → allow re-provisioning (resume).
+        owner_row = await raw_db.auth_users.find_one({"schoolId": school_id, "role": "owner"})
+        if owner_row:
+            raise HTTPException(status_code=409, detail=f"School '{school_id}' already exists")
+        # Partial failure — clean up the stub so we can re-provision cleanly.
+        await raw_db.schools.delete_one({"school_id": school_id})
+        await raw_db.school_settings.delete_one({"schoolId": school_id})
 
     now = datetime.now(timezone.utc)
     temp_password = _generate_temp_password()
 
-    await raw_db.schools.insert_one({
-        "_id": school_id,
-        "school_id": school_id,
-        "school_name": school_name,
-        "owner_email": owner_email,
-        "plan_tier": plan_tier,
-        "status": "onboarding",
-        "created_at": now,
-        "created_by": user.get("id"),
-    })
-
-    await raw_db.school_settings.insert_one({
-        "_id": f"settings-{school_id}",
-        "schoolId": school_id,
-        "school_name": school_name,
-        "plan_tier": plan_tier,
-        "created_at": now,
-    })
-
+    # R12.1: derive display name + initials from email for the user_info sub-doc.
+    _name_raw = owner_email.split("@")[0].replace(".", " ").replace("-", " ").replace("_", " ")
+    owner_name = " ".join(p.capitalize() for p in _name_raw.split() if p) or owner_email
+    owner_initials = "".join(p[0].upper() for p in owner_name.split()[:2])
     owner_user_id = f"user-{uuid.uuid4()}"
-    await raw_db.auth_users.insert_one({
-        "_id": owner_user_id,
-        "id": owner_user_id,
-        "schoolId": school_id,
-        "username": owner_email,
-        "role": "owner",
-        "password_hash": hash_password(temp_password),
-        "must_change_password": True,
-        "is_active": True,
-        "created_at": now,
-    })
+
+    # R12.4: wrap all three inserts in a transaction — on failure none is committed.
+    session = await get_txn_session()
+    async with session:
+        async with session.start_transaction():
+            await raw_db.schools.insert_one({
+                "_id": school_id,
+                "school_id": school_id,
+                "school_name": school_name,
+                "owner_email": owner_email,
+                "plan_tier": plan_tier,
+                "status": "onboarding",
+                "created_at": now,
+                "created_by": user.get("id"),
+            }, session=session)
+
+            await raw_db.school_settings.insert_one({
+                "_id": f"settings-{school_id}",
+                "schoolId": school_id,
+                "school_name": school_name,
+                "plan_tier": plan_tier,
+                "created_at": now,
+            }, session=session)
+
+            # R12.1: include username_lower (login lookup key) and user_info sub-doc.
+            await raw_db.auth_users.insert_one({
+                "_id": owner_user_id,
+                "id": owner_user_id,
+                "schoolId": school_id,
+                "username": owner_email,
+                "username_lower": owner_email.lower(),
+                "role": "owner",
+                "user_info": {
+                    "id": owner_user_id,
+                    "role": "owner",
+                    "name": owner_name,
+                    "initials": owner_initials,
+                },
+                "password_hash": hash_password(temp_password),
+                "must_change_password": True,
+                "is_active": True,
+                "created_at": now,
+            }, session=session)
 
     # Welcome notice is best-effort — provisioning must not fail if it raises.
     try:

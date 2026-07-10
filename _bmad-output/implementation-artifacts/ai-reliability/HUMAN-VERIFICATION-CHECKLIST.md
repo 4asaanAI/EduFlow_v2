@@ -133,7 +133,27 @@ R11 shipped 2026-07-10. All stories are unit/integration tested. The checks belo
 
 ---
 
-## E. Future items — added as the initiative progresses
+## E. Platform Reliability — R12 (Onboarding, Billing & Payroll)
+
+These checks require the real running product; tests don't cover them.
+
+### R12.1 — Owner login after provisioning
+- [ ] Provision a new school through the operator panel. **Immediately** try to log in as the owner using the email address — in any case (all-caps, all-lowercase, mixed). It must work on the first attempt. *(Pre-R12, a case mismatch caused silent login failure.)*
+
+### R12.2 + R12.3 — Billing credits land in the right place
+- [ ] Make a Razorpay test payment from the Razorpay dashboard for School B. Confirm only School B's token balance increased. School A's balance must be unchanged. *(Cross-tenant isolation.)*
+- [ ] Make the **first ever top-up** for a brand-new school branch that has never purchased tokens. It must succeed and show the new balance. *(Pre-R12, the first top-up always silently failed due to a MongoDB path conflict.)*
+
+### R12.4 — Provisioning resume after partial failure
+- [ ] This check is best done in a staging environment: provision a school, simulate a crash by killing the server between the DB writes, restart, and call the provision endpoint again. It should resume cleanly (200 + full login works) rather than returning 409. *(Normal users won't trigger this, but ops should confirm the retry path is safe.)*
+
+### R12.5 — Payroll double-submit and role enforcement
+- [ ] Submit a salary disbursement, then immediately submit the same form again (or replay the API call). The second call should return "already paid" with the original record. The payroll total in the UI must show one payment, not two.
+- [ ] Log in as an admin with `sub_category: accounts` (the old fee-accountant role). Try to disburse a salary from the payroll section. It must be rejected (403). Only `sub_category: accountant` or owner should succeed.
+
+---
+
+## F. Future items — added as the initiative progresses
 
 _(The executing agent appends new human-verification items here at each epic close.
 Nothing that needs your eyes should live only in a chat transcript.)_
@@ -144,3 +164,4 @@ Nothing that needs your eyes should live only in a chat transcript.)_
 - **2026-07-10** — Document created (after R9 shipped). Seeded sections A–D: standing checks, R1–R9 post-ship spot-checks, the R10 go/no-go gate, and an R11 placeholder. — executing agent
 - **2026-07-10** — R10 shipped (full self-learning phase 2). Appended §C-post: concrete real-use checks for the new "What I've Learned" panel, feedback→learning loop, routine saving, recalled-memory disclosure, and the cross-user/role privacy checks. Keep learning paused via kill-switch until the panel + signals are watched for ~2 weeks. — executing agent
 - **2026-07-10** — R11 shipped (excellence & evaluation — final epic). Replaced §D placeholder with concrete real-use checks for native FC (R11.2), streaming latency (R11.3), Hinglish/Hindi (R11.4), conversation trace viewer + confidentiality (R11.5), residual hardening (R11.6). Confidentiality standing check added as a permanent verification item. **Initiative complete.** — executing agent
+- **2026-07-10** — R12 shipped (onboarding, billing & payroll integrity). Added §E with 5 real-product verification items: owner login, Razorpay cross-tenant isolation, first-topup success, provisioning resume, and payroll double-submit + role enforcement. — executing agent

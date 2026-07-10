@@ -25,8 +25,9 @@ import razorpay
 
 from pymongo.errors import DuplicateKeyError
 
-from database import get_db
+from database import get_db, get_raw_db, get_txn_session
 from services.token_service import DEFAULT_ROLE_LIMITS, PACKS
+from tenant import _school_id_var
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +127,14 @@ async def create_subscription_session(
     return {"checkout_url": subscription["short_url"], "session_id": subscription["id"]}
 
 
+async def _resolve_school_for_branch(raw_db, branch_id: str) -> str | None:
+    """Resolve the schoolId that owns branch_id. Returns None if not found."""
+    branch = await raw_db.branches.find_one({"id": branch_id})
+    if branch:
+        return branch.get("schoolId")
+    return None
+
+
 def verify_webhook(raw_body: bytes, signature: str) -> dict:
     """Verify a Razorpay webhook signature and return the parsed event dict.
 
@@ -160,13 +169,26 @@ async def handle_payment_link_paid(link: dict) -> None:
         logger.error("payment_link_paid_unknown_pack", extra={"pack_id": pack_id, "reference_id": reference_id})
         return
 
-    db = get_db()
-    existing = await db.token_purchases.find_one({"razorpay_reference_id": reference_id})
-    if existing:
-        logger.info("payment_link_paid_already_processed", extra={"reference_id": reference_id})
+    # R12.2: resolve school_id from branch, not from ambient env-default.
+    raw_db = get_raw_db()
+    school_id = await _resolve_school_for_branch(raw_db, branch_id)
+    if not school_id:
+        logger.error(
+            "payment_link_paid_unresolvable_school",
+            extra={"branch_id": branch_id, "reference_id": reference_id},
+        )
         return
 
-    await purchase_topup_razorpay(db, branch_id, user_id, pack_id, reference_id, pack["tokens"])
+    ctx_token = _school_id_var.set(school_id)
+    try:
+        db = get_db()
+        existing = await db.token_purchases.find_one({"razorpay_reference_id": reference_id})
+        if existing:
+            logger.info("payment_link_paid_already_processed", extra={"reference_id": reference_id})
+            return
+        await purchase_topup_razorpay(db, branch_id, user_id, pack_id, reference_id, pack["tokens"])
+    finally:
+        _school_id_var.reset(ctx_token)
 
 
 async def handle_subscription_activated(subscription: dict) -> None:
@@ -188,31 +210,45 @@ async def handle_subscription_activated(subscription: dict) -> None:
         datetime.fromtimestamp(current_end, tz=timezone.utc).isoformat() if current_end else None
     )
 
-    db = get_db()
-    now_iso = datetime.now(timezone.utc).isoformat()
-    await db.token_balances.update_one(
-        {"branch_id": branch_id},
-        {
-            "$set": {
-                "subscription_id": subscription_id,
-                "subscription_user_id": user_id,
-                "subscription_status": status,
-                "subscription_plan": plan_id,
-                "subscription_current_period_end": period_end_iso,
-                "razorpay_customer_id": customer_id,
-                "updated_at": now_iso,
+    # R12.2: resolve school_id from branch, not from ambient env-default.
+    raw_db = get_raw_db()
+    school_id = await _resolve_school_for_branch(raw_db, branch_id)
+    if not school_id:
+        logger.error(
+            "subscription_activated_unresolvable_school",
+            extra={"branch_id": branch_id, "subscription_id": subscription_id},
+        )
+        return
+
+    ctx_token = _school_id_var.set(school_id)
+    try:
+        db = get_db()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        await db.token_balances.update_one(
+            {"branch_id": branch_id},
+            {
+                "$set": {
+                    "subscription_id": subscription_id,
+                    "subscription_user_id": user_id,
+                    "subscription_status": status,
+                    "subscription_plan": plan_id,
+                    "subscription_current_period_end": period_end_iso,
+                    "razorpay_customer_id": customer_id,
+                    "updated_at": now_iso,
+                },
+                "$setOnInsert": {
+                    "branch_id": branch_id,
+                    "role_limits": DEFAULT_ROLE_LIMITS,
+                    "school_topup_pool": 0,
+                    "self_recharge_enabled": True,
+                    "personal_topups": {},
+                    "created_at": now_iso,
+                },
             },
-            "$setOnInsert": {
-                "branch_id": branch_id,
-                "role_limits": DEFAULT_ROLE_LIMITS,
-                "school_topup_pool": 0,
-                "self_recharge_enabled": True,
-                "personal_topups": {},
-                "created_at": now_iso,
-            },
-        },
-        upsert=True,
-    )
+            upsert=True,
+        )
+    finally:
+        _school_id_var.reset(ctx_token)
     logger.info(
         "subscription_activated",
         extra={"branch_id": branch_id, "subscription_id": subscription_id, "plan_id": plan_id},
@@ -229,19 +265,23 @@ async def handle_subscription_charged(subscription: dict, payment_id: str | None
         logger.warning("subscription_charged_missing_id", extra={"reference_id": reference_id})
         return
 
-    db = get_db()
-    existing = await db.token_purchases.find_one({"razorpay_reference_id": reference_id})
-    if existing:
-        logger.info("subscription_charged_already_processed", extra={"reference_id": reference_id})
-        return
-
-    balance_doc = await db.token_balances.find_one({"subscription_id": subscription_id})
+    # R12.2: use raw_db to find the balance doc cross-tenant, then scope to resolved school.
+    raw_db = get_raw_db()
+    # balance_doc lookup needs to span all schools (subscription_id is globally unique).
+    balance_doc = await raw_db.token_balances.find_one({"subscription_id": subscription_id})
     if not balance_doc:
         logger.warning("subscription_charged_no_balance_doc", extra={"subscription_id": subscription_id})
         return
 
     branch_id = balance_doc["branch_id"]
-    # user_id comes from notes stored when the subscription was created
+    school_id = balance_doc.get("schoolId") or await _resolve_school_for_branch(raw_db, branch_id)
+    if not school_id:
+        logger.error(
+            "subscription_charged_unresolvable_school",
+            extra={"branch_id": branch_id, "subscription_id": subscription_id},
+        )
+        return
+
     notes = subscription.get("notes") or {}
     user_id = notes.get("user_id") or balance_doc.get("subscription_user_id", "unknown")
     plan_id = balance_doc.get("subscription_plan")
@@ -258,33 +298,51 @@ async def handle_subscription_charged(subscription: dict, payment_id: str | None
         datetime.fromtimestamp(current_end, tz=timezone.utc).isoformat() if current_end else None
     )
 
+    # R12.2: scope DB to the resolved school.
+    ctx_token = _school_id_var.set(school_id)
     try:
-        await db.token_purchases.insert_one(
-            {
-                "branch_id": branch_id,
-                "user_id": user_id,
-                "pack_id": plan_id,
-                "tokens": tokens,
-                "price_inr": plan["price_inr"] if plan else 0,
-                "razorpay_reference_id": reference_id,
-                "payment_provider": "razorpay",
-                "created_at": now_iso,
-            }
-        )
-    except DuplicateKeyError:
-        logger.info("subscription_charged_already_processed_concurrent", extra={"reference_id": reference_id})
-        return
+        db = get_db()
+        existing = await db.token_purchases.find_one({"razorpay_reference_id": reference_id})
+        if existing:
+            logger.info("subscription_charged_already_processed", extra={"reference_id": reference_id})
+            return
 
-    await db.token_balances.update_one(
-        {"branch_id": branch_id},
-        {
-            "$inc": {f"personal_topups.{user_id}": tokens},
-            "$set": {
-                "updated_at": now_iso,
-                **({"subscription_current_period_end": period_end_iso} if period_end_iso else {}),
-            },
-        },
-    )
+        # R12.3: atomic — both operations in a single transaction.
+        session = await get_txn_session()
+        async with session:
+            async with session.start_transaction():
+                try:
+                    await db.token_purchases.insert_one(
+                        {
+                            "branch_id": branch_id,
+                            "user_id": user_id,
+                            "pack_id": plan_id,
+                            "tokens": tokens,
+                            "price_inr": plan["price_inr"] if plan else 0,
+                            "razorpay_reference_id": reference_id,
+                            "payment_provider": "razorpay",
+                            "created_at": now_iso,
+                        },
+                        session=session,
+                    )
+                except DuplicateKeyError:
+                    logger.info("subscription_charged_already_processed_concurrent", extra={"reference_id": reference_id})
+                    return
+
+                await db.token_balances.update_one(
+                    {"branch_id": branch_id},
+                    {
+                        "$inc": {f"personal_topups.{user_id}": tokens},
+                        "$set": {
+                            "updated_at": now_iso,
+                            **({"subscription_current_period_end": period_end_iso} if period_end_iso else {}),
+                        },
+                    },
+                    session=session,
+                )
+    finally:
+        _school_id_var.reset(ctx_token)
+
     logger.info(
         "subscription_renewal_credited",
         extra={"branch_id": branch_id, "tokens": tokens, "reference_id": reference_id},
@@ -296,22 +354,40 @@ async def handle_subscription_cancelled(subscription: dict) -> None:
     notes = subscription.get("notes") or {}
     branch_id = notes.get("branch_id")
     subscription_id = subscription.get("id")
-    db = get_db()
+
+    # R12.2: use raw_db to look up balance doc cross-tenant first.
+    raw_db = get_raw_db()
+    school_id = None
 
     if not branch_id and subscription_id:
-        balance_doc = await db.token_balances.find_one({"subscription_id": subscription_id})
+        balance_doc = await raw_db.token_balances.find_one({"subscription_id": subscription_id})
         if balance_doc:
             branch_id = balance_doc.get("branch_id")
+            school_id = balance_doc.get("schoolId")
 
     if not branch_id:
         logger.warning("subscription_cancelled_no_branch", extra={"subscription_id": subscription_id})
         return
 
-    now_iso = datetime.now(timezone.utc).isoformat()
-    await db.token_balances.update_one(
-        {"branch_id": branch_id},
-        {"$set": {"subscription_status": "canceled", "updated_at": now_iso}},
-    )
+    if not school_id:
+        school_id = await _resolve_school_for_branch(raw_db, branch_id)
+    if not school_id:
+        logger.error(
+            "subscription_cancelled_unresolvable_school",
+            extra={"branch_id": branch_id, "subscription_id": subscription_id},
+        )
+        return
+
+    ctx_token = _school_id_var.set(school_id)
+    try:
+        db = get_db()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        await db.token_balances.update_one(
+            {"branch_id": branch_id},
+            {"$set": {"subscription_status": "canceled", "updated_at": now_iso}},
+        )
+    finally:
+        _school_id_var.reset(ctx_token)
     logger.info(
         "subscription_canceled",
         extra={"branch_id": branch_id, "subscription_id": subscription_id},
@@ -329,39 +405,48 @@ async def purchase_topup_razorpay(
     now_iso = datetime.now(timezone.utc).isoformat()
     pack = PACKS.get(pack_id, {})
 
-    try:
-        await db.token_purchases.insert_one(
-            {
-                "branch_id": branch_id,
-                "user_id": user_id,
-                "pack_id": pack_id,
-                "tokens": tokens,
-                "price_inr": pack.get("price_inr", 0),
-                "razorpay_reference_id": razorpay_reference_id,
-                "payment_provider": "razorpay",
-                "created_at": now_iso,
-            }
-        )
-    except DuplicateKeyError:
-        logger.info("razorpay_topup_already_processed", extra={"reference_id": razorpay_reference_id})
-        return
+    # R12.3: atomic — claim insert and balance increment in a single transaction.
+    session = await get_txn_session()
+    async with session:
+        async with session.start_transaction():
+            try:
+                await db.token_purchases.insert_one(
+                    {
+                        "branch_id": branch_id,
+                        "user_id": user_id,
+                        "pack_id": pack_id,
+                        "tokens": tokens,
+                        "price_inr": pack.get("price_inr", 0),
+                        "razorpay_reference_id": razorpay_reference_id,
+                        "payment_provider": "razorpay",
+                        "created_at": now_iso,
+                    },
+                    session=session,
+                )
+            except DuplicateKeyError:
+                logger.info("razorpay_topup_already_processed", extra={"reference_id": razorpay_reference_id})
+                return
 
-    await db.token_balances.update_one(
-        {"branch_id": branch_id},
-        {
-            "$inc": {f"personal_topups.{user_id}": tokens},
-            "$set": {"updated_at": now_iso},
-            "$setOnInsert": {
-                "branch_id": branch_id,
-                "role_limits": DEFAULT_ROLE_LIMITS,
-                "school_topup_pool": 0,
-                "self_recharge_enabled": True,
-                "personal_topups": {},
-                "created_at": now_iso,
-            },
-        },
-        upsert=True,
-    )
+            # R12.3 AC1: removed "personal_topups": {} from $setOnInsert — it conflicted
+            # with $inc on personal_topups.{user_id} when the balance doc didn't yet exist.
+            # MongoDB's $inc on a sub-path auto-creates the parent object on upsert.
+            await db.token_balances.update_one(
+                {"branch_id": branch_id},
+                {
+                    "$inc": {f"personal_topups.{user_id}": tokens},
+                    "$set": {"updated_at": now_iso},
+                    "$setOnInsert": {
+                        "branch_id": branch_id,
+                        "role_limits": DEFAULT_ROLE_LIMITS,
+                        "school_topup_pool": 0,
+                        "self_recharge_enabled": True,
+                        "created_at": now_iso,
+                    },
+                },
+                upsert=True,
+                session=session,
+            )
+
     logger.info(
         "razorpay_topup_credited",
         extra={

@@ -12,17 +12,14 @@ from pymongo.errors import DuplicateKeyError
 
 from database import get_db
 from middleware.auth import get_current_user, require_owner
+from services.payroll_service import (
+    is_owner_or_accountant as _is_owner_or_accountant,
+    disburse_salary,
+    upsert_salary_structure,
+)
 from tenant import scoped_query, get_school_id
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
-
-
-def _is_owner_or_accountant(user: dict) -> bool:
-    if user.get("role") == "owner":
-        return True
-    if user.get("role") == "admin" and user.get("sub_category") in ("accounts", "accountant"):
-        return True
-    return False
 
 
 def _require_owner_or_accountant(request: Request) -> dict:
@@ -46,29 +43,22 @@ async def list_salary_structures(request: Request):
 
 @router.post("/structures")
 async def create_salary_structure(request: Request, user: dict = Depends(require_owner)):
-    """Create a salary structure. Owner only."""
+    """Create/update a salary structure. Owner only. R12.5: delegates to payroll_service."""
     db = get_db()
     body = await request.json()
-    bid = user.get("branch_id")
-
-    structure = {
-        "id": str(uuid.uuid4()),
-        "staff_id": body.get("staff_id", ""),
-        "designation": body.get("designation", ""),
-        "base_salary": body.get("base_salary", 0),
-        "allowances": body.get("allowances", {}),
-        "deductions": body.get("deductions", {}),
-        "effective_from": body.get("effective_from", datetime.now(timezone.utc).strftime("%Y-%m")),
-        "created_by": user["id"],
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    doc = {**structure}
-    if bid:
-        doc["branch_id"] = bid
-    doc["schoolId"] = get_school_id()
-
-    await db.salary_structures.insert_one(doc)
-    return {"success": True, "data": structure}
+    doc = await upsert_salary_structure(
+        db,
+        staff_id=body.get("staff_id", ""),
+        base_salary=float(body.get("base_salary", 0)),
+        allowances=body.get("allowances"),
+        deductions=body.get("deductions"),
+        effective_from=body.get("effective_from"),
+        is_active=body.get("is_active", True),
+        updated_by=user["id"],
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id"),
+    )
+    return {"success": True, "data": doc}
 
 
 @router.get("/disbursements")
@@ -99,38 +89,45 @@ async def list_disbursements(request: Request, month: str = None):
 
 
 @router.post("/disburse")
-async def create_disbursement(request: Request, user: dict = Depends(require_owner)):
-    """Record a salary disbursement. Owner only. EC-10.4: unique per (staff_id, month)."""
+async def create_disbursement(request: Request):
+    """Record a salary disbursement. Owner or accountant. R12.5: delegates to payroll_service."""
+    user = _require_owner_or_accountant(request)
     db = get_db()
     body = await request.json()
     bid = user.get("branch_id")
 
     staff_id = body.get("staff_id", "")
     month = body.get("month", datetime.now(timezone.utc).strftime("%Y-%m"))
+    # Accept both canonical (base_salary/net_amount) and legacy (gross/net) field names.
+    base_salary = float(body.get("base_salary") or body.get("gross") or 0)
+    raw_deductions = body.get("deductions", {})
+    deductions_amt = (
+        sum(float(v or 0) for v in raw_deductions.values())
+        if isinstance(raw_deductions, dict)
+        else float(raw_deductions or 0)
+    )
+    net_override = body.get("net_amount") or body.get("net")
+    # If caller provides explicit net, derive deductions to match.
+    if net_override is not None and base_salary > 0:
+        deductions_amt = max(base_salary - float(net_override), 0.0)
 
-    disbursement = {
-        "id": str(uuid.uuid4()),
-        "staff_id": staff_id,
-        "month": month,
-        "gross": body.get("gross", 0),
-        "deductions": body.get("deductions", {}),
-        "net": body.get("net", body.get("gross", 0)),
-        "status": body.get("status", "pending"),
-        "disbursed_by": user["id"],
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    doc = {**disbursement}
-    if bid:
-        doc["branch_id"] = bid
-    doc["schoolId"] = get_school_id()
-
-    try:
-        await db.salary_disbursements.insert_one(doc)
-    except DuplicateKeyError:
-        # EC-10.4: unique index prevents concurrent double-disbursement
-        raise HTTPException(409, "Salary already disbursed for this staff member this month")
-
-    return {"success": True, "data": disbursement}
+    doc, idempotent = await disburse_salary(
+        db,
+        staff_id=staff_id,
+        month=month,
+        base_salary=base_salary,
+        allowances=0.0,
+        deductions=deductions_amt,
+        payment_mode=body.get("payment_mode", "bank_transfer"),
+        reference=body.get("reference"),
+        status=body.get("status", "paid"),
+        paid_by=user["id"],
+        school_id=get_school_id(),
+        branch_id=bid,
+    )
+    if idempotent:
+        return {"success": True, "data": doc, "idempotent": True}
+    return {"success": True, "data": doc}
 
 
 @router.patch("/disbursements/{disbursement_id}/process")
