@@ -47,14 +47,55 @@ def test_sse_startup_defaults_to_single_worker(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# R14.1 — layaastat fire-and-forget: tasks held to prevent GC (already shipped R9.3)
+# R14.1 — layaastat fire-and-forget: telemetry is held, never silently GC'd/lost
+#
+# The former single-module client used a `_pending_tasks` set to hold strong refs
+# to fire-and-forget tasks. The unified LayaaStat package (merged from the
+# layaastat-integration branch) supersedes that with a buffered store-and-forward
+# `LayaaMonitor`: events live in a strongly-referenced buffer until an explicit
+# flush delivers them — a stronger no-loss guarantee than the old task set. These
+# tests assert that new guarantee plus the back-compat API surface the app calls.
 # ---------------------------------------------------------------------------
 
-def test_layaastat_pending_tasks_set_exists():
-    """_pending_tasks set exists to hold strong refs to fire-and-forget tasks."""
+def test_layaastat_backcompat_api_surface_exists():
+    """auth/chat/memory + llm_client depend on emit_event/emit_llm_span; the
+    server/ai_metrics depend on track_event/flush/is_enabled. All live on the
+    single package now."""
     from services import layaastat
-    assert hasattr(layaastat, "_pending_tasks")
-    assert isinstance(layaastat._pending_tasks, set)
+    for name in ("emit_event", "emit_llm_span", "track_event", "flush",
+                 "is_enabled", "heartbeat_seconds", "record_health_heartbeat"):
+        assert hasattr(layaastat, name), f"layaastat.{name} missing"
+
+
+async def test_layaastat_events_are_buffered_and_delivered_not_lost():
+    """Tracked events are held in the monitor's buffer and delivered on flush —
+    they are never dropped/GC'd mid-flight (R14.1 AC2 intent)."""
+    from services.layaastat.client import LayaaMonitor
+
+    sent: list = []
+
+    async def fake_send(path, body):
+        sent.append((path, body))
+        return "ok"
+
+    monitor = LayaaMonitor(
+        endpoint="https://layaastat.example",
+        ingest_key="lsk_test",
+        flush_at=2,
+        send_func=fake_send,
+    )
+
+    # First event is held (buffered), not sent yet — proving a strong ref is kept.
+    await monitor.track("user_login", distinct_id="u1", properties={"role": "owner"})
+    assert sent == []
+    assert len(monitor._events) == 1
+
+    # Second event hits flush_at → the buffered batch is delivered (nothing lost).
+    await monitor.track("user_login", distinct_id="u2", properties={"role": "teacher"})
+    assert len(sent) == 1
+    path, body = sent[0]
+    assert path == "/api/ingest"
+    assert len(body["events"]) == 2
 
 
 # ---------------------------------------------------------------------------

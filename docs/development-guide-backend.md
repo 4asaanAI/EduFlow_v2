@@ -39,7 +39,7 @@ uvicorn server:app --reload --port 8000
 
 ```bash
 # Required
-MONGO_URL=mongodb+srv://user:pass@cluster.mongodb.net/
+MONGO_URL=mongodb+srv://<DB_USER>:<DB_PASSWORD>@<CLUSTER_HOST>/
 DB_NAME=eduflow_dev
 JWT_SECRET=your-dev-secret-here
 
