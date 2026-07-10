@@ -89,3 +89,9 @@ def test_protected_post_routes_require_auth(client):
             failures.append(f"POST {test_path} → {status} (expected 401/403)")
 
     assert not failures, "Unauthenticated routes detected:\n" + "\n".join(failures)
+
+
+def test_permissions_policy_keeps_microphone_available_for_same_origin(client):
+    resp = client.get("/api/health")
+    assert resp.status_code == 200
+    assert "microphone=(self)" in resp.headers.get("Permissions-Policy", "")

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowUp, Slash, AtSign, Paperclip, X, Loader } from 'lucide-react';
+import { ArrowUp, Slash, AtSign, Paperclip, X, Loader, Mic } from 'lucide-react';
 import { useUser } from '../contexts/UserContext';
 import { getAuthHeaders } from '../lib/authSession';
 import { uploadChatFile } from '../lib/api';
@@ -85,6 +85,27 @@ function getHeaders() {
   return getAuthHeaders(null);
 }
 
+function getSpeechRecognitionCtor() {
+  if (typeof window === 'undefined') return null;
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+function getVoiceErrorMessage(error) {
+  switch (error) {
+    case 'not-allowed':
+    case 'service-not-allowed':
+      return 'Microphone access was blocked. Allow mic access and try again.';
+    case 'audio-capture':
+      return 'No microphone was detected on this device.';
+    case 'network':
+      return 'Voice capture lost connection. Please check your network and try again.';
+    case 'no-speech':
+      return 'No speech was detected. Try again and speak a little closer to the mic.';
+    default:
+      return 'Voice capture could not start. Please try again.';
+  }
+}
+
 export default function InputBar({ onSend, disabled, isDark = true }) {
   const { currentUser } = useUser();
   const [text, setText] = useState('');
@@ -98,20 +119,32 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
   const [attachedFile, setAttachedFile] = useState(null);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [voiceError, setVoiceError] = useState('');
+  const [isListening, setIsListening] = useState(false);
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
   const slashPosRef = useRef(-1);
   const atPosRef = useRef(-1);
+  const recognitionRef = useRef(null);
+  const listeningRef = useRef(false);
+  const speechBaseRef = useRef('');
+  const finalTranscriptRef = useRef('');
+  const voiceSessionRef = useRef(0);
+  const userStoppedVoiceRef = useRef(false);
 
   const allTools = TOOLS_BY_ROLE[currentUser.role] || [];
+  const voiceSupported = Boolean(getSpeechRecognitionCtor());
 
-  const handleChange = (e) => {
-    const val = e.target.value;
+  const resizeTextarea = (el = textareaRef.current) => {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+  };
+
+  const syncComposerState = (val, cursor = val.length, textareaEl = textareaRef.current) => {
     setText(val);
-    e.target.style.height = 'auto';
-    e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px';
+    resizeTextarea(textareaEl);
 
-    const cursor = e.target.selectionStart;
     const beforeCursor = val.slice(0, cursor);
     const slashMatch = beforeCursor.match(/\/([a-zA-Z0-9-]*)$/);
     const atMatch = beforeCursor.match(/@([a-zA-Z0-9 ]*)$/);
@@ -121,12 +154,14 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
       const pos = cursor - slashMatch[0].length;
       slashPosRef.current = pos;
       setSlashQuery(query);
-      const filtered = allTools.filter(t => t.label.includes(query) || t.desc.toLowerCase().includes(query));
-      setSlashFiltered(filtered);
+      setSlashFiltered(allTools.filter(t => t.label.includes(query) || t.desc.toLowerCase().includes(query)));
       setShowSlash(true);
       setShowAt(false);
       setSelectedIdx(0);
-    } else if (atMatch) {
+      return;
+    }
+
+    if (atMatch) {
       const query = atMatch[1];
       const pos = cursor - atMatch[0].length;
       atPosRef.current = pos;
@@ -139,20 +174,49 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
           .then(r => r.json())
           .then(r => { if (r.success) setAtResults(r.data || []); })
           .catch(() => setAtResults([]));
+      } else {
+        setAtResults([]);
       }
-    } else {
-      setShowSlash(false);
-      setShowAt(false);
+      return;
+    }
+
+    setShowSlash(false);
+    setShowAt(false);
+    setAtResults([]);
+  };
+
+  const stopVoiceCapture = ({ discardTranscript = false } = {}) => {
+    const recognition = recognitionRef.current;
+    userStoppedVoiceRef.current = true;
+    listeningRef.current = false;
+    setIsListening(false);
+    if (discardTranscript) {
+      voiceSessionRef.current += 1;
+      recognitionRef.current = null;
+    }
+    if (!recognition) return;
+    try {
+      if (discardTranscript) recognition.abort();
+      else recognition.stop();
+    } catch {
+      recognitionRef.current = null;
     }
   };
 
+  const handleChange = (e) => {
+    if (listeningRef.current) stopVoiceCapture({ discardTranscript: true });
+    setVoiceError('');
+    syncComposerState(e.target.value, e.target.selectionStart, e.target);
+  };
+
   const insertSlashTool = (tool) => {
+    if (listeningRef.current) stopVoiceCapture({ discardTranscript: true });
     const cursor = textareaRef.current?.selectionStart || text.length;
     const beforeSlash = text.slice(0, slashPosRef.current);
     const afterCursor = text.slice(cursor);
     const insertion = `/${tool.label} `;
     const newText = beforeSlash + insertion + afterCursor;
-    setText(newText);
+    syncComposerState(newText, beforeSlash.length + insertion.length);
     setShowSlash(false);
     textareaRef.current?.focus();
     setTimeout(() => {
@@ -162,11 +226,12 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
   };
 
   const insertAtMention = (person) => {
+    if (listeningRef.current) stopVoiceCapture({ discardTranscript: true });
     const cursor = textareaRef.current?.selectionStart || text.length;
     const beforeAt = text.slice(0, atPosRef.current);
     const afterCursor = text.slice(cursor);
     const insertion = `@${person.name} `;
-    setText(beforeAt + insertion + afterCursor);
+    syncComposerState(beforeAt + insertion + afterCursor, beforeAt.length + insertion.length);
     setShowAt(false);
     textareaRef.current?.focus();
     setTimeout(() => {
@@ -191,6 +256,89 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
     if (e.key === 'Enter' && !e.shiftKey && !showSlash && !showAt) {
       e.preventDefault();
       handleSend();
+    }
+  };
+
+  const handleVoiceToggle = () => {
+    if (disabled || uploadingFile) return;
+    if (isListening) {
+      stopVoiceCapture();
+      return;
+    }
+
+    const SpeechRecognition = getSpeechRecognitionCtor();
+    if (!SpeechRecognition) {
+      setVoiceError('Voice input is not supported in this browser.');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    const sessionId = voiceSessionRef.current + 1;
+    voiceSessionRef.current = sessionId;
+    userStoppedVoiceRef.current = false;
+    speechBaseRef.current = text.trimEnd();
+    finalTranscriptRef.current = '';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+    const preferredLanguage = typeof navigator !== 'undefined'
+      ? (navigator.languages?.[0] || navigator.language)
+      : null;
+    recognition.lang = preferredLanguage || 'en-IN';
+
+    recognition.onresult = (event) => {
+      if (voiceSessionRef.current !== sessionId) return;
+      let committed = finalTranscriptRef.current;
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const chunk = (event.results[i]?.[0]?.transcript || '').trim();
+        if (!chunk) continue;
+        if (event.results[i].isFinal) {
+          committed = committed ? `${committed} ${chunk}` : chunk;
+        } else {
+          interim = interim ? `${interim} ${chunk}` : chunk;
+        }
+      }
+      finalTranscriptRef.current = committed.replace(/\s+/g, ' ').trim();
+      const nextText = [speechBaseRef.current, finalTranscriptRef.current, interim]
+        .filter(Boolean)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      syncComposerState(nextText, nextText.length);
+    };
+
+    recognition.onerror = (event) => {
+      if (voiceSessionRef.current !== sessionId) return;
+      if (userStoppedVoiceRef.current && event.error === 'aborted') return;
+      setVoiceError(getVoiceErrorMessage(event.error));
+    };
+
+    recognition.onend = () => {
+      if (voiceSessionRef.current !== sessionId) return;
+      recognitionRef.current = null;
+      listeningRef.current = false;
+      setIsListening(false);
+      userStoppedVoiceRef.current = false;
+      setTimeout(() => {
+        textareaRef.current?.focus();
+        const end = textareaRef.current?.value?.length || 0;
+        textareaRef.current?.setSelectionRange(end, end);
+      }, 0);
+    };
+
+    recognitionRef.current = recognition;
+    listeningRef.current = true;
+    setIsListening(true);
+    setVoiceError('');
+
+    try {
+      recognition.start();
+    } catch {
+      recognitionRef.current = null;
+      listeningRef.current = false;
+      setIsListening(false);
+      setVoiceError('Voice capture could not start. Please try again.');
     }
   };
 
@@ -219,6 +367,7 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
   };
 
   const handleSend = () => {
+    if (listeningRef.current) stopVoiceCapture({ discardTranscript: true });
     const trimmed = text.trim();
     if ((!trimmed && !attachedFile) || disabled || uploadingFile) return;
     let finalText = trimmed;
@@ -234,6 +383,7 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
     setText('');
     setAttachedFile(null);
     setUploadError('');
+    setVoiceError('');
     setShowSlash(false);
     setShowAt(false);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -242,11 +392,21 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
     // silently lost. A normal send resolves undefined and nothing is restored.
     Promise.resolve(result).then((ok) => {
       if (ok === false) {
-        setText(snapshotText);
+        syncComposerState(snapshotText, snapshotText.length);
         setAttachedFile(snapshotFile);
       }
     }).catch(() => {});
   };
+
+  useEffect(() => (
+    () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch {}
+      }
+    }
+  ), []);
 
   const inputBg = isDark ? '#252525' : '#ffffff';
   const inputBorder = isDark ? '#333' : '#e5e5e5';
@@ -256,6 +416,11 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
   const gradBg = isDark ? '#1a1a1a' : '#f5f5f5';
   const footerColor = isDark ? '#666' : '#525252';
   const muted = isDark ? '#888' : '#525252';
+  const voiceButtonTitle = !voiceSupported
+    ? 'Voice input is available in supported browsers with microphone access'
+    : isListening
+      ? 'Stop voice input'
+      : 'Start voice input';
 
   const showList = showSlash ? slashFiltered : showAt ? atResults : [];
 
@@ -323,8 +488,10 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
           </div>
         )}
 
-        {uploadError && (
-          <div style={{ fontSize: 11, color: '#f87171', marginBottom: 6 }}>{uploadError}</div>
+        {(uploadError || voiceError) && (
+          <div style={{ fontSize: 11, color: uploadError ? '#f87171' : '#fbbf24', marginBottom: 6 }}>
+            {uploadError || voiceError}
+          </div>
         )}
 
         <input ref={fileInputRef} type="file" onChange={handleFileSelect} style={{ display: 'none' }} data-testid="file-input"
@@ -357,6 +524,26 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
             {uploadingFile ? <Loader size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Paperclip size={15} />}
           </button>
 
+          <button
+            data-testid="voice-input-btn"
+            onClick={handleVoiceToggle}
+            disabled={disabled || uploadingFile || !voiceSupported}
+            aria-pressed={isListening}
+            title={voiceButtonTitle}
+            style={{
+              width: 32, height: 32, borderRadius: 10, flexShrink: 0,
+              background: isListening ? '#4f8ff715' : 'transparent',
+              border: 'none',
+              cursor: disabled || uploadingFile || !voiceSupported ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: isListening ? '#4f8ff7' : muted,
+              opacity: voiceSupported ? 1 : 0.45,
+              transition: 'background var(--transition-fast), color var(--transition-fast)',
+            }}
+          >
+            <Mic size={15} />
+          </button>
+
           <textarea ref={textareaRef} data-testid="chat-input" value={text} onChange={handleChange} onKeyDown={handleKeyDown}
             placeholder={disabled ? 'EduFlow is thinking...' : 'Message EduFlow...'}
             disabled={disabled} rows={1}
@@ -382,6 +569,9 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
         </div>
         <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8, color: footerColor, fontSize: 11, fontWeight: 400 }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Paperclip size={10} /> attach</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: isListening ? '#4f8ff7' : footerColor }}>
+            <Mic size={10} /> {isListening ? 'listening' : 'voice'}
+          </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Slash size={10} /> tools</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><AtSign size={10} /> mention</span>
           <span>EduFlow AI can make mistakes</span>

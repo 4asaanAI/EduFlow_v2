@@ -57,18 +57,19 @@ MIGRATIONS = [
     ("024_razorpay_fields", "Vendor change Stripe→Razorpay: rename token_balances.stripe_customer_id and token_purchases.stripe_session_id (2026-06-08)"),
     ("025_ai_write_idempotency_index", "AI Layer Hardening D.4: unique index on ai_write_idempotency.idempotency_key for exactly-once AI plan execution (AD6)"),
     ("026_ai_memory_skills", "AI Layer Hardening Epic G: ai_memories + ai_skills indexes ((schoolId,user_id) isolation + expire_at TTL retention)"),
+    ("027_upgrade_role_token_limits_to_1m", "Upgrade owner/admin/teacher/student/principal AI token limits to 1,000,000 per month (2026-07-10)"),
 ]
 
 
 async def is_applied(db, migration_name):
     """Check if a migration has already been applied."""
-    record = await db._migrations.find_one({"name": migration_name})
+    record = await db["_migrations"].find_one({"name": migration_name})
     return record is not None
 
 
 async def mark_applied(db, migration_name, description):
     """Mark a migration as applied."""
-    await db._migrations.insert_one({
+    await db["_migrations"].insert_one({
         "name": migration_name,
         "description": description,
         "applied_at": datetime.now().isoformat(),
@@ -84,7 +85,7 @@ async def show_status(db):
     print("-" * 70)
 
     for name, description in MIGRATIONS:
-        record = await db._migrations.find_one({"name": name})
+        record = await db["_migrations"].find_one({"name": name})
         if record:
             applied_at = record.get("applied_at", "unknown")
             status = "APPLIED"
@@ -93,7 +94,7 @@ async def show_status(db):
             status = "PENDING"
             print(f"  {name:<30} {status:<12} -")
 
-    total_applied = await db._migrations.count_documents({})
+    total_applied = await db["_migrations"].count_documents({})
     total = len(MIGRATIONS)
     print("-" * 70)
     print(f"  {total_applied}/{total} migrations applied")
@@ -102,7 +103,7 @@ async def show_status(db):
 
 async def reset_tracking(db):
     """Clear migration tracking so all migrations can be re-run."""
-    result = await db._migrations.delete_many({})
+    result = await db["_migrations"].delete_many({})
     print(f"\nCleared migration tracking ({result.deleted_count} records removed).")
     print("Run again without --reset to re-apply all migrations.\n")
 
@@ -132,9 +133,9 @@ async def run_all():
         return
 
     # Ensure _migrations index
-    mi_indexes = await db._migrations.index_information()
+    mi_indexes = await db["_migrations"].index_information()
     if "name_1" not in mi_indexes:
-        await db._migrations.create_index("name", unique=True)
+        await db["_migrations"].create_index("name", unique=True)
 
     print("\n" + "=" * 70)
     print("  EDUFLOW MIGRATION RUNNER")

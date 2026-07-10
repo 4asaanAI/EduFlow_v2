@@ -23,6 +23,16 @@ def token_db(monkeypatch):
     return db
 
 
+def test_default_role_limits_are_one_million_for_every_role():
+    assert token_service.DEFAULT_ROLE_LIMITS == {
+        "owner": 1_000_000,
+        "admin": 1_000_000,
+        "teacher": 1_000_000,
+        "student": 1_000_000,
+    }
+    assert token_service.DEFAULT_SUBCATEGORY_LIMITS["principal"] == 1_000_000
+
+
 @pytest.mark.asyncio
 async def test_check_and_reserve_tokens_falls_through_plan_personal_school_then_exhausted(token_db):
     month = token_service._current_month_key()
