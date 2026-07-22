@@ -20,6 +20,33 @@ const blankForm = {
   earned_leave_balance: 15,
 };
 
+// The canonical sub_category list, mirroring backend middleware/auth.py
+// VALID_SUB_CATEGORIES. The backend GATES ACCESS on these exact strings —
+// require_access(..., sub_category="accountant") and the AI tool registry both
+// match them literally. A typo here silently grants nothing, which is why this
+// is a fixed list and not the free-text box it used to be.
+// "owner" and "student" are intentionally absent: neither is assignable from
+// the staff screen.
+const SUB_CATEGORIES = {
+  admin: [
+    { value: 'principal', label: 'Principal' },
+    { value: 'management', label: 'Management' },
+    { value: 'accountant', label: 'Accountant' },
+    { value: 'receptionist', label: 'Receptionist' },
+    { value: 'transport_head', label: 'Transport Head' },
+    { value: 'it_tech', label: 'IT / Tech' },
+    { value: 'maintenance', label: 'Maintenance' },
+    { value: 'support_staff', label: 'Support Staff' },
+  ],
+  teacher: [
+    { value: 'class_teacher', label: 'Class Teacher' },
+    { value: 'subject_teacher', label: 'Subject Teacher' },
+    { value: 'hod', label: 'Head of Department' },
+    { value: 'coordinator', label: 'Coordinator' },
+    { value: 'kg_incharge', label: 'KG In-charge' },
+  ],
+};
+
 const inputStyle = {
   width: '100%',
   background: 'var(--c-bg)',
@@ -30,6 +57,20 @@ const inputStyle = {
   fontSize: 13,
   outline: 'none',
 };
+
+// A person's job title as a human would say it.
+//
+// Every staff record already carries a readable `designation` — "Class Teacher",
+// "Teacher", "Principal" — populated for all 89 records. The table used to print
+// `role / sub_category` instead ("teacher / subject_teacher"), which reads as
+// machine output and duplicates the Type column beside it. Prefer the real
+// designation; fall back to a tidied sub_category, then role.
+function designationOf(profile) {
+  if (profile.designation) return profile.designation;
+  const raw = profile.sub_category || profile.role || profile.staff_type;
+  if (!raw) return '—';
+  return String(raw).split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
 
 function lastUpdatedLabel(value) {
   if (!value) return 'Waiting for attendance stream';
@@ -79,7 +120,18 @@ function StaffModal({ initialStaff, canEditLeaveBalances, onClose, onSaved }) {
   const [error, setError] = useState('');
 
   const setField = (key) => (event) => {
-    setForm((current) => ({ ...current, [key]: event.target.value }));
+    const value = event.target.value;
+    setForm((current) => {
+      const next = { ...current, [key]: value };
+      // Sub-categories are role-specific. Switching role must clear a now-invalid
+      // one, otherwise an admin could be saved carrying "class_teacher" — which
+      // matches no permission rule and silently grants nothing.
+      if (key === 'role') {
+        const allowed = (SUB_CATEGORIES[value] || []).map((s) => s.value);
+        if (!allowed.includes(next.sub_category)) next.sub_category = '';
+      }
+      return next;
+    });
     setError('');
   };
 
@@ -130,15 +182,23 @@ function StaffModal({ initialStaff, canEditLeaveBalances, onClose, onSaved }) {
                 <option value="transport">Transport</option>
               </select>
             </label>
+            {/* Owner is deliberately NOT offered. It is the highest privilege in
+                the platform and must never be grantable from the staff screen —
+                anyone who can add a staff member could otherwise mint a full
+                owner account. Owner is assigned out of band. */}
             <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Role
               <select value={form.role} onChange={setField('role')} style={{ ...inputStyle, marginTop: 5 }}>
                 <option value="teacher">Teacher</option>
                 <option value="admin">Admin</option>
-                <option value="owner">Owner</option>
               </select>
             </label>
             <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Sub Category
-              <input value={form.sub_category || ''} onChange={setField('sub_category')} placeholder="principal, accountant, class_teacher" style={{ ...inputStyle, marginTop: 5 }} />
+              <select value={form.sub_category || ''} onChange={setField('sub_category')} style={{ ...inputStyle, marginTop: 5 }}>
+                <option value="">Select…</option>
+                {(SUB_CATEGORIES[form.role] || []).map(s => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
             </label>
             <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Employee ID
               <input value={form.employee_id || ''} onChange={setField('employee_id')} style={{ ...inputStyle, marginTop: 5 }} />
@@ -363,7 +423,7 @@ export default function StaffTracker() {
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
                 <thead>
                   <tr>
-                    {['Name', 'Type', 'Role', 'Department', 'Leave Balance', 'Actions'].map((header) => (
+                    {['Name', 'Designation', 'Department', 'Leave Balance', 'Actions'].map((header) => (
                       <th key={header} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 750, color: 'var(--c-faint)', textTransform: 'uppercase', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{header}</th>
                     ))}
                   </tr>
@@ -372,9 +432,8 @@ export default function StaffTracker() {
                   {staff.map((profile, index) => (
                     <tr key={profile.id} style={{ borderBottom: index < staff.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
                       <td style={{ padding: '10px 14px', color: 'var(--c-text)', fontSize: 13, fontWeight: 650 }}>{profile.name}<div style={{ color: 'var(--c-faint)', fontSize: 11 }}>{profile.employee_id || 'No employee ID'}</div></td>
-                      <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12 }}>{profile.staff_type}</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12 }}>{profile.role || 'teacher'}{profile.sub_category ? ` / ${profile.sub_category}` : ''}</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12 }}>{profile.department || 'N/A'}</td>
+                      <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12 }}>{designationOf(profile)}</td>
+                      <td style={{ padding: '10px 14px', color: 'var(--c-faint)', fontSize: 12 }}>{profile.department || '—'}</td>
                       <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12 }}>CL {profile.casual_leave_balance ?? 0} · ML {profile.medical_leave_balance ?? 0} · EL {profile.earned_leave_balance ?? 0}</td>
                       <td style={{ padding: '10px 14px' }}>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

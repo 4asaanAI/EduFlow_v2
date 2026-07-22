@@ -275,94 +275,180 @@ html, body, #root {
 
 /* ============================================================
    RESPONSIVE LAYER
-   Goal: every tab, tool, modal and window works on any screen
-   width and reflows on resize. Most grids already use
-   auto-fit/auto-fill minmax() (fluid by default); the rules
-   below fix the fixed-count grids, table overflow, wide media
-   and touch targets without editing each of the ~45 components.
+   Goal: every tab, sub-tab, tool, modal and window works at any
+   viewport size — desktop, laptop, tablet, phone and arbitrarily
+   resized browser windows — and reflows live on resize.
+
+   Most grids already use auto-fit/auto-fill minmax() and are fluid
+   by construction. The rules below handle what those cannot:
+   fixed-count grids, dialog sizing, table overflow, mobile viewport
+   height, and touch ergonomics — centrally, rather than editing
+   each of the ~45 tool components.
+
+   NOTE ON THE [style*="..."] SELECTORS: this codebase styles almost
+   everything with React inline styles, so there are no class hooks
+   to target. Matching on the rendered style attribute is deliberate.
+   If you change a gridTemplateColumns string in a component, check
+   it still matches one of the patterns listed below.
    ============================================================ */
 
-/* --- Global overflow safety: nothing forces the page wider than the viewport --- */
+/* ---------- 1. Mobile viewport height ----------
+   100vh does not account for the mobile browser's collapsing
+   address bar, so the bottom of the app (chat composer, modal
+   action buttons) ends up below the fold and unreachable.
+   dvh tracks the actually-visible height. Behind @supports so
+   older browsers keep the inline 100vh fallback. */
+@supports (height: 100dvh) {
+  html, body, #root                { height: 100dvh; }
+  [data-testid="app-layout"]       { height: 100dvh !important; }
+  .sidebar-wrapper                 { height: 100dvh !important; }
+  .App                             { height: 100dvh; }
+  [style*="min-height: 100vh"]     { min-height: 100dvh !important; }
+}
+
+/* ---------- 2. Global overflow safety ----------
+   Nothing may force the page wider than the viewport. */
 html, body, #root { max-width: 100%; overflow-x: hidden; }
 .app-main-content { min-width: 0; }
 
-/* Media, code and pre never overflow their container */
+/* Long unbroken strings (emails, URLs, IDs, receipt numbers) wrap
+   instead of pushing their container wider than the screen. */
+body { overflow-wrap: break-word; }
+
+/* Media and code never overflow their container. No height:auto on
+   svg — Lucide icons carry explicit width/height attributes. */
 img, video, canvas, svg { max-width: 100%; }
 .prose-chat pre, .prose-chat table { max-width: 100%; }
 
-/* Any raw <table> inside a tool scrolls horizontally instead of
-   stretching the layout. Tools using the shared DataTable already
-   wrap in overflow-x:auto; this covers hand-rolled tables too. */
-.app-main-content table { max-width: 100%; }
+/* ---------- 3. Tables scroll instead of stretching ----------
+   The CONTAINER scrolls, never the table itself.
 
-/* ---------- Tablet / small-laptop: <= 1024px ---------- */
+   An earlier version of this rule set `display: block` on the table and
+   `display: table` on thead/tbody. That makes the header and the body two
+   independent tables, so they compute column widths separately and the
+   headings stop lining up with the cells beneath them (reported 2026-07-22:
+   "Status" heading ending short of its cell, "Type" with no rows under it).
+   Never split a table that way.
+
+   Instead :has() lets the table's own wrapper do the scrolling, which keeps
+   the table a single element and its columns aligned. Cells stop wrapping so
+   the table takes its natural width and the wrapper scrolls. Scoped to the
+   app shell so the offscreen print/PDF builders (fixed 794px A4 width) are
+   untouched. */
+@media (max-width: 900px) {
+  .app-main-content :is(div, section, main, td):has(> table) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+  .app-main-content table {
+    width: auto;
+    min-width: 100%;
+  }
+  .app-main-content table th,
+  .app-main-content table td {
+    white-space: nowrap;
+  }
+}
+
+/* ---------- 4. Dialogs, modals and drawers ----------
+   Applied at EVERY width, not just on phones: a desktop user with a
+   short or narrow window needs the same guard. Any full-screen fixed
+   overlay's card is capped to the viewport and scrolls internally, so
+   the action buttons at the bottom are always reachable. */
+[style*="position: fixed"][style*="inset: 0"] > * {
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+}
+@supports (height: 100dvh) {
+  [style*="position: fixed"][style*="inset: 0"] > * {
+    max-height: calc(100dvh - 24px);
+  }
+}
+
+/* ---------- 5. Fixed-count grids collapse ----------
+   Deliberately NOT scoped to .app-main-content: the profile,
+   settings and command-palette modals render as siblings of it in
+   Layout.js, and login/change-password render outside the shell
+   entirely. Scoping here would skip all of them. */
+
+/* Tablet / small laptop: 3- and 4-up grids drop to two columns */
 @media (max-width: 1024px) {
-  /* Four-up stat/number grids drop to two columns */
-  .app-main-content [style*="repeat(4, 1fr)"],
-  .app-main-content [style*="repeat(4,1fr)"],
-  .app-main-content [style*="1fr 1fr 1fr 1fr"],
-  .app-main-content [style*="repeat(3, 1fr)"],
-  .app-main-content [style*="repeat(3,1fr)"],
-  .app-main-content [style*="1fr 1fr 1fr"] {
+  [style*="repeat(4, 1fr)"],
+  [style*="repeat(4,1fr)"],
+  [style*="1fr 1fr 1fr 1fr"],
+  [style*="repeat(3, 1fr)"],
+  [style*="repeat(3,1fr)"],
+  [style*="1fr 1fr 1fr"] {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 }
 
-/* ---------- Phones / narrow windows: <= 768px ---------- */
+/* Phones / narrow windows: every fixed-count grid goes single column.
+   Fluid minmax() grids are left alone — they already reflow. */
 @media (max-width: 768px) {
-  .mobile-menu-btn { display: flex !important; }
-  .mobile-close { display: flex !important; }
-  .hide-mobile { display: none !important; }
-  .mobile-overlay { display: block !important; }
-
-  /* Every fixed-count grid collapses to a single column so nothing
-     is squished. Fluid minmax() grids are left alone — they already
-     reflow. We target the exact inline patterns used across tools. */
-  .app-main-content [style*="1fr 1fr"],
-  .app-main-content [style*="1fr 2fr"],
-  .app-main-content [style*="1fr 1fr 1fr"],
-  .app-main-content [style*="1fr 1fr 1fr 1fr"],
-  .app-main-content [style*="repeat(2, 1fr)"],
-  .app-main-content [style*="repeat(2,1fr)"],
-  .app-main-content [style*="repeat(3, 1fr)"],
-  .app-main-content [style*="repeat(3,1fr)"],
-  .app-main-content [style*="repeat(4, 1fr)"],
-  .app-main-content [style*="repeat(4,1fr)"] {
+  [style*="1fr 1fr"],
+  [style*="1fr 2fr"],
+  [style*="1fr 1fr 1fr"],
+  [style*="1fr 1fr 1fr 1fr"],
+  [style*="repeat(2, 1fr)"],
+  [style*="repeat(2,1fr)"],
+  [style*="repeat(3, 1fr)"],
+  [style*="repeat(3,1fr)"],
+  [style*="repeat(4, 1fr)"],
+  [style*="repeat(4,1fr)"] {
     grid-template-columns: 1fr !important;
   }
 
-  /* Two-pane master/detail splits (e.g. list + form) stack vertically */
-  .app-main-content [style*="240px, 320px"],
-  .app-main-content [style*="min(340px, 100%) 1fr"],
-  .app-main-content [style*="minmax(240px, 1fr) auto auto"] {
+  /* Two-pane master/detail splits (list + form, list + preview)
+     stack vertically instead of squeezing both panes. */
+  [style*="minmax(240px, 320px) 1fr"],
+  [style*="min(340px, 100%) 1fr"],
+  [style*="minmax(240px, 1fr) auto auto"],
+  [style*="minmax(92px, 0.45fr) minmax(0, 1fr)"] {
     grid-template-columns: 1fr !important;
-  }
-
-  /* Tool padding + touch targets + scrollable tables */
-  [data-testid$="-tool"],
-  .app-main-content > div {
-    max-width: 100vw;
-  }
-  [data-testid$="-tool"] { padding: 16px !important; }
-  [data-testid$="-tool"] button,
-  [data-testid$="-tool"] input,
-  [data-testid$="-tool"] select,
-  [data-testid$="-tool"] textarea {
-    min-height: 40px;
-  }
-
-  /* Header rows / flex toolbars wrap instead of overflowing */
-  .tool-header-row { flex-wrap: wrap; }
-
-  /* Modals/dialogs fit the viewport with margin on every side */
-  .responsive-modal {
-    max-width: calc(100vw - 24px) !important;
-    max-height: calc(100vh - 24px) !important;
-    width: auto !important;
   }
 }
 
-/* ---------- Very small phones: <= 420px ---------- */
+/* ---------- 6. Mobile shell + touch ergonomics ---------- */
+@media (max-width: 768px) {
+  .mobile-menu-btn { display: flex !important; }
+  .mobile-close    { display: flex !important; }
+  .hide-mobile     { display: none !important; }
+  .mobile-overlay  { display: block !important; }
+
+  [data-testid$="-tool"],
+  .app-main-content > div { max-width: 100vw; }
+
+  [data-testid$="-tool"] { padding: 16px !important; }
+
+  /* Minimum comfortable tap target */
+  [data-testid$="-tool"] button,
+  [data-testid$="-tool"] input,
+  [data-testid$="-tool"] select,
+  [data-testid$="-tool"] textarea { min-height: 40px; }
+
+  /* Header rows / toolbars wrap instead of overflowing */
+  .tool-header-row { flex-wrap: wrap; }
+
+  /* Overlays keep a margin from the screen edge */
+  [style*="position: fixed"][style*="inset: 0"] { padding: 12px; }
+}
+
+/* NOTE — iOS zoom, deliberately NOT handled here.
+   iOS Safari zooms the page in when a focused control's font-size is under
+   16px. Forcing every control to 16px was tried and reverted on 2026-07-22:
+   Chrome's device simulator also reports `pointer: coarse`, so dropdowns
+   jumped to 16px while the labels beside them stayed at 12px, which the
+   owner correctly flagged as broken.
+
+   The real problem is that the mobile type scale is 12-13px throughout —
+   too small to read on a phone regardless of the zoom behaviour. The fix is
+   a proper mobile type scale (controls and their labels raised together),
+   which belongs in the design pass, not a blanket !important override. */
+
+/* ---------- 7. Very small phones: <= 420px ---------- */
 @media (max-width: 420px) {
   html, body, #root { font-size: 13px; }
   [data-testid$="-tool"] { padding: 12px !important; }
@@ -370,7 +456,7 @@ img, video, canvas, svg { max-width: 100%; }
 
 @media (min-width: 769px) {
   .mobile-menu-btn { display: none !important; }
-  .mobile-overlay { display: none !important; }
+  .mobile-overlay  { display: none !important; }
 }
 
 /* Hide Emergent watermark */

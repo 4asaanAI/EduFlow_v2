@@ -22,7 +22,10 @@
 }
 
 body { background: var(--c-app, #111111); }
+/* dvh so the mobile address bar can't push the bottom off-screen;
+   100vh stays as the fallback for browsers without dvh support. */
 .App { height: 100vh; display: flex; }
+@supports (height: 100dvh) { .App { height: 100dvh; } }
 
 /* ─── Global responsive tool grid utilities ────────────── */
 @media (max-width: 768px) {

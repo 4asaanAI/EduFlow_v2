@@ -1,0 +1,20 @@
+{
+  "skill_name": "ui-ux-pro-max",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We're launching a new SaaS product for fintech automation. We need a complete brand identity system including logo (something modern and tech-focused), brand guidelines, and a color palette that conveys trust and innovation. What should we start with?",
+      "expected_output": "Complete brand strategy with logo variations, color psychology explanation, typography recommendations, and brand voice framework"
+    },
+    {
+      "id": 2,
+      "prompt": "Build me a responsive landing page component library with shadcn/ui and Tailwind. We need: hero section, feature cards, testimonials, pricing table, and a footer. Make it accessible and support dark mode.",
+      "expected_output": "React components with full code, responsive layouts (mobile/tablet/desktop), accessible ARIA patterns, dark mode CSS variables"
+    },
+    {
+      "id": 3,
+      "prompt": "Create 5 social media banner designs for Instagram, LinkedIn, and Twitter promoting our AI automation course. Include variations for different messaging angles (ROI, ease-of-use, case studies). Sizes should be platform-optimized.",
+      "expected_output": "Banner designs at exact platform dimensions, multiple design variations, color-coded for different messaging, exported as high-res images"
+    }
+  ]
+}
