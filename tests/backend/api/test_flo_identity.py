@@ -95,6 +95,29 @@ def test_flo_is_told_how_to_write():
     assert "Name the actor" in prompt
 
 
+def test_flo_is_told_not_to_use_long_dashes():
+    """Abhimanyu, 2026-07-22, pointing at a live reply reading "Hey Aman - how can
+    I help...": the long dash is an AI tell. The first version of these rules left
+    that out as marginal; that judgement was wrong."""
+    prompt = _prompt()
+    assert "NEVER use the em-dash" in prompt
+    assert "—" in prompt, "the rule must show the actual em-dash character"
+    assert "–" in prompt, "the rule must show the actual en-dash character"
+
+
+def test_the_hyphen_is_explicitly_still_allowed():
+    """A sloppy 'no dashes' rule would break '5-A', 'class-teacher' and '3+ days'
+    across every reply. The rule names the characters it bans."""
+    prompt = _prompt()
+    assert 'The ordinary hyphen "-" is FINE' in prompt
+    assert "5-A" in prompt
+
+
+def test_flo_is_told_not_to_open_with_a_greeting():
+    prompt = _prompt()
+    assert "Do not open with a greeting" in prompt
+
+
 def test_the_style_rules_do_not_cancel_the_product_rules():
     """`stop-slop` bans emphasis and em-dashes. This product deliberately bolds
     key figures and marks status with emoji so an owner can scan a reply on a
