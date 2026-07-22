@@ -15,6 +15,12 @@
 > `s3:CreateBucket`, so bucket creation still fails with AccessDenied and the user's
 > permissions list *looks* correct. If you only ever do the console route (Option A),
 > you need only the **role** one.
+>
+> **Do not add comments to these files.** An IAM policy document accepts only
+> `Version` and `Statement` at the top level; anything else is rejected outright with
+> "Unknown field". A first attempt at explaining the two files put `_comment` keys
+> inside the JSON, and the console refused to save it. All explanation belongs here,
+> in the filenames, and nowhere inside the policy.
 
 Until this is done, anything in EduFlow that produces or accepts a **file** does not
 work in production:

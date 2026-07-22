@@ -1,9 +1,4 @@
 {
-  "_comment_1": "ATTACH THIS TO THE IAM *USER* claude-hosting. It lets the setup be run.",
-  "_comment_2": "Do NOT confuse with s3-policy-FOR-THE-SERVER-ROLE.json, which goes on the",
-  "_comment_3": "EC2 role aws-elasticbeanstalk-ec2-role and grants file read/write instead.",
-  "_comment_4": "Attaching the role one to the user (done first time round) grants object",
-  "_comment_5": "access but NOT s3:CreateBucket, so bucket creation still fails.",
   "Version": "2012-10-17",
   "Statement": [
     {
