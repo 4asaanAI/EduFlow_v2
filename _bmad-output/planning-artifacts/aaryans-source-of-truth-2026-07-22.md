@@ -224,8 +224,13 @@ Correct order for every dropdown in the app:
 Confirmed by the owner, 2026-07-22. This governs how it may be used.
 
 **Safe to carry forward** — these do not change with the session:
-`Dob` · `gender` · `Father Name` · `Mother Name` · `Adm.Date` · `ADM NO` · `Address`
-(`House` is very likely stable but should be confirmed with the school before loading.)
+`Dob` · `gender` · `Father Name` · `Mother Name` · `Adm.Date` · `ADM NO` · `Address` ·
+`House`
+
+> **House confirmed stable year to year** by Abhimanyu, 2026-07-22. A student keeps the
+> same house (ATULYA / AGRIM / AGAMYA / APRAJIT) for their whole time at the school, so
+> the FY2025-26 house column is valid for the current session and may be loaded in
+> Track 2. All 1,802 students currently have an empty house field.
 
 **MUST NOT be used to set anything current:**
 - The `CLASS` column is the **2025-26** class. Every continuing student has since been

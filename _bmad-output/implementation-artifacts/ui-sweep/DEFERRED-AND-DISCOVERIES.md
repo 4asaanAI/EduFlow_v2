@@ -50,14 +50,24 @@ against a clean `main` worktree — identical two failures.
 left behind by an earlier test. Do not attribute to your own changes; do confirm the
 count is still exactly 2 at each epic close.
 
-### D-04 (was RISK-3) — Test runs can reach the production database — **DEFERRED, owner decision pending**
-`backend/.env` now holds the live `MONGO_URL`, pulled from the Elastic Beanstalk
-environment. Before this file existed, tests had nowhere to connect. There is no guard
-preventing a test run from writing to production.
-**Workaround in force:** always override before running pytest —
-`$env:MONGO_URL="mongodb://127.0.0.1:27099/eduflow_test"; $env:DB_NAME="eduflow_test"`.
-**Proposed fix:** a conftest guard that refuses to run against the production cluster.
-Awaiting the owner's go-ahead.
+### D-04 (was RISK-3) — Test runs could reach the production database — **CLOSED 2026-07-22**
+`backend/.env` holds the live `MONGO_URL`, pulled from Elastic Beanstalk. `conftest.py`
+used `os.environ.setdefault`, which does not override an already-present value, so an
+exported variable or the `.env` file silently won and the suite would have run against
+live data (1,802 students, 88 staff, 1,892 users).
+
+**Fixed:** a fail-closed guard at the top of `tests/backend/conftest.py`, placed before
+the `setdefault` calls and before any app import. It refuses to run when the effective
+`MONGO_URL` looks like a hosted cluster (`mongodb+srv://` or `.mongodb.net`), checking
+the environment first and falling back to `backend/.env` only when the environment does
+not pin a value. The error message tells the developer exactly what to export.
+
+Escape hatch for a deliberate remote run:
+`EDUFLOW_ALLOW_PROD_DB_IN_TESTS=i-understand-this-can-write-to-production`.
+
+**Verified both directions:** with no override the suite aborts at collection naming the
+offending source; with `MONGO_URL` pinned to a local test database the full suite runs at
+the pinned baseline — 1636 passed, 2 failed, 14 deselected. Approved by Abhimanyu.
 
 ### D-05 (was RISK-4) — `project-context.md` carries a stale fact — **DEFERRED**
 It states "Sidebar width is 120px fixed". Actual: 260px, and 280px as a mobile drawer.

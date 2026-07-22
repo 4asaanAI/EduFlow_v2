@@ -15,8 +15,64 @@ import os
 import asyncio
 import pytest
 import pytest_asyncio
+from pathlib import Path
 from typing import AsyncGenerator, Generator
 from pymongo.errors import DuplicateKeyError
+
+# ─── Production database guard ─────────────────────────────────────────────
+# Must run BEFORE the setdefault() calls below, and before any app import.
+#
+# `setdefault` does not override a value that is already present, so an exported
+# MONGO_URL — or one the app loads from backend/.env — silently wins and the whole
+# suite runs against live data. backend/.env now holds the production connection
+# string (pulled from Elastic Beanstalk on 2026-07-22), which makes this a live
+# hazard rather than a theoretical one: the school has 1,802 students, 88 staff and
+# 1,892 user records in that cluster.
+#
+# Fail closed. A test run that reaches production is not recoverable by noticing
+# afterwards.
+def _looks_like_production(url: str) -> bool:
+    if not url:
+        return False
+    lowered = url.lower()
+    return lowered.startswith("mongodb+srv://") or ".mongodb.net" in lowered
+
+
+_PROD_OVERRIDE = "EDUFLOW_ALLOW_PROD_DB_IN_TESTS"
+_ALLOWED = os.environ.get(_PROD_OVERRIDE) == "i-understand-this-can-write-to-production"
+
+_offenders: list[str] = []
+
+_env_url = os.environ.get("MONGO_URL", "")
+if _looks_like_production(_env_url):
+    _offenders.append("the MONGO_URL environment variable")
+
+# Only inspect backend/.env when the environment does not already pin MONGO_URL —
+# in that case the app would fall back to the file, and the file may hold production.
+if not _env_url:
+    _dotenv = Path(__file__).resolve().parents[2] / "backend" / ".env"
+    if _dotenv.exists():
+        for _line in _dotenv.read_text(encoding="utf-8", errors="replace").splitlines():
+            if _line.strip().startswith("MONGO_URL="):
+                if _looks_like_production(_line.split("=", 1)[1].strip()):
+                    _offenders.append(f"MONGO_URL in {_dotenv}")
+                break
+
+if _offenders and not _ALLOWED:
+    raise RuntimeError(
+        "Refusing to run the test suite against what looks like a PRODUCTION database.\n\n"
+        "  Detected in: " + ", ".join(_offenders) + "\n\n"
+        "The suite creates, updates and deletes records. Pointing it at the live cluster\n"
+        "would corrupt real school data.\n\n"
+        "To run the tests safely, pin a local test database first:\n"
+        '  PowerShell:  $env:MONGO_URL="mongodb://127.0.0.1:27099/eduflow_test"; '
+        '$env:DB_NAME="eduflow_test"\n'
+        '  bash:        export MONGO_URL=mongodb://127.0.0.1:27099/eduflow_test '
+        "DB_NAME=eduflow_test\n\n"
+        "This guard is deliberate and must not be removed. If you genuinely need to run\n"
+        "against a remote cluster, set "
+        f"{_PROD_OVERRIDE}=i-understand-this-can-write-to-production"
+    )
 
 # ─── Override environment before importing app ─────────────────────────────
 # Set test environment variables before any app import
