@@ -506,12 +506,28 @@ looks:
    OCR finds no text, and the deployment may refuse images outright. It will say so
    plainly rather than inventing a description.
 
-### D-34 — `claude-hosting` holds a policy it does not need — **OPEN, small**
-The first attempt at the storage setup attached `s3-file-storage-policy` (the SERVER
-role policy: Put/Get/Delete/List on the bucket) to the IAM **user**. It was the wrong
-file for that place and is now redundant — the user only needs the setup permissions.
-Leaving it grants a key stored in a repo standing read/write access to the school's
-files. **Remove it from the user**; keep `EduFlowFileStorage` on the role.
+### D-34 — `claude-hosting` still holds the storage-setup permissions — **OPEN, small**
+**Corrected 2026-07-23.** An earlier version of this entry said the user was left
+holding the SERVER role policy. That was wrong: Abhimanyu *edited* the existing inline
+policy `s3-file-storage-policy` rather than adding a second one, so it now contains the
+**setup** permissions:
+
+- `s3:CreateBucket`, `PutBucketPublicAccessBlock`, `PutEncryptionConfiguration`,
+  `PutBucketVersioning`, `GetBucketLocation` — on the one bucket
+- **`iam:PutRolePolicy` on `aws-elasticbeanstalk-ec2-role`**
+
+The second one is the reason to act. It lets whoever holds those keys rewrite what the
+production servers are permitted to do — and those keys sit in `backend/.env` inside a
+git repository. The setup is finished, so the grant is now pure standing risk.
+
+**Removing it breaks nothing.** The running application authenticates as the EC2
+instance role, not as this user; `EduFlowFileStorage` on the role is what serves files.
+The only cost is that redoing the setup (a second school, say) needs the permission
+granted again for the duration.
+
+**The assistant cannot remove it** — `iam:DeleteUserPolicy` is denied, correctly: a
+principal should not be able to edit its own permissions. Console:
+IAM → Users → `claude-hosting` → Permissions → tick `s3-file-storage-policy` → Remove.
 
 ---
 
