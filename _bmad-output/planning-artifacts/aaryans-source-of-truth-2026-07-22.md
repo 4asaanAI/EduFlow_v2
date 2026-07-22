@@ -219,6 +219,43 @@ Correct order for every dropdown in the app:
 
 ---
 
+## 11b. ⚠️ The DETAINEES workbook is LAST YEAR'S data (FY 2025-26)
+
+Confirmed by the owner, 2026-07-22. This governs how it may be used.
+
+**Safe to carry forward** — these do not change with the session:
+`Dob` · `gender` · `Father Name` · `Mother Name` · `Adm.Date` · `ADM NO` · `Address`
+(`House` is very likely stable but should be confirmed with the school before loading.)
+
+**MUST NOT be used to set anything current:**
+- The `CLASS` column is the **2025-26** class. Every continuing student has since been
+  promoted, so writing it would roll the whole school back a year.
+- Current class/section comes from `Students-22-06-2026-02-35-08.xlsx` (exported
+  22 Jun 2026, i.e. the 2026-27 session) or from the live database, never from this file.
+- Anything loaded from it must be recorded with provenance
+  `source: detainees_list_2025_26` so it is never mistaken for current-year data.
+
+The same workbook also holds **PROMOTION LIST** sheets (`2-A`, `3A`, …) captioned
+"Class- 1-A → 2-A PROMOTION LIST (2025-26)". These are the 2025-26 → 2026-27 promotion
+mapping and can be used to *verify* the current class assignments rather than set them.
+
+### Can the files actually be matched? — measured, not assumed
+
+| Source | Rows | Matched to a live student by admission number |
+|---|---|---|
+| `Students-22-06-2026.xlsx` | 1,804 | **1,802 (99%)** — 2 unmatched: `19968`, `211309` |
+| `DETAINEES → StudentData` | 1,743 | **1,551 (88%)** — 192 unmatched |
+| Overlap between the two files | — | 1,553 shared admission numbers |
+
+- **Admission number is a valid join key.** The database carries both numbering
+  series — older `15xxx` and newer `25xxxx` — and they line up across all sources.
+- The 192 unmatched detainees rows are consistent with students who left or were
+  not promoted; expected for last year's list, not a data fault.
+- **Name is NOT a safe key**: only 79% of detainee names match, and **114 live student
+  names are duplicated**. Join on admission number only.
+
+---
+
 ## 12. Consequences for the build
 
 **Track 1 (UI, no writes) can use immediately:**
@@ -229,7 +266,9 @@ Correct order for every dropdown in the app:
   since we now know these fields were never filled rather than genuinely blank
 
 **Track 2 (data load, needs approval) covers:**
-1. Student D.O.B., gender, house, admission date — from `DETAINEES LIST → StudentData` (1,743 rows)
+1. Student D.O.B., gender, house, admission date — from `DETAINEES LIST → StudentData`,
+   **FY2025-26 data**, joined on admission number only, expected coverage ~1,551 of
+   1,802 students (88%). Class/section from this file must be ignored — see §11b.
 2. Transport routes and rates — from the transport photo (~250 points)
 3. Fee structure 2026-27 — from the fee photo
 4. Class-teacher assignments — from the class-teacher photo
