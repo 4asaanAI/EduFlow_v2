@@ -161,7 +161,8 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
 
   return (
     <div className="fade-in-scale" style={{
-      position: 'absolute', top: 'calc(100% + 10px)', right: -4, width: 380,
+      position: 'absolute', top: 'calc(100% + 10px)', right: 0,
+      width: 380, maxWidth: 'calc(100vw - 24px)',
       background: bg, border: `1px solid ${border}`,
       borderRadius: 18, zIndex: 100, overflow: 'hidden',
       boxShadow: isDark
@@ -381,25 +382,37 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
           </span>
         </div>
 
-        {/* Center: search */}
-        <div style={{ flex: 1, maxWidth: 420, display: 'flex', justifyContent: 'center' }}>
+        {/* Center: search \u2014 full bar on desktop, icon-only on mobile */}
+        {isMobile ? (
           <button onClick={() => setShowSearch(true)} style={{
-            width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-            background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`,
-            borderRadius: 10, padding: '7px 14px', cursor: 'pointer', color: muted, fontSize: 13,
+            background: 'none', border: 'none', color: muted, cursor: 'pointer',
+            padding: 7, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
             transition: 'var(--transition-fast)',
           }}
-            onMouseEnter={e => e.currentTarget.style.borderColor = isDark ? '#444' : '#ccc'}
-            onMouseLeave={e => e.currentTarget.style.borderColor = border}>
-            <Search size={14} />
-            <span style={{ flex: 1, textAlign: 'left' }}>Search students, staff 2026</span>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <kbd style={{ fontSize: 10, color: muted, background: isDark ? '#333' : '#e5e5e5', padding: '1px 5px', borderRadius: 4, fontFamily: 'Inter, sans-serif' }}>
-                {navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}/
-              </kbd>
-            </div>
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+            <Search size={18} />
           </button>
-        </div>
+        ) : (
+          <div style={{ flex: 1, maxWidth: 420, display: 'flex', justifyContent: 'center' }}>
+            <button onClick={() => setShowSearch(true)} style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+              background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`,
+              borderRadius: 10, padding: '7px 14px', cursor: 'pointer', color: muted, fontSize: 13,
+              transition: 'var(--transition-fast)',
+            }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = isDark ? '#444' : '#ccc'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = border}>
+              <Search size={14} />
+              <span style={{ flex: 1, textAlign: 'left' }}>Search students, staff 2026</span>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <kbd style={{ fontSize: 10, color: muted, background: isDark ? '#333' : '#e5e5e5', padding: '1px 5px', borderRadius: 4, fontFamily: 'Inter, sans-serif' }}>
+                  {navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}/
+                </kbd>
+              </div>
+            </button>
+          </div>
+        )}
 
         {/* Right */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>

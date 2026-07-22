@@ -320,6 +320,11 @@ img, video, canvas, svg { max-width: 100%; }
      reflow. We target the exact inline patterns used across tools. */
   .app-main-content [style*="1fr 1fr"],
   .app-main-content [style*="1fr 2fr"],
+  .app-main-content [style*="2fr 1fr"],
+  .app-main-content [style*="3fr 1fr"],
+  .app-main-content [style*="1fr 3fr"],
+  .app-main-content [style*="2fr 3fr"],
+  .app-main-content [style*="3fr 2fr"],
   .app-main-content [style*="1fr 1fr 1fr"],
   .app-main-content [style*="1fr 1fr 1fr 1fr"],
   .app-main-content [style*="repeat(2, 1fr)"],
@@ -327,14 +332,21 @@ img, video, canvas, svg { max-width: 100%; }
   .app-main-content [style*="repeat(3, 1fr)"],
   .app-main-content [style*="repeat(3,1fr)"],
   .app-main-content [style*="repeat(4, 1fr)"],
-  .app-main-content [style*="repeat(4,1fr)"] {
+  .app-main-content [style*="repeat(4,1fr)"],
+  .app-main-content [style*="repeat(5, 1fr)"],
+  .app-main-content [style*="repeat(5,1fr)"] {
     grid-template-columns: 1fr !important;
   }
 
   /* Two-pane master/detail splits (e.g. list + form) stack vertically */
   .app-main-content [style*="240px, 320px"],
   .app-main-content [style*="min(340px, 100%) 1fr"],
-  .app-main-content [style*="minmax(240px, 1fr) auto auto"] {
+  .app-main-content [style*="minmax(240px, 1fr) auto auto"],
+  .app-main-content [style*="minmax(240px, 320px)"],
+  .app-main-content [style*="300px 1fr"],
+  .app-main-content [style*="320px 1fr"],
+  .app-main-content [style*="360px 1fr"],
+  .app-main-content [style*="280px 1fr"] {
     grid-template-columns: 1fr !important;
   }
 
@@ -351,8 +363,47 @@ img, video, canvas, svg { max-width: 100%; }
     min-height: 40px;
   }
 
+  /* Tables scroll horizontally rather than squishing columns */
+  .app-main-content table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+
+  /* Tool dashboard — reduce excessive side padding */
+  [data-testid="tool-dashboard"],
+  .app-main-content > div[style*="padding: 32px"] {
+    padding: 16px 16px 32px !important;
+  }
+
+  /* Chat message list — tighter side padding on narrow screens */
+  [data-testid="message-list"] {
+    padding: 0 12px !important;
+  }
+
+  /* Input bar — full width, no overflow */
+  [data-testid="input-bar"] {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+
   /* Header rows / flex toolbars wrap instead of overflowing */
   .tool-header-row { flex-wrap: wrap; }
+
+  /* ToolPage header actions stack below title */
+  .tool-header-row > div:last-child {
+    flex-wrap: wrap;
+  }
+
+  /* Fixed-position modals centred with 12px safe-area margin on all sides */
+  [style*="position: fixed"][style*="alignItems: center"][style*="justifyContent: center"] > div,
+  [style*="position:fixed"][style*="alignItems:center"][style*="justifyContent:center"] > div {
+    max-width: calc(100vw - 24px) !important;
+    max-height: calc(100dvh - 24px) !important;
+    width: auto !important;
+    margin: 12px !important;
+  }
 
   /* Modals/dialogs fit the viewport with margin on every side */
   .responsive-modal {
@@ -360,12 +411,32 @@ img, video, canvas, svg { max-width: 100%; }
     max-height: calc(100vh - 24px) !important;
     width: auto !important;
   }
+
+  /* Stat-grid used in SchoolPulse and similar tools: 2-col → 1-col */
+  .stat-grid-2 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Wide flex rows wrap gracefully on mobile */
+  .app-main-content [style*="display: flex"][style*="gap"] {
+    flex-wrap: wrap;
+  }
+
+  /* Preserve no-wrap on explicit single-line rows (e.g. button groups) */
+  .app-main-content button[style*="display: flex"],
+  .app-main-content [style*="whiteSpace: nowrap"] {
+    flex-shrink: 0;
+  }
 }
 
 /* ---------- Very small phones: <= 420px ---------- */
 @media (max-width: 420px) {
   html, body, #root { font-size: 13px; }
   [data-testid$="-tool"] { padding: 12px !important; }
+  /* Bump all interactive elements to 44px touch targets */
+  button, input, select, textarea, [role="button"] {
+    min-height: 44px;
+  }
 }
 
 @media (min-width: 769px) {

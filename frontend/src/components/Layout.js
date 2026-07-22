@@ -88,7 +88,7 @@ export default function Layout() {
   const [showProfile, setShowProfile] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showCmdPalette, setShowCmdPalette] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 768);
   const previousUserIdRef = useRef(currentUser.id);
 
   const isToolDashboardRole = TOOL_DASHBOARD_ROLES.includes(currentUser.role);
@@ -104,6 +104,7 @@ export default function Layout() {
 
   const handleNewChat = async () => {
     setActiveToolParam(null);
+    if (window.innerWidth <= 768) setSidebarOpen(false);
     const res = await createConversation(currentUser);
     if (res.success) {
       setActiveConvId(res.data.id);
@@ -114,6 +115,7 @@ export default function Layout() {
 
   const handleSelectTool = (toolId) => {
     setActiveToolParam(toolId);
+    if (window.innerWidth <= 768) setSidebarOpen(false);
     if (isToolDashboardRole) {
       const key = `eduflow_activity_${currentUser.id}`;
       const prev = JSON.parse(localStorage.getItem(key) || '[]').filter(a => a.id !== toolId);
@@ -124,6 +126,7 @@ export default function Layout() {
 
   const handleSelectConv = async (convId) => {
     setActiveToolParam(null);
+    if (window.innerWidth <= 768) setSidebarOpen(false);
     setActiveConvId(convId);
     try {
       const res = await getConversations(currentUser);
@@ -181,6 +184,14 @@ export default function Layout() {
     }
     return () => document.removeEventListener('mousedown', handleClick);
   }, [sidebarOpen]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth <= 768) setSidebarOpen(false);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const bg = isDark ? '#111111' : '#f5f5f5';
 
