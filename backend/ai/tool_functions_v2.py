@@ -3384,7 +3384,8 @@ TOOL_REGISTRY = {
             "text. Use this whenever someone asks for a circular, notice, letter, fee "
             "sheet, report, template or presentation as a FILE they can print, sign, "
             "email or share. Put prose in `paragraphs` and tabular data in "
-            "`headers` + `rows`. Returns a download link."
+            "`headers` + `rows`. Returns a short `file_id` (not a link); append it in a "
+            "`file` rich block and the download button fetches a fresh link on tap."
         ),
         "params_schema": {
             "doc_type": {"type": "string", "description": "docx, xlsx, pptx, pdf, csv, md or txt"},

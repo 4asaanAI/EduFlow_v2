@@ -564,7 +564,36 @@ while checking whether Epic 6 needed a new index (it did, for `conversations`, n
 `notifications`). **Reason deferred:** pre-existing and unrelated; removing it would put
 an unrelated change inside an index diff.
 
-### D-37 — Flo's generated documents fail to download in production — **OPEN, needs the Owner**
+### D-37 — Flo's generated documents fail to download in production — **CLOSED 2026-07-23 (not yet deployed)**
+
+**FIXED on branch `ui-sweep-2026-07-22`, in its own run per the one-epic/one-job rule.**
+The signed URL no longer travels through the language model:
+
+- `draft_document` now returns only a short opaque `file_id` — never a `download_url`.
+  `services/document_export.py:store_document` no longer signs a URL at build time, and
+  a regression test (`test_document_generation.py::test_the_signed_url_never_travels_through_the_model`)
+  asserts over the ACTUAL tool result that nothing url-shaped reaches the model.
+- New authenticated endpoint `GET /api/uploads/link/{file_id}` (`routes/upload.py`) mints
+  a FRESH presigned URL at request time, school-scoped, using the existing file-access
+  permission (own file, or owner/admin+principal) — no new permission. It returns JSON,
+  not a 307 to S3, so a missing/forbidden file is answered in our own words, never as raw
+  S3 XML (this is the Story 10.3 fix). 401/403/404/409 covered by
+  `tests/backend/api/test_generated_file_link.py`.
+- `ai/prompts.py`'s rich-block contract now asks for `file_id`, not `download_url`.
+- The chat file card (`MessageRenderer.js:GeneratedFile`) fetches the fresh link on tap,
+  opens only http(s), and treats a legacy block (raw `download_url`, no `file_id`) as an
+  expired link with "ask for the file again" — so old conversations never render S3 XML.
+
+Gates: backend suite at pinned baseline (3 pre-existing failures only — D-03 ×2, D-35),
+golden-eval structural + judge-logic tiers green. The credentialed `-m llm_eval` tier was
+**NOT run here** — this machine has no Azure OpenAI credentials; it must be run before
+merge (see README). Frontend `GeneratedFile` tests 11/11, production build clean.
+
+**Still needs: deploy approval from Abhimanyu.** Nothing above reaches the school until
+the branch is deployed.
+
+<details><summary>Original diagnosis (2026-07-23) — kept for the record</summary>
+
 Reported by Abhimanyu on 2026-07-23. Asking Flo for a Word document produces a
 downloadable link, and opening the link returns an AWS error page:
 `SignatureDoesNotMatch — the request signature we calculated does not match the
@@ -645,6 +674,8 @@ reason it would fail — and would produce a different AWS error, still rendered
 **This supersedes the optimistic reading of D-33 item 1.** Writing the file as the server
 evidently works (the object exists at the key in the error). **Reading it back does not.**
 So "file storage is on" is true of `PutObject` and not yet true of the download path.
+
+</details>
 
 ### D-38 — The backend's logs stopped reaching CloudWatch before the last deploy — **OPEN**
 Found while investigating D-37. The newest event in

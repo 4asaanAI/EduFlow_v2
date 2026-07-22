@@ -3,25 +3,55 @@ import DOMPurify from 'dompurify';
 import { useTheme } from '../contexts/ThemeContext';
 import { ThumbsUp, ThumbsDown, Download, FileText } from 'lucide-react';
 import BotMascot from './ui/BotMascot';
-import { emitFeedback } from '../lib/api';
+import { emitFeedback, getGeneratedFileLink } from '../lib/api';
 
 /**
  * A file Flo made, as something you can tap (Epic 10, Story 10.3).
  *
- * The download link is presigned and EXPIRES. An old conversation therefore holds
- * dead links, and a tap that silently fails is Epic 4's defect — a failure that
- * looks like nothing happening — in a new place. So the card says how to get a
- * fresh one, and only the link itself is trusted to the block: the file name and
- * type are rendered as TEXT, never as markup.
+ * The chat message carries only a SHORT opaque `file_id`, never a link (D-37): a
+ * presigned URL is ~1,200 characters and the model could not reproduce it, so the
+ * link is minted server-side when the person taps download. That fresh link cannot
+ * be stale, and any failure (missing file, no access) comes back as our own plain
+ * message — never a raw S3 error page.
+ *
+ * Two things stay true from before. A tap that silently fails is Epic 4's defect in a
+ * new place, so a failure always says what to do. And the file name and type are
+ * rendered as TEXT, never as markup.
+ *
+ * Backwards compatibility: conversations from before this change hold a raw
+ * `download_url` and no `file_id`. Those links are expired and would render S3's XML
+ * error, so the card does not follow them — it says the link has expired and to ask
+ * again, which is Story 10.3's acceptance criterion.
  */
 export function GeneratedFile({ block }) {
   const name = String(block?.file_name || 'document');
   const type = String(block?.doc_type || '').toUpperCase();
   const sizeKb = Number(block?.size_kb || 0);
-  const url = String(block?.download_url || '');
-  // Only http(s) is followed. A javascript: or data: URL in an AI-authored block
-  // would otherwise become a click target.
-  const safeUrl = /^https?:\/\//i.test(url) ? url : '';
+  const fileId = String(block?.file_id || '');
+
+  // 'ready' → we have a file_id and can fetch a fresh link on tap.
+  // 'loading' → fetching that link.
+  // 'error' → the file could not be fetched (missing, no access, expired legacy block).
+  const [status, setStatus] = useState(fileId ? 'ready' : 'error');
+
+  async function handleDownload() {
+    if (!fileId || status === 'loading') return;
+    setStatus('loading');
+    try {
+      const body = await getGeneratedFileLink(fileId);
+      const url = String(body?.data?.download_url || body?.download_url || '');
+      // Only http(s) is opened. A javascript:/data: URL must never become a target,
+      // even arriving from our own endpoint.
+      if (!/^https?:\/\//i.test(url)) {
+        setStatus('error');
+        return;
+      }
+      window.open(url, '_blank', 'noopener,noreferrer');
+      setStatus('ready');
+    } catch {
+      setStatus('error');
+    }
+  }
 
   return (
     <div
@@ -42,26 +72,27 @@ export function GeneratedFile({ block }) {
           {type}{sizeKb > 0 ? ` · ${sizeKb} KB` : ''}
         </div>
       </div>
-      {safeUrl ? (
-        <a
-          href={safeUrl}
-          download={name}
-          rel="noopener noreferrer"
-          data-testid="generated-file-download"
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '8px 14px', borderRadius: 'var(--radius-md, 10px)',
-            background: 'var(--brand-blue-fill, #4f8ff7)', color: 'var(--on-brand-blue, #fff)',
-            fontSize: 13, fontWeight: 600, textDecoration: 'none', flexShrink: 0,
-          }}
-        >
-          <Download size={14} aria-hidden="true" />
-          Download
-        </a>
-      ) : (
+      {status === 'error' ? (
         <span data-testid="generated-file-expired" style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
           This link has expired. Ask for the file again.
         </span>
+      ) : (
+        <button
+          type="button"
+          onClick={handleDownload}
+          disabled={status === 'loading'}
+          data-testid="generated-file-download"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '8px 14px', borderRadius: 'var(--radius-md, 10px)', border: 'none',
+            background: 'var(--brand-blue-fill, #4f8ff7)', color: 'var(--on-brand-blue, #fff)',
+            fontSize: 13, fontWeight: 600, cursor: status === 'loading' ? 'default' : 'pointer',
+            flexShrink: 0, opacity: status === 'loading' ? 0.7 : 1,
+          }}
+        >
+          <Download size={14} aria-hidden="true" />
+          {status === 'loading' ? 'Preparing…' : 'Download'}
+        </button>
       )}
     </div>
   );

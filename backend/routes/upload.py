@@ -5,6 +5,7 @@ from database import get_db
 from middleware.auth import get_current_user
 from tenant import add_school_id, get_school_id, scoped_filter
 from services.s3_storage import (
+    PRESIGNED_URL_EXPIRY_SECONDS,
     build_upload_key,
     create_presigned_get_url,
     delete_object,
@@ -192,8 +193,23 @@ async def upload_file(
 
 # File access model:
 # - Users can serve their own uploads.
-# - Owner/admin users can serve any upload in their current school.
+# - Owner/admin+principal users can serve any upload in their current school.
 # - Students and other non-admin roles cannot serve another user's upload.
+def _can_access_upload(record: dict, user: dict) -> bool:
+    """Is this caller entitled to this specific stored file?
+
+    This is the existing file-access permission — a person's own uploads, plus
+    owner and admin+principal reaching any file in their school. It introduces no
+    NEW permission: a generated document's `uploaded_by` is whoever asked Flo for
+    it, and that person could have exported the same data directly.
+    """
+    can_cross_user = (
+        user.get("role") == "owner"
+        or (user.get("role") == "admin" and user.get("sub_category") == "principal")
+    )
+    return record.get("uploaded_by") == user.get("id") or can_cross_user
+
+
 @router.get("/serve/{filename}")
 async def serve_file(filename: str, user: dict = Depends(get_current_user)):
     db = get_db()
@@ -201,15 +217,13 @@ async def serve_file(filename: str, user: dict = Depends(get_current_user)):
     if ".." in filename or "/" in filename:
         raise HTTPException(400, "Invalid filename")
     record = await db.file_uploads.find_one(
+        # branch-scope: intentional — file_uploads is school-scoped; a file belongs to
+        # its uploader and the school, not to a branch.
         scoped_filter({"safe_filename": filename}, get_school_id())
     )
     if not record:
         raise HTTPException(404, "File not found")
-    can_cross_user = (
-        user.get("role") == "owner"
-        or (user.get("role") == "admin" and user.get("sub_category") == "principal")
-    )
-    if record.get("uploaded_by") != user.get("id") and not can_cross_user:
+    if not _can_access_upload(record, user):
         raise HTTPException(403, "Forbidden")
     if not record.get("s3_key"):
         raise HTTPException(409, "File has not been migrated to S3")
@@ -217,6 +231,44 @@ async def serve_file(filename: str, user: dict = Depends(get_current_user)):
         create_presigned_get_url(record["s3_key"]),
         status_code=307,
     )
+
+
+@router.get("/link/{file_id}")
+async def generated_file_link(file_id: str, user: dict = Depends(get_current_user)):
+    """Mint a FRESH presigned download URL for a stored file, at request time.
+
+    Why this endpoint exists (D-37). A presigned URL is about 1,200 characters, roughly
+    1,000 of them an opaque security token. `draft_document` used to put that URL in its
+    tool result, and the prompt asked the model to transcribe it into a `file` block.
+    A language model cannot reproduce 1,000 random characters byte-for-byte, so the link
+    arrived with a character altered and S3 answered `SignatureDoesNotMatch`. Now the
+    model only carries the short `file_id`; the signed URL is minted here when the person
+    taps download, so it is always fresh — and Story 10.3's expiry problem disappears.
+
+    It returns JSON rather than redirecting to S3 so that a missing or forbidden file is
+    answered in our own words. A 307 straight to S3 would render any S3 error as raw XML
+    with the school's bucket name and account number on screen — the very defect Story
+    10.3 forbids.
+    """
+    db = get_db()
+    record = await db.file_uploads.find_one(
+        # branch-scope: intentional — file_uploads is school-scoped; a file belongs to
+        # its uploader and the school, not to a branch.
+        scoped_filter({"id": file_id}, get_school_id())
+    )
+    if not record:
+        raise HTTPException(404, "That file could not be found. Please ask for it again.")
+    if not _can_access_upload(record, user):
+        raise HTTPException(403, "Forbidden")
+    if not record.get("s3_key"):
+        raise HTTPException(409, "File has not been migrated to S3")
+    return {"success": True, "data": {
+        "download_url": create_presigned_get_url(record["s3_key"]),
+        "file_name": record.get("file_name"),
+        "file_type": record.get("file_type"),
+        "file_size_kb": record.get("file_size_kb"),
+        "expires_in_seconds": PRESIGNED_URL_EXPIRY_SECONDS,
+    }}
 
 
 @router.get("")
@@ -244,6 +296,7 @@ async def list_uploads(
             query["linked_table"] = entity_type
         if entity_id:
             query["linked_id"] = entity_id
+    # branch-scope: intentional — file_uploads is school-scoped, not branch-scoped.
     query = scoped_filter(query, get_school_id())
     skip = (page - 1) * limit
     total = await db.file_uploads.count_documents(query)
@@ -267,6 +320,7 @@ async def list_uploads(
 async def delete_file(file_id: str, request: Request):
     db = get_db()
     user = get_user(request)
+    # branch-scope: intentional — file_uploads is school-scoped, not branch-scoped.
     record = await db.file_uploads.find_one(scoped_filter({"id": file_id}, get_school_id()), {"data": 0})
     if not record:
         raise HTTPException(404, "File not found")
@@ -274,5 +328,6 @@ async def delete_file(file_id: str, request: Request):
         raise HTTPException(403, "Forbidden")
     if record.get("s3_key"):
         delete_object(record["s3_key"])
+    # branch-scope: intentional — file_uploads is school-scoped, not branch-scoped.
     await db.file_uploads.delete_one(scoped_filter({"id": file_id}, get_school_id()))
     return {"success": True}

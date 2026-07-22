@@ -456,15 +456,24 @@ find" — it was **unreachable by any route in the product**. Both now have a pa
       you tap it. That also solves a second problem — links currently expire after an
       hour, so an older one would fail anyway.
 
-      **This is a change to how Flo is instructed, so it needs its own run and a check
-      that Flo still behaves properly afterwards. Tell me when you want it done** — it is
-      not a long job, but I do not want to change Flo's instructions in the middle of
-      something else.
+      **DONE 2026-07-23, on the `ui-sweep-2026-07-22` branch — NOT yet deployed, so you
+      will not see the difference until the next update goes out.** Flo now hands over a
+      short reference instead of the long link, and the Download button fetches a fresh,
+      secure link the instant you tap it. Because the link is made at tap time, it can
+      never be stale.
 
-- [ ] **You should never have seen an Amazon error page at all.** The download takes you
-      straight to Amazon, so when Amazon objects you get Amazon's own error, raw, with
-      your account number on screen. It was supposed to say "this link has expired, ask
-      again". Fixed by the same job.
+      **After the next deploy, please check:** ask Flo to make you a Word document (or a
+      fee sheet, or a notice), then tap Download. It should open the file. Try it again a
+      couple of hours later on the same message — it should still work, where before an
+      hour-old link would have failed.
+
+- [x] **You should never have seen an Amazon error page at all — fixed by the same job
+      (not yet deployed).** The download no longer takes you straight to Amazon; it goes
+      through the platform, so if a file is genuinely gone you now get a plain "this link
+      has expired, ask for the file again" instead of Amazon's raw error page with your
+      account number on it. **After the deploy:** open an OLD chat from before the update
+      that had a Flo document in it and tap its Download — you should see that plain
+      message, never an Amazon page.
 
 - [ ] **Separately: your server has not been sending us its logs since 22 July, 5pm.**
       That is before the last update went out. It does not affect anything you can see,
@@ -485,3 +494,4 @@ find" — it was **unreachable by any route in the product**. Both now have a pa
 | 2026-07-22 | Epic 10 | Real files from Flo, Excel exports, and reading printed paper. Two parts ship dark pending a deploy, and one may not work at all - both named explicitly. |
 | 2026-07-23 | Epic 6 | The bell that had always been wrong, the notifications and chats that were unreachable past the newest handful, bulk chat delete behind a typed count, and one decision of mine to overrule if you want. Plus the Flo/Word-document failure you reported today — real, live, and not fixed. |
 | 2026-07-22 | Epic 4 | The zeros (eleven screens, not one), honest failure states, the school's real details and affiliation number awaiting your save, the assistant finally knowing the principal, column sorting on 34 tables, and the Class Strength column you queried. Three things I could not verify myself are named explicitly. |
+| 2026-07-23 | D-37 fix | Flo's Word-document download fixed at the root: the long link no longer passes through Flo, the button fetches a fresh link when you tap it (so it can't go stale), and an old/dead link now says "expired, ask again" instead of showing an Amazon page with your account number. Its own run, gates green. **Not deployed yet** — you'll see it after the next update. |

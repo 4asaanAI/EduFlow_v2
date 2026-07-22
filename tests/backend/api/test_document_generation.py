@@ -60,7 +60,11 @@ def _s3_configured(monkeypatch):
 @pytest.fixture(autouse=True)
 def _fake_s3(monkeypatch):
     """S3 is not reachable from a test run. Storage is faked at the boundary so the
-    record-keeping and audit behaviour either side of it is still exercised."""
+    record-keeping and audit behaviour either side of it is still exercised.
+
+    Note (D-37): document_export no longer signs a URL at build time — the signed link
+    is minted at download time by GET /api/uploads/link/{file_id} — so there is nothing
+    to fake here beyond the upload itself."""
     from services import document_export
 
     class _Stored:
@@ -70,15 +74,11 @@ def _fake_s3(monkeypatch):
         sha256 = "sha"
 
     monkeypatch.setattr(document_export, "upload_bytes", lambda **kw: _Stored())
-    monkeypatch.setattr(
-        document_export, "create_presigned_get_url",
-        lambda key, **kw: f"https://s3.example/{key}?signed=1",
-    )
 
 
-# ── The tool produces a real file and a link ────────────────────────────────────
+# ── The tool produces a real file and a short id ────────────────────────────────
 
-def test_owner_gets_a_download_link_and_a_stored_record(client, fake_db):
+def test_owner_gets_a_file_id_and_a_stored_record(client, fake_db):
     resp = client.post(TOOL_URL, headers=_owner(), json={"params": {
         "doc_type": "docx",
         "title": "Principal's Circular",
@@ -92,8 +92,7 @@ def test_owner_gets_a_download_link_and_a_stored_record(client, fake_db):
 
     assert data["doc_type"] == "docx"
     assert data["file_name"].endswith(".docx")
-    assert data["download_url"].startswith("https://")
-    assert data["expires_in_seconds"] > 0
+    assert data["file_id"]  # a short opaque id, exchanged for a link at download time
 
     stored = [d for d in fake_db.file_uploads.docs if d["id"] == data["file_id"]]
     assert len(stored) == 1
@@ -101,15 +100,26 @@ def test_owner_gets_a_download_link_and_a_stored_record(client, fake_db):
     assert stored[0]["schoolId"] == "aaryans-joya"
 
 
-def test_the_link_is_signed_and_expires_rather_than_being_public(client):
-    """A generated document must never sit on an unauthenticated public URL — that
-    was the defect hotfix-1 was raised for."""
+def test_the_signed_url_never_travels_through_the_model(client, fake_db):
+    """D-37 regression, asserted over the ACTUAL tool result (not a mock).
+
+    A presigned URL is ~1,200 characters, ~1,000 of them a random token. The tool used
+    to put it in its result and the prompt asked the model to transcribe it, which it
+    could not do byte-for-byte — S3 answered SignatureDoesNotMatch. The tool result the
+    model receives must now carry NO url of any kind: only a short file_id.
+    """
     resp = client.post(TOOL_URL, headers=_owner(), json={"params": {
         "doc_type": "pdf", "title": "Notice", "paragraphs": ["Holiday Monday."],
     }})
     data = resp.json()["data"]
-    assert "signed=1" in data["download_url"]
-    assert data["expires_in_seconds"] > 0
+
+    assert data.get("file_id")
+    assert "download_url" not in data
+    assert "expires_in_seconds" not in data
+    # Nothing url-shaped anywhere in what the model is handed.
+    blob = str(data)
+    assert "http://" not in blob and "https://" not in blob
+    assert "X-Amz" not in blob and "signed=" not in blob
 
 
 def test_the_stored_key_is_namespaced_to_the_school(client, fake_db):

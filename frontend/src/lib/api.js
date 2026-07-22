@@ -116,6 +116,24 @@ export async function getMessages(convId) {
   return res.json();
 }
 
+/**
+ * Exchange a generated file's opaque id for a FRESH, short-lived download link
+ * (D-37). The signed URL is never carried through the chat message — Flo only
+ * writes a short file_id — so the link is minted here, server-side, when the person
+ * taps download, and cannot be stale. Throws on 404/403/network so the caller can
+ * show a plain "ask for it again" message rather than a broken link.
+ */
+export async function getGeneratedFileLink(fileId) {
+  const res = await apiFetch(`${API}/uploads/link/${encodeURIComponent(fileId)}`, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+  if (!res.ok) {
+    throw new Error(`generated file link failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 export function sendMessageStream(convId, text, user, onEvent, sessionId = null, imageData = null) {
   const chatSessionId = sessionId || getBrowserSseSessionId();
   const body = JSON.stringify({ text, session_id: chatSessionId, image_data: imageData || undefined });

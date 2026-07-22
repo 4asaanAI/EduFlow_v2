@@ -32,9 +32,7 @@ from database import get_db
 from services.audit_service import write_audit
 from services.document_builder import BuiltDocument, build_document
 from services.s3_storage import (
-    PRESIGNED_URL_EXPIRY_SECONDS,
     build_upload_key,
-    create_presigned_get_url,
     upload_bytes,
 )
 from tenant import add_school_id, get_school_id
@@ -164,6 +162,12 @@ async def store_document(
         file_id, built.doc_type, built.size_bytes, built.truncated, source,
     )
 
+    # NOTE (D-37): this return travels to the language model as the tool result, so it
+    # carries ONLY a short opaque `file_id` — never a presigned URL. The signed URL is
+    # ~1,200 characters, ~1,000 of them a random token; asking the model to transcribe
+    # it into its reply produced corrupted links and S3 SignatureDoesNotMatch errors.
+    # The fresh URL is minted at click time by GET /api/uploads/link/{file_id} instead,
+    # which also means it can never be stale.
     return {
         "file_id": file_id,
         "file_name": built.filename,
@@ -173,8 +177,6 @@ async def store_document(
         "size_kb": int(built.size_bytes / 1024),
         "truncated": built.truncated,
         "notes": built.notes,
-        "download_url": create_presigned_get_url(stored.key),
-        "expires_in_seconds": PRESIGNED_URL_EXPIRY_SECONDS,
     }
 
 
