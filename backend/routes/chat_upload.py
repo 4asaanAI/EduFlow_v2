@@ -25,6 +25,8 @@ from database import get_db
 from middleware.auth import get_current_user
 from services.audit_service import write_audit
 from services.ocr_service import extract_text as extract_image_text
+from services.ocr_service import sniff_image_type
+from services.vision_service import describe_image as describe_image_bytes
 from tenant import get_school_id
 
 logger = logging.getLogger(__name__)
@@ -289,6 +291,7 @@ async def upload_chat_file(request: Request, file: UploadFile = File(...)):
     # Images return a special sentinel with the base64 data URL
     image_data = None
     ocr_note = None
+    used_paid_vision = False
     if extracted.startswith("__IMAGE_DATA__"):
         parts = extracted.split("__FILENAME__")
         image_data = parts[0].replace("__IMAGE_DATA__", "")
@@ -319,11 +322,16 @@ async def upload_chat_file(request: Request, file: UploadFile = File(...)):
                 if result.notes:
                     extracted += "\n\n[" + " ".join(result.notes) + "]"
             else:
-                ocr_note = result.reason
-                extracted = (
-                    f"[Image attached: {filename}. {result.reason} "
-                    "This reads printed text only; it does not describe photographs.]"
-                )
+                # Story 10.6: reading the words was not enough, so fall back to the
+                # paid service — and ONLY here. A page whose text was read never
+                # reaches this branch, which is what keeps printed paper free.
+                vision = describe_image_bytes(data, sniff_image_type(data) or "image/jpeg")
+                if vision.understood:
+                    used_paid_vision = True
+                    extracted = f"[Description of the image {filename}]\n{vision.description}"
+                else:
+                    ocr_note = vision.reason or result.reason
+                    extracted = f"[Image attached: {filename}. {ocr_note}]"
 
             # Reading an image is a read of school records and may involve a child.
             # Ids and counts only (NFR-S2) — never the text that was read.
@@ -341,6 +349,9 @@ async def upload_chat_file(request: Request, file: UploadFile = File(...)):
                         "size_bytes": len(data),
                         "chars_found": result.char_count,
                         "engine_available": result.available,
+                        # Recorded so the owner can see how often the PAID path was
+                        # taken, rather than discovering it on a bill.
+                        "paid_vision_used": used_paid_vision,
                     },
                 )
             except Exception:

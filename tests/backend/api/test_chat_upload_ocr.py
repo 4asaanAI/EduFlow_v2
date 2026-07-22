@@ -117,16 +117,72 @@ def test_text_found_on_the_page_is_handed_to_flo_as_ordinary_text(client, monkey
     assert body["ocr_note"] is None
 
 
-def test_a_page_with_no_text_says_so_and_admits_it_cannot_see(client, monkeypatch):
-    """OCR reads letters. Asked to describe a photograph it returns nothing, and Flo
-    must not imply it looked at the picture."""
-    _patch_ocr(monkeypatch, text="", available=True,
-               reason="No text was found on that page.")
+def _patch_vision(monkeypatch, **kwargs):
+    from services.vision_service import VisionResult
+    import routes.chat_upload as mod
+
+    calls = []
+
+    def _fake(data, mime, **kw):
+        calls.append(mime)
+        return VisionResult(**kwargs)
+
+    monkeypatch.setattr(mod, "describe_image_bytes", _fake)
+    return calls
+
+
+def test_a_page_with_no_text_falls_back_to_describing_the_picture(client, monkeypatch):
+    """Story 10.6: reading the words was not enough, so the paid path is tried."""
+    _patch_ocr(monkeypatch, text="", available=True, reason="No text was found on that page.")
+    calls = _patch_vision(monkeypatch, description="A group photo of children in uniform.",
+                          available=True)
 
     body = _upload(client, _bearer({"user_id": "o1", "role": "owner", "name": "O"})).json()
 
-    assert "No text was found" in body["extracted_text"]
-    assert "does not describe photographs" in body["extracted_text"]
+    assert len(calls) == 1, "the fallback should have been used exactly once"
+    assert "A group photo of children in uniform." in body["extracted_text"]
+
+
+def test_the_paid_path_is_NOT_used_when_the_text_was_read(client, monkeypatch):
+    """THE test for Story 10.6. It is a fallback, not a parallel attempt — this is
+    what keeps printed paper free."""
+    _patch_ocr(monkeypatch, text="ADMISSION FORM", available=True, char_count=14)
+    calls = _patch_vision(monkeypatch, description="should never be called", available=True)
+
+    body = _upload(client, _bearer({"user_id": "o1", "role": "owner", "name": "O"})).json()
+
+    assert calls == [], "OCR succeeded, so the paid service must not have been called"
+    assert "ADMISSION FORM" in body["extracted_text"]
+
+
+def test_a_deployment_that_cannot_see_says_so_rather_than_inventing(client, monkeypatch):
+    _patch_ocr(monkeypatch, text="", available=True, reason="No text was found on that page.")
+    _patch_vision(monkeypatch, description="", available=False,
+                  reason="This server cannot look at pictures yet — its AI model only accepts text.")
+
+    body = _upload(client, _bearer({"user_id": "o1", "role": "owner", "name": "O"})).json()
+
+    assert "cannot look at pictures yet" in body["extracted_text"]
+    assert body["ocr_note"]
+
+
+def test_the_audit_records_whether_the_paid_path_was_taken(client, monkeypatch, fake_db):
+    """So the owner can see how often it happens, rather than meeting it on a bill."""
+    _patch_ocr(monkeypatch, text="", available=True, reason="No text was found.")
+    _patch_vision(monkeypatch, description="A printed timetable.", available=True)
+    _upload(client, _bearer({"user_id": "o1", "role": "owner", "name": "O"}))
+
+    row = next(a for a in fake_db.audit_logs.docs if a.get("action") == "image_text_read")
+    assert row["changes"]["paid_vision_used"] is True
+
+
+def test_the_audit_records_when_the_paid_path_was_not_needed(client, monkeypatch, fake_db):
+    _patch_ocr(monkeypatch, text="FEE RECEIPT", available=True, char_count=11)
+    _patch_vision(monkeypatch, description="never", available=True)
+    _upload(client, _bearer({"user_id": "o1", "role": "owner", "name": "O"}))
+
+    row = next(a for a in fake_db.audit_logs.docs if a.get("action") == "image_text_read")
+    assert row["changes"]["paid_vision_used"] is False
 
 
 def test_a_missing_hindi_pack_is_surfaced_rather_than_silently_dropping_hindi(client, monkeypatch):

@@ -290,6 +290,57 @@ for you.**
 
 ---
 
+## Epic 10 — Real files, and reading a printed page (added 2026-07-22)
+
+### Read this first
+
+**Nothing in this epic is live yet.** It reaches you only after a deploy. Two parts of
+it need a deploy *and* a bit of luck, and I would rather say so now than have you find
+out by testing:
+
+- [ ] **Reading printed paper needs a program installed on your server.** I have added
+      the instruction that installs it, but until the deploy happens Flo will say
+      "the OCR engine is not installed on this server yet". That message is deliberate:
+      it must never look like "your form was blank".
+- [ ] **Understanding a photograph may not work at all.** It uses the same AI service
+      Flo already talks through, which may not accept pictures. Nobody has tried. If it
+      cannot, Flo will say so plainly rather than making something up. **Tell me what
+      it says the first time you try it** and I will know within one message.
+
+### Please check in the real app, after the deploy
+
+- [ ] **Ask Flo for a circular.** "Write a circular about the school reopening on 1
+      April and give me a Word file." You should get a card with the file name, DOCX
+      and its size, and a Download button. Open it in Word.
+- [ ] **Ask for a fee sheet as Excel**, and check the columns are wide enough to read
+      rather than showing ####.
+- [ ] **Ask for a PowerPoint** about the school profile.
+- [ ] **Hindi.** Ask for a circular in Hindi as a **Word** file - that should be
+      perfect. The same thing as a **PDF** will lose the Devanagari; that is a known
+      limit, not a new bug, and it needs a Hindi font added.
+- [ ] **The export buttons.** Every export screen can now give you Excel instead of
+      raw commas. Check a fee export opens properly in Excel.
+- [ ] **An old file.** Download links expire. Open a conversation from a few days
+      earlier and tap a file - it should tell you the link expired and to ask again,
+      not just fail.
+- [ ] **Photograph a fee slip** and send it to Flo. It should read the printed words
+      back. Then photograph something with no writing on it - Flo should say it found
+      no text, and should NOT pretend to describe the picture.
+- [ ] **Try it as a teacher.** Reading images is for you, the Principal and the office
+      staff only. A teacher should be told plainly that the image was not read.
+
+### Known and left alone on purpose
+
+- Flo can **read** images and **make** documents. It cannot generate images or video,
+  as you asked.
+- Reading a printed page costs nothing and the picture never leaves your server.
+  Understanding a photograph uses the paid service, and it only happens when reading
+  the words found nothing. Every use is recorded so you can see how often.
+- The document tool cannot fetch data by itself. It only formats what Flo already had,
+  so nobody can obtain through Flo a spreadsheet they could not already export.
+
+---
+
 ## Change log
 
 | Date | Epic | What was added |
@@ -297,4 +348,5 @@ for you.**
 | 2026-07-22 | Epic 1 | Owner-access handover decision, the live-app checks I could not make myself, and the legacy job-category question. |
 | 2026-07-22 | Epic 1 + 8 | Two decisions settled by Abhimanyu (sole owner stays; no self-editing). Self-service checks replaced by ask-and-approve checks. City correction added, pending a deploy decision. |
 | 2026-07-22 | Epic 9 + 3 | **Part A added: a standing ten-minute checklist to run after every epic**, at Abhimanyu's request. Plus this epic's specifics: the new look, Flo, the duplicate titles, sorting and paging, and the four live-data city corrections. |
+| 2026-07-22 | Epic 10 | Real files from Flo, Excel exports, and reading printed paper. Two parts ship dark pending a deploy, and one may not work at all - both named explicitly. |
 | 2026-07-22 | Epic 4 | The zeros (eleven screens, not one), honest failure states, the school's real details and affiliation number awaiting your save, the assistant finally knowing the principal, column sorting on 34 tables, and the Class Strength column you queried. Three things I could not verify myself are named explicitly. |

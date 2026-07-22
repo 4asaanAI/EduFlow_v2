@@ -24,31 +24,32 @@ Branch: `ui-sweep-2026-07-22`
 
 | 2026-07-22 | **Epic 4** | **Numbers And Details That Are Actually True — DONE.** The reported defect ("the Board Report shows zeros") was not a Board Report defect: a second result envelope meant **eleven** screens read one level too shallow and printed 0 or N/A. Fixed at the source. A failed section can no longer render as a figure — on screen or in the exported board PDF. Attendance nobody has marked says "not marked yet", never "0%". The school's identity now has one verified source, plus its CBSE affiliation number, and the assistant is briefed from the record rather than a constant — it had **never** known the principal's name. Story 4.5 (owner-approved before build) closed three unguarded behaviours on the tool endpoint. Mid-run the owner reported two more: **34 tables gained column sorting** via the shared component, and Class Strength stopped showing "Other" and "Total" as the same number. 66 new tests. Suite 1784 passed / 2 failed (pinned) / 14 deselected; frontend 184 passed / 2 pre-existing. **Closes D-21 in code.** Adds D-24, D-25. **No production writes.** |
 
-| 2026-07-22 | **Epic 10 (PART 1 of 2)** | **Something You Can Actually Hand Someone — 2 of 6 stories done. THE EPIC IS NOT CLOSED.** Pulled ahead of Epic 5 by the owner after Flo told him it could write a Word file's *content* but not the file. Investigation found Flo was underselling the platform: every library was already installed, three used only for reading, and the store-and-deliver path already proven by certificates. **Shipped:** the shared document builder (docx/xlsx/pptx/pdf/csv/md/txt), and `format=xlsx` on all seven existing exports with csv still the default and every role gate untouched. 58 new tests; suite 1851 passed / 2 pinned / 14 deselected. **NOT done:** stories 10.2, 10.3, 10.5, 10.6, and the epic-close quality gate and retrospective. See the handoff below. |
+| 2026-07-22 | **Epic 10** | **Something You Can Actually Hand Someone - DONE.** Pulled ahead of Epic 5 by the owner. Flo was underselling the platform: every document library was already installed and the store-and-deliver path already proven by certificates. Shipped: one document builder (docx/xlsx/pptx/pdf/csv/md/txt); `draft_document` so Flo returns a real file with a signed, expiring link; a tappable file card in chat that refuses non-http URLs; `format=xlsx` on all seven exports with csv still default and every role gate untouched; OCR that reads a printed page on this server for nothing; and a paid vision fallback that is asserted NOT to run when OCR succeeded. Two parity gates caught two of my own mistakes. 70 new tests; suite 1915 passed / 2 pinned / 14 deselected, frontend 196 / 2 pre-existing. **OCR and the vision fallback SHIP DARK until a deploy.** Adds D-29, D-30, D-31. No production writes. |
 
 ---
 
-## Epic 10 — where it actually stands (written 2026-07-22, mid-epic)
+## Epic 10 — closed 2026-07-22
 
-**Two of six stories are implemented. The epic-close gate has NOT been run, no review
-lenses have been applied, and no retrospective exists.** Recorded plainly rather than
-allowing a partial epic to read as a finished one.
+All six stories are implemented and the epic-close gate is clean. See
+`epic-10-completed.md`, `epic-10-review.md` and `epic-10-retrospective.md`.
 
-| Story | State |
-|---|---|
-| 10.1 One place that turns content into a real file | **Builder DONE** (`services/document_builder.py`, 25 tests). **Storage half NOT done** — nothing yet saves a generated file to S3 or hands back a presigned URL. That half is what 10.2 and 10.3 need. |
-| 10.2 Flo hands you the file | **Not started.** Needs the storage half of 10.1, a registry entry gated to mirror `exports.py`, an audit row, and the daily cap. |
-| 10.3 The file arrives where you can reach it | **Not started.** Frontend. |
-| 10.4 Exports in the format people asked for | **DONE** (33 tests, including 14 asserting no permission moved). |
-| 10.5 Flo reads a printed page (OCR) | **Not started.** Note it will ship **dark** until `tesseract` and the Hindi language data are installed on the server, which is a **deploy needing the owner's approval**. |
-| 10.6 When reading the words is not enough | **Not started.** Fallback only; must not run when OCR succeeded. |
+**Two things are built but not yet working for the school, and must not be reported
+otherwise:**
 
-**Known limit already in the shipped code, not a defect to re-discover:** the PDF
-builder uses fpdf2's core fonts, which are Latin-1 only, so **Devanagari is replaced
-rather than rendered in PDFs**. A test pins this so it fails loudly if someone assumes
-otherwise. Word, Excel and PowerPoint keep Hindi intact. Fixing PDF properly means
-embedding a Unicode font (e.g. Noto Sans Devanagari) and is worth doing when a Hindi
-circular is genuinely needed as a PDF.
+1. **OCR needs a deploy.** `tesseract` is a system binary and is not installed on the
+   server. `.ebextensions/04_tesseract_ocr.config` installs it, along with the
+   Hindi/Devanagari language data. Until that deploy, every image upload answers "the
+   OCR engine is not installed on this server yet" - which is a distinct, tested
+   answer precisely so it never reads as "this form is blank".
+2. **The vision fallback may not work at all.** It uses the chat deployment the
+   platform already talks through, which may not accept images. Nobody has tried. If
+   it refuses, the code reports "this server cannot look at pictures yet" rather than
+   inventing a description.
+
+**Known limit, pinned by a test rather than left to be rediscovered:** the PDF builder
+uses fpdf2's core fonts, which are Latin-1, so **Devanagari is replaced in PDFs**.
+Word, Excel and PowerPoint keep Hindi intact. Fixing PDFs properly means shipping an
+embedded Unicode font.
 
 ---
 
@@ -454,6 +455,29 @@ skill twice, and the decision it documented is recorded here instead.
 third-party instructions into a repository handling the records of 1,802 children. Read
 the `SKILL.md` before adopting it, as was done for all three here — that review is what
 established that two of them do not belong anywhere near Flo.
+
+### D-29 — `export_expenses` is school-wide while its neighbours are branch-scoped — **DEFERRED**
+Found by the Epic 10 audit. Every other export in `routes/exports.py` uses
+`scoped_query(branch_id=...)`; expenses uses `scoped_filter` and so returns every
+branch's expenses to a branch-bound accountant.
+
+**Annotated in place rather than changed.** Narrowing it alters what an accountant can
+see, which is a permission decision and not a packaging story's to make. No practical
+effect today: the school has exactly one branch. Fix it in whichever epic next owns
+accountant permissions, and ask before narrowing.
+
+### D-30 — A scanned PDF still cannot be read — **DEFERRED**
+`pypdf` correctly reports "no extractable text found (may be scanned)" for a PDF that
+is a photograph of a page. Making OCR handle it means rasterising pages first
+(`pdf2image` + the poppler system binary), a second system dependency on top of
+Tesseract. Worth doing once Tesseract is proven in production, not before.
+
+### D-31 — The vision fallback cannot be invoked on demand — **DEFERRED**
+It runs at the upload boundary when OCR finds no text. Better would be a tool Flo calls
+when it judges the picture needs understanding, because Flo has the conversation and
+knows whether the person asked what a picture *says* or what it *shows*. The image
+bytes live at the upload boundary rather than in the tool loop, so wiring that is real
+work. The current behaviour satisfies the story honestly.
 
 ---
 

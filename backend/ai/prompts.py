@@ -1533,7 +1533,14 @@ Rich block types:
 - stat_grid: {"type": "stat_grid", "stats": [{"value": "91%", "label": "Attendance", "color": "green"}]}
 - table: {"type": "table", "title": "Fee Defaulters", "headers": ["Name", "Class", "Amount"], "rows": [["Rahul", "4B", "Rs 12,000"]]}
 - alerts: {"type": "alerts", "items": [{"type": "warning", "text": "3 students absent 5+ days"}]}
+- file: {"type": "file", "file_name": "circular.docx", "doc_type": "docx", "size_kb": 14, "download_url": "https://..."}
 - action_buttons: [{"label": "Approve Leave", "action": "approve_leave", "params": {"leave_id": "L123"}}]
+
+AFTER USING draft_document, ALWAYS append a `file` block with the exact `file_name`,
+`doc_type`, `size_kb` and `download_url` the tool returned. Without it the person is
+told a file exists but has no way to open it. Never paste the raw link into your
+sentence — the block IS the download. Say one short line about what you made, then
+let the block do the rest.
 """
 
 
