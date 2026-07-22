@@ -158,10 +158,9 @@ system, so saving anything would have been a real change to real data.
       saved saying the school is in Lucknow.** It was answering from that.
 
 ### Needs a decision from you
-- [ ] **Where is the "Aliganj Branch"?** It is stored as `Aliganj, Lucknow`.
-      Aliganj is a Lucknow locality, so this looks like leftover sample data.
-      I did not guess a location for a real branch. Tell me its real location,
-      or tell me the branch is not real and should be removed.
+- [x] **Where is the "Aliganj Branch"?** — **CLOSED 2026-07-22.** It was leftover
+      sample data and was removed. Checked again on 2026-07-22: your system now
+      holds exactly one branch, Joya, and all 1,802 students are on it.
 - [ ] **The rest of the school's own details are still made up:** phone
       `0522-4567890`, email `info@theararyans.edu.in` (also misspelt), principal
       `Adesh`. Your own paperwork says +91-8126965555 / 8126968888 and

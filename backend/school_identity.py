@@ -25,6 +25,16 @@ import os
 from typing import Any, Dict
 
 # Verified 2026-07-22. `principal` confirmed by Abhimanyu the same day.
+#
+# THIS FILE DESCRIBES THE JOYA BRANCH, and only the Joya branch. Abhimanyu,
+# 2026-07-22: "the Joya branch of Aaryans was established in 2015 but the other
+# branches might have been established in 2005 ... we are only focusing over the
+# Joya branch as we are making the platform for them only."
+#
+# That is why `established` is 2015 and not 2005 — 2005 belongs to a different
+# branch of the same trust, which this platform does not serve. `branches` holds
+# exactly one record (`branch-joya`) and all 1,802 students sit on it. If another
+# branch is ever onboarded, its founding year is ITS OWN and does not belong here.
 SCHOOL_IDENTITY: Dict[str, str] = {
     "school_name": "The Aaryans",
     "board": "CBSE",

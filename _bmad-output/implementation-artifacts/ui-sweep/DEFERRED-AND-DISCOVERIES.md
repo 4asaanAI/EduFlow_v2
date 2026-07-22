@@ -339,6 +339,31 @@ free path; it needs a Whisper deployment at roughly half a US cent per minute.
 image input. If not, a vision-capable deployment on the same subscription is the
 fallback — still no new service.
 
+### D-28 — Founding year: 2005 vs 2015 — **SETTLED and WRITTEN 2026-07-22**
+The stored record said `established: "2005"`; the school's website says it "commenced
+its journey on 13 April 2015". The Epic 4 write deliberately left this alone rather than
+overwrite one plausible year with another.
+
+**Abhimanyu's answer resolves it, and the reason matters more than the number:** *"the
+Joya branch of Aaryans was established in 2015 but the other branches might have been
+established in 2005 but we are only focusing over the Joya branch as we are making the
+platform for them only."* Both years are true — of different branches. **This platform
+serves Joya, so the answer is 2015.**
+
+Written to production with approval: one field, `established` `'2005'` → `'2015'`,
+read-before/read-after diff proving nothing else moved, 1,802 students untouched.
+`school_identity.py` now carries the reasoning so a future session does not "correct"
+it back on finding a 2005 reference elsewhere.
+
+**Confirmed read-only at the same time:** `branches` holds exactly ONE record —
+`branch-joya` (`JYA`, Joya, Amroha, active) — and all 1,802 students are assigned to it.
+So the "where is the Aliganj Branch?" question on the Epics 9+3 checklist is **closed**:
+that stale record was deleted in Epic 9 and has not returned. Anything in this codebase
+describing "the school" therefore describes Joya, which is why `school_identity.py` is
+scoped to one branch by design rather than by omission.
+
+### D-26 continued — access rule
+
 **Access rule — SETTLED by Abhimanyu 2026-07-22:** **Owner, Principal and teachers** may
 send Flo an image. **Students may not** — they are the children whose photographs this
 protects, and they were excluded deliberately. Note this is *wider* than the Phase-1
