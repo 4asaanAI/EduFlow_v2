@@ -87,6 +87,24 @@ def test_no_user_facing_screen_still_calls_it_eduflow_ai():
     assert not offenders, "the assistant is called Flo:\n" + "\n".join(offenders)
 
 
+def test_flo_is_told_how_to_write():
+    """Adapted from the `stop-slop` skill, adopted 2026-07-22."""
+    prompt = _prompt()
+    assert "HOW YOU WRITE:" in prompt
+    assert "Answer first" in prompt
+    assert "Name the actor" in prompt
+
+
+def test_the_style_rules_do_not_cancel_the_product_rules():
+    """`stop-slop` bans emphasis and em-dashes. This product deliberately bolds
+    key figures and marks status with emoji so an owner can scan a reply on a
+    phone. Adopting the skill must not quietly delete that."""
+    prompt = _prompt()
+    assert "Use bold for key metrics" in prompt
+    assert "Use emoji indicators for status" in prompt
+    assert "Use markdown tables for tabular data" in prompt
+
+
 def test_flo_knows_the_schools_fee_structure_when_recorded():
     """Abhimanyu, 2026-07-22: 'record the fee structure ... to make the assistant
     (Mascot Flo) aware of the fees of various classes in The Aaryans'."""

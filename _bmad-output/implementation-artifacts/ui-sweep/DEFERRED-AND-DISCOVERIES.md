@@ -339,12 +339,50 @@ free path; it needs a Whisper deployment at roughly half a US cent per minute.
 image input. If not, a vision-capable deployment on the same subscription is the
 fallback — still no new service.
 
-**Open decision carried forward:** who may send Flo an image. This is a school of 1,802
-children and an uploaded photo may be a child, a medical note or a report card. The
-question was put to Abhimanyu and his answer addressed cost rather than access, so **the
-access rule is still undecided** and must be settled before any code is written (the
-D-18 rule). Default proposal: Owner and Principal only, every use audited, matching the
-existing Phase-1 rule that AI actions are Owner/Principal-only.
+**Access rule — SETTLED by Abhimanyu 2026-07-22:** **Owner, Principal and teachers** may
+send Flo an image. **Students may not** — they are the children whose photographs this
+protects, and they were excluded deliberately. Note this is *wider* than the Phase-1
+lockdown (Owner+Principal only) that governs AI writes, so it needs its own gate rather
+than reusing `is_owner_or_principal`; reads are not covered by that lockdown anyway.
+Every use should still be audited, consistent with the F.2 minor-read audit rule.
+
+**Scope confirmed:** Flo must be able to **read and extract data from an attached
+image**. Flo must **NOT generate** images or video. (`routes/image_gen.py` already exists
+and renders certificate templates — that is document rendering, not AI image generation,
+and is unaffected.)
+
+### D-27 — Three third-party skill packs evaluated — **1 adopted, 2 do not apply**
+Abhimanyu asked (2026-07-22) whether any of three GitHub skills could give Flo image
+analysis, and to add them to Flo regardless so it could use them when needed.
+
+**The blocking fact, recorded so it is not asked again:** *no skill file can grant
+vision.* Seeing an image is a model capability — the image bytes must actually be sent
+to a model that can see. A markdown instruction file cannot make a model look at
+something it was never given. None of the three helps with the image goal, and none
+ever could. Image understanding stays the engineering job described in D-26.
+
+| Repo | What it actually is | Verdict |
+|---|---|---|
+| `hardikpandya/stop-slop` (MIT) | Prose rules for removing AI writing tells | **ADOPTED** — see below |
+| `rebelytics/one-skill-to-rule-them-all` (CC BY 4.0) | A meta-skill that watches *coding sessions* and improves a *skill library* | **Not applicable to Flo.** Flo has neither. It is built for a coding agent (Claude Code), where it would be useful — but that is tooling for the developer, not a capability for the school's assistant. |
+| `vercel-labs/skills` (MIT) | `npx skills` — a CLI that installs skills into coding agents | **Not a skill at all.** A package manager for the developer's editor. Nothing to hand Flo. |
+
+**stop-slop, adopted as `WRITING_STYLE_RULES` in `ai/prompts.py`** — adapted, not pasted.
+Two reasons the adaptation matters:
+1. The skill is written for essays and **bans emphasis and em-dashes**. This product
+   deliberately bolds key figures and marks status with emoji so an owner can scan a
+   reply on a phone. Those product decisions win; a committed test
+   (`test_the_style_rules_do_not_cancel_the_product_rules`) fails if adopting the skill
+   ever quietly deletes them.
+2. It is a long document, and the system prompt is paid for on **every turn by every
+   user**. Only the highest-value subset was taken: answer first, name the actor, be
+   specific, no self-narration, no hedging, no slogans, bad news as plainly as good.
+
+**On "provide them as skills for Flo to use automatically":** Flo has no skill system —
+it has a tool registry, where each entry is a function that reads or writes school data.
+A behavioural instruction is not a tool; it belongs in the prompt, which is where
+stop-slop now lives. Building a genuine skill/mode system for Flo (as CockRoach has, in
+`kb/modes/*.md`) would be a real piece of architecture and is **not** proposed here.
 
 ---
 
