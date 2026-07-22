@@ -701,6 +701,28 @@ img, video, canvas, svg { max-width: 100%; }
   [style*="minmax(92px, 0.45fr) minmax(0, 1fr)"] {
     grid-template-columns: 1fr !important;
   }
+
+  /* Extra fixed-count ratios and pixel two-pane splits, merged in from the
+     responsive work that landed on main while this branch was in flight.
+     Deliberately UNSCOPED: that branch prefixed every selector with
+     `.app-main-content`, which is the scoping the pre-epic audit found had missed
+     ~25 dialogs. The patterns are additive; the scoping is not re-adopted, and
+     neither is its rule turning tables into block boxes — that is D-01, which
+     splits a table away from its own headings. See section 3. */
+  [style*="2fr 1fr"],
+  [style*="3fr 1fr"],
+  [style*="1fr 3fr"],
+  [style*="2fr 3fr"],
+  [style*="3fr 2fr"],
+  [style*="repeat(5, 1fr)"],
+  [style*="repeat(5,1fr)"],
+  [style*="280px 1fr"],
+  [style*="300px 1fr"],
+  [style*="320px 1fr"],
+  [style*="360px 1fr"],
+  [style*="minmax(240px, 320px)"] {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 /* ---------- 6. Mobile shell + touch ergonomics ---------- */
@@ -789,6 +811,10 @@ img, video, canvas, svg { max-width: 100%; }
     --text-2xl: 24px;
   }
   [data-testid$="-tool"] { padding: 12px !important; }
+  /* Bump all interactive elements to 44px touch targets */
+  button, input, select, textarea, [role="button"] {
+    min-height: 44px;
+  }
 }
 
 @media (min-width: 769px) {
