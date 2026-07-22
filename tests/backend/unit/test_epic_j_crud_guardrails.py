@@ -58,16 +58,35 @@ async def test_principal_cannot_create_privileged_staff(fake_db):
 
 
 async def test_principal_owner_only_fields_silently_stripped_on_update(fake_db):
+    """Salary keeps its silent strip: "that field isn't yours" is not an attack."""
     fake_db.staff.docs.append({
         "id": "stf-1", "schoolId": "aaryans-joya", "name": "Bob", "staff_type": "teacher",
         "role": "teacher", "sub_category": None, "salary": 100, "is_active": True, "user_id": None,
     })
     ctx = actor_ctx_from_user(PRINCIPAL, school_id="aaryans-joya")
-    # Principal sends only owner-only fields → silent strip → no-op success (no change).
     result = await staff_service.update_staff(
-        fake_db, ctx, {"staff_id": "stf-1", "salary": 999, "role": "owner"}
+        fake_db, ctx, {"staff_id": "stf-1", "salary": 999}
     )
     assert result["noop"] is True
+    assert fake_db.staff.docs[0]["salary"] == 100
+
+
+async def test_principal_granting_owner_role_raises_not_stripped(fake_db):
+    """UI-Sweep Story 1.1 — an attempt to GRANT owner is refused outright.
+
+    Was previously folded into the silent-strip test above and returned a no-op
+    "success". Escalation and "you may not edit salary" are different events and
+    must not share a response.
+    """
+    fake_db.staff.docs.append({
+        "id": "stf-2", "schoolId": "aaryans-joya", "name": "Bob", "staff_type": "teacher",
+        "role": "teacher", "sub_category": None, "salary": 100, "is_active": True, "user_id": None,
+    })
+    ctx = actor_ctx_from_user(PRINCIPAL, school_id="aaryans-joya")
+    with pytest.raises(staff_service.StaffAuthorizationError):
+        await staff_service.update_staff(
+            fake_db, ctx, {"staff_id": "stf-2", "salary": 999, "role": "owner"}
+        )
     assert fake_db.staff.docs[0]["salary"] == 100
     assert fake_db.staff.docs[0]["role"] == "teacher"
 

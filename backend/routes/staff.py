@@ -19,6 +19,7 @@ from services.leave_service import (
 from services.staff_service import (
     create_staff as create_staff_service,
     update_staff as update_staff_service,
+    StaffFieldValidationError,
     StaffValidationError,
     StaffNotFoundError,
     StaffAuthorizationError,
@@ -53,6 +54,13 @@ PROFILE_FIELDS = {
     "sub_category",
 }
 LEAVE_BALANCE_FIELDS = {"casual_leave_balance", "medical_leave_balance", "earned_leave_balance"}
+# UI-Sweep Story 1.3 — the ONLY fields a person may change on their own record.
+# An allow-list, never a deny-list: a deny-list silently admits every field
+# someone adds to the schema later.
+# Everything else — role, sub_category, school, salary, token allowance — is
+# read-only here. Authority changes happen on the staff screen (Stories
+# 1.1/1.2) so there is exactly one place where a person's permissions can move.
+SELF_SERVICE_FIELDS = {"name", "phone", "email"}
 
 
 def get_user(req: Request):
@@ -70,6 +78,13 @@ def _can_manage(user: dict) -> bool:
 def _public_staff(staff: dict) -> dict:
     staff = {k: v for k, v in staff.items() if k != "_id"}
     return staff
+
+
+def _own_profile(staff: dict) -> dict:
+    """The self-service view. Salary is dropped here rather than relying on the
+    query projection alone — a privacy guarantee should not depend on a database
+    option that a caller could later change without noticing what it protected."""
+    return {k: v for k, v in _public_staff(staff).items() if k != "salary"}
 
 
 async def _audit(db, *, action: str, staff_id: str, user: dict, changes: dict | None = None):
@@ -118,6 +133,10 @@ async def create_staff(request: Request):
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
     try:
         result = await create_staff_service(db, actor_ctx, body)
+    # Story 1.2: the subclass must be caught FIRST or the 400 handler below
+    # swallows it and the 422 never fires.
+    except StaffFieldValidationError as e:
+        raise HTTPException(422, str(e))
     except StaffValidationError as e:
         raise HTTPException(400, str(e))
     except StaffAuthorizationError as e:
@@ -128,6 +147,89 @@ async def create_staff(request: Request):
     if result.get("temporary_password"):
         data["temporary_password"] = result["temporary_password"]
     return {"success": True, "data": data}
+
+
+# ── Self-service profile (Story 1.3) ─────────────────────────────────────────
+# Declared BEFORE "/{staff_id}" — FastAPI matches routes in declaration order,
+# so a path parameter registered first would swallow "/me" and a person editing
+# their own details would instead be asking for the staff member whose id is
+# literally "me".
+
+
+@router.get("/me")
+async def get_my_staff_profile(request: Request):
+    """The signed-in person's own staff record. No role gate — everyone has a self."""
+    db = get_db()
+    user = get_user(request)
+    staff = await db.staff.find_one(_staff_query({"user_id": user["id"]}), {"_id": 0, "salary": 0})
+    if not staff:
+        raise HTTPException(404, "No staff record is linked to this account")
+    return {"success": True, "data": _own_profile(staff)}
+
+
+@router.patch("/me")
+async def update_my_staff_profile(request: Request):
+    """Correct your own name, phone and email — and nothing else.
+
+    A request carrying any other field is refused OUTRIGHT rather than partially
+    applied. Saving the name while quietly dropping `role` would tell the caller
+    exactly where the boundary sits and leave them believing the rest went
+    through; both are worse than a clear refusal.
+    """
+    db = get_db()
+    user = get_user(request)
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Expected a JSON object")
+
+    rejected = sorted(set(body) - SELF_SERVICE_FIELDS)
+    if rejected:
+        raise HTTPException(
+            403,
+            "These details cannot be changed from your own profile: %s. "
+            "Ask the Owner to change them from the staff screen." % ", ".join(rejected),
+        )
+
+    update = {}
+    for field in sorted(set(body) & SELF_SERVICE_FIELDS):
+        value = body[field]
+        if value is not None and not isinstance(value, str):
+            raise HTTPException(422, f"{field} must be text")
+        value = value.strip() if isinstance(value, str) else value
+        if field == "name" and not value:
+            raise HTTPException(422, "name cannot be empty")
+        update[field] = value
+    if not update:
+        raise HTTPException(400, "No changes provided")
+
+    staff = await db.staff.find_one(_staff_query({"user_id": user["id"]}), {"_id": 0})
+    if not staff:
+        raise HTTPException(404, "No staff record is linked to this account")
+
+    changes = {k: {"previous": staff.get(k), "new": v} for k, v in update.items() if staff.get(k) != v}
+    if not changes:
+        return {"success": True, "data": _own_profile(staff)}
+
+    await db.staff.update_one(
+        _staff_query({"id": staff["id"]}),
+        {"$set": {**update, "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+
+    # The signed-in session carries the person's name and phone, and that token
+    # is not reissued until the next sign-in. Write the same values onto the
+    # login record so the correction survives signing out and back in.
+    if staff.get("user_id") and ({"name", "phone"} & set(update)):
+        auth_user = await db.auth_users.find_one({"id": staff["user_id"]}, {"_id": 0})
+        if auth_user:
+            user_info = {**(auth_user.get("user_info") or {}), "id": staff["user_id"]}
+            for field in ("name", "phone"):
+                if field in update:
+                    user_info[field] = update[field]
+            await db.auth_users.update_one({"id": staff["user_id"]}, {"$set": {"user_info": user_info}})
+
+    await _audit(db, action="self_update", staff_id=staff["id"], user=user, changes=changes)
+    updated = await db.staff.find_one(_staff_query({"id": staff["id"]}), {"_id": 0, "salary": 0})
+    return {"success": True, "data": _own_profile(updated)}
 
 
 @router.get("/{staff_id}")
@@ -159,6 +261,8 @@ async def update_staff(staff_id: str, request: Request):
         raise HTTPException(404, str(e))
     except StaffAuthorizationError as e:
         raise HTTPException(403, str(e))
+    except StaffFieldValidationError as e:
+        raise HTTPException(422, str(e))
     except StaffValidationError as e:
         raise HTTPException(400, str(e))
     return {"success": True, "data": _public_staff(result["staff"])}

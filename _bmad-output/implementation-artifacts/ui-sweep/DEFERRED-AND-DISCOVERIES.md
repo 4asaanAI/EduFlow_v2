@@ -18,6 +18,7 @@ Branch: `ui-sweep-2026-07-22`
 | 2026-07-22 | Pre-epic | Read-only reconciliation of the school's source documents vs the live database → `_bmad-output/planning-artifacts/aaryans-source-of-truth-2026-07-22.md`. |
 | 2026-07-22 | Pre-epic | Shipped: staff role/sub-category lockdown (frontend), staff `designation` display, mobile header + sidebar behaviour, class ordering, notification dot. Commits `401a4ac`, `ab206cb`, and the mobile-shell commit. |
 | 2026-07-22 | Planning | `bmad-check-implementation-readiness` run → paused at step 1: **no epic document existed** for this work. `bmad-create-epics-and-stories` run → requirements inventory, 7 epics, coverage map, Epic 1 stories written. |
+| 2026-07-22 | **Epic 1** | **Access That Cannot Be Talked Around — DONE.** Elicitation + party-mode passes rewrote the ACs before any code (E-1…E-9); 3 stories implemented; epic-close gate found 10 further findings, all fixed with regression tests. Owner role is now refused by the server for every caller including the Owner, in both directions; unrecognised job categories are refused; staff can maintain their own contact details. Suite 1682 passed / 2 failed (the pinned pair) / 14 deselected. **Closes D-02, D-11, D-12, D-13, D-14.** No production writes. |
 
 ---
 
@@ -34,11 +35,20 @@ Two defects were shipped by this initiative and corrected within hours:
 **Status:** closed. Recorded because the owner reported both, and because they are the
 reason the epic-close adversarial review gate exists.
 
-### D-02 (was RISK-1) — Owner-role restriction is frontend-only — **OPEN, Epic 1 Story 1.1**
+### D-02 (was RISK-1) — Owner-role restriction is frontend-only — **CLOSED 2026-07-22 (Epic 1, Story 1.1)**
 "Owner" was removed from the staff role dropdown and reported to the owner as closing
-the privilege-escalation hole. It does not: FR4 and NFR-S1 require server-side denial,
-and the API still accepts `role: "owner"`. **This was mis-reported as complete.**
-**Reason deferred:** none — it is Epic 1 Story 1.1 and must be fixed there.
+the privilege-escalation hole. It did not: FR4 and NFR-S1 require server-side denial,
+and the API still accepted `role: "owner"`. **This was mis-reported as complete.**
+
+**Fixed:** the server now refuses any request that would grant owner authority through
+the staff API, for **every** caller including the Owner, on both create and update, and
+before any staff record or login account is written. Removal of owner authority is
+refused too, so the school cannot be left with no owner and no in-app way to appoint
+one. Every refusal is audited with the caller's id, and a failure of the audit write
+does not turn the refusal into a server error. Proven by 44 tests written against the
+API, deliberately bypassing the UI. The dropdown change remains as a second layer.
+**Owner assignment is now out-of-band only** — see the human-verification checklist for
+what that means in practice.
 
 ### D-03 (was RISK-2) — Two order-dependent backend test failures — **DEFERRED**
 `tests/backend/api/test_r13_tenancy_rbac.py::test_scoped_collection_find_one_and_update_injects_school_id`
@@ -97,6 +107,59 @@ see mocked both ways before building.
 From the printed enquiry form: student/father/mother Aadhar numbers, PEN (UDISE) number,
 APAAR ID and consent, previous school attended, registration number, declaration/T.C.
 undertaking. See §2 of the source-of-truth document.
+
+### D-11 — Profile dialog shows the wrong city — **FIXED in Epic 1 (Story 1.3)**
+`ProfileModal.js` printed a hard-coded "The Aaryans, Lucknow, CBSE". The school is in
+Joya, Amroha (U.P.). Found by the Epic 1 party-mode pass. Fixed in-run because Story 1.3
+rewrites that dialog anyway; the line now comes from the signed-in user's school rather
+than a literal. The stored school record itself is still placeholder data — correcting it
+is a WRITE and stays with Epic 4 / Track 2.
+
+### D-12 — A staff record could be linked to someone else's login — **FIXED in Epic 1 (Story 1.1)**
+`create_staff` accepted a caller-supplied `user_id`, and silently re-used any existing
+login whose username matched the new staff member's email/phone/name. Either path let an
+admin attach a new staff record to the **owner's** login. Deactivating that staff record
+(`DELETE /api/staff/{id}`) deactivates the linked login and revokes its sessions — so any
+admin could have locked the owner out of the school. Found by the Epic 1 red-team pass.
+Fixed in-run: the link is refused when the target login holds owner authority or is
+already claimed by another staff record. Out of Epic 1's literal scope, logged per rule 6.
+
+### D-13 — The AI's staff tool advertised powers the server does not grant — **FIXED in Epic 1**
+`ai/prompts.py` told the model that `create_staff` accepts `role: "owner"` and a
+sub-category of `"accounts"` — a spelling `VALID_SUB_CATEGORIES` does not contain (the
+canonical value is `"accountant"`). The same class of prompt↔registry drift the shipped
+R3 epic was built to prevent. Corrected alongside Stories 1.1 and 1.2.
+
+### D-14 — Three existing tests encoded the weaker contract — **RESOLVED in Epic 1**
+`test_staff_routes.py::test_principal_cannot_change_staff_role`,
+`::test_principal_self_update_cannot_escalate` and
+`test_epic_j_crud_guardrails.py::test_principal_owner_only_fields_silently_stripped_on_update`
+asserted that an attempt to grant owner authority returns 200 with the field silently
+stripped. Story 1.1 makes that a hard 403. The tests were **rewritten, not deleted** —
+each now asserts the stronger contract, and the silent-strip behaviour they were really
+guarding (salary) is still covered by its own test.
+
+### D-15 — The school's city is wrong in more than one place — **DEFERRED to Epic 4**
+The sidebar shows "The Aaryans · CBSE · Lucknow, Uttar Pradesh". That text comes from
+the **stored** school record, which is placeholder data — the school is in Joya, Amroha.
+Separately, `AdminTools.js` hard-codes the same wrong line ("Affiliated to CBSE ·
+Lucknow, Uttar Pradesh") in the frontend, which can be corrected without a database
+write. Both belong to Epic 4 item 8; correcting the stored record is a WRITE needing
+approval. Found during Epic 1's read-only browser check.
+
+### D-16 — `CI=true` fails the frontend build repo-wide — **DEFERRED, hygiene**
+Roughly 30 pre-existing `react-hooks/exhaustive-deps` warnings across
+`StudentTools.js`, `TeacherTools.js`, `QuerySection.js`, `ToolPage.js` and others mean
+a warnings-as-errors build fails, both before and after Epic 1. So the build cannot
+currently be used as a gate on new warnings. **Reason deferred:** unrelated to this
+epic and touching a dozen files; it would bury a security diff. Worth a dedicated pass.
+
+### D-17 — Pre-existing `scoped_filter(` hits carry no intent comment — **DEFERRED, hygiene**
+Seven hits in `backend/routes/staff.py` predate this initiative and lack the
+`# branch-scope: intentional — <reason>` annotation the standing audit expects. They
+appear to be correct (school-scoped leave and staff lookups) but are unannotated, so
+each future audit has to re-derive the reasoning. **Reason deferred:** unrelated churn
+in a security diff; annotate during whichever epic next touches that file.
 
 ---
 

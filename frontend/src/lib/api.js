@@ -604,6 +604,20 @@ export async function getStaff(params = {}) {
   return res.json();
 }
 
+// Story 1.3 — your own staff record. Everyone has a self, so these two need no
+// role check; the server refuses anything beyond name/phone/email.
+export async function getMyStaffProfile() {
+  const res = await apiFetch(`${API}/staff/me`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function updateMyStaffProfile(data) {
+  const res = await apiFetch(`${API}/staff/me`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
 export async function createStaff(data) {
   const res = await apiFetch(`${API}/staff/`, {
     method: 'POST', headers: getHeaders(), body: JSON.stringify(data),

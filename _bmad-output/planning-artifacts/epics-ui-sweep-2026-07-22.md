@@ -270,24 +270,56 @@ staff member and full control of the school's data.
 
 **Acceptance Criteria:**
 
-**Given** an authenticated admin who can manage staff
-**When** they POST to `/api/staff/` with `role: "owner"`, bypassing the UI entirely
-**Then** the request is rejected with 403 and no staff or user record is created
+**Given** **any** caller with staff-management rights — **including the Owner**
+**When** they POST to `/api/staff/` with `role: "owner"` or `sub_category: "owner"`,
+bypassing the UI entirely
+**Then** the request is rejected with 403
+**And** **no `staff` document and no `auth_users` document is created** — the gate runs
+before the login account is written, because `auth_users.user_info.role` is what login
+reads to build the JWT and is therefore the real seat of authority (E-2)
 **And** the attempt is recorded via `write_audit()` with the caller's user id
+**And** a failure of the audit write does not turn the 403 into a 500 (ADR-002 fail-open)
 
 **Given** the same caller
-**When** they PATCH an existing staff member to `role: "owner"`
-**Then** the request is rejected with 403 and the stored role is unchanged
+**When** they PATCH an existing staff member so that owner authority would **change** —
+either granting it (`role`/`sub_category` → `"owner"`) or removing it from a record that
+currently holds it
+**Then** the request is rejected with 403, the stored values are unchanged, and the
+attempt is audited
+**And** the rejection is a hard error, not the silent strip used for salary — a caller
+attempting escalation must never be left believing it succeeded (E-4)
+
+**Given** an Owner editing the Owner's own staff record from the staff screen, where the
+form posts every field back including `role: "owner"` (E-3)
+**When** the submitted value is identical to the stored value
+**Then** it is treated as a no-op and the edit succeeds — the rule is "no *change* of
+owner authority through this API", evaluated against the stored record, not "the string
+owner may not appear in a request body"
 
 **Given** the platform's single existing owner account
 **When** Story 1.1 ships
 **Then** that account is unaffected and can still sign in and manage staff
+**And** it cannot be demoted through this API either, so the school can never be left
+with no owner and no way to appoint one (E-3)
 **And** owner assignment remains possible only out of band, never through this API
+
+**Given** a caller supplying `user_id` (or a name/email/phone that collides with an
+existing login's username) pointing at an account that holds owner authority (E-5)
+**When** the staff record is created
+**Then** the link is refused — otherwise deactivating that staff record would deactivate
+the owner's login and revoke their sessions, locking the owner out of the school
+
+**Given** the AI assistant's `create_staff` tool description, which today tells the model
+that `role` may be `"owner"` (E-7)
+**When** Story 1.1 ships
+**Then** the tool description matches what the server will actually accept
 
 **Given** the test suite
 **When** it runs
 **Then** it contains an unauthenticated 401 test and a wrong-role 403 test for both the
 create and update paths, per the platform's standing endpoint-test convention
+**And** the denial is proven for every casing/whitespace variant of the value
+(`owner`, `Owner`, `OWNER`, `" owner"`), which a normalised whitelist gives for free
 
 *Closes RISK-1. The 2026-07-22 frontend change is a defence-in-depth layer only and was
 incorrectly reported to the owner as closing this gap.*
@@ -305,7 +337,23 @@ at all.
 **Given** any caller with staff-management rights
 **When** they submit a `sub_category` outside `VALID_SUB_CATEGORIES`
 **Then** the request is rejected with 422 and an error naming the field
-**And** no record is written
+**And** no record is written — neither `staff` nor `auth_users`
+
+**Given** a submitted `role` that is not one of the roles the platform recognises —
+for example `role: "principal"`, which is accepted today and grants nothing (E-6)
+**When** the request is processed
+**Then** it is rejected with 422 naming the field
+
+**Given** the 88 live staff records, some of which may hold values this validator would
+reject (for example the legacy `"accounts"` spelling that `_is_accounts()` still honours)
+**When** an authorised user edits an unrelated field on such a record
+**Then** the edit succeeds — validation applies only to values being **written**, never
+to values already stored, or the first phone-number correction would be unclearable
+
+**Given** the AI assistant's `create_staff` tool description, which today names
+`"accounts"` — a value `VALID_SUB_CATEGORIES` does not contain (E-7)
+**When** Story 1.2 ships
+**Then** the description lists only canonical values
 
 **Given** a submitted `sub_category` that is valid in itself but does not belong to the
 submitted `role` — for example `class_teacher` paired with `role: "admin"`
@@ -326,6 +374,11 @@ So that my contact details stay current without an administrator having to do it
 
 **Acceptance Criteria:**
 
+**Scope decision (party mode, John):** this story is **self-service only**. Changing
+another person's authority stays on the staff screen, so there is exactly one place in
+the platform where authority changes — not two. Staff have no self-service endpoint at
+all today; students do (`PATCH /api/students/me`), and that is the pattern to follow (E-8).
+
 **Given** any authenticated user viewing their own profile
 **When** they open it
 **Then** name, phone and email are editable, and role, school, sub-category and AI token
@@ -334,17 +387,35 @@ allowance are shown read-only
 **Given** that same user
 **When** they submit a change to their own `role`, `sub_category`, `schoolId` or token
 allowance by any means including a direct API call
-**Then** the server ignores or rejects the change and the stored values are unaltered
+**Then** the **whole request is rejected**, not partially applied — a body of
+`{name, role}` must not quietly save the name while dropping the role, because partial
+acceptance is how a caller maps the boundary (party mode, Murat)
+**And** the stored values are unaltered
+**And** the permitted fields are an explicit allow-list, never a deny-list
 
-**Given** an Owner viewing another person's profile
-**When** they edit it
-**Then** they may change that person's role and sub-category, subject to Stories 1.1
-and 1.2
+**Given** a signed-in user who has no staff record
+**When** they submit a profile change
+**Then** they get a clear 404 — no record is created for them
+
+**Given** an Owner wishing to change another person's role or sub-category
+**When** they do so
+**Then** it happens on the staff screen, subject to Stories 1.1 and 1.2 — this dialog
+never edits anyone but the signed-in user
 
 **Given** any profile edit that succeeds
 **When** it is written
 **Then** an audit entry records who changed what, and the change is visible immediately
-without a page reload
+without a page reload — note that name and phone also live in the signed-in session
+token, which stays stale until the next sign-in, so the dialog must refresh the client's
+copy of the user from the server's response rather than trusting the token (E-9)
+**And** the same change is reflected in the user's login record, so it survives sign-out
+and sign-in — the real-use test is: a teacher changes their phone, signs out, signs back
+in, and the new number is there (party mode, John)
+
+**Given** the profile dialog, which today prints a hard-coded
+"The Aaryans, Lucknow, CBSE" — the wrong city for a school in Joya, Amroha (D-11)
+**When** it is rendered
+**Then** the school line is not a hard-coded string
 
 **Given** the profile dialog
 **When** it is rendered

@@ -309,8 +309,8 @@ TOOL_CREATE_STAFF = {
     "params_schema": {
         "name": "required — staff full name",
         "staff_type": "required — e.g. teacher, accountant, receptionist, peon, driver",
-        "role": "optional — login role (owner-only for 'owner' or 'admin')",
-        "sub_category": "optional — admin sub-category (owner-only: principal, accounts, transport_head, receptionist)",
+        "role": "optional — login role: 'teacher' or 'admin' only. 'owner' is NEVER accepted here, from anyone; owner access is assigned out of band",
+        "sub_category": "optional, owner-only — for role 'admin': principal, accountant, transport_head, receptionist, it_tech, maintenance, management, support_staff; for role 'teacher': class_teacher, subject_teacher, hod, coordinator, kg_incharge",
         "employee_id": "optional",
         "phone": "optional",
         "email": "optional",

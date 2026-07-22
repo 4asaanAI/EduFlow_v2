@@ -128,6 +128,29 @@ export function UserProvider({ children }) {
     setMustChangePassword(false);
   }, []);
 
+  // Story 1.3 — reflect a self-service profile edit everywhere at once.
+  // The signed-in token still carries the old name and phone and is not
+  // reissued until the next sign-in, so the screen must take its copy from the
+  // server's response rather than from the token. Only ever accepts the three
+  // self-service fields: a wider merge here would let a server response — or a
+  // future careless caller — rewrite the role the whole UI gates on.
+  const applyProfileUpdate = useCallback((profile) => {
+    if (!profile) return;
+    setCurrentUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev };
+      ['name', 'phone', 'email'].forEach((field) => {
+        if (profile[field] !== undefined) next[field] = profile[field];
+      });
+      if (profile.name) {
+        next.initials = profile.name.trim().split(/\s+/).slice(0, 2)
+          .map((word) => word.charAt(0).toUpperCase()).join('');
+      }
+      setAuthSession(getAccessToken(), next);
+      return next;
+    });
+  }, []);
+
   return (
     <UserContext.Provider value={{
       currentUser,
@@ -138,6 +161,7 @@ export function UserProvider({ children }) {
       loginPassword,
       logout,
       clearMustChangePassword,
+      applyProfileUpdate,
     }}>
       {children}
     </UserContext.Provider>

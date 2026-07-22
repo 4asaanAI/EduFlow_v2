@@ -30,20 +30,35 @@ def _clean_staff(fake_db):
 
 
 def test_principal_cannot_change_staff_role(client, fake_db):
-    """Principal PATCH with role field — role is silently stripped."""
+    """UI-Sweep Story 1.1 — granting owner is a hard 403, not a silent strip.
+
+    This test previously asserted 200-with-the-field-stripped. Silently dropping
+    an escalation attempt leaves the caller believing it worked and leaves no
+    record that they tried; the contract is now an explicit refusal.
+    """
     fake_db.staff.docs = [{"id": "s1", "schoolId": "aaryans-joya", "name": "Alice", "role": "teacher"}]
     resp = client.patch(
         "/api/staff/s1",
         json={"name": "Alice Updated", "role": "owner"},
         headers=_principal_headers(),
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 403
     staff = next((s for s in fake_db.staff.docs if s["id"] == "s1"), None)
-    assert staff["role"] == "teacher"  # role must not have changed
+    assert staff["role"] == "teacher"      # role must not have changed
+    assert staff["name"] == "Alice"        # and nothing else slipped through either
+
+
+def test_principal_can_still_edit_ordinary_fields(client, fake_db):
+    """The 403 above is about owner authority only — ordinary edits still work."""
+    fake_db.staff.docs = [{"id": "s1b", "schoolId": "aaryans-joya", "name": "Alice", "role": "teacher"}]
+    resp = client.patch("/api/staff/s1b", json={"name": "Alice Updated"}, headers=_principal_headers())
+    assert resp.status_code == 200
+    staff = next((s for s in fake_db.staff.docs if s["id"] == "s1b"), None)
+    assert staff["name"] == "Alice Updated"
 
 
 def test_principal_self_update_cannot_escalate(client, fake_db):
-    """Principal cannot escalate own role even via self-PATCH."""
+    """Story 1.1 — a principal cannot grant themselves owner via self-PATCH."""
     fake_db.staff.docs = [{
         "id": "prin-1", "schoolId": "aaryans-joya",
         "name": "P", "role": "admin", "sub_category": "principal",
@@ -53,7 +68,7 @@ def test_principal_self_update_cannot_escalate(client, fake_db):
         json={"sub_category": "owner"},
         headers=_principal_headers(),
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 403
     staff = next((s for s in fake_db.staff.docs if s["id"] == "prin-1"), None)
     assert staff.get("sub_category") == "principal"  # sub_category must not have changed
 
