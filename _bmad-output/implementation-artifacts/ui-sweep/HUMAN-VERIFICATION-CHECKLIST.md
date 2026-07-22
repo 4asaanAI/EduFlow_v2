@@ -441,17 +441,36 @@ find" — it was **unreachable by any route in the product**. Both now have a pa
 
 ### A separate problem you reported today — Flo's Word documents
 
-- [ ] **This is real, it is live, and it is NOT fixed.** You asked Flo for a Word document
-      and got an Amazon error page instead of a file. Two things are wrong:
-      1. **The download link is being signed with the wrong key.** Most likely the server
-         is holding an old, temporary set of Amazon credentials that no longer match. I
-         have written down exactly what to check, but **checking it means touching your
-         live server, so I have not done it without your say-so.**
-      2. **You should never have seen that page at all.** The link takes you straight to
-         Amazon, so when Amazon objects, you get Amazon's error — raw, with your account
-         number on screen. It was supposed to say "this link has expired, ask again".
-      **Say the word and I will investigate the server settings** — it is a read-only look
-      first, and I will tell you what I find before changing anything.
+- [x] **Server settings checked 2026-07-23, with your go-ahead. They are fine — the
+      problem is somewhere else, and I have found it.**
+
+      **Flo is being asked to copy out the download link by hand, and it is too long to
+      copy.** When Flo makes you a document, the link it produces is about 1,200
+      characters of random-looking code. Flo is currently instructed to retype that link
+      into its reply. No AI can retype 1,200 random characters perfectly every time — and
+      one wrong character makes Amazon reject the whole link, which is the error you saw.
+      That is also why it looked *almost* right.
+
+      **The fix is to stop sending the link through Flo at all**: Flo should hand over a
+      short reference, and the download button should fetch a fresh link at the moment
+      you tap it. That also solves a second problem — links currently expire after an
+      hour, so an older one would fail anyway.
+
+      **This is a change to how Flo is instructed, so it needs its own run and a check
+      that Flo still behaves properly afterwards. Tell me when you want it done** — it is
+      not a long job, but I do not want to change Flo's instructions in the middle of
+      something else.
+
+- [ ] **You should never have seen an Amazon error page at all.** The download takes you
+      straight to Amazon, so when Amazon objects you get Amazon's own error, raw, with
+      your account number on screen. It was supposed to say "this link has expired, ask
+      again". Fixed by the same job.
+
+- [ ] **Separately: your server has not been sending us its logs since 22 July, 5pm.**
+      That is before the last update went out. It does not affect anything you can see,
+      but it means when something goes wrong we are working blind — this problem took
+      detective work instead of just reading the record. Worth fixing before the next
+      thing breaks.
 
 ---
 

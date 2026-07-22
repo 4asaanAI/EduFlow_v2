@@ -570,28 +570,66 @@ downloadable link, and opening the link returns an AWS error page:
 `SignatureDoesNotMatch — the request signature we calculated does not match the
 signature you provided`.
 
-**Two separate problems, and they need separating.**
+### ⚠️ ROOT CAUSE FOUND 2026-07-23 — it is not the credentials. **The signed link is
+being transcribed by the language model.**
 
-**1. The signing itself.** The link was signed with a temporary AWS identity
-(`ASIATB75HTBWMZQ5SLKF` — an `ASIA` prefix means short-lived credentials, not the
-permanent `AKIA` kind). `SignatureDoesNotMatch` on such a link almost always means the
-secret used to sign does not belong with the access key presented — i.e. the server is
-holding a **mismatched or stale set of temporary credentials**. The most likely source
-is concrete and checkable: `backend/.env` is deployed inside the application bundle and,
-per D-34, has held credentials for the `claude-hosting` user. If that file (or the
-Elastic Beanstalk environment) carries `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` /
-`AWS_SESSION_TOKEN` from a temporary session, boto3 will prefer them over the EC2
-instance role and sign with them — and a partial or stale set produces exactly this
-error. `backend/services/s3_storage.py:43` builds its client with `region_name` only and
-lets boto3's credential chain decide, so whatever the environment holds wins.
+`backend/ai/prompts.py:1536-1543` instructs the model, after using `draft_document`, to
+append a rich block carrying **"the exact … `download_url` the tool returned"**:
 
-**The check is read-only and quick:** look at whether the EB environment or the deployed
-`.env` sets any `AWS_*` credential variables at all. The intended state after the
-2026-07-23 storage setup is that it sets **none** and the instance role
-(`EduFlowFileStorage` on `aws-elasticbeanstalk-ec2-role`) is used. **Not done in this
-run — it is a production change and needs the Owner's approval.**
+```
+- file: {"type": "file", "file_name": "circular.docx", "doc_type": "docx",
+         "size_kb": 14, "download_url": "https://..."}
+```
 
-**2. He was shown raw AWS XML, and that is its own defect.** Story 10.3's acceptance
+`services/document_export.py:176` puts the real presigned URL into the tool result, the
+tool result goes to the model, and the model is asked to copy it into its output.
+
+**That URL is about 1,200 characters, roughly 1,000 of which are an opaque base64
+security token** (`X-Amz-Security-Token`), plus percent-encoded `%2F`, `%2B` and `%3D`
+sequences. **A language model will not reproduce 1,200 characters of random base64
+byte-for-byte, reliably, every time.** One character dropped, changed or re-encoded and
+the signature no longer matches — which is exactly the error, and exactly why the URL
+still *looks* right: the token in the error message is well-formed and ends with proper
+`%3D%3D` padding, because the model reproduced almost all of it.
+
+**This also explains why it is intermittent** rather than a flat failure, and why the
+health check and every automated test pass: nothing in the test suite puts a real
+presigned URL through a real model.
+
+**The fix, for a future run and needing approval:** the signed URL must never travel
+through the model. `draft_document` should return a short opaque **file id**, and the
+chat file card should exchange that id for a freshly signed URL through an authenticated
+endpoint at the moment the person taps it. Then the model only has to reproduce a 36-
+character UUID, and if it garbles even that the person gets a clean "that file could not
+be found" instead of an Amazon error page. **It also fixes Story 10.3's expiry problem
+for free** — the link is minted at click time, so it cannot be stale.
+
+This is an `ai/prompts.py` + tool-contract change, so it needs the golden-eval gate green
+before merge (execution protocol, portability guarantee §5). **Not attempted in this
+run.**
+
+**What was checked, read-only, and ruled out (2026-07-23):**
+
+| Checked | Result |
+|---|---|
+| AWS credential variables on the Elastic Beanstalk environment | **None set.** 27 environment properties, not one of them `AWS_ACCESS_KEY_ID`/`SECRET`/`SESSION_TOKEN`. The server correctly uses the EC2 instance role, which is why the key in the URL is an `ASIA` one. |
+| `backend/.env` carrying credentials | Holds only `MONGO_URL`, `DB_NAME`, `SCHOOL_ID`, `ENVIRONMENT` — and `.env*` is excluded from the deployment bundle anyway. |
+| `S3_BUCKET` value vs the real bucket | Exact match, `eduflow-files-ap-south-1-210447603820`. |
+| Bucket region vs signing region | Both `ap-south-1`; a mismatch would give a redirect error, not this one. |
+| Whether the object exists | **Could not check** — `claude-hosting` is denied `HeadObject` (setup-only, per D-34). |
+| The instance role's policy | **Could not check** — `iam:GetRolePolicy` denied for the same reason. |
+
+**My first hypothesis in this entry — mismatched or stale credentials — was wrong, and
+is left above struck through rather than deleted so the reasoning is visible.** The
+credentials are configured correctly. It was worth checking and it took four read-only
+commands.
+
+**A second thing found while looking:** the backend's application logs stopped reaching
+CloudWatch at **2026-07-22 17:16 UTC**, which is *before* the UI-sweep deploy at 21:30
+UTC. So nothing the server has logged since that deploy — including whatever it says
+about this failure — is visible. Logged as D-38.
+
+**And he was shown raw AWS XML, which is its own defect.** Story 10.3's acceptance
 criteria say an expired or dead link must tell the person it has expired and offer to
 generate it again — *"a dead link that simply fails is the failure-that-looks-like-a-zero
 defect of Epic 4 in a new place."* That AC is not being met: the link goes straight to
@@ -607,6 +645,24 @@ reason it would fail — and would produce a different AWS error, still rendered
 **This supersedes the optimistic reading of D-33 item 1.** Writing the file as the server
 evidently works (the object exists at the key in the error). **Reading it back does not.**
 So "file storage is on" is true of `PutObject` and not yet true of the download path.
+
+### D-38 — The backend's logs stopped reaching CloudWatch before the last deploy — **OPEN**
+Found while investigating D-37. The newest event in
+`/aws/elasticbeanstalk/Eduflow-env-1/var/log/web.stdout.log` is **2026-07-22 17:16 UTC**,
+on stream `i-0c942a6f7b03b01c3`. The UI-sweep deploy went out at **21:30 UTC the same
+day**, and a deploy replaces the instance — so there should be a newer stream and there
+is not.
+
+**Why it matters more than it looks.** Every "fail honestly" behaviour built in Epics 4
+and 10 writes its reasoning to the log rather than to the screen, deliberately, so that
+the person sees a plain message and the detail stays server-side. If the logs are not
+arriving, that detail is going nowhere and the next production problem will be
+diagnosed the way D-37 was — by reading code and guessing. It is also why D-37 took
+inference rather than evidence.
+
+**Not investigated further** — establishing whether this is the CloudWatch agent, the
+log-streaming option on the environment, or an instance that never came up as expected
+means looking at the running instance. Read-only so far; anything more needs approval.
 
 ---
 
