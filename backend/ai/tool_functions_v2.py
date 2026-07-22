@@ -3316,7 +3316,11 @@ async def tool_draft_document(params: dict, user: dict, scope: dict = None) -> d
     the gate must become the specific one for the data it reads.
     """
     from services.document_builder import DocumentBuildError
-    from services.document_export import DocumentQuotaExceeded, create_document
+    from services.document_export import (
+        DocumentQuotaExceeded,
+        DocumentStorageUnavailable,
+        create_document,
+    )
 
     doc_type = (params.get("doc_type") or params.get("format") or "").strip().lower()
     if not doc_type:
@@ -3341,7 +3345,7 @@ async def tool_draft_document(params: dict, user: dict, scope: dict = None) -> d
             slides=params.get("slides"),
             source="assistant",
         )
-    except DocumentQuotaExceeded as exc:
+    except (DocumentQuotaExceeded, DocumentStorageUnavailable) as exc:
         return {"success": False, "denied": False, "data": {}, "meta": {"count": 0},
                 "message": str(exc)}
     except DocumentBuildError as exc:

@@ -23,6 +23,7 @@ happens for Flo.
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
@@ -47,6 +48,26 @@ DAILY_DOCUMENT_CAP = 200
 
 class DocumentQuotaExceeded(Exception):
     """The school's daily generation allowance is used up."""
+
+
+class DocumentStorageUnavailable(Exception):
+    """There is nowhere to put the finished file.
+
+    Found before the first deploy of this epic: production has **no `S3_BUCKET`
+    configured**, so `get_bucket_name()` raises and every generated document would
+    have come back as a bare server error. A brand-new feature answering 500 is the
+    worst possible first impression, and "something went wrong" tells the school
+    nothing they can act on.
+
+    So this is caught and reported in words: the feature is not set up on this server
+    yet. Same principle as OCR shipping dark — a missing piece of infrastructure is
+    stated plainly, never disguised as a failure of the request.
+    """
+
+
+def storage_configured() -> bool:
+    """Is there a bucket to write to? Checked BEFORE building anything."""
+    return bool(os.environ.get("S3_BUCKET_NAME") or os.environ.get("S3_BUCKET"))
 
 
 async def _enforce_daily_cap(db, school_id: str, kind: str = "document") -> bool:
@@ -175,6 +196,15 @@ async def create_document(
     The cap is checked BEFORE building: refusing after spending the work is the same
     money and the same memory, with a worse answer.
     """
+    # Checked first: refusing after building the file spends the work for nothing,
+    # and refusing after taking a slot off the daily cap would be worse still.
+    if not storage_configured():
+        raise DocumentStorageUnavailable(
+            "Saving files is not set up on this server yet, so I cannot give you a "
+            "download. Everything else works normally — this needs file storage "
+            "switching on."
+        )
+
     db = get_db()
     school_id = get_school_id()
     if not await _enforce_daily_cap(db, school_id):

@@ -50,6 +50,14 @@ def _clean(fake_db):
 
 
 @pytest.fixture(autouse=True)
+def _s3_configured(monkeypatch):
+    """Production had NO S3 bucket configured when this epic was first deployed, so
+    the default in tests must be 'configured' only where that is the case under
+    test — see test_no_storage_says_so_rather_than_erroring."""
+    monkeypatch.setenv("S3_BUCKET", "eduflow-test-bucket")
+
+
+@pytest.fixture(autouse=True)
 def _fake_s3(monkeypatch):
     """S3 is not reachable from a test run. Storage is faked at the boundary so the
     record-keeping and audit behaviour either side of it is still exercised."""
@@ -202,6 +210,36 @@ def test_an_unsupported_format_is_refused_without_storing_anything(client, fake_
     assert body["success"] is False
     assert "Unsupported" in body["message"]
     assert fake_db.file_uploads.docs == [], "nothing may be stored when the build fails"
+
+
+def test_no_storage_says_so_rather_than_erroring(client, fake_db, monkeypatch):
+    """Found before this epic's first deploy: production has no S3 bucket set, so
+    every generated document would have come back as a bare 500. A brand-new feature
+    answering "something went wrong" tells the school nothing they can act on."""
+    monkeypatch.delenv("S3_BUCKET", raising=False)
+    monkeypatch.delenv("S3_BUCKET_NAME", raising=False)
+
+    resp = client.post(TOOL_URL, headers=_owner(), json={"params": {
+        "doc_type": "docx", "title": "Circular", "paragraphs": ["Text."],
+    }})
+
+    assert resp.status_code == 200, "a missing bucket is not a server crash"
+    body = resp.json()
+    assert body["success"] is False
+    assert "not set up on this server yet" in body["message"]
+    assert "Everything else works normally" in body["message"]
+
+
+def test_no_storage_consumes_no_daily_allowance(client, fake_db, monkeypatch):
+    """Refusing after taking a slot off the cap would punish the school for a
+    configuration gap that is not theirs."""
+    monkeypatch.delenv("S3_BUCKET", raising=False)
+    monkeypatch.delenv("S3_BUCKET_NAME", raising=False)
+
+    client.post(TOOL_URL, headers=_owner(), json={"params": {"doc_type": "csv", "rows": [["x"]]}})
+
+    assert fake_db.image_gen_quota.docs == []
+    assert fake_db.file_uploads.docs == []
 
 
 def test_a_missing_format_asks_rather_than_guessing(client):
