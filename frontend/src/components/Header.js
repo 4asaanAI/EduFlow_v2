@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { Search, Bell, ChevronLeft, Menu, X, CalendarDays } from 'lucide-react';
@@ -305,6 +305,24 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
   const notifRef = useRef(null);
   const [isMobile, setIsMobile] = useState(false);
   const [academicYear, setAcademicYear] = useState('');
+  // The red dot used to be painted unconditionally, so the bell always looked as
+  // though something needed attention even when everything was read. Count the
+  // unread ones and only show it when there really is something.
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const refreshUnread = useCallback(() => {
+    fetch(`${API}/notifications`, { headers: getH() })
+      .then(r => (r.ok ? r.json() : null))
+      .then(res => {
+        const list = Array.isArray(res) ? res : (res?.data || []);
+        setUnreadCount(list.filter(n => n && !n.is_digest && !n.is_read).length);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => { refreshUnread(); }, [refreshUnread]);
+  // Re-count when the panel closes, since reading items in it changes the answer.
+  useEffect(() => { if (!showNotif) refreshUnread(); }, [showNotif, refreshUnread]);
 
   useEffect(() => {
     const load = () => {
@@ -364,7 +382,10 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
             <Menu size={18} />
           </button>
-          {activeTool ? (
+          {/* Back is desktop-only. On a phone the hamburger sits right beside it and
+              already gets you out of a tool, so Back is redundant and it crowds the
+              header enough to push the search box and bell off screen. */}
+          {activeTool && !isMobile ? (
             <button data-testid="back-to-chat-btn" onClick={onBackToChat} style={{
               background: isDark ? '#252525' : '#f5f5f5', border: 'none', color: secondary,
               cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
@@ -381,25 +402,42 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
           </span>
         </div>
 
-        {/* Center: search */}
-        <div style={{ flex: 1, maxWidth: 420, display: 'flex', justifyContent: 'center' }}>
-          <button onClick={() => setShowSearch(true)} style={{
-            width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-            background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`,
-            borderRadius: 10, padding: '7px 14px', cursor: 'pointer', color: muted, fontSize: 13,
-            transition: 'var(--transition-fast)',
-          }}
-            onMouseEnter={e => e.currentTarget.style.borderColor = isDark ? '#444' : '#ccc'}
-            onMouseLeave={e => e.currentTarget.style.borderColor = border}>
-            <Search size={14} />
-            <span style={{ flex: 1, textAlign: 'left' }}>Search students, staff 2026</span>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <kbd style={{ fontSize: 10, color: muted, background: isDark ? '#333' : '#e5e5e5', padding: '1px 5px', borderRadius: 4, fontFamily: 'Inter, sans-serif' }}>
+        {/* Center: search.
+            On phones this collapses to a single icon. The full-width version wrapped
+            its label onto three lines inside a 52px-tall header, which spilled the box
+            out over the page and squeezed the notification bell off screen entirely.
+            The keyboard hint is desktop-only too \u2014 there is no Ctrl key on a phone. */}
+        {isMobile ? (
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', minWidth: 0 }}>
+            <button aria-label="Search students and staff" onClick={() => setShowSearch(true)} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 36, height: 36, flexShrink: 0,
+              background: 'none', border: 'none', borderRadius: 8,
+              cursor: 'pointer', color: muted, transition: 'var(--transition-fast)',
+            }}>
+              <Search size={18} />
+            </button>
+          </div>
+        ) : (
+          <div style={{ flex: 1, maxWidth: 420, minWidth: 0, display: 'flex', justifyContent: 'center' }}>
+            <button onClick={() => setShowSearch(true)} style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+              background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`,
+              borderRadius: 10, padding: '7px 14px', cursor: 'pointer', color: muted, fontSize: 13,
+              transition: 'var(--transition-fast)', overflow: 'hidden',
+            }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = isDark ? '#444' : '#ccc'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = border}>
+              <Search size={14} style={{ flexShrink: 0 }} />
+              <span style={{ flex: 1, textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                Search students, staff {academicYear || ''}
+              </span>
+              <kbd style={{ flexShrink: 0, fontSize: 10, color: muted, background: isDark ? '#333' : '#e5e5e5', padding: '1px 5px', borderRadius: 4, fontFamily: 'Inter, sans-serif' }}>
                 {navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}/
               </kbd>
-            </div>
-          </button>
-        </div>
+            </button>
+          </div>
+        )}
 
         {/* Right */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
@@ -427,7 +465,9 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
               onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
               <Bell size={17} />
-              <span style={{ position: 'absolute', top: 5, right: 5, width: 6, height: 6, background: '#f87171', borderRadius: '50%', border: `2px solid ${bg}` }} />
+              {unreadCount > 0 && (
+                <span aria-label={`${unreadCount} unread notifications`} style={{ position: 'absolute', top: 5, right: 5, width: 6, height: 6, background: '#f87171', borderRadius: '50%', border: `2px solid ${bg}` }} />
+              )}
             </button>
             {showNotif && (
               <NotificationsPanel

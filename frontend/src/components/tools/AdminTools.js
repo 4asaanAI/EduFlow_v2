@@ -1930,7 +1930,10 @@ export function IdCardGenerator() {
   useEffect(() => {
     Promise.all([
       fetch(`${API}/students/`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setStudents(r.data || []); }),
-      fetch(`${API}/settings/classes`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setClasses(r.data || []); })
+      // Was a raw fetch, which bypassed api.js and so skipped the class ordering
+      // applied in getAllClasses. Project convention is that all API calls go
+      // through api.js for exactly this reason.
+      getAllClasses(currentUser).then(r => { if (r.success) setClasses(r.data || []); })
     ]).finally(() => setLoading(false));
   }, []);
 

@@ -114,6 +114,10 @@ export default function Layout() {
 
   const handleSelectTool = (toolId) => {
     setActiveToolParam(toolId);
+    // On phones the sidebar is an overlay drawer sitting on top of the tool you just
+    // opened. Leaving it open meant you had to tap the backdrop to see the thing you
+    // asked for. Desktop keeps it open — there it sits beside the content, not over it.
+    if (window.innerWidth <= 768) setSidebarOpen(false);
     if (isToolDashboardRole) {
       const key = `eduflow_activity_${currentUser.id}`;
       const prev = JSON.parse(localStorage.getItem(key) || '[]').filter(a => a.id !== toolId);
@@ -125,6 +129,7 @@ export default function Layout() {
   const handleSelectConv = async (convId) => {
     setActiveToolParam(null);
     setActiveConvId(convId);
+    if (window.innerWidth <= 768) setSidebarOpen(false);
     try {
       const res = await getConversations(currentUser);
       const conv = res.data?.find(c => c.id === convId);

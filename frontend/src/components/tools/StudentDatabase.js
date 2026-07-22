@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useUser } from '../../contexts/UserContext';
+import { compareClassLabels } from '../../lib/classOrder';
 import {
   createStudent,
   deactivateStudent,
@@ -613,7 +614,15 @@ export default function StudentDatabase() {
     if (tab !== 'strength') return;
     setStrengthLoading(true);
     getStudentStrengthStats()
-      .then(res => { if (res.success) setStrengthStats(res.data || []); })
+      .then(res => {
+        if (!res.success) return;
+        // The aggregate comes back class-alphabetical, which puts 10th, 11th and
+        // 12th above 1st and scatters NUR/LKG/UKG. Order it the way the school
+        // reads it. Rows carry the class as one label ("10th-A").
+        const rows = [...(res.data || [])].sort((a, b) =>
+          compareClassLabels(a.class_name ?? a.class ?? a.label, b.class_name ?? b.class ?? b.label));
+        setStrengthStats(rows);
+      })
       .finally(() => setStrengthLoading(false));
   }, [tab]);
 

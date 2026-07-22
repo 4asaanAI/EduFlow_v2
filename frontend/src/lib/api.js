@@ -1,4 +1,5 @@
 import { getAccessToken, redirectToLoginOnce, refreshAccessToken } from './authSession';
+import { sortClasses } from './classOrder';
 
 const _rawBackend = process.env.REACT_APP_BACKEND_URL || '';
 // Force HTTPS when the page is served over HTTPS (prevents mixed-content blocks on Amplify/CloudFront)
@@ -359,7 +360,15 @@ export async function uploadGuardianPhoto(studentId, guardianId, file) {
 
 export async function getAllClasses() {
   const res = await apiFetch(`${API}/settings/classes`, { headers: getHeaders() });
-  return res.json();
+  const data = await res.json();
+  // Sort once, here, rather than at each of the ~25 places that render a class
+  // dropdown. The API returns them in insertion order, which reads as random
+  // ("11th-A, 1st-A, 2nd-C, … LKG-A, NUR-D"), and alphabetical is no better —
+  // it puts 10th/11th/12th ahead of 1st. See lib/classOrder.js.
+  if (data && Array.isArray(data.data)) {
+    return { ...data, data: sortClasses(data.data) };
+  }
+  return data;
 }
 
 // --- Academic structure: Classes CRUD ---

@@ -273,6 +273,10 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   const [renameVal, setRenameVal] = useState('');
   const [toolsExpanded, setToolsExpanded] = useState(false);
   const [chatsExpanded, setChatsExpanded] = useState(false);
+  // Whether the Recent Chats section is open at all. Collapsing belongs on the
+  // heading — that is where people reach for it — not on a link buried under the
+  // list, which you had to scroll past the whole list to reach.
+  const [chatsSectionOpen, setChatsSectionOpen] = useState(true);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [schoolName, setSchoolName] = useState('');
@@ -600,11 +604,25 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
           {/* Chat history zone — warm amber tint */}
           {conversations.length > 0 && (
             <div style={{ borderRadius: 12, background: chatsZoneBg, border: `1px solid ${chatsZoneBorder}`, overflow: 'hidden' }}>
-              <div className="zone-header" style={{ color: isDark ? '#c9954a' : '#9a6520' }}>
+              <button
+                type="button"
+                aria-expanded={chatsSectionOpen}
+                onClick={() => setChatsSectionOpen(v => !v)}
+                className="zone-header"
+                style={{
+                  color: isDark ? '#c9954a' : '#9a6520',
+                  width: '100%', background: 'none', border: 'none',
+                  cursor: 'pointer', font: 'inherit', letterSpacing: '0.07em',
+                  fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                }}
+              >
                 <MessageCircle size={11} />
                 Recent Chats
-              </div>
-              <div style={{ padding: '0 6px 6px' }}>
+                <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+                  {chatsSectionOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                </span>
+              </button>
+              <div style={{ padding: '0 6px 6px', display: chatsSectionOpen ? 'block' : 'none' }}>
                 {(chatsExpanded ? conversations : conversations.slice(0, 5)).map(conv => (
                   <div key={conv.id} style={{ position: 'relative' }}>
                     {renamingId === conv.id ? (
