@@ -1,5 +1,21 @@
 # Turning on file storage
 
+> ## ⚠️ There are TWO policies here and they go to DIFFERENT places
+>
+> This tripped us up once already, on 2026-07-23, because the first version of this
+> document shipped one file with a generic name and hid the other inside a fenced code
+> block. The file was the obvious thing to attach, so it was — and it was the wrong one.
+>
+> | File | Attach to | What it allows |
+> |---|---|---|
+> | `s3-policy-FOR-THE-CLAUDE-HOSTING-USER.json` | IAM **user** `claude-hosting` | **creating** the bucket, and granting the server access |
+> | `s3-policy-FOR-THE-SERVER-ROLE.json` | IAM **role** `aws-elasticbeanstalk-ec2-role` | the running app **reading and writing files** in it |
+>
+> Attaching the role policy to the user grants object access but **not**
+> `s3:CreateBucket`, so bucket creation still fails with AccessDenied and the user's
+> permissions list *looks* correct. If you only ever do the console route (Option A),
+> you need only the **role** one.
+
 Until this is done, anything in EduFlow that produces or accepts a **file** does not
 work in production:
 
@@ -44,8 +60,11 @@ Bucket Versioning: Enable → Default encryption: SSE-S3, Bucket Key: Enable →
 
 **2. Let the server use it**
 IAM → Roles → **`aws-elasticbeanstalk-ec2-role`** → Add permissions → Create inline
-policy → JSON → paste the contents of `deploy/s3-file-storage-policy.json` →
+policy → JSON → paste the contents of **`deploy/s3-policy-FOR-THE-SERVER-ROLE.json`** →
 name it `EduFlowFileStorage` → Create.
+
+> A **role**, not a user. This is what the running application is, so it is what needs
+> to read and write the files.
 
 > `s3:ListBucket` is in there deliberately: the readiness check calls
 > `list_objects_v2`, so without it the health endpoint reports `degraded` even though
@@ -56,35 +75,19 @@ within the assistant's existing access, and it will verify afterwards.
 
 ## Option B — grant the assistant the two permissions and it does the rest
 
-Attach this inline policy to the IAM user **`claude-hosting`**:
+IAM → Users → **`claude-hosting`** → Add permissions → Create inline policy → JSON →
+paste **`deploy/s3-policy-FOR-THE-CLAUDE-HOSTING-USER.json`** → Create.
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:CreateBucket",
-        "s3:PutBucketPublicAccessBlock",
-        "s3:PutEncryptionConfiguration",
-        "s3:PutBucketVersioning"
-      ],
-      "Resource": "arn:aws:s3:::eduflow-files-ap-south-1-210447603820"
-    },
-    {
-      "Effect": "Allow",
-      "Action": "iam:PutRolePolicy",
-      "Resource": "arn:aws:iam::210447603820:role/aws-elasticbeanstalk-ec2-role"
-    }
-  ]
-}
-```
+That is the file whose name says USER. The other one, whose name says SERVER ROLE,
+does **not** contain `s3:CreateBucket` and will leave bucket creation failing.
 
 Narrow on purpose: one named bucket and one named role. `iam:PutRolePolicy` on the
 instance role is still a meaningful grant — it lets whoever holds those keys change
 what the servers may do — so remove it again afterwards if you would rather not leave
 it standing.
+
+Under Option B the assistant attaches the server-role policy itself, so you do not
+need to do step 2 by hand.
 
 ---
 

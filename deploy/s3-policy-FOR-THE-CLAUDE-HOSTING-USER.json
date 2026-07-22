@@ -1,0 +1,28 @@
+{
+  "_comment_1": "ATTACH THIS TO THE IAM *USER* claude-hosting. It lets the setup be run.",
+  "_comment_2": "Do NOT confuse with s3-policy-FOR-THE-SERVER-ROLE.json, which goes on the",
+  "_comment_3": "EC2 role aws-elasticbeanstalk-ec2-role and grants file read/write instead.",
+  "_comment_4": "Attaching the role one to the user (done first time round) grants object",
+  "_comment_5": "access but NOT s3:CreateBucket, so bucket creation still fails.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CreateAndHardenTheOneBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:PutEncryptionConfiguration",
+        "s3:PutBucketVersioning",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": "arn:aws:s3:::eduflow-files-ap-south-1-210447603820"
+    },
+    {
+      "Sid": "GrantTheServerAccessToThatBucket",
+      "Effect": "Allow",
+      "Action": "iam:PutRolePolicy",
+      "Resource": "arn:aws:iam::210447603820:role/aws-elasticbeanstalk-ec2-role"
+    }
+  ]
+}
