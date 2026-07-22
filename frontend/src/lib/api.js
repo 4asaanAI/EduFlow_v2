@@ -59,8 +59,34 @@ export async function apiFetch(url, options = {}) {
 }
 
 // --- Chat ---
-export async function getConversations() {
-  const res = await apiFetch(`${API}/chat/conversations`, { headers: getHeaders() });
+
+/**
+ * List the signed-in person's conversations.
+ *
+ * Called with NO arguments by the sidebar, which is on every screen — the server
+ * defaults give it exactly what it had before this endpoint learned to page
+ * (newest 50, most recent first). The All Chats page passes page/limit/sort/search.
+ */
+export async function getConversations(params = {}) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== '') qs.set(k, v);
+  });
+  const suffix = qs.toString() ? `?${qs}` : '';
+  const res = await apiFetch(`${API}/chat/conversations${suffix}`, { headers: getHeaders() });
+  return res.json();
+}
+
+/**
+ * Delete several of your own conversations at once. Irreversible.
+ *
+ * Approved by the Owner 2026-07-23. The screen makes the reader type the count
+ * before this is called; do not add a caller that skips that.
+ */
+export async function bulkDeleteConversations(ids) {
+  const res = await apiFetch(`${API}/chat/conversations/bulk-delete`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify({ ids }),
+  });
   return res.json();
 }
 
@@ -726,6 +752,54 @@ export async function updateSchoolSettings(data) {
 
 export async function getAcademicYear() {
   const res = await apiFetch(`${API}/settings/academic-year`, { headers: getHeaders() });
+  return res.json();
+}
+
+// ── Notifications (Epic 6) ───────────────────────────────────────────────────
+//
+// These moved out of Header.js, which called `fetch` directly with its own
+// header builder. api.js is the single source of truth for API calls, and the
+// direct calls also bypassed the 401-refresh that `apiFetch` provides.
+
+/**
+ * @param {object} params page, limit, sort ('newest'|'oldest'), unread_only,
+ *   include_digest. The All Notifications page passes include_digest=false: the
+ *   digest and "All Good" rows are synthesised per request and carry no id, so
+ *   in a table with a row count and a page indicator they would be fabricated
+ *   records among real ones. The bell panel passes nothing and keeps them.
+ */
+export async function getNotifications(params = {}) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== '') qs.set(k, v);
+  });
+  const suffix = qs.toString() ? `?${qs}` : '';
+  const res = await apiFetch(`${API}/notifications${suffix}`, { headers: getHeaders() });
+  return res.json();
+}
+
+/** The ONE question the bell asks. Counts across every page, not just page 1. */
+export async function getUnreadNotificationCount() {
+  const res = await apiFetch(`${API}/notifications/unread-count`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function markNotificationRead(notificationId) {
+  const res = await apiFetch(`${API}/notifications/${notificationId}/read`, {
+    method: 'PATCH', headers: getHeaders(),
+  });
+  return res.json();
+}
+
+/**
+ * Marks everything unread that existed BEFORE this request. Anything arriving
+ * mid-flight is deliberately left unread — which is why every caller re-reads
+ * the count afterwards rather than assuming it is now zero.
+ */
+export async function markAllNotificationsRead() {
+  const res = await apiFetch(`${API}/notifications/mark-all-read`, {
+    method: 'PATCH', headers: getHeaders(),
+  });
   return res.json();
 }
 

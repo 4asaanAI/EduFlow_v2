@@ -234,6 +234,21 @@ class ConversationUpdate(SchoolScopedModel):
     is_starred: Optional[bool] = None
 
 
+# Epic 6, Story 6.4. The typing is the security control, not a convenience.
+#
+# These ids go into {"id": {"$in": ids}}. Parsed from a raw request.json(), a
+# caller sending {"ids": [{"$gt": ""}]} produces a query matching EVERY
+# conversation they own — a request that reads "delete these three" and executes
+# as "delete everything". `List[str]` makes that a 422 before any query is built.
+#
+# The cap is here rather than in the route so the client can read one number.
+CONVERSATION_BULK_DELETE_MAX = 100
+
+
+class ConversationBulkDelete(BaseModel):
+    ids: List[str] = Field(..., min_length=1, max_length=CONVERSATION_BULK_DELETE_MAX)
+
+
 class StudentCreate(SchoolScopedModel):
     name: str
     class_id: str

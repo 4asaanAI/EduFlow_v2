@@ -14,21 +14,81 @@ def get_user(req: Request):
     return get_current_user(req)
 
 
+# Epic 6, Story 6.2: the server-side sort whitelist. An unrecognised value falls
+# back to the default rather than reaching a query, so the parameter can never
+# select an ordering the caller was not offered. Same rule Epic 3 set for tables.
+SORT_ORDERS = {
+    "newest": -1,
+    "oldest": 1,
+}
+DEFAULT_SORT = "newest"
+
+
+async def count_unread(db, user_id: str) -> int:
+    """The ONE place "how many are unread" is decided (Epic 6, readiness Q-1).
+
+    Both `GET /unread-count` (which the header bell reads) and `meta.unread_total`
+    on the list endpoint (which the panel and the All Notifications page read) call
+    this. Written twice they would agree today and diverge the first time anyone
+    added a filter to one of them — and the symptom would be a count the owner
+    cannot believe, which is the defect this epic exists to remove.
+    """
+    return await db.notifications.count_documents(
+        # branch-scope: intentional — a notification belongs to ONE user, and
+        # user_id is strictly narrower than branch_id. Notification documents
+        # carry no branch_id at all (services/notification_service.py builds them
+        # with add_school_id only), so scoped_query(branch_id=...) here would
+        # match nothing and silently empty every bell in the school.
+        scoped_filter({"user_id": user_id, "read": False}, get_school_id())
+    )
+
+
 @router.get("")
-async def get_notifications(request: Request, page: int = 1, limit: int = 20):
+async def get_notifications(
+    request: Request,
+    page: int = 1,
+    limit: int = 20,
+    sort: str = DEFAULT_SORT,
+    unread_only: bool = False,
+    include_digest: bool = True,
+):
+    """List a user's notifications.
+
+    CALLED WITH NO ARGUMENTS BY `NotificationsPanel`, which is in the header on
+    every screen. Every default here is chosen so that call gets exactly what it
+    got before this endpoint learned to page — digest rows on page 1, the
+    "All Good" fallback, newest first. `tests/backend/api/test_notifications.py`
+    pins that; a regression here is a regression everywhere.
+
+    `include_digest=False` is what the All Notifications page passes. The digest
+    and fallback rows are synthesised per request and carry no id: a sensible
+    empty state inside a dropdown, and a fabricated row among real ones inside a
+    table that has a row count, a sort order and a page indicator.
+    """
     db = get_db()
     user = get_user(request)
     limit = min(max(limit, 1), 50)
     skip = max(page - 1, 0) * limit
+    direction = SORT_ORDERS.get(sort, SORT_ORDERS[DEFAULT_SORT])
 
     # Persistent notifications from the notifications collection
-    query = scoped_filter({"user_id": user["id"]}, get_school_id())
+    base = {"user_id": user["id"]}
+    if unread_only:
+        base["read"] = False
+    # branch-scope: intentional — scoped to the caller's own user_id, which is
+    # narrower than any branch. See count_unread() above for why adding a
+    # branch_id clause would return nothing.
+    query = scoped_filter(base, get_school_id())
     total = await db.notifications.count_documents(query)
-    persistent = await db.notifications.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    persistent = await db.notifications.find(query, {"_id": 0}).sort("created_at", direction).skip(skip).limit(limit).to_list(limit)
+
+    # The digest and the fallback are always read by construction, so "unread
+    # only" can never legitimately be satisfied by one. The two filters compose.
+    synthetic_allowed = include_digest and not unread_only
 
     # Enrich with digest items only on page 1
     digest = []
-    if page == 1:
+    if page == 1 and synthetic_allowed:
         role = user["role"]
         today = date.today().strftime("%Y-%m-%d")
         ann_query = scoped_filter({"is_draft": {"$ne": True}}, get_school_id())
@@ -73,7 +133,7 @@ async def get_notifications(request: Request, page: int = 1, limit: int = 20):
     digest_count = len(digest)
     combined = persistent + digest
     has_fallback = False
-    if not combined and page == 1:
+    if not combined and page == 1 and synthetic_allowed:
         has_fallback = True
         combined = [{"type": "success", "title": "All Good", "message": "No pending actions for now", "time": "Now", "read": True, "is_digest": True}]
 
@@ -86,6 +146,10 @@ async def get_notifications(request: Request, page: int = 1, limit: int = 20):
             "total": total,
             "digest_count": digest_count,
             "has_fallback": has_fallback,
+            # Across ALL pages, not this one — so the bell, the panel and the
+            # All Notifications page are three readings of one number.
+            "unread_total": await count_unread(db, user["id"]),
+            "sort": sort if sort in SORT_ORDERS else DEFAULT_SORT,
         },
     }
 
@@ -94,10 +158,7 @@ async def get_notifications(request: Request, page: int = 1, limit: int = 20):
 async def get_unread_count(request: Request):
     db = get_db()
     user = get_user(request)
-    count = await db.notifications.count_documents(
-        scoped_filter({"user_id": user["id"], "read": False}, get_school_id())
-    )
-    return {"success": True, "data": {"unread_count": count}}
+    return {"success": True, "data": {"unread_count": await count_unread(db, user["id"])}}
 
 
 @router.patch("/{notification_id}/read")

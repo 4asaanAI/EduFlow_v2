@@ -10,6 +10,7 @@ import {
   Package, Printer, FilePlus, HelpCircle, Target, Compass, FileCheck,
   Edit2, X, ChevronDown, ChevronRight, MessageCircle, Settings, User, LogOut, Sun, Moon,
   LifeBuoy, Database, RefreshCw, Wrench, Monitor, AlertTriangle, ScrollText, Trophy,
+  Search,
 } from 'lucide-react';
 
 const TOOLS_BY_ROLE = {
@@ -666,8 +667,14 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
             </div>
           </div>
 
-          {/* Chat history zone — warm amber tint */}
-          {conversations.length > 0 && (
+          {/* Chat history zone — warm amber tint.
+              Epic 6: this used to be hidden entirely when the list was empty
+              (`conversations.length > 0`), which meant someone with no recent
+              chats had NO route to the archive at all. A door that disappears
+              when the room behind it looks empty is how a page ships and is
+              never found. The zone now always renders; only the list inside it
+              is conditional. */}
+          {(
             <div style={{
               borderRadius: 12, background: chatsZoneBg, border: `1px solid ${chatsZoneBorder}`,
               overflow: 'hidden', display: 'flex', flexDirection: 'column',
@@ -701,6 +708,31 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
                   own header, so a second toggle underneath was doing the same
                   job twice. Scrolling reaches the whole history in one gesture
                   rather than expand-then-scroll. */}
+              {/* The way to every chat, not just the newest fifty the server
+                  returns here. Outside the scrolling list on purpose: it must
+                  not scroll out of reach, and it must be there when the list is
+                  empty. */}
+              {chatsSectionOpen && (
+                <button
+                  type="button"
+                  data-testid="sidebar-all-chats"
+                  onClick={() => { onSelectTool('all-chats'); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    width: 'calc(100% - 12px)', margin: '0 6px 4px',
+                    padding: '6px 8px', minHeight: 30,
+                    background: 'transparent', border: 'none',
+                    borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+                    fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 700,
+                    color: 'var(--accent-orange)',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <Search size={11} aria-hidden="true" />
+                  See all chats
+                </button>
+              )}
               <div className="sidebar-scroll" style={{ padding: '0 6px 6px', display: chatsSectionOpen ? 'block' : 'none', flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
                 {conversations.map(conv => (
                   <div key={conv.id} style={{ position: 'relative' }}>

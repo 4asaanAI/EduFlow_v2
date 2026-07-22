@@ -28,6 +28,8 @@ Branch: `ui-sweep-2026-07-22`
 
 | 2026-07-22 | **Epic 5** | **A Conversation That Feels Alive - DONE.** Two of the four owner items were found ALREADY FIXED by earlier work (the composer by Epic 9, stream resilience by epic R8) and were deliberately not rebuilt. The two real defects: the same tool was announced twice, by a badge AND by the thinking panel that already held its steps (owner item 12); and the three stacked stream elements sat at 42px, 0px and 42px with 4/8/24px gaps. Both fixed, with the gutter asserted as a VALUE rather than eyeballed. Added a stall watchdog: a stream accepted and then silent used to spin the typing dots forever, and nothing enforced NFR-P3. It now says 'still working' at 12s and 'the connection may have dropped' at 45s, reset by any inbound event including a keepalive, cleared on unmount. 9 new tests; frontend 205 passed / 2 pre-existing, backend unchanged at 1915 / 2 pinned. Adds D-32. No production writes. |
 
+| 2026-07-23 | **Epic 6** | **Nothing Gets Lost — DONE.** Three product questions went to the Owner before any code (D-18); two were refusals, now written into the code as comments so the absences survive the next reader. The bell had been counting `n.is_read` — a field that has never existed in this product — so the red dot appeared whenever anyone had any notification at all and never cleared; it now reads the endpoint written for the question and shows the number. Notifications past the newest twenty, and chats past the newest fifty, were unreachable by ANY route in the product; both now have a page. Bulk chat delete is behind a typed count. Two traps were found before they shipped: an untyped request body would have turned "delete these three" into "delete everything you own", and the message-delete filter carries no user_id — safe one id at a time, catastrophic on a list. 78 new tests. Suite 1955 passed / 3 pre-existing / 14 deselected; frontend 244 / 2 pre-existing. Closes the `NotificationsPanel` half of D-22 and the last of D-05. Adds D-35, D-36, D-37. **No production writes.** |
+
 | 2026-07-22/23 | **DEPLOYED** | **The whole sweep went live.** Backend first (EB `eduflow-uisweep-20260722-213022-d235c89`, Green in ~90s), then main merged and Amplify rebuilt. Verified by downloading the SERVED bundle and grepping for strings this release introduced, not by trusting a green build. Two problems were caught BEFORE the deploy: the OCR install was a `packages:` block that would have FAILED THE WHOLE DEPLOY if tesseract was absent from the instance repos, and production had no S3 bucket so every generated document would have 500'd. Both fixed first. A merge conflict with two commits that landed on main mid-flight was resolved by reading both sides — their `table { display: block }` was refused because it is D-01. **File storage configured 2026-07-23**: private bucket in ap-south-1, all public access blocked, encrypted, versioned; health now reads `s3: ok`. That also unblocks certificates, student photos and PDF receipts, broken in prod until now. |
 ---
 
@@ -528,6 +530,83 @@ granted again for the duration.
 **The assistant cannot remove it** — `iam:DeleteUserPolicy` is denied, correctly: a
 principal should not be able to edit its own permissions. Console:
 IAM → Users → `claude-hosting` → Permissions → tick `s3-file-storage-policy` → Remove.
+
+### D-35 — The pinned test baseline drifts with the time of day — **EXPLAINED, not fixed**
+The Epic 6 handoff pinned "1917 passed, 2 failed". A clean-tree run at ~02:00 local on
+2026-07-23 measured **1916 passed, 3 failed**. The third failure is real and has a
+cause:
+
+`tests/backend/unit/test_receptionist_p11.py::test_visitor_duplicate_returns_409_with_duplicate_field`
+seeds a visitor record using `datetime.now()` — **local time, IST** — while the service
+computes "today" from `actor_ctx.now()`, which returns **UTC**
+(`backend/services/actor_context.py:21`, deliberately, since R15.4). Between 00:00 and
+05:30 IST the two dates differ by one day, the duplicate lookup searches the wrong day,
+no duplicate is found, and the endpoint returns 200 instead of 409.
+
+**So the test passes during the working day and fails in the small hours.** Verified
+pre-existing by stashing all Epic 6 changes and re-running.
+
+**Not fixed:** it is outside Epic 6's scope, and the standing rule is not to touch the
+pinned failures mid-initiative. **The fix is one line in the test** — seed with the same
+clock the service uses. Worth noting there is also a mild *product* oddity behind it: a
+school in IST checking a visitor in between midnight and 05:30 would have "today"
+computed as the previous day. Nobody checks visitors in at 00:30, so this is a test
+defect first and a product curiosity second.
+
+**Baseline for Epic 7: 1955 passed, 3 failed, 14 deselected** — and expect the third to
+disappear if the suite is run after 05:30 IST.
+
+### D-36 — A duplicate index on `notifications` — **DEFERRED, hygiene**
+`db.notifications.create_index([("user_id", 1), ("read", 1), ("created_at", -1)])`
+appears twice in `backend/database.py`, at line 367 and again at line 377, identically.
+Mongo treats the second as a no-op, so the cost is confusion rather than storage. Found
+while checking whether Epic 6 needed a new index (it did, for `conversations`, not for
+`notifications`). **Reason deferred:** pre-existing and unrelated; removing it would put
+an unrelated change inside an index diff.
+
+### D-37 — Flo's generated documents fail to download in production — **OPEN, needs the Owner**
+Reported by Abhimanyu on 2026-07-23. Asking Flo for a Word document produces a
+downloadable link, and opening the link returns an AWS error page:
+`SignatureDoesNotMatch — the request signature we calculated does not match the
+signature you provided`.
+
+**Two separate problems, and they need separating.**
+
+**1. The signing itself.** The link was signed with a temporary AWS identity
+(`ASIATB75HTBWMZQ5SLKF` — an `ASIA` prefix means short-lived credentials, not the
+permanent `AKIA` kind). `SignatureDoesNotMatch` on such a link almost always means the
+secret used to sign does not belong with the access key presented — i.e. the server is
+holding a **mismatched or stale set of temporary credentials**. The most likely source
+is concrete and checkable: `backend/.env` is deployed inside the application bundle and,
+per D-34, has held credentials for the `claude-hosting` user. If that file (or the
+Elastic Beanstalk environment) carries `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` /
+`AWS_SESSION_TOKEN` from a temporary session, boto3 will prefer them over the EC2
+instance role and sign with them — and a partial or stale set produces exactly this
+error. `backend/services/s3_storage.py:43` builds its client with `region_name` only and
+lets boto3's credential chain decide, so whatever the environment holds wins.
+
+**The check is read-only and quick:** look at whether the EB environment or the deployed
+`.env` sets any `AWS_*` credential variables at all. The intended state after the
+2026-07-23 storage setup is that it sets **none** and the instance role
+(`EduFlowFileStorage` on `aws-elasticbeanstalk-ec2-role`) is used. **Not done in this
+run — it is a production change and needs the Owner's approval.**
+
+**2. He was shown raw AWS XML, and that is its own defect.** Story 10.3's acceptance
+criteria say an expired or dead link must tell the person it has expired and offer to
+generate it again — *"a dead link that simply fails is the failure-that-looks-like-a-zero
+defect of Epic 4 in a new place."* That AC is not being met: the link goes straight to
+S3, so any S3 error is rendered by S3, in XML, with the school's bucket name and account
+number on screen. **Whatever the cause of problem 1, problem 2 is real on its own** and
+should be fixed regardless — the download should pass through the platform, or the card
+should verify the link before handing it over.
+
+**Note the timestamp in the error:** the link was signed at `20260722T212050Z` with a
+one-hour expiry. If it was opened well after that, expiry is a *second*, independent
+reason it would fail — and would produce a different AWS error, still rendered as XML.
+
+**This supersedes the optimistic reading of D-33 item 1.** Writing the file as the server
+evidently works (the object exists at the key in the error). **Reading it back does not.**
+So "file storage is on" is true of `PutObject` and not yet true of the download path.
 
 ---
 

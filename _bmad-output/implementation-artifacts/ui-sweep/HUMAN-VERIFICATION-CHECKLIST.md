@@ -372,6 +372,89 @@ out by testing:
 
 ---
 
+## Epic 6 — Nothing gets lost (added 2026-07-23)
+
+**Not live until the deploy**, like everything else on this branch.
+
+### The headline, in one paragraph
+
+Your notification bell has been wrong since the day it was built. It was looking for a
+label that does not exist in your system, so the red dot appeared whenever you had *any*
+notification — read or not — and never went away. It now shows **the actual number**
+waiting, and disappears when there is nothing. Separately: you could only ever see your
+newest 20 notifications and your newest 50 chats. Everything older was not "hard to
+find" — it was **unreachable by any route in the product**. Both now have a page.
+
+### Decisions you already made — settled 2026-07-23
+
+- [x] **Chats can be deleted several at a time**, behind a confirmation.
+- [x] **Notifications are never deleted** — only marked read. They stay under an "All"
+      filter so you keep a record of what you were told.
+- [x] **Nobody reads anyone else's chats**, including you. Your separate support view
+      still lets us diagnose one specific chat if someone reports a problem.
+
+### One thing I decided that you should overrule if you disagree
+
+- [ ] **The confirmation asks you to type the NUMBER of chats, not the word "DELETE".**
+      You asked for a typed confirmation and I chose the number: your office works in
+      English and Hindi, and an English spelling test adds nuisance without adding
+      safety — whereas typing the number makes you look at how many you are about to
+      destroy, which is the whole point. **Say the word and I will switch it to
+      "DELETE".**
+
+### Please check in the real app, after the deploy
+
+- [ ] **The bell.** Look at the top of the screen. If you have unread notifications it
+      should show a number (up to "9+"). Read them, or press "Mark all read", and the
+      number should **go away completely** — no grey dot left behind.
+- [ ] **"Mark all read" really means all.** If you have a lot of them, press it and check
+      the count clears. If it says something like "1 arrived just now", that is correct
+      and deliberate — something landed while the request was in flight, and it is
+      telling you rather than looking broken.
+- [ ] **View all notifications.** Open the bell, then the button at the bottom. You
+      should reach a full page you can sort, page through, and set rows-per-page on.
+      **It will show FEWER items than the bell** — that is expected and the page says so:
+      things like "3 approvals pending" are worked out fresh each time and never saved.
+- [ ] **See all chats.** In the sidebar, under Recent Chats, there is now "See all chats".
+      Open it, search for an old chat by name, and open it — you should land back in that
+      conversation.
+- [ ] **Search only looks at chat NAMES**, not at what was said inside. If you search a
+      word you remember typing to Flo and get nothing, that is the limit, and the screen
+      says so rather than leaving you thinking the chat is gone. **Tell me if searching
+      inside messages is something you actually want** — it is a bigger job.
+- [ ] **Try the delete, carefully, on a chat you do not want.** Tick it, press delete, and
+      check it asks you to type the number. Press Escape — nothing should be deleted.
+      Then do it properly and confirm the chat disappears from the sidebar too.
+- [ ] **On your phone**, for all of the above.
+
+### Things I could NOT verify myself, and am not claiming
+
+- [ ] **The speed improvement.** I added a database index so that paging through a long
+      chat history does not get slower as it grows. I have no way to measure that against
+      your real data from here — I can only say the index is there.
+- [ ] **Where the "See all chats" button sits.** I have checked it is present and that it
+      still appears when you have no recent chats at all, but I have not seen it on a real
+      screen at a real size. If it is awkward, tell me.
+- [ ] **Anything that ends in a save.** My only working setup points at your live system,
+      so I have not pressed delete even once against real data. Every delete behaviour
+      above is proven by tests only.
+
+### A separate problem you reported today — Flo's Word documents
+
+- [ ] **This is real, it is live, and it is NOT fixed.** You asked Flo for a Word document
+      and got an Amazon error page instead of a file. Two things are wrong:
+      1. **The download link is being signed with the wrong key.** Most likely the server
+         is holding an old, temporary set of Amazon credentials that no longer match. I
+         have written down exactly what to check, but **checking it means touching your
+         live server, so I have not done it without your say-so.**
+      2. **You should never have seen that page at all.** The link takes you straight to
+         Amazon, so when Amazon objects, you get Amazon's error — raw, with your account
+         number on screen. It was supposed to say "this link has expired, ask again".
+      **Say the word and I will investigate the server settings** — it is a read-only look
+      first, and I will tell you what I find before changing anything.
+
+---
+
 ## Change log
 
 | Date | Epic | What was added |
@@ -381,4 +464,5 @@ out by testing:
 | 2026-07-22 | Epic 9 + 3 | **Part A added: a standing ten-minute checklist to run after every epic**, at Abhimanyu's request. Plus this epic's specifics: the new look, Flo, the duplicate titles, sorting and paging, and the four live-data city corrections. |
 | 2026-07-22 | Epic 5 | One progress box instead of two, everything lined up, and a stall that says so instead of spinning. Two stall thresholds need your judgement. |
 | 2026-07-22 | Epic 10 | Real files from Flo, Excel exports, and reading printed paper. Two parts ship dark pending a deploy, and one may not work at all - both named explicitly. |
+| 2026-07-23 | Epic 6 | The bell that had always been wrong, the notifications and chats that were unreachable past the newest handful, bulk chat delete behind a typed count, and one decision of mine to overrule if you want. Plus the Flo/Word-document failure you reported today — real, live, and not fixed. |
 | 2026-07-22 | Epic 4 | The zeros (eleven screens, not one), honest failure states, the school's real details and affiliation number awaiting your save, the assistant finally knowing the principal, column sorting on 34 tables, and the Class Strength column you queried. Three things I could not verify myself are named explicitly. |

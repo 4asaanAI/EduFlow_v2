@@ -47,6 +47,11 @@
   --color-purple: #6D45C7;
   --color-inverse-surface: #16203A;
   --color-inverse-text: #ffffff;
+  /* Epic 6, light theme. Lighter than the dark values: the same alpha over white
+     reads far stronger than over near-black, so a straight copy would make an
+     unread row look selected. */
+  --color-unread-tint: rgba(26,111,206,0.06);
+  --color-accent-blue-subtle: rgba(26,111,206,0.20);
 
   /* Brand fills keep the SAME text colours in both themes — an orange button
      that is navy-on-orange in dark and white-on-orange in light would be two

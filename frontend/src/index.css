@@ -91,6 +91,13 @@
   --color-purple: #a78bfa;
   --color-inverse-surface: #F5F5F5;
   --color-inverse-text: #171717;
+  /* Epic 6: the tint behind an unread notification row, and the hairline on a
+     subtle accent chip. Both were `isDark ? rgba(...) : rgba(...)` pairs in
+     Header.js — the last of the D-22 colours computed in JavaScript. They are
+     BACKGROUNDS ONLY: nothing reads text against them, so they carry no contrast
+     obligation of their own. */
+  --color-unread-tint: rgba(79,143,247,0.08);
+  --color-accent-blue-subtle: rgba(79,143,247,0.22);
 
   /* ---- Brand fills. Text colour is NOT interchangeable — see the warning. ---- */
   --brand-blue: #2B8FF0;          /* accent / link / glow — on navy only */

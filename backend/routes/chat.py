@@ -27,7 +27,13 @@ from typing import Any, Optional
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse, JSONResponse
 from database import get_db
-from models.schemas import Conversation, Message, ConversationUpdate
+from models.schemas import (
+    Conversation,
+    Message,
+    ConversationUpdate,
+    ConversationBulkDelete,
+    CONVERSATION_BULK_DELETE_MAX,
+)
 from ai.llm_client import llm_client, AI_UNAVAILABLE_MESSAGE
 from ai.prompts import build_system_prompt
 from ai.context_builder import build_school_context, detect_language
@@ -559,14 +565,151 @@ async def _require_owned_conversation(db, conv_id: str, user: dict) -> dict:
         raise HTTPException(404, "Conversation not found")
     return conv
 
+# Epic 6, Story 6.4: the server-side sort whitelist for the chat archive. An
+# unrecognised value falls back to the default rather than reaching a query.
+CONVERSATION_SORTS = {
+    "recent": ("updated_at", -1),
+    "oldest": ("updated_at", 1),
+    "title": ("title", 1),
+}
+DEFAULT_CONVERSATION_SORT = "recent"
+# The sidebar has always shown the newest 50 and still does when called bare.
+DEFAULT_CONVERSATION_LIMIT = 50
+MAX_CONVERSATION_LIMIT = 100
+# Escaping a search term bounds what it MEANS, not what it COSTS: a 100 KB
+# escaped literal is still a 100 KB pattern.
+MAX_CONVERSATION_SEARCH = 200
+
+
 @router.get("/conversations")
-async def list_conversations(request: Request):
+async def list_conversations(
+    request: Request,
+    page: int = 1,
+    limit: int = DEFAULT_CONVERSATION_LIMIT,
+    sort: str = DEFAULT_CONVERSATION_SORT,
+    search: str = "",
+):
+    """List the caller's conversations.
+
+    CALLED WITH NO ARGUMENTS BY THE SIDEBAR, which is on every screen. The
+    defaults are therefore exactly what it received before this endpoint learned
+    to page — the newest 50, most-recent first — and `meta` is added alongside
+    rather than reshaping anything. A test pins that against the old behaviour.
+
+    Everyone sees only their own conversations. That was put to the Owner on
+    2026-07-23 and settled deliberately: cross-user visibility would be a new
+    power over staff, and the owner-only `/conversations/{id}/trace` view already
+    covers diagnosing a specific reported chat.
+    """
     db = get_db()
     user = get_current_user(request)
-    convs = await db.conversations.find(
-        scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0}
-    ).sort("updated_at", -1).to_list(50)
-    return {"success": True, "data": convs}
+    per_page = max(1, min(limit, MAX_CONVERSATION_LIMIT))
+    skip = max(page - 1, 0) * per_page
+    sort_field, sort_dir = CONVERSATION_SORTS.get(sort, CONVERSATION_SORTS[DEFAULT_CONVERSATION_SORT])
+
+    # branch-scope: intentional — a conversation belongs to ONE user, and user_id
+    # is strictly narrower than branch_id. Conversation documents carry no
+    # branch_id field (models/schemas.py Conversation is school-scoped only), so
+    # a branch clause here would match nothing and empty everyone's history.
+    query = scoped_filter({"user_id": user["id"]}, get_school_id())
+    term = (search or "").strip()[:MAX_CONVERSATION_SEARCH]
+    if term:
+        # re.escape or the term is a pattern: an injection surface, and a way to
+        # hang the server on catastrophic backtracking.
+        query["title"] = {"$regex": re.escape(term), "$options": "i"}
+
+    total = await db.conversations.count_documents(query)
+    convs = await db.conversations.find(query, {"_id": 0}).sort(
+        sort_field, sort_dir
+    ).skip(skip).limit(per_page).to_list(per_page)
+    return {
+        "success": True,
+        "data": convs,
+        "meta": {
+            "page": page,
+            "limit": per_page,
+            "total": total,
+            "sort": sort if sort in CONVERSATION_SORTS else DEFAULT_CONVERSATION_SORT,
+            "max_bulk_delete": CONVERSATION_BULK_DELETE_MAX,
+        },
+    }
+
+
+@router.post("/conversations/bulk-delete")
+async def bulk_delete_conversations(body: ConversationBulkDelete, request: Request):
+    """Delete several of the caller's own conversations in one request.
+
+    Approved by the Owner on 2026-07-23 before it was built: deleting a chat
+    already exists one at a time, so this is the same authority, faster. It is
+    irreversible, which is why the screen makes the reader type the count.
+
+    TWO THINGS HERE ARE LOAD-BEARING AND EASY TO "TIDY" AWAY:
+
+    1. `body` is a Pydantic model, never `await request.json()`. See
+       ConversationBulkDelete — untyped ids turn this into "delete everything".
+    2. The MESSAGE delete uses `owned_ids` — what the ownership query actually
+       returned — never `body.ids`. The messages filter carries no user_id; it is
+       safe in the single-delete path only because ownership is proven one id at
+       a time first. Passing the caller's raw list here would destroy another
+       user's messages while leaving their conversation standing: a chat they can
+       open and find empty, with nothing in any log to explain it.
+    """
+    db = get_db()
+    user = get_current_user(request)
+    school_id = get_school_id()
+
+    # Deduplicated, so a caller repeating one id ten times is not told ten chats
+    # were removed.
+    requested = list(dict.fromkeys(body.ids))
+    # branch-scope: intentional — pinned to the caller's own user_id, which is
+    # narrower than branch; conversations carry no branch_id field.
+    owned = await db.conversations.find(
+        scoped_filter({"id": {"$in": requested}, "user_id": user["id"]}, school_id),
+        {"_id": 0, "id": 1},
+    ).to_list(len(requested))
+    owned_ids = [c["id"] for c in owned]
+
+    if owned_ids:
+        # Conversations first: an orphaned message is invisible and harmless, a
+        # conversation that outlives its messages is a chat that opens empty.
+        # branch-scope: intentional — own user_id, as above.
+        await db.conversations.delete_many(
+            scoped_filter({"id": {"$in": owned_ids}, "user_id": user["id"]}, school_id)
+        )
+        # branch-scope: intentional — `owned_ids` are already proven to be this
+        # caller's, which is what makes a filter with no user_id safe here. Same
+        # reasoning as the single-delete path directly below.
+        await db.messages.delete_many(
+            scoped_filter({"conversation_id": {"$in": owned_ids}}, school_id)
+        )
+
+    # Ids only, never a title or any message text (NFR-S2).
+    #
+    # The ids go in `changes`, NOT in `entity_id`. `audit_logs` carries an index
+    # on entity_id, and joining up to 100 UUIDs makes a ~3.6 KB indexed key — a
+    # bulk action would quietly become the most expensive row in the log.
+    await write_audit(
+        db,
+        action="conversation_bulk_delete",
+        entity_id=user["id"],
+        collection="conversations",
+        changed_by=user["id"],
+        changed_by_role=user.get("role", ""),
+        school_id=school_id,
+        branch_id=user.get("branch_id") or "",
+        changes={
+            "deleted": len(owned_ids),
+            "requested": len(requested),
+            "conversation_ids": owned_ids,
+        },
+    )
+
+    # An id that was not found and an id belonging to somebody else are reported
+    # identically — from outside, they are indistinguishable.
+    return {
+        "success": True,
+        "data": {"deleted": len(owned_ids), "not_found": len(requested) - len(owned_ids)},
+    }
 
 
 @router.post("/conversations")

@@ -305,6 +305,10 @@ async def _create_indexes():
     await db.fee_transactions.create_index("status")
     await db.messages.create_index("conversation_id")
     await db.conversations.create_index("user_id")
+    # Epic 6, Story 6.4: the chat archive pages, sorts and counts by recency.
+    # Without this, the sidebar (on every screen) and the All Chats page each do
+    # an in-memory sort of a user's whole conversation history on every load.
+    await db.conversations.create_index([("schoolId", 1), ("user_id", 1), ("updated_at", -1)])
     # R11.5: conversation trace viewer — per-turn diagnostic rows keyed by conversation
     await db.ai_turn_traces.create_index([("conversation_id", 1), ("created_at", 1)])
     await db.assignments.create_index("class_id")

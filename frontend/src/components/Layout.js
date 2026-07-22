@@ -29,6 +29,12 @@ const loadTool = async (toolId) => {
   if (toolId === 'exam-manager') return (await import('./tools/ExamManager')).default;
   if (toolId === 'what-ive-learned') return (await import('./tools/LearningTools')).default;
   if (toolId === 'conversation-trace') return (await import('./tools/ConversationTrace')).default;
+  // Epic 6. Reached from the bell panel's footer and the sidebar's Recent Chats
+  // header rather than from a per-role nav list — both of those live in the
+  // shell, so the pages are reachable from every screen (FR81) without editing
+  // eight navigation configs.
+  if (toolId === 'all-notifications') return (await import('./tools/AllNotifications')).default;
+  if (toolId === 'all-chats') return (await import('./tools/AllChats')).default;
 
   // Existing dedicated tools
   if (toolId === 'query-section') return (await import('./tools/QuerySection')).QuerySection;
@@ -167,6 +173,36 @@ export default function Layout() {
     window.addEventListener('open-tool', handler);
     return () => window.removeEventListener('open-tool', handler);
   }, [setActiveToolParam]);
+
+  /**
+   * Epic 6: the All Chats page opening a conversation, and telling the shell that
+   * conversations were deleted.
+   *
+   * `ToolView` renders tool components with no props, so a page cannot call
+   * `handleSelectConv` directly. This mirrors the `open-tool` event above rather
+   * than restructuring `ToolView` to thread props through — reshaping the shell
+   * inside a UI-defect epic is the scope creep D-25 warns about.
+   */
+  useEffect(() => {
+    const openConv = (e) => { if (e.detail) handleSelectConv(e.detail); };
+    const changed = (e) => {
+      const deleted = e.detail?.deletedIds || [];
+      // Never leave the chat view pointing at a conversation that is gone.
+      if (deleted.length && activeConvId && deleted.includes(activeConvId)) {
+        setActiveConvId(null);
+        setActiveConvTitle('');
+      }
+      // The sidebar is on screen at the same time and would keep offering rows
+      // that no longer exist.
+      setConvRefresh(n => n + 1);
+    };
+    window.addEventListener('open-conversation', openConv);
+    window.addEventListener('conversations-changed', changed);
+    return () => {
+      window.removeEventListener('open-conversation', openConv);
+      window.removeEventListener('conversations-changed', changed);
+    };
+  }, [activeConvId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const handleKeyDown = (e) => {

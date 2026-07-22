@@ -5,7 +5,13 @@ import { Search, Bell, ChevronLeft, Menu, X, CalendarDays } from 'lucide-react';
 import { getAuthHeaders } from '../lib/authSession';
 import NotificationDetailModal from './NotificationDetailModal';
 import { getToolForNotification } from '../lib/notifRouting';
-import { getAcademicYear } from '../lib/api';
+import {
+  getAcademicYear,
+  getNotifications,
+  getUnreadNotificationCount,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from '../lib/api';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -104,7 +110,7 @@ function SearchPanel({ user, onClose, isDark }) {
           <div style={{ maxHeight: 400, overflowY: 'auto', padding: 6 }}>
             {results.map((r, i) => (
               <div key={i} onClick={() => handleResultClick(r)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', transition: 'var(--transition-fast)' }}
-                onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                 <div style={{ width: 32, height: 32, borderRadius: 8, background: `${typeColors[r.type] || '#666'}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: typeColors[r.type] || '#666', fontWeight: 700 }}>
                   {r.type?.[0]?.toUpperCase()}
@@ -138,23 +144,34 @@ const TYPE_CONFIG = {
   error:   { bg: '#ef4444', icon: '!', light: '#ef444415', border: '#ef444430' },
 };
 
-function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToTool }) {
+function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToTool, onViewAll, onCountChanged }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
   const [readIds, setReadIds] = useState(new Set());
   const [markingAll, setMarkingAll] = useState(false);
+  // Across EVERY page, from the server — not the count of rows this panel holds.
+  // The panel shows 20; the honest answer is often larger.
+  const [unreadTotal, setUnreadTotal] = useState(0);
+  const [total, setTotal] = useState(0);
+  // Set when "mark all read" completes and the server still reports unread items.
+  // That is correct — mark-all-read deliberately spares anything that arrived
+  // mid-request — but a bare non-zero number reads as "the button failed".
+  const [arrivedDuringMarkAll, setArrivedDuringMarkAll] = useState(0);
 
   const load = () => {
     setLoading(true);
     setFetchError(false);
-    fetch(`${API}/notifications`, { headers: getH(user) })
-      .then(r => r.json())
+    // No arguments: the panel keeps the digest rows and the "All Good" empty
+    // state. The All Notifications page is the surface that asks for records only.
+    getNotifications()
       .then(r => {
         if (r.success) {
           const data = r.data || [];
           setNotifications(data);
           setReadIds(new Set(data.filter(n => n.read || n.is_digest).map(n => n.id).filter(Boolean)));
+          setUnreadTotal(r.meta?.unread_total ?? 0);
+          setTotal(r.meta?.total ?? 0);
         } else {
           setFetchError(true);
         }
@@ -165,25 +182,46 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
 
   useEffect(() => { load(); }, [user.id, user.role]); // eslint-disable-line
 
-  const bg = isDark ? '#161616' : '#ffffff';
-  const surface = isDark ? '#1e1e1e' : '#f8f9fa';
-  const border = isDark ? '#2a2a2a' : '#e8eaed';
-  const text = isDark ? '#f0f0f0' : '#111827';
-  const muted = isDark ? '#777' : '#6b7280';
-  const subtext = isDark ? '#555' : '#9ca3af';
+  // Epic 6 (D-22): these were nine `isDark ? '#hex' : '#hex'` pairs — the last
+  // component in the shell still deciding its own colours in JavaScript, which
+  // Epic 9 removed everywhere else. Switching theme recoloured the text and left
+  // the surfaces behind.
+  const bg = 'var(--color-surface)';
+  const surface = 'var(--color-surface-raised)';
+  const border = 'var(--color-border)';
+  const text = 'var(--color-text-primary)';
+  const muted = 'var(--color-text-secondary)';
+  const subtext = 'var(--color-text-muted)';
 
   const markRead = (n) => {
     if (!n.id || n.is_digest || readIds.has(n.id)) return;
     setReadIds(prev => new Set([...prev, n.id]));
-    fetch(`${API}/notifications/${n.id}/read`, { method: 'PATCH', headers: getH(user) }).catch(() => {});
+    setUnreadTotal(c => Math.max(0, c - 1));
+    markNotificationRead(n.id).catch(() => {}).finally(() => onCountChanged && onCountChanged());
   };
 
   const handleMarkAllRead = async () => {
     if (markingAll) return;
     setMarkingAll(true);
-    setReadIds(new Set(notifications.map(n => n.id).filter(Boolean)));
-    try { await fetch(`${API}/notifications/mark-all-read`, { method: 'PATCH', headers: getH(user) }); } catch {}
+    setArrivedDuringMarkAll(0);
+    try {
+      await markAllNotificationsRead();
+      // Re-read rather than assume zero. The panel used to mark its own visible
+      // rows in local state and never ask again, so with 60 unread it reported
+      // "20 unread" both before and after.
+      const r = await getNotifications();
+      if (r.success) {
+        const data = r.data || [];
+        setNotifications(data);
+        setReadIds(new Set(data.filter(n => n.read || n.is_digest).map(n => n.id).filter(Boolean)));
+        const stillUnread = r.meta?.unread_total ?? 0;
+        setUnreadTotal(stillUnread);
+        setTotal(r.meta?.total ?? 0);
+        setArrivedDuringMarkAll(stillUnread);
+      }
+    } catch {}
     setMarkingAll(false);
+    if (onCountChanged) onCountChanged();
   };
 
   const handleNotifClick = (n) => {
@@ -197,7 +235,7 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
     }
   };
 
-  const unreadCount = notifications.filter(n => n.id && !n.is_digest && !readIds.has(n.id)).length;
+  const unreadCount = unreadTotal;
 
   return (
     <div className="fade-in-scale" style={{
@@ -218,16 +256,21 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
             width: 32, height: 32, borderRadius: 10,
-            background: isDark ? '#252525' : '#f0f4ff',
+            background: 'var(--color-surface-raised)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-            <Bell size={15} color={isDark ? '#818cf8' : '#4f8ff7'} />
+            <Bell size={15} color='var(--color-accent-blue)' />
           </div>
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: text, letterSpacing: '-0.01em' }}>Notifications</div>
             {!loading && !fetchError && (
-              <div style={{ fontSize: 11, color: muted, marginTop: 1 }}>
-                {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
+              <div data-testid="notif-panel-subtitle" style={{ fontSize: 11, color: muted, marginTop: 1 }}>
+                {/* Correct behaviour that reads as a bug is the same support call
+                    as a bug: mark-all-read spares anything that arrived during
+                    the request, so say that rather than showing a bare number. */}
+                {arrivedDuringMarkAll > 0
+                  ? `${arrivedDuringMarkAll} arrived just now`
+                  : unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
               </div>
             )}
           </div>
@@ -238,8 +281,8 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
               onClick={handleMarkAllRead}
               disabled={markingAll}
               style={{
-                background: isDark ? '#252525' : '#f0f4ff', border: 'none',
-                color: isDark ? '#818cf8' : '#4f8ff7',
+                background: 'var(--color-surface-raised)', border: 'none',
+                color: 'var(--color-accent-blue)',
                 cursor: markingAll ? 'wait' : 'pointer', padding: '4px 10px', borderRadius: 8,
                 fontSize: 11, fontWeight: 600, opacity: markingAll ? 0.6 : 1,
               }}>
@@ -247,7 +290,7 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
             </button>
           )}
           <button onClick={onClose} style={{
-            background: isDark ? '#252525' : '#f3f4f6', border: 'none',
+            background: 'var(--color-surface-raised)', border: 'none',
             color: muted, cursor: 'pointer', padding: 6, borderRadius: 8,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
@@ -287,12 +330,12 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
                     padding: '12px 18px',
                     display: 'flex', gap: 12, alignItems: 'flex-start',
                     cursor: 'pointer',
-                    background: isRead ? 'transparent' : (isDark ? 'rgba(79,143,247,0.04)' : 'rgba(79,143,247,0.03)'),
+                    background: isRead ? 'transparent' : 'var(--color-unread-tint)',
                     borderBottom: i < notifications.length - 1 ? `1px solid ${border}` : 'none',
                     transition: 'background 0.15s ease',
                   }}
                   onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = isRead ? 'transparent' : (isDark ? 'rgba(79,143,247,0.04)' : 'rgba(79,143,247,0.03)'); }}
+                  onMouseLeave={e => { e.currentTarget.style.background = isRead ? 'transparent' : 'var(--color-unread-tint)'; }}
                 >
                   <div style={{
                     width: 34, height: 34, borderRadius: 10, flexShrink: 0,
@@ -322,14 +365,36 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
         )}
       </div>
 
-      {/* Footer */}
-      {!loading && !fetchError && notifications.length > 0 && (
+      {/* Footer — this was a dead label reading "N notifications total", which was
+          the only thing standing where the way to the rest of them belonged. The
+          panel shows the newest 20 and, until Epic 6, nothing in the product
+          could reach number 21. */}
+      {!loading && !fetchError && (
         <div style={{
-          padding: '10px 18px', borderTop: `1px solid ${border}`,
-          background: isDark ? '#1a1a1a' : '#fafafa',
+          padding: '8px 12px', borderTop: `1px solid ${border}`,
+          background: surface,
           display: 'flex', justifyContent: 'center',
         }}>
-          <span style={{ fontSize: 11, color: subtext }}>{notifications.length} notification{notifications.length !== 1 ? 's' : ''} total</span>
+          <button
+            type="button"
+            data-testid="notif-view-all"
+            onClick={() => { onClose(); onViewAll(); }}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              width: '100%', background: 'transparent', border: 'none',
+              borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+              padding: '7px 10px', minHeight: 36,
+              fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 700,
+              color: 'var(--color-accent-blue)',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            View all notifications
+            {total > 0 && (
+              <span style={{ color: subtext, fontWeight: 500 }}>({total.toLocaleString('en-IN')})</span>
+            )}
+          </button>
         </div>
       )}
     </div>
@@ -345,17 +410,26 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
   const notifRef = useRef(null);
   const [isMobile, setIsMobile] = useState(false);
   const [academicYear, setAcademicYear] = useState('');
-  // The red dot used to be painted unconditionally, so the bell always looked as
-  // though something needed attention even when everything was read. Count the
-  // unread ones and only show it when there really is something.
+  /**
+   * How many notifications are actually waiting.
+   *
+   * This has never been right. It used to fetch page 1 of the list and count
+   * `!n.is_read` — a field that does not exist anywhere in the product; the
+   * stored field is `read`. So the test was true for EVERY notification, read or
+   * not, and the dot appeared whenever the signed-in person had any notification
+   * at all and never cleared. It also only ever saw the newest twenty, while
+   * `/notifications/unread-count` — written for exactly this question, and
+   * counting across every page — was called by nothing.
+   */
   const [unreadCount, setUnreadCount] = useState(0);
 
   const refreshUnread = useCallback(() => {
-    fetch(`${API}/notifications`, { headers: getH() })
-      .then(r => (r.ok ? r.json() : null))
+    getUnreadNotificationCount()
       .then(res => {
-        const list = Array.isArray(res) ? res : (res?.data || []);
-        setUnreadCount(list.filter(n => n && !n.is_digest && !n.is_read).length);
+        // Only overwrite on a real answer. Showing 0 because a request failed
+        // would claim "nothing is waiting" on the strength of a network error —
+        // the Epic 4 defect (a failure that looks like a figure) in a new place.
+        if (res?.success) setUnreadCount(res.data?.unread_count ?? 0);
       })
       .catch(() => {});
   }, []);
@@ -523,11 +597,11 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
             <div style={{
               display: 'flex', alignItems: 'center', gap: 6, marginRight: 6,
               padding: '4px 10px', borderRadius: 8,
-              background: isDark ? 'rgba(79,143,247,0.08)' : 'rgba(79,143,247,0.06)',
-              border: `1px solid ${isDark ? 'rgba(79,143,247,0.2)' : 'rgba(79,143,247,0.18)'}`,
+              background: 'var(--color-unread-tint)',
+              border: '1px solid var(--color-accent-blue-subtle)',
             }}>
               <CalendarDays size={11} color={'var(--color-accent-blue)'} />
-              <span style={{ fontSize: 11, color: isDark ? '#8baee8' : '#3b5fc0', fontWeight: 600, letterSpacing: '0.01em' }}>
+              <span style={{ fontSize: 11, color: 'var(--color-accent-blue)', fontWeight: 600, letterSpacing: '0.01em' }}>
                 Academic Year {academicYear}
               </span>
             </div>
@@ -539,8 +613,27 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
               onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
               <Bell size={ICON_SIZE} />
+              {/* The number, not a dot. A badge meaning 3 and a badge meaning 47
+                  must not look identical, and the state must not be carried by
+                  colour alone (WCAG color-not-only). Nothing unread means no
+                  badge at all — not a zero, not a grey dot. */}
               {unreadCount > 0 && (
-                <span aria-label={`${unreadCount} unread notifications`} style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, background: 'var(--color-danger)', borderRadius: '50%', border: `2px solid ${bg}` }} />
+                <span
+                  data-testid="notif-badge"
+                  aria-label={`${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}`}
+                  style={{
+                    position: 'absolute', top: 2, right: 0,
+                    minWidth: 16, height: 16, padding: '0 4px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'var(--color-danger)', color: 'var(--color-inverse-text)',
+                    borderRadius: 'var(--radius-full)',
+                    border: `2px solid ${bg}`, boxSizing: 'content-box',
+                    fontFamily: 'var(--font-display)', fontSize: 10, fontWeight: 700,
+                    lineHeight: 1,
+                  }}
+                >
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
               )}
             </button>
             {showNotif && (
@@ -549,6 +642,8 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
                 onClose={() => setShowNotif(false)}
                 isDark={isDark}
                 onOpenDetail={n => { setShowNotif(false); setDetailNotif(n); }}
+                onCountChanged={refreshUnread}
+                onViewAll={() => window.dispatchEvent(new CustomEvent('open-tool', { detail: 'all-notifications' }))}
                 onNavigateToTool={toolId => {
                   setShowNotif(false);
                   window.dispatchEvent(new CustomEvent('eduflow-navigate', { detail: { toolId } }));
