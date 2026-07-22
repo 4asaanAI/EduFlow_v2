@@ -28,6 +28,7 @@ Branch: `ui-sweep-2026-07-22`
 
 | 2026-07-22 | **Epic 5** | **A Conversation That Feels Alive - DONE.** Two of the four owner items were found ALREADY FIXED by earlier work (the composer by Epic 9, stream resilience by epic R8) and were deliberately not rebuilt. The two real defects: the same tool was announced twice, by a badge AND by the thinking panel that already held its steps (owner item 12); and the three stacked stream elements sat at 42px, 0px and 42px with 4/8/24px gaps. Both fixed, with the gutter asserted as a VALUE rather than eyeballed. Added a stall watchdog: a stream accepted and then silent used to spin the typing dots forever, and nothing enforced NFR-P3. It now says 'still working' at 12s and 'the connection may have dropped' at 45s, reset by any inbound event including a keepalive, cleared on unmount. 9 new tests; frontend 205 passed / 2 pre-existing, backend unchanged at 1915 / 2 pinned. Adds D-32. No production writes. |
 
+| 2026-07-22/23 | **DEPLOYED** | **The whole sweep went live.** Backend first (EB `eduflow-uisweep-20260722-213022-d235c89`, Green in ~90s), then main merged and Amplify rebuilt. Verified by downloading the SERVED bundle and grepping for strings this release introduced, not by trusting a green build. Two problems were caught BEFORE the deploy: the OCR install was a `packages:` block that would have FAILED THE WHOLE DEPLOY if tesseract was absent from the instance repos, and production had no S3 bucket so every generated document would have 500'd. Both fixed first. A merge conflict with two commits that landed on main mid-flight was resolved by reading both sides — their `table { display: block }` was refused because it is D-01. **File storage configured 2026-07-23**: private bucket in ap-south-1, all public access blocked, encrypted, versioned; health now reads `s3: ok`. That also unblocks certificates, student photos and PDF receipts, broken in prod until now. |
 ---
 
 ## Epic 10 — closed 2026-07-22
@@ -490,6 +491,27 @@ school on a real morning**. They look precise in the code and are not.
 **Reason open:** only use settles them. If Flo starts saying "taking longer than usual"
 on answers that were always going to arrive, raise the first threshold; if people give
 up before 12s, lower it. On the human checklist.
+
+### D-33 — Post-deploy checks nobody has run yet — **OPEN**
+Three things are live but unproven, and must not be reported as working until someone
+looks:
+
+1. **Writing a file as the server.** The health check only LISTS the bucket. `PutObject`
+   is a different permission on the same policy and is untested. Ask Flo for a Word
+   document: a download link means the whole path works.
+2. **OCR.** The deploy attempts to install `tesseract` and carries on either way. Send
+   Flo a photo of a printed page — it will either read it or say the engine is not
+   installed. Nobody has checked which.
+3. **Whether the chat model accepts images at all.** The vision fallback only runs when
+   OCR finds no text, and the deployment may refuse images outright. It will say so
+   plainly rather than inventing a description.
+
+### D-34 — `claude-hosting` holds a policy it does not need — **OPEN, small**
+The first attempt at the storage setup attached `s3-file-storage-policy` (the SERVER
+role policy: Put/Get/Delete/List on the bucket) to the IAM **user**. It was the wrong
+file for that place and is now redundant — the user only needs the setup permissions.
+Leaving it grants a key stored in a repo standing read/write access to the school's
+files. **Remove it from the user**; keep `EduFlowFileStorage` on the role.
 
 ---
 
