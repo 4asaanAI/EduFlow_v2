@@ -147,11 +147,18 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 
 - **Dark-first**: default theme is dark. CSS variables are defined in `index.css` (dark) and overridden in `theme.css` for `[data-theme="light"]`
 - **Use CSS variables, not raw hex**: `var(--bg-card)`, `var(--border)`, `var(--text-primary)` etc.
-- **Fonts**: `Inter` (body), `JetBrains Mono` (monospace/code) — do not switch without approval
+- **Fonts**: `Baloo 2` (display/headings, `var(--font-display)`), `Nunito` (body,
+  `var(--font-body)`), `JetBrains Mono` (code and tabular figures). Taken from the marketing
+  site in Epic 9, which **explicitly retired UX-DR3's Inter**. This line still said "Inter"
+  until 2026-07-23. Do not switch without approval. (Q-7.)
 - **Tailwind + inline styles coexist**: match the local pattern of the file you're editing
 - **Tool icon colors**: each tool has a designated accent from `design_guidelines.json`
 - **shadcn/ui components** live in `src/components/ui/` — always import from there
-- **Sidebar width is 120px fixed** — all content areas must account for `margin-left: 120px`
+- **Sidebar width is 260px on desktop, and a 280px slide-over drawer below 768px.** Content
+  areas need **no** `margin-left`: `.app-main-content` is a flex sibling of the sidebar, not
+  an overlay it has to be pushed clear of. This line claimed "120px fixed" until 2026-07-23;
+  the same wrong fact was corrected once at line 111 in Epic 9 and missed here, so agents
+  kept reading it. (D-05 / readiness findings R-3, Q-7.)
 - **Chat bubble styles**: user messages = `bg-[#1C1C28] border border-[#222230] rounded-2xl`; AI messages = transparent with a leading avatar
 - Add `data-testid` attributes to all interactive elements
 

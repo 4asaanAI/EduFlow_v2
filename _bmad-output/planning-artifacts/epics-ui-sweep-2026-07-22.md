@@ -1,5 +1,5 @@
 ---
-stepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics', 'step-03-create-stories:epic-1', 'step-03-create-stories:epic-8', 'step-03-create-stories:epic-9', 'step-03-create-stories:epic-3', 'step-03-create-stories:epic-4']
+stepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics', 'step-03-create-stories:epic-1', 'step-03-create-stories:epic-8', 'step-03-create-stories:epic-9', 'step-03-create-stories:epic-3', 'step-03-create-stories:epic-4', 'step-03-create-stories:epic-6']
 executionDirective: 'The 7 Standing Rules (Abhimanyu, 2026-07-08) — binding, see body'
 inputDocuments:
   - _bmad-output/planning-artifacts/prd.md (targeted extraction)
@@ -1680,3 +1680,572 @@ and phantom error banners appear
 **When** the watchdog fires
 **Then** it reuses that path rather than inventing a second error surface, so a stall
 and a dropped connection look the same to the person reading the screen
+
+---
+
+## Epic 6: Nothing Gets Lost
+
+Every notification and every past conversation is reachable and reviewable — not just the
+most recent handful — and the chats you are finished with can be cleared out together.
+
+> **Corrected 2026-07-23 (party mode: John).** The epic list originally read "reachable,
+> reviewable and **dismissable in bulk**", written before the Owner was asked what
+> dismissing should mean. He then decided notifications are **never deleted**, only marked
+> read. Left as it was, the epic's own headline promised something the epic deliberately
+> does not build — and the next reader would have built it. Bulk dismissal applies to
+> chats, and only to chats.
+
+**Requirements covered:** FR81, NFR-A2 · FR82, UX-DR1, UX-DR4, UX-DR5, UX-DR6, UX-DR9, UX-DR10, NFR-R1, NFR-S2
+**Owner items:** 14 (View all + mark all read), 16 (All Chats page)
+**Builds on:** Epic 9's primitives and Epic 3's shared server-sorted table. **Closes:** the
+`NotificationsPanel` half of D-22.
+
+### What was found before the stories were written
+
+Following the Epic 5 rule — *check what earlier epics already fixed before writing
+stories* — both surfaces were read before anything was scoped.
+
+**Already correct, and deliberately not rebuilt:**
+
+- **"Mark all read" exists on both sides.** The button is in `NotificationsPanel`
+  (`Header.js:236`) and `PATCH /api/notifications/mark-all-read` is implemented
+  (`routes/notifications.py:116`), correctly scoped to the caller and correctly bounded
+  to items created *before* the request, so a notification arriving mid-request is not
+  silently swallowed. That boundary rule has its own test and must survive this epic.
+- **`GET /api/notifications/unread-count`** already answers "how many are unread across
+  everything" (`routes/notifications.py:93`).
+- **Single-conversation rename, pin, star and delete** all exist and are correctly
+  owner-scoped through `_owned_conversation_filter` (`routes/chat.py:552`).
+
+**Genuinely broken — these are the stories:**
+
+1. **The bell's red dot has never been right.** `Header.refreshUnread`
+   (`Header.js:353`) counts `list.filter(n => n && !n.is_digest && !n.is_read)`. The
+   stored field is `read` — `is_read` does not exist anywhere in the product
+   (`services/notification_service.py:44`). `!n.is_read` is therefore true for *every*
+   persistent notification, read or not, so the dot appears whenever the user has any
+   notification at all and never clears. The comment directly above it states the
+   opposite intent. It also only ever inspects page 1, and the endpoint that would
+   answer the question properly across every page is called by nothing.
+2. **Only the newest twenty notifications are reachable, ever.** The panel fetches page
+   1 and offers no way to ask for page 2. There is no notification screen anywhere in
+   the application. `meta.total` is computed, returned, and displayed nowhere. This is
+   the literal failure the epic is named after.
+3. **"Mark all read" cannot tell you it worked.** The panel marks its own visible rows
+   in local state and never re-reads. With 60 unread it says "20 unread", you press the
+   button, and the count it then shows is derived from the 20 rows it happens to hold.
+   The server did the right thing; the screen has no way to say so.
+4. **Past conversations fall off the end at fifty.** `list_conversations`
+   (`routes/chat.py:562`) does `.to_list(50)` with no page, no limit, no search and no
+   total. The sidebar renders whatever comes back. The fifty-first-oldest conversation
+   is not reachable by any route in the product — not by scrolling, not by searching,
+   not by URL. For a school owner who uses the assistant daily, that is a few weeks.
+5. **`NotificationsPanel` still computes its own colours in JavaScript** — nine
+   `isDark ? '#hex' : '#hex'` pairs (`Header.js:168`). That is D-22, which Epic 9
+   removed from `Layout`, `Sidebar`, `Header`'s own shell, `Login` and eleven modals.
+   This component was missed, which is the shared-component rule failing in exactly the
+   direction the Epic 9 retrospective warned about.
+
+### Owner decisions taken BEFORE any code was written (the D-18 rule)
+
+Put to Abhimanyu on 2026-07-23 and answered before story creation, because all three
+change what a person is allowed to do:
+
+| Question | Decision |
+|---|---|
+| May several chats be deleted together? | **Yes, behind a typed confirmation.** Deleting a chat already exists one at a time; this is the same authority, faster. It is irreversible, so the confirmation states the exact count and requires the word `DELETE` to be typed. |
+| Does "clearing" a notification delete it? | **No — mark-as-read only.** Nothing is ever destroyed. Read items stay reachable under an "All" filter. This is the epic's own name taken literally, and it is why no delete path for notifications appears anywhere below. |
+| May the Owner read other people's chats here? | **No.** Everyone sees only their own. The owner-only `conversation-trace` support view already covers diagnosing a specific reported chat. Cross-user visibility would be a genuine new power over staff, needing its own permission work, its own audit trail, and a decision about telling people their conversations are readable. Not built — and not to be added by a later reviewer who reads this as an omission. |
+
+### Epic-wide rule, restated from D-15b as a condition of "done"
+
+No part of this epic is reported as done on the strength of a passing test. Everything
+here reaches the Owner's screen only after a deploy, so the epic reports **"not yet
+visible to you"** and names what will change when it lands.
+
+### Standing implementation notes for every story
+
+- **Test the route, not the caller** *(party mode: Murat)*. Every AC saying "the server
+  pages / orders / filters" is proven against the **real route with real data**, never by
+  asserting that the client sent a parameter. Epic 4's whole defect survived an initiative
+  because a test double agreed with the client instead of with the server.
+- **Compatibility pins must pass on the old code too.** The "no-argument response unchanged"
+  tests (Stories 6.2 and 6.4) are written and shown green **before** the parameters exist,
+  then again after. A pin written after the change only records what the change happened to
+  do.
+- **CRA's jest config sets `resetMocks: true`** *(party mode: Amelia; Epic 5 retrospective,
+  item 1)*. It wipes implementations declared in a module factory, which is why all nine of
+  Epic 5's tests failed on their first run for a reason unrelated to the code. Both new page
+  components mock `lib/api`; declare those implementations in `beforeEach`.
+- **Two window events as a navigation bus is a deliberate choice** *(party mode: Winston)*.
+  Adding `open-conversation` beside the existing `open-tool` is one more ad-hoc event rather
+  than restructuring `ToolView` to pass props. The restructure is the cleaner end state and
+  is **not** attempted here: reshaping the shell inside a UI-defect epic is the scope creep
+  D-25 warns about. Recorded so a later reviewer does not read it as an accident.
+- **`from __future__ import annotations`** stays the first line of every backend file
+  touched that uses `str | None`, or the whole fixture-dependent suite silently skips.
+
+---
+
+### Story 6.1: The bell tells the truth about what is waiting
+
+As the school Owner glancing at the top of the screen,
+I want the notification bell to mean something,
+So that a mark on it makes me look, and no mark means there is genuinely nothing to see.
+
+**Acceptance Criteria:**
+
+**Given** `Header.refreshUnread` filters on `n.is_read`, a field that exists nowhere in
+the product — the stored field is `read` — so the dot is painted whenever the user has
+**any** notification, read or not
+**When** this story ships
+**Then** the count comes from `GET /api/notifications/unread-count`, which is the
+endpoint written for this question, is scoped to the caller, and counts across **every**
+page rather than the twenty the panel happens to hold
+
+**Given** the dot today conveys only "something exists"
+**When** there are unread notifications
+**Then** the bell shows **the number**, capped in display at `9+`, with an accessible
+label stating the real figure — a badge meaning 3 and a badge meaning 47 must not look
+identical, and the state must not be conveyed by colour alone (WCAG `color-not-only`)
+
+**Given** there is nothing unread
+**When** the header renders
+**Then** there is no badge at all — not a zero, not a grey dot
+
+**Given** the user marks all read, reads a notification, or closes the panel
+**When** the action completes
+**Then** the header re-asks the server rather than adjusting a local number, so the badge
+and the server can never disagree. A failed re-count leaves the previous figure standing
+rather than silently showing zero — claiming "nothing is waiting" because a request
+failed is the Epic 4 defect ("a failure that looks like a figure") in a new place
+
+**Given** the panel marks its visible rows in local state and never re-reads, so with 60
+unread it reports "20 unread" both before and after
+**When** "Mark all read" is pressed
+**Then** the panel re-reads and reports the server's answer, and while the request is in
+flight the control is disabled and says so
+
+**Given** `mark-all-read` deliberately marks only what existed **before** the request, so a
+notification arriving during the round trip is correctly left unread — and the screen, now
+that it re-reads, will show a non-zero count immediately after the reader pressed "mark
+**all** read" *(elicitation: pre-mortem)*
+**When** that happens
+**Then** the panel says **why** — that something arrived just now — rather than showing a
+bare number that looks like the button failed. Correct behaviour that reads as a bug is
+the same support call as a bug
+
+**Given** `NotificationsPanel` carries nine `isDark ? '#hex' : '#hex'` pairs — D-22,
+which Epic 9 removed everywhere else in the shell
+**When** this story ships
+**Then** they are replaced with the design tokens, the panel is checked in **both**
+themes (UX-DR2), and a grep proves no `isDark ?` colour literal remains in `Header.js`
+
+**Given** the bell, its badge and the panel's controls
+**When** rendered
+**Then** each carries a `data-testid` (UX-DR4), uses CSS variables only (UX-DR1), and has
+a visible focus ring at ≥3:1 in both themes (NFR-A2, UX-DR9)
+
+### Story 6.2: The notification list can be asked for more than its first page
+
+As the screen that has to show a year of notifications,
+I want the server to page, order and filter them,
+So that reaching notification number 300 is a request rather than an impossibility.
+
+**Acceptance Criteria:**
+
+**Given** `GET /api/notifications` accepts `page` and `limit` but no ordering and no
+filter, so the client can only ever ask for the newest twenty
+**When** this story ships
+**Then** it additionally accepts `sort` (`newest` | `oldest`) and `unread_only`, both
+validated against a **server-side whitelist**, with an unrecognised value falling back to
+the default rather than reaching a query — the rule Epic 3 set for sort fields
+
+**Given** the panel, the badge and the new page all need to say how many are unread
+**When** the endpoint answers
+**Then** `meta` carries `unread_total` — the count across **all** pages, not this page —
+so the three surfaces are three readings of **one** number and cannot drift apart
+
+**Given** `GET /api/notifications/unread-count` and this endpoint's `meta.unread_total`
+answer the same question in two places, and today would be two separately written queries
+that merely happen to agree *(readiness finding Q-1)*
+**When** they are implemented
+**Then** both call **one shared count helper**, and a test asserts the two responses report
+the same figure over the same seeded data. Two hand-written queries agree until somebody
+adds a filter to one of them, and the symptom is the thing this epic exists to remove: a
+number you cannot believe
+
+**Given** `NotificationsPanel` calls this endpoint with **no arguments** and must keep
+receiving exactly what it receives today — digest rows on page 1, the "All Good" fallback,
+the same ordering *(readiness finding Q-4)*
+**When** the new parameters are added
+**Then** the no-argument response is **unchanged**, with `meta` extended alongside rather
+than reshaped, and a test pins that. The panel is on every screen; a regression there is a
+regression everywhere. Story 6.4 states this obligation for the sidebar, and it is stated
+here so the pair are guarded equally rather than one of them by luck
+
+**Given** the digest rows and the "All Good" fallback are synthetic, carry no id, and are
+computed per request — a sensible empty state inside a dropdown, and a **fabricated row
+among real ones** inside a table that has a row count, a sort order and a page indicator
+*(readiness finding Q-5)*
+**When** the endpoint is called
+**Then** it accepts `include_digest`, defaulting to **true** so the panel is untouched, and
+the All Notifications page passes **false** and receives persistent records only. One
+parameter removes the digest rows, the invented "All Good" record and the `unread_only`
+special case together
+
+**Given** three existing tests encode today's `meta` shape, one of them asserting the
+whole dictionary by equality
+**When** `unread_total` is added
+**Then** those tests are **rewritten to assert the new contract, never deleted** — the
+D-14 rule — and the behaviours they were really guarding (digest excluded from `total`,
+digest only on page 1, the "All Good" fallback) each keep a test of their own
+
+**Given** the digest rows and the "All Good" fallback are always marked read
+**When** `unread_only=true` is requested
+**Then** neither appears, regardless of `include_digest` — the two filters compose, and
+"unread" can never be satisfied by a row that is read by construction
+
+**Given** the digest is built only on page 1 and is deliberately excluded from `total`
+**When** paging changes
+**Then** that stays true, because `total` counts things that exist and can be paged to; a
+`total` inflated by rows that only ever appear on page 1 makes the last page unreachable
+
+**Given** `limit` is clamped to 50 today
+**When** a caller asks for more
+**Then** it is still clamped server-side. The client's rows-per-page menu tops out at 30
+(UX-DR10) and is a convenience, never the enforcement
+
+**Given** these endpoints are scoped to `user_id` rather than gated by role, so the
+standing "403 wrong-role" convention has nothing to bite on
+**When** the tests are written
+**Then** the 401-unauthenticated test exists as usual, **and** in place of the role test
+there is a cross-user test proving one signed-in user cannot read, count or mark another
+user's notifications — including via `page`, `sort` and `unread_only`. This substitution
+is recorded here so a later audit does not read the missing 403 test as an oversight
+
+**Given** the tenancy rules
+**When** the queries are written
+**Then** every one goes through `scoped_filter`/`scoped_query`, the grep audit is re-run
+over the file, and each hit is migrated or annotated `# branch-scope: intentional — …`
+
+### Story 6.3: A page that shows every notification, not the newest twenty
+
+As anyone who was told something last week,
+I want a screen listing everything the platform has ever told me,
+So that a notification I did not act on at the time is still findable.
+
+**Acceptance Criteria:**
+
+**Given** there is no notification screen anywhere in the product, and the panel's footer
+is a dead count label reading "N notifications total"
+**When** this story ships
+**Then** that footer becomes a real control that opens an **All Notifications** page, and
+the page is reachable from every screen because the header carrying the bell is
+persistent (FR81)
+
+**Given** FR82 (any list over 20 rows gets pagination and at minimum one column sort),
+UX-DR5 (solved once) and UX-DR10, which names notifications explicitly as a place the
+rows-per-page selector applies
+**When** the page renders
+**Then** it uses the **shared** `DataTable` with the rows-per-page selector, and the size
+is remembered via `useTablePageSize` under the table id **`notifications`** — a distinct
+key colliding with no existing one, named here so a reviewer can check the claim rather
+than infer it *(readiness finding Q-10)*. Sizing the notification list must not resize the
+student list
+
+**Given** the endpoint injects synthetic digest rows on page 1 and a fabricated "All Good"
+row when there is nothing at all *(readiness finding Q-5)*
+**When** the page loads
+**Then** it requests `include_digest=false` and renders **persistent records only**. An
+"All Good" row inside a table of real notifications would read as a notification saying
+everything is fine — an invented record on a screen whose entire purpose is that nothing
+gets lost or made up
+
+**Given** UX-DR10's rule that the size is sent to the API
+**When** a size, a page or an order is chosen
+**Then** the **server** pages and orders, and changing the size returns to page 1 rather
+than stranding the reader on a page that no longer exists
+
+**Given** UX-DR6's three-way empty state
+**When** the list is empty
+**Then** the reason is named: **nothing has ever arrived** is a different message from
+**nothing is unread right now** (the "Unread" filter with no matches) and from **this
+failed to load**, which offers a retry and never renders as an empty table. A load
+failure shown as "you have no notifications" is owner item 7 in a new place
+
+**Given** the panel routes a notification either to a tool (via `getToolForNotification`)
+or to the detail modal
+**When** a row on the page is opened
+**Then** it uses **that same routing function and that same modal** — two screens deciding
+independently where a notification leads is how they drift apart
+
+**Given** the owner's decision that clearing means marking read, never deleting
+**When** the page renders
+**Then** there is no delete control, there is an **All / Unread** filter, and "Mark all
+read" re-reads afterwards and reports the server's figure
+
+**Given** the job this page is hired for — *I saw something in the bell, I did not act on
+it, I want it back* — rather than the analytical job a sortable table usually serves
+*(party mode: John)*
+**When** the page first loads
+**Then** it is **newest first**, and reaching the record a notification is about is a
+prominent action rather than a bare row click. The sortable table is here because FR82 and
+UX-DR5 are binding platform rules and because paging genuinely is the fix; it is not here
+because anyone recovers a half-remembered message by ordering a column
+
+**Given** "Mark all read" marks **everything**, including items on pages the reader has
+never opened, while sitting above a screen showing fifteen rows *(party mode: Sally)*
+**When** the control is labelled
+**Then** it states its real scope with the real number — "Mark all 312 as read" — because a
+button reading "Mark all read" above fifteen visible rows plainly means "these fifteen" to
+everyone who has not read the source
+
+**Given** the bell panel shows **two** kinds of thing — stored notifications, and live
+summary rows computed per request (pending leave approvals, overdue fees, open facility
+requests, recent announcements) that are **never persisted** — and this page deliberately
+shows only the stored ones, so it will legitimately hold **fewer** items than the panel the
+reader just came from *(elicitation: pre-mortem, and support-theatre: "where is the message
+about Tuesday's leave request?")*
+**When** the page renders
+**Then** it says so plainly, in one line, near the list: live summaries live in the bell and
+are not stored. Without it, the page named "nothing gets lost" is the exact screen on which
+something appears to have been lost, and this asymmetry is invisible from the code
+
+**Given** the page is a list of records a person may read on a phone
+**When** it renders at 390px
+**Then** the table's **wrapper** scrolls and the table itself is never re-laid out with
+`display:block` — D-01, which this epic must not reintroduce
+
+**Given** every control on the page
+**When** rendered
+**Then** each carries a `data-testid`, uses CSS variables only, has a visible focus state,
+the row count is announced (`aria-live`), and the error state carries `role="alert"`
+
+### Story 6.4: The chat history can be asked for more than its newest fifty
+
+As the screen that has to show a year of conversations,
+I want the server to page, order, search and bulk-delete them,
+So that an old chat is something I look for rather than something I have lost.
+
+**Acceptance Criteria:**
+
+**Given** `GET /api/chat/conversations` returns `.to_list(50)` with no page, no limit, no
+search and no total, so the fifty-first-oldest conversation is unreachable by any route
+in the product
+**When** this story ships
+**Then** it accepts `page`, `limit` (clamped server-side), `sort` (`recent` | `oldest` |
+`title`, whitelisted) and `search`, and returns `meta.total`
+
+**Given** the sidebar calls this endpoint with no arguments today and must keep working
+untouched
+**When** the parameters are added
+**Then** the no-argument response is **unchanged** — the same newest-fifty in the same
+order, the same `{success, data}` shape with `meta` added alongside — and a test pins
+that, because the sidebar is on every screen and a regression there is a regression
+everywhere
+
+**Given** `conversations` carries only `create_index("user_id")` (`database.py:307`) — no
+`schoolId`, no `updated_at` — while this story adds a `count_documents` plus a sorted paged
+read on every load of **both** the sidebar and the new page *(readiness finding Q-2)*
+**When** this story ships
+**Then** an index on `(schoolId, user_id, updated_at desc)` is added in
+`database.py → _create_indexes()` and nowhere else, per the platform's standing rule.
+Without it, a school with a year of conversations sorts in memory on every screen, which is
+NFR-P1 (p95 ≤ 500ms) failing quietly. `notifications` already has
+`(schoolId, user_id, read, created_at desc)`, which serves the unread filter and both sort
+directions — it needs **nothing added**, and must not gain a third copy of an index it
+already carries twice
+
+**Given** `search` becomes part of a MongoDB query
+**When** it is used
+**Then** the value is **escaped before it reaches a regular expression** and its length is
+capped. An unescaped user string in a `$regex` is both an injection surface and a way to
+hang the server with a catastrophically backtracking pattern; `re.escape` is the whole fix,
+and its absence is the single most likely defect in this story. Escaping alone does not
+bound cost — a 100 KB escaped literal is still a 100 KB pattern *(elicitation: red team)*
+
+**Given** the bulk route receives a list of ids that goes straight into `{"id": {"$in": …}}`
+**When** the body is parsed
+**Then** it is parsed by a **Pydantic model typed `list[str]`**, never by a raw
+`await request.json()`. A caller sending `{"ids": [{"$gt": ""}]}` against an untyped body
+produces a query matching **every conversation that caller owns** — the request that reads
+as "delete these three" and executes as "delete everything". A test proves a non-string id
+is refused with 422 before any query is built *(elicitation: red team — the most serious
+thing found in this epic)*
+
+**Given** duplicate ids in one request
+**When** the deletion is counted
+**Then** the count comes from the **database's own delete result**, never from `len(ids)`,
+or a caller sending the same id ten times is told ten chats were removed
+
+**Given** the conversation rows and their messages are two separate deletes and the second
+can fail *(elicitation: failure-mode analysis)*
+**When** they are ordered
+**Then** the **conversations go first**, matching the existing single-delete path. Orphaned
+messages are invisible and harmless; a conversation that survives with its messages gone is
+a chat the reader can open and find empty
+
+**Given** the owner's decision to allow deleting several chats at once
+**When** the bulk route is written
+**Then** it deletes **only conversations the caller owns**, reusing the existing
+`_owned_conversation_filter` rather than a second ownership rule; it deletes each
+conversation's messages as the single-delete path already does; it caps how many ids one
+request may carry; and it reports **exactly how many were deleted and how many were not
+found**, so a partial result is stated rather than presented as success (NFR-R1)
+
+**Given** a caller who mixes another user's conversation id into the list
+**When** the request is processed
+**Then** that id is skipped, nothing of that user's is touched, and the response does not
+reveal whether the id existed — an unknown id and someone else's id are indistinguishable
+from outside
+
+**Given** the message deletion filters on `conversation_id` and carries **no `user_id`** —
+which is safe in the single-delete path only because ownership was proven first, one id at
+a time *(party mode: Murat)*
+**When** the bulk path deletes messages
+**Then** it uses **only the ids the ownership query actually returned**, never the caller's
+raw list. `delete_many({"conversation_id": {"$in": <what the caller sent>}})` destroys
+another user's messages while leaving their conversation standing — a chat they can still
+open and find empty, with nothing in any log to explain it. The cross-user test asserts the
+other user's **messages** survive, not merely their conversation row
+
+**Given** deleting a person's conversations destroys data irreversibly
+**When** it happens
+**Then** an audit row records who deleted how many, via `write_audit()`, and the log
+records **counts and ids only — never a conversation title or any message text** (NFR-S2)
+
+**Given** the standing endpoint-test convention, and that these routes are scoped to the
+caller rather than gated by role
+**When** the tests are written
+**Then** the 401-unauthenticated test exists for the new bulk route, and the cross-user
+test stands in for the 403 test — same substitution, same reason, as Story 6.2
+
+### Story 6.5: A page that shows every chat, and lets you clear out the ones you are done with
+
+As the school Owner with months of conversations,
+I want one screen that lists every chat, lets me search it, reopen any of them, and get
+rid of the ones I no longer need,
+So that my history is an archive rather than a queue that quietly drops its tail.
+
+**Acceptance Criteria:**
+
+**Given** the sidebar's "Recent Chats" zone header is on every screen
+**When** this story ships
+**Then** it carries a control that opens an **All Chats** page, so the archive is reachable
+from anywhere (FR81) without editing eight per-role navigation lists
+
+**Given** the whole Recent Chats zone is hidden when the list is empty
+(`Sidebar.js:670` — `conversations.length > 0`), so a reader with no recent chats would
+have **no route to the archive at all** *(elicitation: failure-mode analysis)*
+**When** the entry point is placed
+**Then** it is reachable whether or not the recent list has anything in it. A door that
+disappears when the room behind it looks empty is how a page ships and is never found
+
+**Given** the page lists conversations
+**When** it renders
+**Then** it uses the shared `DataTable` — server-side search, sort (most recent, oldest,
+title) and paging, with the rows-per-page selector keyed to the table id **`chats`**
+*(readiness finding Q-10)* — and shows for each chat its title, when it was last used, and
+whether it is pinned or starred
+
+**Given** UX-DR6, and that this page has **three** distinct empty cases that mean entirely
+different things *(readiness finding Q-3)*
+**When** the list comes back empty
+**Then** the reason is named: **you have no chats yet** (a new user), **nothing matches
+that search** (the common case, and the one a bare "nothing here" would make look like
+data loss on a page called Nothing Gets Lost), and **this failed to load**, which offers a
+retry and is never rendered as an empty table
+
+**Given** search matches the chat's **name** only, and chat names are auto-generated from
+the opening message or are still "New conversation" — so someone searching for a word they
+remember **saying** will find nothing and conclude the chat is gone *(elicitation:
+pre-mortem — the most likely disappointment in this epic)*
+**When** a search returns nothing
+**Then** the empty state says which field was searched, in plain words. Searching message
+bodies is deliberately **not** built: it needs a text index over every message in the
+school and would make a page about finding your own chats into a full-text search over
+children's data. The limit is honest and stated, rather than silent and mistaken for loss
+
+**Given** a chat has no title yet
+**When** it is listed
+**Then** it reads "New conversation", exactly as the sidebar renders it — not blank, and
+not "not recorded", which would wrongly imply a field somebody failed to fill in
+
+**Given** the page is rendered by `ToolView`, which passes its components no props
+**When** the reader opens a chat from it
+**Then** the page announces the choice the same way tools are opened today — a window
+event `Layout` listens for — and `Layout` clears the active tool and opens that
+conversation. Landing back in the chat is the point of the page; a row that highlights
+and goes nowhere would fail FR81
+
+**Given** rename, pin, star and single delete already exist and are already owner-scoped
+**When** the page offers them
+**Then** it calls the **existing** endpoints and client functions rather than adding a
+second way to do the same thing
+
+**Given** a "select all" control that reached beyond the visible page would let one tick
+and one typed word destroy every conversation matching a search across forty pages
+*(elicitation: pre-mortem)*
+**When** selection is built
+**Then** it covers **the rows currently on screen and no more**, the count in the
+confirmation says so, and changing page, search or sort clears the selection. Clearing 300
+chats then costs ten rounds at 30 rows — which is the right price for an action that cannot
+be undone
+
+**Given** the server caps how many ids one request may carry (Story 6.4)
+**When** the page enforces it
+**Then** it uses **the same number**, shared rather than duplicated, so the reader can
+never assemble a selection the server will refuse and be told forty chats were deleted when
+three were
+
+**Given** the owner's decision — bulk delete, behind a typed confirmation
+**When** several chats are selected and deletion is requested
+**Then** the confirmation states the **exact number**, names any pinned or starred chat
+included in the selection, and the confirm button stays disabled until **that number** is
+typed. Pinned chats are **not** protected from the action — the owner chose plain bulk
+delete over the protected variant — but they are named, because silently destroying
+something the reader had deliberately kept is the difference between a fast tool and a trap
+
+> **Why a number and not the word `DELETE`** *(party mode: Sally)*. The owner asked for a
+> typed confirmation; the usual English keyword is a poor fit here. The people who run this
+> school work in English and Hindi, and a confirmation gate that is really an English
+> spelling test adds friction without adding safety. Typing the count is language-neutral
+> **and forces the reader to look at how many they are about to destroy**, which is the one
+> thing the gate exists to make them do. Flagged on the human checklist so Abhimanyu can
+> overrule it if he wants the word.
+
+**Given** deletion is irreversible and this page operates against live data
+**When** it completes
+**Then** the page reports how many were actually removed, and if the server reports fewer
+than were asked for it says so plainly rather than showing success
+
+**Given** the reader deletes the conversation currently open in the chat view
+**When** the deletion succeeds
+**Then** the chat view does not stay pointing at a conversation that no longer exists —
+it returns to a new chat
+
+**Given** the sidebar's conversation list is on screen at the same time as this page
+*(readiness finding Q-9)*
+**When** anything is deleted here
+**Then** the sidebar re-reads, through the `convRefresh` counter `Layout` already owns.
+A sidebar still offering rows that no longer exist is the same defect as the chat view
+pointing at a deleted conversation, one component along
+
+**Given** the owner's decision that everyone sees only their own chats
+**When** any role opens the page
+**Then** it shows that person's conversations and no one else's, and a test asserts a
+second user's conversations are absent. There is deliberately no cross-user view here
+
+**Given** the page at 390px, and the D-01 rule
+**When** it renders
+**Then** the table's wrapper scrolls, selection checkboxes are reachable and operable by
+keyboard with a visible focus state, every control carries a `data-testid` and uses CSS
+variables only, and the destructive confirmation is announced (`role="alertdialog"`)
+
+**Given** the platform's existing modals trap no focus and close on no key — the
+erase-student dialog in `StudentDatabase.js` does neither *(readiness finding Q-8)*
+**When** the destructive confirmation opens
+**Then** focus moves into it, `Escape` closes it without deleting anything, and focus
+returns to the control that opened it. A dialog announced as an `alertdialog` that a
+keyboard user can neither reach nor leave is worse than one that is not announced at all
