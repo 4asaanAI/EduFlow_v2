@@ -300,6 +300,52 @@ path rather than two that agree today.
 about screens would put the assistant at risk for no owner-visible gain. Needs its own
 run with the AI-reliability eval gate green.
 
+### D-26 — Flo cannot read an attached image — **PLANNED, deferred behind the UI sweep**
+Abhimanyu, 2026-07-22: Flo should "at least render and understand and extract data from
+an image if attached or provided by any user", and explicitly **must NOT generate**
+images or video. Sequencing decided by him: **finish Epics 5, 6 and 7 first.**
+
+**Where the code to copy lives** (investigated 2026-07-22 across both repos):
+
+| Ability | Prior art | Verdict |
+|---|---|---|
+| Understand an attached image | `Layaa-App/supabase/functions/shared/vision-analysis.ts` (hardened: SSRF guard, 8 MB cap, per-turn call cap, HMAC-signed result cache) and `CockRoach/api/chat.js:705-725` (simpler: inline `image_url` content part, base64 data URL, 20 MB cap) | **Portable.** Copy the CockRoach message shape, keep the Layaa-App guards. |
+| Transcribe audio | `CockRoach/api/transcribe.js` — Azure Whisper, `POST /openai/deployments/{d}/audio/transcriptions`, `api-key` header, tier-gated, metered with reserve-then-refund | Portable, but needs a Whisper deployment — see the cost note below. |
+| Analyze audio | **Does not exist in either repo.** Both transcribe, then reason over the text. | Build honestly as transcribe-then-read, or not at all. |
+| Analyze video | **Neither watches video.** CockRoach transcribes the audio track; Layaa-App fetches YouTube captions. | Do not promise sight. |
+
+**Naming, for whoever picks this up:** the agent with these skills is **Blazer**
+(Layaa-App, `backend/src/blazer-identity.ts`). "CockRoach" inside Layaa-App is a
+resilience mode (`cockroach-mode-registry.ts`), not an agent; the CockRoach *product*
+is the separate `E:\Github\Layaa AI\CockRoach` repo, whose one persona is "Cockroach".
+
+**On cost — correcting a misunderstanding recorded here deliberately.** The instruction
+was "I do not want to link EduFlow with Azure ... free of cost". **EduFlow already runs
+entirely on Azure OpenAI** — `AZURE_OPENAI_DEPLOYMENT` (default `gpt-5.3-chat`) in
+`ai/llm_client.py` is how Flo talks at all today. There is no new linking to do, and
+image understanding on a vision-capable chat deployment is **extra tokens on the
+existing deployment** — no new service, no new subscription, no standing charge. It is
+not literally free (an image costs roughly what a page of text costs) but it adds no new
+bill line and draws on the existing sponsorship credits.
+
+**Audio is the opposite** and must not be promised as free: transcribing an uploaded
+file needs a speech model. The genuinely free route (`CockRoach/src/lib/voice-input.ts`)
+is the browser's on-device speech API, which works for **someone speaking live** and not
+for an uploaded recording — CockRoach chose it precisely because "per-audio-minute
+billing is an unbounded cost lever". So "transcribe-then-read" for uploaded audio has no
+free path; it needs a Whisper deployment at roughly half a US cent per minute.
+
+**Before building, confirm:** whether the current `gpt-5.3-chat` deployment accepts
+image input. If not, a vision-capable deployment on the same subscription is the
+fallback — still no new service.
+
+**Open decision carried forward:** who may send Flo an image. This is a school of 1,802
+children and an uploaded photo may be a child, a medical note or a report card. The
+question was put to Abhimanyu and his answer addressed cost rather than access, so **the
+access rule is still undecided** and must be settled before any code is written (the
+D-18 rule). Default proposal: Owner and Principal only, every use audited, matching the
+existing Phase-1 rule that AI actions are Owner/Principal-only.
+
 ---
 
 ## Track 2 (data load) — explicitly OUT OF SCOPE for these epics
