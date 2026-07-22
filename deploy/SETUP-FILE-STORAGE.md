@@ -1,5 +1,22 @@
 # Turning on file storage
 
+> ## ✅ DONE — 2026-07-23
+>
+> Bucket `eduflow-files-ap-south-1-210447603820` exists in **ap-south-1**, with all
+> public access blocked, SSE-S3 encryption, and versioning on. `S3_BUCKET` is set on
+> `Eduflow-env-1`, and the instance role `aws-elasticbeanstalk-ec2-role` carries the
+> inline policy `EduFlowFileStorage`.
+>
+> **Health reports `"s3": "ok"`.** That check calls `list_objects_v2` *from the
+> server*, so it proves the role policy, the bucket and the environment variable all
+> line up. An anonymous request to the bucket returns 403.
+>
+> **Not yet proven from here:** writing an object as the server. The health check only
+> lists. Ask Flo for a document to confirm the whole path end to end.
+>
+> The rest of this file is kept as the record of how it was done and how to repeat it
+> for another school.
+
 > ## ⚠️ There are TWO policies here and they go to DIFFERENT places
 >
 > This tripped us up once already, on 2026-07-23, because the first version of this
