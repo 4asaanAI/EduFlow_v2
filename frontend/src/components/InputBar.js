@@ -602,7 +602,7 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Slash size={10} /> tools</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><AtSign size={10} /> mention</span>
-          <span>EduFlow AI can make mistakes</span>
+          <span>Flo can make mistakes</span>
         </div>
       </div>
     </div>

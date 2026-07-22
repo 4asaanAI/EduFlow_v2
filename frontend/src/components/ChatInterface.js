@@ -7,7 +7,6 @@ import InputBar from './InputBar';
 import TokenBudgetBar from './TokenBudgetBar';
 import { executeTool } from '../lib/api';
 import { getAuthHeaders } from '../lib/authSession';
-import { Sparkles } from 'lucide-react';
 import BotMascot from './ui/BotMascot';
 import ThinkingProcess from './ThinkingProcess';
 import ConfirmActionCard from './ConfirmActionCard';
@@ -31,12 +30,13 @@ async function executeAction(convId, action, params, label, user) {
 function TypingIndicator() {
   return (
     <div style={{ display: 'flex', gap: 14, padding: '12px 0', alignItems: 'flex-start' }}>
+      {/* Same face as every one of Flo's replies — it is Flo who is thinking. */}
       <div style={{
         width: 28, height: 28, borderRadius: 8,
         background: 'linear-gradient(135deg, rgba(79,143,247,0.15), rgba(167,139,250,0.15))',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden',
       }}>
-        <Sparkles size={13} color="#a78bfa" />
+        <BotMascot variant="avatar" size={24} data-testid="flo-typing-avatar" />
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, paddingTop: 8 }}>
         <div className="typing-dot" /><div className="typing-dot" /><div className="typing-dot" />
@@ -579,7 +579,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           setThinkingCollapsed(false);
           const errText = (typeof event.message === 'string' && event.message)
             ? event.message
-            : 'The assistant hit a problem. Please try again.';
+            : 'Flo hit a problem. Please try again.';
           {
             const prev = streamMsgRef.current;
             setStream(null);
@@ -695,7 +695,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
         setMessages(cur => [...cur, {
           id: `ai-fallback-${Date.now()}`,
           role: 'assistant',
-          content: "The assistant couldn't produce a reply. Try again.",
+          content: "Flo couldn't produce a reply. Try again.",
           interrupted: true,
           created_at: new Date().toISOString(),
         }]);
@@ -851,10 +851,10 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           {isNewChat && (
             <div className="fade-in" style={{ textAlign: 'center', padding: '60px 0 40px' }}>
               {/* Epic 9: the generic sparkle chip became the marketing site's
-                  robot — the assistant now has one recognisable face across
-                  the website and the product. This greeting is the ONLY place
-                  it appears in normal use; it is deliberately absent from the
-                  working screens. */}
+                  robot — Flo now has one recognisable face across the website
+                  and the product. Flo appears here, on the sign-in screen,
+                  beside each reply, and on empty/error states — never on a
+                  working screen. */}
               <div style={{ margin: '0 auto 10px', display: 'flex', justifyContent: 'center' }}>
                 <BotMascot size={130} data-testid="assistant-mascot" />
               </div>
@@ -865,8 +865,10 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
               }}>
                 Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {currentUser.name.split(' ')[0]}
               </h2>
+              {/* Flo says its own name here — this is where someone learns what to
+                  call it, and it is the same name used everywhere else. */}
               <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-md)', marginBottom: 28, fontWeight: 500 }}>
-                How can I help you today?
+                I'm Flo. How can I help you today?
               </p>
               <HealthScoreWidget user={currentUser} />
               <QuickActions onSend={handleSend} isDark={isDark} user={currentUser} />
@@ -882,7 +884,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
               const richBlocks = msg.richBlocks || msg.rich_content?.rich_blocks || [];
               const actionButtons = msg.actionButtons || msg.rich_content?.action_buttons || msg.actions || [];
               if (!hasContent && richBlocks.length === 0 && actionButtons.length === 0) {
-                return { ...msg, content: "The assistant couldn't produce a reply. Try again." };
+                return { ...msg, content: "Flo couldn't produce a reply. Try again." };
               }
             }
             return msg;

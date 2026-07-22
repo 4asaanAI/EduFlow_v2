@@ -1,7 +1,7 @@
 /**
  * R11.5 — Conversation Trace Viewer (Owner-only support/diagnostics).
  *
- * Lets the school owner answer one question: "Did the assistant reply to this
+ * Lets the school owner answer one question: "Did Flo reply to this
  * conversation, and if not, why?" Paste a conversation id, load its per-turn
  * trace, and see for each turn the outcome (answered / fallback / error /
  * unavailable), the tools it used, the finish reason, token usage, and any
@@ -158,7 +158,7 @@ export default function ConversationTrace() {
   return (
     <ToolPage
       title="Conversation Trace"
-      subtitle="Support & diagnostics: check whether the assistant replied to a conversation, and if not, why."
+      subtitle="Support & diagnostics: check whether Flo replied to a conversation, and if not, why."
       loading={loading}
     >
       {/* One-line explanation */}
@@ -214,7 +214,7 @@ export default function ConversationTrace() {
           <MessageSquare size={30} color={muted} />
           <div style={{ fontSize: 14, fontWeight: 600, color: text }}>No conversation loaded</div>
           <div style={{ fontSize: 13, maxWidth: 380 }}>
-            Enter a conversation id above and press “Load trace” to see every turn and whether the assistant replied.
+            Enter a conversation id above and press “Load trace” to see every turn and whether Flo replied.
           </div>
         </div>
       ) : turns.length === 0 ? (

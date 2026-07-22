@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import DOMPurify from 'dompurify';
 import { useTheme } from '../contexts/ThemeContext';
-import { Sparkles, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { ThumbsUp, ThumbsDown } from 'lucide-react';
+import BotMascot from './ui/BotMascot';
 import { emitFeedback } from '../lib/api';
 
 // FL (R8.4 AC3): the previous `FORBID_ATTR: ['style']` stripped the renderer's
@@ -377,12 +378,14 @@ export default function MessageRenderer({ message, isStreaming, onActionButton }
 
   return (
     <div data-testid="assistant-message" style={{ display: 'flex', gap: 14, marginBottom: 24, alignItems: 'flex-start' }}>
+      {/* Flo's face, not a generic sparkle (Abhimanyu, 2026-07-22). The assistant
+          has a name and a face; a star said "some AI wrote this". */}
       <div style={{
         width: 28, height: 28, borderRadius: 8, flexShrink: 0,
         background: 'linear-gradient(135deg, rgba(79,143,247,0.12), rgba(167,139,250,0.12))',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
       }}>
-        <Sparkles size={13} color="#a78bfa" />
+        <BotMascot variant="avatar" size={24} data-testid="flo-avatar" />
       </div>
       <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
         {message.content && (

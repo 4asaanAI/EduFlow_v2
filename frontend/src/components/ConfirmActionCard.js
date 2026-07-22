@@ -275,7 +275,7 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
     if (status !== 'pending' || secondsLeft == null) return undefined;
     if (secondsLeft <= 0) {
       setStatus('error');
-      setErrorMsg('This confirmation expired. Please ask EduFlow to prepare the action again.');
+      setErrorMsg('This confirmation expired. Please ask Flo to prepare the action again.');
       return undefined;
     }
     const timer = window.setTimeout(() => setSecondsLeft(prev => (prev == null ? prev : prev - 1)), 1000);

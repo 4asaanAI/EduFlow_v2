@@ -15,25 +15,34 @@ import './BotMascot.css';
    than hand-editing this one — two subtly different robots is worse than
    no robot.
 
-   WHERE IT BELONGS: this is the assistant's FACE. It replaces the generic
-   sparkle on the chat greeting, and it suits empty and error states. It does
-   NOT belong on daily working screens — Abhimanyu asked for "playful but
-   calm", and a teacher marking forty attendance rows every morning does not
-   need a robot watching. If you are adding this to a table, a form or a tool
-   panel, that is the rule you are about to break.
+   WHERE IT BELONGS: this is the assistant's FACE. It is Flo on the sign-in
+   screen, on the chat greeting, beside every one of Flo's replies, and on
+   empty and error states. It does NOT belong on daily working screens —
+   Abhimanyu asked for "playful but calm", and a teacher marking forty
+   attendance rows every morning does not need a robot watching. If you are
+   adding this to a table, a form or a tool panel, that is the rule you are
+   about to break.
 
    Props:
-     size  — pixel width (height scales to ~1.08x)
-     mood  — 'happy' (default) | 'wink' | 'think'
-     wave  — render a raised waving arm (hero)
+     size     — pixel width (height scales to ~1.08x for the full body)
+     mood     — 'happy' (default) | 'wink' | 'think'
+     wave     — render a raised waving arm (hero)
+     variant  — 'full' (default) | 'avatar'
+
+   `variant="avatar"` is head-and-antenna only, for the 28px square beside
+   each chat message (Abhimanyu, 2026-07-22: Flo there rather than the star).
+   A whole robot shrunk to 28px is an unreadable smudge, and the float
+   animation repeated down a long conversation is a room full of bobbing
+   heads — so the avatar crops to the face and holds still.
    ============================================================ */
-export default function BotMascot({ size = 180, mood = 'happy', wave = false, className = '', style, ...rest }) {
+export default function BotMascot({ size = 180, mood = 'happy', wave = false, variant = 'full', className = '', style, ...rest }) {
   const uid = useId().replace(/[:]/g, '');
   const g = (n) => `${n}-${uid}`;
+  const isAvatar = variant === 'avatar';
 
   return (
     <div
-      className={`eh-mascot ${className}`}
+      className={`eh-mascot ${isAvatar ? 'eh-mascot-avatar' : ''} ${className}`}
       style={{ width: size, ...style }}
       role="img"
       aria-label="Flo, the EduFlow AI assistant"
@@ -43,7 +52,14 @@ export default function BotMascot({ size = 180, mood = 'happy', wave = false, cl
           takes a length, so height="auto" is invalid and the browser logs
           `<svg> attribute height: Expected length, "auto"` on every render.
           The viewBox plus a width of 100% already preserves the aspect ratio. */}
-      <svg viewBox="0 0 240 264" width="100%" className="eh-mascot-svg" style={{ height: 'auto' }}>
+      {/* The avatar crops to the antenna tip and the head; the full body keeps
+          the original frame. Same artwork either way — one Flo, two crops. */}
+      <svg
+        viewBox={isAvatar ? '38 0 164 182' : '0 0 240 264'}
+        width="100%"
+        className="eh-mascot-svg"
+        style={{ height: 'auto' }}
+      >
         <defs>
           <linearGradient id={g('body')} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0" stopColor="#54a6f7" />
@@ -62,11 +78,13 @@ export default function BotMascot({ size = 180, mood = 'happy', wave = false, cl
           </radialGradient>
         </defs>
 
-        {/* contact shadow */}
-        <ellipse className="eh-mascot-shadow" cx="120" cy="250" rx="62" ry="11" fill="#000" opacity="0.28" />
+        {/* contact shadow — the avatar has no ground to cast onto */}
+        {!isAvatar && (
+          <ellipse className="eh-mascot-shadow" cx="120" cy="250" rx="62" ry="11" fill="#000" opacity="0.28" />
+        )}
 
-        {/* floating group */}
-        <g className="eh-mascot-float">
+        {/* floating group — the avatar holds still (see the note above) */}
+        <g className={isAvatar ? undefined : 'eh-mascot-float'}>
           {/* antenna */}
           <g className="eh-mascot-antenna">
             <rect x="115" y="20" width="10" height="34" rx="5" fill="#1c6fd0" />
@@ -83,22 +101,29 @@ export default function BotMascot({ size = 180, mood = 'happy', wave = false, cl
           <rect x="190" y="118" width="20" height="40" rx="10" fill="#1c6fd0" />
           <circle cx="200" cy="138" r="6" fill="#f2811d" />
 
-          {/* body / torso */}
-          <rect x="64" y="176" width="112" height="74" rx="30" fill={`url(#${g('body')})`} stroke="#15589f" strokeWidth="3" />
-          {/* chest screen showing a happy pulse line */}
-          <rect x="92" y="196" width="56" height="36" rx="12" fill="#0c1730" stroke="#15589f" strokeWidth="2.5" />
-          <path className="eh-mascot-pulse" d="M99 214 H110 L114 205 L120 223 L126 209 L130 214 H141"
-            fill="none" stroke="#46d17a" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+          {/* Body, chest screen and arms — omitted from the avatar crop. They sit
+              below the head, so leaving them in would only render as a blue smear
+              at the bottom edge of a 28px square. */}
+          {!isAvatar && (
+            <>
+              {/* body / torso */}
+              <rect x="64" y="176" width="112" height="74" rx="30" fill={`url(#${g('body')})`} stroke="#15589f" strokeWidth="3" />
+              {/* chest screen showing a happy pulse line */}
+              <rect x="92" y="196" width="56" height="36" rx="12" fill="#0c1730" stroke="#15589f" strokeWidth="2.5" />
+              <path className="eh-mascot-pulse" d="M99 214 H110 L114 205 L120 223 L126 209 L130 214 H141"
+                fill="none" stroke="#46d17a" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
 
-          {/* arms */}
-          <rect x="48" y="186" width="22" height="46" rx="11" fill="#2b8ff0" stroke="#15589f" strokeWidth="3" />
-          {wave ? (
-            <g className="eh-mascot-wave" style={{ transformOrigin: '186px 196px' }}>
-              <rect x="176" y="150" width="22" height="50" rx="11" fill="#2b8ff0" stroke="#15589f" strokeWidth="3" />
-              <circle cx="187" cy="148" r="10" fill="#54a6f7" stroke="#15589f" strokeWidth="3" />
-            </g>
-          ) : (
-            <rect x="170" y="186" width="22" height="46" rx="11" fill="#2b8ff0" stroke="#15589f" strokeWidth="3" />
+              {/* arms */}
+              <rect x="48" y="186" width="22" height="46" rx="11" fill="#2b8ff0" stroke="#15589f" strokeWidth="3" />
+              {wave ? (
+                <g className="eh-mascot-wave" style={{ transformOrigin: '186px 196px' }}>
+                  <rect x="176" y="150" width="22" height="50" rx="11" fill="#2b8ff0" stroke="#15589f" strokeWidth="3" />
+                  <circle cx="187" cy="148" r="10" fill="#54a6f7" stroke="#15589f" strokeWidth="3" />
+                </g>
+              ) : (
+                <rect x="170" y="186" width="22" height="46" rx="11" fill="#2b8ff0" stroke="#15589f" strokeWidth="3" />
+              )}
+            </>
           )}
 
           {/* head */}

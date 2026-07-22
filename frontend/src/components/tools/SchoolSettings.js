@@ -178,7 +178,7 @@ export default function SchoolSettings() {
             <FormField label="Attendance Threshold (%)" type="number" value={form.attendance_threshold} onChange={set('attendance_threshold')} placeholder="75" />
           </Section>
 
-          <Section title="AI Assistant Context">
+          <Section title="What Flo Knows About Your School">
             <FormField label="Grading System" value={ai.grading_system} onChange={setAiField('grading_system')} placeholder="CGPA (10 point scale)" />
             <FormField label="Fee Structure" value={ai.fee_structure} onChange={setAiField('fee_structure')} placeholder="Monthly tuition + quarterly exam fee" />
             <FormField label="Class Naming" value={ai.class_naming} onChange={setAiField('class_naming')} placeholder="Class 9, 10, 11, 12" />

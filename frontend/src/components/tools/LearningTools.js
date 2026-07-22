@@ -1,7 +1,7 @@
 /**
  * R10.4 — "What I've Learned" transparency & control surface (Owner/Principal).
  *
- * Lists everything the assistant has learned about you: active memories, saved
+ * Lists everything Flo has learned about you: active memories, saved
  * routines (skills), and pending correction candidates from 👎 Improve feedback.
  * You stay in control: edit / deactivate / delete memories, delete routines, and
  * activate or reject pending corrections. Bulk delete is two-step (preview → confirm).
@@ -90,7 +90,7 @@ export default function LearningTools() {
   return (
     <ToolPage
       title="What I've Learned"
-      subtitle="Review and control what the assistant remembers about you. Nothing here is used until you approve it."
+      subtitle="Review and control what Flo remembers about you. Nothing here is used until you approve it."
       onRefresh={load}
       loading={loading}
     >
@@ -99,7 +99,7 @@ export default function LearningTools() {
       {/* Pending corrections from 👎 Improve feedback */}
       <Section title="Pending suggestions" icon={MessageSquareWarning} count={data.pending_corrections.length} isDark={isDark}>
         {data.pending_corrections.length === 0 && (
-          <p style={{ fontSize: 13, color: muted }}>No pending suggestions. When you tap “Improve” on a reply and add a note, it appears here for your approval before the assistant learns from it.</p>
+          <p style={{ fontSize: 13, color: muted }}>No pending suggestions. When you tap “Improve” on a reply and add a note, it appears here for your approval before Flo learns from it.</p>
         )}
         {data.pending_corrections.map(c => (
           <div key={c.id} style={rowStyle}>

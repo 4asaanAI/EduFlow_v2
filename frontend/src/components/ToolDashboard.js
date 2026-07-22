@@ -37,7 +37,7 @@ const T = {
   'incident-tracker':      { id: 'incident-tracker',      name: 'Incidents & Visitors',subtitle: 'Log & track',           icon: AlertTriangle, color: '#f87171' },
   'audit-log':             { id: 'audit-log',             name: 'Audit Log',           subtitle: 'Who did what',          icon: ScrollText,    color: '#737373' },
   'what-ive-learned':      { id: 'what-ive-learned',      name: "What I've Learned",   subtitle: 'Review & control memory', icon: Brain,       color: '#a78bfa' },
-  'conversation-trace':    { id: 'conversation-trace',    name: 'Conversation Trace',  subtitle: 'Did the assistant reply?', icon: MessageSquare, color: '#22d3ee' },
+  'conversation-trace':    { id: 'conversation-trace',    name: 'Conversation Trace',  subtitle: 'Did Flo reply?', icon: MessageSquare, color: '#22d3ee' },
   'fee-receipts':          { id: 'fee-receipts',          name: 'Fee Receipts',        subtitle: 'PDF & export',          icon: FileText,      color: '#34d399' },
   'principal-daily':       { id: 'principal-daily',       name: 'Principal Daily',     subtitle: 'Absences & subs',       icon: CalendarDays,  color: '#fbbf24' },
   'school-activities':     { id: 'school-activities',     name: 'School Activities',   subtitle: 'Houses, sports, awards', icon: Trophy,         color: '#f59e0b' },
