@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { adminResetPassword, createStaff, deactivateStaff, getPendingLeaves, getStaff, subscribeSSE, updateLeave, updateStaff } from '../../lib/api';
-import { CheckCircle, Edit3, KeyRound, Plus, RefreshCw, X, XCircle } from 'lucide-react';
+import { adminResetPassword, createStaff, deactivateStaff, decideProfileChangeRequest, getPendingLeaves, getProfileChangeRequests, getStaff, subscribeSSE, updateLeave, updateStaff } from '../../lib/api';
+import { ArrowRight, CheckCircle, Edit3, KeyRound, Plus, RefreshCw, X, XCircle } from 'lucide-react';
 import { useUser } from '../../contexts/UserContext';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -297,6 +297,9 @@ export default function StaffTracker() {
   const { currentUser } = useUser();
   const [staff, setStaff] = useState([]);
   const [pendingLeaves, setPendingLeaves] = useState([]);
+  // Epic 8 — corrections people have asked for. Only the Owner and the
+  // Principal may see or decide these, so nobody else even fetches them.
+  const [changeRequests, setChangeRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [leavesLoading, setLeavesLoading] = useState(true);
   const [error, setError] = useState('');
@@ -311,6 +314,10 @@ export default function StaffTracker() {
   const [attendanceStreamUpdatedAt, setAttendanceStreamUpdatedAt] = useState(null);
   const [, setClockTick] = useState(0);
   const canEditLeaveBalances = currentUser.role === 'owner' || currentUser.sub_category === 'principal';
+  // Mirrors the server's require_owner_or_principal gate. A convenience only —
+  // the server refuses regardless of what this says.
+  const canReviewChanges = currentUser.role === 'owner'
+    || (currentUser.role === 'admin' && currentUser.sub_category === 'principal');
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / 20)), [total]);
   const attendanceLiveLabel = lastUpdatedLabel(attendanceStreamUpdatedAt);
 
@@ -319,9 +326,11 @@ export default function StaffTracker() {
     setLeavesLoading(true);
     setError('');
     try {
-      const [staffRes, leavesRes] = await Promise.all([
+      const [staffRes, leavesRes, requestsRes] = await Promise.all([
         getStaff({ page, sort }),
         getPendingLeaves().catch(() => ({ data: [] })),
+        canReviewChanges ? getProfileChangeRequests('pending').catch(() => ({ data: [] }))
+                         : Promise.resolve({ data: [] }),
       ]);
       if (staffRes.success) {
         setStaff(staffRes.data || []);
@@ -330,12 +339,13 @@ export default function StaffTracker() {
         setError(staffRes.detail || 'Unable to load staff profiles');
       }
       if (leavesRes.success) setPendingLeaves(leavesRes.data || []);
+      if (requestsRes.success) setChangeRequests(requestsRes.data || []);
     } catch (err) {
       setError(err.message || 'Unable to load staff profiles');
     }
     setLoading(false);
     setLeavesLoading(false);
-  }, [page, sort]);
+  }, [page, sort, canReviewChanges]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -350,6 +360,18 @@ export default function StaffTracker() {
       if (event.type !== 'snapshot') loadData();
     }
   }, { onReconnect: loadData }), [loadData]);
+
+  const handleChangeRequest = async (requestId, status) => {
+    let reason = '';
+    if (status === 'rejected') {
+      // Optional, unlike a leave decision — a correction may simply be wrong,
+      // and forcing a sentence would make people type "no" to get past it.
+      reason = window.prompt('Why is this not being approved? (optional)') || '';
+    }
+    const res = await decideProfileChangeRequest(requestId, status, reason.trim());
+    if (!res.success) setError(res.detail || 'Unable to decide that request');
+    loadData();
+  };
 
   const handleLeave = async (leaveId, status) => {
     const reason = window.prompt(`Reason for ${status} decision`);
@@ -399,6 +421,7 @@ export default function StaffTracker() {
         {[
           ['profiles', 'Profiles'],
           ['leaves', `Pending Leaves (${pendingLeaves.length})`],
+          ...(canReviewChanges ? [['changes', `Corrections (${changeRequests.length})`]] : []),
         ].map(([id, label]) => (
           <button key={id} onClick={() => setActiveTab(id)} style={{ background: 'none', border: 'none', borderBottom: activeTab === id ? '2px solid var(--tool-hex-4f8ff7)' : '2px solid transparent', color: activeTab === id ? 'var(--c-text)' : 'var(--c-faint)', padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>{label}</button>
         ))}
@@ -478,6 +501,42 @@ export default function StaffTracker() {
                 <div style={{ display: 'flex', gap: 8 }}>
                   <ActionButton variant="secondary" onClick={() => handleLeave(leave.id, 'approved')}><CheckCircle size={13} />Approve</ActionButton>
                   <ActionButton variant="danger" onClick={() => handleLeave(leave.id, 'rejected')}><XCircle size={13} />Reject</ActionButton>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {activeTab === 'changes' && canReviewChanges && (
+        <div data-testid="staff-change-requests" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 840 }}>
+          {changeRequests.length === 0 ? (
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13, background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8 }}>
+              Nobody has asked for a correction
+            </div>
+          ) : changeRequests.map((req) => (
+            <div key={req.id} data-testid={`change-request-${req.id}`} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ minWidth: 240 }}>
+                  <div style={{ fontWeight: 650, color: 'var(--c-text)', fontSize: 14 }}>
+                    {req.requested_by_name || 'A member of staff'}
+                  </div>
+                  {/* Old beside new — a reviewer should never have to go and
+                      look up what the current value was. */}
+                  {Object.entries(req.requested || {}).map(([field, value]) => (
+                    <div key={field} style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 5, fontSize: 12, flexWrap: 'wrap' }}>
+                      <span style={{ color: 'var(--c-faint)', minWidth: 46 }}>{field}</span>
+                      <span style={{ color: 'var(--c-muted)', textDecoration: 'line-through' }}>
+                        {(req.current || {})[field] || 'not recorded'}
+                      </span>
+                      <ArrowRight size={11} style={{ color: 'var(--c-faint)' }} />
+                      <span style={{ color: 'var(--c-text)', fontWeight: 600 }}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <ActionButton variant="secondary" onClick={() => handleChangeRequest(req.id, 'approved')}><CheckCircle size={13} />Approve</ActionButton>
+                  <ActionButton variant="danger" onClick={() => handleChangeRequest(req.id, 'rejected')}><XCircle size={13} />Reject</ActionButton>
                 </div>
               </div>
             </div>

@@ -5,12 +5,18 @@ Run over the whole epic's combined diff, per STEP 4 of the execution protocol.
 
 ---
 
+> **Amended after the owner's mid-run reversal of Story 1.3 and the addition of
+> Epic 8.** The findings below stand as recorded; F-5 and F-7 relate to a
+> self-service write path that was subsequently removed entirely, and are kept
+> because the reasoning carried over into the request route that replaced it.
+
 ## a. Test suite
 
 | | Passed | Failed | Deselected |
 |---|---|---|---|
 | Pinned baseline (D-03) | 1636 | 2 | 14 |
-| After Epic 1 | **1682** | **2** | 14 |
+| After Epic 1 | 1682 | 2 | 14 |
+| After the Story 1.3 reversal + Epic 8 | **1720** | **2** | 14 |
 
 The 2 failures are the same two pre-existing order-dependent tests
 (`test_r13_tenancy_rbac.py::test_scoped_collection_find_one_and_update_injects_school_id`

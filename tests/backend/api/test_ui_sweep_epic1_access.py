@@ -359,85 +359,80 @@ def _seed_self(fake_db, **overrides):
     return doc
 
 
-def test_a_person_can_correct_their_own_contact_details(client, fake_db):
-    _seed_self(fake_db)
-    resp = client.patch(
-        "/api/staff/me",
-        json={"name": "Teacher Tina", "phone": "9999999999", "email": "tina@school.test"},
-        headers=_teacher_headers(),
-    )
-    assert resp.status_code == 200
-    stored = fake_db.staff.docs[0]
-    assert stored["name"] == "Teacher Tina"
-    assert stored["phone"] == "9999999999"
-    assert stored["email"] == "tina@school.test"
-
-
-def test_a_self_edit_survives_signing_out_and_back_in(client, fake_db):
-    """Name and phone live in the sign-in token too. If only the staff record is
-    written, the correction vanishes at the next sign-in."""
-    _seed_self(fake_db)
-    resp = client.patch(
-        "/api/staff/me", json={"name": "Teacher Tina", "phone": "9999999999"}, headers=_teacher_headers()
-    )
-    assert resp.status_code == 200
-    login = next(u for u in fake_db.auth_users.docs if u["id"] == "tch-1")
-    assert login["user_info"]["name"] == "Teacher Tina"
-    assert login["user_info"]["phone"] == "9999999999"
-    assert login["user_info"]["role"] == "teacher"  # authority untouched
-
-
-def test_self_edit_is_audited(client, fake_db):
-    _seed_self(fake_db)
-    client.patch("/api/staff/me", json={"name": "Teacher Tina"}, headers=_teacher_headers())
-    entries = [a for a in fake_db.audit_logs.docs if a.get("action") == "self_update"]
-    assert entries
-    assert entries[-1]["changed_by"] == "tch-1"
-    assert entries[-1]["changes"]["name"]["new"] == "Teacher Tina"
-
-
-@pytest.mark.parametrize("field,value", [
-    ("role", "owner"),
-    ("sub_category", "principal"),
-    ("schoolId", "some-other-school"),
-    ("salary", 999999),
-    ("token_limit", 10_000_000),
-    ("is_active", True),
+@pytest.mark.parametrize("body", [
+    {"name": "Teacher Tina"},
+    {"phone": "9999999999"},
+    {"email": "tina@school.test"},
+    {"name": "Teacher Tina", "phone": "9999999999", "email": "tina@school.test"},
+    {"role": "owner"},
+    {"sub_category": "principal"},
+    {"schoolId": "some-other-school"},
+    {"salary": 999999},
+    {"token_limit": 10_000_000},
+    {"is_active": True},
+    {"name": "Teacher Tina", "role": "owner"},
+    {},
 ])
-def test_a_person_cannot_change_their_own_authority(client, fake_db, field, value):
+def test_nobody_changes_their_own_record(client, fake_db, body):
+    """Owner's decision, 2026-07-22 — reversing the first version of this story.
+
+    Changing your own name or phone number is itself a way to misuse an
+    account, so nothing about your own record is self-editable: not the
+    authority fields, and not the contact details either. Corrections are made
+    by the Owner or Principal on the staff screen. Parametrised over contact
+    details, authority fields, a mixed body and an empty one, because "refused"
+    must not depend on WHAT was asked for.
+    """
     _seed_self(fake_db)
-    resp = client.patch("/api/staff/me", json={field: value}, headers=_teacher_headers())
+    resp = client.patch("/api/staff/me", json=body, headers=_teacher_headers())
     assert resp.status_code == 403
     stored = fake_db.staff.docs[0]
+    assert stored["name"] == "Teacher T"
+    assert stored["phone"] == "9000000010"
+    assert stored["email"] == "t@school.test"
     assert stored["role"] == "teacher"
     assert stored["sub_category"] == "subject_teacher"
     assert stored["schoolId"] == SCHOOL
     assert stored["salary"] == 40000
 
 
-def test_a_mixed_request_is_refused_whole_not_partly_applied(client, fake_db):
-    """Saving the name while quietly dropping `role` would map the boundary for
-    the caller and leave them believing the rest went through."""
-    _seed_self(fake_db)
-    resp = client.patch(
-        "/api/staff/me", json={"name": "Teacher Tina", "role": "owner"}, headers=_teacher_headers()
-    )
+def test_the_owner_cannot_self_edit_either(client, fake_db):
+    """The rule is not "staff are restricted" — it is "nobody edits themselves"."""
+    fake_db.staff.docs.append({
+        "id": "s-own3", "schoolId": SCHOOL, "user_id": "own-1", "name": "The Owner",
+        "role": "owner", "sub_category": "owner", "phone": "9000000000",
+    })
+    resp = client.patch("/api/staff/me", json={"phone": "9111111111"}, headers=_owner_headers())
     assert resp.status_code == 403
-    assert fake_db.staff.docs[0]["name"] == "Teacher T"  # the name did NOT save
-    assert fake_db.staff.docs[0]["role"] == "teacher"
+    assert fake_db.staff.docs[0]["phone"] == "9000000000"
 
 
-def test_an_empty_name_is_rejected(client, fake_db):
+def test_a_self_edit_never_reaches_the_login_record(client, fake_db):
+    """The login record carries the name and phone the JWT is minted from. A
+    refused self-edit must not touch it either."""
     _seed_self(fake_db)
-    resp = client.patch("/api/staff/me", json={"name": "   "}, headers=_teacher_headers())
-    assert resp.status_code == 422
-    assert fake_db.staff.docs[0]["name"] == "Teacher T"
+    client.patch("/api/staff/me", json={"name": "Teacher Tina"}, headers=_teacher_headers())
+    login = next(u for u in fake_db.auth_users.docs if u["id"] == "tch-1")
+    assert login["user_info"]["name"] == "Teacher T"
+    assert login["user_info"]["phone"] == "9000000010"
 
 
-def test_a_person_with_no_staff_record_gets_a_clear_404(client, fake_db):
-    resp = client.patch("/api/staff/me", json={"name": "Nobody"}, headers=_teacher_headers())
-    assert resp.status_code == 404
-    assert fake_db.staff.docs == []  # and no record is conjured for them
+def test_no_self_service_field_is_writable(client, fake_db):
+    """Guards the empty allow-list itself. Epic 8 will replace this handler with
+    "record a requested change"; until then, adding a field back here would
+    silently restore direct self-editing."""
+    from routes.staff import SELF_SERVICE_FIELDS
+
+    assert SELF_SERVICE_FIELDS == set()
+
+
+def test_the_refusal_says_who_can_make_the_change(client, fake_db):
+    """A refusal that does not say what to do next is a dead end for a teacher
+    whose phone number really has changed."""
+    _seed_self(fake_db)
+    resp = client.patch("/api/staff/me", json={"phone": "9999999999"}, headers=_teacher_headers())
+    detail = resp.json()["detail"].lower()
+    assert "owner" in detail and "principal" in detail
 
 
 def test_self_profile_never_exposes_salary(client, fake_db):
@@ -457,5 +452,7 @@ def test_self_profile_endpoints_are_not_shadowed_by_the_id_route(client, fake_db
 
 
 def test_self_profile_unauthenticated_returns_401(client):
+    """401 before 403 — an anonymous caller is told to sign in, not told the
+    rule about self-editing."""
     assert client.get("/api/staff/me").status_code == 401
     assert client.patch("/api/staff/me", json={"name": "X"}).status_code == 401

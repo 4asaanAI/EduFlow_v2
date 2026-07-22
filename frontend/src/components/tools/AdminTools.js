@@ -712,7 +712,7 @@ export function CertificateGenerator() {
         student_name: d.student_name || '',
         class: d.class || '',
         school_name: d.issued_by || '',
-        affiliation: 'Affiliated to CBSE · Lucknow, Uttar Pradesh',
+        affiliation: 'Affiliated to CBSE · Joya, Amroha, Uttar Pradesh',
         issued_date: d.issued_date || cert.issued_date || '',
         academic_year: d.academic_year || '',
         serial_number: cert.serial_number || '',

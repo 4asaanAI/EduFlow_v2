@@ -241,6 +241,14 @@ in bulk — not just the most recent handful.
 **Owner items:** 14 (View all + mark all read), 16 (All Chats page)
 **Standalone:** yes. Two new pages plus `NotificationsPanel`.
 
+### Epic 8: Ask, Don't Just Change
+Added by the owner 2026-07-22, reversing the first version of Story 1.3. A member of
+staff can ask for their own name, phone or email to be corrected; the Owner or the
+Principal decides. Nothing changes until it is approved.
+**Requirements covered:** FR3, FR78, NFR-S1
+**Owner items:** the 2026-07-22 reversal of self-service editing
+**Standalone:** yes. `routes/staff.py`, `ProfileModal.js`, `StaffTracker.js`.
+
 ### Epic 7: A Directory Shaped Like The School
 Owner and Principal find any person in the school — student, teacher or admin — in one
 place, and reach the tools they need without wading through a long list of near-duplicates.
@@ -374,43 +382,40 @@ So that my contact details stay current without an administrator having to do it
 
 **Acceptance Criteria:**
 
-**Scope decision (party mode, John):** this story is **self-service only**. Changing
-another person's authority stays on the staff screen, so there is exactly one place in
-the platform where authority changes — not two. Staff have no self-service endpoint at
-all today; students do (`PATCH /api/students/me`), and that is the pattern to follow (E-8).
+> ### ⚠️ REVERSED BY THE OWNER, 2026-07-22
+> The first version of this story let a person edit their own name, phone and email
+> directly. Abhimanyu reversed it: *"no one changes their name, phone, email to misuse
+> the power — only after admin approval should be able to do that."*
+> **Story 1.3 is now: your own details are visible but nobody edits their own record.**
+> The ask-and-approve flow is **Epic 8**, below. The self-service write path built in the
+> first pass was removed, not merely hidden — see `epic-1-review.md`.
+
+**Scope decision:** changing anyone's details — including your own — happens on the
+staff screen, done by the Owner or Principal. There is exactly one place in the platform
+where a person's record changes.
 
 **Given** any authenticated user viewing their own profile
 **When** they open it
-**Then** name, phone and email are editable, and role, school, sub-category and AI token
-allowance are shown read-only
+**Then** their name, phone, email, role, job and school are shown, and **none** of them
+is editable
+**And** the screen says plainly who to ask for a correction
 
-**Given** that same user
-**When** they submit a change to their own `role`, `sub_category`, `schoolId` or token
-allowance by any means including a direct API call
-**Then** the **whole request is rejected**, not partially applied — a body of
-`{name, role}` must not quietly save the name while dropping the role, because partial
-acceptance is how a caller maps the boundary (party mode, Murat)
-**And** the stored values are unaltered
-**And** the permitted fields are an explicit allow-list, never a deny-list
+**Given** any authenticated user, **including the Owner**
+**When** they submit a change to their own record by any means including a direct API
+call — contact details or authority fields, alone or mixed, or an empty body
+**Then** it is refused with 403 and nothing is written, to either the staff record or
+the login record
+**And** the refusal names who can make the change instead, so a teacher whose number
+really has changed is not left at a dead end
 
 **Given** a signed-in user who has no staff record
-**When** they submit a profile change
-**Then** they get a clear 404 — no record is created for them
+**When** they attempt a profile change
+**Then** they are refused — and no record is created for them
 
-**Given** an Owner wishing to change another person's role or sub-category
-**When** they do so
-**Then** it happens on the staff screen, subject to Stories 1.1 and 1.2 — this dialog
-never edits anyone but the signed-in user
-
-**Given** any profile edit that succeeds
-**When** it is written
-**Then** an audit entry records who changed what, and the change is visible immediately
-without a page reload — note that name and phone also live in the signed-in session
-token, which stays stale until the next sign-in, so the dialog must refresh the client's
-copy of the user from the server's response rather than trusting the token (E-9)
-**And** the same change is reflected in the user's login record, so it survives sign-out
-and sign-in — the real-use test is: a teacher changes their phone, signs out, signs back
-in, and the new number is there (party mode, John)
+**Given** the set of self-editable fields
+**When** the test suite runs
+**Then** it asserts the set is **empty**, so a field cannot be quietly added back and
+silently restore direct self-editing
 
 **Given** the profile dialog, which today prints a hard-coded
 "The Aaryans, Lucknow, CBSE" — the wrong city for a school in Joya, Amroha (D-11)
@@ -421,3 +426,107 @@ in, and the new number is there (party mode, John)
 **When** it is rendered
 **Then** every control carries a `data-testid`, uses CSS variables rather than raw hex,
 and has a visible focus state at ≥3:1 contrast (UX-DR1, UX-DR4, UX-DR9)
+
+---
+
+## Epic 8: Ask, Don't Just Change
+
+Added by the owner 2026-07-22 alongside the reversal of Story 1.3. A member of staff can
+**ask** for their own contact details to be corrected; the Owner or the Principal
+**decides**; nothing changes until it is approved.
+
+**Requirements covered:** FR3, FR78, NFR-S1
+
+### Story 8.1: A member of staff can ask for a correction
+
+As a teacher or a member of the admin staff,
+I want to ask for my name, phone number or email to be corrected,
+So that my details can be put right without me being able to change them myself.
+
+**Acceptance Criteria:**
+
+**Given** any signed-in member of staff with a staff record
+**When** they submit a requested correction to their name, phone or email
+**Then** a pending request is recorded, **their own record is unchanged**, and the Owner
+and the Principal are notified
+
+**Given** the same person
+**When** they include any field beyond name, phone and email — role, sub-category,
+school, salary, token allowance
+**Then** the whole request is refused, exactly as Story 1.3 refuses a direct edit; the
+request route must not become a side door around the rule it exists to serve
+
+**Given** a person who already has a request waiting
+**When** they submit another
+**Then** it is refused with a message saying one is already pending, so the queue cannot
+be flooded and a reviewer never has to guess which of several is current
+
+**Given** a requested value identical to what is already stored
+**When** it is submitted
+**Then** it is refused — an approval queue should not fill with changes that change nothing
+
+**Given** a person with no staff record
+**When** they submit a request
+**Then** they are refused, and no record is created for them
+
+### Story 8.2: The Owner or Principal decides
+
+As the Owner or the Principal,
+I want to see what corrections people have asked for and approve or reject each one,
+So that details stay accurate without anyone being able to edit themselves.
+
+**Acceptance Criteria:**
+
+**Given** an Owner or a Principal
+**When** they list pending requests
+**Then** they see who asked, what they want changed, the current value beside the
+requested one, and when it was asked
+
+**Given** anyone else — a teacher, an accountant, any other admin sub-category
+**When** they try to list or decide requests
+**Then** they are refused with 403
+
+**Given** a pending request
+**When** the Owner or Principal approves it
+**Then** the change is applied to the staff record **and** to the login record, so it
+survives signing out and back in
+**And** the request is marked approved with who decided and when
+**And** the requester is notified
+**And** it cannot be approved twice — a second decision on a settled request is refused
+
+**Given** a pending request
+**When** it is rejected
+**Then** nothing is changed, the requester is notified, and a reason may be recorded
+
+**Given** a Principal who has raised a request of their own
+**When** they try to approve it themselves
+**Then** they are refused. Otherwise the Principal is an administrator who can approve
+their own change, which is exactly the self-editing this feature exists to prevent.
+Their request is decided by the Owner.
+
+**Given** an approval whose target staff record has since been deactivated or deleted
+**When** the decision is made
+**Then** it fails cleanly rather than writing to a record that is no longer there
+
+**Given** any decision
+**When** it is made
+**Then** an audit entry records who decided what, on whose behalf
+
+### Story 8.3: Both sides of it are visible in the app
+
+**Acceptance Criteria:**
+
+**Given** a member of staff who has asked for a correction
+**When** they open their profile
+**Then** they see what they asked for and that it is waiting, and they cannot ask again
+until it is settled
+
+**Given** an Owner or Principal with requests waiting
+**When** they open the staff screen
+**Then** the pending requests are shown there, alongside the pending leave requests they
+already review, with approve and reject on each
+
+**Given** any of these controls
+**When** rendered
+**Then** each carries a `data-testid`, uses CSS variables rather than raw hex, and has a
+visible focus state (UX-DR1, UX-DR4, UX-DR9)

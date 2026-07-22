@@ -604,16 +604,42 @@ export async function getStaff(params = {}) {
   return res.json();
 }
 
-// Story 1.3 — your own staff record. Everyone has a self, so these two need no
-// role check; the server refuses anything beyond name/phone/email.
+// Story 1.3 — your own staff record, READ ONLY. Nobody edits their own details;
+// corrections go through the Owner or Principal on the staff screen. There is
+// deliberately no update counterpart here: the server refuses one, and shipping
+// a client function for a call that always fails invites someone to wire it up.
 export async function getMyStaffProfile() {
   const res = await apiFetch(`${API}/staff/me`, { headers: getHeaders() });
   return res.json();
 }
 
-export async function updateMyStaffProfile(data) {
-  const res = await apiFetch(`${API}/staff/me`, {
-    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(data),
+// Epic 8 — ask for a correction; an administrator decides. Asking changes
+// nothing, which is the whole point: these never write to the staff record.
+export async function requestMyProfileChange(data) {
+  const res = await apiFetch(`${API}/staff/me/change-requests`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function getMyProfileChangeRequests() {
+  const res = await apiFetch(`${API}/staff/me/change-requests`, { headers: getHeaders() });
+  return res.json();
+}
+
+// Owner / Principal only — the queue and the decision.
+export async function getProfileChangeRequests(status = 'pending') {
+  const res = await apiFetch(`${API}/staff/change-requests?status=${encodeURIComponent(status)}`, {
+    headers: getHeaders(),
+  });
+  return res.json();
+}
+
+export async function decideProfileChangeRequest(requestId, status, rejectionReason) {
+  const res = await apiFetch(`${API}/staff/change-requests/${requestId}`, {
+    method: 'PATCH',
+    headers: getHeaders(),
+    body: JSON.stringify({ status, rejection_reason: rejectionReason || '' }),
   });
   return res.json();
 }

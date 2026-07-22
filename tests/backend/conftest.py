@@ -630,6 +630,8 @@ class FakeDb:
         self.ai_feedback = FakeCollection()
         # AI Reliability — R11.5 conversation trace viewer
         self.ai_turn_traces = FakeCollection()
+        # UI Sweep — Epic 8: staff ask, Owner/Principal approve
+        self.profile_change_requests = FakeCollection()
 
     async def command(self, command_name):
         if command_name == "ping":

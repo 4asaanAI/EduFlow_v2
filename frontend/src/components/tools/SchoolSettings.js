@@ -154,9 +154,9 @@ export default function SchoolSettings() {
           </Section>
 
           <Section title="Location">
-            <FormField label="City" value={form.city} onChange={set('city')} placeholder="Lucknow" />
+            <FormField label="City" value={form.city} onChange={set('city')} placeholder="Joya, Amroha" />
             <FormField label="State" value={form.state} onChange={set('state')} placeholder="Uttar Pradesh" />
-            <FormField label="Address" type="textarea" value={form.address} onChange={set('address')} placeholder="Sector 12, Jankipuram, Lucknow, UP 226021" />
+            <FormField label="Address" type="textarea" value={form.address} onChange={set('address')} placeholder="Prem Nagar, Joya, Distt. Amroha, U.P. 244222" />
           </Section>
 
           <Section title="Contact">

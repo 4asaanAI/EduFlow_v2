@@ -278,7 +278,7 @@ async def get_school_settings(request: Request, user: dict = Depends(require_rol
         settings = {
             "school_name": os.environ.get("SCHOOL_NAME", "The Aaryans"),
             "board": os.environ.get("SCHOOL_BOARD", "CBSE"),
-            "city": os.environ.get("SCHOOL_CITY", "Lucknow"),
+            "city": os.environ.get("SCHOOL_CITY", "Joya, Amroha"),
             "state": os.environ.get("SCHOOL_STATE", "Uttar Pradesh"),
         }
     return {"success": True, "data": settings}

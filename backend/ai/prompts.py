@@ -13,7 +13,7 @@ from datetime import datetime
 
 SCHOOL_NAME = os.environ.get("SCHOOL_NAME", "The Aaryans")
 SCHOOL_BOARD = os.environ.get("SCHOOL_BOARD", "CBSE")
-SCHOOL_CITY = os.environ.get("SCHOOL_CITY", "Lucknow")
+SCHOOL_CITY = os.environ.get("SCHOOL_CITY", "Joya, Amroha")
 
 # ---------------------------------------------------------------------------
 # School Organisation Context (The Aaryans specific)
@@ -21,7 +21,7 @@ SCHOOL_CITY = os.environ.get("SCHOOL_CITY", "Lucknow")
 # Default org context — names are kept generic to avoid mismatch with DB.
 # build_system_prompt() accepts a school_settings dict to personalise these.
 _ORG_CONTEXT_TEMPLATE = """
-School Organisation — The Aaryans (CBSE, Lucknow):
+School Organisation — The Aaryans (CBSE, Joya, Amroha, U.P.):
 Hierarchy: Head ({owner_name}) -> Principal ({principal_name}) -> 4 Departments:
 1. Accounts — fee collection, payroll, financial records
 2. Admin — Medical, Reception, Admission, Day-to-Day (Peon, Aaya, Sweeper, Guard, Gardner)

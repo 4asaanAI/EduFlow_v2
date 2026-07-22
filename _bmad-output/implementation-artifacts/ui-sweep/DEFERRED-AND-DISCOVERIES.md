@@ -18,6 +18,7 @@ Branch: `ui-sweep-2026-07-22`
 | 2026-07-22 | Pre-epic | Read-only reconciliation of the school's source documents vs the live database → `_bmad-output/planning-artifacts/aaryans-source-of-truth-2026-07-22.md`. |
 | 2026-07-22 | Pre-epic | Shipped: staff role/sub-category lockdown (frontend), staff `designation` display, mobile header + sidebar behaviour, class ordering, notification dot. Commits `401a4ac`, `ab206cb`, and the mobile-shell commit. |
 | 2026-07-22 | Planning | `bmad-check-implementation-readiness` run → paused at step 1: **no epic document existed** for this work. `bmad-create-epics-and-stories` run → requirements inventory, 7 epics, coverage map, Epic 1 stories written. |
+| 2026-07-22 | **Epic 8** | **Ask, Don't Just Change — DONE (same run).** Abhimanyu reversed Story 1.3 mid-run — nobody edits their own record — and asked for the approval flow. Staff and admin can request a correction to their own name/phone/email; Owner and Principal approve or reject it beside their leave approvals. A Principal cannot approve their own. 34 tests. Suite 1720 passed / 2 failed (pinned) / 14 deselected. |
 | 2026-07-22 | **Epic 1** | **Access That Cannot Be Talked Around — DONE.** Elicitation + party-mode passes rewrote the ACs before any code (E-1…E-9); 3 stories implemented; epic-close gate found 10 further findings, all fixed with regression tests. Owner role is now refused by the server for every caller including the Owner, in both directions; unrecognised job categories are refused; staff can maintain their own contact details. Suite 1682 passed / 2 failed (the pinned pair) / 14 deselected. **Closes D-02, D-11, D-12, D-13, D-14.** No production writes. |
 
 ---
@@ -139,13 +140,24 @@ stripped. Story 1.1 makes that a hard 403. The tests were **rewritten, not delet
 each now asserts the stronger contract, and the silent-strip behaviour they were really
 guarding (salary) is still covered by its own test.
 
-### D-15 — The school's city is wrong in more than one place — **DEFERRED to Epic 4**
-The sidebar shows "The Aaryans · CBSE · Lucknow, Uttar Pradesh". That text comes from
-the **stored** school record, which is placeholder data — the school is in Joya, Amroha.
-Separately, `AdminTools.js` hard-codes the same wrong line ("Affiliated to CBSE ·
-Lucknow, Uttar Pradesh") in the frontend, which can be corrected without a database
-write. Both belong to Epic 4 item 8; correcting the stored record is a WRITE needing
-approval. Found during Epic 1's read-only browser check.
+### D-15 — The school's city was wrong in five places — **FIXED IN CODE 2026-07-22**
+Instructed by Abhimanyu: *"change Lucknow to Joya, Amroha everywhere it appears."*
+
+It turned out **not** to be stored data in most cases but a set of code defaults:
+- `ai/prompts.py` — `SCHOOL_CITY` default, **and the assistant's own organisation
+  briefing**, which told the model the school is in Lucknow. This one mattered most: the
+  AI was answering from a false premise about where the school is.
+- `routes/settings.py` — the `city` fallback returned when no school record is stored.
+- `AdminTools.js` — a hard-coded "Affiliated to CBSE · Lucknow, Uttar Pradesh".
+- `SchoolSettings.js` — city and address placeholders.
+- `ProfileModal.js` — covered separately as D-11.
+
+All corrected to **Joya, Amroha**. **No database write.** Because the settings endpoint
+falls back to the code default when no `school_settings` record exists, this may correct
+production on deploy with no data change at all. **If the sidebar still says Lucknow
+after deploying**, a `school_settings` record does exist and holds the wrong city — a
+one-line data correction needing separate approval. Flagged on the human checklist.
+The school's address, phone and principal remain placeholder data (Epic 4 / Track 2).
 
 ### D-16 — `CI=true` fails the frontend build repo-wide — **DEFERRED, hygiene**
 Roughly 30 pre-existing `react-hooks/exhaustive-deps` warnings across
@@ -160,6 +172,25 @@ Seven hits in `backend/routes/staff.py` predate this initiative and lack the
 appear to be correct (school-scoped leave and staff lookups) but are unannotated, so
 each future audit has to re-derive the reasoning. **Reason deferred:** unrelated churn
 in a security diff; annotate during whichever epic next touches that file.
+
+### D-18 — Story 1.3 shipped the wrong product decision — **RESOLVED SAME RUN**
+The first version let staff edit their own name, phone and email directly. The owner
+reversed it on sight: a person changing their own name or phone is itself a way to
+misuse an account. The write path was **removed** (endpoint, client function and the
+session-merge helper all deleted, not hidden), and the ask-and-approve flow he asked for
+was built as Epic 8.
+
+**Worth recording as a process point, not just a change:** the acceptance criteria were
+argued through two review passes and 44 tests, and every one of them was satisfied. None
+of that could catch "the feature should not exist". Reviews test whether the thing was
+built right, not whether it should have been built — that question only had one place to
+be answered, and it was the owner. For anything that changes what a *person* is allowed
+to do, ask him before building, not at the demo.
+
+### D-19 — Nobody can appoint a second owner from inside the app — **ACCEPTED 2026-07-22**
+A consequence of Story 1.1, raised for a decision. Abhimanyu's answer: keep it exactly as
+it is, with Aman Litt as sole owner. Recorded so a future session does not "helpfully"
+reopen the path. Changing it requires a direct database change by us.
 
 ---
 

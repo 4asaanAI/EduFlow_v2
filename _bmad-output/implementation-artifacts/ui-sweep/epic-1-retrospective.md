@@ -39,6 +39,21 @@ were really protecting (the salary silent-strip) kept its own test.
 
 ## What did not go well
 
+**The biggest miss was not a bug — it was building the wrong thing.** Story 1.3
+let staff edit their own contact details. The acceptance criteria were argued
+through two review passes; the implementation satisfied all of them; 44 tests
+passed. The owner read one sentence of the summary and reversed it: a person
+changing their own name or phone is itself a way to misuse an account.
+
+No review lens available here could have caught that. Adversarial review asks
+"is this built correctly"; it does not ask "should this exist". The story came
+from a defect list, and somewhere between the defect and the story it acquired
+a product decision — *who may change a person's details* — that nobody
+recognised as a decision, so nobody took it to the person whose school it is.
+**Rule for the epics after this: anything that changes what a person is allowed
+to do gets confirmed with Abhimanyu before it is built, not at the demo.**
+Cheap to ask, and the reversal cost a rebuild of a whole story plus a new epic.
+
 **The root cause of D-02 repeated itself in miniature.** D-02 exists because a
 frontend change was reported as a security fix. In this epic I initially wrote
 the field-validation check *before* the authority check — which would have
@@ -65,6 +80,8 @@ which is entirely about phone width.
 
 ## What changes for Epic 2
 
+0. **Confirm product decisions with Abhimanyu before building them.** Any story
+   that changes who may do what to whom. See D-18 — this cost a full rebuild.
 1. **Get a local environment that is not production.** Epic 2 is the mobile
    epic; verifying it against a system where every save is real is untenable.
    Before starting: either a local backend against a throwaway database, or
