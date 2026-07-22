@@ -1573,3 +1573,110 @@ records that the **paid** path was taken â€” so the owner can see how often
 in the registry. `routes/image_gen.py` continues to render certificate **templates**,
 which is document rendering and not AI generation â€” this is stated so the file's name
 does not later be mistaken for a breach of that instruction
+
+---
+
+## Epic 5: A Conversation That Feels Alive
+
+Asking Flo a question feels immediate and continuous â€” no stalls, no sudden dumps, no
+overlapping progress boxes, and a composer that is pleasant to type in.
+
+**Requirements covered:** FR7, FR11, NFR-P3, NFR-SSE1â€“4, UX-DR8
+**Owner items:** 9, 10, 12, 13
+
+### What was found before the stories were written
+
+The chat surface has already been hardened twice (epic R8 for resilience, Epic 9 for
+the visual language), so the honest starting point was to find what is actually still
+broken rather than assume the whole surface needs work.
+
+**Already correct, and deliberately not re-done:**
+- The composer auto-grows to a 160px ceiling, sends on Enter, opens a newline on
+  Shift+Enter, and has its focus ring on the pill rather than the inner field (Epic 9).
+- A stream that ends without its terminal `done` event, drops mid-flight, or returns
+  401 already surfaces a visible, retryable error rather than a silent stall
+  (`lib/api.js`, epic R8). The decoder tail is flushed so a final frame is never lost.
+- The server sends an SSE keepalive every 5 seconds (`routes/chat.py`).
+
+**Genuinely still broken â€” these are the stories:**
+
+1. **Two progress boxes report the same work.** While streaming, `ChatInterface`
+   renders a `ToolCallBadge` for `currentStreamMsg.toolCall` AND a `ThinkingProcess`
+   panel fed by `thinkingSteps`, which contains `tool_start` / `tool_done` for the same
+   tool. The same activity is announced twice, in two different shapes.
+2. **They do not line up.** The tool badge is indented 42px to clear the avatar
+   gutter; the thinking panel has no left padding at all and sits flush against the
+   edge; the message body starts at 42px again. Three stacked elements, three different
+   left edges, and vertical gaps of 4px, 8px and 24px. That is owner item 12 and the
+   reason UX-DR8 exists.
+3. **A silent connection spins forever.** Every *detectable* failure is handled, but a
+   connection that is accepted and then goes quiet â€” the server wedged, the network
+   dropped without a FIN â€” leaves `reader.read()` waiting indefinitely and the typing
+   dots animating with nothing behind them. There is no client-side watchdog, so
+   NFR-P3 ("first token â‰¤ 3s") has nothing enforcing it and no way to report a breach.
+
+### Story 5.1: One progress box, lined up with everything else
+
+As anyone watching Flo work,
+I want a single, tidy account of what it is doing,
+So that the wait is legible rather than a stack of boxes that disagree.
+
+**Acceptance Criteria:**
+
+**Given** `ToolCallBadge` and `ThinkingProcess` both report tool activity while
+streaming
+**When** a tool runs
+**Then** it is reported **once**. The thinking panel is the single account of progress;
+the separate badge is not rendered alongside it for the same work
+
+**Given** UX-DR8 (a consistent spacing scale for stacked stream elements) and the 42px
+avatar gutter every assistant message uses
+**When** the progress panel, any badge and the reply body are stacked
+**Then** they share **one left edge** and **one vertical rhythm**. A test asserts the
+alignment value rather than a person eyeballing it, because this is precisely the class
+of defect that survives a screenshot
+
+**Given** the panel is the only progress indicator
+**When** there are no steps worth showing
+**Then** the typing indicator is shown instead â€” and never both at once
+
+**Given** the collapsed summary bar is interactive
+**When** it renders
+**Then** it keeps its `role="button"`, keyboard operation and visible focus state
+(NFR-A2), and carries a `data-testid` (UX-DR4)
+
+### Story 5.2: A reply that stalls says so, instead of spinning forever
+
+As the school Owner waiting on an answer,
+I want to be told when nothing is coming,
+So that I retry rather than watching three dots and guessing.
+
+**Acceptance Criteria:**
+
+**Given** NFR-P3 â€” first token within 3 seconds â€” which today has nothing enforcing it
+**When** a stream is accepted but sends nothing at all
+**Then** a client-side watchdog notices. After a **first threshold** it says Flo is
+taking longer than usual, and after a **second** it declares the turn failed and offers
+retry. It must never sit silent indefinitely
+
+**Given** the server sends a keepalive every 5 seconds
+**When** the keepalive is arriving but no content is
+**Then** the connection is known to be alive and the message says so â€” "still working"
+is a different statement from "nothing is coming", and conflating them would send the
+owner to retry a request that was about to succeed (NFR-SSE1, NFR-SSE4)
+
+**Given** any activity at all â€” a token, a thinking step, a keepalive
+**When** it arrives
+**Then** the watchdog resets. A long, genuinely-working answer must never be declared
+stalled
+
+**Given** the turn ends normally, errors, or is aborted
+**When** it finishes
+**Then** the watchdog is cleared. A timer left running after unmount would fire against
+a dead component, which is how "cannot update state on an unmounted component" warnings
+and phantom error banners appear
+
+**Given** the existing `stream_error` handling from epic R8
+**When** the watchdog fires
+**Then** it reuses that path rather than inventing a second error surface, so a stall
+and a dropped connection look the same to the person reading the screen

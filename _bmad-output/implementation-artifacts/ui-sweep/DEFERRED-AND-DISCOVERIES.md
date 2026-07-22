@@ -26,6 +26,8 @@ Branch: `ui-sweep-2026-07-22`
 
 | 2026-07-22 | **Epic 10** | **Something You Can Actually Hand Someone - DONE.** Pulled ahead of Epic 5 by the owner. Flo was underselling the platform: every document library was already installed and the store-and-deliver path already proven by certificates. Shipped: one document builder (docx/xlsx/pptx/pdf/csv/md/txt); `draft_document` so Flo returns a real file with a signed, expiring link; a tappable file card in chat that refuses non-http URLs; `format=xlsx` on all seven exports with csv still default and every role gate untouched; OCR that reads a printed page on this server for nothing; and a paid vision fallback that is asserted NOT to run when OCR succeeded. Two parity gates caught two of my own mistakes. 70 new tests; suite 1915 passed / 2 pinned / 14 deselected, frontend 196 / 2 pre-existing. **OCR and the vision fallback SHIP DARK until a deploy.** Adds D-29, D-30, D-31. No production writes. |
 
+| 2026-07-22 | **Epic 5** | **A Conversation That Feels Alive - DONE.** Two of the four owner items were found ALREADY FIXED by earlier work (the composer by Epic 9, stream resilience by epic R8) and were deliberately not rebuilt. The two real defects: the same tool was announced twice, by a badge AND by the thinking panel that already held its steps (owner item 12); and the three stacked stream elements sat at 42px, 0px and 42px with 4/8/24px gaps. Both fixed, with the gutter asserted as a VALUE rather than eyeballed. Added a stall watchdog: a stream accepted and then silent used to spin the typing dots forever, and nothing enforced NFR-P3. It now says 'still working' at 12s and 'the connection may have dropped' at 45s, reset by any inbound event including a keepalive, cleared on unmount. 9 new tests; frontend 205 passed / 2 pre-existing, backend unchanged at 1915 / 2 pinned. Adds D-32. No production writes. |
+
 ---
 
 ## Epic 10 — closed 2026-07-22
@@ -478,6 +480,16 @@ when it judges the picture needs understanding, because Flo has the conversation
 knows whether the person asked what a picture *says* or what it *shows*. The image
 bytes live at the upload boundary rather than in the tool loop, so wiring that is real
 work. The current behaviour satisfies the story honestly.
+
+### D-32 — The stall thresholds are judgements, not measurements — **OPEN**
+`STALL_SLOW_MS = 12000` and `STALL_DEAD_MS = 45000` in `ChatInterface.js` were chosen
+by reasoning (the server keepalive is 5s, so 12s of total silence means the connection
+itself is suspect) and have **never been watched against a real connection at the
+school on a real morning**. They look precise in the code and are not.
+
+**Reason open:** only use settles them. If Flo starts saying "taking longer than usual"
+on answers that were always going to arrive, raise the first threshold; if people give
+up before 12s, lower it. On the human checklist.
 
 ---
 

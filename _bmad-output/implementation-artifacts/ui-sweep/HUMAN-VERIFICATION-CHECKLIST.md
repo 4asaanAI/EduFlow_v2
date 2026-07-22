@@ -341,6 +341,37 @@ out by testing:
 
 ---
 
+## Epic 5 — The chat, while it is thinking (added 2026-07-22)
+
+**Not live until the deploy**, like everything else on this branch.
+
+### Please check in the real app
+
+- [ ] **Ask Flo something that needs a lookup** ("how many students are absent today?").
+      While it works you should see **one** progress box, not a box AND a separate
+      little tool label saying the same thing.
+- [ ] **Check it lines up.** The progress box, the reply text and Flo's face should all
+      start at the same left edge. Before, the progress box sat further left than
+      everything else.
+- [ ] **On your phone**, same two checks.
+
+### Needs your judgement — I guessed, and I would rather you corrected me
+
+- [ ] **Is 12 seconds the right moment to say "taking longer than usual"?** If the
+      answer is slow but fine, Flo now says that after 12 seconds, and after 45 seconds
+      says the connection may have dropped and to try again. Those two numbers are my
+      reasoning, not a measurement — **nobody has watched this on your connection at
+      8am.** If it nags too early, or leaves you waiting too long before admitting
+      something is wrong, tell me the number that feels right.
+
+### Known and left alone on purpose
+
+- The typing box was examined and left as it is: it already grows as you type, sends on
+  Enter and makes a new line on Shift+Enter. Two of the four things on your original
+  list for the chat turned out to be fixed by earlier work, so I did not rebuild them.
+
+---
+
 ## Change log
 
 | Date | Epic | What was added |
@@ -348,5 +379,6 @@ out by testing:
 | 2026-07-22 | Epic 1 | Owner-access handover decision, the live-app checks I could not make myself, and the legacy job-category question. |
 | 2026-07-22 | Epic 1 + 8 | Two decisions settled by Abhimanyu (sole owner stays; no self-editing). Self-service checks replaced by ask-and-approve checks. City correction added, pending a deploy decision. |
 | 2026-07-22 | Epic 9 + 3 | **Part A added: a standing ten-minute checklist to run after every epic**, at Abhimanyu's request. Plus this epic's specifics: the new look, Flo, the duplicate titles, sorting and paging, and the four live-data city corrections. |
+| 2026-07-22 | Epic 5 | One progress box instead of two, everything lined up, and a stall that says so instead of spinning. Two stall thresholds need your judgement. |
 | 2026-07-22 | Epic 10 | Real files from Flo, Excel exports, and reading printed paper. Two parts ship dark pending a deploy, and one may not work at all - both named explicitly. |
 | 2026-07-22 | Epic 4 | The zeros (eleven screens, not one), honest failure states, the school's real details and affiliation number awaiting your save, the assistant finally knowing the principal, column sorting on 34 tables, and the Class Strength column you queried. Three things I could not verify myself are named explicitly. |

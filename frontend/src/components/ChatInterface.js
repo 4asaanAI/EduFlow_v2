@@ -13,6 +13,25 @@ import ConfirmActionCard from './ConfirmActionCard';
 import ChatFollowup from './ChatFollowup';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
+
+/* Epic 5 (UX-DR8): ONE left edge and ONE vertical rhythm for everything stacked in a
+   streaming turn. The gutter is the space the assistant avatar occupies — 28px wide
+   plus the 14px flex gap — so a progress panel, a tool badge and the reply body all
+   begin at the same place. Before this they began at 42px, 0px and 42px. */
+export const STREAM_GUTTER = 42;
+export const STREAM_GAP = 8;
+
+/* How long silence is allowed before the person is told something. The server sends a
+   keepalive every 5s, so 12s of TOTAL silence means the connection itself is suspect,
+   not merely a slow answer. Any activity at all resets both.
+
+   THESE TWO NUMBERS ARE JUDGEMENTS, NOT MEASUREMENTS. They were reasoned from the
+   keepalive interval and have never been watched against a real connection at the
+   school on a real morning — they look precise here and are not. Logged as D-32 and
+   on Abhimanyu's checklist. If Flo nags on answers that were always going to arrive,
+   raise the first; if people give up before it speaks, lower it. */
+export const STALL_SLOW_MS = 12000;
+export const STALL_DEAD_MS = 45000;
 function getHeaders() {
   return getAuthHeaders();
 }
@@ -231,6 +250,34 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   const [tokenCanRecharge, setTokenCanRecharge] = useState(false);
   const [tokenSelfRechargeEnabled, setTokenSelfRechargeEnabled] = useState(true);
   const [tokenExhausted, setTokenExhausted] = useState(false);
+
+  // Epic 5 / Story 5.2: the stall watchdog. Every detectable failure was already
+  // handled by epic R8 — a dropped stream, a missing `done`, a 401. What was NOT
+  // handled is a connection that is accepted and then goes quiet: `reader.read()`
+  // waits forever and the typing dots animate with nothing behind them.
+  const [stallState, setStallState] = useState(null);  // null | 'slow' | 'dead'
+  const stallTimersRef = useRef([]);
+
+  const clearStallWatch = useCallback(() => {
+    stallTimersRef.current.forEach(clearTimeout);
+    stallTimersRef.current = [];
+    setStallState(null);
+  }, []);
+
+  /** Restart the watchdog. Called on send and on EVERY inbound event, so a long but
+   *  genuinely-working answer is never declared stalled. */
+  const noteStreamActivity = useCallback(() => {
+    stallTimersRef.current.forEach(clearTimeout);
+    setStallState(null);
+    stallTimersRef.current = [
+      setTimeout(() => setStallState('slow'), STALL_SLOW_MS),
+      setTimeout(() => setStallState('dead'), STALL_DEAD_MS),
+    ];
+  }, []);
+
+  // A timer outliving the component would fire against a dead one — that is where
+  // "cannot update state on an unmounted component" and phantom banners come from.
+  useEffect(() => () => stallTimersRef.current.forEach(clearTimeout), []);
 
   // Ref to track thinkingStartTime inside SSE callback without stale closure
   const thinkingStartTimeRef = useRef(null);
@@ -455,8 +502,14 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
 
     let streamErrored = false;
     let producedOutput = false;   // R1.2 AC2: did this turn render anything at all?
+    // Story 5.2: start the clock the moment the turn begins, not on first token —
+    // a request that is accepted and then never answered is the case being caught.
+    noteStreamActivity();
     try {
       await sendMessageStream(cid, text, currentUser, (event) => {
+        // ANY inbound event counts as life, including a keepalive and a thinking
+        // step. A long but genuinely-working answer must never be called stalled.
+        noteStreamActivity();
         const parsed = event;
 
         // R1.2 AC2: mark that the turn produced *something* user-visible. Purely
@@ -681,6 +734,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
         }
       }
       setStreaming(false);
+      clearStallWatch();  // the turn is over; a live timer would fire at nothing
       // R8: flush a finalized message DIRECTLY here rather than depending only on
       // the streaming-transition effect. If every SSE frame (incl. `done`) arrived
       // in one React batch, `streaming` never committed `true`, so that effect sees
@@ -717,6 +771,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
         };
       }
       setStreaming(false);
+      clearStallWatch();
       // Finalize thinking on error
       setThinkingSteps(ts => ts.map(s => ({ ...s, status: 'done' })));
       // If there was no content at all, show a plain error message with retry
@@ -918,30 +973,59 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
             </div>
           ))}
 
-          {streaming && currentStreamMsg && (
-            <div className="fade-in">
-              {currentStreamMsg.toolCall && (
-                <div style={{ paddingLeft: 42, marginBottom: 4 }}>
-                  <ToolCallBadge tool={currentStreamMsg.toolCall.tool} status={currentStreamMsg.toolCall.status} />
-                </div>
-              )}
-              {thinkingSteps.some(s => ['decision', 'tool_start', 'tool_done', 'searching'].includes(s.step)) && (
-                <ThinkingProcess
-                  steps={thinkingSteps}
-                  isStreaming={streaming}
-                  collapsed={thinkingCollapsed}
-                  duration={thinkingStartTime ? Date.now() - thinkingStartTime : 0}
-                />
-              )}
-              {currentStreamMsg.content ? (
-                <div className="prose-chat">
-                  <MessageRenderer message={{ ...currentStreamMsg, role: 'assistant' }} isStreaming onActionButton={handleActionButton} />
-                </div>
-              ) : (
-                !thinkingSteps.some(s => ['decision', 'tool_start', 'tool_done', 'searching'].includes(s.step)) && <TypingIndicator />
-              )}
-            </div>
-          )}
+          {streaming && currentStreamMsg && (() => {
+            // Epic 5 / Story 5.1. `thinkingSteps` already carries tool_start and
+            // tool_done, so rendering ToolCallBadge alongside the panel announced
+            // the SAME tool twice in two different shapes — owner item 12. The
+            // panel is the single account of progress; the badge is the fallback
+            // for when there is no panel to show.
+            const hasProgressPanel = thinkingSteps.some(
+              s => ['decision', 'tool_start', 'tool_done', 'searching'].includes(s.step)
+            );
+            return (
+              <div className="fade-in" data-testid="chat-stream-block">
+                {/* STREAM_GUTTER is the 42px the avatar occupies (28px + 14px gap).
+                    Every stacked element shares it, so the progress panel, any badge
+                    and the reply body have ONE left edge instead of three. */}
+                {hasProgressPanel ? (
+                  <div style={{ paddingLeft: STREAM_GUTTER, marginBottom: STREAM_GAP }} data-testid="chat-progress-panel">
+                    <ThinkingProcess
+                      steps={thinkingSteps}
+                      isStreaming={streaming}
+                      collapsed={thinkingCollapsed}
+                      duration={thinkingStartTime ? Date.now() - thinkingStartTime : 0}
+                    />
+                  </div>
+                ) : currentStreamMsg.toolCall ? (
+                  <div style={{ paddingLeft: STREAM_GUTTER, marginBottom: STREAM_GAP }} data-testid="chat-tool-badge">
+                    <ToolCallBadge tool={currentStreamMsg.toolCall.tool} status={currentStreamMsg.toolCall.status} />
+                  </div>
+                ) : null}
+                {currentStreamMsg.content ? (
+                  <div className="prose-chat">
+                    <MessageRenderer message={{ ...currentStreamMsg, role: 'assistant' }} isStreaming onActionButton={handleActionButton} />
+                  </div>
+                ) : (
+                  !hasProgressPanel && <TypingIndicator />
+                )}
+                {stallState && (
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    data-testid="chat-stall-notice"
+                    style={{
+                      paddingLeft: STREAM_GUTTER, marginTop: STREAM_GAP,
+                      fontSize: 13, color: 'var(--color-text-muted)',
+                    }}
+                  >
+                    {stallState === 'slow'
+                      ? 'Flo is taking longer than usual. Still working…'
+                      : 'No response yet. The connection may have dropped — try sending it again.'}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {confirmAction && (
             <ConfirmActionCard
