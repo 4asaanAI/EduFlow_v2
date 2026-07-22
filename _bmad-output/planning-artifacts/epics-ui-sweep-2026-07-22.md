@@ -530,3 +530,306 @@ already review, with approve and reject on each
 **When** rendered
 **Then** each carries a `data-testid`, uses CSS variables rather than raw hex, and has a
 visible focus state (UX-DR1, UX-DR4, UX-DR9)
+
+---
+
+## Epic 9: Looks Like The Brochure
+
+Added by Abhimanyu 2026-07-22. The marketing site (`eduflow.layaa.ai`) is warm, rounded
+and playful; the product it sells is flat grey. A parent or a teacher who arrives from
+the website should recognise that they are in the same place.
+
+This is the **design foundation** epic. It changes the shared vocabulary — colour,
+type, shape, motion — and the shared shell. It deliberately does **not** hand-restyle
+the 25 individual tool screens: those consume the same tokens and follow automatically,
+then get polished screen-by-screen in Epics 4–7.
+
+**Requirements covered:** UX-DR1, UX-DR2, UX-DR3 (superseded — see 9.1), UX-DR4,
+UX-DR7, UX-DR9, NFR-A1, NFR-A2
+**Owner decisions, 2026-07-22:** navy dark theme **and** a light theme; "playful but
+calm" — no mascot on daily working screens.
+**Absorbs:** Epic 2's outstanding UX-DR7 mobile type scale, and D-05.
+
+### The measured source
+
+The design language was read off the running marketing site, not invented:
+Baloo 2 (display) + Nunito (body); navy `#0D1323` / `#16203A`; brand blue `#2B8FF0`;
+orange `#F2811D`; mint `#34D399`; violet `#A78BFA`; yellow `#FFC93C`; solid offset
+shadows (`0 5px 0 0`); radii 999px / 28 / 24 / 18 / 14 / 12px.
+
+> **⚠️ The brochure's button colours fail WCAG and must not be copied literally.**
+> Measured: white on `#F2811D` = **2.65:1**; white on `#2B8FF0` = **3.34:1**. NFR-A1
+> requires 4.5:1 for body text. The website carries one huge headline CTA and gets
+> away with it; the app puts 14px labels on hundreds of buttons and does not.
+> Resolution, preserving the look: orange fills take **navy `#16203A` text (6.09:1)**,
+> which reads as *more* toy-like, not less; the blue fill deepens to `#1A6FCE` for
+> white text (**4.99:1**); `#2B8FF0` stays as the accent, link and glow colour on navy
+> (**5.34:1**), where it is genuinely accessible.
+
+### Story 9.1: One place that decides what the platform looks like
+
+As a developer working on any later epic,
+I want a single token file that defines colour, type, shape, elevation and motion for
+both themes,
+So that a screen restyled in Epic 5 cannot drift from one restyled in Epic 4.
+
+**Acceptance Criteria:**
+
+**Given** the existing token architecture — semantic `--color-*` names, legacy
+`--bg-*`/`--c-*` aliases, and 781 uses of generated `--tool-hex-*` aliases across 19
+files
+**When** the new design language ships
+**Then** it ships by **changing the values of the existing tokens**, not by introducing
+a second parallel system — the `--tool-hex-*` aliases are remapped to the navy family so
+the 25 tool screens follow automatically without being edited
+
+**Given** an alias such as `--tool-hex-fff` that is used both as button *text* and as a
+*background* (already noted in `App.css`)
+**When** the remap is written
+**Then** ambiguous aliases are left alone rather than guessed at — a remap that flips one
+usage correctly and the other invisibly is worse than no remap
+
+**Given** both themes
+**When** any token pair is used for body text
+**Then** it measures ≥4.5:1, and ≥3:1 for borders, icons and large text — **verified by a
+committed test that computes the ratios**, not by eye. Light theme is checked
+independently of dark (UX-DR2).
+
+**Given** the `--tool-hex-*` aliases, which today are defined for dark in `index.css` and
+only **partially** overridden for light in `App.css`
+**When** the audit runs
+**Then** any alias whose dark value is a dark surface and which has **no** light override
+is reported, because in light theme it currently renders a dark block on a white page —
+a pre-existing defect the retheme must not inherit
+
+**Given** UX-DR3, which pinned the fonts to Inter and JetBrains Mono
+**When** this story ships
+**Then** UX-DR3 is **superseded and recorded as such** — Baloo 2 (display) and Nunito
+(body) replace Inter; JetBrains Mono is retained for code and tabular figures. A
+requirement is not silently broken; it is explicitly retired with the reason.
+
+**Given** the font change alters text metrics across an inline-styled codebase
+**When** it ships
+**Then** the base size and line-height are held constant so the change is colour-and-shape,
+not a reflow, and fonts load with `font-display: swap` against a matched fallback stack
+
+### Story 9.2: Controls that feel good to press
+
+As anyone using the platform,
+I want buttons, cards, inputs and status pills that look friendly and respond when I
+touch them,
+So that the software feels like it was made for a school rather than for a bank.
+
+**Acceptance Criteria:**
+
+**Given** a primary, secondary, ghost or destructive button
+**When** it is rendered
+**Then** it uses the chunky solid-offset shadow of the brand, a pill or large radius, and
+its label meets 4.5:1 against its own fill (per the palette resolution above)
+
+**Given** a button being pressed
+**When** the press happens
+**Then** it depresses into its shadow using **`transform` only** — never `top`, `margin`
+or `height` — so pressing a button never reflows the row it sits in (this is exactly the
+class of fault that produced D-01)
+
+**Given** a user who has asked their system for reduced motion
+**When** any transition, hover lift or entrance animation would play
+**Then** it is reduced to a near-instant state change — the platform has **no**
+`prefers-reduced-motion` support today, and adding playful motion without it would make
+the product actively worse for the people who need that setting
+
+**Given** any control
+**When** it is focused by keyboard
+**Then** it shows a visible ring of ≥2px at ≥3:1 against the adjacent background, in
+**both** themes (NFR-A2, UX-DR9), and the ring is never removed by a hover or active rule
+
+**Given** a disabled control
+**When** it is rendered
+**Then** it is distinguishable by more than colour alone and carries the real `disabled`
+attribute, not just a faded style
+
+**Given** every primitive
+**When** it is rendered
+**Then** it accepts and forwards a `data-testid` (UX-DR4) and uses CSS variables only,
+never raw hex (UX-DR1)
+
+### Story 9.3: The shell, and text you can actually read on a phone
+
+As the school Owner working one-handed on a phone,
+I want the sidebar, header and chat to carry the new look, and text large enough to read,
+So that the platform is pleasant rather than merely functional at 390px.
+
+**Acceptance Criteria:**
+
+**Given** the mobile type scale, deferred from Epic 2 as UX-DR7 and explicitly parked in
+`index.css` for "the design pass"
+**When** it ships
+**Then** controls **and their labels are raised together**, so the failure the owner
+flagged on 2026-07-22 — 16px dropdowns beside 12px labels — cannot recur. It is a type
+*scale*, not a blanket `!important` on form controls.
+
+**Given** the reverted `pointer: coarse` rule that also fired in Chrome's device
+simulator (D-01)
+**When** the new scale is written
+**Then** it keys off **viewport width**, not input modality, so a desktop browser
+simulating a phone gets the same result as a phone
+
+**Given** a focused input on iOS at the new scale
+**When** it receives focus
+**Then** its computed size is ≥16px so Safari does not zoom the page — achieved *by* the
+scale rather than by overriding it
+
+**Given** the sidebar, header, mobile drawer and chat surfaces
+**When** they render
+**Then** they use the new tokens, and every behaviour Epic 2 shipped — the drawer, the
+overlay, the close button, the notification dot, class ordering — still works unchanged
+
+**Given** `project-context.md`, which tells every future agent the sidebar is "120px
+fixed" (D-05)
+**When** this story ships
+**Then** it states the real width, because it is loaded as authoritative context by every
+BMAD workflow and is currently misinforming them
+
+**Given** the login screen, empty states and error states
+**When** they render
+**Then** they may carry the brand's warmth (mascot, friendly copy); **daily working
+screens may not** — the owner's decision was "playful but calm", because a teacher
+marking 40 attendance rows every morning needs calm
+
+---
+
+## Epic 3: Finding One Record Among Two Thousand
+
+Any user can order, page through and size any list in the platform, so a school of
+1,802 students is navigable rather than merely displayed.
+
+**Requirements covered:** FR82, UX-DR5, UX-DR10 · UX-DR1, UX-DR4, UX-DR9, NFR-A2
+**Owner items:** 5 (class ordering — SHIPPED), 6 (column sorting), rows-per-page
+**Builds on:** Epic 9's primitives. **Consumed by:** Epic 7's School Directory.
+
+### Story 3.1: A table that sorts, once, for the whole platform
+
+As anyone looking at a list of people or records,
+I want to click a column heading to order by it,
+So that finding one record among two thousand is a decision rather than a scroll.
+
+**Acceptance Criteria:**
+
+**Given** FR82, which requires at minimum one column-level sort on any list that may
+exceed 20 rows, and UX-DR5, which requires this be solved **once**
+**When** the story ships
+**Then** there is a single shared table component, and the lists that adopt it are listed
+explicitly in the completion log — including which lists were **not** converted and why,
+so partial coverage is never reported as complete
+
+**Given** a sortable column heading
+**When** it is rendered
+**Then** it is a real `<button>` inside the `<th>`, reachable by keyboard, and the `<th>`
+carries `aria-sort` of `ascending`/`descending`/`none` so a screen-reader user knows the
+current order (WCAG `sortable-table`)
+
+**Given** a table of 1,802 students
+**When** the user sorts by a column
+**Then** **the server performs the sort across the whole result set** and returns page 1
+— sorting only the 20 rows already on screen would be a lie, and is the single most
+likely wrong implementation of this story
+
+**Given** a sort field the server does not recognise
+**When** it is requested
+**Then** the server falls back to its default order rather than interpolating the value
+into a query, and the whitelist of sortable fields is server-side
+
+**Given** a column whose value is missing for every record — `dob`, `gender`, `house` and
+`admission_date` are empty for all 1,802 students
+**When** it is sorted
+**Then** the empty state says **"not recorded"** rather than showing blanks or a zero
+(UX-DR6 precedent, and §12 of the source-of-truth document)
+
+**Given** the table on a phone
+**When** it renders
+**Then** it stays a single element that scrolls inside its wrapper — the `display:block`
+split that broke heading alignment on 2026-07-22 (D-01) must not return, and a test
+asserts the wrapper scrolls rather than the table being re-laid-out
+
+**Given** the shared table
+**When** rendered
+**Then** every interactive element carries a `data-testid`, uses CSS variables, and has a
+visible focus state (UX-DR1, UX-DR4, UX-DR9)
+
+### Story 3.2: Choosing how much you want to see
+
+As the school Owner,
+I want to choose how many rows a list shows me,
+So that I can scan quickly on a laptop and read comfortably on a phone.
+
+**Acceptance Criteria:**
+
+**Given** UX-DR10, specified by the owner on 2026-07-22
+**When** the selector renders
+**Then** it offers **5 / 10 / 15 / 20 / 25 / 30**, defaults to **15**, sits beside the
+pagination control, and shows the active value
+
+**Given** a 1,802-row table
+**When** a page size is chosen
+**Then** **the size is sent to the API and the server paginates** — a client-side slice of
+an already-fetched large payload defeats the entire purpose and is explicitly forbidden
+by UX-DR10
+
+**Given** a user on page 40 of a 20-row listing
+**When** they change the size to 30
+**Then** they are returned to **page 1** rather than stranded on a page that no longer
+exists
+
+**Given** a user who has chosen a size
+**When** they sign out and return
+**Then** their choice is remembered, **keyed per table** — one preference for the whole
+app would mean sizing the student list resizes the audit log
+
+**Given** a stored preference that is corrupt, absent, or a value no longer offered
+(a `localStorage` string, an old build's `50`, or a hand-edited `"abc"`)
+**When** it is read
+**Then** it falls back to 15 without throwing — reading `localStorage` is parsing
+untrusted input, and a crash here would white-screen the whole list
+
+**Given** the server, which today caps `limit` at 500
+**When** a caller requests a size outside the offered set
+**Then** the server still clamps to its own bounds — the client's option list is a
+convenience, never the enforcement
+
+**Given** the selector
+**When** rendered
+**Then** it is a labelled control (not placeholder-only), carries a `data-testid`, and has
+a visible focus state
+
+### Story 3.3: The lists people actually use
+
+As anyone using the platform,
+I want ordering and sizing to work on the lists I open every day, not just in principle,
+So that the capability is real rather than architectural.
+
+**Acceptance Criteria:**
+
+**Given** the backend sort whitelists — `students` allows only `created_at`, `name`,
+`class`; `staff` allows `name`, `staff_type`, `department`, `created_at`
+**When** this story ships
+**Then** the whitelists cover the columns the shared table actually offers, and any column
+the table presents as sortable is one the server can sort — a heading that sorts nothing
+is worse than a heading that does not offer to
+
+**Given** the student list, which sorts by `class_id`
+**When** it is ordered by class
+**Then** it uses the school's real class order — **NUR → LKG → UKG → 1st … 12th**, then
+section A→E — not the raw stored order (`11th-A, 1st-A, 2nd-C…`), which is owner item 5
+and already solved for dropdowns in `lib/classOrder.js`
+
+**Given** every list converted to the shared table
+**When** the story closes
+**Then** each has a 401-unauthenticated and 403-wrong-role test for any endpoint whose
+signature changed, per the platform's standing convention
+
+**Given** the staff list
+**When** it renders
+**Then** it shows `designation` — the readable label already populated for all 89 records
+— rather than `role / sub_category`, which is the exact column the owner objected to
+(§11 of the source-of-truth document). *(Small, safe, adjacent; logged under rule 6.)*

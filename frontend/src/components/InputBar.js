@@ -408,14 +408,14 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
     }
   ), []);
 
-  const inputBg = isDark ? '#252525' : '#ffffff';
-  const inputBorder = isDark ? '#333' : '#e5e5e5';
-  const inputColor = isDark ? '#f5f5f5' : '#171717';
-  const dropdownBg = isDark ? '#252525' : '#ffffff';
-  const dropdownBorder = isDark ? '#333' : '#e5e5e5';
-  const gradBg = isDark ? '#1a1a1a' : '#f5f5f5';
+  const inputBg = 'var(--color-surface-raised)';
+  const inputBorder = 'var(--color-border-strong)';
+  const inputColor = 'var(--color-text-primary)';
+  const dropdownBg = 'var(--color-surface-raised)';
+  const dropdownBorder = 'var(--color-border-strong)';
+  const gradBg = 'var(--color-page)';
   const footerColor = isDark ? '#666' : '#525252';
-  const muted = isDark ? '#888' : '#525252';
+  const muted = 'var(--color-text-muted)';
   const voiceButtonTitle = !voiceSupported
     ? 'Voice input is available in supported browsers with microphone access'
     : isListening
@@ -445,7 +445,7 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
                 onMouseDown={e => { e.preventDefault(); if (showSlash) insertSlashTool(item); else insertAtMention(item); }}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
-                  background: i === selectedIdx ? (isDark ? 'rgba(79,143,247,0.1)' : 'rgba(79,143,247,0.06)') : 'transparent',
+                  background: i === selectedIdx ? 'var(--bg-active)' : 'transparent',
                   border: 'none', cursor: 'pointer', textAlign: 'left', transition: 'var(--transition-fast)',
                 }}
                 onMouseEnter={() => setSelectedIdx(i)}>
@@ -498,12 +498,14 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
           accept=".txt,.md,.html,.htm,.csv,.json,.xml,.pdf,.doc,.docx,.xlsx,.xls,.pptx,.png,.jpg,.jpeg,.heic,.webp,.gif,.zip,.py,.js,.ts,.sql,.log"
         />
 
-        <div style={{
+        {/* .composer-shell owns the focus indication for the whole pill —
+            see index.css. The textarea inside opts out of the global ring. */}
+        <div className="composer-shell" style={{
           background: inputBg,
-          border: `1px solid ${disabled ? (isDark ? '#222' : '#eee') : inputBorder}`,
-          borderRadius: 16, display: 'flex', alignItems: 'center',
+          border: `1px solid ${disabled ? 'var(--color-border-subtle, var(--color-border))' : inputBorder}`,
+          borderRadius: 'var(--radius-xl)', display: 'flex', alignItems: 'center',
           padding: '10px 12px', gap: 8,
-          boxShadow: isDark ? '0 2px 12px rgba(0,0,0,0.3)' : '0 2px 12px rgba(0,0,0,0.06)',
+          boxShadow: 'var(--shadow-md)',
           transition: 'border-color var(--transition-fast), box-shadow var(--transition-fast)',
         }}>
           {/* Attach file button */}
@@ -547,25 +549,51 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
           <textarea ref={textareaRef} data-testid="chat-input" value={text} onChange={handleChange} onKeyDown={handleKeyDown}
             placeholder={disabled ? 'EduFlow is thinking...' : 'Message EduFlow...'}
             disabled={disabled} rows={1}
+            // The composer pill carries the focus indication (.composer-shell
+            // :focus-within). Ringing this transparent, edge-to-edge field as
+            // well drew a second blue pill inside the first one.
+            data-focus-ring="none"
             style={{
               flex: 1, background: 'transparent', border: 'none', outline: 'none',
-              color: disabled ? muted : inputColor, fontSize: 14, resize: 'none',
-              lineHeight: 1.5, padding: 0, fontFamily: 'Inter, -apple-system, sans-serif',
+              color: disabled ? muted : inputColor, fontSize: 'var(--text-base)', resize: 'none',
+              lineHeight: 1.5, padding: 0, fontFamily: 'var(--font-body)',
               maxHeight: 160, overflowY: 'auto',
             }}
           />
-          <button data-testid="chat-send" onClick={handleSend}
-            disabled={disabled || uploadingFile || (!text.trim() && !attachedFile)}
-            style={{
-              width: 32, height: 32, borderRadius: 10,
-              background: (disabled || uploadingFile || (!text.trim() && !attachedFile)) ? (isDark ? '#333' : '#e5e5e5') : '#171717',
-              border: 'none',
-              cursor: (disabled || uploadingFile || (!text.trim() && !attachedFile)) ? 'not-allowed' : 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              transition: 'all var(--transition-fast)',
-            }}>
-            <ArrowUp size={15} color={(disabled || !text.trim() && !attachedFile) ? '#666' : '#fff'} strokeWidth={2.5} />
-          </button>
+          {/* Send.
+              It used to fill with --color-border-strong when idle and near-black
+              when ready. --color-border-strong is a BORDER token, raised to a
+              slate blue so a secondary button's outline can clear 3:1; used as a
+              fill it made the button look like a washed-out grey-blue tile.
+              Now: brand blue with a chunky press when there is something to
+              send, a plain recessed surface when there is not. */}
+          {(() => {
+            const inert = disabled || uploadingFile || (!text.trim() && !attachedFile);
+            return (
+              <button data-testid="chat-send" onClick={handleSend} disabled={inert}
+                aria-label="Send message"
+                style={{
+                  width: 34, height: 34, borderRadius: 'var(--radius-md)',
+                  background: inert ? 'var(--color-surface-raised)' : 'var(--brand-blue-fill)',
+                  border: inert ? '1px solid var(--color-border)' : 'none',
+                  boxShadow: inert ? 'none' : '0 3px 0 0 var(--brand-blue-press)',
+                  cursor: inert ? 'not-allowed' : 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  transition: 'background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast)',
+                }}
+                // transform only, so pressing send never nudges the composer.
+                onMouseDown={e => { if (!inert) e.currentTarget.style.transform = 'translateY(2px)'; }}
+                onMouseUp={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
+              >
+                <ArrowUp
+                  size={16}
+                  color={inert ? 'var(--color-text-muted)' : 'var(--on-brand-blue)'}
+                  strokeWidth={2.6}
+                />
+              </button>
+            );
+          })()}
         </div>
         <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8, color: footerColor, fontSize: 11, fontWeight: 400 }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Paperclip size={10} /> attach</span>

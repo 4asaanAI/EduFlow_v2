@@ -21,7 +21,7 @@ function useThemeVars(isDark) {
     border: isDark ? '#303030' : '#e4e4e4',
     borderFocus: ACCENT,
     text: isDark ? '#f0f0f0' : '#181818',
-    textSub: isDark ? '#a0a0a0' : '#6b7280',
+    textSub: 'var(--color-text-secondary)',
     textMuted: isDark ? '#666666' : '#9ca3af',
     heroBg: isDark
       ? 'linear-gradient(155deg,rgba(167,139,250,0.22) 0%,rgba(24,24,24,0.0) 70%)'
@@ -441,7 +441,7 @@ export default function StudentProfileEditor({ isDark, currentUser, onClose }) {
             Student
           </span>
           {classLabel && (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: t.textSub, background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)', padding: '3px 10px', borderRadius: 20 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: t.textSub, background: 'var(--bg-hover)', padding: '3px 10px', borderRadius: 20 }}>
               <GraduationCap size={11} /> {classLabel}
             </span>
           )}

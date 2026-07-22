@@ -108,7 +108,8 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 - All API calls from React components must go through `apiFetch` (in `src/lib/api.js`) or `authFetch` (in `UserContext.js`) — these handle 401 → auto-logout redirect
 - `executeTool` and all chat API functions are exported from `src/lib/api.js` — do not re-implement inline fetch in components
 - Streaming chat responses use SSE (`sendMessageStream`) — never poll
-- The floating chat input is pinned to `bottom: 0; left: 120px` — any new layout must respect the 120px fixed sidebar width
+- **Sidebar width is 260px on desktop, and a 280px slide-over drawer below 768px** (`Sidebar.js`, `.sidebar-wrapper`). This line previously said "120px fixed" and was wrong; it is loaded as authoritative context by every BMAD workflow, so it was misinforming agents about layout. Corrected 2026-07-22 (closes D-05). The chat composer sits inside `.app-main-content`, which is a flex sibling of the sidebar — it does not need a hard-coded left offset.
+- **Design tokens are the only place colours are decided** (`index.css` `:root` for dark, `theme.css` for light, plus the `--tool-hex-*` aliases both files remap). Never compute a colour in JS as `isDark ? '#hex' : '#hex'` — 139 such pairs were removed in Epic 9 precisely because they made the shell invisible to theming. `frontend/src/components/__tests__/designTokens.contrast.test.js` fails the build if a token pair drops below WCAG.
 
 **FastAPI Patterns**
 - Every router file imports `get_current_user` from `middleware.auth` — never redefine it locally

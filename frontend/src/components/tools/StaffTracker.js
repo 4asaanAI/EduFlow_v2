@@ -3,6 +3,8 @@ import { adminResetPassword, createStaff, deactivateStaff, decideProfileChangeRe
 import { ArrowRight, CheckCircle, Edit3, KeyRound, Plus, RefreshCw, X, XCircle } from 'lucide-react';
 import { useUser } from '../../contexts/UserContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import DataTable, { cellValue } from '../ui/DataTable';
+import { useTablePageSize } from '../../hooks/useTablePrefs';
 
 const blankForm = {
   name: '',
@@ -318,8 +320,47 @@ export default function StaffTracker() {
   // the server refuses regardless of what this says.
   const canReviewChanges = currentUser.role === 'owner'
     || (currentUser.role === 'admin' && currentUser.sub_category === 'principal');
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(total / 20)), [total]);
   const attendanceLiveLabel = lastUpdatedLabel(attendanceStreamUpdatedAt);
+
+  // UX-DR10: page size, remembered per table. Keyed 'staff', so sizing this
+  // list does not resize the student list.
+  const [pageSize, setPageSize] = useTablePageSize('staff');
+  // Both reset to page 1 — changing either can shrink the number of pages, and
+  // being left on a page that no longer exists shows an empty list.
+  const changePageSize = useCallback((n) => { setPageSize(n); setPage(1); }, [setPageSize]);
+  const changeSort = useCallback((next) => { setSort(next); setPage(1); }, []);
+
+  const staffColumns = useMemo(() => [
+    {
+      key: 'name', label: 'Name', sortKey: 'name',
+      render: (profile) => (
+        <div>
+          <div style={{ color: 'var(--c-text)', fontFamily: 'var(--font-display)', fontWeight: 700 }}>{profile.name}</div>
+          <div style={{ color: 'var(--c-faint)', fontSize: 'var(--text-xs)' }}>{profile.employee_id || 'No employee ID'}</div>
+        </div>
+      ),
+    },
+    // `designation` is the readable label the school actually uses and is
+    // populated for all 89 records. The old column showed `role /
+    // sub_category` ("teacher / subject_teacher"), which is the one the owner
+    // objected to on 2026-07-22.
+    { key: 'designation', label: 'Designation', sortKey: 'designation', render: (p) => designationOf(p) },
+    { key: 'department', label: 'Department', sortKey: 'department', render: (p) => cellValue(p.department) },
+    {
+      key: 'leave', label: 'Leave Balance',
+      render: (p) => `CL ${p.casual_leave_balance ?? 0} · ML ${p.medical_leave_balance ?? 0} · EL ${p.earned_leave_balance ?? 0}`,
+    },
+    {
+      key: 'actions', label: 'Actions',
+      render: (profile) => (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <ActionButton variant="secondary" onClick={() => setEditing(profile)}><Edit3 size={13} /></ActionButton>
+          {canResetPassword && <ActionButton variant="secondary" onClick={() => setResetTarget(profile)}><KeyRound size={13} /></ActionButton>}
+          {profile.is_active !== false && <ActionButton variant="danger" onClick={() => deactivate(profile)}>Deactivate</ActionButton>}
+        </div>
+      ),
+    },
+  ], [canResetPassword]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -327,7 +368,8 @@ export default function StaffTracker() {
     setError('');
     try {
       const [staffRes, leavesRes, requestsRes] = await Promise.all([
-        getStaff({ page, sort }),
+        // The page size goes to the API so the SERVER paginates (UX-DR10).
+        getStaff({ page, sort, limit: pageSize }),
         getPendingLeaves().catch(() => ({ data: [] })),
         canReviewChanges ? getProfileChangeRequests('pending').catch(() => ({ data: [] }))
                          : Promise.resolve({ data: [] }),
@@ -345,7 +387,7 @@ export default function StaffTracker() {
     }
     setLoading(false);
     setLeavesLoading(false);
-  }, [page, sort, canReviewChanges]);
+  }, [page, sort, pageSize, canReviewChanges]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -439,45 +481,22 @@ export default function StaffTracker() {
               <option value="created_at">Newest first</option>
             </select>
           </div>
-          <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, overflowX: 'auto' }}>
-            {staff.length === 0 ? (
-              <div style={{ padding: 30, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13 }}>No staff records found</div>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
-                <thead>
-                  <tr>
-                    {['Name', 'Designation', 'Department', 'Leave Balance', 'Actions'].map((header) => (
-                      <th key={header} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 750, color: 'var(--c-faint)', textTransform: 'uppercase', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{header}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {staff.map((profile, index) => (
-                    <tr key={profile.id} style={{ borderBottom: index < staff.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
-                      <td style={{ padding: '10px 14px', color: 'var(--c-text)', fontSize: 13, fontWeight: 650 }}>{profile.name}<div style={{ color: 'var(--c-faint)', fontSize: 11 }}>{profile.employee_id || 'No employee ID'}</div></td>
-                      <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12 }}>{designationOf(profile)}</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--c-faint)', fontSize: 12 }}>{profile.department || '—'}</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12 }}>CL {profile.casual_leave_balance ?? 0} · ML {profile.medical_leave_balance ?? 0} · EL {profile.earned_leave_balance ?? 0}</td>
-                      <td style={{ padding: '10px 14px' }}>
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          <ActionButton variant="secondary" onClick={() => setEditing(profile)}><Edit3 size={13} /></ActionButton>
-                          {canResetPassword && <ActionButton variant="secondary" onClick={() => setResetTarget(profile)}><KeyRound size={13} /></ActionButton>}
-                          {profile.is_active !== false && <ActionButton variant="danger" onClick={() => deactivate(profile)}>Deactivate</ActionButton>}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-          {total > 20 && (
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 14 }}>
-              <ActionButton variant="secondary" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1}>Prev</ActionButton>
-              <span style={{ color: 'var(--c-faint)', fontSize: 12, alignSelf: 'center' }}>Page {page} of {totalPages}</span>
-              <ActionButton variant="secondary" onClick={() => setPage((current) => current + 1)} disabled={page >= totalPages}>Next</ActionButton>
-            </div>
-          )}
+          <DataTable
+            tableId="staff"
+            caption="Staff, sortable by column"
+            columns={staffColumns}
+            rows={staff}
+            rowKey={(profile) => profile.id}
+            sort={sort}
+            onSortChange={changeSort}
+            page={page}
+            total={total}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={changePageSize}
+            emptyTitle="No staff records found"
+            emptyMessage="Try a different sort, or add a member of staff."
+          />
         </>
       )}
 

@@ -40,8 +40,8 @@ function PlanCard({ plan, meta, isDark, onSelect, busy, isSelected }) {
   const [hovered, setHovered] = useState(false);
   const Icon = meta.icon;
   const accent = isDark ? meta.accent.dark : meta.accent.light;
-  const cardBg = (hovered || isSelected) ? (isDark ? meta.bg.dark : meta.bg.light) : (isDark ? '#1a1a1a' : '#ffffff');
-  const borderCol = (hovered || isSelected) ? accent : (isDark ? '#2a2a2a' : '#e5e7eb');
+  const cardBg = (hovered || isSelected) ? (isDark ? meta.bg.dark : meta.bg.light) : 'var(--color-surface)';
+  const borderCol = (hovered || isSelected) ? accent : 'var(--color-border)';
   const textCol = isDark ? '#f0f0f0' : '#111827';
   const mutedCol = isDark ? '#888' : '#6b7280';
 
@@ -227,7 +227,7 @@ export default function TokenUpgradeModal({ onClose, currentUsage, roleLimit, ca
                     <span style={{ fontSize: 10, color: muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>This month</span>
                     <span style={{ fontSize: 10, fontWeight: 700, color: barColor }}>{fmtUsed(currentUsage)} / {fmtUsed(roleLimit)}</span>
                   </div>
-                  <div style={{ height: 5, borderRadius: 4, background: isDark ? '#2a2a2a' : '#e5e7eb', overflow: 'hidden' }}>
+                  <div style={{ height: 5, borderRadius: 4, background: 'var(--color-border)', overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 4, transition: 'width 0.4s' }} />
                   </div>
                 </div>
@@ -235,7 +235,7 @@ export default function TokenUpgradeModal({ onClose, currentUsage, roleLimit, ca
               </div>
             )}
           </div>
-          <button onClick={onClose} style={{ background: isDark ? '#222' : '#f3f4f6', border: 'none', color: muted, cursor: 'pointer', padding: 7, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <button onClick={onClose} style={{ background: 'var(--bg-hover)', border: 'none', color: muted, cursor: 'pointer', padding: 7, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <X size={14} />
           </button>
         </div>

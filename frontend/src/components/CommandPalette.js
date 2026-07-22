@@ -143,16 +143,16 @@ export default function CommandPalette({ onSelectTool, onClose }) {
         onClick={e => e.stopPropagation()}
         style={{
           width: 540, maxWidth: '95vw',
-          background: isDark ? '#1e1e1e' : '#ffffff',
-          border: `1px solid ${isDark ? '#333' : '#e5e5e5'}`,
+          background: 'var(--color-surface)',
+          border: `1px solid ${'var(--color-border-strong)'}`,
           borderRadius: 14,
           boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
           overflow: 'hidden',
         }}
       >
         {/* Search bar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: `1px solid ${isDark ? '#2e2e2e' : '#f0f0f0'}` }}>
-          <Command size={16} color={isDark ? '#888' : '#525252'} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: `1px solid ${'var(--color-border)'}` }}>
+          <Command size={16} color={'var(--color-text-muted)'} />
           <input
             ref={inputRef}
             value={query}
@@ -161,21 +161,21 @@ export default function CommandPalette({ onSelectTool, onClose }) {
             placeholder="Search tools…"
             style={{
               flex: 1, background: 'transparent', border: 'none', outline: 'none',
-              fontSize: 15, color: isDark ? '#f5f5f5' : '#171717', fontFamily: 'Inter, sans-serif',
+              fontSize: 15, color: 'var(--color-text-primary)', fontFamily: 'Inter, sans-serif',
             }}
           />
           {query && (
-            <button onClick={() => setQuery('')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: isDark ? '#888' : '#525252', display: 'flex' }}>
+            <button onClick={() => setQuery('')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--color-text-muted)', display: 'flex' }}>
               <X size={14} />
             </button>
           )}
-          <kbd style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: isDark ? '#2e2e2e' : '#f5f5f5', color: isDark ? '#888' : '#525252', border: `1px solid ${isDark ? '#444' : '#e5e5e5'}`, fontFamily: 'inherit' }}>esc</kbd>
+          <kbd style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: isDark ? '#2e2e2e' : '#f5f5f5', color: 'var(--color-text-muted)', border: `1px solid ${isDark ? '#444' : '#e5e5e5'}`, fontFamily: 'inherit' }}>esc</kbd>
         </div>
 
         {/* Results */}
         <div ref={listRef} style={{ maxHeight: 360, overflowY: 'auto' }}>
           {filtered.length === 0 ? (
-            <div style={{ padding: '32px 16px', textAlign: 'center', color: isDark ? '#888' : '#525252', fontSize: 13 }}>
+            <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>
               No tools found for "{query}"
             </div>
           ) : (
@@ -196,15 +196,15 @@ export default function CommandPalette({ onSelectTool, onClose }) {
                 >
                   <div style={{
                     width: 34, height: 34, borderRadius: 8, flexShrink: 0,
-                    background: isDark ? '#252525' : '#f5f5f5',
-                    border: `1px solid ${isDark ? '#333' : '#e5e5e5'}`,
+                    background: 'var(--color-surface-raised)',
+                    border: `1px solid ${'var(--color-border-strong)'}`,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
                     <Icon size={15} color={isDark ? '#a0a0a0' : '#737373'} />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: isDark ? '#f5f5f5' : '#171717' }}>{tool.name}</div>
-                    <div style={{ fontSize: 11, color: isDark ? '#888' : '#525252', marginTop: 1 }}>{tool.subtitle}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>{tool.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 1 }}>{tool.subtitle}</div>
                   </div>
                   {isActive && <div style={{ fontSize: 10, color: isDark ? '#555' : '#ccc' }}>↵</div>}
                 </button>
@@ -214,9 +214,9 @@ export default function CommandPalette({ onSelectTool, onClose }) {
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '8px 16px', borderTop: `1px solid ${isDark ? '#2e2e2e' : '#f0f0f0'}`, display: 'flex', gap: 12, alignItems: 'center' }}>
+        <div style={{ padding: '8px 16px', borderTop: `1px solid ${'var(--color-border)'}`, display: 'flex', gap: 12, alignItems: 'center' }}>
           {[['↑↓', 'navigate'], ['↵', 'open'], ['esc', 'close']].map(([key, label]) => (
-            <span key={key} style={{ fontSize: 10, color: isDark ? '#888' : '#525252', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span key={key} style={{ fontSize: 10, color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
               <kbd style={{ padding: '1px 5px', borderRadius: 3, background: isDark ? '#2e2e2e' : '#f5f5f5', border: `1px solid ${isDark ? '#444' : '#e5e5e5'}`, fontFamily: 'inherit', fontSize: 10 }}>{key}</kbd>
               {label}
             </span>

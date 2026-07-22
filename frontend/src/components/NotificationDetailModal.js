@@ -327,7 +327,7 @@ export default function NotificationDetailModal({ notification, onClose }) {
             <button
               onClick={onClose}
               style={{
-                background: isDark ? '#222' : '#f3f4f6', border: 'none', color: 'var(--c-muted)',
+                background: 'var(--bg-hover)', border: 'none', color: 'var(--c-muted)',
                 cursor: 'pointer', padding: 7, borderRadius: 9, flexShrink: 0,
                 display: 'flex', alignItems: 'center',
               }}

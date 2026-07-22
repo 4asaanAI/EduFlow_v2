@@ -47,16 +47,16 @@ export function ToastProvider({ children }) {
           return (
             <div key={t.id} className="toast" style={{
               display: 'flex', alignItems: 'center', gap: 10,
-              background: isDark ? '#1e1e1e' : '#ffffff',
-              border: `1px solid ${isDark ? '#2e2e2e' : '#e5e5e5'}`,
+              background: 'var(--color-surface)',
+              border: `1px solid ${'var(--color-border)'}`,
               borderLeft: `3px solid ${color}`,
               borderRadius: 10, padding: '10px 14px',
               boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
               maxWidth: 340, pointerEvents: 'auto',
             }}>
               <Icon size={15} color={color} />
-              <span style={{ fontSize: 13, color: isDark ? '#f5f5f5' : '#171717', flex: 1 }}>{t.message}</span>
-              <button onClick={() => dismiss(t.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: isDark ? '#888' : '#525252', display: 'flex', padding: 2 }}>
+              <span style={{ fontSize: 13, color: 'var(--color-text-primary)', flex: 1 }}>{t.message}</span>
+              <button onClick={() => dismiss(t.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--color-text-muted)', display: 'flex', padding: 2 }}>
                 <X size={13} />
               </button>
             </div>

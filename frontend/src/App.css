@@ -1,27 +1,32 @@
 /* ─── Theme CSS Variables ─────────────────────────────── */
+/* Epic 9: the --c-* set is the older of the two token vocabularies and is used
+   heavily inside the tool screens. Retuned to the same navy/paper palette as
+   --color-* so the two vocabularies cannot disagree about what "the card
+   background" is. */
 [data-theme="dark"] {
-  --c-bg:     #1a1a1a;
-  --c-deep:   #141414;
-  --c-app:    #111111;
-  --c-border: #2e2e2e;
+  --c-bg:     #1e1e1e;
+  --c-deep:   #2a2a2a;
+  --c-app:    #141414;
+  --c-border: #4d4d4d;
   --c-text:   #f5f5f5;
-  --c-muted:  #a0a0a0;
-  --c-faint:  #666666;
-  --c-input:  #252525;
+  --c-muted:  #A8A8A8;
+  /* was #666666 at 3.03:1 on the page — under the 4.5:1 body-text minimum */
+  --c-faint:  #8A8A8A;
+  --c-input:  #262626;
 }
 
 [data-theme="light"] {
   --c-bg:     #ffffff;
-  --c-deep:   #fafafa;
-  --c-app:    #f5f5f5;
-  --c-border: #e5e5e5;
-  --c-text:   #171717;
-  --c-muted:  #525252;
-  --c-faint:  #525252;
-  --c-input:  #fafafa;
+  --c-deep:   #EEF3FC;
+  --c-app:    #F4F7FD;
+  --c-border: #D8E2F2;
+  --c-text:   #16203A;
+  --c-muted:  #4A5C84;
+  --c-faint:  #4A5C84;
+  --c-input:  #EEF3FC;
 }
 
-body { background: var(--c-app, #111111); }
+body { background: var(--c-app, #141414); }
 /* dvh so the mobile address bar can't push the bottom off-screen;
    100vh stays as the fallback for browsers without dvh support. */
 .App { height: 100vh; display: flex; }
@@ -108,50 +113,93 @@ body { background: var(--c-app, #111111); }
 /* ─── Spin animation (used by StaffTracker live dot) ─────── */
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-/* ─── White theme: tool hex overrides ──────────────────── */
+/* ─── Light theme: tool hex overrides ──────────────────────
+   Epic 9 retuned these to the blue-tinted paper palette AND closed five gaps.
+
+   Five aliases whose DARK value is a dark surface had no light override at
+   all, so in light theme they painted a dark block on a white page: 7f1d1d,
+   444, f0f0f0, 171717, d5d5d5. That was a pre-existing defect; the retheme
+   fixes it rather than inheriting it. */
 [data-theme="light"] {
   /* Surface / background tokens: dark surfaces → light equivalents */
   --tool-hex-1e1e1e: #ffffff;
-  --tool-hex-252525: #f5f5f5;
-  --tool-hex-2e2e2e: #e5e5e5;
-  --tool-hex-333:    #cccccc;
-  --tool-hex-222:    #e5e5e5;
-  --tool-hex-161616: #f0f0f0;
-  --tool-hex-1a1a1a: #f5f5f5;
-  --tool-hex-141414: #eeeeee;
-  --tool-hex-111111: #e8e8e8;
-  --tool-hex-242424: #f5f5f5;
+  --tool-hex-252525: #EEF3FC;
+  --tool-hex-2e2e2e: #D8E2F2;
+  --tool-hex-333:    #B9C8E4;
+  --tool-hex-222:    #D8E2F2;
+  --tool-hex-161616: #E8EEF9;
+  --tool-hex-1a1a1a: #F4F7FD;
+  --tool-hex-141414: #EEF3FC;
+  --tool-hex-111111: #E8EEF9;
+  --tool-hex-242424: #EEF3FC;
   /* "Light blue tint" for filled timetable/calendar cells */
-  --tool-hex-1e2433: #eff6ff;
-  /* Text tokens: light values (white/near-white) → dark text in light mode */
-  --tool-hex-f5f5f5: #171717;
-  --tool-hex-fafafa: #525252;
-  --tool-hex-f9f9f9: #525252;
+  --tool-hex-1e2433: #EEF3FC;
+  /* NEAR-WHITE ALIASES STAY NEAR-WHITE. Do not "fix" these to dark values.
+     ------------------------------------------------------------------
+     These used to be remapped to dark text colours here, on the reasoning that
+     a near-white value must be text. It is not: the tool screens write
+     `isDark ? '--tool-hex-252525' : '--tool-hex-fafafa'`, so the LIGHT branch
+     wants a LIGHT value — a card, an input, a hover fill.
+
+     Darkening them turned every such surface into a dark slab on a white page.
+     Abhimanyu reported it on Query & Support, where the whole "Submit New
+     Query" form rendered as dark blue boxes. Epic 9 made it worse (grey ->
+     slate blue) but did not cause it; the remap was already wrong.
+
+     A component that genuinely needs the primary text colour uses
+     --color-text-primary or --c-text. It must never reach for a hex alias
+     named after a near-white value and hope this file redefines it.
+
+     Verified before changing: exactly one place in the codebase uses any of
+     these in a `color:` on the light branch, and it is a divider that wants to
+     be light grey anyway. */
+  --tool-hex-f5f5f5: #f5f5f5;
+  --tool-hex-fafafa: #fafafa;
+  --tool-hex-f9f9f9: #f9f9f9;
+  --tool-hex-f0f0f0: #f0f0f0;
+  --tool-hex-d5d5d5: #d5d5d5;
   /* NOTE: --tool-hex-fff and --tool-hex-ffffff are intentionally NOT remapped.
      They are used both as white button text AND as white backgrounds.
      Components that need theme-aware backgrounds now use --c-bg / --c-deep instead. */
-  --tool-hex-a3a3a3: #525252;
-  --tool-hex-a0a0a0: #525252;
-  --tool-hex-737373: #525252;
-  --tool-hex-666:    #525252;
-  --tool-hex-555:    #525252;
-  --tool-hex-bbb:    #525252;
-  --tool-hex-ccc:    #d4d4d4;
-  --tool-hex-d4d4d4: #cccccc;
-  --tool-hex-888:    #525252;
-  --tool-hex-525252: #525252;
-  /* Missing dark surface tokens */
-  --tool-hex-3e3e3e: #d4d4d4;
-  --tool-hex-374151: #6b7280;
-  --tool-hex-1a3a2a: #f0fdf4;
-  --tool-hex-1e3a5f: #eff6ff;
-  --tool-hex-1a2e1a: #f0fdf4;
-  /* e5e5e5 in dark = light gray already, keep as border in light */
-  --tool-hex-e5e5e5: #d4d4d4;
-}
-
-/* ─── Additional missing dark theme hex vars ─────────────── */
-:root {
-  --tool-hex-3e3e3e: #3e3e3e;
-  --tool-hex-374151: #374151;
+  --tool-hex-a3a3a3: #4A5C84;
+  --tool-hex-a0a0a0: #4A5C84;
+  --tool-hex-737373: #4A5C84;
+  --tool-hex-666:    #4A5C84;
+  --tool-hex-555:    #4A5C84;
+  --tool-hex-bbb:    #4A5C84;
+  --tool-hex-ccc:    #C3CFE6;
+  --tool-hex-d4d4d4: #B9C8E4;
+  --tool-hex-888:    #4A5C84;
+  --tool-hex-525252: #4A5C84;
+  --tool-hex-3e3e3e: #B9C8E4;
+  --tool-hex-374151: #5A6B95;
+  --tool-hex-1a3a2a: #E6F8F0;
+  --tool-hex-1e3a5f: #EEF3FC;
+  --tool-hex-1a2e1a: #E6F8F0;
+  --tool-hex-e5e5e5: #B9C8E4;
+  /* --- gaps closed by Epic 9: these had NO light override before --- */
+  --tool-hex-7f1d1d: #FDE7EB;   /* dark red surface → light red tint */
+  --tool-hex-444:    #B9C8E4;   /* dark border → light border */
+  --tool-hex-171717: #16203A;   /* a dark value by name; stays dark. */
+  /* f0f0f0 and d5d5d5 were briefly remapped dark here too. Reverted — see the
+     near-white note above; they are surfaces, not text. */
+  /* brand + status: deepen where the colour has to carry text on white */
+  --tool-hex-4f8ff7: #1A6FCE;
+  --tool-hex-60a5fa: #1A6FCE;
+  --tool-hex-93c5fd: #124D91;
+  --tool-hex-fb923c: #C5610C;
+  --tool-hex-fbbf24: #B06E00;
+  --tool-hex-facc15: #B06E00;
+  --tool-hex-fcd34d: #B06E00;
+  --tool-hex-f87171: #D63C56;
+  --tool-hex-fca5a5: #D63C56;
+  --tool-hex-34d399: #12855C;
+  --tool-hex-10b981: #12855C;
+  --tool-hex-22c55e: #12855C;
+  --tool-hex-6ee7b7: #12855C;
+  --tool-hex-a78bfa: #6D45C7;
+  --tool-hex-8b5cf6: #6D45C7;
+  --tool-hex-818cf8: #4F46E5;
+  --tool-hex-a5b4fc: #4F46E5;
+  --tool-hex-6366f1: #4F46E5;
 }

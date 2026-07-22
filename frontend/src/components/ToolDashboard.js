@@ -169,24 +169,24 @@ function ToolCard({ tool, onClick, isDark }) {
       style={{
         display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
         padding: '16px 16px 14px', textAlign: 'left', outline: 'none', cursor: 'pointer',
-        background: hov ? (isDark ? '#222' : '#fafafa') : (isDark ? '#1a1a1a' : '#ffffff'),
-        border: `1px solid ${hov ? tool.color + '55' : (isDark ? '#2e2e2e' : '#e5e5e5')}`,
+        background: hov ? 'var(--bg-hover)' : 'var(--color-surface)',
+        border: `1px solid ${hov ? tool.color + '55' : 'var(--color-border)'}`,
         borderRadius: 14, transition: 'all 0.15s ease',
         boxShadow: hov ? `0 4px 16px ${tool.color}15` : 'none',
       }}
     >
       <div style={{
         width: 36, height: 36, borderRadius: 10, marginBottom: 11,
-        background: hov ? `${tool.color}18` : (isDark ? '#252525' : '#f5f5f5'),
+        background: hov ? `${tool.color}18` : 'var(--color-surface-raised)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         transition: 'all 0.15s ease',
       }}>
-        <Icon size={17} color={hov ? tool.color : (isDark ? '#888' : '#525252')} />
+        <Icon size={17} color={hov ? tool.color : 'var(--color-text-muted)'} />
       </div>
-      <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? '#f5f5f5' : '#171717', letterSpacing: '-0.01em', lineHeight: 1.3, marginBottom: 3, display: 'block' }}>
+      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', letterSpacing: '-0.01em', lineHeight: 1.3, marginBottom: 3, display: 'block' }}>
         {tool.name}
       </span>
-      <span style={{ fontSize: 11, color: isDark ? '#888' : '#525252', lineHeight: 1.4, display: 'block' }}>
+      <span style={{ fontSize: 11, color: 'var(--color-text-muted)', lineHeight: 1.4, display: 'block' }}>
         {tool.subtitle}
       </span>
     </button>
@@ -214,10 +214,10 @@ export default function ToolDashboard({ onSelectTool }) {
     : currentUser.role?.charAt(0).toUpperCase() + currentUser.role?.slice(1);
 
   const roleColor = { admin: '#4f8ff7', teacher: '#34d399' }[currentUser.role] || '#4f8ff7';
-  const bg   = isDark ? '#141414' : '#f5f5f5';
-  const text = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#888' : '#525252';
-  const subtle = isDark ? '#2e2e2e' : '#e5e5e5';
+  const bg   = 'var(--color-surface-muted)';
+  const text = 'var(--color-text-primary)';
+  const muted = 'var(--color-text-muted)';
+  const subtle = 'var(--color-border)';
 
   return (
     <div style={{ flex: 1, height: '100%', overflowY: 'auto', background: bg, padding: '32px 32px 48px' }}>
@@ -246,11 +246,11 @@ export default function ToolDashboard({ onSelectTool }) {
           onClick={() => { const e = new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }); document.dispatchEvent(e); }}
           style={{
             display: 'flex', alignItems: 'center', gap: 8,
-            background: isDark ? '#1e1e1e' : '#ffffff', border: `1px solid ${subtle}`,
+            background: 'var(--color-surface)', border: `1px solid ${subtle}`,
             borderRadius: 8, padding: '5px 12px', cursor: 'pointer', color: muted, fontSize: 12,
           }}>
           <span>Quick navigate</span>
-          <kbd style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: isDark ? '#2e2e2e' : '#f0f0f0', border: `1px solid ${subtle}`, fontFamily: 'inherit' }}>
+          <kbd style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'var(--color-border)', border: `1px solid ${subtle}`, fontFamily: 'inherit' }}>
             {navigator.platform?.includes('Mac') ? '⌘K' : 'Ctrl+K'}
           </kbd>
         </button>
@@ -266,7 +266,7 @@ export default function ToolDashboard({ onSelectTool }) {
               return (
                 <button key={tool.id} onClick={() => onSelectTool(tool.id)} style={{
                   display: 'flex', alignItems: 'center', gap: 8,
-                  background: isDark ? '#1e1e1e' : '#ffffff', border: `1px solid ${subtle}`,
+                  background: 'var(--color-surface)', border: `1px solid ${subtle}`,
                   borderRadius: 8, padding: '7px 12px', cursor: 'pointer', color: text, fontSize: 12, fontWeight: 500,
                 }}>
                   <Icon size={13} color={tool.color} />

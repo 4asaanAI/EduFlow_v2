@@ -8,6 +8,7 @@ import TokenBudgetBar from './TokenBudgetBar';
 import { executeTool } from '../lib/api';
 import { getAuthHeaders } from '../lib/authSession';
 import { Sparkles } from 'lucide-react';
+import BotMascot from './ui/BotMascot';
 import ThinkingProcess from './ThinkingProcess';
 import ConfirmActionCard from './ConfirmActionCard';
 import ChatFollowup from './ChatFollowup';
@@ -82,8 +83,8 @@ function HealthScoreWidget({ user }) {
   return (
     <div style={{
       display: 'inline-flex', alignItems: 'center', gap: 14,
-      background: isDark ? '#1e1e1e' : '#ffffff',
-      border: `1px solid ${isDark ? '#2e2e2e' : '#e5e5e5'}`,
+      background: 'var(--color-surface)',
+      border: `1px solid ${'var(--color-border)'}`,
       borderRadius: 14, padding: '14px 20px', marginBottom: 24,
       boxShadow: 'var(--shadow-sm)',
     }}>
@@ -166,14 +167,14 @@ function QuickActions({ onSend, isDark, user }) {
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, maxWidth: 500, margin: '0 auto' }}>
       {suggestions.map((s, i) => (
         <button key={i} onClick={() => onSend(s)} style={{
-          background: isDark ? '#1e1e1e' : '#ffffff',
-          border: `1px solid ${isDark ? '#2e2e2e' : '#e5e5e5'}`,
+          background: 'var(--color-surface)',
+          border: `1px solid ${'var(--color-border)'}`,
           borderRadius: 12, padding: '12px 14px', textAlign: 'left',
           color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer',
           transition: 'all var(--transition-fast)', lineHeight: 1.4,
         }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = isDark ? '#444' : '#ccc'; e.currentTarget.style.background = isDark ? '#252525' : '#fafafa'; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = isDark ? '#2e2e2e' : '#e5e5e5'; e.currentTarget.style.background = isDark ? '#1e1e1e' : '#ffffff'; }}>
+          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--color-text-muted)'; e.currentTarget.style.background = 'var(--color-surface-raised)'; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.background = 'var(--color-surface)'; }}>
           {s}
         </button>
       ))}
@@ -767,10 +768,26 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   };
 
   const isNewChat = !convId || messages.length === 0;
-  const chatBg = isDark ? '#1a1a1a' : '#f5f5f5';
+  const chatBg = 'var(--color-page)';
 
   return (
-    <div data-testid="chat-interface" style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', background: chatBg }}>
+    // .chat-watermark paints The Aaryans' crest faintly behind the whole
+    // conversation — see index.css. Applied here, on the chat shell shared by
+    // every role, so it appears once for owner, principal, admin, teacher and
+    // student alike rather than being added per profile.
+    <div
+      data-testid="chat-interface"
+      className="chat-watermark"
+      style={{
+        display: 'flex', flexDirection: 'column', height: '100%',
+        position: 'relative', background: chatBg,
+        // The crest's path is handed to the stylesheet here rather than being
+        // written into index.css. A url() in a stylesheet is resolved by
+        // webpack at BUILD time, which fails for a file served from public/;
+        // a custom property is passed straight through to the browser.
+        '--chat-watermark-src': `url("${process.env.PUBLIC_URL}/aaryans-logo.jpg")`,
+      }}
+    >
       <div data-testid="messages-area" style={{ flex: 1, overflowY: 'auto', padding: '24px 0 200px' }}>
         <div data-testid="message-list" style={{ width: '100%', margin: '0 auto', padding: '0 32px' }}>
           {aiUnavailable && (
@@ -824,21 +841,22 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
 
           {isNewChat && (
             <div className="fade-in" style={{ textAlign: 'center', padding: '60px 0 40px' }}>
-              <div style={{
-                width: 48, height: 48, borderRadius: 14, margin: '0 auto 20px',
-                background: 'linear-gradient(135deg, #4f8ff7, #a78bfa)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 8px 24px rgba(79,143,247,0.2)',
-              }}>
-                <Sparkles size={22} color="#fff" />
+              {/* Epic 9: the generic sparkle chip became the marketing site's
+                  robot — the assistant now has one recognisable face across
+                  the website and the product. This greeting is the ONLY place
+                  it appears in normal use; it is deliberately absent from the
+                  working screens. */}
+              <div style={{ margin: '0 auto 10px', display: 'flex', justifyContent: 'center' }}>
+                <BotMascot size={130} data-testid="assistant-mascot" />
               </div>
               <h2 style={{
-                fontSize: 26, fontWeight: 700, color: 'var(--text-primary)',
-                marginBottom: 8, letterSpacing: '-0.03em',
+                fontFamily: 'var(--font-display)',
+                fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text-primary)',
+                marginBottom: 8, letterSpacing: '-0.02em',
               }}>
                 Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {currentUser.name.split(' ')[0]}
               </h2>
-              <p style={{ color: 'var(--text-muted)', fontSize: 15, marginBottom: 28, fontWeight: 400 }}>
+              <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-md)', marginBottom: 28, fontWeight: 500 }}>
                 How can I help you today?
               </p>
               <HealthScoreWidget user={currentUser} />

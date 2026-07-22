@@ -27,8 +27,8 @@ const SUB_CATEGORY_LABELS = {
 
 function TokenCard({ isDark, currentUser }) {
   const [tokenUsage, setTokenUsage] = useState(null);
-  const border  = isDark ? '#2e2e2e' : '#e5e5e5';
-  const text    = isDark ? '#f5f5f5' : '#171717';
+  const border  = 'var(--color-border)';
+  const text    = 'var(--color-text-primary)';
   const muted   = isDark ? '#888'    : '#525252';
   const cardBg  = isDark ? '#141414' : '#fafafa';
 
@@ -59,7 +59,7 @@ function TokenCard({ isDark, currentUser }) {
         }
       </div>
       {!isUnlimited && (
-        <div style={{ background: isDark ? '#2e2e2e' : '#e5e5e5', borderRadius: 6, height: 6, overflow: 'hidden', marginBottom: 8 }}>
+        <div style={{ background: 'var(--color-border)', borderRadius: 6, height: 6, overflow: 'hidden', marginBottom: 8 }}>
           <div style={{ height: '100%', width: `${usagePct}%`, background: usageColor, borderRadius: 6, transition: 'width 0.5s ease' }} />
         </div>
       )}
@@ -323,9 +323,9 @@ export default function ProfileModal({ onClose }) {
   const { isDark } = useTheme();
   const isStudent = currentUser.role === 'student';
 
-  const bg     = isDark ? '#1e1e1e' : '#fff';
-  const border = isDark ? '#2e2e2e' : '#e5e5e5';
-  const text   = isDark ? '#f5f5f5' : '#171717';
+  const bg     = 'var(--color-surface)';
+  const border = 'var(--color-border)';
+  const text   = 'var(--color-text-primary)';
   const muted  = isDark ? '#888'    : '#525252';
 
   return (
@@ -358,9 +358,9 @@ export default function ProfileModal({ onClose }) {
                 className="focus-ring"
                 data-testid="profile-close"
                 aria-label="Close profile"
-                style={{ background: isDark ? '#252525' : '#f5f5f5', border: 'none', color: muted, cursor: 'pointer', borderRadius: 8, padding: 6 }}
-                onMouseEnter={e => e.currentTarget.style.background = isDark ? '#333' : '#e5e5e5'}
-                onMouseLeave={e => e.currentTarget.style.background = isDark ? '#252525' : '#f5f5f5'}
+                style={{ background: 'var(--color-surface-raised)', border: 'none', color: muted, cursor: 'pointer', borderRadius: 8, padding: 6 }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'var(--color-surface-raised)'}
               >
                 <X size={16} />
               </button>

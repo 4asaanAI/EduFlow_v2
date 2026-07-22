@@ -1,0 +1,90 @@
+/* ============================================================
+   "Flo" — idle animations.
+
+   PORTED VERBATIM from the marketing site so the robot moves identically
+   in both places:
+     E:\Github\Aasaan AI\Eduflow-Landing-Page/src/components/home/home.css
+     (the "mascot Flo" section)
+
+   The only change from the original: `--ease-in-out-ambient` is defined
+   locally, because that variable belongs to the landing page's own token set
+   and is not part of this app's.
+
+   Reduced motion is handled by the global rule in index.css, which zeroes
+   every animation-duration — so nothing here needs its own opt-out, and Flo
+   holds still for anyone who has asked the system to stop things moving.
+   ============================================================ */
+
+.eh-mascot {
+  display: inline-block;
+  line-height: 0;
+  /* Local copy of the landing page's ambient easing token. */
+  --ease-in-out-ambient: cubic-bezier(0.45, 0, 0.55, 1);
+}
+
+.eh-mascot-svg {
+  display: block;
+  overflow: visible;
+  filter: drop-shadow(0 16px 30px rgba(43, 143, 240, 0.28));
+}
+
+.eh-mascot-float {
+  animation: eh-mascot-bob 4.2s var(--ease-in-out-ambient) infinite;
+  transform-origin: 120px 150px;
+}
+@keyframes eh-mascot-bob {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-10px) rotate(1deg); }
+}
+
+.eh-mascot-shadow {
+  animation: eh-mascot-shadow 4.2s var(--ease-in-out-ambient) infinite;
+  transform-origin: center;
+}
+@keyframes eh-mascot-shadow {
+  0%, 100% { transform: scaleX(1); opacity: 0.28; }
+  50% { transform: scaleX(0.82); opacity: 0.16; }
+}
+
+.eh-mascot-eyes {
+  transform-origin: 120px 110px;
+  animation: eh-mascot-blink 5.2s steps(1) infinite;
+}
+@keyframes eh-mascot-blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  95%, 97% { transform: scaleY(0.12); }
+}
+
+.eh-mascot-antenna {
+  transform-origin: 120px 54px;
+  animation: eh-mascot-antenna-sway 3.6s var(--ease-in-out-ambient) infinite;
+}
+@keyframes eh-mascot-antenna-sway {
+  0%, 100% { transform: rotate(-5deg); }
+  50% { transform: rotate(5deg); }
+}
+
+.eh-mascot-antenna-tip {
+  transform-origin: 120px 18px;
+  animation: eh-mascot-tip 1.8s ease-in-out infinite;
+}
+@keyframes eh-mascot-tip {
+  0%, 100% { transform: scale(1); opacity: 0.92; }
+  50% { transform: scale(1.16); opacity: 1; }
+}
+
+.eh-mascot-pulse {
+  stroke-dasharray: 90;
+  stroke-dashoffset: 90;
+  animation: eh-mascot-pulse-draw 2.6s cubic-bezier(0.2, 0.9, 0.2, 1) infinite;
+}
+@keyframes eh-mascot-pulse-draw {
+  0% { stroke-dashoffset: 90; }
+  45%, 100% { stroke-dashoffset: 0; }
+}
+
+.eh-mascot-wave { animation: eh-mascot-wave 2.4s ease-in-out infinite; }
+@keyframes eh-mascot-wave {
+  0%, 100% { transform: rotate(8deg); }
+  50% { transform: rotate(-22deg); }
+}

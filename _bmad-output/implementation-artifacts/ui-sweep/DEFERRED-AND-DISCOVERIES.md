@@ -19,6 +19,7 @@ Branch: `ui-sweep-2026-07-22`
 | 2026-07-22 | Pre-epic | Shipped: staff role/sub-category lockdown (frontend), staff `designation` display, mobile header + sidebar behaviour, class ordering, notification dot. Commits `401a4ac`, `ab206cb`, and the mobile-shell commit. |
 | 2026-07-22 | Planning | `bmad-check-implementation-readiness` run → paused at step 1: **no epic document existed** for this work. `bmad-create-epics-and-stories` run → requirements inventory, 7 epics, coverage map, Epic 1 stories written. |
 | 2026-07-22 | **Epic 8** | **Ask, Don't Just Change — DONE (same run).** Abhimanyu reversed Story 1.3 mid-run — nobody edits their own record — and asked for the approval flow. Staff and admin can request a correction to their own name/phone/email; Owner and Principal approve or reject it beside their leave approvals. A Principal cannot approve their own. 34 tests. Suite 1720 passed / 2 failed (pinned) / 14 deselected. |
+| 2026-07-22 | **Epics 9 + 3** | **Looks Like The Brochure + Finding One Record Among Two Thousand — DONE.** Epic 9 was created mid-run at Abhimanyu's request (make the product look like `eduflow.layaa.ai`) and sequenced first so Epic 3's table was built once in the new language. Shipped: a token system with a committed WCAG contrast test, playful primitives, the mobile type scale (closes Epic 2's UX-DR7), "Flo" copied from the landing-page repo, the school crest behind the chat, a shared server-sorted table with rows-per-page, and school-order class sorting. 139 hard-coded theme colours removed from the shell. 127 new tests. Suite 1745 passed / 2 failed (pinned) / 14 deselected. **Closes D-05.** Adds D-15b, D-20, D-21, D-22, D-23. 8 live-data fields corrected and 1 stale branch deleted, each separately approved. **11 of 15 findings came from Abhimanyu testing live, not from the review passes — see the retrospective.** |
 | 2026-07-22 | **Epic 1** | **Access That Cannot Be Talked Around — DONE.** Elicitation + party-mode passes rewrote the ACs before any code (E-1…E-9); 3 stories implemented; epic-close gate found 10 further findings, all fixed with regression tests. Owner role is now refused by the server for every caller including the Owner, in both directions; unrecognised job categories are refused; staff can maintain their own contact details. Suite 1682 passed / 2 failed (the pinned pair) / 14 deselected. **Closes D-02, D-11, D-12, D-13, D-14.** No production writes. |
 
 ---
@@ -191,6 +192,64 @@ to do, ask him before building, not at the demo.
 A consequence of Story 1.1, raised for a decision. Abhimanyu's answer: keep it exactly as
 it is, with Aman Litt as sole owner. Recorded so a future session does not "helpfully"
 reopen the path. Changing it requires a direct database change by us.
+
+### D-15b — The city was ALSO stored in the database — **FIXED 2026-07-22 (approved write)**
+D-15 corrected the city in ten places in the **code** and predicted this: *"If the
+sidebar still says Lucknow after deploying, a `school_settings` record does exist and
+holds the wrong city."* That prediction was right, and the record did exist.
+
+**The reporting was the failure, not the work.** It was summarised as "changed
+everywhere", which was true of the code and false of what the owner could see. He
+raised it twice before it was acted on, and the second response was another
+explanation rather than a fix. **Lesson: a UI defect is not fixed until the screen
+changes. If a change only reaches the screen after a deploy or a data edit, say
+"not yet visible to you" — never "done".**
+
+**Fixed:** with Abhimanyu's explicit in-chat approval, exactly one field on one record
+was changed: `school_settings.city` `'Lucknow'` → `'Joya, Amroha'`. Read-before,
+write, read-after, with a diff proving `['city']` was the only field touched.
+Script: `scratchpad/fix_city.py` (dry-run by default, refuses unless exactly one
+record matches, refuses if already correct).
+
+**Note — done outside the app, so NOT audited.** The proper path is the owner's own
+School Settings screen, which writes through `updateSchoolSettings()` and is audited.
+That path was offered first; the owner chose to have it done directly. Any future
+correction of this kind should prefer the in-app route.
+
+### D-21 — The rest of the school's own details are still placeholder data — **OPEN**
+Still stored on the same record, and all wrong for a real school:
+
+| Field | Stored now | The school's actual value (source-of-truth §1) |
+|---|---|---|
+| address | `Sector 12, Jankipuram, Lucknow, UP 226021` | Prem Nagar, Joya, Delhi–Moradabad Highway, Distt. Amroha 244222 |
+| phone | `0522-4567890` | +91-8126965555 / 8126968888 |
+| email | `info@theararyans.edu.in` (also misspelt) | theaaryansjoya@gmail.com |
+| website | — | www.theaaryans.in |
+| principal | `Adesh` | unconfirmed — needs the owner |
+
+The address still contains "Lucknow", so the wrong city survives there. Only the
+`city` field was approved, so nothing else was touched. **Needs one approval to
+correct the lot**; the values above come from the school's own printed material.
+
+### D-20 — The `ui-ux-pro-max` skill is installed without its data — **LOGGED**
+Only `SKILL.md` is present; the search script and the CSV datasets it documents are
+missing, so `--design-system` cannot be run. Its rule checklists were applied
+directly instead, and the palette was measured off the live marketing site, which is
+a better source anyway. No impact on this epic; worth reinstalling before a future
+design pass leans on it.
+
+### D-22 — The shell computed its own colours in JavaScript — **FIXED in Epic 9**
+139 hard-coded `isDark ? '#hex' : '#hex'` pairs across `Layout`, `Sidebar`, `Header`,
+`Login` and eleven modals. This is **why the retheme initially did not reach the app
+shell**: switching theme recoloured the text (CSS variables) and left the surfaces
+behind (JS literals), so dark mode rendered light text on a white page. All replaced
+with tokens. `project-context.md` now forbids the pattern.
+
+### D-23 — Every tool screen printed its title twice — **FIXED in Epic 9**
+The header bar and the page both rendered the tool's name, one line apart, on every
+single tab. Reported by the owner. The header now shows the title only when the page
+does not — on the chat view, and on phones where the page heading scrolls away and
+the sticky header is the only remaining indication of where you are.
 
 ---
 

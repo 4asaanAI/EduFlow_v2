@@ -32,10 +32,19 @@ from services.auth_tokens import revoke_user_refresh_tokens
 router = APIRouter(prefix="/api/staff", tags=["staff"])
 
 ADMIN_ROLES = {"owner", "admin"}
+# Server-side sort whitelist (Epic 3, Story 3.3). An unrecognised `sort` falls
+# back to the default rather than reaching a query.
+#
+# `designation` is here because it is what the staff table should actually show:
+# it is populated for all 89 records with a readable label ("Class Teacher",
+# "Teacher", "Principal"), whereas the `role / sub_category` pair the table
+# displayed instead is the exact column the owner objected to on 2026-07-22.
 SORT_FIELDS = {
     "name": ("name", 1),
     "staff_type": ("staff_type", 1),
+    "designation": ("designation", 1),
     "department": ("department", 1),
+    "employee_id": ("employee_id", 1),
     "created_at": ("created_at", -1),
 }
 PROFILE_FIELDS = {

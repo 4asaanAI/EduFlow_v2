@@ -49,24 +49,30 @@ function AuditRow({ entry, isDark }) {
         <span style={{ width: 20, color: muted, flexShrink: 0 }}>
           {hasDiff ? (expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : null}
         </span>
-        <span style={{ width: 140, flexShrink: 0, fontSize: 11, color: muted }}>{entry.created_at?.slice(0, 16).replace('T', ' ')}</span>
+        {/* Every cell in a row is --text-sm. They used to be 11, 11, 12 and 11,
+            so the text visibly changed height across a single row and the
+            "Record" column did not match its own heading. Sizes now come from
+            the shared type scale, which also means they step up together on a
+            phone instead of staying at 11px. */}
+        <span style={{ width: 140, flexShrink: 0, fontSize: 'var(--text-sm)', color: muted }}>{entry.created_at?.slice(0, 16).replace('T', ' ')}</span>
         <span style={{
-          minWidth: 90, flexShrink: 0, padding: '2px 8px', borderRadius: 5, fontSize: 11, fontWeight: 600,
+          minWidth: 90, flexShrink: 0, padding: '2px 8px', borderRadius: 'var(--radius-sm)',
+          fontSize: 'var(--text-sm)', fontWeight: 600,
           background: tint(actionColor, 10), color: actionColor, textAlign: 'center',
         }}>
           {entry.action?.replace(/_/g, ' ').slice(0, 18)}
         </span>
-        <span style={{ flex: 1, fontSize: 12, color: text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ flex: 1, fontSize: 'var(--text-sm)', color: text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {entry.collection || entry.entity_type || '—'} · {entry.entity_id?.slice(0, 8) || '—'}
         </span>
-        <span style={{ fontSize: 11, color: muted, minWidth: 100, textAlign: 'right' }}>
+        <span style={{ fontSize: 'var(--text-sm)', color: muted, minWidth: 100, textAlign: 'right' }}>
           {entry.changed_by_name || entry.changed_by?.slice(0, 8) || '—'}
           {entry.changed_by_role && <span style={{ marginLeft: 4, opacity: 0.6 }}>({entry.changed_by_role})</span>}
         </span>
       </div>
 
       {expanded && hasDiff && (
-        <div style={{ marginLeft: 30, marginBottom: 10, background: isDark ? 'var(--tool-hex-161616)' : 'var(--tool-hex-f9f9f9)', borderRadius: 8, padding: 12, fontSize: 11 }}>
+        <div style={{ marginLeft: 30, marginBottom: 10, background: isDark ? 'var(--tool-hex-161616)' : 'var(--tool-hex-f9f9f9)', borderRadius: 'var(--radius-sm)', padding: 12, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)' }}>
           {entry.changes.previous !== undefined && (
             <div style={{ marginBottom: 6 }}>
               <span style={{ color: 'var(--tool-hex-f87171)', fontWeight: 600 }}>Before: </span>
@@ -143,7 +149,7 @@ export default function AuditLog() {
             display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
             background: showFilters ? 'var(--tool-hex-4f8ff7)' : (isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-fff)'),
             border: `1px solid ${showFilters ? 'var(--tool-hex-4f8ff7)' : border}`,
-            borderRadius: 9, color: showFilters ? 'var(--tool-hex-fff)' : text, fontSize: 12, cursor: 'pointer',
+            borderRadius: 'var(--radius-sm)', color: showFilters ? 'var(--tool-hex-fff)' : text, fontSize: 'var(--text-sm)', cursor: 'pointer',
           }}
         >
           <Filter size={13} />
@@ -151,35 +157,35 @@ export default function AuditLog() {
         </button>
       }
     >
-      {error && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+      {error && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 'var(--text-sm)', marginBottom: 12 }}>{error}</div>}
 
       {showFilters && (
         <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 11, padding: 16, marginBottom: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(140px, 100%), 1fr))', gap: 10 }}>
           <div>
-            <label style={{ fontSize: 11, color: muted, fontWeight: 600, display: 'block', marginBottom: 4 }}>Collection</label>
+            <label style={{ fontSize: 'var(--text-sm)', color: muted, fontWeight: 600, display: 'block', marginBottom: 4 }}>Collection</label>
             <input
               value={filters.collection}
               onChange={e => f('collection')(e.target.value)}
               placeholder="e.g. students, fees..."
-              style={{ width: '100%', background: 'var(--c-input)', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px', color: text, fontSize: 12, boxSizing: 'border-box', outline: 'none' }}
+              style={{ width: '100%', background: 'var(--c-input)', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px', color: text, fontSize: 'var(--text-base)', boxSizing: 'border-box', outline: 'none' }}
             />
           </div>
           <div>
-            <label style={{ fontSize: 11, color: muted, fontWeight: 600, display: 'block', marginBottom: 4 }}>Date From</label>
+            <label style={{ fontSize: 'var(--text-sm)', color: muted, fontWeight: 600, display: 'block', marginBottom: 4 }}>Date From</label>
             <input
               type="date"
               value={filters.date_from}
               onChange={e => f('date_from')(e.target.value)}
-              style={{ width: '100%', background: 'var(--c-input)', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px', color: text, fontSize: 12, boxSizing: 'border-box', outline: 'none', colorScheme: isDark ? 'dark' : 'light' }}
+              style={{ width: '100%', background: 'var(--c-input)', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px', color: text, fontSize: 'var(--text-base)', boxSizing: 'border-box', outline: 'none', colorScheme: isDark ? 'dark' : 'light' }}
             />
           </div>
           <div>
-            <label style={{ fontSize: 11, color: muted, fontWeight: 600, display: 'block', marginBottom: 4 }}>Date To</label>
+            <label style={{ fontSize: 'var(--text-sm)', color: muted, fontWeight: 600, display: 'block', marginBottom: 4 }}>Date To</label>
             <input
               type="date"
               value={filters.date_to}
               onChange={e => f('date_to')(e.target.value)}
-              style={{ width: '100%', background: 'var(--c-input)', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px', color: text, fontSize: 12, boxSizing: 'border-box', outline: 'none', colorScheme: isDark ? 'dark' : 'light' }}
+              style={{ width: '100%', background: 'var(--c-input)', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px', color: text, fontSize: 'var(--text-base)', boxSizing: 'border-box', outline: 'none', colorScheme: isDark ? 'dark' : 'light' }}
             />
           </div>
           <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -189,7 +195,7 @@ export default function AuditLog() {
                 value={filters.q}
                 onChange={e => f('q')(e.target.value)}
                 placeholder="Search by user or record ID..."
-                style={{ width: '100%', background: 'var(--c-input)', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px 7px 28px', color: text, fontSize: 12, boxSizing: 'border-box', outline: 'none' }}
+                style={{ width: '100%', background: 'var(--c-input)', border: `1px solid ${border}`, borderRadius: 7, padding: '7px 10px 7px 28px', color: text, fontSize: 'var(--text-base)', boxSizing: 'border-box', outline: 'none' }}
               />
             </div>
             <ActionBtn label="Search" onClick={() => load(1)} />
@@ -204,10 +210,12 @@ export default function AuditLog() {
           {/* Column headers */}
           <div style={{ display: 'flex', padding: '0 0 6px', gap: 10, borderBottom: `2px solid ${border}`, marginBottom: 4 }}>
             <span style={{ width: 20 }} />
-            <span style={{ width: 140, flexShrink: 0, fontSize: 11, fontWeight: 600, color: muted }}>TIMESTAMP</span>
-            <span style={{ minWidth: 90, flexShrink: 0, fontSize: 11, fontWeight: 600, color: muted }}>ACTION</span>
-            <span style={{ flex: 1, fontSize: 11, fontWeight: 600, color: muted }}>RECORD</span>
-            <span style={{ minWidth: 100, flexShrink: 0, fontSize: 11, fontWeight: 600, color: muted, textAlign: 'right' }}>CHANGED BY</span>
+            {/* Column headings share one size too — --text-xs, one step below
+                the rows they label, matching the shared table elsewhere. */}
+            <span style={{ width: 140, flexShrink: 0, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '0.04em', color: muted }}>TIMESTAMP</span>
+            <span style={{ minWidth: 90, flexShrink: 0, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '0.04em', color: muted }}>ACTION</span>
+            <span style={{ flex: 1, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '0.04em', color: muted }}>RECORD</span>
+            <span style={{ minWidth: 100, flexShrink: 0, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '0.04em', color: muted, textAlign: 'right' }}>CHANGED BY</span>
           </div>
 
           {loading ? (
@@ -226,7 +234,7 @@ export default function AuditLog() {
       {!loading && totalPages > 1 && (
         <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 16 }}>
           <ActionBtn label="Prev" variant="secondary" onClick={() => load(page - 1)} disabled={page <= 1} />
-          <span style={{ fontSize: 12, color: muted, padding: '7px 12px' }}>{page} / {totalPages}</span>
+          <span style={{ fontSize: 'var(--text-sm)', color: muted, padding: '7px 12px' }}>{page} / {totalPages}</span>
           <ActionBtn label="Next" variant="secondary" onClick={() => load(page + 1)} disabled={page >= totalPages} />
         </div>
       )}
