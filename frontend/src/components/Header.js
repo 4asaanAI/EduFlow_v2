@@ -355,20 +355,23 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
         padding: '0 16px', borderBottom: `1px solid ${border}`, background: bg,
         position: 'sticky', top: 0, zIndex: 50, gap: 12, flexShrink: 0,
       }}>
-        {/* Left */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: '0 0 auto' }}>
-          <button onClick={onToggleSidebar} style={{
-            background: 'none', border: 'none', color: muted, cursor: 'pointer', padding: 6, borderRadius: 8,
-            display: isMobile ? 'flex' : 'none', transition: 'var(--transition-fast)',
-          }}
-            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-            <Menu size={18} />
-          </button>
+        {/* Left \u2014 on mobile grows to fill space so title truncates gracefully */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: isMobile ? 1 : '0 0 auto' }}>
+          {isMobile && (
+            <button onClick={onToggleSidebar} style={{
+              background: 'none', border: 'none', color: muted, cursor: 'pointer',
+              padding: 6, borderRadius: 8, display: 'flex', flexShrink: 0,
+              transition: 'var(--transition-fast)',
+            }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              <Menu size={18} />
+            </button>
+          )}
           {activeTool ? (
             <button data-testid="back-to-chat-btn" onClick={onBackToChat} style={{
               background: isDark ? '#252525' : '#f5f5f5', border: 'none', color: secondary,
-              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
               fontSize: 13, fontWeight: 500, padding: '5px 10px', borderRadius: 8,
               transition: 'var(--transition-fast)',
             }}
@@ -377,23 +380,16 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
               <ChevronLeft size={14} /> Back
             </button>
           ) : null}
-          <span style={{ fontWeight: 600, fontSize: 15, color: tp, whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
+          <span style={{
+            fontWeight: 600, fontSize: 15, color: tp, letterSpacing: '-0.01em',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
             {title}
           </span>
         </div>
 
-        {/* Center: search \u2014 full bar on desktop, icon-only on mobile */}
-        {isMobile ? (
-          <button onClick={() => setShowSearch(true)} style={{
-            background: 'none', border: 'none', color: muted, cursor: 'pointer',
-            padding: 7, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transition: 'var(--transition-fast)',
-          }}
-            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-            <Search size={18} />
-          </button>
-        ) : (
+        {/* Center: full search bar on desktop only */}
+        {!isMobile && (
           <div style={{ flex: 1, maxWidth: 420, display: 'flex', justifyContent: 'center' }}>
             <button onClick={() => setShowSearch(true)} style={{
               width: '100%', display: 'flex', alignItems: 'center', gap: 10,
@@ -414,10 +410,23 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
           </div>
         )}
 
-        {/* Right */}
+        {/* Right \u2014 search icon (mobile only) + notifications */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
 
-          {/* Academic year chip */}
+          {/* Search icon on mobile \u2014 lives in the right action group */}
+          {isMobile && (
+            <button onClick={() => setShowSearch(true)} style={{
+              background: 'none', border: 'none', color: muted, cursor: 'pointer',
+              padding: 7, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'var(--transition-fast)',
+            }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              <Search size={17} />
+            </button>
+          )}
+
+          {/* Academic year chip \u2014 desktop only */}
           {academicYear && !isMobile && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: 6, marginRight: 6,
