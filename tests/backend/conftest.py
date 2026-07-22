@@ -15,8 +15,64 @@ import os
 import asyncio
 import pytest
 import pytest_asyncio
+from pathlib import Path
 from typing import AsyncGenerator, Generator
 from pymongo.errors import DuplicateKeyError
+
+# ─── Production database guard ─────────────────────────────────────────────
+# Must run BEFORE the setdefault() calls below, and before any app import.
+#
+# `setdefault` does not override a value that is already present, so an exported
+# MONGO_URL — or one the app loads from backend/.env — silently wins and the whole
+# suite runs against live data. backend/.env now holds the production connection
+# string (pulled from Elastic Beanstalk on 2026-07-22), which makes this a live
+# hazard rather than a theoretical one: the school has 1,802 students, 88 staff and
+# 1,892 user records in that cluster.
+#
+# Fail closed. A test run that reaches production is not recoverable by noticing
+# afterwards.
+def _looks_like_production(url: str) -> bool:
+    if not url:
+        return False
+    lowered = url.lower()
+    return lowered.startswith("mongodb+srv://") or ".mongodb.net" in lowered
+
+
+_PROD_OVERRIDE = "EDUFLOW_ALLOW_PROD_DB_IN_TESTS"
+_ALLOWED = os.environ.get(_PROD_OVERRIDE) == "i-understand-this-can-write-to-production"
+
+_offenders: list[str] = []
+
+_env_url = os.environ.get("MONGO_URL", "")
+if _looks_like_production(_env_url):
+    _offenders.append("the MONGO_URL environment variable")
+
+# Only inspect backend/.env when the environment does not already pin MONGO_URL —
+# in that case the app would fall back to the file, and the file may hold production.
+if not _env_url:
+    _dotenv = Path(__file__).resolve().parents[2] / "backend" / ".env"
+    if _dotenv.exists():
+        for _line in _dotenv.read_text(encoding="utf-8", errors="replace").splitlines():
+            if _line.strip().startswith("MONGO_URL="):
+                if _looks_like_production(_line.split("=", 1)[1].strip()):
+                    _offenders.append(f"MONGO_URL in {_dotenv}")
+                break
+
+if _offenders and not _ALLOWED:
+    raise RuntimeError(
+        "Refusing to run the test suite against what looks like a PRODUCTION database.\n\n"
+        "  Detected in: " + ", ".join(_offenders) + "\n\n"
+        "The suite creates, updates and deletes records. Pointing it at the live cluster\n"
+        "would corrupt real school data.\n\n"
+        "To run the tests safely, pin a local test database first:\n"
+        '  PowerShell:  $env:MONGO_URL="mongodb://127.0.0.1:27099/eduflow_test"; '
+        '$env:DB_NAME="eduflow_test"\n'
+        '  bash:        export MONGO_URL=mongodb://127.0.0.1:27099/eduflow_test '
+        "DB_NAME=eduflow_test\n\n"
+        "This guard is deliberate and must not be removed. If you genuinely need to run\n"
+        "against a remote cluster, set "
+        f"{_PROD_OVERRIDE}=i-understand-this-can-write-to-production"
+    )
 
 # ─── Override environment before importing app ─────────────────────────────
 # Set test environment variables before any app import
@@ -58,6 +114,16 @@ try:
     import routes.queries as queries_routes
     import routes.sms as sms_routes
     import routes.learning as learning_routes
+    # UI Sweep Epic 4: `routes.tools` was never wired into the harness, so the
+    # endpoint behind every tool screen had no tests at all — which is how a double
+    # result envelope survived a whole initiative. It is registered here so it can be.
+    import routes.tools as tools_routes
+    import ai.tool_functions as tool_functions_v1
+    import ai.tool_functions_v2 as tool_functions_v2_mod
+    import ai.scope_resolver as scope_resolver_mod
+    # Epic 10: the document service resolves its own db handle, so it needs the same
+    # patching every route module gets, or generation 500s inside the tool.
+    import services.document_export as document_export_mod
     from middleware.auth import hash_password
     APP_AVAILABLE = True
 except (ImportError, TypeError) as e:
@@ -574,6 +640,8 @@ class FakeDb:
         self.ai_feedback = FakeCollection()
         # AI Reliability — R11.5 conversation trace viewer
         self.ai_turn_traces = FakeCollection()
+        # UI Sweep — Epic 8: staff ask, Owner/Principal approve
+        self.profile_change_requests = FakeCollection()
 
     async def command(self, command_name):
         if command_name == "ping":
@@ -615,6 +683,14 @@ if APP_AVAILABLE:
     queries_routes.get_db = lambda: _fake_db
     sms_routes.get_db = lambda: _fake_db
     learning_routes.get_db = lambda: _fake_db
+    tools_routes.get_db = lambda: _fake_db
+    tool_functions_v1.get_db = lambda: _fake_db
+    tool_functions_v2_mod.get_db = lambda: _fake_db
+    scope_resolver_mod.get_db = lambda: _fake_db
+    document_export_mod.get_db = lambda: _fake_db
+    # Epic 10 / Story 10.5: chat_upload audits image reads, so it resolves a db
+    # handle of its own now.
+    chat_upload_routes.get_db = lambda: _fake_db
     server.get_raw_db = lambda: _fake_db
     import middleware.school_context as school_context_module
     school_context_module.get_raw_db = lambda: _fake_db

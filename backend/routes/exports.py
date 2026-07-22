@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 from database import get_db
 from middleware.auth import require_owner, require_role, get_current_user, require_owner_or_principal
 from tenant import get_school_id, scoped_filter, scoped_query
+from services.document_builder import build_document
 import csv
 import io
 from datetime import date
@@ -36,6 +37,34 @@ def make_csv_response(rows: list, headers: list, filename: str):
     )
 
 
+def make_export_response(rows: list, headers: list, basename: str, fmt: str = "csv", title: str = ""):
+    """Return an export in the requested format.
+
+    Epic 10 / Story 10.4. A fee sheet as raw commas loses its columns the moment it
+    is opened; the same data as a workbook opens readable. The data, the query and
+    above all the ROLE GATE are untouched — this changes packaging only, which is
+    why it needed no product decision.
+
+    An unrecognised format falls back to CSV rather than erroring, matching how
+    Epic 3 handled an unrecognised sort field: the client's option list is a
+    convenience, never the enforcement.
+    """
+    if (fmt or "").lower() in ("xlsx", "excel"):
+        built = build_document(
+            doc_type="xlsx",
+            filename=basename,
+            title=title or basename.replace("_", " ").title(),
+            headers=headers,
+            rows=rows,
+        )
+        return StreamingResponse(
+            iter([built.content]),
+            media_type=built.content_type,
+            headers={"Content-Disposition": f'attachment; filename="{built.filename}"'},
+        )
+    return make_csv_response(rows, headers, f"{basename}.csv")
+
+
 @router.get("/students")
 async def export_students(request: Request, format: str = "csv", user: dict = Depends(require_owner_or_principal)):
     db = get_db()
@@ -43,11 +72,11 @@ async def export_students(request: Request, format: str = "csv", user: dict = De
     students = await db.students.find(scoped_query({"is_active": True}, branch_id=bid), {"_id": 0}).to_list(2000)
     headers = ["Name", "Admission No.", "Roll No.", "Gender", "DOB", "Status", "Admission Date"]
     rows = [[s.get("name"), s.get("admission_number", ""), s.get("roll_number", ""), s.get("gender", ""), s.get("dob", ""), s.get("status", ""), s.get("admission_date", "")] for s in students]
-    return make_csv_response(rows, headers, f"students_{date.today()}.csv")
+    return make_export_response(rows, headers, f"students_{date.today()}", format, "Students")
 
 
 @router.get("/fee-transactions")
-async def export_fees(request: Request, status: str = None, fee_period: str = None, user: dict = Depends(_require_owner_or_accountant)):
+async def export_fees(request: Request, status: str = None, fee_period: str = None, format: str = "csv", user: dict = Depends(_require_owner_or_accountant)):
     db = get_db()
     bid = user.get("branch_id")
     query: dict = {}
@@ -98,11 +127,11 @@ async def export_fees(request: Request, status: str = None, fee_period: str = No
             t.get("receipt_number", ""),
             t.get("corrected", False),
         ])
-    return make_csv_response(rows, headers, f"fees_{date.today()}.csv")
+    return make_export_response(rows, headers, f"fees_{date.today()}", format, "Fee Transactions")
 
 
 @router.get("/attendance")
-async def export_attendance(request: Request, start_date: str = None, end_date: str = None, user: dict = Depends(require_role("owner", "admin", "teacher"))):
+async def export_attendance(request: Request, start_date: str = None, end_date: str = None, format: str = "csv", user: dict = Depends(require_role("owner", "admin", "teacher"))):
     db = get_db()
     bid = user.get("branch_id")
     query = {}
@@ -119,47 +148,52 @@ async def export_attendance(request: Request, start_date: str = None, end_date: 
         ).to_list(100)
         class_ids = [c["id"] for c in teacher_classes]
         if not class_ids:
-            return make_csv_response([], ["Student ID", "Date", "Status"], f"attendance_{date.today()}.csv")
+            return make_export_response([], ["Student ID", "Date", "Status"], f"attendance_{date.today()}", format, "Attendance")
         query["class_id"] = {"$in": class_ids}
         records = await db.student_attendance.find(scoped_query(query, branch_id=bid), {"_id": 0}).sort("date", 1).to_list(10000)
     else:
         records = await db.student_attendance.find(scoped_query(query, branch_id=bid), {"_id": 0}).sort("date", 1).to_list(10000)
     headers = ["Student ID", "Date", "Status"]
     rows = [[r.get("student_id"), r.get("date"), r.get("status")] for r in records]
-    return make_csv_response(rows, headers, f"attendance_{date.today()}.csv")
+    return make_export_response(rows, headers, f"attendance_{date.today()}", format, "Attendance")
 
 
 @router.get("/staff")
-async def export_staff(request: Request, user: dict = Depends(require_owner_or_principal)):
+async def export_staff(request: Request, format: str = "csv", user: dict = Depends(require_owner_or_principal)):
     db = get_db()
     bid = user.get("branch_id")
     staff = await db.staff.find(scoped_query({"is_active": True}, branch_id=bid), {"_id": 0, "salary": 0}).to_list(2000)
     headers = ["Name", "Type", "Employee ID", "Email", "Phone", "Join Date", "Department"]
     rows = [[s.get("name"), s.get("staff_type"), s.get("employee_id", ""), s.get("email", ""), s.get("phone", ""), s.get("join_date", ""), s.get("department", "")] for s in staff]
-    return make_csv_response(rows, headers, f"staff_{date.today()}.csv")
+    return make_export_response(rows, headers, f"staff_{date.today()}", format, "Staff")
 
 
 @router.get("/expenses")
-async def export_expenses(request: Request, user: dict = Depends(_require_owner_or_accountant)):
+async def export_expenses(request: Request, format: str = "csv", user: dict = Depends(_require_owner_or_accountant)):
     db = get_db()
+    # branch-scope: intentional — school-wide, and INCONSISTENT with its neighbours,
+    # which all use scoped_query(branch_id=...). Annotated rather than changed during
+    # the Epic 10 audit: narrowing it would change what an accountant can see, which
+    # is a permission decision and not this story's to make. No practical effect today
+    # (the school has one branch), so it is logged as D-29 rather than fixed quietly.
     expenses = await db.expenses.find(scoped_filter({}, get_school_id()), {"_id": 0}).sort("date", -1).to_list(1000)
     headers = ["Date", "Category", "Description", "Amount", "Vendor"]
     rows = [[e.get("date"), e.get("category"), e.get("description", ""), e.get("amount"), e.get("vendor", "")] for e in expenses]
-    return make_csv_response(rows, headers, f"expenses_{date.today()}.csv")
+    return make_export_response(rows, headers, f"expenses_{date.today()}", format, "Expenses")
 
 
 @router.get("/enquiries")
-async def export_enquiries(request: Request, user: dict = Depends(require_owner_or_principal)):
+async def export_enquiries(request: Request, format: str = "csv", user: dict = Depends(require_owner_or_principal)):
     db = get_db()
     bid = user.get("branch_id")
     enquiries = await db.enquiries.find(scoped_query({}, branch_id=bid), {"_id": 0}).sort("created_at", -1).to_list(1000)
     headers = ["Student Name", "Parent Name", "Class Applying", "Status", "Source", "Date"]
     rows = [[e.get("student_name"), e.get("parent_name"), e.get("class_applying", ""), e.get("status"), e.get("source", ""), e.get("created_at", "")[:10]] for e in enquiries]
-    return make_csv_response(rows, headers, f"enquiries_{date.today()}.csv")
+    return make_export_response(rows, headers, f"enquiries_{date.today()}", format, "Enquiries")
 
 
 @router.get("/exam-results")
-async def export_results(request: Request, user: dict = Depends(require_role("owner", "admin", "teacher"))):
+async def export_results(request: Request, format: str = "csv", user: dict = Depends(require_role("owner", "admin", "teacher"))):
     db = get_db()
     bid = user.get("branch_id")
     results_query: dict = {}
@@ -170,7 +204,7 @@ async def export_results(request: Request, user: dict = Depends(require_role("ow
         ).to_list(100)
         teacher_class_ids = [c["id"] for c in teacher_classes]
         if not teacher_class_ids:
-            return make_csv_response([], ["Student ID", "Exam ID", "Subject", "Marks", "Max Marks", "Grade"], f"results_{date.today()}.csv")
+            return make_export_response([], ["Student ID", "Exam ID", "Subject", "Marks", "Max Marks", "Grade"], f"results_{date.today()}", format, "Exam Results")
         results_query["class_id"] = {"$in": teacher_class_ids}
     results = await db.exam_results.find(scoped_query(results_query, branch_id=bid), {"_id": 0}).to_list(10000)
 
@@ -195,4 +229,4 @@ async def export_results(request: Request, user: dict = Depends(require_role("ow
     for r in results:
         subj_name = subject_map.get(r.get("subject_id"), {}).get("name", "Unknown")
         rows.append([r.get("student_id"), r.get("exam_id"), subj_name, r.get("marks_obtained"), r.get("max_marks"), r.get("grade", "")])
-    return make_csv_response(rows, headers, f"results_{date.today()}.csv")
+    return make_export_response(rows, headers, f"results_{date.today()}", format, "Exam Results")

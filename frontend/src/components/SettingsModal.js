@@ -10,7 +10,7 @@ function Toggle({ active, onToggle, isDark }) {
   return (
     <button onClick={onToggle} style={{
       width: 42, height: 24, borderRadius: 12,
-      background: active ? '#4f8ff7' : (isDark ? '#333' : '#d4d4d4'),
+      background: active ? '#4f8ff7' : 'var(--color-border-strong)',
       border: 'none', cursor: 'pointer', position: 'relative',
       transition: 'background 0.2s ease', flexShrink: 0,
     }}>
@@ -87,10 +87,10 @@ export default function SettingsModal({ onClose }) {
       .catch(() => {});
   }, []);
 
-  const bg = isDark ? '#1e1e1e' : '#fff';
-  const border = isDark ? '#2e2e2e' : '#e5e5e5';
-  const text = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#888' : '#525252';
+  const bg = 'var(--color-surface)';
+  const border = 'var(--color-border)';
+  const text = 'var(--color-text-primary)';
+  const muted = 'var(--color-text-muted)';
   const sectionBg = isDark ? '#141414' : '#fafafa';
   const styles = { bg, border, text, muted, sectionBg };
 
@@ -139,9 +139,9 @@ export default function SettingsModal({ onClose }) {
       <div ref={containerRef} className="fade-in-scale" style={{ background: bg, border: `1px solid ${border}`, borderRadius: 20, padding: 32, width: 460, maxWidth: '90vw', maxHeight: '88vh', overflowY: 'auto', boxShadow: 'var(--shadow-xl)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: text, letterSpacing: '-0.02em' }}>Settings</h2>
-          <button onClick={onClose} style={{ background: isDark ? '#252525' : '#f5f5f5', border: 'none', color: muted, cursor: 'pointer', borderRadius: 8, padding: 6, transition: 'var(--transition-fast)' }}
-            onMouseEnter={e => e.currentTarget.style.background = isDark ? '#333' : '#e5e5e5'}
-            onMouseLeave={e => e.currentTarget.style.background = isDark ? '#252525' : '#f5f5f5'}>
+          <button onClick={onClose} style={{ background: 'var(--color-surface-raised)', border: 'none', color: muted, cursor: 'pointer', borderRadius: 8, padding: 6, transition: 'var(--transition-fast)' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'var(--color-surface-raised)'}>
             <X size={16} />
           </button>
         </div>
@@ -174,7 +174,7 @@ export default function SettingsModal({ onClose }) {
             styles={styles}
           />
           <Row label="Session timeout" subtitle="Auto-logout after inactivity" noBorder
-            control={<select style={{ background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`, borderRadius: 8, padding: '5px 10px', color: text, fontSize: 13, outline: 'none', cursor: 'pointer' }}>
+            control={<select style={{ background: 'var(--color-surface-raised)', border: `1px solid ${border}`, borderRadius: 8, padding: '5px 10px', color: text, fontSize: 13, outline: 'none', cursor: 'pointer' }}>
               <option>30 min</option><option>1 hour</option><option>2 hours</option>
             </select>}
             styles={styles}
@@ -194,7 +194,7 @@ export default function SettingsModal({ onClose }) {
                     placeholder="Enter new password"
                     required
                     autoComplete="new-password"
-                    style={{ width: '100%', background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`, borderRadius: 8, padding: '9px 36px 9px 12px', color: text, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                    style={{ width: '100%', background: 'var(--color-surface-raised)', border: `1px solid ${border}`, borderRadius: 8, padding: '9px 36px 9px 12px', color: text, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
                   />
                   <button type="button" onClick={() => setShowNewPw(v => !v)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: muted, padding: 2, display: 'flex', alignItems: 'center' }}>
                     {showNewPw ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -211,7 +211,7 @@ export default function SettingsModal({ onClose }) {
                     placeholder="Confirm new password"
                     required
                     autoComplete="new-password"
-                    style={{ width: '100%', background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`, borderRadius: 8, padding: '9px 36px 9px 12px', color: text, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                    style={{ width: '100%', background: 'var(--color-surface-raised)', border: `1px solid ${border}`, borderRadius: 8, padding: '9px 36px 9px 12px', color: text, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
                   />
                   <button type="button" onClick={() => setShowConfirmPw(v => !v)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: muted, padding: 2, display: 'flex', alignItems: 'center' }}>
                     {showConfirmPw ? <EyeOff size={14} /> : <Eye size={14} />}

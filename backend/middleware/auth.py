@@ -81,17 +81,31 @@ JWT_EXPIRY_MINUTES = 60
 # or typo'd key (e.g. "accounts" vs the canonical "accountant") can never again
 # silently route an accountant to a fallback tool list / over-exposed context
 # (audit C4). Add new sub_categories here first.
-VALID_SUB_CATEGORIES = frozenset({
-    # owner
-    "owner",
-    # admin departments
-    "principal", "accountant", "transport_head", "receptionist",
-    "it_tech", "maintenance", "management", "support_staff",
-    # teacher designations
-    "class_teacher", "hod", "coordinator", "subject_teacher", "kg_incharge",
-    # student
-    "student",
-})
+# UI-Sweep Story 1.2: the same set, but grouped by the role each sub_category
+# qualifies. Grouping is not decoration — a sub_category paired with the wrong
+# role matches no permission rule, so the holder silently gets nothing. The
+# staff write path rejects such a pairing, and it can only do that if the
+# role→sub_category relationship is written down somewhere. This is that place.
+SUB_CATEGORIES_BY_ROLE = {
+    "owner": frozenset({"owner"}),
+    "admin": frozenset({
+        "principal", "accountant", "transport_head", "receptionist",
+        "it_tech", "maintenance", "management", "support_staff",
+    }),
+    "teacher": frozenset({
+        "class_teacher", "hod", "coordinator", "subject_teacher", "kg_incharge",
+    }),
+    "student": frozenset({"student"}),
+}
+
+# The flat set, derived so the two can never drift apart. Callers that only ask
+# "is this a sub_category the platform recognizes at all?" keep using this name.
+VALID_SUB_CATEGORIES = frozenset().union(*SUB_CATEGORIES_BY_ROLE.values())
+
+# Every role the platform issues a token for. `VALID_ROLES` answers "does this
+# string mean anything?"; it does NOT answer "may this be assigned here" —
+# `owner` is a valid role that the staff API refuses to grant (Story 1.1).
+VALID_ROLES = frozenset(SUB_CATEGORIES_BY_ROLE)
 
 
 # ─── JWT helpers ─────────────────────────────────────────────────────────────

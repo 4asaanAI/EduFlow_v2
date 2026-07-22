@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useUser } from '../../contexts/UserContext';
+import { compareClassLabels } from '../../lib/classOrder';
 import {
   createStudent,
   deactivateStudent,
@@ -13,7 +14,33 @@ import {
   uploadStudentPhoto,
   upsertGuardians,
 } from '../../lib/api';
-import { Camera, ChevronLeft, ChevronRight, Edit3, Plus, RefreshCw, Search, Trash2, User, X } from 'lucide-react';
+import { Camera, CheckCircle2, ChevronLeft, ChevronRight, Edit3, MinusCircle, Plus, RefreshCw, Search, Trash2, User, X } from 'lucide-react';
+import DataTable, { cellValue } from '../ui/DataTable';
+import { Pill } from '../ui/primitives';
+import { useTablePageSize } from '../../hooks/useTablePrefs';
+
+// Class Strength columns. "Not recorded" is its own column because it is a
+// different fact from "Other": one is a student recorded as another gender, the
+// other is a student whose gender was never captured. Merging them is what made
+// "Other" and "Total" show the same number for every class (owner, 2026-07-22).
+const STRENGTH_COLUMNS = [
+  { key: 'class_label', label: 'Class', sortKey: 'class_label',
+    render: (r) => <span style={{ fontWeight: 600 }}>{r.class_label}</span> },
+  { key: 'boys', label: 'Boys', sortKey: 'boys', align: 'right',
+    render: (r) => <span style={{ color: '#60a5fa' }}>{r.boys}</span> },
+  { key: 'girls', label: 'Girls', sortKey: 'girls', align: 'right',
+    render: (r) => <span style={{ color: '#f472b6' }}>{r.girls}</span> },
+  { key: 'other', label: 'Other', sortKey: 'other', align: 'right',
+    render: (r) => <span style={{ color: 'var(--color-text-muted)' }}>{r.other ?? 0}</span> },
+  { key: 'not_recorded', label: 'Not recorded', sortKey: 'not_recorded', align: 'right',
+    render: (r) => (
+      <span style={{ color: 'var(--color-text-muted)', fontStyle: (r.not_recorded ?? 0) > 0 ? 'italic' : 'normal' }}>
+        {r.not_recorded ?? 0}
+      </span>
+    ) },
+  { key: 'total', label: 'Total', sortKey: 'total', align: 'right',
+    render: (r) => <span style={{ fontWeight: 700 }}>{r.total}</span> },
+];
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
 
@@ -603,17 +630,118 @@ export default function StudentDatabase() {
 
   const canManage = ['owner', 'admin'].includes(currentUser.role);
   const canErase = currentUser.role === 'owner';
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(total / 20)), [total]);
+
+  // UX-DR10: the user's chosen page size, remembered per table.
+  const [pageSize, setPageSize] = useTablePageSize('students');
+
+  // Changing the size while on page 40 of a 20-row listing would strand the
+  // user on a page that no longer exists, so both handlers reset to page 1.
+  const changePageSize = useCallback((n) => { setPageSize(n); setPage(1); }, [setPageSize]);
+  const changeSort = useCallback((next) => { setSort(next); setPage(1); }, []);
+
+  const studentColumns = useMemo(() => [
+    {
+      key: 'name', label: 'Student', sortKey: 'name',
+      render: (student) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 34, height: 34, borderRadius: 'var(--radius-md)', background: student.photo_url ? `url(${student.photo_url}) center/cover` : 'var(--c-input)', border: '1px solid var(--c-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--c-faint)', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
+            {!student.photo_url && student.name?.slice(0, 1)}
+          </div>
+          <div>
+            {/* The real focusable way in. The row click is only a shortcut. */}
+            <button
+              data-testid={`student-open-${student.id}`}
+              onClick={e => { e.stopPropagation(); setDetailId(student.id); }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--c-text)', fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: 'var(--text-base)', textAlign: 'left' }}
+            >
+              {student.name}
+            </button>
+            <div style={{ color: 'var(--c-faint)', fontSize: 'var(--text-xs)', marginTop: 1 }}>Roll {student.roll_number || 'N/A'}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'class', label: 'Class', sortKey: 'class',
+      render: (s) => (s.class_info ? `${s.class_info.name}-${s.class_info.section}` : cellValue(null)),
+    },
+    { key: 'primary_phone', label: 'Phone', render: (s) => cellValue(s.primary_phone) },
+    { key: 'admission_number', label: 'Admission', sortKey: 'admission_number', render: (s) => cellValue(s.admission_number) },
+    { key: 'gender', label: 'Gender', sortKey: 'gender', render: (s) => cellValue(s.gender) },
+    {
+      key: 'blood_group', label: 'Blood',
+      render: (s) => (s.blood_group ? <Pill tone="red">{s.blood_group}</Pill> : cellValue(null)),
+    },
+    {
+      key: 'status', label: 'Status',
+      render: (s) => (
+        <Pill tone={s.is_active ? 'green' : 'neutral'} icon={s.is_active ? CheckCircle2 : MinusCircle}>
+          {s.status || (s.is_active ? 'active' : 'inactive')}
+        </Pill>
+      ),
+    },
+    {
+      key: 'actions', label: 'Actions',
+      render: (student) => (
+        <div style={{ display: 'flex', gap: 5, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+          <Btn variant="secondary" onClick={() => setDetailId(student.id)} title="View profile"><User size={12} /></Btn>
+          {canManage && <Btn variant="secondary" onClick={() => openEdit(student)} title="Edit student"><Edit3 size={12} /></Btn>}
+          {canManage && student.is_active && <Btn variant="secondary" onClick={() => deactivate(student)} title="Deactivate">Deactivate</Btn>}
+          {canErase && <Btn variant="danger" onClick={() => setEraseTarget(student)} title="Erase student"><Trash2 size={12} /></Btn>}
+        </div>
+      ),
+    },
+  ], [canManage, canErase]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Server-side aggregated stats for the Class Strength tab (accurate across all pages)
   const [strengthStats, setStrengthStats] = useState([]);
   const [strengthLoading, setStrengthLoading] = useState(false);
+  const [strengthSort, setStrengthSort] = useState({ key: 'class_label', direction: 'ascending' });
+
+  const onStrengthSort = useCallback((key) => {
+    setStrengthSort(prev => (
+      prev.key === key
+        ? { key, direction: prev.direction === 'ascending' ? 'descending' : 'ascending' }
+        : { key, direction: 'ascending' }
+    ));
+  }, []);
+
+  const sortedStrengthRows = useMemo(() => {
+    const rows = [...strengthStats];
+    const { key, direction } = strengthSort;
+    const factor = direction === 'descending' ? -1 : 1;
+    rows.sort((a, b) => {
+      // Class is ordered the way the school reads it — NUR, LKG, UKG, 1st … 12th —
+      // never alphabetically, which would put 10th above 1st (owner item 5).
+      if (key === 'class_label') {
+        return factor * compareClassLabels(a.class_label, b.class_label);
+      }
+      return factor * ((a[key] ?? 0) - (b[key] ?? 0));
+    });
+    return rows;
+  }, [strengthStats, strengthSort]);
+
+  // Gender was never captured for any of the 1,802 students, so every one of them
+  // lands in "not recorded". Boys 0 / Girls 0 are therefore NOT counts of zero
+  // children — they are the absence of a record, and must not read as a figure.
+  const genderEverRecorded = useMemo(
+    () => strengthStats.some(r => (r.boys || 0) + (r.girls || 0) + (r.other || 0) > 0),
+    [strengthStats],
+  );
 
   useEffect(() => {
     if (tab !== 'strength') return;
     setStrengthLoading(true);
     getStudentStrengthStats()
-      .then(res => { if (res.success) setStrengthStats(res.data || []); })
+      .then(res => {
+        if (!res.success) return;
+        // The aggregate comes back class-alphabetical, which puts 10th, 11th and
+        // 12th above 1st and scatters NUR/LKG/UKG. Order it the way the school
+        // reads it. Rows carry the class as one label ("10th-A").
+        const rows = [...(res.data || [])].sort((a, b) =>
+          compareClassLabels(a.class_name ?? a.class ?? a.label, b.class_name ?? b.class ?? b.label));
+        setStrengthStats(rows);
+      })
       .finally(() => setStrengthLoading(false));
   }, [tab]);
 
@@ -626,7 +754,10 @@ export default function StudentDatabase() {
     setLoading(true);
     setError('');
     try {
-      const params = { page, sort };
+      // UX-DR10: the size goes to the API so the SERVER paginates. Fetching
+      // everything and slicing on the client would defeat the point entirely
+      // on a 1,802-row table.
+      const params = { page, sort, limit: pageSize };
       if (search) params.search = search;
       if (filterClass) params.class_id = filterClass;
       if (includeInactive) params.include_inactive = true;
@@ -641,7 +772,7 @@ export default function StudentDatabase() {
       setError(err.message || 'Unable to load students');
     }
     setLoading(false);
-  }, [search, filterClass, includeInactive, sort, page, currentUser]);
+  }, [search, filterClass, includeInactive, sort, page, pageSize, currentUser]);
 
   useEffect(() => { loadClasses(); }, [loadClasses]);
   useEffect(() => { loadData(); }, [loadData]);
@@ -707,43 +838,54 @@ export default function StudentDatabase() {
             <>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
                 {[
-                  { label: 'Total Students', value: strengthStats.reduce((a, r) => a + r.total, 0), color: '#4f8ff7' },
-                  { label: 'Classes', value: strengthStats.length, color: '#34d399' },
-                  { label: 'Boys', value: strengthStats.reduce((a, r) => a + r.boys, 0), color: '#60a5fa' },
-                  { label: 'Girls', value: strengthStats.reduce((a, r) => a + r.girls, 0), color: '#f472b6' },
+                  { label: 'Total Students', value: strengthStats.reduce((a, r) => a + r.total, 0), color: '#4f8ff7', real: true },
+                  { label: 'Classes', value: strengthStats.length, color: '#34d399', real: true },
+                  // "Boys 0" when nobody's gender was ever captured is the same lie
+                  // this epic exists to remove — it reads as "this school has no
+                  // boys" rather than "we never wrote it down".
+                  { label: 'Boys', value: strengthStats.reduce((a, r) => a + r.boys, 0), color: '#60a5fa', real: genderEverRecorded },
+                  { label: 'Girls', value: strengthStats.reduce((a, r) => a + r.girls, 0), color: '#f472b6', real: genderEverRecorded },
                 ].map(stat => (
-                  <div key={stat.label} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 10, padding: '16px 18px' }}>
-                    <div style={{ fontSize: 28, fontWeight: 700, color: stat.color }}>{stat.value}</div>
+                  <div key={stat.label} data-stat-state={stat.real ? 'ok' : 'not-recorded'} style={{
+                    background: 'var(--c-bg)',
+                    border: stat.real ? '1px solid var(--c-border)' : '1px dashed var(--c-border)',
+                    borderRadius: 10, padding: '16px 18px',
+                  }}>
+                    <div style={{
+                      fontSize: stat.real ? 28 : 15,
+                      fontWeight: 700,
+                      color: stat.real ? stat.color : 'var(--c-muted)',
+                    }}>
+                      {stat.real ? stat.value : 'Not recorded'}
+                    </div>
                     <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>{stat.label}</div>
+                    {!stat.real && (
+                      <div style={{ fontSize: 11, color: 'var(--c-muted)', marginTop: 3 }}>
+                        Gender was never collected for these students
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
-              {strengthStats.length === 0 ? (
-                <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13 }}>No student data available</div>
-              ) : (
-                <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr>
-                        {['Class', 'Boys', 'Girls', 'Other', 'Total'].map(h => (
-                          <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 750, color: 'var(--c-faint)', textTransform: 'uppercase', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {strengthStats.map((row, i) => (
-                        <tr key={row.class_id || i} style={{ borderBottom: i < strengthStats.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
-                          <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--c-text)', fontSize: 13 }}>{row.class_label}</td>
-                          <td style={{ padding: '10px 14px', color: '#60a5fa', fontSize: 13 }}>{row.boys}</td>
-                          <td style={{ padding: '10px 14px', color: '#f472b6', fontSize: 13 }}>{row.girls}</td>
-                          <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 13 }}>{row.other}</td>
-                          <td style={{ padding: '10px 14px', fontWeight: 700, color: 'var(--c-text)', fontSize: 13 }}>{row.total}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              {/* The shared sortable table (FR82/UX-DR5). Every one of the 48 rows
+                  is already in memory here — this is an aggregate, not a page — so
+                  ordering the whole array locally IS ordering the whole result set.
+                  That is why sorting is done here and not asked of the server. */}
+              <DataTable
+                tableId="class-strength"
+                caption="Students per class, by recorded gender"
+                columns={STRENGTH_COLUMNS}
+                rows={sortedStrengthRows}
+                rowKey={(r, i) => r.class_id || i}
+                sort={strengthSort.key}
+                sortDirection={strengthSort.direction}
+                onSortChange={onStrengthSort}
+                page={1}
+                total={sortedStrengthRows.length}
+                pageSize={sortedStrengthRows.length || 1}
+                emptyTitle="No student data available"
+                emptyMessage="Class strength appears here once students are assigned to classes."
+              />
             </>
           )}
         </div>
@@ -765,9 +907,15 @@ export default function StudentDatabase() {
               <option value="">All classes</option>
               {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
             </select>
-            <select value={sort} onChange={e => { setSort(e.target.value); setPage(1); }} style={{ ...inputStyle, width: 150 }}>
+            {/* Kept alongside the sortable column headings, and bound to the
+                same `sort` state so the two can never disagree. Every value a
+                heading can set has an option here, or the select would render
+                blank once a heading was clicked. */}
+            <select value={sort} onChange={e => changeSort(e.target.value)} aria-label="Sort students by" style={{ ...inputStyle, width: 150 }}>
               <option value="name">Name A–Z</option>
               <option value="class">By class</option>
+              <option value="admission_number">Admission no.</option>
+              <option value="gender">Gender</option>
               <option value="created_at">Newest first</option>
             </select>
             {currentUser.role === 'owner' && (
@@ -780,71 +928,26 @@ export default function StudentDatabase() {
 
           {error && <div style={{ color: '#f87171', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.18)', borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 12 }}>{error}</div>}
 
-          <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, overflowX: 'auto' }}>
-            {loading ? (
-              <div style={{ padding: 40, color: 'var(--c-faint)', fontSize: 13, textAlign: 'center' }}>Loading students…</div>
-            ) : students.length === 0 ? (
-              <div style={{ padding: 40, color: 'var(--c-faint)', fontSize: 13, textAlign: 'center' }}>No students match the current filters</div>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
-                <thead>
-                  <tr>
-                    {['Student', 'Class', 'Phone', 'Admission', 'Gender', 'Blood', 'Status', 'Actions'].map(h => (
-                      <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 750, color: 'var(--c-faint)', textTransform: 'uppercase', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {students.map((student, index) => (
-                    <tr key={student.id} onClick={() => setDetailId(prev => prev === student.id ? null : student.id)} style={{ borderBottom: index < students.length - 1 ? '1px solid var(--c-border)' : 'none', cursor: 'pointer', transition: 'background 0.12s' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--c-deep)'}
-                      onMouseLeave={e => e.currentTarget.style.background = ''}>
-                      <td style={{ padding: '10px 14px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <div style={{ width: 36, height: 36, borderRadius: 8, background: student.photo_url ? `url(${student.photo_url}) center/cover` : 'var(--c-input)', border: '1px solid var(--c-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--c-faint)', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
-                            {!student.photo_url && student.name?.slice(0, 1)}
-                          </div>
-                          <div>
-                            <button onClick={e => { e.stopPropagation(); setDetailId(student.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--c-text)', fontWeight: 600, fontSize: 13, textAlign: 'left' }}>
-                              {student.name}
-                            </button>
-                            <div style={{ color: 'var(--c-faint)', fontSize: 11, marginTop: 1 }}>Roll {student.roll_number || 'N/A'}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12 }}>{student.class_info ? `${student.class_info.name}-${student.class_info.section}` : 'N/A'}</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12, fontFamily: 'monospace' }}>{student.primary_phone || '—'}</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12, fontFamily: 'monospace' }}>{student.admission_number || '—'}</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12, textTransform: 'capitalize' }}>{student.gender || '—'}</td>
-                      <td style={{ padding: '10px 14px' }}>
-                        {student.blood_group
-                          ? <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 7px', borderRadius: 4, background: 'rgba(251,113,133,0.1)', color: '#fb7185' }}>{student.blood_group}</span>
-                          : <span style={{ color: 'var(--c-faint)', fontSize: 12 }}>—</span>}
-                      </td>
-                      <td style={{ padding: '10px 14px' }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 5, background: student.is_active ? 'rgba(16,185,129,0.1)' : 'rgba(100,116,139,0.1)', color: student.is_active ? '#34d399' : 'var(--c-faint)' }}>{student.status || (student.is_active ? 'active' : 'inactive')}</span>
-                      </td>
-                      <td style={{ padding: '10px 14px' }} onClick={e => e.stopPropagation()}>
-                        <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-                          <Btn variant="secondary" onClick={() => setDetailId(student.id)} title="View profile"><User size={12} /></Btn>
-                          {canManage && <Btn variant="secondary" onClick={() => openEdit(student)} title="Edit student"><Edit3 size={12} /></Btn>}
-                          {canManage && student.is_active && <Btn variant="secondary" onClick={() => deactivate(student)} title="Deactivate">Deactivate</Btn>}
-                          {canErase && <Btn variant="danger" onClick={() => setEraseTarget(student)} title="Erase student"><Trash2 size={12} /></Btn>}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          {total > 20 && (
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 14 }}>
-              <Btn variant="secondary" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}><ChevronLeft size={13} />Prev</Btn>
-              <span style={{ color: 'var(--c-faint)', fontSize: 12, alignSelf: 'center' }}>Page {page} of {totalPages}</span>
-              <Btn variant="secondary" onClick={() => setPage(p => p + 1)} disabled={page >= totalPages}>Next<ChevronRight size={13} /></Btn>
-            </div>
+          {loading ? (
+            <div style={{ padding: 40, color: 'var(--c-faint)', fontSize: 13, textAlign: 'center' }}>Loading students…</div>
+          ) : (
+            <DataTable
+              tableId="students"
+              caption="Students, sortable by column"
+              columns={studentColumns}
+              rows={students}
+              rowKey={(s) => s.id}
+              onRowClick={(s) => setDetailId(prev => (prev === s.id ? null : s.id))}
+              sort={sort}
+              onSortChange={changeSort}
+              page={page}
+              total={total}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={changePageSize}
+              emptyTitle="No students match these filters"
+              emptyMessage="Try clearing the search or choosing a different class."
+            />
           )}
         </>
       )}

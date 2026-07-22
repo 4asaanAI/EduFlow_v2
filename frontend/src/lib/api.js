@@ -1,4 +1,5 @@
 import { getAccessToken, redirectToLoginOnce, refreshAccessToken } from './authSession';
+import { sortClasses } from './classOrder';
 
 const _rawBackend = process.env.REACT_APP_BACKEND_URL || '';
 // Force HTTPS when the page is served over HTTPS (prevents mixed-content blocks on Amplify/CloudFront)
@@ -359,7 +360,15 @@ export async function uploadGuardianPhoto(studentId, guardianId, file) {
 
 export async function getAllClasses() {
   const res = await apiFetch(`${API}/settings/classes`, { headers: getHeaders() });
-  return res.json();
+  const data = await res.json();
+  // Sort once, here, rather than at each of the ~25 places that render a class
+  // dropdown. The API returns them in insertion order, which reads as random
+  // ("11th-A, 1st-A, 2nd-C, … LKG-A, NUR-D"), and alphabetical is no better —
+  // it puts 10th/11th/12th ahead of 1st. See lib/classOrder.js.
+  if (data && Array.isArray(data.data)) {
+    return { ...data, data: sortClasses(data.data) };
+  }
+  return data;
 }
 
 // --- Academic structure: Classes CRUD ---
@@ -592,6 +601,46 @@ export async function executeTool(toolId, params) {
 export async function getStaff(params = {}) {
   const qs = new URLSearchParams(params).toString();
   const res = await apiFetch(`${API}/staff/?${qs}`, { headers: getHeaders() });
+  return res.json();
+}
+
+// Story 1.3 — your own staff record, READ ONLY. Nobody edits their own details;
+// corrections go through the Owner or Principal on the staff screen. There is
+// deliberately no update counterpart here: the server refuses one, and shipping
+// a client function for a call that always fails invites someone to wire it up.
+export async function getMyStaffProfile() {
+  const res = await apiFetch(`${API}/staff/me`, { headers: getHeaders() });
+  return res.json();
+}
+
+// Epic 8 — ask for a correction; an administrator decides. Asking changes
+// nothing, which is the whole point: these never write to the staff record.
+export async function requestMyProfileChange(data) {
+  const res = await apiFetch(`${API}/staff/me/change-requests`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function getMyProfileChangeRequests() {
+  const res = await apiFetch(`${API}/staff/me/change-requests`, { headers: getHeaders() });
+  return res.json();
+}
+
+// Owner / Principal only — the queue and the decision.
+export async function getProfileChangeRequests(status = 'pending') {
+  const res = await apiFetch(`${API}/staff/change-requests?status=${encodeURIComponent(status)}`, {
+    headers: getHeaders(),
+  });
+  return res.json();
+}
+
+export async function decideProfileChangeRequest(requestId, status, rejectionReason) {
+  const res = await apiFetch(`${API}/staff/change-requests/${requestId}`, {
+    method: 'PATCH',
+    headers: getHeaders(),
+    body: JSON.stringify({ status, rejection_reason: rejectionReason || '' }),
+  });
   return res.json();
 }
 

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { KeyRound, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import BotMascot from './ui/BotMascot';
 
 export default function Login() {
   const { loginPassword } = useUser();
@@ -12,30 +13,39 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const bg = isDark ? '#111111' : '#f5f5f5';
-  const card = isDark ? '#1a1a1a' : '#ffffff';
-  const border = isDark ? '#2e2e2e' : '#e5e5e5';
-  const text = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#888' : '#525252';
-  const secondary = isDark ? '#a0a0a0' : '#525252';
-  const inputBg = isDark ? '#252525' : '#fafafa';
-  const inputBorder = isDark ? '#333' : '#e5e5e5';
-  const accent = '#4f8ff7';
+  // Epic 9: these were hard-coded `isDark ? hex : hex` pairs, which made the
+  // sign-in screen the one surface the design tokens never reached.
+  const bg = 'var(--color-page)';
+  const card = 'var(--color-surface)';
+  const border = 'var(--color-border)';
+  const text = 'var(--color-text-primary)';
+  const muted = 'var(--color-text-muted)';
+  const secondary = 'var(--color-text-secondary)';
+  const inputBg = 'var(--color-surface-raised)';
+  const inputBorder = 'var(--color-border)';
+  const accent = 'var(--color-accent-blue)';
 
   const inputStyle = {
     width: '100%', padding: '12px 14px', background: inputBg,
-    border: `1px solid ${inputBorder}`, borderRadius: 10, color: text,
-    fontSize: 15, outline: 'none', boxSizing: 'border-box',
-    transition: 'border-color 0.2s ease',
+    border: `1px solid ${inputBorder}`, borderRadius: 'var(--radius-md)', color: text,
+    fontFamily: 'var(--font-body)',
+    // 16px so iOS Safari does not zoom the page when the field takes focus.
+    fontSize: 16, outline: 'none', boxSizing: 'border-box',
+    transition: 'border-color var(--transition-fast)',
   };
 
+  // The brand's pressable button: it sinks into its own shadow, using
+  // `transform` only so the card never reflows on click.
   const buttonStyle = (disabled) => ({
-    width: '100%', padding: '13px', borderRadius: 12, border: 'none',
-    background: disabled ? muted : (isDark ? '#f5f5f5' : '#171717'),
-    color: disabled ? '#fff' : (isDark ? '#171717' : '#fff'),
-    fontSize: 14, fontWeight: 600,
+    width: '100%', padding: '13px', borderRadius: 'var(--radius-lg)', border: 'none',
+    background: disabled ? 'var(--color-border-strong)' : 'var(--brand-blue-fill)',
+    color: disabled ? 'var(--color-text-primary)' : 'var(--on-brand-blue)',
+    fontFamily: 'var(--font-display)',
+    fontSize: 'var(--text-lg)', fontWeight: 700,
+    boxShadow: disabled ? 'none' : '0 4px 0 0 var(--brand-blue-press)',
     cursor: disabled ? 'not-allowed' : 'pointer',
-    transition: 'all 0.2s ease', opacity: disabled ? 0.7 : 1,
+    transition: 'transform var(--transition-fast), box-shadow var(--transition-fast)',
+    opacity: disabled ? 0.7 : 1,
     letterSpacing: '-0.01em',
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
   });
@@ -63,27 +73,21 @@ export default function Login() {
       background: bg, padding: 20,
     }}>
       <div style={{ width: '100%', maxWidth: 440 }}>
-        {/* Logo */}
-        <div className="fade-in" style={{ textAlign: 'center', marginBottom: 36 }}>
-          {/* Logo image with glow halo */}
-          <div style={{ display: 'inline-block', marginBottom: 8, position: 'relative' }}>
+        {/* Flo greets you at the door.
+            The mascot takes the top slot the wordmark used to hold, and the
+            wordmark moves down into the card in place of the key icon — so the
+            first thing anyone sees signing in is the assistant, not a padlock.
+            The sign-in screen is one of the three places Flo is allowed: here,
+            empty states, and the chat greeting. Never on working screens. */}
+        <div className="fade-in" style={{ textAlign: 'center', marginBottom: 28 }}>
+          <div style={{ display: 'inline-block', position: 'relative' }}>
             <div style={{
-              position: 'absolute', inset: -20, borderRadius: 32,
-              background: 'radial-gradient(ellipse at center, rgba(232,89,12,0.18) 0%, transparent 70%)',
+              position: 'absolute', inset: -18, borderRadius: 40,
+              background: 'radial-gradient(ellipse at center, rgba(43,143,240,0.20) 0%, transparent 70%)',
               pointerEvents: 'none',
             }} />
-            <img
-              src="/eduflow-logo.png"
-              alt="EduFlow"
-              style={{
-                height: 80, width: 'auto', objectFit: 'contain', display: 'block',
-                filter: isDark
-                  ? 'brightness(1.15) drop-shadow(0 6px 20px rgba(232,89,12,0.5))'
-                  : 'drop-shadow(0 6px 16px rgba(232,89,12,0.35))',
-              }}
-            />
+            <BotMascot size={104} wave data-testid="login-mascot" />
           </div>
-
         </div>
 
         {/* Login Card */}
@@ -93,17 +97,25 @@ export default function Login() {
         }}>
           <div style={{ padding: 32 }}>
             <div style={{ textAlign: 'center', marginBottom: 28 }}>
-              <div style={{
-                width: 48, height: 48, borderRadius: 14, margin: '0 auto 14px',
-                background: `${accent}12`, display: 'flex', alignItems: 'center',
-                justifyContent: 'center', border: `1px solid ${accent}20`,
-              }}>
-                <KeyRound size={22} color={accent} />
-              </div>
-              <h2 style={{ fontSize: 18, fontWeight: 600, color: text, margin: '0 0 4px' }}>
+              {/* The EduFlow wordmark, where the key icon used to be. A padlock
+                  says "you are locked out"; the brand says "you are in the
+                  right place". Same reason the mascot took the slot above. */}
+              <img
+                src="/eduflow-logo.png"
+                alt="EduFlow"
+                data-testid="login-wordmark"
+                style={{
+                  height: 72, width: 'auto', objectFit: 'contain',
+                  display: 'block', margin: '0 auto 16px',
+                  filter: isDark
+                    ? 'brightness(1.15) drop-shadow(0 4px 14px rgba(232,89,12,0.45))'
+                    : 'drop-shadow(0 4px 12px rgba(232,89,12,0.28))',
+                }}
+              />
+              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-xl)', fontWeight: 700, color: text, margin: '0 0 4px' }}>
                 Sign In
               </h2>
-              <p style={{ fontSize: 13, color: muted, margin: 0 }}>
+              <p style={{ fontSize: 'var(--text-sm)', color: muted, margin: 0 }}>
                 Enter your credentials to continue
               </p>
             </div>
@@ -150,11 +162,17 @@ export default function Login() {
                   background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)',
                   borderRadius: 10, padding: '10px 14px', marginBottom: 16,
                 }}>
-                  <p data-testid="login-error" style={{ fontSize: 13, color: '#f87171', margin: 0 }}>{error}</p>
+                  <p data-testid="login-error" role="alert" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-danger)', margin: 0 }}>{error}</p>
                 </div>
               )}
 
-              <button type="submit" data-testid="login-submit" disabled={loading} style={buttonStyle(loading)}>
+              <button
+                type="submit"
+                data-testid="login-submit"
+                disabled={loading}
+                className="login-submit-btn"
+                style={buttonStyle(loading)}
+              >
                 {loading && <Loader2 size={16} className="spin" />}
                 {loading ? 'Signing in...' : 'Sign In'}
               </button>

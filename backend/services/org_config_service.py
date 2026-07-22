@@ -41,6 +41,11 @@ SCHOOL_SETTINGS_FIELDS = {
     "attendance_threshold", "school_name", "board", "city", "ai_context",
     # Part 1-A school identity & profile (owner-managed, all roles read)
     "state", "address", "established", "principal", "phone", "email", "website", "logo_url",
+    # UI Sweep Epic 4 / Story 4.3. A CBSE school's affiliation number belongs on every
+    # official document it issues and had nowhere to live. Anything the School Settings
+    # form can post MUST appear here — a field the form sends and this set drops is
+    # discarded silently, so the Owner's edit vanishes with a success message.
+    "affiliation_no", "school_code",
 }
 
 
@@ -162,6 +167,9 @@ async def update_school_settings(db, actor_ctx: ActorContext, params: dict, *, s
     """Update school-level settings (whitelisted fields only)."""
     update = {k: v for k, v in params.items() if k in SCHOOL_SETTINGS_FIELDS}
     await db.school_settings.update_one(
+        # branch-scope: intentional — there is ONE school record per school, shared by
+        # every branch. Branch-scoping it would give each branch its own name, address
+        # and affiliation number, which is the opposite of what Story 4.3 is for.
         scoped_filter({"id": "main"}, actor_ctx.school_id),
         {"$set": {**update, "schoolId": actor_ctx.school_id, "updated_at": actor_ctx.now().isoformat()}},
         upsert=True, **_session_kwargs(session),

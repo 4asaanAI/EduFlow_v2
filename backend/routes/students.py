@@ -31,15 +31,31 @@ from services.s3_storage import (
 )
 from services.teacher_scope_service import compute_teacher_scope
 from tenant import get_school_id, scoped_filter
+from utils.class_order import ordered_class_ids
 
 
 router = APIRouter(prefix="/api/students", tags=["students"])
 
 ADMIN_ROLES = {"owner", "admin"}
 READ_ROLES = {"owner", "admin", "teacher"}
+
+# The server-side sort whitelist (Epic 3, Story 3.3).
+#
+# This is the enforcement boundary, not a convenience: an unrecognised `sort`
+# falls back to the default rather than reaching a query, so the parameter can
+# never select a field the caller was not offered.
+#
+# Every key here must correspond to a column the shared DataTable presents as
+# sortable, and vice versa — a heading that offers to sort and then does
+# nothing is worse than one that does not offer.
 SORT_FIELDS = {
     "created_at": ("created_at", -1),
     "name": ("name", 1),
+    "admission_number": ("admission_number", 1),
+    "dob": ("dob", 1),
+    "gender": ("gender", 1),
+    # "class" is handled separately — see _class_ordered_page(). It cannot be a
+    # plain field sort because class_id is a random UUID.
     "class": ("class_id", 1),
 }
 # NOTE: the student updatable-field whitelist now lives ONLY in
@@ -113,6 +129,32 @@ async def _audit(db, *, action: str, student_id: str, user: dict, changes: dict 
     await write_audit_doc(db, record, school_id=get_school_id(), branch_id=user.get("branch_id"))
 
 
+GENDER_MALE_VALUES = ("male", "boy", "m")
+GENDER_FEMALE_VALUES = ("female", "girl", "f")
+
+
+def classify_gender(value) -> str:
+    """Which strength bucket a stored `gender` belongs in.
+
+    The single definition of the rule the Mongo aggregation below implements. It is
+    a plain function so the rule can be tested exhaustively — the in-memory test
+    double cannot evaluate `$cond`/`$toLower`/`$trim`, so a test asserting the
+    aggregation's numbers through the fake would be measuring the fake, not this.
+
+    "not_recorded" is deliberately NOT "other": all 1,802 students have an empty
+    gender, so folding them together made the Other column equal the Total column on
+    every row (reported by the owner, 2026-07-22).
+    """
+    text = str(value or "").strip().lower()
+    if text == "":
+        return "not_recorded"
+    if text in GENDER_MALE_VALUES:
+        return "boys"
+    if text in GENDER_FEMALE_VALUES:
+        return "girls"
+    return "other"
+
+
 @router.get("/strength")
 async def class_strength_stats(request: Request):
     """Aggregated gender-count stats per class — used by the Class Strength tab."""
@@ -131,9 +173,20 @@ async def class_strength_stats(request: Request):
             "class_section": {"$first": "$_cls.section"},
             "boys": {"$sum": {"$cond": [{"$in": [{"$toLower": {"$ifNull": ["$gender", ""]}}, ["male", "boy", "m"]]}, 1, 0]}},
             "girls": {"$sum": {"$cond": [{"$in": [{"$toLower": {"$ifNull": ["$gender", ""]}}, ["female", "girl", "f"]]}, 1, 0]}},
+            # UI Sweep Epic 4 / Story 4.2. "Other" used to be everything that was not
+            # male or female — which lumped a student recorded as another gender in
+            # with a student whose gender was NEVER CAPTURED. Gender is empty for all
+            # 1,802 students, so the screen showed "Boys 0, Girls 0, Other = everyone"
+            # and the owner rightly asked why two columns held the same number.
+            # They are separate facts and are now counted separately.
+            "not_recorded": {"$sum": {"$cond": [
+                {"$eq": [{"$trim": {"input": {"$ifNull": ["$gender", ""]}}}, ""]}, 1, 0
+            ]}},
             "total": {"$sum": 1},
         }},
-        {"$addFields": {"other": {"$subtract": ["$total", {"$add": ["$boys", "$girls"]}]}}},
+        {"$addFields": {"other": {"$subtract": [
+            "$total", {"$add": ["$boys", "$girls", "$not_recorded"]}
+        ]}}},
         {"$sort": {"class_name": 1, "class_section": 1}},
     ]
     results = await db.students.aggregate(pipeline).to_list(500)
@@ -147,7 +200,8 @@ async def class_strength_stats(request: Request):
             "class_label": cls_label,
             "boys": r["boys"],
             "girls": r["girls"],
-            "other": r["other"],
+            "other": r.get("other", 0),
+            "not_recorded": r.get("not_recorded", 0),
             "total": r["total"],
         })
     return {"success": True, "data": data}
@@ -201,11 +255,35 @@ async def list_students(
         else:
             query["class_id"] = {"$in": teacher_class_ids}
 
-    sort_field, sort_dir = SORT_FIELDS.get(sort, SORT_FIELDS["created_at"])
     scoped_query = _student_query(query)
     skip = (page - 1) * per_page
-    students = await db.students.find(scoped_query, {"_id": 0, "coordinates": 0}).sort(sort_field, sort_dir).skip(skip).limit(per_page).to_list(per_page)
     total = await db.students.count_documents(scoped_query)
+
+    if sort == "class":
+        # Sorting on class_id would order by a random UUID. Rank the 48 class
+        # records in the school's own order (NUR -> LKG -> UKG -> 1st ... 12th,
+        # then sections A-E) and sort students by their class's position in
+        # that list. Owner item 5, applied to the student listing rather than
+        # only to dropdowns.
+        all_classes = await db.classes.find(
+            scoped_filter({}, get_school_id()),  # branch-scope: intentional — class order is school-wide
+            {"_id": 0, "id": 1, "name": 1, "section": 1},
+        ).to_list(500)
+        ranked_ids = ordered_class_ids(all_classes)
+        students = await db.students.aggregate([
+            {"$match": scoped_query},
+            # A class not in the list yields -1, which would sort first; push
+            # those to the end so an unassigned student never leads the list.
+            {"$addFields": {"_class_rank": {"$indexOfArray": [ranked_ids, "$class_id"]}}},
+            {"$addFields": {"_class_rank": {"$cond": [{"$lt": ["$_class_rank", 0]}, len(ranked_ids), "$_class_rank"]}}},
+            {"$sort": {"_class_rank": 1, "name": 1}},
+            {"$skip": skip},
+            {"$limit": per_page},
+            {"$project": {"_id": 0, "coordinates": 0, "_class_rank": 0}},
+        ]).to_list(per_page)
+    else:
+        sort_field, sort_dir = SORT_FIELDS.get(sort, SORT_FIELDS["created_at"])
+        students = await db.students.find(scoped_query, {"_id": 0, "coordinates": 0}).sort(sort_field, sort_dir).skip(skip).limit(per_page).to_list(per_page)
 
     class_ids = list({s.get("class_id") for s in students if s.get("class_id")})
     classes = await db.classes.find(scoped_filter({"id": {"$in": class_ids}}, get_school_id()), {"_id": 0}).to_list(len(class_ids)) if class_ids else []

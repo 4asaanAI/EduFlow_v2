@@ -95,6 +95,12 @@ async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
     present = sum(1 for a in att_today if a.get("status") == "present")
     absent = sum(1 for a in att_today if a.get("status") == "absent")
     att_rate = round(present / total_marked * 100, 1) if total_marked > 0 else 0
+    # Epic 4 / Story 4.2: with nothing marked yet, this reported "0%" — which reads
+    # as "the school is empty" to a principal opening the report on a Monday morning.
+    # Nought marked is not nought present. Both the screens and the assistant read
+    # this field, so both are corrected by correcting the number once.
+    attendance_marked_today = total_marked > 0
+    attendance_rate_display = f"{att_rate}%" if attendance_marked_today else "not marked yet"
 
     # Staff attendance today
     staff_att = await db.staff_attendance.find(_tenant_query(scope, {"date": today})).to_list(100)
@@ -166,7 +172,9 @@ async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
         "summary": {
             "total_students": total_students,
             "total_staff": total_staff,
-            "attendance_rate": f"{att_rate}%",
+            "attendance_rate": attendance_rate_display,
+            "attendance_marked_today": attendance_marked_today,
+            "attendance_records_today": total_marked,
             "present_today": present,
             "absent_today": absent,
             "fee_collected": fmt_amount(total_paid),
@@ -280,6 +288,11 @@ async def tool_get_fee_summary(params: dict, user: dict, scope=None) -> dict:
             return f"₹{a/100000:.2f}L"
         return f"₹{a:,.0f}"
 
+    # Epic 4 / Story 4.2: how many fee records exist at all. The school has ONE
+    # transaction for 1,802 students, so "Total Collected ₹0" is true — and
+    # indistinguishable from a failed request unless the screen can say why.
+    transactions_on_file = await db.fee_transactions.count_documents(_tenant_query(scope, {}))
+
     return _env({
         "stats": {
             "total_collected": fmt(total_collected),
@@ -288,6 +301,7 @@ async def tool_get_fee_summary(params: dict, user: dict, scope=None) -> dict:
             "students_with_dues": len(defaulters),
             "overdue_60_days": sum(1 for d in defaulters if d["days_overdue"] >= 60),
             "collection_rate": f"{collection_rate}%",
+            "transactions_on_file": transactions_on_file,
         },
         "defaulters": defaulters,
         "total_defaulters": len(defaulters),
@@ -407,7 +421,11 @@ async def tool_get_attendance_overview(params: dict, user: dict, scope=None) -> 
         key=lambda x: x["date"],
     )
 
+    # Epic 4 / Story 4.2: no attendance recorded in the window is not an average of
+    # zero. Saying "0%" over 30 days would report a school nobody attended.
     avg_rate = round(sum(d["rate"] for d in daily_list) / len(daily_list), 1) if daily_list else 0
+    has_attendance_records = bool(daily_list)
+    avg_rate_display = f"{avg_rate}%" if has_attendance_records else "not recorded"
 
     # Class-wise today
     today = end_date.strftime("%Y-%m-%d")
@@ -427,7 +445,8 @@ async def tool_get_attendance_overview(params: dict, user: dict, scope=None) -> 
 
     return _env({
         "period": f"Last {days} days",
-        "avg_attendance_rate": f"{avg_rate}%",
+        "avg_attendance_rate": avg_rate_display,
+        "has_attendance_records": has_attendance_records,
         "daily_trend": daily_list[-7:],  # last 7 days for conciseness
         "class_stats_today": class_stats,
         "total_records": len(records),

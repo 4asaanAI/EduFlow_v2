@@ -21,7 +21,13 @@ import zipfile
 from pathlib import Path
 
 from fastapi import APIRouter, Request, UploadFile, File, HTTPException
+from database import get_db
 from middleware.auth import get_current_user
+from services.audit_service import write_audit
+from services.ocr_service import extract_text as extract_image_text
+from services.ocr_service import sniff_image_type
+from services.vision_service import describe_image as describe_image_bytes
+from tenant import get_school_id
 
 logger = logging.getLogger(__name__)
 
@@ -233,10 +239,30 @@ def _extract_text(data: bytes, filename: str, suffix: str) -> str:
     return f"[File: {filename} — unsupported format '{suffix}']"
 
 
+def may_read_images(user: dict) -> bool:
+    """Who may have Flo read a photograph.
+
+    Settled by Abhimanyu, 2026-07-22 (revised the same day): **Owner, Principal and
+    the other office staff — accountant, receptionist and the rest of the admin
+    roles. NOT teachers, and NOT students.**
+
+    The revision is the point. An earlier draft included teachers on the reasoning
+    that they photograph forms; the owner narrowed it to the office. This is
+    paperwork handling — fee slips, admission forms, circulars — and it belongs with
+    the people who do the paperwork. Teachers were removed deliberately, so do not
+    "restore" them on the assumption it was an oversight.
+
+    Deliberately NOT `is_owner_or_principal` either, which would exclude the
+    accountant and receptionist who handle most of the paper.
+    """
+    role = (user or {}).get("role")
+    return role in ("owner", "admin")
+
+
 @router.post("/upload")
 async def upload_chat_file(request: Request, file: UploadFile = File(...)):
     """Accept a file and return extracted text for inclusion in the AI conversation context."""
-    get_current_user(request)  # auth guard — raises 401 if not authenticated
+    user = get_current_user(request)  # auth guard — raises 401 if not authenticated
 
     filename = file.filename or "uploaded_file"
     suffix = Path(filename).suffix.lower()
@@ -264,10 +290,72 @@ async def upload_chat_file(request: Request, file: UploadFile = File(...)):
 
     # Images return a special sentinel with the base64 data URL
     image_data = None
+    ocr_note = None
+    used_paid_vision = False
     if extracted.startswith("__IMAGE_DATA__"):
         parts = extracted.split("__FILENAME__")
         image_data = parts[0].replace("__IMAGE_DATA__", "")
-        extracted = f"[Image attached: {filename}]"
+
+        # Epic 10 / Story 10.5: read the words off the page HERE, on this server.
+        # Doing it at the upload boundary means Flo receives ordinary text and the
+        # whole chat pipeline needs no knowledge of images at all. Free, and the
+        # picture never leaves this machine.
+        if not may_read_images(user):
+            extracted = (
+                f"[Image attached: {filename}. Reading images is available to the "
+                "Owner, the Principal and office staff only, so its contents were not read.]"
+            )
+            image_data = None  # do not hand the bytes on to a caller who may not use them
+        else:
+            result = extract_image_text(data)
+            if not result.available:
+                # NOT an empty page. Say which, or a deployment problem reads as
+                # "this form is blank" — the Epic 4 defect in a new place.
+                ocr_note = result.reason
+                extracted = f"[Image attached: {filename}. {result.reason}]"
+            elif result.found_text:
+                extracted = (
+                    f"[Text read from the image {filename}"
+                    + (f", language {result.language}" if result.language else "")
+                    + "]\n" + result.text
+                )
+                if result.notes:
+                    extracted += "\n\n[" + " ".join(result.notes) + "]"
+            else:
+                # Story 10.6: reading the words was not enough, so fall back to the
+                # paid service — and ONLY here. A page whose text was read never
+                # reaches this branch, which is what keeps printed paper free.
+                vision = describe_image_bytes(data, sniff_image_type(data) or "image/jpeg")
+                if vision.understood:
+                    used_paid_vision = True
+                    extracted = f"[Description of the image {filename}]\n{vision.description}"
+                else:
+                    ocr_note = vision.reason or result.reason
+                    extracted = f"[Image attached: {filename}. {ocr_note}]"
+
+            # Reading an image is a read of school records and may involve a child.
+            # Ids and counts only (NFR-S2) — never the text that was read.
+            try:
+                await write_audit(
+                    get_db(),
+                    action="image_text_read",
+                    entity_id=filename[:120],
+                    collection="chat_uploads",
+                    changed_by=user.get("id", ""),
+                    changed_by_role=user.get("role", ""),
+                    school_id=get_school_id(),
+                    branch_id=user.get("branch_id", ""),
+                    changes={
+                        "size_bytes": len(data),
+                        "chars_found": result.char_count,
+                        "engine_available": result.available,
+                        # Recorded so the owner can see how often the PAID path was
+                        # taken, rather than discovering it on a bill.
+                        "paid_vision_used": used_paid_vision,
+                    },
+                )
+            except Exception:
+                logger.warning("image_text_read audit failed", exc_info=True)
 
     if not image_data and len(extracted) > MAX_TEXT_LENGTH:
         extracted = extracted[:MAX_TEXT_LENGTH] + f"\n\n[... truncated — original {len(extracted):,} chars]"
@@ -279,4 +367,7 @@ async def upload_chat_file(request: Request, file: UploadFile = File(...)):
         "extracted_text": extracted,
         "char_count": len(extracted),
         "image_data": image_data,
+        # Present only when an image could not be read, so the screen can say why
+        # instead of showing an attachment that silently contributed nothing.
+        "ocr_note": ocr_note,
     }

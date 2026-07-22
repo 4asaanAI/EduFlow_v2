@@ -1,8 +1,71 @@
 import React, { useState } from 'react';
 import DOMPurify from 'dompurify';
 import { useTheme } from '../contexts/ThemeContext';
-import { Sparkles, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, Download, FileText } from 'lucide-react';
+import BotMascot from './ui/BotMascot';
 import { emitFeedback } from '../lib/api';
+
+/**
+ * A file Flo made, as something you can tap (Epic 10, Story 10.3).
+ *
+ * The download link is presigned and EXPIRES. An old conversation therefore holds
+ * dead links, and a tap that silently fails is Epic 4's defect — a failure that
+ * looks like nothing happening — in a new place. So the card says how to get a
+ * fresh one, and only the link itself is trusted to the block: the file name and
+ * type are rendered as TEXT, never as markup.
+ */
+export function GeneratedFile({ block }) {
+  const name = String(block?.file_name || 'document');
+  const type = String(block?.doc_type || '').toUpperCase();
+  const sizeKb = Number(block?.size_kb || 0);
+  const url = String(block?.download_url || '');
+  // Only http(s) is followed. A javascript: or data: URL in an AI-authored block
+  // would otherwise become a click target.
+  const safeUrl = /^https?:\/\//i.test(url) ? url : '';
+
+  return (
+    <div
+      data-testid="generated-file"
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg, 12px)',
+        background: 'var(--color-surface)', padding: '12px 14px', margin: '10px 0',
+      }}
+    >
+      <FileText size={20} aria-hidden="true" style={{ color: 'var(--color-text-secondary)', flexShrink: 0 }} />
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--color-text-primary)', wordBreak: 'break-word' }}>
+          {name}
+        </div>
+        {/* The type is stated in TEXT, not by icon colour alone (WCAG). */}
+        <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+          {type}{sizeKb > 0 ? ` · ${sizeKb} KB` : ''}
+        </div>
+      </div>
+      {safeUrl ? (
+        <a
+          href={safeUrl}
+          download={name}
+          rel="noopener noreferrer"
+          data-testid="generated-file-download"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '8px 14px', borderRadius: 'var(--radius-md, 10px)',
+            background: 'var(--brand-blue-fill, #4f8ff7)', color: 'var(--on-brand-blue, #fff)',
+            fontSize: 13, fontWeight: 600, textDecoration: 'none', flexShrink: 0,
+          }}
+        >
+          <Download size={14} aria-hidden="true" />
+          Download
+        </a>
+      ) : (
+        <span data-testid="generated-file-expired" style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+          This link has expired. Ask for the file again.
+        </span>
+      )}
+    </div>
+  );
+}
 
 // FL (R8.4 AC3): the previous `FORBID_ATTR: ['style']` stripped the renderer's
 // OWN inline styling, so AI markdown rendered as unstyled plain text. Rather than
@@ -377,12 +440,14 @@ export default function MessageRenderer({ message, isStreaming, onActionButton }
 
   return (
     <div data-testid="assistant-message" style={{ display: 'flex', gap: 14, marginBottom: 24, alignItems: 'flex-start' }}>
+      {/* Flo's face, not a generic sparkle (Abhimanyu, 2026-07-22). The assistant
+          has a name and a face; a star said "some AI wrote this". */}
       <div style={{
         width: 28, height: 28, borderRadius: 8, flexShrink: 0,
         background: 'linear-gradient(135deg, rgba(79,143,247,0.12), rgba(167,139,250,0.12))',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
       }}>
-        <Sparkles size={13} color="#a78bfa" />
+        <BotMascot variant="avatar" size={24} data-testid="flo-avatar" />
       </div>
       <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
         {message.content && (
@@ -401,6 +466,7 @@ export default function MessageRenderer({ message, isStreaming, onActionButton }
           if (block.type === 'stat_grid') return <StatGrid key={i} stats={block.stats} />;
           if (block.type === 'table') return <RichDataTable key={i} title={block.title} headers={block.headers} rows={block.rows} isDark={isDark} />;
           if (block.type === 'alerts') return <AlertsList key={i} items={block.items} isDark={isDark} />;
+          if (block.type === 'file') return <GeneratedFile key={i} block={block} />;
           return null;
         })}
         {actionButtons?.length > 0 && <ActionButtons buttons={actionButtons} onActionButton={onActionButton} isDark={isDark} />}

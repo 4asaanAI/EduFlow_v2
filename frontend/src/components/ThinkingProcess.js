@@ -119,7 +119,7 @@ function StepIcon({ status, isDark }) {
       alignItems: 'center',
       justifyContent: 'center',
       fontSize: 13,
-      color: isDark ? '#525252' : '#a0a0a0',
+      color: 'var(--color-text-muted)',
       flexShrink: 0,
     }}>
       &#9675;
@@ -165,7 +165,7 @@ function ToolBadge({ step, isDark }) {
         <span role="img" aria-label="tool">&#128295;</span>
         {step.tool || 'Tool'} &#10003;
         {step.count != null && (
-          <span style={{ color: isDark ? '#888' : '#525252', marginLeft: 2 }}>
+          <span style={{ color: 'var(--color-text-muted)', marginLeft: 2 }}>
             ({step.count} records)
           </span>
         )}
@@ -201,8 +201,8 @@ function StepRow({ step, isDark, startTime }) {
         color: step.status === 'error'
           ? '#ef4444'
           : step.status === 'active'
-            ? (isDark ? '#e5e5e5' : '#171717')
-            : (isDark ? '#a0a0a0' : '#525252'),
+            ? 'var(--color-text-primary)'
+            : 'var(--color-text-secondary)',
         whiteSpace: 'nowrap',
         overflow: 'hidden',
         textOverflow: 'ellipsis',
@@ -213,7 +213,7 @@ function StepRow({ step, isDark, startTime }) {
       {elapsed && (
         <span style={{
           fontSize: 11,
-          color: isDark ? '#525252' : '#a0a0a0',
+          color: 'var(--color-text-muted)',
           fontFamily: 'JetBrains Mono, monospace',
           flexShrink: 0,
         }}>
@@ -296,7 +296,7 @@ export default function ThinkingProcess({ steps, isStreaming, collapsed, duratio
             cursor: 'pointer',
             userSelect: 'none',
             fontSize: 12,
-            color: isDark ? '#888' : '#525252',
+            color: 'var(--color-text-muted)',
             transition: 'background 0.15s ease',
           }}
           onMouseEnter={(e) => { e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'; }}

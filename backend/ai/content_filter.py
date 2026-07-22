@@ -478,7 +478,7 @@ HOMEWORK_GUIDANCE_RESPONSE: str = (
 )
 
 INJECTION_BLOCKED_RESPONSE: str = (
-    "I'm EduFlow AI, your school study assistant. "
+    "I'm Flo, your school study assistant. "
     "I can only help with school-related topics within my guidelines. "
     "How can I help you with your studies today?"
 )

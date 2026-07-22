@@ -24,6 +24,17 @@ from ai.tool_functions_v2 import TOOL_REGISTRY, WRITE_TOOL_NAMES
 # tool means adding it here; adding a write tool means giving it write flags. A tool
 # that is on neither list is a classification gap and fails the guard below.
 READ_ONLY_ALLOWLIST = frozenset({
+    # UI Sweep Epic 10. A considered classification, not a convenience.
+    # `draft_document` DOES create an S3 object, a `file_uploads` row and an audit
+    # row — but it changes NO school record: no student, fee, staff member or
+    # attendance mark differs afterwards. There is nothing to undo, so a confirm
+    # step would add friction without adding safety, and the kill-switch guards AI
+    # writes to school data rather than the production of a file. Its real controls
+    # are the role gate (owner/admin/teacher, students excluded exactly as in
+    # routes/exports.py), the audit row, and the per-school daily cap it shares with
+    # certificate generation. It was renamed FROM `generate_document` because this
+    # guard was right that "generate_" reads as mutating.
+    "draft_document",
     "draft_parent_message",
     "get_attendance_overview",
     "get_branch_comparison",

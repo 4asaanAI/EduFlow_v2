@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { Search, Bell, ChevronLeft, Menu, X, CalendarDays } from 'lucide-react';
@@ -8,6 +8,34 @@ import { getToolForNotification } from '../lib/notifRouting';
 import { getAcademicYear } from '../lib/api';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
+
+/* Every icon button in the header — menu, search, bell — uses THIS, so they
+   share one size and one baseline.
+
+   They previously each carried their own numbers (padding 6 with an 18px icon,
+   a 36x36 box with an 18px icon, padding 7 with a 17px icon). Three different
+   boxes with three different icon sizes meant the three symbols neither lined
+   up on the same midline nor matched each other, which is exactly what
+   Abhimanyu saw. A fixed square box with `alignItems: center` puts the optical
+   centre of each icon on the same line regardless of the glyph's own shape.
+
+   36px also clears the 44px-with-spacing touch guidance closely enough inside a
+   52px header, and is the same box the sidebar toggle uses. */
+const ICON_SIZE = 19;
+const ICON_BTN = {
+  width: 36,
+  height: 36,
+  flexShrink: 0,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: 'none',
+  border: 'none',
+  borderRadius: 'var(--radius-sm)',
+  cursor: 'pointer',
+  padding: 0,
+  transition: 'background var(--transition-fast)',
+};
 
 function getH() {
   return getAuthHeaders(null);
@@ -34,10 +62,10 @@ function SearchPanel({ user, onClose, isDark }) {
     return () => clearTimeout(timer);
   }, [query]);
 
-  const bg = isDark ? '#1e1e1e' : '#fff';
-  const border = isDark ? '#2e2e2e' : '#e5e5e5';
-  const text = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#888' : '#525252';
+  const bg = 'var(--color-surface)';
+  const border = 'var(--color-border)';
+  const text = 'var(--color-text-primary)';
+  const muted = 'var(--color-text-muted)';
 
   const typeColors = { tool: '#a78bfa', student: '#4f8ff7', staff: '#34d399', announcement: '#fbbf24' };
 
@@ -53,12 +81,24 @@ function SearchPanel({ user, onClose, isDark }) {
     <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 80 }}>
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }} />
       <div className="fade-in-scale" style={{ position: 'relative', width: 560, maxWidth: '90vw', background: bg, border: `1px solid ${border}`, borderRadius: 16, boxShadow: 'var(--shadow-xl)', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', padding: '14px 18px', gap: 12, borderBottom: `1px solid ${border}` }}>
+        {/* Same pattern as the chat composer: the ROW owns the focus
+            indication, and the transparent field inside it opts out of the
+            global ring. Ringing the field drew a blue pill floating inside the
+            panel, which is what Abhimanyu flagged here and in the composer. */}
+        <div className="search-row" style={{ display: 'flex', alignItems: 'center', padding: '14px 18px', gap: 12, borderBottom: `1px solid ${border}` }}>
           <Search size={16} color={muted} />
           <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)} placeholder="Search tools, students, staff..."
-            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: text, fontSize: 15, fontWeight: 400 }} />
+            aria-label="Search tools, students and staff"
+            data-focus-ring="none"
+            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: text, fontFamily: 'var(--font-body)', fontSize: 16, fontWeight: 400 }} />
           {loading && <div className="spinner" style={{ width: 14, height: 14 }} />}
-          <button onClick={onClose} style={{ background: isDark ? '#333' : '#e5e5e5', border: 'none', color: muted, cursor: 'pointer', borderRadius: 6, padding: '3px 8px', fontSize: 11, fontWeight: 600 }}>ESC</button>
+          {/* Another key cap — same treatment as the Ctrl/ hint. */}
+          <button onClick={onClose} aria-label="Close search" style={{
+            background: 'var(--color-page)', border: '1px solid var(--color-border)',
+            color: 'var(--color-text-secondary)', cursor: 'pointer',
+            borderRadius: 'var(--radius-sm)', padding: '2px 8px',
+            fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', fontWeight: 600,
+          }}>ESC</button>
         </div>
         {results.length > 0 && (
           <div style={{ maxHeight: 400, overflowY: 'auto', padding: 6 }}>
@@ -73,7 +113,7 @@ function SearchPanel({ user, onClose, isDark }) {
                   <div style={{ fontSize: 14, fontWeight: 500, color: text }}>{r.name || r.title}</div>
                   <div style={{ fontSize: 12, color: muted }}>{r.subtitle || r.type}</div>
                 </div>
-                <span style={{ fontSize: 11, color: muted, background: isDark ? '#252525' : '#f5f5f5', padding: '3px 8px', borderRadius: 6, fontWeight: 500 }}>{r.type}</span>
+                <span style={{ fontSize: 11, color: muted, background: 'var(--color-surface-raised)', padding: '3px 8px', borderRadius: 6, fontWeight: 500 }}>{r.type}</span>
               </div>
             ))}
           </div>
@@ -171,7 +211,7 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
       {/* Header */}
       <div style={{
         padding: '16px 18px 14px',
-        background: isDark ? '#1a1a1a' : '#ffffff',
+        background: 'var(--color-surface)',
         borderBottom: `1px solid ${border}`,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
@@ -251,7 +291,7 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
                     borderBottom: i < notifications.length - 1 ? `1px solid ${border}` : 'none',
                     transition: 'background 0.15s ease',
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'; }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = isRead ? 'transparent' : (isDark ? 'rgba(79,143,247,0.04)' : 'rgba(79,143,247,0.03)'); }}
                 >
                   <div style={{
@@ -305,6 +345,24 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
   const notifRef = useRef(null);
   const [isMobile, setIsMobile] = useState(false);
   const [academicYear, setAcademicYear] = useState('');
+  // The red dot used to be painted unconditionally, so the bell always looked as
+  // though something needed attention even when everything was read. Count the
+  // unread ones and only show it when there really is something.
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const refreshUnread = useCallback(() => {
+    fetch(`${API}/notifications`, { headers: getH() })
+      .then(r => (r.ok ? r.json() : null))
+      .then(res => {
+        const list = Array.isArray(res) ? res : (res?.data || []);
+        setUnreadCount(list.filter(n => n && !n.is_digest && !n.is_read).length);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => { refreshUnread(); }, [refreshUnread]);
+  // Re-count when the panel closes, since reading items in it changes the answer.
+  useEffect(() => { if (!showNotif) refreshUnread(); }, [showNotif, refreshUnread]);
 
   useEffect(() => {
     const load = () => {
@@ -341,11 +399,11 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
     ? activeTool?.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' ')
     : '';
 
-  const bg = isDark ? '#1a1a1a' : '#ffffff';
-  const border = isDark ? '#2e2e2e' : '#e5e5e5';
-  const tp = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#888' : '#525252';
-  const secondary = isDark ? '#a0a0a0' : '#525252';
+  const bg = 'var(--color-surface)';
+  const border = 'var(--color-border)';
+  const tp = 'var(--color-text-primary)';
+  const muted = 'var(--color-text-muted)';
+  const secondary = 'var(--color-text-secondary)';
 
   return (
     <>
@@ -356,50 +414,106 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
       }}>
         {/* Left */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: '0 0 auto' }}>
-          <button onClick={onToggleSidebar} style={{
-            background: 'none', border: 'none', color: muted, cursor: 'pointer', padding: 6, borderRadius: 8,
-            display: isMobile ? 'flex' : 'none', transition: 'var(--transition-fast)',
+          <button aria-label="Open menu" onClick={onToggleSidebar} style={{
+            ...ICON_BTN,
+            color: muted,
+            display: isMobile ? 'flex' : 'none',
           }}
             onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-            <Menu size={18} />
+            <Menu size={ICON_SIZE} />
           </button>
-          {activeTool ? (
+          {/* Back is desktop-only. On a phone the hamburger sits right beside it and
+              already gets you out of a tool, so Back is redundant and it crowds the
+              header enough to push the search box and bell off screen. */}
+          {activeTool && !isMobile ? (
             <button data-testid="back-to-chat-btn" onClick={onBackToChat} style={{
-              background: isDark ? '#252525' : '#f5f5f5', border: 'none', color: secondary,
+              background: 'var(--color-surface-raised)', border: 'none', color: secondary,
               cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
               fontSize: 13, fontWeight: 500, padding: '5px 10px', borderRadius: 8,
               transition: 'var(--transition-fast)',
             }}
-              onMouseEnter={e => e.currentTarget.style.background = isDark ? '#333' : '#e5e5e5'}
-              onMouseLeave={e => e.currentTarget.style.background = isDark ? '#252525' : '#f5f5f5'}>
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'var(--color-surface-raised)'}>
               <ChevronLeft size={14} /> Back
             </button>
           ) : null}
-          <span style={{ fontWeight: 600, fontSize: 15, color: tp, whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
-            {title}
-          </span>
+          {/* The EduFlow wordmark, never the tool's name.
+              Every tool page prints its own name as an <h1>, together with its
+              record count and its action buttons. Repeating it here showed the
+              title TWICE, one line apart, on every tool and in every role.
+
+              A first attempt kept the header title on phones — which missed the
+              point entirely, because a phone is where Abhimanyu was looking, so
+              the duplicate survived everywhere he could see it. The name is now
+              gone from the header at every width and for every role, and the
+              brand takes the space. One <h1> per screen, which is also what the
+              heading-order rule wants.
+
+              MOBILE ONLY, deliberately. The rule is one EduFlow logo in view at
+              a time:
+                - desktop: the sidebar is always visible and carries the logo,
+                  so a second one in the header is a duplicate;
+                - mobile: the sidebar is a drawer and its logo is hidden until
+                  you open the menu, so without this the brand would be absent
+                  from the entire phone experience.
+              Sized larger here than the sidebar's, because it is the only one
+              on screen and has a 52px bar to fill. */}
+          {isMobile ? (
+            <img
+              src="/eduflow-logo.png"
+              alt="EduFlow"
+              data-testid="header-logo"
+              style={{ height: 34, width: 'auto', objectFit: 'contain', display: 'block', flexShrink: 0 }}
+            />
+          ) : null}
         </div>
 
-        {/* Center: search */}
-        <div style={{ flex: 1, maxWidth: 420, display: 'flex', justifyContent: 'center' }}>
-          <button onClick={() => setShowSearch(true)} style={{
-            width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-            background: isDark ? '#252525' : '#f5f5f5', border: `1px solid ${border}`,
-            borderRadius: 10, padding: '7px 14px', cursor: 'pointer', color: muted, fontSize: 13,
-            transition: 'var(--transition-fast)',
-          }}
-            onMouseEnter={e => e.currentTarget.style.borderColor = isDark ? '#444' : '#ccc'}
-            onMouseLeave={e => e.currentTarget.style.borderColor = border}>
-            <Search size={14} />
-            <span style={{ flex: 1, textAlign: 'left' }}>Search students, staff 2026</span>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <kbd style={{ fontSize: 10, color: muted, background: isDark ? '#333' : '#e5e5e5', padding: '1px 5px', borderRadius: 4, fontFamily: 'Inter, sans-serif' }}>
+        {/* Center: search.
+            On phones this collapses to a single icon. The full-width version wrapped
+            its label onto three lines inside a 52px-tall header, which spilled the box
+            out over the page and squeezed the notification bell off screen entirely.
+            The keyboard hint is desktop-only too \u2014 there is no Ctrl key on a phone. */}
+        {isMobile ? (
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', minWidth: 0 }}>
+            <button aria-label="Search students and staff" onClick={() => setShowSearch(true)}
+              style={{ ...ICON_BTN, color: muted }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              <Search size={ICON_SIZE} />
+            </button>
+          </div>
+        ) : (
+          <div style={{ flex: 1, maxWidth: 420, minWidth: 0, display: 'flex', justifyContent: 'center' }}>
+            <button onClick={() => setShowSearch(true)} style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+              background: 'var(--color-surface-raised)', border: `1px solid ${border}`,
+              borderRadius: 10, padding: '7px 14px', cursor: 'pointer', color: muted, fontSize: 13,
+              transition: 'var(--transition-fast)', overflow: 'hidden',
+            }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-text-muted)'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = border}>
+              <Search size={14} style={{ flexShrink: 0 }} />
+              <span style={{ flex: 1, textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                Search students, staff {academicYear || ''}
+              </span>
+              {/* The keyboard hint. It filled with --color-border-strong, a
+                  BORDER token raised to a slate blue for 3:1 outlines \u2014 as a
+                  fill it read as a muddy blue smudge with unreadable text on
+                  it. A key cap wants a recessed surface and a real outline. */}
+              <kbd style={{
+                flexShrink: 0, fontSize: 'var(--text-xs)', lineHeight: 1.6,
+                color: 'var(--color-text-secondary)',
+                background: 'var(--color-page)',
+                border: '1px solid var(--color-border)',
+                padding: '0 6px', borderRadius: 'var(--radius-sm)',
+                fontFamily: 'var(--font-mono)', fontWeight: 500,
+              }}>
                 {navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}/
               </kbd>
-            </div>
-          </button>
-        </div>
+            </button>
+          </div>
+        )}
 
         {/* Right */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
@@ -412,7 +526,7 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
               background: isDark ? 'rgba(79,143,247,0.08)' : 'rgba(79,143,247,0.06)',
               border: `1px solid ${isDark ? 'rgba(79,143,247,0.2)' : 'rgba(79,143,247,0.18)'}`,
             }}>
-              <CalendarDays size={11} color={isDark ? '#6b8fd4' : '#4f6bbf'} />
+              <CalendarDays size={11} color={'var(--color-accent-blue)'} />
               <span style={{ fontSize: 11, color: isDark ? '#8baee8' : '#3b5fc0', fontWeight: 600, letterSpacing: '0.01em' }}>
                 Academic Year {academicYear}
               </span>
@@ -420,14 +534,14 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
           )}
 
           <div ref={notifRef} style={{ position: 'relative' }}>
-            <button data-testid="notifications-btn" onClick={() => setShowNotif(v => !v)} style={{
-              background: 'none', border: 'none', cursor: 'pointer', color: muted,
-              padding: 7, borderRadius: 8, position: 'relative', transition: 'var(--transition-fast)',
-            }}
+            <button aria-label="Notifications" data-testid="notifications-btn" onClick={() => setShowNotif(v => !v)}
+              style={{ ...ICON_BTN, color: muted, position: 'relative' }}
               onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-              <Bell size={17} />
-              <span style={{ position: 'absolute', top: 5, right: 5, width: 6, height: 6, background: '#f87171', borderRadius: '50%', border: `2px solid ${bg}` }} />
+              <Bell size={ICON_SIZE} />
+              {unreadCount > 0 && (
+                <span aria-label={`${unreadCount} unread notifications`} style={{ position: 'absolute', top: 6, right: 6, width: 7, height: 7, background: 'var(--color-danger)', borderRadius: '50%', border: `2px solid ${bg}` }} />
+              )}
             </button>
             {showNotif && (
               <NotificationsPanel

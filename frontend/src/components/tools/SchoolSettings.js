@@ -5,6 +5,7 @@ import { getSchoolSettings, updateSchoolSettings, getAcademicYear, updateAcademi
 
 const EMPTY = {
   school_name: '', board: '', established: '', principal: '',
+  affiliation_no: '', school_code: '',
   city: '', state: '', address: '',
   phone: '', email: '', website: '', logo_url: '',
   attendance_threshold: '',
@@ -52,7 +53,8 @@ export default function SchoolSettings() {
         const d = res.data;
         setForm({
           school_name: d.school_name || '', board: d.board || '', established: d.established || '',
-          principal: d.principal || '', city: d.city || '', state: d.state || '', address: d.address || '',
+          principal: d.principal || '', affiliation_no: d.affiliation_no || '', school_code: d.school_code || '',
+          city: d.city || '', state: d.state || '', address: d.address || '',
           phone: d.phone || '', email: d.email || '', website: d.website || '', logo_url: d.logo_url || '',
           attendance_threshold: d.attendance_threshold != null ? String(d.attendance_threshold) : '',
         });
@@ -146,23 +148,29 @@ export default function SchoolSettings() {
 
       {loading ? <LoadingCard message="Loading school settings…" /> : (
         <>
+          {/* Epic 4 / Story 4.3: every suggested value below is the school's OWN,
+              taken from theaaryans.in and its printed prospectus. They used to
+              suggest another city's landline and a generic address, which is how
+              wrong details got typed in and stayed. */}
           <Section title="Identity">
-            <FormField label="School Name" value={form.school_name} onChange={set('school_name')} placeholder="The Aaryans CBSE School" required />
+            <FormField label="School Name" value={form.school_name} onChange={set('school_name')} placeholder="The Aaryans" required />
             <FormField label="Board" value={form.board} onChange={set('board')} placeholder="CBSE" />
-            <FormField label="Established (Year)" value={form.established} onChange={set('established')} placeholder="2005" />
-            <FormField label="Principal" value={form.principal} onChange={set('principal')} placeholder="Dr. Anand Sharma" />
+            <FormField label="CBSE Affiliation No." value={form.affiliation_no} onChange={set('affiliation_no')} placeholder="2133014" />
+            <FormField label="CBSE School Code" value={form.school_code} onChange={set('school_code')} placeholder="81936" />
+            <FormField label="Established (Year)" value={form.established} onChange={set('established')} placeholder="2015" />
+            <FormField label="Principal" value={form.principal} onChange={set('principal')} placeholder="Adesh Singh" />
           </Section>
 
           <Section title="Location">
-            <FormField label="City" value={form.city} onChange={set('city')} placeholder="Lucknow" />
+            <FormField label="City" value={form.city} onChange={set('city')} placeholder="Joya, Amroha" />
             <FormField label="State" value={form.state} onChange={set('state')} placeholder="Uttar Pradesh" />
-            <FormField label="Address" type="textarea" value={form.address} onChange={set('address')} placeholder="Sector 12, Jankipuram, Lucknow, UP 226021" />
+            <FormField label="Address" type="textarea" value={form.address} onChange={set('address')} placeholder="Prem Nagar, P.O. Joya, N.H. 24, Distt. Amroha, Uttar Pradesh 244222" />
           </Section>
 
           <Section title="Contact">
-            <FormField label="Phone" value={form.phone} onChange={set('phone')} placeholder="0522-4567890" />
-            <FormField label="Email" type="email" value={form.email} onChange={set('email')} placeholder="info@school.edu.in" />
-            <FormField label="Website" value={form.website} onChange={set('website')} placeholder="www.school.edu.in" />
+            <FormField label="Phone" value={form.phone} onChange={set('phone')} placeholder="+91 81269 65555, +91 81269 68888" />
+            <FormField label="Email" type="email" value={form.email} onChange={set('email')} placeholder="theaaryansjoya@gmail.com" />
+            <FormField label="Website" value={form.website} onChange={set('website')} placeholder="www.theaaryans.in" />
             <FormField label="Logo URL" value={form.logo_url} onChange={set('logo_url')} placeholder="https://…" />
           </Section>
 
@@ -170,7 +178,7 @@ export default function SchoolSettings() {
             <FormField label="Attendance Threshold (%)" type="number" value={form.attendance_threshold} onChange={set('attendance_threshold')} placeholder="75" />
           </Section>
 
-          <Section title="AI Assistant Context">
+          <Section title="What Flo Knows About Your School">
             <FormField label="Grading System" value={ai.grading_system} onChange={setAiField('grading_system')} placeholder="CGPA (10 point scale)" />
             <FormField label="Fee Structure" value={ai.fee_structure} onChange={setAiField('fee_structure')} placeholder="Monthly tuition + quarterly exam fee" />
             <FormField label="Class Naming" value={ai.class_naming} onChange={setAiField('class_naming')} placeholder="Class 9, 10, 11, 12" />

@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { adminResetPassword, createStaff, deactivateStaff, getPendingLeaves, getStaff, subscribeSSE, updateLeave, updateStaff } from '../../lib/api';
-import { CheckCircle, Edit3, KeyRound, Plus, RefreshCw, X, XCircle } from 'lucide-react';
+import { adminResetPassword, createStaff, deactivateStaff, decideProfileChangeRequest, getPendingLeaves, getProfileChangeRequests, getStaff, subscribeSSE, updateLeave, updateStaff } from '../../lib/api';
+import { ArrowRight, CheckCircle, Edit3, KeyRound, Plus, RefreshCw, X, XCircle } from 'lucide-react';
 import { useUser } from '../../contexts/UserContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import DataTable, { cellValue } from '../ui/DataTable';
+import { useTablePageSize } from '../../hooks/useTablePrefs';
 
 const blankForm = {
   name: '',
@@ -20,6 +22,33 @@ const blankForm = {
   earned_leave_balance: 15,
 };
 
+// The canonical sub_category list, mirroring backend middleware/auth.py
+// VALID_SUB_CATEGORIES. The backend GATES ACCESS on these exact strings —
+// require_access(..., sub_category="accountant") and the AI tool registry both
+// match them literally. A typo here silently grants nothing, which is why this
+// is a fixed list and not the free-text box it used to be.
+// "owner" and "student" are intentionally absent: neither is assignable from
+// the staff screen.
+const SUB_CATEGORIES = {
+  admin: [
+    { value: 'principal', label: 'Principal' },
+    { value: 'management', label: 'Management' },
+    { value: 'accountant', label: 'Accountant' },
+    { value: 'receptionist', label: 'Receptionist' },
+    { value: 'transport_head', label: 'Transport Head' },
+    { value: 'it_tech', label: 'IT / Tech' },
+    { value: 'maintenance', label: 'Maintenance' },
+    { value: 'support_staff', label: 'Support Staff' },
+  ],
+  teacher: [
+    { value: 'class_teacher', label: 'Class Teacher' },
+    { value: 'subject_teacher', label: 'Subject Teacher' },
+    { value: 'hod', label: 'Head of Department' },
+    { value: 'coordinator', label: 'Coordinator' },
+    { value: 'kg_incharge', label: 'KG In-charge' },
+  ],
+};
+
 const inputStyle = {
   width: '100%',
   background: 'var(--c-bg)',
@@ -30,6 +59,20 @@ const inputStyle = {
   fontSize: 13,
   outline: 'none',
 };
+
+// A person's job title as a human would say it.
+//
+// Every staff record already carries a readable `designation` — "Class Teacher",
+// "Teacher", "Principal" — populated for all 89 records. The table used to print
+// `role / sub_category` instead ("teacher / subject_teacher"), which reads as
+// machine output and duplicates the Type column beside it. Prefer the real
+// designation; fall back to a tidied sub_category, then role.
+function designationOf(profile) {
+  if (profile.designation) return profile.designation;
+  const raw = profile.sub_category || profile.role || profile.staff_type;
+  if (!raw) return '—';
+  return String(raw).split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
 
 function lastUpdatedLabel(value) {
   if (!value) return 'Waiting for attendance stream';
@@ -79,7 +122,18 @@ function StaffModal({ initialStaff, canEditLeaveBalances, onClose, onSaved }) {
   const [error, setError] = useState('');
 
   const setField = (key) => (event) => {
-    setForm((current) => ({ ...current, [key]: event.target.value }));
+    const value = event.target.value;
+    setForm((current) => {
+      const next = { ...current, [key]: value };
+      // Sub-categories are role-specific. Switching role must clear a now-invalid
+      // one, otherwise an admin could be saved carrying "class_teacher" — which
+      // matches no permission rule and silently grants nothing.
+      if (key === 'role') {
+        const allowed = (SUB_CATEGORIES[value] || []).map((s) => s.value);
+        if (!allowed.includes(next.sub_category)) next.sub_category = '';
+      }
+      return next;
+    });
     setError('');
   };
 
@@ -130,15 +184,23 @@ function StaffModal({ initialStaff, canEditLeaveBalances, onClose, onSaved }) {
                 <option value="transport">Transport</option>
               </select>
             </label>
+            {/* Owner is deliberately NOT offered. It is the highest privilege in
+                the platform and must never be grantable from the staff screen —
+                anyone who can add a staff member could otherwise mint a full
+                owner account. Owner is assigned out of band. */}
             <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Role
               <select value={form.role} onChange={setField('role')} style={{ ...inputStyle, marginTop: 5 }}>
                 <option value="teacher">Teacher</option>
                 <option value="admin">Admin</option>
-                <option value="owner">Owner</option>
               </select>
             </label>
             <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Sub Category
-              <input value={form.sub_category || ''} onChange={setField('sub_category')} placeholder="principal, accountant, class_teacher" style={{ ...inputStyle, marginTop: 5 }} />
+              <select value={form.sub_category || ''} onChange={setField('sub_category')} style={{ ...inputStyle, marginTop: 5 }}>
+                <option value="">Select…</option>
+                {(SUB_CATEGORIES[form.role] || []).map(s => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
             </label>
             <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Employee ID
               <input value={form.employee_id || ''} onChange={setField('employee_id')} style={{ ...inputStyle, marginTop: 5 }} />
@@ -237,6 +299,9 @@ export default function StaffTracker() {
   const { currentUser } = useUser();
   const [staff, setStaff] = useState([]);
   const [pendingLeaves, setPendingLeaves] = useState([]);
+  // Epic 8 — corrections people have asked for. Only the Owner and the
+  // Principal may see or decide these, so nobody else even fetches them.
+  const [changeRequests, setChangeRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [leavesLoading, setLeavesLoading] = useState(true);
   const [error, setError] = useState('');
@@ -251,17 +316,63 @@ export default function StaffTracker() {
   const [attendanceStreamUpdatedAt, setAttendanceStreamUpdatedAt] = useState(null);
   const [, setClockTick] = useState(0);
   const canEditLeaveBalances = currentUser.role === 'owner' || currentUser.sub_category === 'principal';
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(total / 20)), [total]);
+  // Mirrors the server's require_owner_or_principal gate. A convenience only —
+  // the server refuses regardless of what this says.
+  const canReviewChanges = currentUser.role === 'owner'
+    || (currentUser.role === 'admin' && currentUser.sub_category === 'principal');
   const attendanceLiveLabel = lastUpdatedLabel(attendanceStreamUpdatedAt);
+
+  // UX-DR10: page size, remembered per table. Keyed 'staff', so sizing this
+  // list does not resize the student list.
+  const [pageSize, setPageSize] = useTablePageSize('staff');
+  // Both reset to page 1 — changing either can shrink the number of pages, and
+  // being left on a page that no longer exists shows an empty list.
+  const changePageSize = useCallback((n) => { setPageSize(n); setPage(1); }, [setPageSize]);
+  const changeSort = useCallback((next) => { setSort(next); setPage(1); }, []);
+
+  const staffColumns = useMemo(() => [
+    {
+      key: 'name', label: 'Name', sortKey: 'name',
+      render: (profile) => (
+        <div>
+          <div style={{ color: 'var(--c-text)', fontFamily: 'var(--font-display)', fontWeight: 700 }}>{profile.name}</div>
+          <div style={{ color: 'var(--c-faint)', fontSize: 'var(--text-xs)' }}>{profile.employee_id || 'No employee ID'}</div>
+        </div>
+      ),
+    },
+    // `designation` is the readable label the school actually uses and is
+    // populated for all 89 records. The old column showed `role /
+    // sub_category` ("teacher / subject_teacher"), which is the one the owner
+    // objected to on 2026-07-22.
+    { key: 'designation', label: 'Designation', sortKey: 'designation', render: (p) => designationOf(p) },
+    { key: 'department', label: 'Department', sortKey: 'department', render: (p) => cellValue(p.department) },
+    {
+      key: 'leave', label: 'Leave Balance',
+      render: (p) => `CL ${p.casual_leave_balance ?? 0} · ML ${p.medical_leave_balance ?? 0} · EL ${p.earned_leave_balance ?? 0}`,
+    },
+    {
+      key: 'actions', label: 'Actions',
+      render: (profile) => (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <ActionButton variant="secondary" onClick={() => setEditing(profile)}><Edit3 size={13} /></ActionButton>
+          {canResetPassword && <ActionButton variant="secondary" onClick={() => setResetTarget(profile)}><KeyRound size={13} /></ActionButton>}
+          {profile.is_active !== false && <ActionButton variant="danger" onClick={() => deactivate(profile)}>Deactivate</ActionButton>}
+        </div>
+      ),
+    },
+  ], [canResetPassword]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setLeavesLoading(true);
     setError('');
     try {
-      const [staffRes, leavesRes] = await Promise.all([
-        getStaff({ page, sort }),
+      const [staffRes, leavesRes, requestsRes] = await Promise.all([
+        // The page size goes to the API so the SERVER paginates (UX-DR10).
+        getStaff({ page, sort, limit: pageSize }),
         getPendingLeaves().catch(() => ({ data: [] })),
+        canReviewChanges ? getProfileChangeRequests('pending').catch(() => ({ data: [] }))
+                         : Promise.resolve({ data: [] }),
       ]);
       if (staffRes.success) {
         setStaff(staffRes.data || []);
@@ -270,12 +381,13 @@ export default function StaffTracker() {
         setError(staffRes.detail || 'Unable to load staff profiles');
       }
       if (leavesRes.success) setPendingLeaves(leavesRes.data || []);
+      if (requestsRes.success) setChangeRequests(requestsRes.data || []);
     } catch (err) {
       setError(err.message || 'Unable to load staff profiles');
     }
     setLoading(false);
     setLeavesLoading(false);
-  }, [page, sort]);
+  }, [page, sort, pageSize, canReviewChanges]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -290,6 +402,18 @@ export default function StaffTracker() {
       if (event.type !== 'snapshot') loadData();
     }
   }, { onReconnect: loadData }), [loadData]);
+
+  const handleChangeRequest = async (requestId, status) => {
+    let reason = '';
+    if (status === 'rejected') {
+      // Optional, unlike a leave decision — a correction may simply be wrong,
+      // and forcing a sentence would make people type "no" to get past it.
+      reason = window.prompt('Why is this not being approved? (optional)') || '';
+    }
+    const res = await decideProfileChangeRequest(requestId, status, reason.trim());
+    if (!res.success) setError(res.detail || 'Unable to decide that request');
+    loadData();
+  };
 
   const handleLeave = async (leaveId, status) => {
     const reason = window.prompt(`Reason for ${status} decision`);
@@ -339,6 +463,7 @@ export default function StaffTracker() {
         {[
           ['profiles', 'Profiles'],
           ['leaves', `Pending Leaves (${pendingLeaves.length})`],
+          ...(canReviewChanges ? [['changes', `Corrections (${changeRequests.length})`]] : []),
         ].map(([id, label]) => (
           <button key={id} onClick={() => setActiveTab(id)} style={{ background: 'none', border: 'none', borderBottom: activeTab === id ? '2px solid var(--tool-hex-4f8ff7)' : '2px solid transparent', color: activeTab === id ? 'var(--c-text)' : 'var(--c-faint)', padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>{label}</button>
         ))}
@@ -356,46 +481,22 @@ export default function StaffTracker() {
               <option value="created_at">Newest first</option>
             </select>
           </div>
-          <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, overflowX: 'auto' }}>
-            {staff.length === 0 ? (
-              <div style={{ padding: 30, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13 }}>No staff records found</div>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820 }}>
-                <thead>
-                  <tr>
-                    {['Name', 'Type', 'Role', 'Department', 'Leave Balance', 'Actions'].map((header) => (
-                      <th key={header} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 750, color: 'var(--c-faint)', textTransform: 'uppercase', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{header}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {staff.map((profile, index) => (
-                    <tr key={profile.id} style={{ borderBottom: index < staff.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
-                      <td style={{ padding: '10px 14px', color: 'var(--c-text)', fontSize: 13, fontWeight: 650 }}>{profile.name}<div style={{ color: 'var(--c-faint)', fontSize: 11 }}>{profile.employee_id || 'No employee ID'}</div></td>
-                      <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12 }}>{profile.staff_type}</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12 }}>{profile.role || 'teacher'}{profile.sub_category ? ` / ${profile.sub_category}` : ''}</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12 }}>{profile.department || 'N/A'}</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 12 }}>CL {profile.casual_leave_balance ?? 0} · ML {profile.medical_leave_balance ?? 0} · EL {profile.earned_leave_balance ?? 0}</td>
-                      <td style={{ padding: '10px 14px' }}>
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          <ActionButton variant="secondary" onClick={() => setEditing(profile)}><Edit3 size={13} /></ActionButton>
-                          {canResetPassword && <ActionButton variant="secondary" onClick={() => setResetTarget(profile)}><KeyRound size={13} /></ActionButton>}
-                          {profile.is_active !== false && <ActionButton variant="danger" onClick={() => deactivate(profile)}>Deactivate</ActionButton>}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-          {total > 20 && (
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 14 }}>
-              <ActionButton variant="secondary" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1}>Prev</ActionButton>
-              <span style={{ color: 'var(--c-faint)', fontSize: 12, alignSelf: 'center' }}>Page {page} of {totalPages}</span>
-              <ActionButton variant="secondary" onClick={() => setPage((current) => current + 1)} disabled={page >= totalPages}>Next</ActionButton>
-            </div>
-          )}
+          <DataTable
+            tableId="staff"
+            caption="Staff, sortable by column"
+            columns={staffColumns}
+            rows={staff}
+            rowKey={(profile) => profile.id}
+            sort={sort}
+            onSortChange={changeSort}
+            page={page}
+            total={total}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={changePageSize}
+            emptyTitle="No staff records found"
+            emptyMessage="Try a different sort, or add a member of staff."
+          />
         </>
       )}
 
@@ -419,6 +520,42 @@ export default function StaffTracker() {
                 <div style={{ display: 'flex', gap: 8 }}>
                   <ActionButton variant="secondary" onClick={() => handleLeave(leave.id, 'approved')}><CheckCircle size={13} />Approve</ActionButton>
                   <ActionButton variant="danger" onClick={() => handleLeave(leave.id, 'rejected')}><XCircle size={13} />Reject</ActionButton>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {activeTab === 'changes' && canReviewChanges && (
+        <div data-testid="staff-change-requests" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 840 }}>
+          {changeRequests.length === 0 ? (
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13, background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8 }}>
+              Nobody has asked for a correction
+            </div>
+          ) : changeRequests.map((req) => (
+            <div key={req.id} data-testid={`change-request-${req.id}`} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ minWidth: 240 }}>
+                  <div style={{ fontWeight: 650, color: 'var(--c-text)', fontSize: 14 }}>
+                    {req.requested_by_name || 'A member of staff'}
+                  </div>
+                  {/* Old beside new — a reviewer should never have to go and
+                      look up what the current value was. */}
+                  {Object.entries(req.requested || {}).map(([field, value]) => (
+                    <div key={field} style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 5, fontSize: 12, flexWrap: 'wrap' }}>
+                      <span style={{ color: 'var(--c-faint)', minWidth: 46 }}>{field}</span>
+                      <span style={{ color: 'var(--c-muted)', textDecoration: 'line-through' }}>
+                        {(req.current || {})[field] || 'not recorded'}
+                      </span>
+                      <ArrowRight size={11} style={{ color: 'var(--c-faint)' }} />
+                      <span style={{ color: 'var(--c-text)', fontWeight: 600 }}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <ActionButton variant="secondary" onClick={() => handleChangeRequest(req.id, 'approved')}><CheckCircle size={13} />Approve</ActionButton>
+                  <ActionButton variant="danger" onClick={() => handleChangeRequest(req.id, 'rejected')}><XCircle size={13} />Reject</ActionButton>
                 </div>
               </div>
             </div>

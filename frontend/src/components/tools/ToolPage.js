@@ -2,7 +2,7 @@
  * Shared ToolPage layout wrapper — PREMIUM REDESIGN
  */
 import React from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 
 export function ToolPage({ title, subtitle, actions, children, onRefresh, loading }) {
@@ -43,20 +43,57 @@ export function ToolPage({ title, subtitle, actions, children, onRefresh, loadin
   );
 }
 
-export function StatCard({ value, label, color = 'var(--color-accent-blue)', sublabel, small }) {
+/**
+ * A single figure.
+ *
+ * `state` exists because of owner item 7 (UI Sweep, Epic 4). A figure that failed to
+ * load used to render as `0`, and a `0` that is genuinely nought rendered the same
+ * way — so the screen could not tell the owner which of the two he was looking at.
+ * The three states are deliberately distinguished by TEXT and by a dashed border,
+ * not by colour alone (WCAG colour-not-only) and not by a tooltip, because he reads
+ * this on a phone in a meeting and will never hover anything.
+ *
+ *   ok            — a real figure. Pass `note` for the honest footnote where the
+ *                   figure is true but surprising, e.g. "1 transaction on file".
+ *   unavailable   — the request failed. Never render 0 for this.
+ *   not-recorded  — the field was never captured for these records (date of birth,
+ *                   gender, house and admission date are empty for all 1,802
+ *                   students). Not missing — never collected.
+ */
+export function StatCard({ value, label, color = 'var(--color-accent-blue)', sublabel, small, state = 'ok', note, 'data-testid': testId }) {
   const { isDark } = useTheme();
   const bg = isDark ? 'var(--color-surface)' : 'var(--color-surface)';
   const border = isDark ? 'var(--color-border)' : 'var(--color-border)';
   const muted = isDark ? 'var(--color-text-muted)' : 'var(--color-text-muted)';
+
+  const isReal = state === 'ok';
+  const displayValue = state === 'unavailable'
+    ? 'Unavailable'
+    : state === 'not-recorded' ? 'Not recorded' : value;
+  const footnote = isReal ? note : (
+    state === 'unavailable' ? "Couldn't load — this is not a zero" : 'Never filled in for these records'
+  );
+
   return (
-    <div style={{
-      background: bg, border: `1px solid ${border}`, borderRadius: 14,
-      padding: small ? '12px 14px' : '16px 20px',
-      transition: 'all var(--transition-fast)',
-    }}>
-      <div style={{ fontSize: small ? 20 : 24, fontWeight: 700, color, letterSpacing: '-0.02em' }}>{value}</div>
+    <div
+      data-testid={testId}
+      data-stat-state={state}
+      style={{
+        background: bg,
+        border: isReal ? `1px solid ${border}` : `1px dashed ${border}`,
+        borderRadius: 14,
+        padding: small ? '12px 14px' : '16px 20px',
+        transition: 'all var(--transition-fast)',
+      }}>
+      <div style={{
+        fontSize: isReal ? (small ? 20 : 24) : (small ? 13 : 15),
+        fontWeight: 700,
+        color: isReal ? color : muted,
+        letterSpacing: '-0.02em',
+      }}>{displayValue}</div>
       <div style={{ fontSize: 11, color: muted, marginTop: 4, fontWeight: 600, letterSpacing: '0.02em' }}>{label}</div>
       {sublabel && <div style={{ fontSize: 11, color: muted, marginTop: 3 }}>{sublabel}</div>}
+      {footnote && <div style={{ fontSize: 11, color: muted, marginTop: 3, fontWeight: 400 }}>{footnote}</div>}
     </div>
   );
 }
@@ -106,14 +143,85 @@ export function ErrorCard({ message = 'Unable to load data.', onRetry }) {
   );
 }
 
-export function DataTable({ title, headers, rows, emptyMsg = 'No data found', actions, loading = false }) {
+/**
+ * Pull comparable text out of a cell.
+ *
+ * Cells in this table are whatever the calling screen passed: a string, a number,
+ * or a React element such as `<span style={...}>₹12,400</span>`. Sorting has to see
+ * through the element to the text a person actually reads, or half the columns on
+ * the platform would sort by "[object Object]".
+ */
+export function sortableCellText(cell) {
+  if (cell === null || cell === undefined) return '';
+  if (typeof cell === 'string' || typeof cell === 'number') return String(cell);
+  if (Array.isArray(cell)) return cell.map(sortableCellText).join(' ');
+  if (typeof cell === 'object' && cell.props) return sortableCellText(cell.props.children);
+  return '';
+}
+
+/** Numbers when both sides are numbers, text otherwise. */
+function compareCells(a, b) {
+  const ta = sortableCellText(a).trim();
+  const tb = sortableCellText(b).trim();
+  // Strip the decoration Indian school data carries — ₹, %, thousands separators,
+  // and a trailing " days" — so "₹1,20,000" sorts above "₹9,000" rather than below
+  // it, which is what a plain string comparison would do.
+  const numeric = (s) => {
+    const cleaned = s.replace(/[₹,%\s]/g, '').replace(/days?$/i, '');
+    if (cleaned === '' || !/^-?\d*\.?\d+$/.test(cleaned)) return null;
+    return parseFloat(cleaned);
+  };
+  const na = numeric(ta);
+  const nb = numeric(tb);
+  if (na !== null && nb !== null) return na - nb;
+  // Blanks and "not recorded" sort last in ascending order rather than floating to
+  // the top, where they would push the rows someone is looking for off the screen.
+  const aEmpty = ta === '' || /^not recorded$/i.test(ta);
+  const bEmpty = tb === '' || /^not recorded$/i.test(tb);
+  if (aEmpty !== bEmpty) return aEmpty ? 1 : -1;
+  return ta.localeCompare(tb, 'en', { numeric: true, sensitivity: 'base' });
+}
+
+/**
+ * The tool-screen table.
+ *
+ * Column sorting was added here in UI Sweep Epic 4 rather than screen by screen:
+ * 33 tool screens render through this one component, so FR82 ("any list that may
+ * exceed 20 rows supports at minimum one column-level sort") is satisfied for all
+ * of them at once. Asked for directly by the owner, 2026-07-22.
+ *
+ * The sort is CLIENT-SIDE and that is correct HERE, unlike in `ui/DataTable`: these
+ * screens hand over their complete result set, so ordering the array IS ordering the
+ * whole set. `ui/DataTable` is server-paginated, where a client sort would reorder
+ * only the visible page and lie about the rest.
+ *
+ * Pass `sortable={false}` for a table whose row order is itself the information —
+ * a ranked list, or a timetable.
+ */
+export function DataTable({ title, headers, rows, emptyMsg = 'No data found', actions, loading = false, sortable = true, tableId = 'tool-table' }) {
   const { isDark } = useTheme();
+  const [sortState, setSortState] = React.useState({ index: null, direction: 'ascending' });
   const bg = isDark ? 'var(--color-surface)' : 'var(--color-surface)';
   const border = isDark ? 'var(--color-border)' : 'var(--color-border)';
   const rowBorder = isDark ? 'var(--color-surface-raised)' : 'var(--color-border)';
   const thBg = isDark ? 'var(--color-page)' : 'var(--color-surface-raised)';
   const tc = isDark ? 'var(--color-text-secondary)' : 'var(--color-text-secondary)';
   const hc = isDark ? 'var(--color-text-primary)' : 'var(--color-text-primary)';
+
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const sortedRows = React.useMemo(() => {
+    if (!sortable || sortState.index === null) return safeRows;
+    const factor = sortState.direction === 'descending' ? -1 : 1;
+    // Copy before sorting: mutating the caller's array would reorder their state.
+    return [...safeRows].sort((ra, rb) => factor * compareCells(ra[sortState.index], rb[sortState.index]));
+  }, [safeRows, sortable, sortState]);
+
+  const toggleSort = (i) => setSortState((prev) => (
+    prev.index === i
+      ? { index: i, direction: prev.direction === 'ascending' ? 'descending' : 'ascending' }
+      : { index: i, direction: 'ascending' }
+  ));
+
   return (
     <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 14, overflow: 'hidden', marginBottom: 16 }}>
       {(title || actions) && (
@@ -122,23 +230,55 @@ export function DataTable({ title, headers, rows, emptyMsg = 'No data found', ac
           {actions && <div>{actions}</div>}
         </div>
       )}
-      {loading && rows.length === 0 ? (
+      {loading && safeRows.length === 0 ? (
         <LoadingCard />
-      ) : rows.length === 0 ? (
+      ) : safeRows.length === 0 ? (
         <div style={{ padding: 36, textAlign: 'center', color: isDark ? 'var(--color-text-muted)' : 'var(--color-text-muted)', fontSize: 13 }}>{emptyMsg}</div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                {headers.map((h, i) => (
-                  <th key={i} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--color-text-faint)', textTransform: 'uppercase', letterSpacing: '0.04em', background: thBg, borderBottom: `1px solid ${border}` }}>{h}</th>
-                ))}
+                {headers.map((h, i) => {
+                  const isSorted = sortable && sortState.index === i;
+                  const headerStyle = {
+                    padding: 0, textAlign: 'left', background: thBg,
+                    borderBottom: `1px solid ${border}`, whiteSpace: 'nowrap',
+                  };
+                  const labelStyle = {
+                    display: 'inline-flex', alignItems: 'center', gap: 5, width: '100%',
+                    padding: '10px 16px', fontSize: 11, fontWeight: 600,
+                    color: isSorted ? 'var(--color-accent-blue)' : 'var(--color-text-faint)',
+                    textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'left',
+                  };
+                  if (!sortable) {
+                    return <th key={i} style={headerStyle}><span style={labelStyle}>{h}</span></th>;
+                  }
+                  const SortGlyph = isSorted
+                    ? (sortState.direction === 'ascending' ? ChevronUp : ChevronDown)
+                    : ChevronsUpDown;
+                  return (
+                    // aria-sort belongs on the <th>: that is what a screen reader
+                    // announces for the column (WCAG sortable-table).
+                    <th key={i} scope="col" aria-sort={isSorted ? sortState.direction : 'none'} style={headerStyle}>
+                      {/* A real <button>, so the column is sortable by keyboard. */}
+                      <button
+                        type="button"
+                        data-testid={`${tableId}-sort-${i}`}
+                        onClick={() => toggleSort(i)}
+                        style={{ ...labelStyle, background: 'none', border: 'none', cursor: 'pointer', font: 'inherit', fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}
+                      >
+                        {h}
+                        <SortGlyph size={12} aria-hidden="true" style={{ opacity: isSorted ? 1 : 0.4, flexShrink: 0 }} />
+                      </button>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, i) => (
-                <tr key={i} style={{ borderBottom: i < rows.length - 1 ? `1px solid ${rowBorder}` : 'none', transition: 'background 0.1s ease' }}
+              {sortedRows.map((row, i) => (
+                <tr key={i} style={{ borderBottom: i < sortedRows.length - 1 ? `1px solid ${rowBorder}` : 'none', transition: 'background 0.1s ease' }}
                   onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                   {row.map((cell, j) => (
@@ -222,7 +362,10 @@ export function FormField({ label, type = 'text', value, onChange, placeholder, 
   );
 }
 
-export function ActionBtn({ label, onClick, variant = 'primary', icon, disabled, type = 'button', style: extraStyle }) {
+// `data-testid` is forwarded because UX-DR4 requires it on every interactive element
+// and this button is used across ~25 tool screens; swallowing it made those screens
+// untestable by anything but text matching.
+export function ActionBtn({ label, onClick, variant = 'primary', icon, disabled, type = 'button', style: extraStyle, 'data-testid': testId, 'aria-busy': ariaBusy }) {
   const { isDark } = useTheme();
   const styles = {
     primary: { background: '#4f8ff7', color: '#ffffff', border: 'none' },
@@ -232,7 +375,7 @@ export function ActionBtn({ label, onClick, variant = 'primary', icon, disabled,
   };
   const s = styles[variant] || styles.primary;
   return (
-    <button type={type} onClick={onClick} disabled={disabled} style={{
+    <button type={type} onClick={onClick} disabled={disabled} data-testid={testId} aria-busy={ariaBusy} style={{
       ...s, ...extraStyle, borderRadius: 10, padding: '8px 16px', fontSize: 13, fontWeight: 600,
       cursor: disabled ? 'not-allowed' : 'pointer', display: 'inline-flex',
       alignItems: 'center', gap: 6, opacity: disabled ? 0.5 : 1,

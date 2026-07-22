@@ -1,116 +1,232 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ============================================================================
+   EduFlow design tokens — Epic 9 "Looks Like The Brochure" (2026-07-22)
+
+   The palette, type and shape below were read off the running marketing site
+   (eduflow.layaa.ai) so the product and the page that sells it look like the
+   same thing.
+
+   ⚠️ Two of the brochure's colour pairings FAIL WCAG and are deliberately NOT
+   copied. Measured: white on #F2811D = 2.65:1; white on #2B8FF0 = 3.34:1.
+   NFR-A1 requires 4.5:1 for body text. The website carries one huge headline
+   CTA and gets away with it; this app puts 14px labels on hundreds of buttons
+   and does not. So:
+     - orange fills take NAVY text  (#16203A on #F2811D = 6.09:1)
+     - the blue FILL deepens        (white on #1A6FCE  = 4.99:1)
+     - #2B8FF0 stays the accent/link/glow colour ON NAVY, where it measures
+       5.34:1 and is genuinely accessible.
+   `tests/frontend/design-tokens.contrast.test.js` computes these and fails the
+   build if a pairing regresses. Do not hand-edit a colour without running it.
+   ========================================================================= */
+
 :root {
-  /* Dark theme (default) */
-  --bg-main: #1a1a1a;
-  --bg-sidebar: #141414;
-  --bg-card: #1e1e1e;
-  --bg-popover: #252525;
-  --bg-input: #252525;
-  --bg-hover: rgba(255,255,255,0.04);
-  --bg-active: rgba(255,255,255,0.08);
-  --border: #2e2e2e;
-  --border-subtle: #242424;
-  --text-primary: #f5f5f5;
-  --text-secondary: #a0a0a0;
-  --text-muted: #666666;
+  /* ---- Dark theme (default) ----
+     NEUTRAL dark, not navy. An earlier Epic 9 pass took the brochure's navy
+     literally and Abhimanyu reversed it on sight: the whole app went blue and
+     it was too much. The dark theme keeps the greys it always had; what the
+     brochure contributes here is the TYPE, the ROUNDED CHUNKY SHAPES and the
+     brand accents — not the background.
+     Light theme does carry a faint blue tint, and that was kept. */
+  /* The surface ladder. Cards used to sit at 1.15:1 against the page, which is
+     no separation at all — the header search field and the tool cards
+     "camouflaged into the background", as Abhimanyu put it. Dark themes cannot
+     fix that with fill alone: luminance ratios compress hard at the bottom of
+     the scale, so 1.2:1 is about all two adjacent dark greys can give you.
+     What actually makes a card read on a dark page is a VISIBLE BORDER, so the
+     page dropped a step and the borders came up two. */
+  --bg-main: #141414;
+  /* The sidebar sits ABOVE the page, not below it. It was #1A1A1A — barely
+     a hair off the page and effectively invisible as a panel, which is why
+     Abhimanyu reported the edges and the EduFlow logo camouflaging into the
+     background. Lifting it to #242424 gives the panel its own surface. */
+  --bg-sidebar: #242424;
+  --bg-card: #1E1E1E;
+  --bg-popover: #2A2A2A;
+  --bg-input: #262626;
+  --bg-hover: rgba(255,255,255,0.06);
+  --bg-active: rgba(79,143,247,0.14);
+  /* Dark-theme edges have to be brighter than instinct suggests: two adjacent
+     dark greys can only ever differ by a small ratio, so the line is what
+     separates a panel from the page. #3D3D3D read as almost nothing. */
+  --border: #4D4D4D;
+  --border-subtle: #333333;
+  --text-primary: #F5F5F5;
+  --text-secondary: #A8A8A8;
+  /* was #666666, which measured 3.03:1 on the page — below the 4.5:1 NFR-A1
+     wants for body text. #8A8A8A measures 5.04:1. */
+  --text-muted: #8A8A8A;
   --accent-blue: #4f8ff7;
   --accent-green: #34d399;
   --accent-yellow: #fbbf24;
-  --accent-red: #f87171;
+  --accent-red: #FB7185;
   --accent-purple: #a78bfa;
   --accent-cyan: #22d3ee;
   --accent-pink: #f472b6;
-  --accent-orange: #fb923c;
+  --accent-orange: #F2811D;
+
   /* Semantic component tokens. New UI should use --color-* names instead of generated hex aliases. */
-  --color-page: #1a1a1a;
-  --color-surface: #1e1e1e;
-  --color-surface-raised: #252525;
-  --color-surface-muted: #161616;
-  --color-border: #2e2e2e;
-  --color-border-strong: #333333;
-  --color-text-primary: #f5f5f5;
-  --color-text-secondary: #a0a0a0;
-  --color-text-muted: #666666;
-  --color-text-faint: #737373;
+  --color-page: #141414;
+  --color-surface: #1E1E1E;
+  --color-surface-raised: #2A2A2A;
+  --color-surface-muted: #1A1A1A;
+  --color-border: #4D4D4D;
+  /* --color-border-strong is NOT a decorative border. It draws the boundary
+     and the solid shadow of secondary buttons, whose FILL is nearly identical
+     to the page — the control is identified by this line, so WCAG 1.4.11
+     requires it to reach 3:1. #333333 measured 1.38:1 and the contrast test
+     rejected it; #787878 measures 4.17:1 on the page and 3.08:1 on the raised
+     surface. Use --color-border for card dividers, where 3:1 does not apply. */
+  --color-border-strong: #787878;
+  --color-text-primary: #F5F5F5;
+  --color-text-secondary: #A8A8A8;
+  --color-text-muted: #8A8A8A;
+  --color-text-faint: #8A8A8A;
   --color-accent-blue: #4f8ff7;
   --color-success: #34d399;
-  --color-danger: #f87171;
+  --color-danger: #FB7185;
   --color-warning: #fbbf24;
   --color-purple: #a78bfa;
-  --color-inverse-surface: #f5f5f5;
+  --color-inverse-surface: #F5F5F5;
   --color-inverse-text: #171717;
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
-  --shadow-lg: 0 12px 40px rgba(0,0,0,0.5);
-  --shadow-xl: 0 24px 64px rgba(0,0,0,0.6);
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
+
+  /* ---- Brand fills. Text colour is NOT interchangeable — see the warning. ---- */
+  --brand-blue: #2B8FF0;          /* accent / link / glow — on navy only */
+  --brand-blue-fill: #1A6FCE;     /* button fill that carries WHITE text */
+  --brand-blue-press: #145AA8;    /* the solid shadow under a blue button */
+  --brand-orange: #F2811D;        /* button fill that carries NAVY text */
+  --brand-orange-press: #C5610C;
+  --on-brand-blue: #FFFFFF;
+  --on-brand-orange: #16203A;
+
+  /* ---- Elevation. Playful = a solid offset "toy" shadow, not a soft blur. ---- */
+  --shadow-chunky: 0 4px 0 0 var(--color-border-strong);
+  --shadow-chunky-lg: 0 5px 0 0 var(--color-border-strong);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
+  --shadow-md: 0 6px 18px -6px rgba(0,0,0,0.55);
+  --shadow-lg: 0 16px 40px -16px rgba(0,0,0,0.65);
+  --shadow-xl: 0 28px 64px -24px rgba(0,0,0,0.75);
+  --glow-blue: 0 0 40px -14px rgba(43,143,240,0.70);
+
+  /* ---- Shape. Rounder than before, matching the brochure. ---- */
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --radius-2xl: 28px;
   --radius-full: 9999px;
+
+  /* ---- Type ---- */
+  --font-display: 'Baloo 2', 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Type scale. Overridden wholesale at phone widths — see §7. Controls and
+     their labels move TOGETHER, which is the whole point of UX-DR7. */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 17px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+
+  /* ---- Motion. Every duration below is zeroed under prefers-reduced-motion. ---- */
   --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-normal: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-slow: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  --tool-hex-10b981: #10b981;
-  --tool-hex-111111: #111111;
-  --tool-hex-161616: #161616;
-  --tool-hex-171717: #171717;
-  --tool-hex-1a1a1a: #1a1a1a;
-  --tool-hex-1a2e1a: #1a2e1a;
-  --tool-hex-1a3a2a: #1a3a2a;
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ---- Focus ring (NFR-A2 / UX-DR9): 2px at >=3:1 on both themes ---- */
+  --focus-ring: 0 0 0 2px var(--color-page), 0 0 0 4px var(--brand-blue);
+
+  /* ============================================================================
+     Generated hex aliases — 781 uses across 19 tool screens.
+
+     These are the lever that makes a token-only retheme reach screens nobody
+     edits: remapping the VALUES here moves all 25 tool panels onto the navy
+     palette without touching their inline styles.
+
+     --tool-hex-fff / --tool-hex-ffffff are deliberately NOT remapped. They are
+     used both as white button TEXT and as white BACKGROUNDS, so any single
+     value is right for one and invisible for the other. Ambiguous aliases are
+     left alone rather than guessed at.
+     ========================================================================= */
+  /* Dark values are the ORIGINAL neutral greys. The navy remap tried in the
+     first Epic 9 pass was reversed — see the dark-theme note above. Only the
+     three text-weight aliases below moved, and only to clear 4.5:1. */
+  /* surfaces — moved onto the same ladder as --color-*, or the 25 tool screens
+     would keep the old flat look while the shell gained separation */
+  --tool-hex-111111: #101010;
+  --tool-hex-141414: #141414;
+  --tool-hex-161616: #1a1a1a;
+  --tool-hex-1a1a1a: #141414;
   --tool-hex-1e1e1e: #1e1e1e;
+  --tool-hex-222: #2a2a2a;
+  --tool-hex-242424: #2a2a2a;
+  --tool-hex-252525: #2a2a2a;
   --tool-hex-1e2433: #1e2433;
-  --tool-hex-1e3a5f: #1e3a5f;
-  --tool-hex-222: #222;
-  --tool-hex-22c55e: #22c55e;
-  --tool-hex-242424: #242424;
-  --tool-hex-252525: #252525;
-  --tool-hex-2e2e2e: #2e2e2e;
-  --tool-hex-333: #333;
-  --tool-hex-34d399: #34d399;
-  --tool-hex-34d39930: #34d39930;
-  --tool-hex-374151: #374151;
-  --tool-hex-444: #444;
-  --tool-hex-4f8ff7: #4f8ff7;
-  --tool-hex-525252: #525252;
-  --tool-hex-555: #555;
-  --tool-hex-60a5fa: #60a5fa;
-  --tool-hex-6366f1: #6366f1;
-  --tool-hex-666: #666;
-  --tool-hex-6ee7b7: #6ee7b7;
-  --tool-hex-737373: #737373;
-  --tool-hex-7f1d1d: #7f1d1d;
-  --tool-hex-818cf8: #818cf8;
-  --tool-hex-888: #888;
-  --tool-hex-8b5cf6: #8b5cf6;
-  --tool-hex-93c5fd: #93c5fd;
-  --tool-hex-a0a0a0: #a0a0a0;
-  --tool-hex-a3a3a3: #a3a3a3;
-  --tool-hex-a5b4fc: #a5b4fc;
-  --tool-hex-a78bfa: #a78bfa;
+  /* borders — raised so cards stop camouflaging into the page */
+  --tool-hex-2e2e2e: #4d4d4d;
+  --tool-hex-333: #555555;
+  --tool-hex-3e3e3e: #555555;
+  --tool-hex-444: #5a5a5a;
+  --tool-hex-374151: #4a5568;
+  /* muted / secondary text — raised to clear 4.5:1 on the page (#666 was
+     3.03:1, #555 and #525252 lower still). Purely a legibility fix; the hue
+     is unchanged. */
+  --tool-hex-525252: #8A8A8A;
+  --tool-hex-555: #8A8A8A;
+  --tool-hex-666: #8A8A8A;
+  --tool-hex-737373: #8A8A8A;
+  --tool-hex-888: #A8A8A8;
   --tool-hex-bbb: #bbb;
+  --tool-hex-a0a0a0: #A8A8A8;
+  --tool-hex-a3a3a3: #a3a3a3;
+  /* bright text / light surfaces */
   --tool-hex-ccc: #ccc;
-  --tool-hex-d1fae5: #d1fae5;
   --tool-hex-d4d4d4: #d4d4d4;
   --tool-hex-d5d5d5: #d5d5d5;
-  --tool-hex-dcfce7: #dcfce7;
   --tool-hex-e5e5e5: #e5e5e5;
-  --tool-hex-eff6ff: #eff6ff;
   --tool-hex-f0f0f0: #f0f0f0;
-  --tool-hex-f0fdf4: #f0fdf4;
   --tool-hex-f5f5f5: #f5f5f5;
-  --tool-hex-f87171: #f87171;
-  --tool-hex-f9a8d4: #f9a8d4;
   --tool-hex-f9f9f9: #f9f9f9;
-  --tool-hex-facc15: #facc15;
   --tool-hex-fafafa: #fafafa;
-  --tool-hex-fb923c: #fb923c;
+  --tool-hex-171717: #171717;
+  /* brand + status */
+  --tool-hex-4f8ff7: #4f8ff7;
+  --tool-hex-60a5fa: #60a5fa;
+  --tool-hex-93c5fd: #93c5fd;
+  --tool-hex-fb923c: #F2811D;
   --tool-hex-fbbf24: #fbbf24;
-  --tool-hex-fca5a5: #fca5a5;
+  --tool-hex-facc15: #facc15;
   --tool-hex-fcd34d: #fcd34d;
+  --tool-hex-f87171: #FB7185;
+  --tool-hex-fca5a5: #fca5a5;
+  --tool-hex-10b981: #10b981;
+  --tool-hex-22c55e: #22c55e;
+  --tool-hex-34d399: #34d399;
+  --tool-hex-34d39930: #34d39930;
+  --tool-hex-6ee7b7: #6ee7b7;
+  --tool-hex-a78bfa: #a78bfa;
+  --tool-hex-8b5cf6: #8b5cf6;
+  --tool-hex-818cf8: #818cf8;
+  --tool-hex-a5b4fc: #a5b4fc;
+  --tool-hex-6366f1: #6366f1;
+  --tool-hex-f9a8d4: #f9a8d4;
+  /* dark tinted status surfaces */
+  --tool-hex-1a2e1a: #1a2e1a;
+  --tool-hex-1a3a2a: #1a3a2a;
+  --tool-hex-1e3a5f: #1e3a5f;
+  --tool-hex-7f1d1d: #7f1d1d;
+  /* light tints — used ON light chips; unchanged in dark */
+  --tool-hex-d1fae5: #d1fae5;
+  --tool-hex-dcfce7: #dcfce7;
+  --tool-hex-f0fdf4: #f0fdf4;
+  --tool-hex-eff6ff: #eff6ff;
+  /* ambiguous — deliberately untouched, see note above */
   --tool-hex-fff: #fff;
   --tool-hex-ffffff: #ffffff;
 }
@@ -119,11 +235,187 @@ html, body, #root {
   height: 100%;
   background: var(--bg-main);
   color: var(--text-primary);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Headings carry the rounded display face; body stays Nunito. */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Numbers in data columns must not jitter as they change (number-tabular). */
+table td, table th, .tabular-nums { font-variant-numeric: tabular-nums; }
+
+/* Motion is a brand feature here, so the opt-out has to be real.
+   The platform had NO reduced-motion support before Epic 9; adding playful
+   movement without this would make the product worse for the people who need
+   the setting. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-fast: 0.01ms;
+    --transition-normal: 0.01ms;
+    --transition-slow: 0.01ms;
+    --ease-bounce: linear;
+  }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* One visible focus treatment for the whole app (NFR-A2 / UX-DR9).
+   :focus-visible so a mouse click doesn't ring every button.
+
+   Opt out with data-focus-ring="none" where the control is visually INSIDE a
+   larger container that should carry the focus indication itself — otherwise
+   you get a ring drawn inside a border, which reads as a stray second outline.
+   The chat composer is the case that proved this: its textarea is transparent
+   and edge-to-edge inside a pill, so ringing the textarea drew a blue pill
+   inside the composer's own pill. Anything opting out MUST give focus a
+   visible home somewhere — see .composer-shell:focus-within below. */
+:focus-visible:not([data-focus-ring="none"]) {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
+
+/* ---------- The Aaryans crest, behind the chat ----------
+   Requested by Abhimanyu 2026-07-22: the school's own logo as the chat
+   background, faint and sent to the back so it never competes with the
+   conversation.
+
+   Built as a ::before layer rather than a background on the scroller itself,
+   for three reasons that all matter here:
+     - `position: fixed` inside the pane keeps the crest STILL while messages
+       scroll over it. A background-image on the scroller would slide with the
+       content and read as a stray picture rather than a watermark;
+     - `pointer-events: none` means it can never intercept a click, a text
+       selection, or a tap on a message;
+     - `z-index: 0` with the content lifted to 1 puts it definitively behind
+       everything, so no message, card or button can end up underneath it.
+
+   Opacity is the whole safety argument. At 4-5% the crest is visible as a
+   texture but changes the effective background luminance by so little that
+   every text/background contrast ratio the design system guarantees still
+   holds — the point of the request was that it must not create confusion.
+   Dark theme gets a touch more, plus a slight brightness lift, because a
+   mid-tone logo disappears entirely against a near-black page.
+
+   The image path arrives as the --chat-watermark-src custom property, set
+   inline by ChatInterface. It is deliberately NOT hard-coded as a literal
+   image reference in this file: webpack's css-loader treats an image
+   reference in a stylesheet as a module to resolve at BUILD time, so a path
+   pointing into public/ fails the compile outright with "Module not found".
+   Custom property values are passed through untouched, which defers the path
+   to runtime. Do not "simplify" this back into a literal.
+
+   MODELLED ON THE SCHOOL'S OWN STATIONERY. Their enquiry form carries two
+   marks, not one: the chariot crest large and faint in the middle of the page,
+   and "THE AARYANS" repeated as a fine tile across the whole sheet. Both are
+   reproduced here — the crest on ::before, the repeating tile on ::after —
+   so the chat reads like school paper rather than like a logo dropped on a
+   screen. The tile is a tiny inline SVG, so it costs no network request and
+   stays crisp at any zoom. */
+.chat-watermark { position: relative; }
+
+/* Layer 1 — the chariot crest, centred, as on the letterhead.
+
+   `absolute`, NOT `fixed`. Both keep the crest still while messages scroll
+   over it, because the scrolling element is a CHILD of .chat-watermark — but
+   `fixed` anchors to the viewport, which spread the watermark underneath the
+   sidebar as well. `absolute` anchors to .chat-watermark's own box, so it is
+   confined to the conversation pane: never the sidebar, never a tool screen. */
+.chat-watermark::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  /* `none` keeps the layer harmless if the property is ever missing. */
+  background-image: var(--chat-watermark-src, none);
+  background-repeat: no-repeat;
+  background-position: center;
+  /* Sized to the band Abhimanyu sketched on the phone screenshot: roughly
+     half the screen's HEIGHT, spanning most of its width.
+       - 88%   of the CHAT PANE's width (not the viewport's — the pane is
+         narrower than the screen on desktop, where the sidebar takes 260px);
+       - 52vh  stops it growing taller than the band on a short, wide window;
+       - 640px caps it on a large monitor.
+     Whichever is smallest wins, so it behaves on every screen. */
+  background-size: min(88%, 52vh, 640px);
+  opacity: 0.05;
+  /* The crest is a JPEG, so it carries a solid WHITE rectangle behind the
+     artwork. On a light page that is invisible; `multiply` guarantees it,
+     by letting the page show through anywhere the image is white. */
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Layer 2 — the repeating "THE AARYANS" tile, staggered like the printed form.
+   Also `absolute`, for the same reason as layer 1. */
+.chat-watermark::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--chat-tile);
+  background-repeat: repeat;
+  opacity: 0.5;          /* the ink colour inside the tile carries the rest */
+  pointer-events: none;
+  z-index: 0;
+}
+
+:root {
+  --chat-tile: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='232' height='68'%3E%3Cg font-family='Georgia,Times New Roman,serif' font-size='12.5' letter-spacing='1.6' fill='%231F4E9C' fill-opacity='0.10'%3E%3Ctext x='2' y='22'%3ETHE AARYANS%3C/text%3E%3Ctext x='118' y='56'%3ETHE AARYANS%3C/text%3E%3C/g%3E%3C/svg%3E");
+}
+
+[data-theme="dark"] {
+  /* Same tile, light ink — the navy text is invisible on a near-black page. */
+  --chat-tile: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='232' height='68'%3E%3Cg font-family='Georgia,Times New Roman,serif' font-size='12.5' letter-spacing='1.6' fill='%23BBD4F5' fill-opacity='0.10'%3E%3Ctext x='2' y='22'%3ETHE AARYANS%3C/text%3E%3Ctext x='118' y='56'%3ETHE AARYANS%3C/text%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* DARK THEME: the crest is hidden, on Abhimanyu's instruction.
+   It is a JPEG on a solid white rectangle. Against a near-black page that
+   rectangle showed as a pale slab behind the greeting — the artwork was not
+   the problem, the paper it was printed on was. Blend modes can hide white on
+   a LIGHT page but not on a dark one, and inverting the image would recolour
+   the school's own crest, which is not ours to do.
+   The repeating "THE AARYANS" tile stays: it is an inline SVG with a real
+   transparent background and its own light-ink variant, so it carries the
+   letterhead feeling in dark without dragging a white box along with it.
+   If the school ever supplies a transparent PNG of the crest, this rule can
+   be replaced with an opacity value rather than a hide. */
+[data-theme="dark"] .chat-watermark::before {
+  display: none;
+}
+/* Everything the user actually reads or clicks sits above the crest. */
+.chat-watermark > * { position: relative; z-index: 1; }
+
+/* The crest is decoration. Anyone who has asked for less motion or is using a
+   high-contrast mode should not have to read through it. */
+@media (prefers-contrast: more) {
+  .chat-watermark::before,
+  .chat-watermark::after { display: none; }
+}
+
+/* The composer shows focus on the whole pill, not on the field inside it. */
+.composer-shell:focus-within {
+  border-color: var(--color-accent-blue) !important;
+  box-shadow: 0 0 0 3px var(--bg-active);
+}
+
+/* The search panel's top row is a full-width strip inside a clipped card, so a
+   ring around it would be cut off. It shows focus by lighting its own dividing
+   line and tinting the strip instead — same idea, shape-appropriate. */
+.search-row:focus-within {
+  border-bottom-color: var(--color-accent-blue) !important;
+  background: var(--bg-active);
 }
 
 /* Scrollbar — thin & modern */
@@ -275,102 +567,233 @@ html, body, #root {
 
 /* ============================================================
    RESPONSIVE LAYER
-   Goal: every tab, tool, modal and window works on any screen
-   width and reflows on resize. Most grids already use
-   auto-fit/auto-fill minmax() (fluid by default); the rules
-   below fix the fixed-count grids, table overflow, wide media
-   and touch targets without editing each of the ~45 components.
+   Goal: every tab, sub-tab, tool, modal and window works at any
+   viewport size — desktop, laptop, tablet, phone and arbitrarily
+   resized browser windows — and reflows live on resize.
+
+   Most grids already use auto-fit/auto-fill minmax() and are fluid
+   by construction. The rules below handle what those cannot:
+   fixed-count grids, dialog sizing, table overflow, mobile viewport
+   height, and touch ergonomics — centrally, rather than editing
+   each of the ~45 tool components.
+
+   NOTE ON THE [style*="..."] SELECTORS: this codebase styles almost
+   everything with React inline styles, so there are no class hooks
+   to target. Matching on the rendered style attribute is deliberate.
+   If you change a gridTemplateColumns string in a component, check
+   it still matches one of the patterns listed below.
    ============================================================ */
 
-/* --- Global overflow safety: nothing forces the page wider than the viewport --- */
+/* ---------- 1. Mobile viewport height ----------
+   100vh does not account for the mobile browser's collapsing
+   address bar, so the bottom of the app (chat composer, modal
+   action buttons) ends up below the fold and unreachable.
+   dvh tracks the actually-visible height. Behind @supports so
+   older browsers keep the inline 100vh fallback. */
+@supports (height: 100dvh) {
+  html, body, #root                { height: 100dvh; }
+  [data-testid="app-layout"]       { height: 100dvh !important; }
+  .sidebar-wrapper                 { height: 100dvh !important; }
+  .App                             { height: 100dvh; }
+  [style*="min-height: 100vh"]     { min-height: 100dvh !important; }
+}
+
+/* ---------- 2. Global overflow safety ----------
+   Nothing may force the page wider than the viewport. */
 html, body, #root { max-width: 100%; overflow-x: hidden; }
 .app-main-content { min-width: 0; }
 
-/* Media, code and pre never overflow their container */
+/* Long unbroken strings (emails, URLs, IDs, receipt numbers) wrap
+   instead of pushing their container wider than the screen. */
+body { overflow-wrap: break-word; }
+
+/* Media and code never overflow their container. No height:auto on
+   svg — Lucide icons carry explicit width/height attributes. */
 img, video, canvas, svg { max-width: 100%; }
 .prose-chat pre, .prose-chat table { max-width: 100%; }
 
-/* Any raw <table> inside a tool scrolls horizontally instead of
-   stretching the layout. Tools using the shared DataTable already
-   wrap in overflow-x:auto; this covers hand-rolled tables too. */
-.app-main-content table { max-width: 100%; }
+/* ---------- 3. Tables scroll instead of stretching ----------
+   The CONTAINER scrolls, never the table itself.
 
-/* ---------- Tablet / small-laptop: <= 1024px ---------- */
+   An earlier version of this rule set `display: block` on the table and
+   `display: table` on thead/tbody. That makes the header and the body two
+   independent tables, so they compute column widths separately and the
+   headings stop lining up with the cells beneath them (reported 2026-07-22:
+   "Status" heading ending short of its cell, "Type" with no rows under it).
+   Never split a table that way.
+
+   Instead :has() lets the table's own wrapper do the scrolling, which keeps
+   the table a single element and its columns aligned. Cells stop wrapping so
+   the table takes its natural width and the wrapper scrolls. Scoped to the
+   app shell so the offscreen print/PDF builders (fixed 794px A4 width) are
+   untouched. */
+@media (max-width: 900px) {
+  .app-main-content :is(div, section, main, td):has(> table) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+  .app-main-content table {
+    width: auto;
+    min-width: 100%;
+  }
+  .app-main-content table th,
+  .app-main-content table td {
+    white-space: nowrap;
+  }
+}
+
+/* ---------- 4. Dialogs, modals and drawers ----------
+   Applied at EVERY width, not just on phones: a desktop user with a
+   short or narrow window needs the same guard. Any full-screen fixed
+   overlay's card is capped to the viewport and scrolls internally, so
+   the action buttons at the bottom are always reachable. */
+[style*="position: fixed"][style*="inset: 0"] > * {
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+}
+@supports (height: 100dvh) {
+  [style*="position: fixed"][style*="inset: 0"] > * {
+    max-height: calc(100dvh - 24px);
+  }
+}
+
+/* ---------- 5. Fixed-count grids collapse ----------
+   Deliberately NOT scoped to .app-main-content: the profile,
+   settings and command-palette modals render as siblings of it in
+   Layout.js, and login/change-password render outside the shell
+   entirely. Scoping here would skip all of them. */
+
+/* Tablet / small laptop: 3- and 4-up grids drop to two columns */
 @media (max-width: 1024px) {
-  /* Four-up stat/number grids drop to two columns */
-  .app-main-content [style*="repeat(4, 1fr)"],
-  .app-main-content [style*="repeat(4,1fr)"],
-  .app-main-content [style*="1fr 1fr 1fr 1fr"],
-  .app-main-content [style*="repeat(3, 1fr)"],
-  .app-main-content [style*="repeat(3,1fr)"],
-  .app-main-content [style*="1fr 1fr 1fr"] {
+  [style*="repeat(4, 1fr)"],
+  [style*="repeat(4,1fr)"],
+  [style*="1fr 1fr 1fr 1fr"],
+  [style*="repeat(3, 1fr)"],
+  [style*="repeat(3,1fr)"],
+  [style*="1fr 1fr 1fr"] {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 }
 
-/* ---------- Phones / narrow windows: <= 768px ---------- */
+/* Phones / narrow windows: every fixed-count grid goes single column.
+   Fluid minmax() grids are left alone — they already reflow. */
 @media (max-width: 768px) {
-  .mobile-menu-btn { display: flex !important; }
-  .mobile-close { display: flex !important; }
-  .hide-mobile { display: none !important; }
-  .mobile-overlay { display: block !important; }
-
-  /* Every fixed-count grid collapses to a single column so nothing
-     is squished. Fluid minmax() grids are left alone — they already
-     reflow. We target the exact inline patterns used across tools. */
-  .app-main-content [style*="1fr 1fr"],
-  .app-main-content [style*="1fr 2fr"],
-  .app-main-content [style*="1fr 1fr 1fr"],
-  .app-main-content [style*="1fr 1fr 1fr 1fr"],
-  .app-main-content [style*="repeat(2, 1fr)"],
-  .app-main-content [style*="repeat(2,1fr)"],
-  .app-main-content [style*="repeat(3, 1fr)"],
-  .app-main-content [style*="repeat(3,1fr)"],
-  .app-main-content [style*="repeat(4, 1fr)"],
-  .app-main-content [style*="repeat(4,1fr)"] {
+  [style*="1fr 1fr"],
+  [style*="1fr 2fr"],
+  [style*="1fr 1fr 1fr"],
+  [style*="1fr 1fr 1fr 1fr"],
+  [style*="repeat(2, 1fr)"],
+  [style*="repeat(2,1fr)"],
+  [style*="repeat(3, 1fr)"],
+  [style*="repeat(3,1fr)"],
+  [style*="repeat(4, 1fr)"],
+  [style*="repeat(4,1fr)"] {
     grid-template-columns: 1fr !important;
   }
 
-  /* Two-pane master/detail splits (e.g. list + form) stack vertically */
-  .app-main-content [style*="240px, 320px"],
-  .app-main-content [style*="min(340px, 100%) 1fr"],
-  .app-main-content [style*="minmax(240px, 1fr) auto auto"] {
+  /* Two-pane master/detail splits (list + form, list + preview)
+     stack vertically instead of squeezing both panes. */
+  [style*="minmax(240px, 320px) 1fr"],
+  [style*="min(340px, 100%) 1fr"],
+  [style*="minmax(240px, 1fr) auto auto"],
+  [style*="minmax(92px, 0.45fr) minmax(0, 1fr)"] {
     grid-template-columns: 1fr !important;
-  }
-
-  /* Tool padding + touch targets + scrollable tables */
-  [data-testid$="-tool"],
-  .app-main-content > div {
-    max-width: 100vw;
-  }
-  [data-testid$="-tool"] { padding: 16px !important; }
-  [data-testid$="-tool"] button,
-  [data-testid$="-tool"] input,
-  [data-testid$="-tool"] select,
-  [data-testid$="-tool"] textarea {
-    min-height: 40px;
-  }
-
-  /* Header rows / flex toolbars wrap instead of overflowing */
-  .tool-header-row { flex-wrap: wrap; }
-
-  /* Modals/dialogs fit the viewport with margin on every side */
-  .responsive-modal {
-    max-width: calc(100vw - 24px) !important;
-    max-height: calc(100vh - 24px) !important;
-    width: auto !important;
   }
 }
 
-/* ---------- Very small phones: <= 420px ---------- */
+/* ---------- 6. Mobile shell + touch ergonomics ---------- */
+@media (max-width: 768px) {
+  .mobile-menu-btn { display: flex !important; }
+  .mobile-close    { display: flex !important; }
+  .hide-mobile     { display: none !important; }
+  .mobile-overlay  { display: block !important; }
+
+  [data-testid$="-tool"],
+  .app-main-content > div { max-width: 100vw; }
+
+  [data-testid$="-tool"] { padding: 16px !important; }
+
+  /* Minimum comfortable tap target */
+  [data-testid$="-tool"] button,
+  [data-testid$="-tool"] input,
+  [data-testid$="-tool"] select,
+  [data-testid$="-tool"] textarea { min-height: 40px; }
+
+  /* Header rows / toolbars wrap instead of overflowing */
+  .tool-header-row { flex-wrap: wrap; }
+
+  /* Overlays keep a margin from the screen edge */
+  [style*="position: fixed"][style*="inset: 0"] { padding: 12px; }
+}
+
+/* ---------- 7. Mobile type scale (UX-DR7) ----------
+   Deferred out of Epic 2 and delivered in Epic 9.
+
+   History, so this is not "fixed" back into a bug: on 2026-07-22 every form
+   control was forced to 16px under `pointer: coarse`. That fired in Chrome's
+   device simulator too, so dropdowns rendered at 16px beside 12px labels and
+   the owner correctly called it broken (D-01). It was reverted.
+
+   Two things were wrong with it and both are addressed here:
+
+   1. It keyed off INPUT MODALITY (`pointer: coarse`). This scale keys off
+      VIEWPORT WIDTH, so a desktop browser simulating a phone gets exactly
+      what a phone gets — which is also the only way the check is testable.
+
+   2. It raised CONTROLS ALONE. A type scale has to move controls and their
+      labels together or it just breaks the alignment between them. So the
+      whole scale steps up, from --text-xs to --text-2xl, and the controls
+      inherit rather than being overridden.
+
+   The 16px floor that stops iOS Safari zooming a focused field then falls out
+   of the scale (--text-base = 16px below 768px) instead of fighting it. */
+@media (max-width: 768px) {
+  :root {
+    --text-xs: 12px;
+    --text-sm: 14px;
+    --text-base: 16px;
+    --text-md: 17px;
+    --text-lg: 19px;
+    --text-xl: 22px;
+    --text-2xl: 26px;
+  }
+
+  html, body, #root { font-size: var(--text-base); }
+
+  /* Controls inherit the raised scale. `font: inherit` also picks up the
+     family, which is what stops a native <select> falling back to the OS UI
+     font beside a Nunito label. 16px here is what suppresses the iOS zoom. */
+  input, select, textarea, button {
+    font-family: inherit;
+    font-size: var(--text-base);
+  }
+
+  /* The small print rises WITH its control, not independently of it. */
+  label, .field-label, .tool-label { font-size: var(--text-sm); }
+  table th { font-size: var(--text-xs); }
+  table td { font-size: var(--text-sm); }
+}
+
+/* ---------- 7b. Very small phones: <= 420px ----------
+   One step down from the 768px scale, still above the old 12-13px. */
 @media (max-width: 420px) {
-  html, body, #root { font-size: 13px; }
+  :root {
+    --text-xs: 11px;
+    --text-sm: 13px;
+    --text-base: 16px;   /* held at 16px — the iOS zoom floor is not negotiable */
+    --text-md: 16px;
+    --text-lg: 18px;
+    --text-xl: 20px;
+    --text-2xl: 24px;
+  }
   [data-testid$="-tool"] { padding: 12px !important; }
 }
 
 @media (min-width: 769px) {
   .mobile-menu-btn { display: none !important; }
-  .mobile-overlay { display: none !important; }
+  .mobile-overlay  { display: none !important; }
 }
 
 /* Hide Emergent watermark */

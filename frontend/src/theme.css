@@ -1,43 +1,76 @@
-/* EduFlow — Light Theme overrides */
+/* EduFlow — Light Theme overrides
+   Epic 9: retuned from neutral grey to the brand's blue-tinted paper, so the
+   two themes read as one product rather than two.
+
+   Light is checked INDEPENDENTLY of dark (UX-DR2). A pairing that passes on
+   navy tells you nothing about the same pairing on white — most obviously
+   --brand-blue #2B8FF0, which measures 5.34:1 on navy but only 3.34:1 on
+   white. So light theme uses the deepened #1A6FCE (4.99:1) wherever blue
+   carries text. */
 [data-theme="light"] {
-  --bg-main: #f5f5f5;
+  --bg-main: #F4F7FD;
   --bg-sidebar: #ffffff;
   --bg-card: #ffffff;
-  --bg-popover: #fafafa;
-  --bg-input: #fafafa;
-  --bg-hover: rgba(0,0,0,0.03);
-  --bg-active: rgba(0,0,0,0.06);
-  --border: #e5e5e5;
-  --border-subtle: #eeeeee;
-  --text-primary: #171717;
-  --text-secondary: #525252;
-  --text-muted: #a3a3a3;
-  --color-page: #f5f5f5;
+  --bg-popover: #EEF3FC;
+  --bg-input: #EEF3FC;
+  --bg-hover: rgba(22,32,58,0.04);
+  --bg-active: rgba(26,111,206,0.10);
+  --border: #D8E2F2;
+  --border-subtle: #E8EEF9;
+  --text-primary: #16203A;
+  --text-secondary: #4A5C84;
+  --text-muted: #5A6B95;
+  --accent-blue: #1A6FCE;
+  --accent-red: #D63C56;
+  --accent-yellow: #965C00;
+  --accent-orange: #C5610C;
+
+  --color-page: #F4F7FD;
   --color-surface: #ffffff;
-  --color-surface-raised: #fafafa;
-  --color-surface-muted: #f5f5f5;
-  --color-border: #e5e5e5;
-  --color-border-strong: #cccccc;
-  --color-text-primary: #171717;
-  --color-text-secondary: #525252;
-  --color-text-muted: #6b7280;
-  --color-text-faint: #525252;
-  --color-accent-blue: #4f8ff7;
-  --color-success: #34d399;
-  --color-danger: #f87171;
-  --color-warning: #fbbf24;
-  --color-purple: #a78bfa;
-  --color-inverse-surface: #171717;
+  --color-surface-raised: #EEF3FC;
+  --color-surface-muted: #E8EEF9;
+  --color-border: #D8E2F2;
+  /* See the note in index.css: this line identifies a secondary button, so it
+     must reach 3:1 against the page. #B9C8E4 measured 1.57:1 and was rejected
+     by the contrast test; #6E80AE measures 3.65:1. */
+  --color-border-strong: #6E80AE;
+  --color-text-primary: #16203A;
+  --color-text-secondary: #4A5C84;
+  --color-text-muted: #5A6B95;
+  --color-text-faint: #4A5C84;
+  --color-accent-blue: #1A6FCE;
+  --color-success: #12855C;
+  --color-danger: #D63C56;
+  /* Amber has to go quite dark to carry text on white: #B06E00 measured
+     4.14:1 and was rejected; #965C00 measures 5.49:1. */
+  --color-warning: #965C00;
+  --color-purple: #6D45C7;
+  --color-inverse-surface: #16203A;
   --color-inverse-text: #ffffff;
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
-  --shadow-lg: 0 12px 40px rgba(0,0,0,0.1);
-  --shadow-xl: 0 24px 64px rgba(0,0,0,0.12);
+
+  /* Brand fills keep the SAME text colours in both themes — an orange button
+     that is navy-on-orange in dark and white-on-orange in light would be two
+     different buttons. The fills are what shift, not the contract. */
+  --brand-blue: #1A6FCE;
+  --brand-blue-fill: #1A6FCE;
+  --brand-blue-press: #124D91;
+  --brand-orange: #F2811D;
+  --brand-orange-press: #C5610C;
+  --on-brand-blue: #FFFFFF;
+  --on-brand-orange: #16203A;
+
+  --shadow-chunky: 0 4px 0 0 var(--color-border-strong);
+  --shadow-chunky-lg: 0 5px 0 0 var(--color-border-strong);
+  --shadow-sm: 0 1px 2px rgba(22,32,58,0.06);
+  --shadow-md: 0 6px 18px -6px rgba(22,32,58,0.12);
+  --shadow-lg: 0 16px 40px -16px rgba(22,32,58,0.16);
+  --shadow-xl: 0 28px 64px -24px rgba(22,32,58,0.20);
+  --glow-blue: 0 0 40px -14px rgba(26,111,206,0.35);
 }
-[data-theme="light"] body { background: #f5f5f5; }
-[data-theme="light"] .prose-chat { color: #525252; }
-[data-theme="light"] .prose-chat strong { color: #171717; }
-[data-theme="light"] .prose-chat tbody td { color: #525252; }
-[data-theme="light"] .prose-chat thead th { background: #fafafa; color: #737373; }
-[data-theme="light"] ::-webkit-scrollbar-thumb { background: #d4d4d4; }
-[data-theme="light"] ::selection { background: rgba(79,143,247,0.15); }
+[data-theme="light"] body { background: #F4F7FD; }
+[data-theme="light"] .prose-chat { color: #4A5C84; }
+[data-theme="light"] .prose-chat strong { color: #16203A; }
+[data-theme="light"] .prose-chat tbody td { color: #4A5C84; }
+[data-theme="light"] .prose-chat thead th { background: #EEF3FC; color: #4A5C84; }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: #C3CFE6; }
+[data-theme="light"] ::selection { background: rgba(26,111,206,0.16); }

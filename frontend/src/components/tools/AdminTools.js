@@ -3,7 +3,7 @@
  */
 import React, { useState, useEffect, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
-import { getStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, correctFeeTransaction, deleteFeeTransaction, getPendingLeaves, updateLeave, getWhatsappDefaulters, sendAttendanceAlerts } from '../../lib/api';
+import { getStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, correctFeeTransaction, deleteFeeTransaction, getPendingLeaves, updateLeave, getWhatsappDefaulters, sendAttendanceAlerts, getSchoolSettings } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, LineChartWidget } from './ToolPage';
 import { Search, Plus, CheckCircle, XCircle, Save, RefreshCw, X, FileDown, MessageSquare, Edit3, Trash2 } from 'lucide-react';
@@ -648,6 +648,7 @@ export function CertificateGenerator() {
   const [downloading, setDownloading] = useState(null);
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [school, setSchool] = useState({});
 
   const loadCerts = async () => {
     const r = await fetch(`${API}/ops/certificates`, { headers: h(currentUser) }).then(r => r.json());
@@ -673,6 +674,10 @@ export function CertificateGenerator() {
     Promise.all([
       getStudents(currentUser).then(r => { if (r.success) setStudents(r.data || []); }),
       loadCerts(),
+      // Epic 4 / Story 4.3: the affiliation line on a certificate used to be a
+      // hard-coded string in this file. A CBSE certificate carries the school's
+      // affiliation number, and that number now lives on the school record.
+      getSchoolSettings().then(r => { if (r.success) setSchool(r.data || {}); }).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, []);
 
@@ -711,8 +716,12 @@ export function CertificateGenerator() {
         cert_type: cert.cert_type,
         student_name: d.student_name || '',
         class: d.class || '',
-        school_name: d.issued_by || '',
-        affiliation: 'Affiliated to CBSE · Lucknow, Uttar Pradesh',
+        school_name: d.issued_by || school.school_name || '',
+        affiliation: [
+          school.board ? `Affiliated to ${school.board}` : null,
+          school.affiliation_no ? `Aff. No. ${school.affiliation_no}` : null,
+          [school.city, school.state].filter(Boolean).join(', ') || null,
+        ].filter(Boolean).join(' · '),
         issued_date: d.issued_date || cert.issued_date || '',
         academic_year: d.academic_year || '',
         serial_number: cert.serial_number || '',
@@ -1930,7 +1939,10 @@ export function IdCardGenerator() {
   useEffect(() => {
     Promise.all([
       fetch(`${API}/students/`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setStudents(r.data || []); }),
-      fetch(`${API}/settings/classes`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setClasses(r.data || []); })
+      // Was a raw fetch, which bypassed api.js and so skipped the class ordering
+      // applied in getAllClasses. Project convention is that all API calls go
+      // through api.js for exactly this reason.
+      getAllClasses(currentUser).then(r => { if (r.success) setClasses(r.data || []); })
     ]).finally(() => setLoading(false));
   }, []);
 

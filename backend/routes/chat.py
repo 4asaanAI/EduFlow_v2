@@ -33,6 +33,7 @@ from ai.prompts import build_system_prompt
 from ai.context_builder import build_school_context, detect_language
 from ai.tool_functions_v2 import TOOL_REGISTRY, WRITE_TOOL_NAMES, openai_tool_schema
 from ai.scope_resolver import resolve_scope, Scope
+from ai.tool_access import is_tool_authorized
 from ai.content_filter import filter_response, check_input_safety
 from ai.redaction import redact_for_llm
 from middleware.auth import get_current_user, require_owner
@@ -756,20 +757,13 @@ def _is_tool_authorized(user: dict, tool_def: dict) -> bool:
     sub_categories: None means no sub_category restriction (any admin).
     sub_categories: [...] means admin must have a matching sub_category;
     non-admin roles that appear in roles[] are never blocked by sub_categories.
+
+    The implementation moved to `ai/tool_access.py` in Epic 4 (Story 4.5) so the
+    tool-panel endpoint enforces the SAME gate instead of its own weaker one. This
+    wrapper stays so every call site and every test that patches
+    `routes.chat._is_tool_authorized` keeps working unchanged.
     """
-    if user.get("role") not in tool_def.get("roles", []):
-        return False
-    sub_categories = tool_def.get("sub_categories")
-    if sub_categories is not None and user.get("role") == "admin":
-        if user.get("sub_category") not in sub_categories:
-            return False
-    # F.11/FR43: Phase-1 lockdown — AI write/action tools are Owner+Principal only
-    # (pilot scope), even where the registry roles permit broader staff. Read
-    # tools (incl. all student tools) are unaffected. Single switch lives in
-    # services/ai_action_policy.py; Phase 2 (Epic H) widens it with no engine change.
-    if not is_action_authorized_phase1(user, tool_def):
-        return False
-    return True
+    return is_tool_authorized(user, tool_def)
 
 
 def _close_tool_matches(name: str, user: dict, limit: int = 3) -> list:

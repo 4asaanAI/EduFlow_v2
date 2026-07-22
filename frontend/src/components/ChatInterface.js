@@ -7,12 +7,31 @@ import InputBar from './InputBar';
 import TokenBudgetBar from './TokenBudgetBar';
 import { executeTool } from '../lib/api';
 import { getAuthHeaders } from '../lib/authSession';
-import { Sparkles } from 'lucide-react';
+import BotMascot from './ui/BotMascot';
 import ThinkingProcess from './ThinkingProcess';
 import ConfirmActionCard from './ConfirmActionCard';
 import ChatFollowup from './ChatFollowup';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
+
+/* Epic 5 (UX-DR8): ONE left edge and ONE vertical rhythm for everything stacked in a
+   streaming turn. The gutter is the space the assistant avatar occupies — 28px wide
+   plus the 14px flex gap — so a progress panel, a tool badge and the reply body all
+   begin at the same place. Before this they began at 42px, 0px and 42px. */
+export const STREAM_GUTTER = 42;
+export const STREAM_GAP = 8;
+
+/* How long silence is allowed before the person is told something. The server sends a
+   keepalive every 5s, so 12s of TOTAL silence means the connection itself is suspect,
+   not merely a slow answer. Any activity at all resets both.
+
+   THESE TWO NUMBERS ARE JUDGEMENTS, NOT MEASUREMENTS. They were reasoned from the
+   keepalive interval and have never been watched against a real connection at the
+   school on a real morning — they look precise here and are not. Logged as D-32 and
+   on Abhimanyu's checklist. If Flo nags on answers that were always going to arrive,
+   raise the first; if people give up before it speaks, lower it. */
+export const STALL_SLOW_MS = 12000;
+export const STALL_DEAD_MS = 45000;
 function getHeaders() {
   return getAuthHeaders();
 }
@@ -30,12 +49,13 @@ async function executeAction(convId, action, params, label, user) {
 function TypingIndicator() {
   return (
     <div style={{ display: 'flex', gap: 14, padding: '12px 0', alignItems: 'flex-start' }}>
+      {/* Same face as every one of Flo's replies — it is Flo who is thinking. */}
       <div style={{
         width: 28, height: 28, borderRadius: 8,
         background: 'linear-gradient(135deg, rgba(79,143,247,0.15), rgba(167,139,250,0.15))',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden',
       }}>
-        <Sparkles size={13} color="#a78bfa" />
+        <BotMascot variant="avatar" size={24} data-testid="flo-typing-avatar" />
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, paddingTop: 8 }}>
         <div className="typing-dot" /><div className="typing-dot" /><div className="typing-dot" />
@@ -68,10 +88,19 @@ function HealthScoreWidget({ user }) {
     executeTool('get_school_pulse', {}, user).then(r => {
       if (!r.success) return;
       const d = r.data?.summary || {};
-      const att = parseFloat(d.attendance_rate) || 0;
+      // Epic 4 / Story 4.2: attendance_rate reads "not marked yet" before anyone has
+      // taken the register. `parseFloat(...) || 0` would score that as 0% attendance
+      // — a school-is-empty verdict drawn from the absence of data, which is the
+      // exact defect this epic removes. Unmarked attendance is excluded from the
+      // score and its weight redistributed, rather than counted as a failure.
+      const attMarked = d.attendance_marked_today !== false && !Number.isNaN(parseFloat(d.attendance_rate));
+      const att = attMarked ? parseFloat(d.attendance_rate) : null;
       const fees = r.data?.fee_stats?.paid ? 75 : 50;
       const alerts = r.data?.active_alerts || 0;
-      const s = Math.max(0, Math.min(100, Math.round((att * 0.4) + (fees * 0.4) - (alerts * 5) + 20)));
+      const base = att === null
+        ? (fees * 0.8) + 20
+        : (att * 0.4) + (fees * 0.4) + 20;
+      const s = Math.max(0, Math.min(100, Math.round(base - (alerts * 5))));
       setScore(s);
     }).catch(() => {});
   }, [user.id]);
@@ -82,8 +111,8 @@ function HealthScoreWidget({ user }) {
   return (
     <div style={{
       display: 'inline-flex', alignItems: 'center', gap: 14,
-      background: isDark ? '#1e1e1e' : '#ffffff',
-      border: `1px solid ${isDark ? '#2e2e2e' : '#e5e5e5'}`,
+      background: 'var(--color-surface)',
+      border: `1px solid ${'var(--color-border)'}`,
       borderRadius: 14, padding: '14px 20px', marginBottom: 24,
       boxShadow: 'var(--shadow-sm)',
     }}>
@@ -166,14 +195,14 @@ function QuickActions({ onSend, isDark, user }) {
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, maxWidth: 500, margin: '0 auto' }}>
       {suggestions.map((s, i) => (
         <button key={i} onClick={() => onSend(s)} style={{
-          background: isDark ? '#1e1e1e' : '#ffffff',
-          border: `1px solid ${isDark ? '#2e2e2e' : '#e5e5e5'}`,
+          background: 'var(--color-surface)',
+          border: `1px solid ${'var(--color-border)'}`,
           borderRadius: 12, padding: '12px 14px', textAlign: 'left',
           color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer',
           transition: 'all var(--transition-fast)', lineHeight: 1.4,
         }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = isDark ? '#444' : '#ccc'; e.currentTarget.style.background = isDark ? '#252525' : '#fafafa'; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = isDark ? '#2e2e2e' : '#e5e5e5'; e.currentTarget.style.background = isDark ? '#1e1e1e' : '#ffffff'; }}>
+          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--color-text-muted)'; e.currentTarget.style.background = 'var(--color-surface-raised)'; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.background = 'var(--color-surface)'; }}>
           {s}
         </button>
       ))}
@@ -221,6 +250,34 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   const [tokenCanRecharge, setTokenCanRecharge] = useState(false);
   const [tokenSelfRechargeEnabled, setTokenSelfRechargeEnabled] = useState(true);
   const [tokenExhausted, setTokenExhausted] = useState(false);
+
+  // Epic 5 / Story 5.2: the stall watchdog. Every detectable failure was already
+  // handled by epic R8 — a dropped stream, a missing `done`, a 401. What was NOT
+  // handled is a connection that is accepted and then goes quiet: `reader.read()`
+  // waits forever and the typing dots animate with nothing behind them.
+  const [stallState, setStallState] = useState(null);  // null | 'slow' | 'dead'
+  const stallTimersRef = useRef([]);
+
+  const clearStallWatch = useCallback(() => {
+    stallTimersRef.current.forEach(clearTimeout);
+    stallTimersRef.current = [];
+    setStallState(null);
+  }, []);
+
+  /** Restart the watchdog. Called on send and on EVERY inbound event, so a long but
+   *  genuinely-working answer is never declared stalled. */
+  const noteStreamActivity = useCallback(() => {
+    stallTimersRef.current.forEach(clearTimeout);
+    setStallState(null);
+    stallTimersRef.current = [
+      setTimeout(() => setStallState('slow'), STALL_SLOW_MS),
+      setTimeout(() => setStallState('dead'), STALL_DEAD_MS),
+    ];
+  }, []);
+
+  // A timer outliving the component would fire against a dead one — that is where
+  // "cannot update state on an unmounted component" and phantom banners come from.
+  useEffect(() => () => stallTimersRef.current.forEach(clearTimeout), []);
 
   // Ref to track thinkingStartTime inside SSE callback without stale closure
   const thinkingStartTimeRef = useRef(null);
@@ -445,8 +502,14 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
 
     let streamErrored = false;
     let producedOutput = false;   // R1.2 AC2: did this turn render anything at all?
+    // Story 5.2: start the clock the moment the turn begins, not on first token —
+    // a request that is accepted and then never answered is the case being caught.
+    noteStreamActivity();
     try {
       await sendMessageStream(cid, text, currentUser, (event) => {
+        // ANY inbound event counts as life, including a keepalive and a thinking
+        // step. A long but genuinely-working answer must never be called stalled.
+        noteStreamActivity();
         const parsed = event;
 
         // R1.2 AC2: mark that the turn produced *something* user-visible. Purely
@@ -569,7 +632,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           setThinkingCollapsed(false);
           const errText = (typeof event.message === 'string' && event.message)
             ? event.message
-            : 'The assistant hit a problem. Please try again.';
+            : 'Flo hit a problem. Please try again.';
           {
             const prev = streamMsgRef.current;
             setStream(null);
@@ -671,6 +734,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
         }
       }
       setStreaming(false);
+      clearStallWatch();  // the turn is over; a live timer would fire at nothing
       // R8: flush a finalized message DIRECTLY here rather than depending only on
       // the streaming-transition effect. If every SSE frame (incl. `done`) arrived
       // in one React batch, `streaming` never committed `true`, so that effect sees
@@ -685,7 +749,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
         setMessages(cur => [...cur, {
           id: `ai-fallback-${Date.now()}`,
           role: 'assistant',
-          content: "The assistant couldn't produce a reply. Try again.",
+          content: "Flo couldn't produce a reply. Try again.",
           interrupted: true,
           created_at: new Date().toISOString(),
         }]);
@@ -707,6 +771,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
         };
       }
       setStreaming(false);
+      clearStallWatch();
       // Finalize thinking on error
       setThinkingSteps(ts => ts.map(s => ({ ...s, status: 'done' })));
       // If there was no content at all, show a plain error message with retry
@@ -767,10 +832,26 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   };
 
   const isNewChat = !convId || messages.length === 0;
-  const chatBg = isDark ? '#1a1a1a' : '#f5f5f5';
+  const chatBg = 'var(--color-page)';
 
   return (
-    <div data-testid="chat-interface" style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative', background: chatBg }}>
+    // .chat-watermark paints The Aaryans' crest faintly behind the whole
+    // conversation — see index.css. Applied here, on the chat shell shared by
+    // every role, so it appears once for owner, principal, admin, teacher and
+    // student alike rather than being added per profile.
+    <div
+      data-testid="chat-interface"
+      className="chat-watermark"
+      style={{
+        display: 'flex', flexDirection: 'column', height: '100%',
+        position: 'relative', background: chatBg,
+        // The crest's path is handed to the stylesheet here rather than being
+        // written into index.css. A url() in a stylesheet is resolved by
+        // webpack at BUILD time, which fails for a file served from public/;
+        // a custom property is passed straight through to the browser.
+        '--chat-watermark-src': `url("${process.env.PUBLIC_URL}/aaryans-logo.jpg")`,
+      }}
+    >
       <div data-testid="messages-area" style={{ flex: 1, overflowY: 'auto', padding: '24px 0 200px' }}>
         <div data-testid="message-list" style={{ width: '100%', margin: '0 auto', padding: '0 32px' }}>
           {aiUnavailable && (
@@ -824,22 +905,25 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
 
           {isNewChat && (
             <div className="fade-in" style={{ textAlign: 'center', padding: '60px 0 40px' }}>
-              <div style={{
-                width: 48, height: 48, borderRadius: 14, margin: '0 auto 20px',
-                background: 'linear-gradient(135deg, #4f8ff7, #a78bfa)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 8px 24px rgba(79,143,247,0.2)',
-              }}>
-                <Sparkles size={22} color="#fff" />
+              {/* Epic 9: the generic sparkle chip became the marketing site's
+                  robot — Flo now has one recognisable face across the website
+                  and the product. Flo appears here, on the sign-in screen,
+                  beside each reply, and on empty/error states — never on a
+                  working screen. */}
+              <div style={{ margin: '0 auto 10px', display: 'flex', justifyContent: 'center' }}>
+                <BotMascot size={130} data-testid="assistant-mascot" />
               </div>
               <h2 style={{
-                fontSize: 26, fontWeight: 700, color: 'var(--text-primary)',
-                marginBottom: 8, letterSpacing: '-0.03em',
+                fontFamily: 'var(--font-display)',
+                fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text-primary)',
+                marginBottom: 8, letterSpacing: '-0.02em',
               }}>
                 Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {currentUser.name.split(' ')[0]}
               </h2>
-              <p style={{ color: 'var(--text-muted)', fontSize: 15, marginBottom: 28, fontWeight: 400 }}>
-                How can I help you today?
+              {/* Flo says its own name here — this is where someone learns what to
+                  call it, and it is the same name used everywhere else. */}
+              <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-md)', marginBottom: 28, fontWeight: 500 }}>
+                I'm Flo. How can I help you today?
               </p>
               <HealthScoreWidget user={currentUser} />
               <QuickActions onSend={handleSend} isDark={isDark} user={currentUser} />
@@ -855,7 +939,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
               const richBlocks = msg.richBlocks || msg.rich_content?.rich_blocks || [];
               const actionButtons = msg.actionButtons || msg.rich_content?.action_buttons || msg.actions || [];
               if (!hasContent && richBlocks.length === 0 && actionButtons.length === 0) {
-                return { ...msg, content: "The assistant couldn't produce a reply. Try again." };
+                return { ...msg, content: "Flo couldn't produce a reply. Try again." };
               }
             }
             return msg;
@@ -889,30 +973,59 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
             </div>
           ))}
 
-          {streaming && currentStreamMsg && (
-            <div className="fade-in">
-              {currentStreamMsg.toolCall && (
-                <div style={{ paddingLeft: 42, marginBottom: 4 }}>
-                  <ToolCallBadge tool={currentStreamMsg.toolCall.tool} status={currentStreamMsg.toolCall.status} />
-                </div>
-              )}
-              {thinkingSteps.some(s => ['decision', 'tool_start', 'tool_done', 'searching'].includes(s.step)) && (
-                <ThinkingProcess
-                  steps={thinkingSteps}
-                  isStreaming={streaming}
-                  collapsed={thinkingCollapsed}
-                  duration={thinkingStartTime ? Date.now() - thinkingStartTime : 0}
-                />
-              )}
-              {currentStreamMsg.content ? (
-                <div className="prose-chat">
-                  <MessageRenderer message={{ ...currentStreamMsg, role: 'assistant' }} isStreaming onActionButton={handleActionButton} />
-                </div>
-              ) : (
-                !thinkingSteps.some(s => ['decision', 'tool_start', 'tool_done', 'searching'].includes(s.step)) && <TypingIndicator />
-              )}
-            </div>
-          )}
+          {streaming && currentStreamMsg && (() => {
+            // Epic 5 / Story 5.1. `thinkingSteps` already carries tool_start and
+            // tool_done, so rendering ToolCallBadge alongside the panel announced
+            // the SAME tool twice in two different shapes — owner item 12. The
+            // panel is the single account of progress; the badge is the fallback
+            // for when there is no panel to show.
+            const hasProgressPanel = thinkingSteps.some(
+              s => ['decision', 'tool_start', 'tool_done', 'searching'].includes(s.step)
+            );
+            return (
+              <div className="fade-in" data-testid="chat-stream-block">
+                {/* STREAM_GUTTER is the 42px the avatar occupies (28px + 14px gap).
+                    Every stacked element shares it, so the progress panel, any badge
+                    and the reply body have ONE left edge instead of three. */}
+                {hasProgressPanel ? (
+                  <div style={{ paddingLeft: STREAM_GUTTER, marginBottom: STREAM_GAP }} data-testid="chat-progress-panel">
+                    <ThinkingProcess
+                      steps={thinkingSteps}
+                      isStreaming={streaming}
+                      collapsed={thinkingCollapsed}
+                      duration={thinkingStartTime ? Date.now() - thinkingStartTime : 0}
+                    />
+                  </div>
+                ) : currentStreamMsg.toolCall ? (
+                  <div style={{ paddingLeft: STREAM_GUTTER, marginBottom: STREAM_GAP }} data-testid="chat-tool-badge">
+                    <ToolCallBadge tool={currentStreamMsg.toolCall.tool} status={currentStreamMsg.toolCall.status} />
+                  </div>
+                ) : null}
+                {currentStreamMsg.content ? (
+                  <div className="prose-chat">
+                    <MessageRenderer message={{ ...currentStreamMsg, role: 'assistant' }} isStreaming onActionButton={handleActionButton} />
+                  </div>
+                ) : (
+                  !hasProgressPanel && <TypingIndicator />
+                )}
+                {stallState && (
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    data-testid="chat-stall-notice"
+                    style={{
+                      paddingLeft: STREAM_GUTTER, marginTop: STREAM_GAP,
+                      fontSize: 13, color: 'var(--color-text-muted)',
+                    }}
+                  >
+                    {stallState === 'slow'
+                      ? 'Flo is taking longer than usual. Still working…'
+                      : 'No response yet. The connection may have dropped — try sending it again.'}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {confirmAction && (
             <ConfirmActionCard

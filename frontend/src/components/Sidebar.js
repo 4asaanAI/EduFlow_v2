@@ -241,10 +241,10 @@ function ConvMenu({ conv, onClose, onRename, onPin, onStar, onDelete, isDark }) 
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
-  const bg = isDark ? '#252525' : '#ffffff';
-  const border = isDark ? '#333' : '#e5e5e5';
+  const bg = 'var(--color-surface-raised)';
+  const border = 'var(--color-border)';
   return (
-    <div ref={ref} className="fade-in-scale" style={{ position: 'absolute', top: '100%', left: 4, right: 4, background: bg, border: `1px solid ${border}`, borderRadius: 10, padding: 4, zIndex: 200, boxShadow: 'var(--shadow-lg)' }}>
+    <div ref={ref} className="fade-in-scale" style={{ position: 'absolute', top: '100%', left: 4, right: 4, background: bg, border: `1px solid ${border}`, borderRadius: 'var(--radius-md)', padding: 4, zIndex: 200, boxShadow: 'var(--shadow-lg)' }}>
       {[
         { label: 'Rename', icon: Edit2, action: onRename },
         { label: conv.is_pinned ? 'Unpin' : 'Pin', icon: Pin, action: onPin },
@@ -272,7 +272,14 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   const [renamingId, setRenamingId] = useState(null);
   const [renameVal, setRenameVal] = useState('');
   const [toolsExpanded, setToolsExpanded] = useState(false);
-  const [chatsExpanded, setChatsExpanded] = useState(false);
+  // (chatsExpanded removed with the "N more chats" expander — the zone now
+  //  lists every conversation and scrolls on its own.)
+  // Whether the Recent Chats section is open at all. Collapsing belongs on the
+  // heading — that is where people reach for it — not on a link buried under the
+  // list, which you had to scroll past the whole list to reach.
+  const [chatsSectionOpen, setChatsSectionOpen] = useState(true);
+  // Tools collapses exactly like Recent Chats — same control, same behaviour.
+  const [toolsSectionOpen, setToolsSectionOpen] = useState(true);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [schoolName, setSchoolName] = useState('');
@@ -364,13 +371,18 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
     });
   };
 
-  const bg = isDark ? '#141414' : '#ffffff';
-  const border = isDark ? '#2e2e2e' : '#e5e5e5';
-  const tp = isDark ? '#f5f5f5' : '#171717';
-  const muted = isDark ? '#888' : '#525252';
-  const secondary = isDark ? '#a0a0a0' : '#525252';
-  const hover = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
-  const activeBg = isDark ? 'rgba(79,143,247,0.1)' : 'rgba(79,143,247,0.06)';
+  // Epic 9: these were `isDark ? '<hex>' : '<hex>'` pairs. Computing theme
+  // colours in JS meant the sidebar painted itself from literals and was
+  // invisible to the design tokens — switching themes recoloured the text and
+  // left the surfaces behind. Reading tokens also means the browser handles
+  // the switch, so no re-render is needed for the colours to change.
+  const bg = 'var(--bg-sidebar)';
+  const border = 'var(--color-border)';
+  const tp = 'var(--color-text-primary)';
+  const muted = 'var(--color-text-muted)';
+  const secondary = 'var(--color-text-secondary)';
+  const hover = 'var(--bg-hover)';
+  const activeBg = 'var(--bg-active)';
 
   const renderToolItem = (tool, indent = false) => {
     if (!tool) return null;
@@ -389,7 +401,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
       >
         <div style={{
           width: 24, height: 24, borderRadius: 6, flexShrink: 0,
-          background: isActive ? `${tool.color}18` : (isDark ? '#252525' : '#f5f5f5'),
+          background: isActive ? `${tool.color}18` : 'var(--color-surface-raised)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
           <Icon size={12} color={isActive ? tool.color : muted} />
@@ -420,7 +432,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
         >
           <div style={{
             width: 26, height: 26, borderRadius: 7, flexShrink: 0,
-            background: isOpen || hasActive ? `${group.color}18` : (isDark ? '#252525' : '#f5f5f5'),
+            background: isOpen || hasActive ? `${group.color}18` : 'var(--color-surface-raised)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             <GIcon size={13} color={isOpen || hasActive ? group.color : muted} />
@@ -461,11 +473,17 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
     ? groupConfig.bottom.map(id => tools.find(t => t.id === id)).filter(Boolean)
     : [];
 
-  // Section zone backgrounds — distinct but subtle
-  const toolsZoneBg = isDark ? '#161b27' : '#f5f7ff';          // cool blue tint
-  const chatsZoneBg = isDark ? '#1a1510' : '#fffbf5';          // warm amber tint
-  const toolsZoneBorder = isDark ? '#1e2540' : '#e8eeff';
-  const chatsZoneBorder = isDark ? '#2a2010' : '#ffefd4';
+  // Section zone backgrounds — distinct but subtle.
+  // Kept as explicit pairs rather than tokens: these two tints exist to tell
+  // the tools zone and the chats zone apart, so they are deliberately NOT the
+  // standard surface colour. Retuned onto the navy/paper palette in Epic 9.
+  // Retuned to sit on the LIGHTER dark sidebar (#242424). The old values were
+  // pitched against a #1A1A1A panel, so on the new surface they read as dark
+  // holes rather than tinted zones, and their borders vanished entirely.
+  const toolsZoneBg = isDark ? '#1D2432' : '#F1F6FF';          // cool blue tint
+  const chatsZoneBg = isDark ? '#2A2118' : '#FFFAF2';          // warm amber tint
+  const toolsZoneBorder = isDark ? '#3A4763' : '#E1EAFB';
+  const chatsZoneBorder = isDark ? '#4A3A22' : '#FFEBD2';
 
   return (
     <>
@@ -491,23 +509,33 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
         .hide-emergent-badge, [class*="emergent-badge"], .emergent-watermark { display: none !important; }
         .sidebar-scroll::-webkit-scrollbar { width: 4px; }
         .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
-        .sidebar-scroll::-webkit-scrollbar-thumb { background: ${isDark ? '#333' : '#ddd'}; border-radius: 4px; }
-        .sidebar-scroll::-webkit-scrollbar-thumb:hover { background: ${isDark ? '#444' : '#ccc'}; }
+        .sidebar-scroll::-webkit-scrollbar-thumb { background: var(--color-border-strong); border-radius: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-thumb:hover { background: var(--color-text-muted); }
         .new-chat-btn {
           width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px;
-          padding: 9px 14px;
-          background: linear-gradient(135deg, #4f8ff7 0%, #7c6af7 60%, #a78bfa 100%);
-          border: none; border-radius: 12px; color: #fff;
-          font-size: 13px; font-weight: 700; cursor: pointer;
-          box-shadow: 0 2px 12px rgba(79,143,247,0.35);
-          transition: all 0.2s ease; letter-spacing: 0.01em;
+          padding: 10px 14px;
+          /* Epic 9: the brand's blue-to-orange, and a chunky press rather than
+             a flat gradient chip. White on this gradient stays above 4.5:1
+             because the gradient never reaches the raw #2B8FF0. */
+          background: linear-gradient(135deg, var(--brand-blue-fill) 0%, #3D63C9 55%, #7C5AD6 100%);
+          border: none; border-radius: var(--radius-lg); color: #fff;
+          font-family: var(--font-display);
+          font-size: 14px; font-weight: 700; cursor: pointer;
+          /* The chunky solid shadow of the brand, plus a soft glow. */
+          box-shadow: 0 4px 0 0 var(--brand-blue-press), 0 6px 18px -8px rgba(43,143,240,0.5);
+          transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+          letter-spacing: 0.01em;
         }
         .new-chat-btn:hover {
+          box-shadow: 0 5px 0 0 var(--brand-blue-press), 0 10px 24px -8px rgba(43,143,240,0.6);
           transform: translateY(-1px);
-          box-shadow: 0 4px 18px rgba(79,143,247,0.45);
-          background: linear-gradient(135deg, #5e9bff 0%, #8b79f9 60%, #b99bff 100%);
         }
-        .new-chat-btn:active { transform: translateY(0); box-shadow: 0 2px 8px rgba(79,143,247,0.3); }
+        /* Presses INTO its own shadow. transform only — never height or margin,
+           or the whole sidebar below it would shift on every click. */
+        .new-chat-btn:active {
+          transform: translateY(3px);
+          box-shadow: 0 1px 0 0 var(--brand-blue-press);
+        }
         .zone-header {
           display: flex; align-items: center; gap: 6px;
           padding: 8px 10px 6px;
@@ -534,23 +562,27 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
               alt="EduFlow"
               style={{
                 height: 52, width: 'auto', maxWidth: '100%', objectFit: 'contain',
+                // The wordmark's "Edu" is a deep navy blue, which all but
+                // disappeared against the dark sidebar. A brightness lift alone
+                // was not enough; the saturation boost is what brings the blue
+                // back, and the halo separates it from the panel behind.
                 filter: isDark
-                  ? 'brightness(1.12) drop-shadow(0 2px 8px rgba(232,89,12,0.45))'
+                  ? 'brightness(1.45) saturate(1.25) drop-shadow(0 2px 10px rgba(232,89,12,0.5))'
                   : 'drop-shadow(0 2px 6px rgba(232,89,12,0.28))',
               }}
             />
             <button onClick={() => setSidebarOpen(false)} className="mobile-close"
-              style={{ position: 'absolute', right: 0, background: isDark ? '#252525' : '#f0f0f0', border: 'none', cursor: 'pointer', color: muted, padding: '5px', borderRadius: 7, display: 'none', alignItems: 'center', justifyContent: 'center', transition: 'var(--transition-fast)' }}
-              onMouseEnter={e => e.currentTarget.style.background = isDark ? '#333' : '#e0e0e0'}
-              onMouseLeave={e => e.currentTarget.style.background = isDark ? '#252525' : '#f0f0f0'}>
+              style={{ position: 'absolute', right: 0, background: 'var(--color-surface-raised)', border: 'none', cursor: 'pointer', color: muted, padding: '5px', borderRadius: 7, display: 'none', alignItems: 'center', justifyContent: 'center', transition: 'var(--transition-fast)' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'var(--color-surface-raised)'}>
               <X size={15} />
             </button>
           </div>
 
           {/* School identity card */}
           <div style={{
-            background: isDark ? 'rgba(79,143,247,0.06)' : 'rgba(79,143,247,0.05)',
-            border: `1px solid ${isDark ? 'rgba(79,143,247,0.16)' : 'rgba(79,143,247,0.14)'}`,
+            background: 'var(--bg-active)',
+            border: `1px solid ${'var(--color-accent-blue)'}`,
             borderRadius: 10, padding: '7px 10px', marginBottom: 10,
           }}>
             <div style={{
@@ -583,36 +615,101 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
           </button>
         </div>
 
-        {/* ── Scrollable body ── */}
-        <div className="sidebar-scroll" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '0 8px 8px' }}>
+        {/* ── Body ──
+            NOT scrollable itself. The outer scrollbar is deliberately gone:
+            with it, reaching the chat history meant scrolling the whole tool
+            list past first, and you could end up with two scrollbars nested
+            inside one another. This is a flex column instead, and each zone
+            scrolls within its own share of the height — so both section
+            headers stay put and visible at all times.
+            `minHeight: 0` is what actually allows a flex child to shrink
+            below its content and scroll; without it the zones would grow and
+            push each other off the bottom. */}
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 8, overflow: 'hidden', padding: '0 8px 8px' }}>
 
           {/* Tools zone — cool blue tint */}
-          <div style={{ borderRadius: 12, background: toolsZoneBg, border: `1px solid ${toolsZoneBorder}`, marginBottom: 8, overflow: 'hidden' }}>
-            <div className="zone-header" style={{ color: isDark ? '#6b8fd4' : '#4f6bbf' }}>
+          <div style={{
+            borderRadius: 12, background: toolsZoneBg, border: `1px solid ${toolsZoneBorder}`,
+            overflow: 'hidden', display: 'flex', flexDirection: 'column',
+            // `0 1 auto` — size to the CONTENT, never grow into spare space.
+            // With `1 1 auto` the zone stretched to fill the sidebar even when
+            // the tool list was short, leaving an empty gap between the last
+            // tool and Recent Chats. It may still SHRINK (and then scroll)
+            // when the list is long, which is what the 1 in the middle allows.
+            flex: '0 1 auto', minHeight: 0,
+          }}>
+            {/* Collapsible, matching Recent Chats — same control, same place,
+                same chevron, so the two sections behave identically. */}
+            <button
+              type="button"
+              aria-expanded={toolsSectionOpen}
+              data-testid="tools-section-toggle"
+              onClick={() => setToolsSectionOpen(v => !v)}
+              className="zone-header"
+              style={{
+                color: 'var(--color-accent-blue)',
+                width: '100%', background: 'none', border: 'none',
+                cursor: 'pointer', font: 'inherit', letterSpacing: '0.07em',
+                fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                flexShrink: 0,
+              }}
+            >
               <Wrench size={11} />
               Tools
-            </div>
-            <div style={{ padding: '0 6px 6px' }}>
+              <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+                {toolsSectionOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              </span>
+            </button>
+            {/* The tools list scrolls INSIDE its own zone. */}
+            <div className="sidebar-scroll" style={{ padding: '0 6px 6px', display: toolsSectionOpen ? 'block' : 'none', flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
               {renderGroupedNav()}
             </div>
           </div>
 
           {/* Chat history zone — warm amber tint */}
           {conversations.length > 0 && (
-            <div style={{ borderRadius: 12, background: chatsZoneBg, border: `1px solid ${chatsZoneBorder}`, overflow: 'hidden' }}>
-              <div className="zone-header" style={{ color: isDark ? '#c9954a' : '#9a6520' }}>
+            <div style={{
+              borderRadius: 12, background: chatsZoneBg, border: `1px solid ${chatsZoneBorder}`,
+              overflow: 'hidden', display: 'flex', flexDirection: 'column',
+              // Chats takes whatever height is left once Tools has taken what
+              // it needs, so it begins immediately below the last tool and
+              // then scrolls. Collapsed, it shrinks to just its header.
+              flex: chatsSectionOpen ? '1 1 auto' : '0 0 auto', minHeight: 0,
+            }}>
+              <button
+                type="button"
+                aria-expanded={chatsSectionOpen}
+                onClick={() => setChatsSectionOpen(v => !v)}
+                className="zone-header"
+                style={{
+                  color: 'var(--accent-orange)',
+                  width: '100%', background: 'none', border: 'none',
+                  cursor: 'pointer', font: 'inherit', letterSpacing: '0.07em',
+                  fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                  flexShrink: 0,
+                }}
+              >
                 <MessageCircle size={11} />
                 Recent Chats
-              </div>
-              <div style={{ padding: '0 6px 6px' }}>
-                {(chatsExpanded ? conversations : conversations.slice(0, 5)).map(conv => (
+                <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+                  {chatsSectionOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                </span>
+              </button>
+              {/* Every conversation is listed, and the zone scrolls on its own.
+                  This replaces the "N more chats" expander that used to sit at
+                  the bottom: the section already has a collapse control in its
+                  own header, so a second toggle underneath was doing the same
+                  job twice. Scrolling reaches the whole history in one gesture
+                  rather than expand-then-scroll. */}
+              <div className="sidebar-scroll" style={{ padding: '0 6px 6px', display: chatsSectionOpen ? 'block' : 'none', flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
+                {conversations.map(conv => (
                   <div key={conv.id} style={{ position: 'relative' }}>
                     {renamingId === conv.id ? (
                       <div style={{ padding: '3px 4px' }}>
                         <input autoFocus value={renameVal} onChange={e => setRenameVal(e.target.value)}
                           onKeyDown={e => { if (e.key === 'Enter') commitRename(conv.id); if (e.key === 'Escape') setRenamingId(null); }}
                           onBlur={() => commitRename(conv.id)}
-                          style={{ width: '100%', background: isDark ? '#252525' : '#fafafa', border: `1px solid #4f8ff7`, borderRadius: 8, padding: '6px 10px', color: tp, fontSize: 12, outline: 'none' }}
+                          style={{ width: '100%', background: 'var(--color-surface-raised)', border: `1px solid #4f8ff7`, borderRadius: 8, padding: '6px 10px', color: tp, fontSize: 12, outline: 'none' }}
                         />
                       </div>
                     ) : (
@@ -620,11 +717,11 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
                         onClick={() => onSelectConv(conv.id)}
                         onContextMenu={e => { e.preventDefault(); setMenuConvId(conv.id); }}
                         className="conv-btn-row"
-                        style={{ background: activeConvId === conv.id ? (isDark ? 'rgba(79,143,247,0.12)' : 'rgba(79,143,247,0.08)') : 'transparent' }}
-                        onMouseEnter={e => { if (activeConvId !== conv.id) e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'; }}
+                        style={{ background: activeConvId === conv.id ? 'var(--bg-active)' : 'transparent' }}
+                        onMouseEnter={e => { if (activeConvId !== conv.id) e.currentTarget.style.background = 'var(--bg-hover)'; }}
                         onMouseLeave={e => { if (activeConvId !== conv.id) e.currentTarget.style.background = 'transparent'; }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-                          <div style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, background: activeConvId === conv.id ? 'rgba(79,143,247,0.15)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <div style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, background: activeConvId === conv.id ? 'rgba(79,143,247,0.15)' : 'var(--bg-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <MessageCircle size={11} color={activeConvId === conv.id ? '#4f8ff7' : muted} />
                           </div>
                           {conv.is_pinned && <Pin size={9} color="#fbbf24" />}
@@ -645,17 +742,6 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
                     )}
                   </div>
                 ))}
-                {conversations.length > 5 && (
-                  <button
-                    onClick={() => setChatsExpanded(v => !v)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '6px 10px', background: 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', color: isDark ? '#c9954a' : '#9a6520', fontSize: 11, fontWeight: 600, transition: 'var(--transition-fast)' }}
-                    onMouseEnter={e => e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  >
-                    {chatsExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                    {chatsExpanded ? 'Show less' : `${conversations.length - 5} more chats`}
-                  </button>
-                )}
               </div>
             </div>
           )}
@@ -677,7 +763,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
           {showUserMenu && (
             <div className="fade-in-scale" style={{
               position: 'absolute', bottom: 68, left: 8, right: 8,
-              background: isDark ? '#252525' : '#ffffff', border: `1px solid ${border}`,
+              background: 'var(--color-surface-raised)', border: `1px solid ${border}`,
               borderRadius: 12, padding: 6, boxShadow: 'var(--shadow-lg)', zIndex: 100,
             }}>
               {/* Profile */}
@@ -787,9 +873,9 @@ function TokenUsageBadge({ usage, isDark, border, onClick }) {
   const used = usage.total_used || 0;
   const pct = (!isUnlimited && limit > 0) ? Math.min(100, Math.round((used / limit) * 100)) : 0;
   const barColor = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#10b981';
-  const textColor = isDark ? '#a0a0a0' : '#6b7280';
-  const bg = isDark ? '#1a1a1a' : '#f9fafb';
-  const hoverBg = isDark ? '#222' : '#f3f4f6';
+  const textColor = 'var(--color-text-secondary)';
+  const bg = 'var(--color-surface-muted)';
+  const hoverBg = 'var(--bg-hover)';
 
   function fmt(n) {
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -821,7 +907,7 @@ function TokenUsageBadge({ usage, isDark, border, onClick }) {
           }
         </div>
         {!isUnlimited && (
-          <div style={{ height: 4, borderRadius: 3, background: isDark ? '#2a2a2a' : '#e5e7eb', overflow: 'hidden' }}>
+          <div style={{ height: 4, borderRadius: 3, background: 'var(--color-border)', overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 3, transition: 'width 0.5s ease' }} />
           </div>
         )}

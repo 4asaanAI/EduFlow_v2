@@ -102,8 +102,31 @@ export default function Layout() {
     }, { replace: !!options.replace });
   }, [setSearchParams]);
 
+  /**
+   * Close the drawer when the user picks something that NAVIGATES.
+   *
+   * On phones the sidebar is an overlay sitting on top of the thing you just
+   * asked for, so leaving it open means tapping the backdrop to see your own
+   * choice. On desktop it sits beside the content, so it stays.
+   *
+   * The rule, set by Abhimanyu 2026-07-22: close on anything that takes you
+   * somewhere — New Chat, a tool, a conversation, Profile, Settings. Do NOT
+   * close on anything that merely EXPANDS in place: a tool group opening its
+   * children, or Help & Support opening its submenu. Closing there would shut
+   * the drawer at the exact moment the user was drilling into it.
+   *
+   * 768px matches the `@media (max-width: 768px)` breakpoint the drawer CSS
+   * uses in index.css. The two must agree, or the drawer closes at a width
+   * where it is not a drawer.
+   */
+  const MOBILE_BREAKPOINT = 768;
+  const closeDrawerOnNavigate = useCallback(() => {
+    if (window.innerWidth <= MOBILE_BREAKPOINT) setSidebarOpen(false);
+  }, []);
+
   const handleNewChat = async () => {
     setActiveToolParam(null);
+    closeDrawerOnNavigate();
     const res = await createConversation(currentUser);
     if (res.success) {
       setActiveConvId(res.data.id);
@@ -114,6 +137,7 @@ export default function Layout() {
 
   const handleSelectTool = (toolId) => {
     setActiveToolParam(toolId);
+    closeDrawerOnNavigate();
     if (isToolDashboardRole) {
       const key = `eduflow_activity_${currentUser.id}`;
       const prev = JSON.parse(localStorage.getItem(key) || '[]').filter(a => a.id !== toolId);
@@ -125,6 +149,7 @@ export default function Layout() {
   const handleSelectConv = async (convId) => {
     setActiveToolParam(null);
     setActiveConvId(convId);
+    closeDrawerOnNavigate();
     try {
       const res = await getConversations(currentUser);
       const conv = res.data?.find(c => c.id === convId);
@@ -167,25 +192,30 @@ export default function Layout() {
     }
   }, [currentUser.id, setActiveToolParam]);
 
+  // Tapping outside the open drawer closes it. Same 768px breakpoint as
+  // closeDrawerOnNavigate and as the drawer's own CSS — all three must agree.
   useEffect(() => {
     const handleClick = (e) => {
-      if (window.innerWidth <= 768 && sidebarOpen) {
+      if (window.innerWidth <= MOBILE_BREAKPOINT && sidebarOpen) {
         const sidebar = document.querySelector('.sidebar-wrapper');
         if (sidebar && !sidebar.contains(e.target)) {
           setSidebarOpen(false);
         }
       }
     };
-    if (window.innerWidth <= 768) {
+    if (window.innerWidth <= MOBILE_BREAKPOINT) {
       document.addEventListener('mousedown', handleClick);
     }
     return () => document.removeEventListener('mousedown', handleClick);
   }, [sidebarOpen]);
 
-  const bg = isDark ? '#111111' : '#f5f5f5';
-
+  // Epic 9: this used to be `isDark ? '#111111' : '#f5f5f5'` — a pair of
+  // literals computed in JS, which meant the app shell painted its own
+  // background and was the one surface the design tokens could not reach.
+  // Switching themes recoloured the text and left this white. Read the token
+  // instead, so there is exactly one place that decides what the page is.
   return (
-    <div data-testid="app-layout" style={{ display: 'flex', height: '100vh', background: bg, overflow: 'hidden' }}>
+    <div data-testid="app-layout" style={{ display: 'flex', height: '100vh', background: 'var(--color-page)', overflow: 'hidden' }}>
       {sidebarOpen && (
         <div onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 39, display: 'none', backdropFilter: 'blur(2px)' }} className="mobile-overlay" />
       )}
@@ -199,8 +229,11 @@ export default function Layout() {
         convRefresh={convRefresh}
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
-        onOpenProfile={() => setShowProfile(true)}
-        onOpenSettings={() => setShowSettings(true)}
+        // Profile and Settings open a modal ON TOP of the drawer, so the drawer
+        // has to go too — otherwise closing the modal reveals the menu you
+        // opened it from, still sitting over the page.
+        onOpenProfile={() => { closeDrawerOnNavigate(); setShowProfile(true); }}
+        onOpenSettings={() => { closeDrawerOnNavigate(); setShowSettings(true); }}
         isToolDashboardRole={isToolDashboardRole}
       />
 

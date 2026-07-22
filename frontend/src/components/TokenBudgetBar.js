@@ -79,7 +79,7 @@ export default function TokenBudgetBar({ used = 0, limit = -1, canRecharge = fal
 
   const labelStyle = {
     fontSize: 11,
-    color: isExhausted ? '#f87171' : (isDark ? '#888' : '#525252'),
+    color: isExhausted ? '#f87171' : 'var(--color-text-muted)',
     fontWeight: isExhausted ? 600 : 400,
     whiteSpace: 'nowrap',
     fontFamily: 'Inter, -apple-system, sans-serif',
@@ -110,8 +110,8 @@ export default function TokenBudgetBar({ used = 0, limit = -1, canRecharge = fal
     bottom: 100,
     left: '50%',
     transform: 'translateX(-50%)',
-    background: isDark ? '#1e1e1e' : '#ffffff',
-    border: `1px solid ${isDark ? '#333' : '#e5e5e5'}`,
+    background: 'var(--color-surface)',
+    border: `1px solid ${'var(--color-border-strong)'}`,
     borderRadius: 16,
     padding: '20px 24px',
     zIndex: 9999,
@@ -125,7 +125,7 @@ export default function TokenBudgetBar({ used = 0, limit = -1, canRecharge = fal
   const dialogTitleStyle = {
     fontSize: 15,
     fontWeight: 700,
-    color: isDark ? '#f5f5f5' : '#171717',
+    color: 'var(--color-text-primary)',
     marginBottom: 4,
   };
 
@@ -141,8 +141,8 @@ export default function TokenBudgetBar({ used = 0, limit = -1, canRecharge = fal
     alignItems: 'center',
     width: '100%',
     padding: '10px 12px',
-    background: isDark ? '#252525' : '#fafafa',
-    border: `1px solid ${isDark ? '#333' : '#e5e5e5'}`,
+    background: 'var(--color-surface-raised)',
+    border: `1px solid ${'var(--color-border-strong)'}`,
     borderRadius: 10,
     cursor: 'pointer',
     marginBottom: isLast ? 0 : 8,
@@ -203,12 +203,12 @@ export default function TokenBudgetBar({ used = 0, limit = -1, canRecharge = fal
               e.currentTarget.style.background = isDark ? '#2a2a2a' : '#f0f4ff';
             }}
             onMouseLeave={e => {
-              e.currentTarget.style.borderColor = isDark ? '#333' : '#e5e5e5';
-              e.currentTarget.style.background = isDark ? '#252525' : '#fafafa';
+              e.currentTarget.style.borderColor = 'var(--color-border-strong)';
+              e.currentTarget.style.background = 'var(--color-surface-raised)';
             }}
           >
             <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: isDark ? '#f5f5f5' : '#171717' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>
                 {pack.label}
               </div>
             </div>
@@ -228,7 +228,7 @@ export default function TokenBudgetBar({ used = 0, limit = -1, canRecharge = fal
             marginTop: 12,
             padding: '8px 0',
             background: 'none',
-            border: `1px solid ${isDark ? '#333' : '#e5e5e5'}`,
+            border: `1px solid ${'var(--color-border-strong)'}`,
             borderRadius: 8,
             color: isDark ? '#888' : '#999',
             fontSize: 12,
