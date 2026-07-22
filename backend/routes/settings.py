@@ -6,6 +6,7 @@ from middleware.auth import (
     require_owner_principal_or_management,
 )
 from tenant import get_school_id, scoped_filter
+from school_identity import merge_school_identity
 from services.teacher_scope_service import compute_teacher_scope
 from services.audit_service import write_audit
 from services.actor_context import actor_ctx_from_user
@@ -46,6 +47,10 @@ def _can_manage_platform(user: dict) -> bool:
 
 
 def _settings_query(extra: dict | None = None) -> dict:
+    # branch-scope: intentional — school-level configuration (the school's own
+    # identity, its class list, its academic year) is shared by every branch. A
+    # branch filter here would give each branch a different school. Annotated during
+    # the Epic 4 audit; the behaviour is unchanged and pre-existing.
     return scoped_filter(extra or {}, get_school_id())
 
 
@@ -273,15 +278,11 @@ async def update_settings(request: Request):
 async def get_school_settings(request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff", "student"))):
     db = get_db()
     settings = await db.school_settings.find_one(_settings_query({"id": "main"}), {"_id": 0})
-    if not settings:
-        import os
-        settings = {
-            "school_name": os.environ.get("SCHOOL_NAME", "The Aaryans"),
-            "board": os.environ.get("SCHOOL_BOARD", "CBSE"),
-            "city": os.environ.get("SCHOOL_CITY", "Joya, Amroha"),
-            "state": os.environ.get("SCHOOL_STATE", "Uttar Pradesh"),
-        }
-    return {"success": True, "data": settings}
+    # Epic 4 / Story 4.3: the fallback used to cover four fields only, so address,
+    # phone, email, website, affiliation number and principal had nowhere to come from
+    # and every screen invented its own. One verified source now fills any field the
+    # stored record does not carry; a field the Owner deliberately cleared stays clear.
+    return {"success": True, "data": merge_school_identity(settings)}
 
 
 @router.get("/classes")

@@ -19,6 +19,29 @@ import DataTable, { cellValue } from '../ui/DataTable';
 import { Pill } from '../ui/primitives';
 import { useTablePageSize } from '../../hooks/useTablePrefs';
 
+// Class Strength columns. "Not recorded" is its own column because it is a
+// different fact from "Other": one is a student recorded as another gender, the
+// other is a student whose gender was never captured. Merging them is what made
+// "Other" and "Total" show the same number for every class (owner, 2026-07-22).
+const STRENGTH_COLUMNS = [
+  { key: 'class_label', label: 'Class', sortKey: 'class_label',
+    render: (r) => <span style={{ fontWeight: 600 }}>{r.class_label}</span> },
+  { key: 'boys', label: 'Boys', sortKey: 'boys', align: 'right',
+    render: (r) => <span style={{ color: '#60a5fa' }}>{r.boys}</span> },
+  { key: 'girls', label: 'Girls', sortKey: 'girls', align: 'right',
+    render: (r) => <span style={{ color: '#f472b6' }}>{r.girls}</span> },
+  { key: 'other', label: 'Other', sortKey: 'other', align: 'right',
+    render: (r) => <span style={{ color: 'var(--color-text-muted)' }}>{r.other ?? 0}</span> },
+  { key: 'not_recorded', label: 'Not recorded', sortKey: 'not_recorded', align: 'right',
+    render: (r) => (
+      <span style={{ color: 'var(--color-text-muted)', fontStyle: (r.not_recorded ?? 0) > 0 ? 'italic' : 'normal' }}>
+        {r.not_recorded ?? 0}
+      </span>
+    ) },
+  { key: 'total', label: 'Total', sortKey: 'total', align: 'right',
+    render: (r) => <span style={{ fontWeight: 700 }}>{r.total}</span> },
+];
+
 // ─── Shared styles ────────────────────────────────────────────────────────────
 
 const inputStyle = {
@@ -673,6 +696,38 @@ export default function StudentDatabase() {
   // Server-side aggregated stats for the Class Strength tab (accurate across all pages)
   const [strengthStats, setStrengthStats] = useState([]);
   const [strengthLoading, setStrengthLoading] = useState(false);
+  const [strengthSort, setStrengthSort] = useState({ key: 'class_label', direction: 'ascending' });
+
+  const onStrengthSort = useCallback((key) => {
+    setStrengthSort(prev => (
+      prev.key === key
+        ? { key, direction: prev.direction === 'ascending' ? 'descending' : 'ascending' }
+        : { key, direction: 'ascending' }
+    ));
+  }, []);
+
+  const sortedStrengthRows = useMemo(() => {
+    const rows = [...strengthStats];
+    const { key, direction } = strengthSort;
+    const factor = direction === 'descending' ? -1 : 1;
+    rows.sort((a, b) => {
+      // Class is ordered the way the school reads it — NUR, LKG, UKG, 1st … 12th —
+      // never alphabetically, which would put 10th above 1st (owner item 5).
+      if (key === 'class_label') {
+        return factor * compareClassLabels(a.class_label, b.class_label);
+      }
+      return factor * ((a[key] ?? 0) - (b[key] ?? 0));
+    });
+    return rows;
+  }, [strengthStats, strengthSort]);
+
+  // Gender was never captured for any of the 1,802 students, so every one of them
+  // lands in "not recorded". Boys 0 / Girls 0 are therefore NOT counts of zero
+  // children — they are the absence of a record, and must not read as a figure.
+  const genderEverRecorded = useMemo(
+    () => strengthStats.some(r => (r.boys || 0) + (r.girls || 0) + (r.other || 0) > 0),
+    [strengthStats],
+  );
 
   useEffect(() => {
     if (tab !== 'strength') return;
@@ -783,43 +838,54 @@ export default function StudentDatabase() {
             <>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
                 {[
-                  { label: 'Total Students', value: strengthStats.reduce((a, r) => a + r.total, 0), color: '#4f8ff7' },
-                  { label: 'Classes', value: strengthStats.length, color: '#34d399' },
-                  { label: 'Boys', value: strengthStats.reduce((a, r) => a + r.boys, 0), color: '#60a5fa' },
-                  { label: 'Girls', value: strengthStats.reduce((a, r) => a + r.girls, 0), color: '#f472b6' },
+                  { label: 'Total Students', value: strengthStats.reduce((a, r) => a + r.total, 0), color: '#4f8ff7', real: true },
+                  { label: 'Classes', value: strengthStats.length, color: '#34d399', real: true },
+                  // "Boys 0" when nobody's gender was ever captured is the same lie
+                  // this epic exists to remove — it reads as "this school has no
+                  // boys" rather than "we never wrote it down".
+                  { label: 'Boys', value: strengthStats.reduce((a, r) => a + r.boys, 0), color: '#60a5fa', real: genderEverRecorded },
+                  { label: 'Girls', value: strengthStats.reduce((a, r) => a + r.girls, 0), color: '#f472b6', real: genderEverRecorded },
                 ].map(stat => (
-                  <div key={stat.label} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 10, padding: '16px 18px' }}>
-                    <div style={{ fontSize: 28, fontWeight: 700, color: stat.color }}>{stat.value}</div>
+                  <div key={stat.label} data-stat-state={stat.real ? 'ok' : 'not-recorded'} style={{
+                    background: 'var(--c-bg)',
+                    border: stat.real ? '1px solid var(--c-border)' : '1px dashed var(--c-border)',
+                    borderRadius: 10, padding: '16px 18px',
+                  }}>
+                    <div style={{
+                      fontSize: stat.real ? 28 : 15,
+                      fontWeight: 700,
+                      color: stat.real ? stat.color : 'var(--c-muted)',
+                    }}>
+                      {stat.real ? stat.value : 'Not recorded'}
+                    </div>
                     <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>{stat.label}</div>
+                    {!stat.real && (
+                      <div style={{ fontSize: 11, color: 'var(--c-muted)', marginTop: 3 }}>
+                        Gender was never collected for these students
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
-              {strengthStats.length === 0 ? (
-                <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13 }}>No student data available</div>
-              ) : (
-                <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr>
-                        {['Class', 'Boys', 'Girls', 'Other', 'Total'].map(h => (
-                          <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 750, color: 'var(--c-faint)', textTransform: 'uppercase', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {strengthStats.map((row, i) => (
-                        <tr key={row.class_id || i} style={{ borderBottom: i < strengthStats.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
-                          <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--c-text)', fontSize: 13 }}>{row.class_label}</td>
-                          <td style={{ padding: '10px 14px', color: '#60a5fa', fontSize: 13 }}>{row.boys}</td>
-                          <td style={{ padding: '10px 14px', color: '#f472b6', fontSize: 13 }}>{row.girls}</td>
-                          <td style={{ padding: '10px 14px', color: 'var(--c-muted)', fontSize: 13 }}>{row.other}</td>
-                          <td style={{ padding: '10px 14px', fontWeight: 700, color: 'var(--c-text)', fontSize: 13 }}>{row.total}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              {/* The shared sortable table (FR82/UX-DR5). Every one of the 48 rows
+                  is already in memory here — this is an aggregate, not a page — so
+                  ordering the whole array locally IS ordering the whole result set.
+                  That is why sorting is done here and not asked of the server. */}
+              <DataTable
+                tableId="class-strength"
+                caption="Students per class, by recorded gender"
+                columns={STRENGTH_COLUMNS}
+                rows={sortedStrengthRows}
+                rowKey={(r, i) => r.class_id || i}
+                sort={strengthSort.key}
+                sortDirection={strengthSort.direction}
+                onSortChange={onStrengthSort}
+                page={1}
+                total={sortedStrengthRows.length}
+                pageSize={sortedStrengthRows.length || 1}
+                emptyTitle="No student data available"
+                emptyMessage="Class strength appears here once students are assigned to classes."
+              />
             </>
           )}
         </div>

@@ -507,8 +507,17 @@ async def build_school_context(role: str, user_id: str) -> dict:
     today = date.today().strftime("%Y-%m-%d")
 
     # Load school settings once for all roles
+    # Epic 4 / Story 4.4: the projection is widened, NOT joined by a second query —
+    # this runs once per chat turn, so an extra round trip would cost every user of
+    # the assistant permanently. `principal` (not `principal_name`) is the field the
+    # record actually stores; the prompt builder used to look for the wrong one.
     settings = await db.school_settings.find_one(
-        {}, {"_id": 0, "principal": 1, "owner_name": 1, "school_name": 1}
+        {}, {
+            "_id": 0, "principal": 1, "owner_name": 1, "school_name": 1,
+            "board": 1, "city": 1, "state": 1, "address": 1,
+            "phone": 1, "email": 1, "website": 1,
+            "affiliation_no": 1, "school_code": 1, "ai_context": 1,
+        }
     )
     settings = settings or {}
 

@@ -3,6 +3,7 @@ import { useUser } from '../../contexts/UserContext';
 import { executeTool, updateLeave, getStaff, fetchPlatformHealth } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, useToolData, LineChartWidget, BarChartWidget, PieChartWidget } from './ToolPage';
+import { EmptyState } from '../ui/primitives';
 import { Activity, CheckCircle, XCircle, AlertTriangle, Plus, RefreshCw, Save, TrendingUp, Users, FileText, Send, Download, Upload, Zap, Database, Cloud, BookOpen, User, CreditCard, Calendar, Wrench, Monitor, ShieldAlert, UserCheck, ClipboardList } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
@@ -20,8 +21,12 @@ function WhatsAppReminderModal({ onClose }) {
   useEffect(() => {
     (async () => {
       try {
+        // Epic 4 / Story 4.1: the server used to wrap the tool's envelope in a
+        // second one, so this read `r.data.data`. There is one envelope now and
+        // `r.data` IS the payload — the old `?? ` fallback would silently return
+        // the wrong thing for any payload that happened to carry a `data` key.
         const r = await executeTool('get_fee_defaulters', {}, currentUser);
-        const rawData = r.success ? (r.data?.data ?? r.data) : [];
+        const rawData = r.success ? r.data : [];
         setDefaulters(Array.isArray(rawData) ? rawData : []);
       } catch {}
       setLoading(false);
@@ -1293,7 +1298,11 @@ export function AiHealthReport() {
       const s = d.summary || {};
 
       const feeRate = parseFloat(s.fee_collection_rate) || 0;
-      const attRate = parseFloat(s.attendance_rate) || 0;
+      // Epic 4 / Story 4.2: "not marked yet" is not 0%. Deducting 20 points for
+      // attendance nobody has recorded yet would report a healthy school as failing
+      // every morning before the register is taken.
+      const attKnown = s.attendance_marked_today !== false && !Number.isNaN(parseFloat(s.attendance_rate));
+      const attRate = attKnown ? parseFloat(s.attendance_rate) : null;
       const pendingLeaves = s.pending_leaves || 0;
       const staffAbsent = (d.staff_absent_today || []).length;
       const chronicCount = (d.chronic_absent_students || []).length;
@@ -1302,8 +1311,8 @@ export function AiHealthReport() {
       let score = 100;
       if (feeRate < 60) score -= 20;
       else if (feeRate < 80) score -= 10;
-      if (attRate < 70) score -= 20;
-      else if (attRate < 85) score -= 10;
+      if (attKnown && attRate < 70) score -= 20;
+      else if (attKnown && attRate < 85) score -= 10;
       if (chronicCount >= 5) score -= 10;
       else if (chronicCount > 0) score -= 5;
       if (pendingLeaves >= 5) score -= 5;
@@ -1313,8 +1322,12 @@ export function AiHealthReport() {
       const highlights = [];
       const feeLabel = feeRate >= 80 ? 'above average' : feeRate >= 60 ? 'average' : 'needs attention';
       highlights.push(`Fee collection at ${feeRate}% — ${feeLabel}`);
-      const attLabel = attRate >= 85 ? 'on track' : attRate >= 70 ? 'moderate' : 'low';
-      highlights.push(`Student attendance at ${attRate}% — ${attLabel}`);
+      if (!attKnown) {
+        highlights.push('Student attendance has not been marked yet today — not counted in this score');
+      } else {
+        const attLabel = attRate >= 85 ? 'on track' : attRate >= 70 ? 'moderate' : 'low';
+        highlights.push(`Student attendance at ${attRate}% — ${attLabel}`);
+      }
       if (staffAbsent === 0) highlights.push('All staff present today');
       else highlights.push(`${staffAbsent} staff member${staffAbsent > 1 ? 's' : ''} absent today`);
       if (pendingLeaves === 0) highlights.push('No pending leave requests');
@@ -1905,101 +1918,213 @@ export function CustomReportBuilder() {
 }
 
 // 16. Board/Trust Meeting Report
+//
+// UI Sweep, Epic 4, Story 4.2. This screen used to load six sources under one
+// Promise.all, catch every failure into a single banner reading "Showing partial
+// report", and then show no report at all because `data` was never set. Anything that
+// failed rendered as `0` or `N/A` — the owner read a broken request as a fact about
+// his school, which is owner item 7.
+//
+// Each source now succeeds or fails on its own. A source that failed says so, on the
+// card, and can be retried on its own. Nothing that failed is ever drawn as a number.
+
+/** Run a tool and return its payload, throwing on refusal or failure.
+ *  There is ONE envelope (Story 4.1) — `r.data` is the payload, not another envelope. */
+async function runTool(name, params, user) {
+  const r = await executeTool(name, params, user);
+  if (r?.denied) throw new Error('You do not have access to this figure.');
+  if (!r?.success) throw new Error(r?.message || r?.detail || 'Could not load this.');
+  return r.data;
+}
+
+/** Same contract for the plain REST sources. A non-2xx must NOT become an empty list —
+ *  `.catch(() => ({ data: [] }))` is how "0 staff" used to mean "403 Forbidden". */
+async function runRest(url) {
+  const res = await fetch(url, { headers: h() });
+  if (!res.ok) throw new Error('Could not load this.');
+  const body = await res.json();
+  if (!body?.success && body?.detail) throw new Error(body.detail);
+  return body.data || [];
+}
+
+const BOARD_SOURCES = {
+  pulse: { label: 'School overview', run: (u) => runTool('get_school_pulse', {}, u) },
+  fee: { label: 'Fees', run: (u) => runTool('get_fee_summary', {}, u) },
+  alerts: { label: 'Alerts', run: (u) => runTool('get_smart_alerts', {}, u) },
+  attendance: { label: 'Attendance', run: (u) => runTool('get_attendance_overview', { days: 30 }, u) },
+  staff: { label: 'Staff', run: () => runRest(`${API}/staff/`) },
+  expenses: { label: 'Expenses', run: () => runRest(`${API}/ops/expenses`) },
+};
+
+/**
+ * A section whose source failed: one clear message and a retry, never a figure.
+ *
+ * Declared at module level, NOT inside BoardReport. A component defined inside a
+ * render function gets a new identity on every render, so React unmounts and
+ * remounts the whole subtree — which throws keyboard focus off the Retry button the
+ * instant you press it.
+ *
+ * `testId` is separate from `sourceKey` because two sections can depend on one source
+ * (Fee & Finance and Top Fee Defaulters both read the fee tool), and two elements
+ * sharing an id is a real defect, not merely a test inconvenience.
+ */
+function BoardSectionFailure({ sourceKey, testId, message, retrying, onRetry }) {
+  return (
+    <div role="alert" data-testid={testId || `board-section-error-${sourceKey}`} style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+      background: 'var(--color-surface)', border: '1px dashed var(--color-border)',
+      borderRadius: 12, padding: '14px 16px',
+    }}>
+      <span style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
+        {message} <strong>This is not a zero.</strong>
+      </span>
+      {/* Deliberately NOT `disabled` while retrying: disabling the control a person
+          has just pressed removes it from the tab order, and the browser drops focus
+          to the top of the document — so a keyboard user loses their place every time
+          they retry. The label reports the state and the handler ignores re-entry. */}
+      <ActionBtn
+        label={retrying ? 'Retrying…' : 'Retry'}
+        variant="secondary"
+        onClick={() => { if (!retrying) onRetry(); }}
+        aria-busy={retrying || undefined}
+        style={retrying ? { opacity: 0.6 } : undefined}
+      />
+    </div>
+  );
+}
+
+function BoardSection({ title, failed, failure, children }) {
+  return (
+    <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: 18, marginBottom: 14 }}>
+      <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 13, fontWeight: 700, marginBottom: 12 }}>{title}</h3>
+      {failed ? failure : children}
+    </div>
+  );
+}
+
 export function BoardReport() {
   const { currentUser } = useUser();
-  const [data, setData] = useState(null);
+  const [generated, setGenerated] = useState(null);
+  const [sources, setSources] = useState({});
   const [loading, setLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
-  const [error, setError] = useState(null);
+
+  const loadSource = async (key) => {
+    setSources(prev => ({ ...prev, [key]: { ...(prev[key] || {}), status: 'loading' } }));
+    try {
+      const payload = await BOARD_SOURCES[key].run(currentUser);
+      // `message` is cleared on success so a later `failed()` check cannot resurrect
+      // a stale failure from an earlier attempt.
+      setSources(prev => ({ ...prev, [key]: { status: 'ok', data: payload, attempts: 0, message: '' } }));
+    } catch (e) {
+      setSources(prev => ({
+        ...prev,
+        [key]: { status: 'error', message: e.message, attempts: ((prev[key] || {}).attempts || 0) + 1 },
+      }));
+    }
+  };
 
   const generate = async () => {
     setLoading(true);
-    setError(null);
-    try {
-      const [pulse, fee, smart, att, staffRes, expRes] = await Promise.all([
-        executeTool('get_school_pulse', {}, currentUser),
-        executeTool('get_fee_summary', {}, currentUser),
-        executeTool('get_smart_alerts', {}, currentUser),
-        executeTool('get_attendance_overview', { days: 30 }, currentUser),
-        fetch(`${API}/staff/`, { headers: h() }).then(r => r.json()).catch(() => ({ data: [] })),
-        fetch(`${API}/ops/expenses`, { headers: h() }).then(r => r.json()).catch(() => ({ data: [] })),
-      ]);
-      const expenses = expRes.data || [];
-      const totalExp = expenses.reduce((s, e) => s + (e.amount || 0), 0);
-      setData({
-        generated: new Date().toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' }),
-        pulse: pulse.data,
-        fee: fee.data,
-        alerts: smart.data,
-        attendance: att.data,
-        staff: staffRes.data || [],
-        expenses,
-        totalExp,
-      });
-    } catch (e) {
-      setError('Some data could not be loaded. Showing partial report.');
-    }
+    setGenerated(new Date().toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' }));
+    // Independent on purpose: one failure must not cost the other five sections.
+    await Promise.all(Object.keys(BOARD_SOURCES).map(loadSource));
     setLoading(false);
   };
 
+  const ok = (key) => sources[key]?.status === 'ok';
+  const payload = (key) => sources[key]?.data;
+  // Every StatCard asks its own source whether it has a real figure to show.
+  const cardState = (key) => (ok(key) ? 'ok' : 'unavailable');
+  const failedLabels = Object.keys(BOARD_SOURCES)
+    .filter(k => sources[k]?.status === 'error')
+    .map(k => BOARD_SOURCES[k].label);
+
+  const staffList = ok('staff') ? (payload('staff') || []) : [];
+  const expenseList = ok('expenses') ? (payload('expenses') || []) : [];
+  const totalExp = expenseList.reduce((s, e) => s + (e.amount || 0), 0);
+
   const downloadPDF = async () => {
-    if (!data) return;
+    if (!generated) return;
     setPdfLoading(true);
     try {
       const { jsPDF } = await import('jspdf');
       const doc = new jsPDF();
-      const s = data.pulse?.summary || {};
-      const fee = data.fee?.stats || {};
+      const s = ok('pulse') ? (payload('pulse')?.summary || {}) : null;
+      const fee = ok('fee') ? (payload('fee')?.stats || {}) : null;
+      const att = ok('attendance') ? payload('attendance') : null;
+
+      // A figure that failed to load prints "not available", never a fabricated 0.
+      // A board document outlives the screen, so this is the worst possible place to
+      // let a broken request look like a fact.
+      const NA = 'not available';
+      const fig = (available, value, fallbackWhenZero = '0') =>
+        !available ? NA : (value === undefined || value === null ? fallbackWhenZero : String(value));
 
       // Cover
       doc.setFontSize(22); doc.setTextColor(30, 30, 30);
       doc.text('Board / Trust Meeting Report', 105, 22, { align: 'center' });
       doc.setFontSize(11); doc.setTextColor(100, 100, 100);
-      doc.text(`Generated: ${data.generated}`, 105, 31, { align: 'center' });
-      doc.setDrawColor(200, 200, 200); doc.line(15, 36, 195, 36);
+      doc.text(`Generated: ${generated}`, 105, 31, { align: 'center' });
+      let coverY = 36;
+      if (failedLabels.length) {
+        doc.setFontSize(9); doc.setTextColor(150, 90, 30);
+        doc.text(`Could not be loaded, shown as "not available": ${failedLabels.join(', ')}`, 105, coverY + 4, { align: 'center' });
+        coverY += 8;
+        doc.setTextColor(100, 100, 100);
+      }
+      doc.setDrawColor(200, 200, 200); doc.line(15, coverY, 195, coverY);
 
       // Section 1 — School Overview
-      let y = 46;
+      let y = coverY + 10;
       doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('1. School Overview', 15, y); y += 9;
       doc.setFontSize(10); doc.setTextColor(60, 60, 60);
-      doc.text(`Total Students Enrolled: ${s.total_students || 0}`, 20, y); y += 7;
-      doc.text(`Total Staff: ${s.total_staff || 0}`, 20, y); y += 7;
-      doc.text(`Today's Attendance Rate: ${s.attendance_rate || 'N/A'}`, 20, y); y += 7;
-      doc.text(`Avg Attendance (30 days): ${data.attendance?.avg_attendance_rate || 'N/A'}`, 20, y); y += 7;
-      doc.text(`Total Attendance Records: ${data.attendance?.total_records || 0}`, 20, y); y += 12;
+      doc.text(`Total Students Enrolled: ${fig(!!s, s?.total_students)}`, 20, y); y += 7;
+      doc.text(`Total Staff: ${fig(!!s, s?.total_staff)}`, 20, y); y += 7;
+      doc.text(`Today's Attendance Rate: ${fig(!!s, s?.attendance_rate)}`, 20, y); y += 7;
+      doc.text(`Avg Attendance (30 days): ${fig(!!att, att?.avg_attendance_rate)}`, 20, y); y += 7;
+      doc.text(`Total Attendance Records: ${fig(!!att, att?.total_records)}`, 20, y); y += 12;
 
       // Section 2 — Fee Summary
       doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('2. Fee & Finance Summary', 15, y); y += 9;
       doc.setFontSize(10); doc.setTextColor(60, 60, 60);
-      doc.text(`Total Fees Collected: ${fee.total_collected || '₹0'}`, 20, y); y += 7;
-      doc.text(`Total Overdue: ${fee.total_outstanding || '₹0'}`, 20, y); y += 7;
-      doc.text(`Collection Rate: ${fee.collection_rate || 'N/A'}`, 20, y); y += 7;
-      doc.text(`Students with Dues: ${fee.students_with_dues || 0}`, 20, y); y += 7;
-      doc.text(`Overdue 60+ Days: ${fee.overdue_60_days || 0} transactions`, 20, y); y += 7;
-      const expFmt = data.totalExp >= 100000
-        ? `₹${(data.totalExp / 100000).toFixed(2)}L`
-        : `₹${data.totalExp.toLocaleString('en-IN')}`;
+      doc.text(`Total Fees Collected: ${fig(!!fee, fee?.total_collected, '₹0')}`, 20, y); y += 7;
+      doc.text(`Total Overdue: ${fig(!!fee, fee?.total_outstanding, '₹0')}`, 20, y); y += 7;
+      doc.text(`Collection Rate: ${fig(!!fee, fee?.collection_rate)}`, 20, y); y += 7;
+      doc.text(`Students with Dues: ${fig(!!fee, fee?.students_with_dues)}`, 20, y); y += 7;
+      doc.text(`Overdue 60+ Days: ${fig(!!fee, fee?.overdue_60_days)} transactions`, 20, y); y += 7;
+      if (fee && fee.transactions_on_file !== undefined) {
+        doc.text(`Fee records on file: ${fee.transactions_on_file}`, 20, y); y += 7;
+      }
+      const expFmt = !ok('expenses') ? NA : (totalExp >= 100000
+        ? `₹${(totalExp / 100000).toFixed(2)}L`
+        : `₹${totalExp.toLocaleString('en-IN')}`);
       doc.text(`Total Expenses Recorded: ${expFmt}`, 20, y); y += 12;
 
       // Section 3 — Staff
       doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('3. Staff Summary', 15, y); y += 9;
       doc.setFontSize(10); doc.setTextColor(60, 60, 60);
-      const teachers = (data.staff || []).filter(st => st.staff_type === 'teacher').length;
-      const nonTeach = (data.staff || []).length - teachers;
-      doc.text(`Total Staff: ${(data.staff || []).length}`, 20, y); y += 7;
-      doc.text(`Teaching Staff: ${teachers}`, 20, y); y += 7;
-      doc.text(`Non-Teaching Staff: ${nonTeach}`, 20, y); y += 7;
-      const absentToday = (data.pulse?.staff_absent_today || []).length;
-      doc.text(`Absent Today: ${absentToday}`, 20, y); y += 7;
-      const pendingLeaves = (data.pulse?.pending_leave_requests || []).length;
-      doc.text(`Pending Leave Requests: ${pendingLeaves}`, 20, y); y += 12;
+      const teachers = staffList.filter(st => st.staff_type === 'teacher').length;
+      const nonTeach = staffList.length - teachers;
+      doc.text(`Total Staff: ${fig(ok('staff'), staffList.length)}`, 20, y); y += 7;
+      doc.text(`Teaching Staff: ${fig(ok('staff'), teachers)}`, 20, y); y += 7;
+      doc.text(`Non-Teaching Staff: ${fig(ok('staff'), nonTeach)}`, 20, y); y += 7;
+      doc.text(`Absent Today: ${fig(ok('pulse'), absentToday)}`, 20, y); y += 7;
+      const pendingLeaves = (payload('pulse')?.pending_leave_requests || []).length;
+      doc.text(`Pending Leave Requests: ${fig(ok('pulse'), pendingLeaves)}`, 20, y); y += 12;
 
       // Section 4 — Class-wise Attendance (today)
-      const classStats = data.attendance?.class_stats_today || [];
-      if (classStats.length > 0) {
-        if (y > 220) { doc.addPage(); y = 20; }
-        doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('4. Class-wise Attendance (Today)', 15, y); y += 9;
-        doc.setFontSize(9); doc.setTextColor(80, 80, 80);
+      // A failed section prints its heading and "not available". Silently omitting it
+      // would leave the reader thinking it was never part of the report.
+      const classStats = ok('attendance') ? (att?.class_stats_today || []) : [];
+      if (y > 220) { doc.addPage(); y = 20; }
+      doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('4. Class-wise Attendance (Today)', 15, y); y += 9;
+      doc.setFontSize(9); doc.setTextColor(80, 80, 80);
+      if (!ok('attendance')) {
+        doc.text(NA, 20, y); y += 10;
+      } else if (classStats.length === 0) {
+        doc.text('Attendance has not been marked today.', 20, y); y += 10;
+      } else {
         doc.text('Class', 20, y); doc.text('Present', 70, y); doc.text('Total', 110, y); doc.text('Rate', 150, y);
         y += 5; doc.setDrawColor(220, 220, 220); doc.line(20, y, 190, y); y += 4;
         classStats.forEach(c => {
@@ -2011,11 +2136,15 @@ export function BoardReport() {
       }
 
       // Section 5 — Alerts
-      const alerts = data.alerts?.alerts || [];
-      if (alerts.length > 0) {
-        if (y > 220) { doc.addPage(); y = 20; }
-        doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('5. Active Alerts', 15, y); y += 9;
-        doc.setFontSize(10); doc.setTextColor(80, 80, 80);
+      const alerts = ok('alerts') ? (payload('alerts')?.alerts || []) : [];
+      if (y > 220) { doc.addPage(); y = 20; }
+      doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('5. Active Alerts', 15, y); y += 9;
+      doc.setFontSize(10); doc.setTextColor(80, 80, 80);
+      if (!ok('alerts')) {
+        doc.text(NA, 20, y); y += 10;
+      } else if (alerts.length === 0) {
+        doc.text('No active alerts.', 20, y); y += 10;
+      } else {
         alerts.forEach(a => {
           if (y > 270) { doc.addPage(); y = 20; }
           doc.text(`[${a.priority?.toUpperCase()}] ${a.text}`, 20, y); y += 7;
@@ -2024,11 +2153,15 @@ export function BoardReport() {
       }
 
       // Section 6 — Top Fee Defaulters
-      const defaulters = data.fee?.defaulters || [];
-      if (defaulters.length > 0) {
-        if (y > 220) { doc.addPage(); y = 20; }
-        doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('6. Top Fee Defaulters', 15, y); y += 9;
-        doc.setFontSize(9); doc.setTextColor(80, 80, 80);
+      const defaulters = ok('fee') ? (payload('fee')?.defaulters || []) : [];
+      if (y > 220) { doc.addPage(); y = 20; }
+      doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('6. Top Fee Defaulters', 15, y); y += 9;
+      doc.setFontSize(9); doc.setTextColor(80, 80, 80);
+      if (!ok('fee')) {
+        doc.text(NA, 20, y); y += 10;
+      } else if (defaulters.length === 0) {
+        doc.text('No outstanding dues recorded.', 20, y); y += 10;
+      } else {
         doc.text('Student', 20, y); doc.text('Class', 90, y); doc.text('Overdue', 140, y); doc.text('Days', 175, y);
         y += 5; doc.setDrawColor(220, 220, 220); doc.line(20, y, 190, y); y += 4;
         defaulters.slice(0, 10).forEach(d => {
@@ -2050,103 +2183,183 @@ export function BoardReport() {
     setPdfLoading(false);
   };
 
-  const s = data?.pulse?.summary || {};
-  const fee = data?.fee?.stats || {};
+  const s = ok('pulse') ? (payload('pulse')?.summary || {}) : {};
+  const fee = ok('fee') ? (payload('fee')?.stats || {}) : {};
+  const att = ok('attendance') ? payload('attendance') : null;
+
+  // A retried failure must not repeat itself word for word, or he cannot tell
+  // "it tried again and failed" from "my tap did nothing".
+  const failureText = (key) => {
+    const src = sources[key] || {};
+    if ((src.attempts || 0) > 1) return `Still couldn't load this — check your connection. (${src.message})`;
+    return src.message || "Couldn't load this.";
+  };
+
+  // One helper builds every failure element, so the retry wiring exists once.
+  const failureFor = (sourceKey, testId) => (
+    <BoardSectionFailure
+      sourceKey={sourceKey}
+      testId={testId}
+      message={failureText(sourceKey)}
+      retrying={sources[sourceKey]?.status === 'loading'}
+      onRetry={() => loadSource(sourceKey)}
+    />
+  );
+  // A section that is RETRYING stays in its failure state rather than flashing the
+  // stale content back for the duration of the request. Two reasons: the flicker
+  // reads as "it worked", and unmounting the failure element takes the Retry button
+  // out of the document — so a keyboard user loses focus the moment they press it.
+  const failed = (sourceKey) => {
+    const src = sources[sourceKey] || {};
+    return src.status === 'error' || (src.status === 'loading' && !!src.message);
+  };
+
+  const expensesValue = totalExp >= 100000
+    ? `₹${(totalExp / 100000).toFixed(1)}L`
+    : `₹${totalExp.toLocaleString('en-IN')}`;
+
+  // "₹0 collected" is true — the school has one fee record for 1,802 students — and
+  // would otherwise be indistinguishable from the failure this epic exists to remove.
+  const feeNote = fee.transactions_on_file !== undefined
+    ? `${fee.transactions_on_file} fee record${fee.transactions_on_file === 1 ? '' : 's'} on file`
+    : undefined;
 
   return (
     <ToolPage title="Board / Trust Meeting Report" subtitle="Consolidated school metrics for trust meetings">
-      {!data ? (
+      {!generated ? (
         <div style={{ textAlign: 'center', padding: '40px 0' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
           <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 16, marginBottom: 8 }}>Board Meeting Report</h3>
           <p style={{ color: 'var(--tool-hex-737373)', fontSize: 12, marginBottom: 20 }}>Fetches all school metrics — students, fees, attendance, staff, alerts, and defaulters</p>
-          {error && <div style={{ color: 'var(--tool-hex-fbbf24)', fontSize: 12, marginBottom: 12 }}>{error}</div>}
-          <ActionBtn label={loading ? 'Generating...' : 'Generate Full Report'} onClick={generate} disabled={loading} />
+          <ActionBtn label={loading ? 'Generating...' : 'Generate Full Report'} onClick={generate} disabled={loading} data-testid="board-generate" />
         </div>
       ) : (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-            <span style={{ color: 'var(--tool-hex-737373)', fontSize: 12 }}>Generated: {data.generated}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
+            <span style={{ color: 'var(--tool-hex-737373)', fontSize: 12 }}>Generated: {generated}</span>
             <div style={{ display: 'flex', gap: 8 }}>
-              <ActionBtn label={pdfLoading ? 'Exporting...' : 'Download PDF'} onClick={downloadPDF} disabled={pdfLoading} icon={<Download size={11} />} />
+              {/* Export stays available with sections missing — refusing it would leave
+                  him in front of the trustees with no document at all. */}
+              <ActionBtn label={pdfLoading ? 'Exporting...' : 'Download PDF'} onClick={downloadPDF} disabled={pdfLoading} icon={<Download size={11} />} data-testid="board-download-pdf" />
               <ActionBtn label={loading ? 'Refreshing...' : 'Re-generate'} variant="secondary" onClick={generate} disabled={loading} />
             </div>
           </div>
-          {error && <div style={{ color: 'var(--tool-hex-fbbf24)', fontSize: 12, marginBottom: 12, background: 'color-mix(in srgb, var(--tool-hex-fbbf24) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-fbbf24) 20%, transparent)', borderRadius: 8, padding: '8px 12px' }}>{error}</div>}
-
-          {/* Section 1 — School Overview */}
-          <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: 18, marginBottom: 14 }}>
-            <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 13, fontWeight: 700, marginBottom: 12 }}>School Overview</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
-              <StatCard value={s.total_students || 0} label="ENROLLED STUDENTS" color="var(--tool-hex-4f8ff7)" small />
-              <StatCard value={s.total_staff || 0} label="TOTAL STAFF" color="var(--tool-hex-e5e5e5)" small />
-              <StatCard value={s.attendance_rate || 'N/A'} label="TODAY'S ATT." color="var(--tool-hex-34d399)" small />
-              <StatCard value={data.attendance?.avg_attendance_rate || 'N/A'} label="AVG ATT. (30d)" color="var(--tool-hex-a78bfa)" small />
+          {failedLabels.length > 0 && (
+            <div role="alert" data-testid="board-partial-banner" style={{ fontSize: 12, marginBottom: 12, color: 'var(--color-warning)', background: 'color-mix(in srgb, var(--color-warning) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-warning) 20%, transparent)', borderRadius: 8, padding: '8px 12px' }}>
+              Could not load: <strong>{failedLabels.join(', ')}</strong>. Those sections say so below —
+              they are not being shown as zero. Everything else is up to date.
             </div>
-          </div>
-
-          {/* Section 2 — Fee & Finance */}
-          <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: 18, marginBottom: 14 }}>
-            <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Fee & Finance</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: 12 }}>
-              <StatCard value={fee.total_collected || '₹0'} label="TOTAL COLLECTED" color="var(--tool-hex-34d399)" small />
-              <StatCard value={fee.total_outstanding || '₹0'} label="TOTAL OVERDUE" color="var(--tool-hex-f87171)" small />
-              <StatCard value={fee.collection_rate || 'N/A'} label="COLLECTION RATE" color="var(--tool-hex-4f8ff7)" small />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
-              <StatCard value={fee.students_with_dues || 0} label="STUDENTS WITH DUES" color="var(--tool-hex-fbbf24)" small />
-              <StatCard value={fee.overdue_60_days || 0} label="OVERDUE 60+ DAYS" color="var(--tool-hex-f87171)" small />
-              <StatCard value={data.totalExp >= 100000 ? `₹${(data.totalExp / 100000).toFixed(1)}L` : `₹${(data.totalExp || 0).toLocaleString('en-IN')}`} label="TOTAL EXPENSES" color="var(--tool-hex-f87171)" small />
-            </div>
-          </div>
-
-          {/* Section 3 — Staff */}
-          <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: 18, marginBottom: 14 }}>
-            <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Staff Summary</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
-              <StatCard value={(data.staff || []).filter(st => st.staff_type === 'teacher').length} label="TEACHERS" color="var(--tool-hex-4f8ff7)" small />
-              <StatCard value={(data.staff || []).filter(st => st.staff_type !== 'teacher').length} label="NON-TEACHING" color="var(--tool-hex-a78bfa)" small />
-              <StatCard value={(data.pulse?.staff_absent_today || []).length} label="ABSENT TODAY" color="var(--tool-hex-f87171)" small />
-              <StatCard value={(data.pulse?.pending_leave_requests || []).length} label="PENDING LEAVES" color="var(--tool-hex-fbbf24)" small />
-            </div>
-          </div>
-
-          {/* Section 4 — Class-wise Attendance */}
-          {(data.attendance?.class_stats_today || []).length > 0 && (
-            <DataTable title="Class-wise Attendance (Today)" headers={['Class', 'Present', 'Total', 'Rate']}
-              rows={(data.attendance.class_stats_today || []).map(c => [
-                c.class,
-                c.present,
-                c.total,
-                <span style={{ color: parseFloat(c.rate) >= 85 ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-f87171)', fontWeight: 600 }}>{c.rate}</span>,
-              ])}
-            />
           )}
 
+          {/* Section 1 — School Overview. Each figure names its own source, so one
+              failure never silently zeroes a neighbouring card. */}
+          <BoardSection title="School Overview" failed={failed('pulse')} failure={failureFor('pulse')}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
+              <StatCard value={s.total_students} label="ENROLLED STUDENTS" color="var(--tool-hex-4f8ff7)" small state={cardState('pulse')} data-testid="board-total-students" />
+              <StatCard value={s.total_staff} label="TOTAL STAFF" color="var(--tool-hex-e5e5e5)" small state={cardState('pulse')} />
+              <StatCard
+                value={s.attendance_rate}
+                label="TODAY'S ATT."
+                color="var(--tool-hex-34d399)"
+                small
+                state={cardState('pulse')}
+                note={ok('pulse') && s.attendance_marked_today === false ? 'Nobody has marked attendance yet today' : undefined}
+                data-testid="board-attendance-today"
+              />
+              <StatCard
+                value={att?.avg_attendance_rate}
+                label="AVG ATT. (30d)"
+                color="var(--tool-hex-a78bfa)"
+                small
+                state={cardState('attendance')}
+                note={ok('attendance') && att?.has_attendance_records === false ? 'No attendance recorded in this period' : undefined}
+              />
+            </div>
+          </BoardSection>
+
+          {/* Section 2 — Fee & Finance */}
+          <BoardSection title="Fee & Finance" failed={failed('fee')} failure={failureFor('fee')}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: 12 }}>
+              <StatCard value={fee.total_collected} label="TOTAL COLLECTED" color="var(--tool-hex-34d399)" small state={cardState('fee')} note={feeNote} data-testid="board-total-collected" />
+              <StatCard value={fee.total_outstanding} label="TOTAL OVERDUE" color="var(--tool-hex-f87171)" small state={cardState('fee')} note={feeNote} />
+              <StatCard value={fee.collection_rate} label="COLLECTION RATE" color="var(--tool-hex-4f8ff7)" small state={cardState('fee')} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
+              <StatCard value={fee.students_with_dues} label="STUDENTS WITH DUES" color="var(--tool-hex-fbbf24)" small state={cardState('fee')} />
+              <StatCard value={fee.overdue_60_days} label="OVERDUE 60+ DAYS" color="var(--tool-hex-f87171)" small state={cardState('fee')} />
+              {/* Expenses is its own source — it must not inherit the fee section's state. */}
+              <StatCard value={expensesValue} label="TOTAL EXPENSES" color="var(--tool-hex-f87171)" small state={cardState('expenses')} />
+            </div>
+            {sources.expenses?.status === 'error' && (
+              <div style={{ marginTop: 12 }}>{failureFor('expenses')}</div>
+            )}
+          </BoardSection>
+
+          {/* Section 3 — Staff */}
+          <BoardSection title="Staff Summary" failed={failed('staff')} failure={failureFor('staff')}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
+              <StatCard value={staffList.filter(st => st.staff_type === 'teacher').length} label="TEACHERS" color="var(--tool-hex-4f8ff7)" small state={cardState('staff')} data-testid="board-teachers" />
+              <StatCard value={staffList.filter(st => st.staff_type !== 'teacher').length} label="NON-TEACHING" color="var(--tool-hex-a78bfa)" small state={cardState('staff')} />
+              <StatCard value={(payload('pulse')?.staff_absent_today || []).length} label="ABSENT TODAY" color="var(--tool-hex-f87171)" small state={cardState('pulse')} />
+              <StatCard value={(payload('pulse')?.pending_leave_requests || []).length} label="PENDING LEAVES" color="var(--tool-hex-fbbf24)" small state={cardState('pulse')} />
+            </div>
+          </BoardSection>
+
+          {/* Section 4 — Class-wise Attendance. An empty list used to hide the whole
+              section, so "failed", "not marked yet" and "no classes" looked alike. */}
+          <BoardSection title="Class-wise Attendance (Today)" failed={failed('attendance')} failure={failureFor('attendance')}>
+            {(att?.class_stats_today || []).length > 0 ? (
+              <DataTable headers={['Class', 'Present', 'Total', 'Rate']}
+                rows={(att.class_stats_today || []).map(c => [
+                  c.class,
+                  c.present,
+                  c.total,
+                  <span style={{ color: parseFloat(c.rate) >= 85 ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-f87171)', fontWeight: 600 }}>{c.rate}</span>,
+                ])}
+              />
+            ) : (
+              <EmptyState
+                kind="empty"
+                title="Not marked yet"
+                message="Attendance has not been recorded for today. This is not a zero."
+                data-testid="board-attendance-empty"
+              />
+            )}
+          </BoardSection>
+
           {/* Section 5 — Alerts */}
-          {(data.alerts?.alerts || []).length > 0 && (
-            <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 11, padding: 16, marginBottom: 14 }}>
-              <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-f87171)', fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Active Alerts ({data.alerts.total_alerts})</h3>
-              {data.alerts.alerts.map((a, i) => (
+          <BoardSection title="Active Alerts" failed={failed('alerts')} failure={failureFor('alerts')}>
+            {(payload('alerts')?.alerts || []).length > 0 ? (
+              payload('alerts').alerts.map((a, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                   <Badge text={a.priority} color={a.priority === 'high' ? 'red' : a.priority === 'medium' ? 'yellow' : 'gray'} />
                   <span style={{ fontSize: 12, color: 'var(--tool-hex-a3a3a3)' }}>{a.text}</span>
                 </div>
-              ))}
-            </div>
-          )}
+              ))
+            ) : (
+              <EmptyState kind="empty" title="No active alerts" message="Nothing needs your attention right now." />
+            )}
+          </BoardSection>
 
           {/* Section 6 — Top Defaulters */}
-          {(data.fee?.defaulters || []).length > 0 && (
-            <DataTable title="Top Fee Defaulters" headers={['Student', 'Class', 'Overdue Amount', 'Days Overdue']}
-              rows={(data.fee.defaulters || []).slice(0, 8).map(d => [
-                d.student_name,
-                d.class,
-                <span style={{ color: 'var(--tool-hex-f87171)', fontWeight: 600 }}>{d.amount_overdue_fmt}</span>,
-                <span style={{ color: d.days_overdue > 60 ? 'var(--tool-hex-f87171)' : 'var(--tool-hex-fbbf24)' }}>{d.days_overdue} days</span>,
-              ])}
-            />
-          )}
+          <BoardSection title="Top Fee Defaulters" failed={failed('fee')} failure={failureFor('fee', 'board-section-error-defaulters')}>
+            {(payload('fee')?.defaulters || []).length > 0 ? (
+              <DataTable headers={['Student', 'Class', 'Overdue Amount', 'Days Overdue']}
+                rows={(payload('fee').defaulters || []).slice(0, 8).map(d => [
+                  d.student_name,
+                  d.class,
+                  <span style={{ color: 'var(--tool-hex-f87171)', fontWeight: 600 }}>{d.amount_overdue_fmt}</span>,
+                  <span style={{ color: d.days_overdue > 60 ? 'var(--tool-hex-f87171)' : 'var(--tool-hex-fbbf24)' }}>{d.days_overdue} days</span>,
+                ])}
+              />
+            ) : (
+              <EmptyState
+                kind="empty"
+                title="No dues recorded"
+                message={feeNote ? `Nothing outstanding — ${feeNote}.` : 'Nothing outstanding is recorded.'}
+              />
+            )}
+          </BoardSection>
         </div>
       )}
     </ToolPage>

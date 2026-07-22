@@ -83,7 +83,27 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"success": True}, extra_headers={"Set-Cookie": "eduflow_refresh_token=; Max-Age=0; Path=/"})
         if path.startswith("/api/tools/") and path.endswith("/execute"):
             self._read_json()
-            return self._json({"success": True, "data": {"summary": {"attendance_rate": "92%", "total_students": 120}, "fee_stats": {"paid": "Rs 10,000"}, "active_alerts": 0}})
+            # THIS DOUBLE'S JOB IS TO MIRROR PRODUCTION, NOT TO MODEL WHAT PRODUCTION
+            # OUGHT TO DO. It already returned the single, correct envelope while the
+            # real server returned a double-wrapped one — so every browser test passed
+            # against a server that did not exist, and eleven screens showed zeros for
+            # an entire initiative before a human noticed (UI Sweep, Epic 4).
+            # If you change the endpoint's shape, change it here in the same commit.
+            return self._json({
+                "success": True,
+                "data": {
+                    "summary": {
+                        "attendance_rate": "92%",
+                        "total_students": 120,
+                        "attendance_marked_today": True,
+                    },
+                    "fee_stats": {"paid": "Rs 10,000"},
+                    "active_alerts": 0,
+                },
+                "meta": {"count": 120},
+                "message": "",
+                "denied": False,
+            })
         if path == "/api/chat/conversations":
             self._read_json()
             conversation = {"id": str(uuid.uuid4()), "title": "E2E conversation", "created_at": time.strftime("%Y-%m-%dT%H:%M:%S")}

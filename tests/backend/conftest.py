@@ -114,6 +114,13 @@ try:
     import routes.queries as queries_routes
     import routes.sms as sms_routes
     import routes.learning as learning_routes
+    # UI Sweep Epic 4: `routes.tools` was never wired into the harness, so the
+    # endpoint behind every tool screen had no tests at all — which is how a double
+    # result envelope survived a whole initiative. It is registered here so it can be.
+    import routes.tools as tools_routes
+    import ai.tool_functions as tool_functions_v1
+    import ai.tool_functions_v2 as tool_functions_v2_mod
+    import ai.scope_resolver as scope_resolver_mod
     from middleware.auth import hash_password
     APP_AVAILABLE = True
 except (ImportError, TypeError) as e:
@@ -673,6 +680,10 @@ if APP_AVAILABLE:
     queries_routes.get_db = lambda: _fake_db
     sms_routes.get_db = lambda: _fake_db
     learning_routes.get_db = lambda: _fake_db
+    tools_routes.get_db = lambda: _fake_db
+    tool_functions_v1.get_db = lambda: _fake_db
+    tool_functions_v2_mod.get_db = lambda: _fake_db
+    scope_resolver_mod.get_db = lambda: _fake_db
     server.get_raw_db = lambda: _fake_db
     import middleware.school_context as school_context_module
     school_context_module.get_raw_db = lambda: _fake_db

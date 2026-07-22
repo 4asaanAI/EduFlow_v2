@@ -129,6 +129,32 @@ async def _audit(db, *, action: str, student_id: str, user: dict, changes: dict 
     await write_audit_doc(db, record, school_id=get_school_id(), branch_id=user.get("branch_id"))
 
 
+GENDER_MALE_VALUES = ("male", "boy", "m")
+GENDER_FEMALE_VALUES = ("female", "girl", "f")
+
+
+def classify_gender(value) -> str:
+    """Which strength bucket a stored `gender` belongs in.
+
+    The single definition of the rule the Mongo aggregation below implements. It is
+    a plain function so the rule can be tested exhaustively — the in-memory test
+    double cannot evaluate `$cond`/`$toLower`/`$trim`, so a test asserting the
+    aggregation's numbers through the fake would be measuring the fake, not this.
+
+    "not_recorded" is deliberately NOT "other": all 1,802 students have an empty
+    gender, so folding them together made the Other column equal the Total column on
+    every row (reported by the owner, 2026-07-22).
+    """
+    text = str(value or "").strip().lower()
+    if text == "":
+        return "not_recorded"
+    if text in GENDER_MALE_VALUES:
+        return "boys"
+    if text in GENDER_FEMALE_VALUES:
+        return "girls"
+    return "other"
+
+
 @router.get("/strength")
 async def class_strength_stats(request: Request):
     """Aggregated gender-count stats per class — used by the Class Strength tab."""
@@ -147,9 +173,20 @@ async def class_strength_stats(request: Request):
             "class_section": {"$first": "$_cls.section"},
             "boys": {"$sum": {"$cond": [{"$in": [{"$toLower": {"$ifNull": ["$gender", ""]}}, ["male", "boy", "m"]]}, 1, 0]}},
             "girls": {"$sum": {"$cond": [{"$in": [{"$toLower": {"$ifNull": ["$gender", ""]}}, ["female", "girl", "f"]]}, 1, 0]}},
+            # UI Sweep Epic 4 / Story 4.2. "Other" used to be everything that was not
+            # male or female — which lumped a student recorded as another gender in
+            # with a student whose gender was NEVER CAPTURED. Gender is empty for all
+            # 1,802 students, so the screen showed "Boys 0, Girls 0, Other = everyone"
+            # and the owner rightly asked why two columns held the same number.
+            # They are separate facts and are now counted separately.
+            "not_recorded": {"$sum": {"$cond": [
+                {"$eq": [{"$trim": {"input": {"$ifNull": ["$gender", ""]}}}, ""]}, 1, 0
+            ]}},
             "total": {"$sum": 1},
         }},
-        {"$addFields": {"other": {"$subtract": ["$total", {"$add": ["$boys", "$girls"]}]}}},
+        {"$addFields": {"other": {"$subtract": [
+            "$total", {"$add": ["$boys", "$girls", "$not_recorded"]}
+        ]}}},
         {"$sort": {"class_name": 1, "class_section": 1}},
     ]
     results = await db.students.aggregate(pipeline).to_list(500)
@@ -163,7 +200,8 @@ async def class_strength_stats(request: Request):
             "class_label": cls_label,
             "boys": r["boys"],
             "girls": r["girls"],
-            "other": r["other"],
+            "other": r.get("other", 0),
+            "not_recorded": r.get("not_recorded", 0),
             "total": r["total"],
         })
     return {"success": True, "data": data}

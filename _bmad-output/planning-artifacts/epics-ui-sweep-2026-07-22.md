@@ -1,5 +1,5 @@
 ---
-stepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics']
+stepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics', 'step-03-create-stories:epic-1', 'step-03-create-stories:epic-8', 'step-03-create-stories:epic-9', 'step-03-create-stories:epic-3', 'step-03-create-stories:epic-4']
 executionDirective: 'The 7 Standing Rules (Abhimanyu, 2026-07-08) — binding, see body'
 inputDocuments:
   - _bmad-output/planning-artifacts/prd.md (targeted extraction)
@@ -175,7 +175,7 @@ From `ux-design-specification.md` (2026-07-08) and `ui-ux-pro-max`.
 | FR2 | Epic 1 | Role permissions enforced server-side |
 | FR3 | Epic 1 | Owner manages staff accounts and role assignment |
 | FR4 | Epic 1 | **API-layer denial** — closes RISK-1 (UI-only fix shipped 2026-07-22) |
-| FR5 | Epic 1, Epic 4 | Role data scoping; Board Report zero-count fault |
+| FR5 | Epic 1, Epic 4 | Role data scoping (Story 4.5 — the tool-panel endpoint passed no scope, so branch data crossed branches). **The Board Report zeroes are NOT a scoping fault** — that hypothesis, recorded here on 2026-07-22, was disproved by Epic 4's root-cause analysis; the cause was a double result envelope. Both are real and both are fixed in Epic 4. |
 | FR7 | Epic 5 | Natural-language query and response surface |
 | FR11 | Epic 5 | Clear unavailable/stalled state when AI is degraded |
 | FR35 | Epic 7 | Single unified view precedent for the School Directory |
@@ -833,3 +833,432 @@ signature changed, per the platform's standing convention
 **Then** it shows `designation` — the readable label already populated for all 89 records
 — rather than `role / sub_category`, which is the exact column the owner objected to
 (§11 of the source-of-truth document). *(Small, safe, adjacent; logged under rule 6.)*
+
+---
+
+## Epic 4: Numbers And Details That Are Actually True
+
+Owner and Principal see real figures and the school's real identity — never a zero that
+means "failed to load", never an invented address.
+
+**Requirements covered:** FR5, FR83, UX-DR6 · UX-DR1, UX-DR4, UX-DR9, NFR-A1, NFR-A2
+**Owner items:** 7 (Board Report zeroes), 8 (placeholder school data)
+**Closes:** D-21 (the school's remaining placeholder details)
+**Builds on:** Epic 9's `EmptyState` primitive, which was written for exactly this epic.
+
+### Root cause established before story creation — read this first
+
+The owner reported item 7 as "the Board Report shows zeros". It is not a Board Report
+defect. Commit `8789fea` (Epic R4 of the shipped AI-reliability initiative) introduced
+`_env()` in `backend/ai/tool_functions.py` so that every tool returns **one** envelope —
+`{success, data, meta, message, denied}`. `backend/routes/tools.py`, which is the
+non-chat tool-panel path, has not been touched since Part 1.5 and still does
+`return {"success": True, "data": result}` — wrapping the envelope in a second envelope.
+
+Every screen that reads a tool therefore reads one level too shallow, and every
+`|| 0` / `|| 'N/A'` fallback in those screens fires. That is **eleven** surfaces, not
+one: Board Report, School Pulse, Fee Collection, Attendance Overview, Staff Tracker,
+Admission Funnel, Smart Alerts, Financial Reports, AI Health Report, the health score in
+the chat greeting, and a student's own My Attendance and My Results.
+
+This is the epic's PRIME DIRECTIVE case: the fix is one envelope at the source, not
+eleven unwrappers, and not a nicer message over a wrong number.
+
+**Why nothing caught it for a whole initiative.** The end-to-end test double,
+`tests/support/e2e_backend.py:86`, answers this endpoint with a **single** envelope —
+the correct contract. Every browser test therefore passed against a fake server that
+did not behave like the real one. A test double that disagrees with production tests
+nothing. Correcting the double is part of Story 4.1, and it must be corrected in the
+direction of the *fixed* server, never bent back to match the bug.
+
+### Sequencing constraint — 4.1 and 4.2 land together (party-mode finding, John)
+
+**Story 4.1 must not reach the Owner without Story 4.2.** The school has **one** fee
+transaction for 1,802 students, and no attendance marked for today. The instant the
+envelope is fixed, the real figures flow — and the real figure for fee collection is
+₹0. An unlabelled ₹0 is indistinguishable from the broken ₹0 this epic exists to
+remove. Shipping 4.1 alone would move the defect rather than fix it, and would be
+reported back as defect #19. Neither story is "done" alone.
+
+There are currently **no tests of any kind** for `backend/routes/tools.py` — the file at
+the centre of this epic. That is the second reason this survived.
+
+### Epic-wide rule (from the D-15b lesson, restated as a condition of "done")
+
+No part of this epic may be reported as done on the strength of a passing test. A
+change that reaches the Owner's screen only after a deploy or a data edit is reported
+as **"not yet visible to you"**. Every figure claimed to be fixed is named, with what
+it now shows.
+
+### Story 4.1: One envelope, so every tool screen shows the real number
+
+As the school Owner or Principal,
+I want the figures on every tool screen to be the figures in my school,
+So that I can act on them instead of wondering whether the screen is broken.
+
+**Acceptance Criteria:**
+
+**Given** `_env()` is the platform's single tool-result envelope (R4.2/M1) and
+`POST /api/tools/{tool_id}/execute` currently wraps it in a second one
+**When** this story ships
+**Then** the endpoint returns the tool's own envelope **unchanged** — one `success`, one
+`data`, one `meta`, `message` and `denied` — so `data` is the tool's payload and never
+another envelope
+
+**Given** any tool in `TOOL_REGISTRY`
+**When** it is executed through the tool-panel endpoint
+**Then** a test asserts, over the registry rather than over a hand-picked tool, that the
+response's `data` is **not itself an envelope** — this is the regression that must fail
+before the fix and pass after, and it is what stops a third envelope being added in 2027
+
+**Given** a tool that refuses the request (`denied=True`)
+**When** the screen renders the result
+**Then** the refusal is shown as a refusal and never as an empty or zero result — R4's
+"denied ≠ empty" principle applies to the tool panels exactly as it does to chat
+
+**Given** the eleven screens listed in the root-cause note above
+**When** the story closes
+**Then** **every one of them has been opened and read**, and the completion log names each
+screen and what it now shows — a fix verified only on the Board Report would repeat the
+Epic 9 fault where a shared-component defect was fixed on the one screen that was reported
+
+**Given** a caller whose role is not in a tool's allowlist
+**When** they call the endpoint
+**Then** it still returns 403 with `detail="Forbidden"`, and both the 401-unauthenticated
+and 403-wrong-role tests exist for the endpoint per the standing convention
+
+**Given** the endpoint's response shape changes
+**When** the backend suite runs
+**Then** any existing test that encoded the double envelope is **rewritten to assert the
+correct contract, never deleted** — the D-14 rule
+
+**Given** `_env()` and the chat tool-loop both depend on the envelope as it is
+**When** this story is implemented
+**Then** the change is confined to `backend/routes/tools.py`. `ai/tool_functions.py`,
+`ai/tool_functions_v2.py` and the chat dispatch path are **not** touched — moving the
+envelope instead of removing the second wrapper would repair eleven screens by breaking
+the assistant *(elicitation: failure-mode analysis)*
+
+**Given** the 22 `executeTool` call sites, three of which read the result differently
+from the rest — `r.data?.data ?? r.data` in the WhatsApp reminder modal,
+`r.data?.summary` in the chat greeting, and the `useToolData` wrapper
+**When** the envelope changes
+**Then** each of the 22 is examined individually and its before/after access path
+recorded in the completion log. A defensive `?? ` fallback that happens to keep working
+is not evidence it is correct *(elicitation: pre-mortem)*
+
+**Given** `tests/support/e2e_backend.py`, the browser-test double, which already returns
+the single correct envelope and so hid this defect for an entire initiative
+**When** the server is fixed
+**Then** the double is confirmed to match the real server's shape, and a note in that
+file records that its job is to mirror production — not to model what production ought
+to do *(elicitation: 5 whys → root cause of the miss)*
+
+**Given** that a unit test which mocks the tool and asserts "the endpoint passed it
+through" would pass trivially and prove nothing about the eleven screens
+**When** the regression test is written
+**Then** it exercises the **real route** with a **real registry tool** and asserts the
+response body **equals that tool's own `_env()` output** — no second `data` key, no
+re-shaping. A pass-through assertion against a mock is explicitly not sufficient
+*(party mode: Murat)*
+
+**Given** frontend tests for the tool panels
+**When** their fixtures are written
+**Then** the fixture is the shape the **fixed server actually returns**, and the test
+asserts the **rendered number** a person would read — not that a promise resolved. A
+fixture hand-shaped to match whatever the component currently expects is the same
+disease as the browser-test double, in a new place *(party mode: Murat)*
+
+### Story 4.2: A zero means zero, and a failure says so
+
+As the school Owner presenting figures to a trust meeting,
+I want a number I cannot load to look different from a number that is genuinely nought,
+So that I never read a broken request out loud as though it were a fact about my school.
+
+**Acceptance Criteria:**
+
+**Given** UX-DR6, which requires the shared empty state to distinguish "no data yet" from
+"not recorded" from "failed to load", and `EmptyState` in
+`frontend/src/components/ui/primitives.js`, which already implements all three
+**When** a Board Report section cannot be loaded
+**Then** that section renders the `error` state and offers a retry — it does not render
+`0`, `₹0`, `N/A`, or an empty table
+
+**Given** the Board Report currently loads six sources under one `Promise.all`, catches
+everything into a single banner reading "Some data could not be loaded. Showing partial
+report.", and then shows **no report at all** because `data` was never set
+**When** the story ships
+**Then** each source succeeds or fails **independently**, the sections that loaded are
+shown, and the banner names which sections are missing rather than making an unkeepable
+promise
+
+**Given** the staff and expenses calls, which today do
+`.catch(() => ({ data: [] }))` — turning any failure, including a 403, into "0 staff"
+**When** either fails
+**Then** the failure is surfaced in that section's state; silently substituting an empty
+list for an error is forbidden, and a test proves a failing call does not render `0`
+
+**Given** the exported PDF
+**When** a section failed to load
+**Then** the PDF prints "not available" for that section rather than a fabricated `0` or
+`₹0` — a number in a downloadable board document is the most dangerous place for this
+defect, because it outlives the screen
+
+**Given** a metric whose underlying field was never captured — date of birth, gender,
+house and admission date are empty for all 1,802 students
+**When** it is displayed
+**Then** it says **"not recorded"**, consistent with Epic 9's decision and §12 of the
+source-of-truth document
+
+**Given** `StatCard`, which is used across many tool screens
+**When** it is given a value that is unavailable rather than zero
+**Then** it can express that, and every screen already consuming `StatCard` is checked —
+the shared-component rule from the Epic 3/9 retrospective
+
+**Given** a figure that is **genuinely nought** — fee collection is ₹0 because the school
+has one fee transaction on file for 1,802 students, and that is the truth
+**When** it is shown
+**Then** the card carries a short honest footnote on the card itself — "as recorded",
+"1 transaction on file" — so a real zero and an unavailable one are told apart **at a
+glance, on a phone, without hovering anything**. A bare number with no signal of whether
+it is real is the same lie this epic exists to remove, merely relabelled
+*(party mode: Sally, John)*
+
+**Given** attendance, where `tool_get_school_pulse` computes
+`att_rate = 0 if total_marked == 0` and `tool_get_attendance_overview` computes
+`avg_rate = 0 if not daily_list`
+**When** nobody has marked attendance yet
+**Then** the answer is **"not marked yet"**, never **"0%"**. A principal opening the
+report on a Monday morning and reading 0% attendance has been told the school is empty.
+This AC deliberately changes `ai/tool_functions.py`, which the assistant shares — the
+assistant is telling people the same falsehood, and both surfaces are fixed by fixing
+the number once *(party mode: John)*
+
+**Given** a section the Owner has retried once and which fails again
+**When** the second failure renders
+**Then** it says something **different** from the first — acknowledging the retry and
+naming the likely cause — so he can tell "it tried again and failed" from "my tap did
+nothing" *(party mode: Sally)*
+
+**Given** the PDF export and a report in which one section failed
+**When** he exports it
+**Then** **the export still works**, containing every section that loaded and
+"not available" for the one that did not. An export that refuses because one of six
+promises rejected leaves him in front of the trustees with no document at all
+*(party mode: Sally)*
+
+**Given** every new or changed control in this story
+**When** rendered
+**Then** it uses CSS variables only, carries a `data-testid`, has a visible focus state,
+and the error state is announced to assistive technology (`role="alert"`)
+
+### Story 4.3: The school's own identity, stored once and complete
+
+As the school Owner,
+I want the platform to hold my school's real name, address, contacts and affiliation,
+So that nothing it shows a parent, prints on a document, or tells the assistant is invented.
+
+**Acceptance Criteria:**
+
+**Given** the school's official details, confirmed by Abhimanyu on 2026-07-22 as coming
+from the school's own website `theaaryans.in`
+**When** the values are recorded anywhere in this repository
+**Then** they are exactly:
+`address` "Prem Nagar, P.O. Joya, N.H. 24, Distt. Amroha, Uttar Pradesh 244222" ·
+`phone` "+91 81269 65555, +91 81269 68888" · `email` "theaaryansjoya@gmail.com" ·
+`website` "www.theaaryans.in" · `board` "CBSE" · `affiliation_no` "2133014" ·
+`school_code` "81936" · `established` "2015" · `principal` "Adesh Singh" ·
+`city` "Joya, Amroha" · `state` "Uttar Pradesh"
+
+**Given** there is today no field anywhere for a CBSE affiliation number, though it
+belongs on every official document a school issues
+**When** this story ships
+**Then** `affiliation_no` and `school_code` exist on the school record, are editable by
+the Owner on the School Settings screen, are readable by every role that can already read
+the school profile, and are added to the server-side whitelist of settable fields — a
+field the form posts but the whitelist drops would silently discard the Owner's edit
+
+**Given** `AdminTools.js`, which prints its own hard-coded
+`'Affiliated to CBSE · Joya, Amroha, Uttar Pradesh'`
+**When** the story ships
+**Then** it reads the stored record instead, and a grep proves no screen still carries a
+hard-coded school identity string — this is the D-15 fault, where the same wrong city was
+written into five separate files
+
+**Given** a school record in which a field is **absent**
+**When** the settings endpoint answers
+**Then** the verified official value is used for that field, so a missing `website` or
+`affiliation_no` shows the truth without any database write — the same mechanism that let
+D-15's city correction reach the code without touching data
+
+**Given** a field the Owner has deliberately **cleared** — stored as an empty string
+**When** the settings endpoint answers
+**Then** it stays cleared. The fallback fills absent keys only; a helpful default that
+reinstates a value someone chose to delete is a defect wearing a good intention, and it
+would be impossible for him to diagnose *(elicitation: pre-mortem)*
+
+**Given** a field that is present in the record but **wrong** — `address`, `phone`,
+`email` and `principal` are all placeholder values today (D-21)
+**When** this story ships
+**Then** it does **not** overwrite them. Correcting stored data is a write against 1,802
+students' live database and needs the Owner's separate approval. The story delivers the
+audited in-app path (School Settings → Save, which writes through
+`update_school_settings()` and is recorded in the audit log as the Owner's action) and the
+exact values above, and the epic reports these fields as **"not yet visible to you"** —
+never as done — until he saves them. This is the D-15b lesson, stated as an acceptance
+criterion so it cannot be forgotten.
+
+**Given** the School Settings form, whose Phone field still suggests the placeholder
+`0522-4567890`
+**When** it renders
+**Then** its suggested values are the school's real ones, so nobody types a Lucknow
+landline back in
+
+### Story 4.4: The assistant is briefed from the school's record, not a constant
+
+As anyone asking the assistant about the school,
+I want it to answer from what the school has actually recorded,
+So that it stops being confidently wrong about the school it works for.
+
+**Acceptance Criteria:**
+
+**Given** `build_system_prompt()` opens with "…assistant for {SCHOOL_NAME} ({SCHOOL_BOARD}
+board, {SCHOOL_CITY})" read from module-level environment constants, not from the school
+record
+**When** this story ships
+**Then** the briefing is built from the stored school settings, falling back to the
+verified defaults only when a field is absent — so correcting the record corrects the
+assistant, which is precisely what did not happen with "Lucknow"
+
+**Given** `build_system_prompt()` reads `school_settings.get("principal_name")` while the
+record stores the field as `principal`, and `owner_name` is not in the settable whitelist
+at all
+**When** the mismatch is fixed
+**Then** the assistant knows the principal is **Adesh Singh**, and a test asserts the
+briefing contains the stored principal — this is the same prompt↔data drift class that
+epic R3 was built to prevent, and D-13 caught once already
+
+**Given** the `ai_context.fee_structure` field, which already exists on the school record
+and is empty
+**When** the Owner records the 2026-27 fee structure summary there
+**Then** the assistant is briefed with it and can answer a fee question from the school's
+own table rather than from nothing. The story provides the field, the briefing wiring and
+the summary text drawn from §5 of the source-of-truth document; **entering it is a write
+and follows the same approval rule as Story 4.3.** It summarises the published fee table
+only — it is not the fee-record data load, which stays out of scope in Track 2
+
+**Given** the standing directive that any change to `ai/prompts.py` requires a green
+golden-eval run before merge (execution protocol, portability guarantee §5)
+**When** this story closes
+**Then** the always-on structural and judge-logic evals are green, and the epic-close log
+records whether the credentialed LLM-judge tier was runnable on this machine — if it was
+not, that is stated plainly rather than implied
+
+**Given** the assistant's organisation briefing, which hard-codes
+"School Organisation — The Aaryans (CBSE, Joya, Amroha, U.P.)"
+**When** the story ships
+**Then** that line too comes from the record, so there is exactly one place the school's
+identity is decided
+
+**Given** `context_builder.build_school_context()` already reads the school record once
+per turn, projecting only `principal`, `owner_name` and `school_name`
+**When** the briefing needs the other identity fields
+**Then** that existing projection is widened — **no second query is added**. A per-turn
+database round trip for data that is already in hand would cost every user of the
+assistant, permanently, to save one line of code *(elicitation: failure-mode analysis)*
+
+**Given** the school's phone number and email address now enter the assistant's briefing
+**When** a future privacy review reads this
+**Then** it is recorded here that these are the *organisation's* own published contact
+details, taken from its public website, not personal data — the DPDP redaction rule
+(`ai/redaction.py`) is deliberately surgical and must not be widened to strip them, which
+would leave the assistant unable to tell a parent how to contact the school
+*(elicitation: red team on the privacy surface)*
+
+### Story 4.5: The screen tools play by the same rules as the assistant
+
+As the school Owner,
+I want the tool screens to obey exactly the permissions the assistant obeys,
+So that a figure someone can see is one they are entitled to see, and the branch a
+number belongs to is the branch it is reported for.
+
+**Added during Epic 4's readiness review, not from the owner's defect list. Approved
+by Abhimanyu on 2026-07-22 before any code was written, per the D-18 rule that anything
+changing what a person is ALLOWED to do is asked about first, never reviewed into
+existence afterwards.**
+
+`POST /api/tools/{tool_id}/execute` predates the assistant's safety machinery (its last
+change was Part 1.5) and was never brought in line with it. Three gaps, all in the same
+nine lines Story 4.1 rewrites.
+
+**Acceptance Criteria:**
+
+**Given** the endpoint gates on `user["role"] not in tool_def["roles"]` alone, while the
+assistant uses `_is_tool_authorized(user, tool_def)` — which additionally honours the 49
+registry entries carrying `sub_categories`, and the Phase-1 action lockdown
+**When** this story ships
+**Then** the endpoint uses **the same single gate function**, so a job category that
+cannot ask the assistant for something cannot get it from a screen either; a test proves
+an admin whose `sub_category` is outside a tool's list is refused
+
+**Given** the endpoint can today invoke **any** tool in the registry, including the ones
+marked `dispatch_type: "write"` / `requires_confirmation: True`, with no confirm token, no
+AI-write kill-switch, no lockdown and no audit row — every protection F.4, F.10 and F.11
+were built to guarantee
+**When** a write tool is requested through this endpoint
+**Then** it is refused. This path serves **reads only**; writes go through the chat
+confirm flow that already confirms and audits them. No screen in the application calls a
+write tool through this endpoint today — a grep of all 22 `executeTool` call sites shows
+every one is a `get_*` read — so nothing the school uses changes
+
+**Given** tools take `(params, user, scope)` and the endpoint calls `fn(params, user)`
+with **no scope**, so `_tenant_query(None, …)` emits no `branch_id` clause
+**When** a branch-bound admin or principal opens a tool screen
+**Then** they see their own branch's figures only. `await resolve_scope(user)` is called
+before invocation, exactly as the chat path does — this is the FR5 scoping fault the
+original defect list suspected behind item 7, and it is real, though it is not what made
+the Board Report show zeros
+
+**Given** the refusals above
+**When** they are returned
+**Then** they use `detail="Forbidden"` with no role or sub-category leak (403 hygiene),
+and the endpoint keeps its 401-unauthenticated and 403-wrong-role tests
+
+**Given** the 14 original v1 tools carry no `dispatch_type` key at all, so a rule of
+"refuse anything not marked read" would refuse every tool panel, while a rule of "refuse
+only what is marked write" lets a future tool added without the key through unnoticed
+**When** the read-only rule is written
+**Then** refusal is by `dispatch_type == "write"`, `requires_confirmation`, or membership
+of the write-tool sets — **and** a drift test holds a frozen inventory of every tool
+lacking `dispatch_type`, so a newly added tool that omits it fails the test rather than
+silently becoming callable. This is the F.6 parity-gate pattern applied to a second
+door *(elicitation: failure-mode analysis)*
+
+**Given** branch scoping that is correct in an isolated unit test can still leak on the
+composed path, because each tool builds its own query
+**When** the tests are written
+**Then** branch isolation is asserted **per allowed read tool through the endpoint
+itself** — a branch-bound caller, a second branch's data seeded, and the assertion that
+the second branch is absent from the response. A generic "the gate calls resolve_scope"
+test would pass while a specific tool quietly queries without `branch_id`
+*(party mode: Murat)*
+
+**Given** refusing write tools removes a capability that something might depend on
+**When** the story is implemented
+**Then** the repository is searched for **every** caller of this endpoint before the
+refusal ships, and the completion log states what was found and what could not be seen
+from here. Today the only callers are the 22 `executeTool` sites in the SPA, all reads
+*(party mode: Winston)*
+
+**Given** the endpoint today answers 404 for an unknown tool **before** it checks
+whether the caller is allowed anything at all
+**When** an authenticated student probes tool names
+**Then** they learn nothing: authorization is decided before existence is revealed, so an
+unknown tool and a forbidden tool are indistinguishable from outside
+*(elicitation: red team)*
+
+**Given** the branch-scoping change
+**When** the story closes
+**Then** the `scoped_filter`/`scoped_query` grep audit is re-run over every touched
+backend file and every hit is either migrated or annotated
+`# branch-scope: intentional — <reason>`

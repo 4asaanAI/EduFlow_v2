@@ -203,6 +203,94 @@ system, so saving anything would have been a real change to real data.
 
 ---
 
+## Epic 4 — Numbers you can believe (added 2026-07-22)
+
+### The headline, in one paragraph
+
+You reported that the Board Report showed zeros. **It was never a Board Report
+problem.** A change made in an earlier piece of work meant that *every* screen which
+reads a tool was looking in the wrong place for its answer — so eleven screens have
+been showing 0 or "N/A" instead of your real figures, not one. That is fixed at the
+source. Nothing you see on those screens was ever wrong in your data; the screens were
+reading it wrongly.
+
+### Needs a decision from you
+
+- [ ] **Your school's real details — one word and they're in.** I have added the one
+      thing that had nowhere to live before: your **CBSE affiliation number 2133014**
+      and **school code 81936**, which now print on certificates. But four details are
+      still the old made-up values in your database: the **address** (still says
+      Lucknow), the **phone** (`0522-4567890`), the **email** (`info@theararyans.edu.in`,
+      also misspelt) and the **principal**.
+      I have the correct values ready, taken from your own website:
+      *Prem Nagar, P.O. Joya, N.H. 24, Distt. Amroha, Uttar Pradesh 244222* ·
+      *+91 81269 65555, +91 81269 68888* · *theaaryansjoya@gmail.com* ·
+      *www.theaaryans.in* · Principal **Adesh Singh**.
+      **Two ways to do it, your choice:** open School Settings and type them in (best —
+      it is recorded as your change), or say the word and I will write them directly.
+      **Until one of those happens, these are still wrong on your screen — I am not
+      claiming otherwise.**
+- [ ] **The fee structure for 2026-27.** There is now a place to record a short summary
+      of your fee table so the assistant can answer parents' fee questions from it. I
+      have the table from your printed sheet. Confirm it is current and I will prepare
+      it for you to save. (This is a summary for the assistant to quote — it is not the
+      same as loading real fee records, which is still a separate job.)
+- [ ] **Sorting on the remaining tables.** You asked for column sorting on every table.
+      I counted rather than guessed: **34 tables now have it**, roughly **22 do not** —
+      Attendance Recorder, Exam Manager, Fee Collection, Timetable Builder, Transport,
+      Principal Daily Ops and parts of the teacher and admin screens. Those are built
+      differently and each needs its own work. **Say if that should be the next job.**
+
+### Please check in the real app
+
+**These reach your screen only after a deploy. Until then, nothing below has changed
+for you.**
+
+- [ ] **The zeros are gone.** Open Board Report, School Pulse, Fee Collection,
+      Attendance Overview, Staff Tracker, Admission Funnel and Smart Alerts. Numbers
+      you recognise should now appear where zeros were.
+- [ ] **A student's own screens too.** Have a student open My Attendance and My
+      Results — those were showing zeros for the same reason.
+- [ ] **"₹0" now tells you why.** Fee collection genuinely is near zero, because your
+      database holds **one fee transaction for 1,802 students**. The card now says so
+      underneath, so a real zero is not mistaken for a broken screen. **If that number
+      surprises you, that is a data-loading job, not a bug.**
+- [ ] **Attendance before the register is taken.** Open the Board Report early in the
+      morning. It should say **"not marked yet"**, never "0%". Previously it reported
+      0% attendance, which reads as though nobody came to school.
+- [ ] **Break one on purpose.** Turn off wifi, tap Re-generate, turn it back on. Each
+      section should say it could not load, with its own **Retry** — never a zero. Tap
+      Retry while still offline: the message should **change** the second time, so you
+      can tell it tried again. Then check **Download PDF still works** with a section
+      missing — it should print "not available" for that section rather than refuse.
+- [ ] **Class Strength.** You spotted that "Other" and "Total" showed the same number.
+      They should now differ: there is a separate **"Not recorded"** column, and Boys
+      and Girls say **"Not recorded"** instead of 0 — because gender was never
+      collected for any of the 1,802 students. Confirm that reads clearly to you.
+- [ ] **Sorting.** Click any column heading on any tool screen. Check especially that
+      **money sorts by amount** — on a fee defaulters list the largest debt must come
+      first, not last. And check a column with blanks: empty values should sink to the
+      bottom, not fill the first page.
+- [ ] **Ask the assistant who the principal is.** It has **never** known — it was
+      looking for the name under the wrong label. It should now answer **Adesh Singh**.
+      Also ask "what is the school's affiliation number?"
+- [ ] **On your phone**, for all of the above.
+
+### Known and left alone on purpose
+
+- **I could not verify three things myself, and I am not claiming them:** (1) how the
+  exported PDF actually looks with a section missing, (2) the Class Strength counts
+  against your real database — the offline test database cannot do that particular
+  calculation, so I tested the rule instead of the arithmetic, and (3) anything that
+  needs saving against your live data.
+- **Nothing was written to your database this run.** Not one field.
+- Screen tools can no longer make changes — only read. Nothing in the app used that
+  ability, so you should notice no difference; it closes a door that had no lock.
+- A branch manager now sees only their own branch's figures on tool screens. Previously
+  they saw every branch's.
+
+---
+
 ## Change log
 
 | Date | Epic | What was added |
@@ -210,3 +298,4 @@ system, so saving anything would have been a real change to real data.
 | 2026-07-22 | Epic 1 | Owner-access handover decision, the live-app checks I could not make myself, and the legacy job-category question. |
 | 2026-07-22 | Epic 1 + 8 | Two decisions settled by Abhimanyu (sole owner stays; no self-editing). Self-service checks replaced by ask-and-approve checks. City correction added, pending a deploy decision. |
 | 2026-07-22 | Epic 9 + 3 | **Part A added: a standing ten-minute checklist to run after every epic**, at Abhimanyu's request. Plus this epic's specifics: the new look, Flo, the duplicate titles, sorting and paging, and the four live-data city corrections. |
+| 2026-07-22 | Epic 4 | The zeros (eleven screens, not one), honest failure states, the school's real details and affiliation number awaiting your save, the assistant finally knowing the principal, column sorting on 34 tables, and the Class Strength column you queried. Three things I could not verify myself are named explicitly. |

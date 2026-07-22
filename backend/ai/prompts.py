@@ -11,17 +11,28 @@ students, and support staff.
 import os
 from datetime import datetime
 
-SCHOOL_NAME = os.environ.get("SCHOOL_NAME", "The Aaryans")
-SCHOOL_BOARD = os.environ.get("SCHOOL_BOARD", "CBSE")
-SCHOOL_CITY = os.environ.get("SCHOOL_CITY", "Joya, Amroha")
+from school_identity import default_school_identity, merge_school_identity
+
+# UI Sweep Epic 4 / Story 4.4. These were the assistant's ONLY source for who it works
+# for, so when the stored record said one thing and the constant said another, the
+# assistant answered from the constant — which is how it went on telling people the
+# school is in Lucknow after the database had been corrected. They are now fallbacks
+# for a school record that has not been filled in, not the source of truth.
+_DEFAULT_IDENTITY = default_school_identity()
+SCHOOL_NAME = _DEFAULT_IDENTITY["school_name"]
+SCHOOL_BOARD = _DEFAULT_IDENTITY["board"]
+SCHOOL_CITY = _DEFAULT_IDENTITY["city"]
 
 # ---------------------------------------------------------------------------
-# School Organisation Context (The Aaryans specific)
+# School Organisation Context
 # ---------------------------------------------------------------------------
-# Default org context — names are kept generic to avoid mismatch with DB.
-# build_system_prompt() accepts a school_settings dict to personalise these.
+# Personalised from the stored school record by build_system_prompt(). The school's
+# name, board and city are substituted rather than written in, so there is exactly one
+# place the school's identity is decided.
 _ORG_CONTEXT_TEMPLATE = """
-School Organisation — The Aaryans (CBSE, Joya, Amroha, U.P.):
+School Organisation — {school_name} ({board}, {city}{state_suffix}):
+Affiliation: {affiliation}
+Contact: {phone} · {email} · {website}
 Hierarchy: Head ({owner_name}) -> Principal ({principal_name}) -> 4 Departments:
 1. Accounts — fee collection, payroll, financial records
 2. Admin — Medical, Reception, Admission, Day-to-Day (Peon, Aaya, Sweeper, Guard, Gardner)
@@ -32,10 +43,43 @@ Hierarchy: Head ({owner_name}) -> Principal ({principal_name}) -> 4 Departments:
    Subjects: English, Hindi, Maths, Science, Social Studies, Sports, Music, Arts, Library, Computers
 """
 
+def _org_context_fields(identity: dict) -> dict:
+    """The identity fields the org-context template needs, each rendered honestly.
+
+    A field the school has not recorded says "not recorded" rather than being dropped
+    or invented — the assistant repeating a plausible-sounding phone number it made up
+    is worse than it saying it does not have one.
+    """
+    def val(key):
+        v = (identity.get(key) or "").strip()
+        return v or "not recorded"
+
+    state = (identity.get("state") or "").strip()
+    affiliation_no = (identity.get("affiliation_no") or "").strip()
+    school_code = (identity.get("school_code") or "").strip()
+    affiliation_parts = []
+    if affiliation_no:
+        affiliation_parts.append(f"{val('board')} Aff. No. {affiliation_no}")
+    if school_code:
+        affiliation_parts.append(f"School No. {school_code}")
+
+    return {
+        "school_name": val("school_name"),
+        "board": val("board"),
+        "city": val("city"),
+        "state_suffix": f", {state}" if state else "",
+        "affiliation": " · ".join(affiliation_parts) or "not recorded",
+        "phone": val("phone"),
+        "email": val("email"),
+        "website": val("website"),
+    }
+
+
 # Legacy module-level constant kept for any code that imports ORG_CONTEXT directly.
 ORG_CONTEXT = _ORG_CONTEXT_TEMPLATE.format(
     owner_name="the Owner",
     principal_name="the Principal",
+    **_org_context_fields(_DEFAULT_IDENTITY),
 )
 
 # ---------------------------------------------------------------------------
@@ -1458,16 +1502,23 @@ def build_system_prompt(
     class_names = user.get("class_names", [])
     subject = user.get("subject", "")
 
-    # ---- Org context (personalised if school_settings provided) ----
-    if school_settings:
-        principal_name = school_settings.get("principal_name", "the Principal")
-        owner_name = school_settings.get("owner_name", "the Owner")
-    else:
-        principal_name = "the Principal"
-        owner_name = "the Owner"
+    # ---- Org context, built from the stored school record ----
+    # Epic 4 / Story 4.4: this read `principal_name`, but the record has always stored
+    # the field as `principal` — so the lookup never once matched and the assistant has
+    # never known who the principal is. It is the same prompt-vs-data drift the shipped
+    # R3 epic exists to prevent, and D-13 caught a sibling of it.
+    identity = merge_school_identity(school_settings)
+    principal_name = (
+        (school_settings or {}).get("principal")
+        or (school_settings or {}).get("principal_name")
+        or identity.get("principal")
+        or "the Principal"
+    )
+    owner_name = (school_settings or {}).get("owner_name") or "the Owner"
     org_context = _ORG_CONTEXT_TEMPLATE.format(
         owner_name=owner_name,
         principal_name=principal_name,
+        **_org_context_fields(identity),
     )
 
     # ---- Language instruction ----
@@ -1533,13 +1584,20 @@ def build_system_prompt(
 {CAREER_ADVISOR_RULES}
 """
 
+    # ---- Fee structure the school has recorded, so fee questions are answered from
+    # the school's own published table rather than from nothing (Story 4.4). ----
+    fee_structure = ((school_settings or {}).get("ai_context") or {}).get("fee_structure", "")
+    fee_section = f"\nFEE STRUCTURE (as recorded by the school):\n{fee_structure}\n" if fee_structure else ""
+
     # ---- Assemble the full prompt ----
-    prompt = f"""You are EduFlow AI, the intelligent school management assistant for {SCHOOL_NAME} ({SCHOOL_BOARD} board, {SCHOOL_CITY}).
+    # The opening line comes from the school's record, not from a module constant.
+    # A constant is why the assistant kept saying "Lucknow" after the data was fixed.
+    prompt = f"""You are EduFlow AI, the intelligent school management assistant for {identity.get('school_name') or SCHOOL_NAME} ({identity.get('board') or SCHOOL_BOARD} board, {identity.get('city') or SCHOOL_CITY}).
 Today: {today} (ISO: {today_iso})
 User: {user_context}
 
 {org_context}
-
+{fee_section}
 {lang_instruction}
 
 {context_str}

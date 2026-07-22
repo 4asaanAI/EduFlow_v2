@@ -22,6 +22,8 @@ Branch: `ui-sweep-2026-07-22`
 | 2026-07-22 | **Epics 9 + 3** | **Looks Like The Brochure + Finding One Record Among Two Thousand — DONE.** Epic 9 was created mid-run at Abhimanyu's request (make the product look like `eduflow.layaa.ai`) and sequenced first so Epic 3's table was built once in the new language. Shipped: a token system with a committed WCAG contrast test, playful primitives, the mobile type scale (closes Epic 2's UX-DR7), "Flo" copied from the landing-page repo, the school crest behind the chat, a shared server-sorted table with rows-per-page, and school-order class sorting. 139 hard-coded theme colours removed from the shell. 127 new tests. Suite 1745 passed / 2 failed (pinned) / 14 deselected. **Closes D-05.** Adds D-15b, D-20, D-21, D-22, D-23. 8 live-data fields corrected and 1 stale branch deleted, each separately approved. **11 of 15 findings came from Abhimanyu testing live, not from the review passes — see the retrospective.** |
 | 2026-07-22 | **Epic 1** | **Access That Cannot Be Talked Around — DONE.** Elicitation + party-mode passes rewrote the ACs before any code (E-1…E-9); 3 stories implemented; epic-close gate found 10 further findings, all fixed with regression tests. Owner role is now refused by the server for every caller including the Owner, in both directions; unrecognised job categories are refused; staff can maintain their own contact details. Suite 1682 passed / 2 failed (the pinned pair) / 14 deselected. **Closes D-02, D-11, D-12, D-13, D-14.** No production writes. |
 
+| 2026-07-22 | **Epic 4** | **Numbers And Details That Are Actually True — DONE.** The reported defect ("the Board Report shows zeros") was not a Board Report defect: a second result envelope meant **eleven** screens read one level too shallow and printed 0 or N/A. Fixed at the source. A failed section can no longer render as a figure — on screen or in the exported board PDF. Attendance nobody has marked says "not marked yet", never "0%". The school's identity now has one verified source, plus its CBSE affiliation number, and the assistant is briefed from the record rather than a constant — it had **never** known the principal's name. Story 4.5 (owner-approved before build) closed three unguarded behaviours on the tool endpoint. Mid-run the owner reported two more: **34 tables gained column sorting** via the shared component, and Class Strength stopped showing "Other" and "Total" as the same number. 66 new tests. Suite 1784 passed / 2 failed (pinned) / 14 deselected; frontend 184 passed / 2 pre-existing. **Closes D-21 in code.** Adds D-24, D-25. **No production writes.** |
+
 ---
 
 ## Open items
@@ -250,6 +252,53 @@ The header bar and the page both rendered the tool's name, one line apart, on ev
 single tab. Reported by the owner. The header now shows the title only when the page
 does not — on the chat view, and on phones where the page heading scrolls away and
 the sticky header is the only remaining indication of where you are.
+
+### D-21 update — **FIXED IN CODE in Epic 4; the stored values still need the Owner**
+Epic 4 created one verified source for the school's identity
+(`backend/school_identity.py`), taken from the school's own website on Abhimanyu's
+instruction, and added the CBSE affiliation number (2133014) and school code (81936),
+which had nowhere to live before. Any field the stored record does **not** carry now
+falls back to the verified value with no database write.
+
+**But `address`, `phone`, `email` and `principal` ARE present on the record and are
+wrong.** A fallback deliberately does not override a stored value — that is what makes
+a field the Owner clears stay cleared. So those four are **not yet visible as
+corrected**: the change reaches his screen when he opens School Settings and saves
+(audited as his action, which is the D-15b lesson), or approves the direct write.
+Verified values are in `epic-4-completed.md` and on the human checklist.
+
+### D-24 — Roughly 22 hand-rolled tables still have no column sorting — **DEFERRED**
+Abhimanyu asked on 2026-07-22 for column sorting on *every* table. Enumerated rather
+than estimated: **2** screens used the shared server-sorted table; **33** rendered
+through the older `ToolPage` `DataTable`; **~22** are hand-rolled `<table>` elements.
+
+Epic 4 added sorting to the shared `ToolPage` `DataTable`, so all 33 gained it at once
+(plus Class Strength = 34). The remaining hand-rolled tables are in Attendance
+Recorder, Exam Manager, Fee Collection, Timetable Builder, Transport Optimisation,
+Principal Daily Ops, and parts of Teacher/Admin tools.
+
+**Reason deferred:** each needs its own data plumbing rather than one shared edit, and
+several are order-sensitive by nature (a timetable's rows are periods). **This is not
+"sorting is done" — it is 34 of ~57.** Belongs with Epic 3's remit; sized as its own
+pass. Recorded here so the coverage map is not read as complete again.
+
+### D-25 — Two dispatch paths into one tool registry — **DEFERRED, architectural**
+Raised by the architecture review during Epic 4. The chat tool-loop and
+`POST /api/tools/{id}/execute` are two doors into one `TOOL_REGISTRY` that grew their
+own gates, their own envelope handling, and their own idea of a turn. That is *how* a
+double envelope survived the R4 hardening epic: nobody greps for the second caller,
+because it is thought of as "the tools API" rather than as a caller.
+
+Story 4.5 walked it back partway — both doors now import the same gate function
+(`ai/tool_access.py`) instead of keeping two copies in sync by discipline.
+
+**The end state** is a single `invoke_tool(name, params, user, scope) -> envelope` that
+both paths call, so the gate, the scope resolution and the envelope shape are one code
+path rather than two that agree today.
+
+**Reason deferred:** it is an AI-layer refactor, not a UI defect. Doing it inside a run
+about screens would put the assistant at risk for no owner-visible gain. Needs its own
+run with the AI-reliability eval gate green.
 
 ---
 

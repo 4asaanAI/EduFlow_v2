@@ -69,10 +69,19 @@ function HealthScoreWidget({ user }) {
     executeTool('get_school_pulse', {}, user).then(r => {
       if (!r.success) return;
       const d = r.data?.summary || {};
-      const att = parseFloat(d.attendance_rate) || 0;
+      // Epic 4 / Story 4.2: attendance_rate reads "not marked yet" before anyone has
+      // taken the register. `parseFloat(...) || 0` would score that as 0% attendance
+      // — a school-is-empty verdict drawn from the absence of data, which is the
+      // exact defect this epic removes. Unmarked attendance is excluded from the
+      // score and its weight redistributed, rather than counted as a failure.
+      const attMarked = d.attendance_marked_today !== false && !Number.isNaN(parseFloat(d.attendance_rate));
+      const att = attMarked ? parseFloat(d.attendance_rate) : null;
       const fees = r.data?.fee_stats?.paid ? 75 : 50;
       const alerts = r.data?.active_alerts || 0;
-      const s = Math.max(0, Math.min(100, Math.round((att * 0.4) + (fees * 0.4) - (alerts * 5) + 20)));
+      const base = att === null
+        ? (fees * 0.8) + 20
+        : (att * 0.4) + (fees * 0.4) + 20;
+      const s = Math.max(0, Math.min(100, Math.round(base - (alerts * 5))));
       setScore(s);
     }).catch(() => {});
   }, [user.id]);
