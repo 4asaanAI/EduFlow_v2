@@ -384,6 +384,26 @@ A behavioural instruction is not a tool; it belongs in the prompt, which is wher
 stop-slop now lives. Building a genuine skill/mode system for Flo (as CockRoach has, in
 `kb/modes/*.md`) would be a real piece of architecture and is **not** proposed here.
 
+**Where the packs now live.** All three are installed in the *developer's* Claude Code
+library at `C:\Users\Desktop\.claude\skills\` (`stop-slop`, `task-observer`,
+`find-skills`), verbatim from upstream with their licences, so they are available in
+every repository rather than just this one. `vercel-labs/skills` contains exactly one
+skill — `find-skills` — so that pack is fully covered. Note the rebelytics repo's skill
+is actually named **`task-observer`**; "one-skill-to-rule-them-all" is the repository,
+not the skill.
+
+**These are agent tooling, not part of the EduFlow product.** Nothing in
+`C:\Users\Desktop\.claude\skills\` ships to the school, runs on the server, or is
+reachable by Flo. The only thing this initiative put *into the product* is the adapted
+`WRITING_STYLE_RULES` block in `ai/prompts.py`. A project-level copy of `find-skills`
+was briefly added under `.claude/skills/` and then removed — it registered the same
+skill twice, and the decision it documented is recorded here instead.
+
+**Standing caution for whoever installs the next one.** `npx skills add` pulls
+third-party instructions into a repository handling the records of 1,802 children. Read
+the `SKILL.md` before adopting it, as was done for all three here — that review is what
+established that two of them do not belong anywhere near Flo.
+
 ---
 
 ## Track 2 (data load) — explicitly OUT OF SCOPE for these epics
