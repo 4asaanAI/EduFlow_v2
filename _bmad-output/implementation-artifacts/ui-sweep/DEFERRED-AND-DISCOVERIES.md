@@ -24,6 +24,32 @@ Branch: `ui-sweep-2026-07-22`
 
 | 2026-07-22 | **Epic 4** | **Numbers And Details That Are Actually True — DONE.** The reported defect ("the Board Report shows zeros") was not a Board Report defect: a second result envelope meant **eleven** screens read one level too shallow and printed 0 or N/A. Fixed at the source. A failed section can no longer render as a figure — on screen or in the exported board PDF. Attendance nobody has marked says "not marked yet", never "0%". The school's identity now has one verified source, plus its CBSE affiliation number, and the assistant is briefed from the record rather than a constant — it had **never** known the principal's name. Story 4.5 (owner-approved before build) closed three unguarded behaviours on the tool endpoint. Mid-run the owner reported two more: **34 tables gained column sorting** via the shared component, and Class Strength stopped showing "Other" and "Total" as the same number. 66 new tests. Suite 1784 passed / 2 failed (pinned) / 14 deselected; frontend 184 passed / 2 pre-existing. **Closes D-21 in code.** Adds D-24, D-25. **No production writes.** |
 
+| 2026-07-22 | **Epic 10 (PART 1 of 2)** | **Something You Can Actually Hand Someone — 2 of 6 stories done. THE EPIC IS NOT CLOSED.** Pulled ahead of Epic 5 by the owner after Flo told him it could write a Word file's *content* but not the file. Investigation found Flo was underselling the platform: every library was already installed, three used only for reading, and the store-and-deliver path already proven by certificates. **Shipped:** the shared document builder (docx/xlsx/pptx/pdf/csv/md/txt), and `format=xlsx` on all seven existing exports with csv still the default and every role gate untouched. 58 new tests; suite 1851 passed / 2 pinned / 14 deselected. **NOT done:** stories 10.2, 10.3, 10.5, 10.6, and the epic-close quality gate and retrospective. See the handoff below. |
+
+---
+
+## Epic 10 — where it actually stands (written 2026-07-22, mid-epic)
+
+**Two of six stories are implemented. The epic-close gate has NOT been run, no review
+lenses have been applied, and no retrospective exists.** Recorded plainly rather than
+allowing a partial epic to read as a finished one.
+
+| Story | State |
+|---|---|
+| 10.1 One place that turns content into a real file | **Builder DONE** (`services/document_builder.py`, 25 tests). **Storage half NOT done** — nothing yet saves a generated file to S3 or hands back a presigned URL. That half is what 10.2 and 10.3 need. |
+| 10.2 Flo hands you the file | **Not started.** Needs the storage half of 10.1, a registry entry gated to mirror `exports.py`, an audit row, and the daily cap. |
+| 10.3 The file arrives where you can reach it | **Not started.** Frontend. |
+| 10.4 Exports in the format people asked for | **DONE** (33 tests, including 14 asserting no permission moved). |
+| 10.5 Flo reads a printed page (OCR) | **Not started.** Note it will ship **dark** until `tesseract` and the Hindi language data are installed on the server, which is a **deploy needing the owner's approval**. |
+| 10.6 When reading the words is not enough | **Not started.** Fallback only; must not run when OCR succeeded. |
+
+**Known limit already in the shipped code, not a defect to re-discover:** the PDF
+builder uses fpdf2's core fonts, which are Latin-1 only, so **Devanagari is replaced
+rather than rendered in PDFs**. A test pins this so it fails loudly if someone assumes
+otherwise. Word, Excel and PowerPoint keep Hindi intact. Fixing PDF properly means
+embedding a Unicode font (e.g. Noto Sans Devanagari) and is worth doing when a Hindi
+circular is genuinely needed as a PDF.
+
 ---
 
 ## Open items
