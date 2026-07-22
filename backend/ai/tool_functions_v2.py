@@ -3292,12 +3292,106 @@ async def tool_delete_announcement(params: dict, user: dict, scope: dict = None)
             "message": f"Announcement '{result['announcement'].get('title', '')}' deleted."}
 
 
+# =========================================================================
+#  Document generation (UI Sweep Epic 10, Story 10.2)
+# =========================================================================
+
+async def tool_draft_document(params: dict, user: dict, scope: dict = None) -> dict:
+    """Turn content Flo has already written into a real file the school can use.
+
+    WHY THIS IS A READ-CLASS TOOL, deliberately, and must not be "fixed" into a
+    confirm flow: it changes no school record. It formats content that is already in
+    the conversation and stores the result as a file. There is nothing to undo, so a
+    two-step confirmation would only add friction to "make me a circular".
+
+    WHY THE GATE LOOKS LIKE THIS. Generating a document is a data export, so the
+    honest question is "could this person have exported this data anyway?". The
+    answer is yes by construction: this tool does NOT query the database. It formats
+    what the caller already has, and everything Flo knows it obtained through other
+    tools that applied their own role gates. So the gate here is the union of roles
+    that can export anything at all (owner, admin, teacher) and students are excluded
+    — matching `routes/exports.py`, where no export is open to a student.
+
+    If this tool is ever changed to fetch data itself, that reasoning collapses and
+    the gate must become the specific one for the data it reads.
+    """
+    from services.document_builder import DocumentBuildError
+    from services.document_export import DocumentQuotaExceeded, create_document
+
+    doc_type = (params.get("doc_type") or params.get("format") or "").strip().lower()
+    if not doc_type:
+        return {"success": False, "denied": False, "data": {}, "meta": {"count": 0},
+                "message": "Which format? Choose docx, xlsx, pptx, pdf, csv, md or txt."}
+
+    rows = params.get("rows") or []
+    headers = params.get("headers") or []
+    paragraphs = params.get("paragraphs") or []
+    if isinstance(paragraphs, str):
+        paragraphs = [paragraphs]
+
+    try:
+        result = await create_document(
+            user=user,
+            doc_type=doc_type,
+            filename=params.get("filename", ""),
+            title=params.get("title", ""),
+            paragraphs=paragraphs,
+            headers=headers,
+            rows=rows,
+            slides=params.get("slides"),
+            source="assistant",
+        )
+    except DocumentQuotaExceeded as exc:
+        return {"success": False, "denied": False, "data": {}, "meta": {"count": 0},
+                "message": str(exc)}
+    except DocumentBuildError as exc:
+        return {"success": False, "denied": False, "data": {}, "meta": {"count": 0},
+                "message": str(exc)}
+
+    message = f"Created {result['file_name']}."
+    if result["truncated"]:
+        message += " " + " ".join(result["notes"])
+
+    return {
+        "success": True,
+        "denied": False,
+        "data": result,
+        "meta": {"count": 1},
+        "message": message,
+    }
+
 
 # =========================================================================
 #  COMBINED TOOL_REGISTRY
 # =========================================================================
 
 TOOL_REGISTRY = {
+    # ---- Document generation (UI Sweep Epic 10) ----
+    # Read-class ON PURPOSE: it changes no school record, so it carries no
+    # `dispatch_type: "write"` and needs no confirm token. Students are excluded
+    # because no export in routes/exports.py is open to them.
+    "draft_document": {
+        "fn": tool_draft_document,
+        "roles": ["owner", "admin", "teacher"],
+        "dispatch_type": "read",
+        "description": (
+            "Create a real downloadable file from content you have written — a Word "
+            "document, Excel workbook, PowerPoint deck, PDF, CSV, Markdown or plain "
+            "text. Use this whenever someone asks for a circular, notice, letter, fee "
+            "sheet, report, template or presentation as a FILE they can print, sign, "
+            "email or share. Put prose in `paragraphs` and tabular data in "
+            "`headers` + `rows`. Returns a download link."
+        ),
+        "params_schema": {
+            "doc_type": {"type": "string", "description": "docx, xlsx, pptx, pdf, csv, md or txt"},
+            "title": {"type": "string", "description": "Document title / heading"},
+            "filename": {"type": "string", "description": "Optional file name, without extension"},
+            "paragraphs": {"type": "array", "description": "Lines of prose, in order"},
+            "headers": {"type": "array", "description": "Column headings for tabular data"},
+            "rows": {"type": "array", "description": "Rows of tabular data; each row is an array of cells"},
+            "slides": {"type": "array", "description": "For pptx: [{title, bullets:[...]}]"},
+        },
+    },
     # ---- 14 original tools (from tool_functions.py) ----
     "get_school_pulse": {
         "fn": tool_get_school_pulse,

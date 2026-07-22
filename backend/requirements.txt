@@ -41,5 +41,10 @@ pypdf>=4.0.0
 python-docx>=1.1.0
 python-pptx>=0.6.23
 Pillow>=10.0.0
+# OCR wrapper (Epic 10 / Story 10.5). This package only shells out to the `tesseract`
+# BINARY, which pip cannot install — see .ebextensions/04_tesseract_ocr.config. Flo
+# reports OCR as unavailable in plain words when the binary is missing, so having
+# this installed without it is harmless.
+pytesseract>=0.3.10
 
 razorpay>=1.4.0

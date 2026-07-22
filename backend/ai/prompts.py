@@ -299,6 +299,27 @@ TOOL_DRAFT_PARENT_MESSAGE = {
     "description": "Draft a WhatsApp/SMS message to a student's parent. Types: fee_reminder, absence_notification, exam_reminder, general.",
     "params_schema": {"student_id": "required — student name or ID", "message_type": "optional: fee_reminder|absence_notification|exam_reminder|general", "note": "optional additional note"},
 }
+# UI Sweep Epic 10: a real file, not text to copy out of the chat window.
+TOOL_DRAFT_DOCUMENT = {
+    "name": "draft_document",
+    "description": (
+        "Produce a REAL downloadable file and return a link to it: Word (docx), Excel "
+        "(xlsx), PowerPoint (pptx), PDF, CSV, Markdown or plain text. Use this whenever "
+        "someone wants a circular, notice, letter, fee sheet, report, template or "
+        "presentation as a FILE they can print, sign, email or share — not as chat text. "
+        "Put prose in `paragraphs` and any table in `headers` + `rows`. You already have "
+        "the content; this only formats and stores it."
+    ),
+    "params_schema": {
+        "doc_type": "required — docx|xlsx|pptx|pdf|csv|md|txt",
+        "title": "optional heading",
+        "filename": "optional name, no extension",
+        "paragraphs": "optional list of text lines",
+        "headers": "optional list of column headings",
+        "rows": "optional list of rows, each a list of cells",
+        "slides": "pptx only — [{title, bullets:[...]}]",
+    },
+}
 
 # ---- Epic J: Student CRUD (Owner + Principal; Phase-1 lockdown applies) ----
 TOOL_CREATE_STUDENT = {
@@ -763,6 +784,7 @@ _OWNER_TOOLS = [
     TOOL_GET_EXAM_RESULTS_SUMMARY,
     TOOL_GET_UPCOMING_EVENTS,
     TOOL_DRAFT_PARENT_MESSAGE,
+    TOOL_DRAFT_DOCUMENT,
     TOOL_RECALL_HISTORY,
     TOOL_QUERY_INCIDENTS,
     TOOL_QUERY_AUDIT_LOG,
@@ -858,6 +880,7 @@ _PRINCIPAL_TOOLS = [
     TOOL_GET_EXAM_RESULTS_SUMMARY,
     TOOL_GET_UPCOMING_EVENTS,
     TOOL_DRAFT_PARENT_MESSAGE,
+    TOOL_DRAFT_DOCUMENT,
     # L5: the registry authorizes recall_history for principals — advertise it so the
     # capability the principal is allowed to use is actually offered.
     TOOL_RECALL_HISTORY,
@@ -896,6 +919,7 @@ _CLASS_TEACHER_TOOLS = [
     TOOL_GET_EXAM_RESULTS_SUMMARY,
     TOOL_GET_UPCOMING_EVENTS,
     TOOL_DRAFT_PARENT_MESSAGE,
+    TOOL_DRAFT_DOCUMENT,
 ]
 
 _HOD_TOOLS = list(_CLASS_TEACHER_TOOLS)  # same base + subject-wide note in role rules
@@ -916,6 +940,7 @@ _SUBJECT_TEACHER_TOOLS = [
     TOOL_GET_EXAM_RESULTS_SUMMARY,
     TOOL_GET_UPCOMING_EVENTS,
     TOOL_DRAFT_PARENT_MESSAGE,
+    TOOL_DRAFT_DOCUMENT,
 ]
 
 _KG_INCHARGE_TOOLS = list(_CLASS_TEACHER_TOOLS)  # own KG class all sections — enforced in role rules

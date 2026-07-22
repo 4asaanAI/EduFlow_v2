@@ -1509,12 +1509,17 @@ detected
 than inventing content. OCR does not "see" â€” it only reads letters, and Flo must not
 imply otherwise
 
-**Given** the access rule settled on 2026-07-22
+**Given** the access rule settled on 2026-07-22 and **revised the same day**
 **When** an image is submitted
-**Then** **Owner, Principal and teachers** may use it and **students may not** â€” a
-tighter rule than the platform's general read gates, because the children are the people
-this protects. Note this does **not** match `is_owner_or_principal`, so it needs its own
-predicate; reusing that one would wrongly lock teachers out
+**Then** **Owner, Principal and the other office staff** (accountant, receptionist and
+the rest of the admin roles) may use it, and **teachers and students may not**.
+An earlier draft included teachers on the reasoning that they photograph forms; the
+owner narrowed it to the office, because this is paperwork handling and it belongs with
+the people who do the paperwork. Teachers were removed DELIBERATELY - do not restore
+them assuming it was an oversight. Note this matches neither `is_owner_or_principal`
+(which would exclude the accountant and receptionist who handle most of the paper) nor
+the general read gate (which would include students, the children a photograph is most
+likely to contain), so it needs its own predicate
 
 **Given** every image read is a read of school records
 **When** OCR runs

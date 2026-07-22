@@ -121,6 +121,9 @@ try:
     import ai.tool_functions as tool_functions_v1
     import ai.tool_functions_v2 as tool_functions_v2_mod
     import ai.scope_resolver as scope_resolver_mod
+    # Epic 10: the document service resolves its own db handle, so it needs the same
+    # patching every route module gets, or generation 500s inside the tool.
+    import services.document_export as document_export_mod
     from middleware.auth import hash_password
     APP_AVAILABLE = True
 except (ImportError, TypeError) as e:
@@ -684,6 +687,10 @@ if APP_AVAILABLE:
     tool_functions_v1.get_db = lambda: _fake_db
     tool_functions_v2_mod.get_db = lambda: _fake_db
     scope_resolver_mod.get_db = lambda: _fake_db
+    document_export_mod.get_db = lambda: _fake_db
+    # Epic 10 / Story 10.5: chat_upload audits image reads, so it resolves a db
+    # handle of its own now.
+    chat_upload_routes.get_db = lambda: _fake_db
     server.get_raw_db = lambda: _fake_db
     import middleware.school_context as school_context_module
     school_context_module.get_raw_db = lambda: _fake_db
