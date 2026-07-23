@@ -564,7 +564,7 @@ while checking whether Epic 6 needed a new index (it did, for `conversations`, n
 `notifications`). **Reason deferred:** pre-existing and unrelated; removing it would put
 an unrelated change inside an index diff.
 
-### D-37 — Flo's generated documents fail to download in production — **CLOSED 2026-07-23 (not yet deployed)**
+### D-37 — Flo's generated documents fail to download in production — **CLOSED & DEPLOYED 2026-07-23**
 
 **FIXED on branch `ui-sweep-2026-07-22`, in its own run per the one-epic/one-job rule.**
 The signed URL no longer travels through the language model:
@@ -604,8 +604,11 @@ regenerate against the production deployment.
 **Follow-up worth doing:** add a `draft_document` + download-link conversation to the eval
 corpus so this flow is graded directly next time.
 
-**Still needs: deploy approval from Abhimanyu.** Nothing above reaches the school until
-the branch is deployed.
+**DEPLOYED 2026-07-23** (owner-approved). Backend zip deployed to EB `Eduflow-env-1`
+(health/ready 200, `/api/uploads/link/probe` → 401 confirming the new route is live);
+`ui-sweep-2026-07-22` fast-forwarded into `main` (0ba8ac8), Amplify build job 105 on that
+commit SUCCEEDED, so the frontend download card is live too. Backend went before frontend,
+so the card never called a missing endpoint. Owner in-app verification is the last step.
 
 <details><summary>Original diagnosis (2026-07-23) — kept for the record</summary>
 

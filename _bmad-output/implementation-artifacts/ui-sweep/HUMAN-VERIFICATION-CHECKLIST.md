@@ -456,24 +456,22 @@ find" — it was **unreachable by any route in the product**. Both now have a pa
       you tap it. That also solves a second problem — links currently expire after an
       hour, so an older one would fail anyway.
 
-      **DONE 2026-07-23, on the `ui-sweep-2026-07-22` branch — NOT yet deployed, so you
-      will not see the difference until the next update goes out.** Flo now hands over a
-      short reference instead of the long link, and the Download button fetches a fresh,
-      secure link the instant you tap it. Because the link is made at tap time, it can
-      never be stale.
+      **DONE and LIVE 2026-07-23.** Flo now hands over a short reference instead of the
+      long link, and the Download button fetches a fresh, secure link the instant you tap
+      it. Because the link is made at tap time, it can never be stale. The backend and the
+      new download button are both deployed.
 
-      **After the next deploy, please check:** ask Flo to make you a Word document (or a
-      fee sheet, or a notice), then tap Download. It should open the file. Try it again a
+      **Please check now (it's live):** ask Flo to make you a Word document (or a fee
+      sheet, or a notice), then tap Download. It should open the file. Try it again a
       couple of hours later on the same message — it should still work, where before an
       hour-old link would have failed.
 
-- [x] **You should never have seen an Amazon error page at all — fixed by the same job
-      (not yet deployed).** The download no longer takes you straight to Amazon; it goes
-      through the platform, so if a file is genuinely gone you now get a plain "this link
-      has expired, ask for the file again" instead of Amazon's raw error page with your
-      account number on it. **After the deploy:** open an OLD chat from before the update
-      that had a Flo document in it and tap its Download — you should see that plain
-      message, never an Amazon page.
+- [x] **You should never have seen an Amazon error page at all — fixed and LIVE.** The
+      download no longer takes you straight to Amazon; it goes through the platform, so if
+      a file is genuinely gone you now get a plain "this link has expired, ask for the file
+      again" instead of Amazon's raw error page with your account number on it. **Please
+      check now:** open an OLD chat from before today's update that had a Flo document in
+      it and tap its Download — you should see that plain message, never an Amazon page.
 
 - [ ] **Separately: your server has not been sending us its logs since 22 July, 5pm.**
       That is before the last update went out. It does not affect anything you can see,
