@@ -585,9 +585,24 @@ The signed URL no longer travels through the language model:
   expired link with "ask for the file again" — so old conversations never render S3 XML.
 
 Gates: backend suite at pinned baseline (3 pre-existing failures only — D-03 ×2, D-35),
-golden-eval structural + judge-logic tiers green. The credentialed `-m llm_eval` tier was
-**NOT run here** — this machine has no Azure OpenAI credentials; it must be run before
-merge (see README). Frontend `GeneratedFile` tests 11/11, production build clean.
+golden-eval structural + judge-logic tiers green. Frontend `GeneratedFile` tests 11/11,
+full frontend suite 246 passed / 2 pre-existing (LayoutRouting), production build clean.
+
+Credentialed `-m llm_eval` tier: **RUN 2026-07-23** on the owner's Azure login. All 52
+corpus conversations completed with **zero errors** — the prompt + tool-contract change
+causes no crashes or empty turns. Passed (first run establishes the baseline). Three
+honest caveats: (1) it ran against `gpt-5.6-terra`, NOT production `gpt-5.3-chat` (that
+deployment is not provisioned on the `os-layaa-ai-resource` endpoint), so absolute scores
+are not production-representative; (2) the eval calls the model with no live tool/DB
+execution, so 8 data-heavy convos score ~0 on correctness — a harness limitation, not a
+regression; (3) the corpus contains NO `draft_document`/download conversation, so this
+specific change is not directly graded — a coverage gap worth closing (see below). The
+resulting `scores-baseline.json` was **left uncommitted** because a substitute-model
+baseline would misrepresent the production gate — the owner decides whether to keep it or
+regenerate against the production deployment.
+
+**Follow-up worth doing:** add a `draft_document` + download-link conversation to the eval
+corpus so this flow is graded directly next time.
 
 **Still needs: deploy approval from Abhimanyu.** Nothing above reaches the school until
 the branch is deployed.
