@@ -894,28 +894,18 @@ export async function uploadChatFile(file) {
   form.append('file', file);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30000);
-  const post = () => {
+  try {
+    // D-43: go through apiFetch — the SAME wrapper every other call uses — so the
+    // upload refreshes-and-retries on a 401 exactly like the rest of the app instead
+    // of failing on a stale in-memory access token. Only the Authorization header is
+    // passed; Content-Type is left unset so the browser writes the multipart boundary.
     const token = getAccessToken();
-    return fetch(`${UPLOAD_API}/chat/upload`, {
+    const res = await apiFetch(`${UPLOAD_API}/chat/upload`, {
       method: 'POST',
-      credentials: 'include',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: form,
       signal: controller.signal,
     });
-  };
-  try {
-    let res = await post();
-    // D-43: the in-memory access token may have expired. Every other call refreshes
-    // once on 401 via apiFetch and self-heals; this raw upload did not, so an expired
-    // token surfaced as "Upload failed" while the rest of the app kept working. Mirror
-    // apiFetch: refresh once and retry before giving up.
-    if (res.status === 401) {
-      try {
-        await refreshAccessToken(API);
-      } catch {}
-      res = await post();
-    }
     if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
     return res.json();
   } finally {

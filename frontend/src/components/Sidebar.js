@@ -632,12 +632,12 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
           <div style={{
             borderRadius: 12, background: toolsZoneBg, border: `1px solid ${toolsZoneBorder}`,
             overflow: 'hidden', display: 'flex', flexDirection: 'column',
-            // `0 1 auto` — size to the CONTENT, never grow into spare space.
-            // With `1 1 auto` the zone stretched to fill the sidebar even when
-            // the tool list was short, leaving an empty gap between the last
-            // tool and Recent Chats. It may still SHRINK (and then scroll)
-            // when the list is long, which is what the 1 in the middle allows.
-            flex: '0 1 auto', minHeight: 0,
+            // `1 1 0` — Tools and Recent Chats SHARE the body evenly, each scrolling
+            // within its own half. The previous `0 1 auto` sized Tools to its content
+            // and let only Chats grow, so a tool-heavy role (principal/owner) saw the
+            // tool list crushed to ~1.5 rows while Chats took the rest. Collapsed, the
+            // zone shrinks to just its header (matching Recent Chats).
+            flex: toolsSectionOpen ? '1 1 0' : '0 0 auto', minHeight: 0,
           }}>
             {/* Collapsible, matching Recent Chats — same control, same place,
                 same chevron, so the two sections behave identically. */}
@@ -678,10 +678,10 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
             <div style={{
               borderRadius: 12, background: chatsZoneBg, border: `1px solid ${chatsZoneBorder}`,
               overflow: 'hidden', display: 'flex', flexDirection: 'column',
-              // Chats takes whatever height is left once Tools has taken what
-              // it needs, so it begins immediately below the last tool and
-              // then scrolls. Collapsed, it shrinks to just its header.
-              flex: chatsSectionOpen ? '1 1 auto' : '0 0 auto', minHeight: 0,
+              // Shares the body evenly with Tools (`1 1 0` each) so neither
+              // section is starved; scrolls within its own half. Collapsed, it
+              // shrinks to just its header, handing its half to Tools.
+              flex: chatsSectionOpen ? '1 1 0' : '0 0 auto', minHeight: 0,
             }}>
               <button
                 type="button"

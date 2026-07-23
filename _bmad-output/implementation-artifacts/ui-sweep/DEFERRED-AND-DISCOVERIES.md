@@ -757,10 +757,13 @@ through the CloudFront upload URL returned `{"detail":"Invalid token"}` (forward
 `{"detail":"Not authenticated"}` with none. Root cause: `api.js:uploadChatFile` was a raw
 `fetch` that read `getAccessToken()` once and, unlike every other call (which goes through
 `apiFetch`), **never refreshed on 401** — so an expired in-memory access token made the
-upload 401 while the rest of the UI self-healed. **Fix:** `uploadChatFile` now mirrors
-`apiFetch` — on 401 it calls `refreshAccessToken()` once and retries. Frontend-only; ships
-via Amplify (main). `get_current_user` is bearer-only, confirming a valid bearer is what
-the endpoint needs.
+upload 401 while the rest of the UI self-healed. **Fix:** `uploadChatFile` is now **routed
+through `apiFetch`** — the exact wrapper every working call uses — so it refreshes-and-
+retries on 401 identically, instead of a bespoke copy. `get_current_user` is bearer-only,
+confirming a valid bearer is what the endpoint needs. Frontend-only; ships via Amplify
+(main). **Requires a hard refresh** to load the new bundle — prod logs confirmed uploads
+were still 401ing (one `JWT decode error: Not enough segments`), consistent with an old
+bundle still running the pre-fix upload code.
 
 ### D-39 — An attached file dumps its whole text into the user's message bubble — **FIXED 2026-07-23**
 Found by the owner while verifying D-37: attaching a `.txt` in chat rendered the entire
