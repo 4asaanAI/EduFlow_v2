@@ -84,3 +84,8 @@ chainlit.md
 # Uploads directory (user data)
 backend/uploads/
 
+# Real school data — NEVER commit. Local exports of student/staff records,
+# detainee lists, photos etc. contain live PII (The Aaryans). Track 2 material.
+aaryans_database/
+**/*.xlsx
+
