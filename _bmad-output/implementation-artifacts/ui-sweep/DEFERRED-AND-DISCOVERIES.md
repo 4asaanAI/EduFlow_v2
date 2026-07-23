@@ -695,7 +695,7 @@ So "file storage is on" is true of `PutObject` and not yet true of the download 
 
 </details>
 
-### D-38 — The backend's logs stopped reaching CloudWatch before the last deploy — **OPEN**
+### D-38 — The backend's logs stopped reaching CloudWatch before the last deploy — **RESOLVED (verified) 2026-07-23**
 Found while investigating D-37. The newest event in
 `/aws/elasticbeanstalk/Eduflow-env-1/var/log/web.stdout.log` is **2026-07-22 17:16 UTC**,
 on stream `i-0c942a6f7b03b01c3`. The UI-sweep deploy went out at **21:30 UTC the same
@@ -712,6 +712,27 @@ inference rather than evidence.
 **Not investigated further** — establishing whether this is the CloudWatch agent, the
 log-streaming option on the environment, or an instance that never came up as expected
 means looking at the running instance. Read-only so far; anything more needs approval.
+
+**RESOLUTION 2026-07-23 (read-only AWS investigation, `Claude` IAM user).** Checked three
+things: (1) the env option `aws:elasticbeanstalk:cloudwatch:logs → StreamLogs` is **true**,
+so streaming was never disabled — no repo/config fix was ever the answer; (2) the log
+group's streams and, decisively, **`get-log-events` on the live instance stream shows
+events at 2026-07-23 05:06 UTC — essentially real time.** Logs ARE reaching CloudWatch
+again. The 2026-07-22 17:16 UTC gap was real but has cleared, almost certainly because
+today's backend redeploy restarted the app / CloudWatch agent on the instance. No code
+change; verified by observation. If a similar gap recurs after an instance replacement,
+the next step is instance-level (`amazon-cloudwatch-agent` status over SSH) — but it is
+not open now. `logs:DescribeLogGroups` is denied to this IAM user; `GetLogEvents` is not.
+
+### D-41 — Backend telemetry ingest (otel / layaastat) is failing in production — **OPEN, out of scope**
+Surfaced while reading logs for D-38. The running backend repeatedly logs, at real time:
+`POST https://main.ddsqdblq9ge74.amplifyapp.com/api/otel → 500` and
+`POST .../api/ingest → 400` with `layaastat ingest rejected (permanent) status=400`
+(`services.layaastat.client`). So the observability/telemetry pipe to that Amplify app
+(a *different* app from the frontend `ddxpej151tf13`) is broken — the endpoint answers
+400/500 for every batch. It does not affect the school-facing app, but it means product
+telemetry is being dropped and is adding error noise to the very logs D-38 is about.
+**Not investigated** — separate subsystem, unrelated to the UI sweep; recorded per rule 6.
 
 ### D-39 — An attached file dumps its whole text into the user's message bubble — **FIXED 2026-07-23**
 Found by the owner while verifying D-37: attaching a `.txt` in chat rendered the entire
