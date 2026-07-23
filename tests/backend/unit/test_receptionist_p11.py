@@ -18,8 +18,12 @@ def _owner_h():
 
 def test_visitor_duplicate_returns_409_with_duplicate_field(client, fake_db):
     """Duplicate visitor same day returns 409 with duplicate:true."""
-    from datetime import datetime
-    today = datetime.now().strftime("%Y-%m-%d")
+    # Seed "today" with the SAME clock the service uses. The service computes the
+    # duplicate window from actor_ctx.now(), which is UTC (services/actor_context.py,
+    # R15.4). Seeding with local time (datetime.now()) made this test fail between
+    # 00:00 and 05:30 IST, when IST and UTC fall on different calendar dates (D-35).
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     fake_db.visitor_log.docs = [
         {
             "id": "v1",

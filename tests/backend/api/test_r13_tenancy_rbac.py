@@ -45,42 +45,50 @@ def _plain_admin():
 # R13.1 — ScopedCollection method gap
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_scoped_collection_find_one_and_update_injects_school_id(fake_db):
+def test_scoped_collection_find_one_and_update_injects_school_id():
     """find_one_and_update on ScopedCollection must scope to schoolId."""
-    from database import ScopedCollection
-    col = ScopedCollection(fake_db.students, "school-A")
-    # Pre-populate two docs from different schools
     import asyncio
+    from database import ScopedCollection
+    from tests.backend.conftest import FakeCollection
+    # Own private collection, NOT the shared fake_db, and asyncio.run (a fresh
+    # loop) instead of get_event_loop(). This test passed alone but failed in a
+    # full suite (D-03): leftover docs from an earlier test could shadow "Target",
+    # and get_event_loop() returned a loop an earlier async test had closed. Both
+    # are order-dependence, removed here — the test now owns everything it touches.
     other_doc = {"id": "s-other", "schoolId": "school-B", "name": "Other"}
     own_doc = {"id": "s-own", "schoolId": "school-A", "name": "Target"}
-    fake_db.students.docs.extend([other_doc, own_doc])
+    col = ScopedCollection(FakeCollection([other_doc, own_doc]), "school-A")
 
     async def _run():
-        result = await col.find_one_and_update(
+        return await col.find_one_and_update(
             {"name": "Target"},
             {"$set": {"updated": True}},
         )
-        return result
 
-    result = asyncio.get_event_loop().run_until_complete(_run())
+    asyncio.run(_run())
     # Should update the school-A doc
     assert own_doc.get("updated") is True
     # school-B doc must NOT be modified
     assert "updated" not in other_doc
 
 
-def test_scoped_collection_distinct_scopes_to_school(fake_db):
+def test_scoped_collection_distinct_scopes_to_school():
     """distinct on ScopedCollection must not return values from other schools."""
-    from database import ScopedCollection
-    col = ScopedCollection(fake_db.students, "school-A")
     import asyncio
-    fake_db.students.docs.append({"id": "s1", "schoolId": "school-A", "status": "active"})
-    fake_db.students.docs.append({"id": "s2", "schoolId": "school-B", "status": "inactive"})
+    from database import ScopedCollection
+    from tests.backend.conftest import FakeCollection
+    # Private collection + asyncio.run for order-independence (D-03) — a leftover
+    # school-A doc with status "inactive" from an earlier test used to break the
+    # final assertion in a full run.
+    col = ScopedCollection(FakeCollection([
+        {"id": "s1", "schoolId": "school-A", "status": "active"},
+        {"id": "s2", "schoolId": "school-B", "status": "inactive"},
+    ]), "school-A")
 
     async def _run():
         return await col.distinct("status")
 
-    values = asyncio.get_event_loop().run_until_complete(_run())
+    values = asyncio.run(_run())
     assert "active" in values
     # school-B doc's "inactive" should not appear
     assert "inactive" not in values

@@ -87,15 +87,22 @@ API, deliberately bypassing the UI. The dropdown change remains as a second laye
 **Owner assignment is now out-of-band only** — see the human-verification checklist for
 what that means in practice.
 
-### D-03 (was RISK-2) — Two order-dependent backend test failures — **DEFERRED**
+### D-03 (was RISK-2) — Two order-dependent backend test failures — **FIXED 2026-07-23**
 `tests/backend/api/test_r13_tenancy_rbac.py::test_scoped_collection_find_one_and_update_injects_school_id`
-and `::test_scoped_collection_distinct_scopes_to_school` fail in a full-suite run but
-pass in isolation (38 passed alone). Verified pre-existing by running the full suite
-against a clean `main` worktree — identical two failures.
-**Baseline for this initiative: 1636 passed, 2 failed, 14 deselected.**
-**Reason deferred:** pre-existing, unrelated to this initiative, caused by shared state
-left behind by an earlier test. Do not attribute to your own changes; do confirm the
-count is still exactly 2 at each epic close.
+and `::test_scoped_collection_distinct_scopes_to_school` failed in a full-suite run but
+passed in isolation. The initiative deferred them (the "fix the pinned failures LAST"
+standing rule); with every epic that owed that deferral now shipped, they were fixed.
+
+**Two order-dependence sources, both removed (the fix is in the TESTS, not the code —
+`ScopedCollection` was always correct):**
+1. They used the SHARED `fake_db.students` and only appended rows, so a doc left by an
+   earlier test could shadow the lookup (a stray `"Target"` / a school-A `"inactive"`).
+   Each test now builds its own private `FakeCollection([...])` and asserts only over it.
+2. They were sync tests driving the loop with `asyncio.get_event_loop().run_until_complete`,
+   which reuses (and can inherit a closed) loop from an earlier async test. Both now use
+   `asyncio.run()` — a fresh loop each time.
+**Verified:** pass in isolation AND in the full suite; suite now **1968 passed / 0 failed /
+14 deselected** (the 14 are the credentialed mongo_real + llm_eval tiers, not failures).
 
 ### D-04 (was RISK-3) — Test runs could reach the production database — **CLOSED 2026-07-22**
 `backend/.env` holds the live `MONGO_URL`, pulled from Elastic Beanstalk. `conftest.py`
@@ -201,6 +208,14 @@ Roughly 30 pre-existing `react-hooks/exhaustive-deps` warnings across
 a warnings-as-errors build fails, both before and after Epic 1. So the build cannot
 currently be used as a gate on new warnings. **Reason deferred:** unrelated to this
 epic and touching a dozen files; it would bury a security diff. Worth a dedicated pass.
+
+**Partial close 2026-07-23 (owner asked to tie off the specific `ToolPage.js:398` line):**
+that one is the `useToolData(fetcher, deps)` hook — an intentional deps-passthrough (the
+caller owns invalidation; `fetcher` must NOT be a dependency or it refetches forever), so
+the correct resolution is a scoped `// eslint-disable-next-line react-hooks/exhaustive-deps`
+on that line with a comment explaining why. Done. Zero behaviour change. The remaining
+~29 warnings across the dozen files stay deferred as their own pass — this was one named
+line, not the sweep.
 
 ### D-17 — Pre-existing `scoped_filter(` hits carry no intent comment — **DEFERRED, hygiene**
 Seven hits in `backend/routes/staff.py` predate this initiative and lack the
@@ -532,7 +547,17 @@ granted again for the duration.
 principal should not be able to edit its own permissions. Console:
 IAM → Users → `claude-hosting` → Permissions → tick `s3-file-storage-policy` → Remove.
 
-### D-35 — The pinned test baseline drifts with the time of day — **EXPLAINED, not fixed**
+### D-35 — The pinned test baseline drifts with the time of day — **FIXED 2026-07-23**
+**Fixed:** the test now seeds "today" with `datetime.now(timezone.utc)` — the same clock
+the service uses (`actor_ctx.now()`, UTC) — so the duplicate window always lines up
+regardless of wall-clock hour. One line in the test, exactly as the diagnosis predicted;
+no product/code change. Verified in a full-suite run (1968 passed / 0 failed). The mild
+product oddity noted below (an IST visitor checked in 00:00–05:30 gets "today" as the
+previous UTC day) is left as-is — nobody checks visitors in at 00:30, and changing the
+service clock is an R15.4 decision, not a test fix. Original diagnosis kept below.
+
+---
+**Original entry (EXPLAINED, not-yet-fixed) —**
 The Epic 6 handoff pinned "1917 passed, 2 failed". A clean-tree run at ~02:00 local on
 2026-07-23 measured **1916 passed, 3 failed**. The third failure is real and has a
 cause:
@@ -789,6 +814,29 @@ Calibrated to NOT over-block real school questions (per the DPDP calibration rul
 Prompt change ⇒ eval gate: structural + judge-logic green, and the credentialed
 `-m llm_eval` tier (gpt-5.6-terra) re-run — **passed, no regression vs baseline**. Ships
 with the backend (EB).
+
+### D-41 — re-confirmed 2026-07-23 — **STILL OPEN, out of scope, no action taken**
+Reviewed while closing out the owner's open-items list. Nothing changed: the telemetry
+pipe to the Amplify observability app still 400/500s and is a separate subsystem from the
+school-facing product. Left open deliberately — fixing it is not part of the UI sweep and
+would need its own look at that other app. Recorded here so it is not re-raised as new.
+
+### D-46 — WAF `SizeRestrictions_BODY` is in Count mode ACL-wide — **OPEN, NEEDS OWNER DECISION (do not flip quietly)**
+Surfaced from the standing open-items list while tidying up. The AWS WAF web-ACL rule that
+limits request-body size is currently in **Count** mode (it logs oversize bodies but does
+not block them). A stricter posture would re-enable **Block** — but ONLY with a scope-down
+that excludes `/api/*`, or with a custom >60 MB rule — because the app legitimately accepts
+large uploads (chat attachments up to 20 MB; owner document/photo uploads up to 50 MB; the
+nginx cap is 55 MB per D-42). **Flipping to Block without that carve-out would re-break
+every large upload the D-42 fix just restored.**
+
+**Why this is not being done here, and must not be done quietly:** it is an AWS-console
+change to a production security control with a real blast radius (a wrong scope-down blocks
+real uploads school-wide), and the owner explicitly flagged it as low priority and a
+deliberate decision. **Left in Count mode.** When/if it is revisited: add the `/api/*`
+exclusion (or the >60 MB custom rule) FIRST, verify a ~50 MB owner upload still succeeds,
+THEN switch to Block — and keep it owner-approved, same as every other prod change.
+Belongs on the human-verification checklist, not in a code run.
 
 ### D-44 — Epic 7 deferred: deep-link-to-person and deeper tool consolidation — **OPEN**
 Raised during Epic 7 (School Directory). Two things were deliberately not built, each for
