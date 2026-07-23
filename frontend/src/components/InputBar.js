@@ -354,8 +354,10 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
       } else {
         setUploadError(res.detail || 'Upload failed');
       }
-    } catch {
-      setUploadError('Upload failed. Please try again.');
+    } catch (err) {
+      // uploadChatFile throws with a specific reason (too large / blocked at the
+      // edge / HTTP status); only a plain network drop falls back to the generic line.
+      setUploadError(err?.message && err.name !== 'AbortError' ? err.message : 'Upload failed. Please try again.');
     }
     setUploadingFile(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -596,10 +598,11 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
           })()}
         </div>
         <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8, color: footerColor, fontSize: 11, fontWeight: 400 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Paperclip size={10} /> attach</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: isListening ? '#4f8ff7' : footerColor }}>
-            <Mic size={10} /> {isListening ? 'listening' : 'voice'}
-          </span>
+          {isListening && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#4f8ff7' }}>
+              <Mic size={10} /> listening
+            </span>
+          )}
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Slash size={10} /> tools</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><AtSign size={10} /> mention</span>
           <span>Flo can make mistakes</span>
