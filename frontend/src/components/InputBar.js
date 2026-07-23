@@ -123,6 +123,7 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
   const [isListening, setIsListening] = useState(false);
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
+  const dropdownRef = useRef(null);
   const slashPosRef = useRef(-1);
   const atPosRef = useRef(-1);
   const recognitionRef = useRef(null);
@@ -400,6 +401,12 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
     }).catch(() => {});
   };
 
+  useEffect(() => {
+    if (!dropdownRef.current) return;
+    const item = dropdownRef.current.querySelector(`[data-idx="${selectedIdx}"]`);
+    if (item) item.scrollIntoView({ block: 'nearest' });
+  }, [selectedIdx]);
+
   useEffect(() => (
     () => {
       if (recognitionRef.current) {
@@ -437,35 +444,38 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
           <div className="fade-in-scale" style={{
             position: 'absolute', bottom: '100%', left: 0, right: 0,
             background: dropdownBg, border: `1px solid ${dropdownBorder}`,
-            borderRadius: 14, marginBottom: 8, maxHeight: 300, overflowY: 'auto',
+            borderRadius: 14, marginBottom: 8,
             boxShadow: 'var(--shadow-lg)',
+            overflow: 'hidden',
           }}>
             {showSlash && <div style={{ padding: '8px 16px 6px', fontSize: 11, color: muted, fontWeight: 600, borderBottom: `1px solid ${dropdownBorder}` }}>Tools</div>}
             {showAt && <div style={{ padding: '8px 16px 6px', fontSize: 11, color: muted, fontWeight: 600, borderBottom: `1px solid ${dropdownBorder}` }}>Mention a person</div>}
-            {showList.map((item, i) => (
-              <button key={item.id || item.name || i} data-testid={`suggestion-${item.id || i}`}
-                onMouseDown={e => { e.preventDefault(); if (showSlash) insertSlashTool(item); else insertAtMention(item); }}
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
-                  background: i === selectedIdx ? 'var(--bg-active)' : 'transparent',
-                  border: 'none', cursor: 'pointer', textAlign: 'left', transition: 'var(--transition-fast)',
-                }}
-                onMouseEnter={() => setSelectedIdx(i)}>
-                {showSlash ? (
-                  <>
-                    <code style={{ fontSize: 13, color: '#a78bfa', fontFamily: 'JetBrains Mono, monospace', minWidth: 130, fontWeight: 500 }}>/{item.label}</code>
-                    <span style={{ fontSize: 12, color: muted }}>{item.desc}</span>
-                  </>
-                ) : (
-                  <>
-                    <div style={{ width: 26, height: 26, borderRadius: 7, background: '#4f8ff715', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#4f8ff7' }}>{(item.name || '?')[0]}</div>
-                    <span style={{ fontSize: 13, color: inputColor, fontWeight: 500 }}>{item.name}</span>
-                    <span style={{ fontSize: 11, color: muted }}>{item.sub_role || item.role}</span>
-                    <span style={{ fontSize: 11, color: muted, marginLeft: 'auto' }}>{item.role}</span>
-                  </>
-                )}
-              </button>
-            ))}
+            <div ref={dropdownRef} style={{ maxHeight: 260, overflowY: 'auto' }}>
+              {showList.map((item, i) => (
+                <button key={item.id || item.name || i} data-testid={`suggestion-${item.id || i}`} data-idx={i}
+                  onMouseDown={e => { e.preventDefault(); if (showSlash) insertSlashTool(item); else insertAtMention(item); }}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
+                    background: i === selectedIdx ? 'var(--bg-active)' : 'transparent',
+                    border: 'none', cursor: 'pointer', textAlign: 'left', transition: 'var(--transition-fast)',
+                  }}
+                  onMouseEnter={() => setSelectedIdx(i)}>
+                  {showSlash ? (
+                    <>
+                      <code style={{ fontSize: 13, color: '#a78bfa', fontFamily: 'JetBrains Mono, monospace', minWidth: 130, fontWeight: 500 }}>/{item.label}</code>
+                      <span style={{ fontSize: 12, color: muted }}>{item.desc}</span>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ width: 26, height: 26, borderRadius: 7, background: '#4f8ff715', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#4f8ff7' }}>{(item.name || '?')[0]}</div>
+                      <span style={{ fontSize: 13, color: inputColor, fontWeight: 500 }}>{item.name}</span>
+                      <span style={{ fontSize: 11, color: muted }}>{item.sub_role || item.role}</span>
+                      <span style={{ fontSize: 11, color: muted, marginLeft: 'auto' }}>{item.role}</span>
+                    </>
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
