@@ -713,6 +713,30 @@ inference rather than evidence.
 log-streaming option on the environment, or an instance that never came up as expected
 means looking at the running instance. Read-only so far; anything more needs approval.
 
+### D-39 — An attached file dumps its whole text into the user's message bubble — **FIXED 2026-07-23**
+Found by the owner while verifying D-37: attaching a `.txt` in chat rendered the entire
+document inline as the user's own message, instead of a compact attachment chip the way
+every other AI chat tool does it. Root cause: `InputBar.handleSend` builds the outgoing
+message as `[File attached: NAME]\n\n<the whole file text>` so the model can read the
+file (`frontend/src/components/InputBar.js:375`), and `MessageRenderer` rendered that
+full string verbatim in the bubble. **Fix (frontend-only, owner chose the quick option):**
+`MessageRenderer.splitUserAttachment()` splits the marker off so the bubble shows the
+person's typed text plus a chip with the filename; the file text still reaches the model
+unchanged — only the DISPLAY changed. 6 new tests in `UserAttachment.test.js`. No eval
+gate (no prompt/tool change). Ships with the frontend (Amplify).
+
+### D-40 — Flo defaults to a school-alerts dump for off-topic input — **FIXED 2026-07-23**
+Found alongside D-39: an attached document unrelated to the school made Flo run a
+school-status tool and render the current alerts, then explain "I defaulted to a school
+status update." Root cause was an ABSENCE, not a bad instruction — the prompt had no
+guidance for off-topic input, so the model improvised a school-ops fallback. **Fix:**
+added `OFF_TOPIC_RULES` to `ai/prompts.py` — for genuinely unrelated input, say plainly
+it's outside scope and ask what they need; never substitute a school status report.
+Calibrated to NOT over-block real school questions (per the DPDP calibration rule).
+Prompt change ⇒ eval gate: structural + judge-logic green, and the credentialed
+`-m llm_eval` tier (gpt-5.6-terra) re-run — **passed, no regression vs baseline**. Ships
+with the backend (EB).
+
 ---
 
 ## Track 2 (data load) — explicitly OUT OF SCOPE for these epics

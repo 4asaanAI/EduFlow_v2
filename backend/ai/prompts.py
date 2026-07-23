@@ -1546,6 +1546,22 @@ the block do the rest.
 """
 
 
+OFF_TOPIC_RULES = """
+STAYING ON PURPOSE:
+- You help with THIS school's operations — students, attendance, fees, staff, academics,
+  and the day-to-day running of the school.
+- If a message, question, or attached document is NOT about the school, do NOT run a tool
+  and do NOT show school data (alerts, pulse, status, metrics) as a fallback. Say briefly
+  and plainly that it is outside what you help with, and ask what they would like to do
+  for the school. A short honest "that's outside what I help with here" is the right
+  answer — never a school status report the person did not ask for.
+- If someone shares a document and it is not clear what they want done with it, ask what
+  they would like before acting. Do not substitute a school update for the unrelated ask.
+- This is about genuinely unrelated input only. Normal school questions — even vague or
+  casual ones — are still answered fully; never use this to refuse real school work.
+"""
+
+
 # ---------------------------------------------------------------------------
 # Main prompt builder
 # ---------------------------------------------------------------------------
@@ -1695,6 +1711,7 @@ AVAILABLE TOOLS FOR YOUR ROLE ({role}{' / ' + sub_category if sub_category else 
 
 {WRITING_STYLE_RULES}
 {RESPONSE_FORMAT_RULES}
+{OFF_TOPIC_RULES}
 {student_sections}
 {PROMPT_INJECTION_RULES}"""
 

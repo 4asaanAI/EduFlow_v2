@@ -439,12 +439,27 @@ function ToolTraceSummary({ calls, recalledMemories, isDark }) {
   );
 }
 
+// A file the user attached is sent to Flo as `[File attached: NAME]\n\n<the whole
+// file text>` (see InputBar.handleSend) so the model can read it. That full text must
+// NOT be shown back to the person — it turns their own message into a wall of the
+// document. Split the marker off so the bubble shows what they typed plus a compact
+// chip, the way every other chat tool shows an attachment. The text still reaches the
+// model unchanged; this only changes what is DISPLAYED.
+export function splitUserAttachment(content) {
+  const raw = String(content || '');
+  const m = raw.match(/\[File attached: ([^\]]+)\]/);
+  if (!m) return { text: raw, filename: null };
+  const before = raw.slice(0, m.index).replace(/\n*---\n*\s*$/, '').trim();
+  return { text: before, filename: m[1].trim() };
+}
+
 export default function MessageRenderer({ message, isStreaming, onActionButton }) {
   const { isDark } = useTheme();
   const isUser = message.role === 'user';
   const isAction = message.isAction;
 
   if (isUser) {
+    const { text: userText, filename } = splitUserAttachment(message.content);
     return (
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
         <div data-testid={isAction ? undefined : 'user-message'}
@@ -459,7 +474,17 @@ export default function MessageRenderer({ message, isStreaming, onActionButton }
             fontSize: 14, lineHeight: 1.6, fontStyle: isAction ? 'italic' : 'normal',
             border: isAction ? `1px solid ${isDark ? '#2e2e2e' : '#e5e5e5'}` : 'none',
           }}>
-          {message.content}
+          {userText}
+          {filename && (
+            <div data-testid="user-attachment-chip" style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              marginTop: userText ? 8 : 0, padding: '6px 10px', borderRadius: 10,
+              background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)',
+            }}>
+              <FileText size={16} aria-hidden="true" style={{ flexShrink: 0 }} />
+              <span style={{ fontSize: 13, wordBreak: 'break-all', fontStyle: 'normal' }}>{filename}</span>
+            </div>
+          )}
         </div>
       </div>
     );
