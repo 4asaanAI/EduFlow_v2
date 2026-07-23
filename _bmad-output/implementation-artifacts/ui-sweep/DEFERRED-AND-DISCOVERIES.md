@@ -30,6 +30,7 @@ Branch: `ui-sweep-2026-07-22`
 
 | 2026-07-23 | **Epic 6** | **Nothing Gets Lost — DONE.** Three product questions went to the Owner before any code (D-18); two were refusals, now written into the code as comments so the absences survive the next reader. The bell had been counting `n.is_read` — a field that has never existed in this product — so the red dot appeared whenever anyone had any notification at all and never cleared; it now reads the endpoint written for the question and shows the number. Notifications past the newest twenty, and chats past the newest fifty, were unreachable by ANY route in the product; both now have a page. Bulk chat delete is behind a typed count. Two traps were found before they shipped: an untyped request body would have turned "delete these three" into "delete everything you own", and the message-delete filter carries no user_id — safe one id at a time, catastrophic on a list. 78 new tests. Suite 1955 passed / 3 pre-existing / 14 deselected; frontend 244 / 2 pre-existing. Closes the `NotificationsPanel` half of D-22 and the last of D-05. Adds D-35, D-36, D-37. **No production writes.** |
 
+| 2026-07-23 | **Epic 7** | **A Directory Shaped Like The School — BUILT, gate green, NOT yet deployed.** The last UI-sweep epic, and the one deliberately left un-storied pending a design pass. Owner decisions taken first (tabbed shape; consolidate this run; the school's own PRIN/NTT/PRT/TGT/PGT vocabulary). Shipped: a tabbed Directory (Students/Staff) on the shared server-sorted table, Owner+Principal only, reusing the existing endpoints (no new server surface); the register vocabulary honoured only where derivable (PRIN) with the teacher tier honestly flagged as not-yet-recorded (D-09/Track 2); a Students row deep-links straight to the profile; one confident tool de-dup (maintenance's duplicate report shortcut). Wired into all four tool registries (dashboard, sidebar, router, ⌘K). 15 new tests; frontend **267 passed / 2 pre-existing failed**; production build clean. Epic-close self-review caught + fixed 2 issues before commit (wrong student column field-names → "looks broken"; the sidebar being the real nav). Stories 7.1–7.3 written into the epics doc. Adds D-44 (deeper consolidation + staff deep-link deferred, each needing owner input) and the tool-merge impact note. **No production writes. NOT committed-to-remote or deployed — held for owner go-ahead; the two origin/main commits (D-45 + dropdown fix) get pulled in first.** |
 | 2026-07-22/23 | **DEPLOYED** | **The whole sweep went live.** Backend first (EB `eduflow-uisweep-20260722-213022-d235c89`, Green in ~90s), then main merged and Amplify rebuilt. Verified by downloading the SERVED bundle and grepping for strings this release introduced, not by trusting a green build. Two problems were caught BEFORE the deploy: the OCR install was a `packages:` block that would have FAILED THE WHOLE DEPLOY if tesseract was absent from the instance repos, and production had no S3 bucket so every generated document would have 500'd. Both fixed first. A merge conflict with two commits that landed on main mid-flight was resolved by reading both sides — their `table { display: block }` was refused because it is D-01. **File storage configured 2026-07-23**: private bucket in ap-south-1, all public access blocked, encrypted, versioned; health now reads `s3: ok`. That also unblocks certificates, student photos and PDF receipts, broken in prod until now. |
 ---
 
@@ -788,6 +789,32 @@ Calibrated to NOT over-block real school questions (per the DPDP calibration rul
 Prompt change ⇒ eval gate: structural + judge-logic green, and the credentialed
 `-m llm_eval` tier (gpt-5.6-terra) re-run — **passed, no regression vs baseline**. Ships
 with the backend (EB).
+
+### D-44 — Epic 7 deferred: deep-link-to-person and deeper tool consolidation — **OPEN**
+Raised during Epic 7 (School Directory). Two things were deliberately not built, each for
+a reason:
+
+1. **Deep-link to a specific person.** A Directory row opens the owning tool (Student
+   Database / Staff Tracker), not that person's open profile — those tools do not yet
+   accept a target id in the URL. Wiring it is real work and risks forking a second
+   profile-editing path that could drift from the originals. The Directory is a fast
+   find/scan surface for now; deep-linking is a refinement.
+2. **Deeper tool consolidation.** The owner chose "Directory + consolidation this run."
+   The confident, safe fold was done (the maintenance admin's duplicate `raise-maintenance`
+   beside `facility-requests`). The Directory does NOT replace Student Database for
+   Owner/Principal, because Student Database also creates/edits/erases students and shows
+   class strength — read-only Directory does not, so removing it is a capability loss, not
+   a consolidation. The fee cluster (`fee-tracker` / `smart-fee-defaulter` / `fee-receipts`),
+   the messaging cluster (`circular-sender` / `parent-message` / `attendance-alerts`) and
+   the document cluster (`certificate-generator` / `id-card-generator`) each look like
+   candidates but are **not confidently** the same job — each needs the owner's per-cluster
+   yes/no (the Epic 9 "a wrong merge is worse than no merge" rule). Recorded so "tools were
+   consolidated" is not read as complete.
+
+### D-09 update — Epic 7 honoured the staff vocabulary as far as the data allows
+The School Directory shows the register code where derivable (Principal → PRIN) and says
+plainly, in a legend, that the teacher tier (NTT/PRT/TGT/PGT) is not yet recorded per staff
+member. Populating those codes is the Track 2 data load, unchanged.
 
 ---
 

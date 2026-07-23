@@ -43,6 +43,9 @@ const loadTool = async (toolId) => {
   if (toolId === 'fee-collection') return (await import('./tools/FeeCollection')).default;
   if (toolId === 'fee-sync') return (await import('./tools/FeeSync')).default;
   if (toolId === 'student-database') return (await import('./tools/StudentDatabase')).default;
+  // Epic 7 — the School Directory (Owner + Principal only, via their tool sets).
+  // Reads the existing students/staff endpoints; adds no new server surface.
+  if (toolId === 'school-directory') return (await import('./tools/SchoolDirectory')).default;
   if (toolId === 'school-activities') return (await import('./tools/SchoolActivities')).default;
   if (toolId === 'transport-optimisation') return (await import('./tools/TransportOptimisation')).default;
 

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useUser } from '../../contexts/UserContext';
 import { compareClassLabels } from '../../lib/classOrder';
 import {
@@ -627,6 +628,25 @@ export default function StudentDatabase() {
   const [detailId, setDetailId] = useState(null);
   const [eraseTarget, setEraseTarget] = useState(null);
   const [eraseReason, setEraseReason] = useState('');
+
+  // Epic 7 — deep-link from the School Directory. A row there opens
+  // `?tool=student-database&focus=<id>`; open that student's profile once, then
+  // strip the param so closing it (or a reload) does not reopen, and the URL
+  // stays tidy. Applied a single time via the ref — not on every param change.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const appliedFocusRef = useRef(false);
+  useEffect(() => {
+    if (appliedFocusRef.current) return;
+    const focus = searchParams.get('focus');
+    if (!focus) return;
+    appliedFocusRef.current = true;
+    setDetailId(focus);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('focus');
+      return next;
+    }, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const canManage = ['owner', 'admin'].includes(currentUser.role);
   const canErase = currentUser.role === 'owner';

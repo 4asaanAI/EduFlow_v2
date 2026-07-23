@@ -16,6 +16,10 @@ import {
 const TOOLS_BY_ROLE = {
   owner: [
     { id: 'school-pulse', name: 'School Pulse', subtitle: "Today's overview", icon: Activity, color: '#fb923c' },
+    // Epic 7 — find any person (students + staff). Owner + Principal only; the
+    // principal pool below is built from this owner list, so this one definition
+    // serves both. Rendered via TOOL_GROUPS (top strip) for each.
+    { id: 'school-directory', name: 'School Directory', subtitle: 'Find any person', icon: Compass, color: '#4f8ff7' },
     { id: 'fee-collection', name: 'Fee Collection', subtitle: 'Revenue & defaulters', icon: IndianRupee, color: '#4f8ff7' },
     { id: 'fee-sync', name: 'Fee Sync', subtitle: 'External API conflicts', icon: RefreshCw, color: '#6366f1' },
     { id: 'student-database', name: 'Student Database', subtitle: 'Strength, manage & search', icon: Users, color: '#4f8ff7' },
@@ -124,6 +128,7 @@ const ADMIN_SUBCATEGORY_TOOLS = {
   accountant: ['student-database', 'fee-tracker', 'smart-fee-defaulter', 'fee-receipts', 'custom-form-builder', 'raise-maintenance'],
   transport_head: ['student-database', 'transport-manager', 'transport-optimisation', 'asset-tracker', 'custom-form-builder', 'raise-maintenance'],
   principal: [
+    'school-directory',
     'academic-structure', 'student-database', 'attendance-recorder', 'attendance-overview', 'principal-daily',
     'timetable-builder', 'certificate-generator', 'circular-sender', 'parent-message',
     'enquiry-register', 'smart-fee-defaulter', 'staff-tracker',
@@ -140,7 +145,7 @@ const ADMIN_SUBCATEGORY_TOOLS = {
 // ─── Grouped navigation config per role ──────────────────────────────────────
 const TOOL_GROUPS = {
   owner: {
-    top: ['school-pulse'],
+    top: ['school-pulse', 'school-directory'],
     groups: [
       { id: 'fee', name: 'Fee Summary', icon: IndianRupee, color: '#4f8ff7',
         tools: ['fee-collection', 'fee-sync', 'financial-reports', 'expense-tracker', 'smart-fee-defaulter'] },
@@ -158,7 +163,7 @@ const TOOL_GROUPS = {
     bottom: ['audit-log', 'query-section'],
   },
   principal: {
-    top: ['principal-daily'],
+    top: ['principal-daily', 'school-directory'],
     groups: [
       { id: 'students', name: 'Students', icon: Users, color: '#4f8ff7',
         tools: ['student-database', 'certificate-generator', 'enquiry-register', 'document-scanner', 'id-card-generator'] },
