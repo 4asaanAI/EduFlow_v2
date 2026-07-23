@@ -892,16 +892,30 @@ export async function bulkEnterResults(results) {
 export async function uploadChatFile(file) {
   const form = new FormData();
   form.append('file', file);
-  const token = getAccessToken();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30000);
-  try {
-    const res = await fetch(`${UPLOAD_API}/chat/upload`, {
+  const post = () => {
+    const token = getAccessToken();
+    return fetch(`${UPLOAD_API}/chat/upload`, {
       method: 'POST',
+      credentials: 'include',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: form,
       signal: controller.signal,
     });
+  };
+  try {
+    let res = await post();
+    // D-43: the in-memory access token may have expired. Every other call refreshes
+    // once on 401 via apiFetch and self-heals; this raw upload did not, so an expired
+    // token surfaced as "Upload failed" while the rest of the app kept working. Mirror
+    // apiFetch: refresh once and retry before giving up.
+    if (res.status === 401) {
+      try {
+        await refreshAccessToken(API);
+      } catch {}
+      res = await post();
+    }
     if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
     return res.json();
   } finally {

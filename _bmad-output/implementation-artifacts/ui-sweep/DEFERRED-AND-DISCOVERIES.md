@@ -749,6 +749,19 @@ sets `client_max_body_size 55M` (above the largest app cap; the app's per-role l
 remain the effective ones). Ships in the backend bundle. **Verify post-deploy:** re-run
 the ~3 MB unauthenticated POST — it should return 401, not 413.
 
+### D-43 — Chat upload fails with "Upload failed" when the access token has expired — **FIXED 2026-07-23**
+Surfaced immediately after the D-42 fix: uploads still failed, but now with **401**, not
+413 — the file reached the app and was rejected as unauthenticated, even though the rest
+of the app worked. Proven it was NOT CloudFront stripping the header: a bogus bearer sent
+through the CloudFront upload URL returned `{"detail":"Invalid token"}` (forwarded) vs
+`{"detail":"Not authenticated"}` with none. Root cause: `api.js:uploadChatFile` was a raw
+`fetch` that read `getAccessToken()` once and, unlike every other call (which goes through
+`apiFetch`), **never refreshed on 401** — so an expired in-memory access token made the
+upload 401 while the rest of the UI self-healed. **Fix:** `uploadChatFile` now mirrors
+`apiFetch` — on 401 it calls `refreshAccessToken()` once and retries. Frontend-only; ships
+via Amplify (main). `get_current_user` is bearer-only, confirming a valid bearer is what
+the endpoint needs.
+
 ### D-39 — An attached file dumps its whole text into the user's message bubble — **FIXED 2026-07-23**
 Found by the owner while verifying D-37: attaching a `.txt` in chat rendered the entire
 document inline as the user's own message, instead of a compact attachment chip the way
