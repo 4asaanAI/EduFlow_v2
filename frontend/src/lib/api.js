@@ -906,7 +906,16 @@ export async function uploadChatFile(file) {
       body: form,
       signal: controller.signal,
     });
-    if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+    if (!res.ok) {
+      // Say WHAT failed, not just that it failed. 413 = too large (app or nginx
+      // cap); 403 with a non-JSON body = blocked at the CDN edge (WAF), which the
+      // user can do nothing about — name it so it gets reported, not retried.
+      let detail = '';
+      try { detail = (await res.json()).detail || ''; } catch {}
+      if (res.status === 413) throw new Error(detail || 'File is too large (max 20 MB).');
+      if (res.status === 403 && !detail) throw new Error('Upload was blocked by the network edge. Please report this — retrying will not help.');
+      throw new Error(detail || `Upload failed (error ${res.status}).`);
+    }
     return res.json();
   } finally {
     clearTimeout(timer);

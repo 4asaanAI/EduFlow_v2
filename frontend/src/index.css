@@ -382,23 +382,21 @@ table td, table th, .tabular-nums { font-variant-numeric: tabular-nums; }
   --chat-tile: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='232' height='68'%3E%3Cg font-family='Georgia,Times New Roman,serif' font-size='12.5' letter-spacing='1.6' fill='%231F4E9C' fill-opacity='0.10'%3E%3Ctext x='2' y='22'%3ETHE AARYANS%3C/text%3E%3Ctext x='118' y='56'%3ETHE AARYANS%3C/text%3E%3C/g%3E%3C/svg%3E");
 }
 
-[data-theme="dark"] {
-  /* Same tile, light ink — the navy text is invisible on a near-black page. */
-  --chat-tile: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='232' height='68'%3E%3Cg font-family='Georgia,Times New Roman,serif' font-size='12.5' letter-spacing='1.6' fill='%23BBD4F5' fill-opacity='0.10'%3E%3Ctext x='2' y='22'%3ETHE AARYANS%3C/text%3E%3Ctext x='118' y='56'%3ETHE AARYANS%3C/text%3E%3C/g%3E%3C/svg%3E");
-}
-
 /* DARK THEME: the crest is hidden, on Abhimanyu's instruction.
    It is a JPEG on a solid white rectangle. Against a near-black page that
    rectangle showed as a pale slab behind the greeting — the artwork was not
    the problem, the paper it was printed on was. Blend modes can hide white on
    a LIGHT page but not on a dark one, and inverting the image would recolour
    the school's own crest, which is not ours to do.
-   The repeating "THE AARYANS" tile stays: it is an inline SVG with a real
-   transparent background and its own light-ink variant, so it carries the
-   letterhead feeling in dark without dragging a white box along with it.
    If the school ever supplies a transparent PNG of the crest, this rule can
    be replaced with an opacity value rather than a hide. */
 [data-theme="dark"] .chat-watermark::before {
+  display: none;
+}
+/* DARK THEME: the repeating "THE AARYANS" tile is hidden too (requested
+   2026-07-23) — dark keeps a clean page. Light theme keeps BOTH marks and
+   must not be touched; the letterhead treatment lives there. */
+[data-theme="dark"] .chat-watermark::after {
   display: none;
 }
 /* Everything the user actually reads or clicks sits above the crest. */
@@ -821,6 +819,14 @@ img, video, canvas, svg { max-width: 100%; }
   /* Bump all interactive elements to 44px touch targets */
   button, input, select, textarea, [role="button"] {
     min-height: 44px;
+  }
+  /* NOT inside the chat composer pill. A 44px floor on its one-line textarea
+     top-aligned the "Message EduFlow..." text against centred icons, and
+     stretched the 32px icon buttons oval. The pill itself (padding + content)
+     already clears 44px, so the touch target is preserved. */
+  .composer-shell textarea,
+  .composer-shell button {
+    min-height: 0;
   }
 }
 
