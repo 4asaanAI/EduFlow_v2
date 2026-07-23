@@ -734,6 +734,21 @@ Surfaced while reading logs for D-38. The running backend repeatedly logs, at re
 telemetry is being dropped and is adding error noise to the very logs D-38 is about.
 **Not investigated** — separate subsystem, unrelated to the UI sweep; recorded per rule 6.
 
+### D-42 — Uploads over ~1 MB (.docx, .pdf, photos) fail at nginx before the app — **FIXED 2026-07-23**
+Found by the owner right after the D-40 deploy: attaching a `.docx`/`.pdf` gave "Upload
+failed. Please try again.", while a small `.txt` worked. Root cause is infrastructure,
+not app code (neither `chat_upload.py` nor `uploadChatFile` was touched by this work):
+EB's nginx `client_max_body_size` is at its **1 MB default** and nothing in the repo
+overrides it, so any body over ~1 MB gets a 413 from nginx **before** it reaches FastAPI.
+**Proven in prod (read-only, no auth):** a ~1 KB POST to `/api/chat/upload` returned
+**401** (reached the app), a ~3 MB POST returned **413** (nginx); and the app logs showed
+only the OPTIONS preflight for the failing attempts, never the POST. This silently broke
+**every** upload over 1 MB platform-wide — chat attachments (20 MB app cap) and S3
+document/photo uploads (up to 50 MB for owner). **Fix:** `.platform/nginx/conf.d/uploads.conf`
+sets `client_max_body_size 55M` (above the largest app cap; the app's per-role limits
+remain the effective ones). Ships in the backend bundle. **Verify post-deploy:** re-run
+the ~3 MB unauthenticated POST — it should return 401, not 413.
+
 ### D-39 — An attached file dumps its whole text into the user's message bubble — **FIXED 2026-07-23**
 Found by the owner while verifying D-37: attaching a `.txt` in chat rendered the entire
 document inline as the user's own message, instead of a compact attachment chip the way
