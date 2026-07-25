@@ -324,15 +324,15 @@ export function PracticeTest() {
     setAnswers({});
 
     try {
-      const prompt = `Generate 5 multiple-choice questions for a CBSE student on subject: ${selectedSubject}${topic ? `, topic: ${topic}` : ''}. Difficulty: ${difficulty}. Format each question as:
+      const prompt = `Generate 5 multiple-choice questions for a CBSE student on subject: ${selectedSubject}${topic ? `, topic: ${topic}` : ''}. Difficulty: ${difficulty}. Format EACH question exactly like this:
 Q: [question text]
 A) [option A]
 B) [option B]
 C) [option C]
 D) [option D]
-Answer: [correct letter]
+Correct: [A or B or C or D]
 
-Generate exactly 5 questions in this format.`;
+Generate exactly 5 questions. Do NOT use the word "Answer" — use only "Correct:" for the correct option.`;
 
       const cid = await createConv('Practice Test');
       if (!cid) { setGenerating(false); return; }
@@ -354,8 +354,8 @@ Generate exactly 5 questions in this format.`;
           else if (l.match(/^B\)/)) options.B = l.slice(2).trim();
           else if (l.match(/^C\)/)) options.C = l.slice(2).trim();
           else if (l.match(/^D\)/)) options.D = l.slice(2).trim();
-          else if (l.startsWith('Answer:')) {
-            correct = l.replace('Answer:', '').trim()[0] || 'A';
+          else if (l.startsWith('Correct:')) {
+            correct = l.replace('Correct:', '').trim()[0] || 'A';
           }
         });
 

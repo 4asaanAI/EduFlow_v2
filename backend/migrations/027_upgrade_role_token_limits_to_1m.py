@@ -7,18 +7,25 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except Exception:  # pragma: no cover - optional in bare-hook execution
+    load_dotenv = None
 
-load_dotenv(Path(__file__).parent.parent / ".env")
+if load_dotenv is not None:
+    load_dotenv(Path(__file__).parent.parent / ".env")
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
-MONGO_URL = os.environ["MONGO_URL"]
-DB_NAME = os.environ["DB_NAME"]
+MONGO_URL = os.environ.get("MONGO_URL")
+DB_NAME = os.environ.get("DB_NAME")
 
 
 async def migrate(db=None):
     client = None
+    if not MONGO_URL or not DB_NAME:
+        print("  MONGO_URL or DB_NAME missing; skipping token limit migration.")
+        return
     if db is None:
         client = AsyncIOMotorClient(MONGO_URL, tlsInsecure=True, retryWrites=True)
         db = client[DB_NAME]

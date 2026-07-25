@@ -709,21 +709,12 @@ export function CertificateGenerator() {
     const key = cert.id || cert.serial_number;
     const d = cert.content_data || {};
     const label = CERT_LABELS[cert.cert_type] || cert.cert_type;
-    const filename = `${label.replace(/\s+/g, '-')}-${(d.student_name || 'certificate').replace(/\s+/g, '-')}.pdf`;
+    const filename = `${label.replace(/\s+/g, '-')}-${(d.student_name || cert.student_name || 'certificate').replace(/\s+/g, '-')}.pdf`;
     downloadBlobAsPdf(
       `${API}/image-gen/certificate`,
       {
+        student_id: cert.student_id,
         cert_type: cert.cert_type,
-        student_name: d.student_name || '',
-        class: d.class || '',
-        school_name: d.issued_by || school.school_name || '',
-        affiliation: [
-          school.board ? `Affiliated to ${school.board}` : null,
-          school.affiliation_no ? `Aff. No. ${school.affiliation_no}` : null,
-          [school.city, school.state].filter(Boolean).join(', ') || null,
-        ].filter(Boolean).join(' · '),
-        issued_date: d.issued_date || cert.issued_date || '',
-        academic_year: d.academic_year || '',
         serial_number: cert.serial_number || '',
       },
       filename,
@@ -1955,12 +1946,7 @@ export function IdCardGenerator() {
   const printCards = () => {
     const selected = students
       .filter(s => selectedIds.includes(s.id))
-      .map(s => ({
-        name: s.name,
-        class: s.class_info ? `${s.class_info.name}-${s.class_info.section}` : 'N/A',
-        admission_number: s.admission_number || 'N/A',
-        roll_number: s.roll_number || 'N/A',
-      }));
+      .map(s => ({ student_id: s.id }));
     const filename = `ID-Cards-${new Date().toISOString().slice(0, 10)}.pdf`;
     downloadBlobAsPdf(
       `${API}/image-gen/id-cards`,

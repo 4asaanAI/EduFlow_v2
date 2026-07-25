@@ -339,7 +339,7 @@ export function QuestionPaperCreator() {
         setShowForm(false);
         setPapers(prev => [res.data, ...prev]);
       } else {
-        setError(res.message || 'Failed to generate paper');
+        setError(res.detail || res.message || 'Failed to generate paper');
       }
     } catch (err) {
       setError('Error: ' + (err.message || 'Unknown error'));

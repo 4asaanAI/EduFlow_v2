@@ -723,7 +723,7 @@ Make questions appropriate for Classes 9-12 CBSE standard."""
             "created_at": datetime.now().isoformat(),
         }
         await db.question_papers.insert_one({**qp, "_id": qp["id"], "schoolId": get_school_id()})
-        return {"success": True, "data": {"content": paper_text, "id": qp["id"]}}
+        return {"success": True, "data": qp}
     except HTTPException:
         raise
     except Exception as e:

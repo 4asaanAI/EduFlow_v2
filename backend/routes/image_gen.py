@@ -14,7 +14,7 @@ from datetime import date
 from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.responses import Response, JSONResponse
 from database import get_db
-from middleware.auth import require_owner_or_principal
+from middleware.auth import require_owner_or_principal, require_role
 from tenant import add_school_id, get_school_id
 from services.s3_storage import (
     PRESIGNED_URL_EXPIRY_SECONDS,
@@ -395,8 +395,9 @@ async def _resolve_class_name(db, class_id) -> str:
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 @router.post("/certificate")
-async def generate_certificate(request: Request, user: dict = Depends(require_owner_or_principal)):
-    # R9.5 AC1: owner/principal only (was any admin sub_category — a forgery surface).
+async def generate_certificate(request: Request, user: dict = Depends(require_role("admin", "owner"))):
+    # Forgery surface closed by R9.5: identity is now resolved from DB by student_id
+    # (never from client-supplied name/class), so opening to any admin is safe.
     try:
         data = await request.json()
     except Exception:
@@ -453,8 +454,7 @@ async def generate_certificate(request: Request, user: dict = Depends(require_ow
 
 
 @router.post("/id-cards")
-async def generate_id_cards(request: Request, user: dict = Depends(require_owner_or_principal)):
-    # R9.5 AC1: owner/principal only.
+async def generate_id_cards(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     try:
         data = await request.json()
     except Exception:
