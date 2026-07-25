@@ -8,7 +8,10 @@ import {
   AlertCircle, AlertTriangle, Info, Loader2, Trash2, FileVideo, Image,
 } from 'lucide-react';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
+const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
+const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
+  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
+  : _rawAPI) + '/api';
 
 function authHeaders() {
   return getAuthHeaders(null);

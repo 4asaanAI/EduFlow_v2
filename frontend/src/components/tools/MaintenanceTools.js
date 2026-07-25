@@ -9,7 +9,10 @@ import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, Badge, ActionBtn, FormField, DataTable } from './ToolPage';
 import { Plus, RefreshCw, MessageSquare, CheckCircle, Calendar, Users, Wrench, AlertTriangle, ClipboardList, Camera, X as XIcon, Clock, User, History } from 'lucide-react';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
+const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
+const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
+  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
+  : _rawAPI) + '/api';
 function h() { return getAuthHeaders(); }
 
 // ─── Request History Modal ────────────────────────────────────────────────────

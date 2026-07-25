@@ -3,7 +3,10 @@ import { AlertTriangle, CheckCircle, Edit3, Percent, Phone, RefreshCw, Save, Fil
 import { getAuthHeaders } from '../../lib/authSession';
 import { useUser } from '../../contexts/UserContext';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
+const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
+const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
+  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
+  : _rawAPI) + '/api';
 
 async function downloadReceipt(transactionId) {
   if (!transactionId) {

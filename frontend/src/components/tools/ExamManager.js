@@ -10,7 +10,10 @@ import {
   getExamSheet, saveExamSchedule, bulkEnterResults,
 } from '../../lib/api';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
+const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
+const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
+  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
+  : _rawAPI) + '/api';
 function _authHeaders(user) {
   const token = localStorage.getItem('token');
   return token ? { Authorization: `Bearer ${token}` } : {};

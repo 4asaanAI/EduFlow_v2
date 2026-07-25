@@ -3,7 +3,10 @@ import { useUser } from '../../contexts/UserContext';
 import { Award, Plus, Shield, Star, Trash2, Trophy, Users, X } from 'lucide-react';
 import { getAuthHeaders } from '../../lib/authSession';
 
-const API = process.env.REACT_APP_BACKEND_URL;
+const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
+const API = typeof window !== 'undefined' && window.location.protocol === 'https:'
+  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
+  : _rawAPI;
 
 // Normalize FastAPI error shapes into a plain string.
 // FastAPI 422 returns {"detail": [{msg, loc, type}]} — not a string.

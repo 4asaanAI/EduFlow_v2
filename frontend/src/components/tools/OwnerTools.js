@@ -6,7 +6,10 @@ import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn,
 import { EmptyState } from '../ui/primitives';
 import { Activity, CheckCircle, XCircle, AlertTriangle, Plus, RefreshCw, Save, TrendingUp, Users, FileText, Send, Download, Upload, Zap, Database, Cloud, BookOpen, User, CreditCard, Calendar, Wrench, Monitor, ShieldAlert, UserCheck, ClipboardList } from 'lucide-react';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
+const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
+const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
+  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
+  : _rawAPI) + '/api';
 function h() { return getAuthHeaders(); }
 function money(value) { return `Rs ${Number(value || 0).toLocaleString('en-IN')}`; }
 const tint = (color, amount) => `color-mix(in srgb, ${color} ${amount}%, transparent)`;

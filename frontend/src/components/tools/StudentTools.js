@@ -7,7 +7,10 @@ import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn } from './ToolPage';
 import { Brain, HelpCircle, Send } from 'lucide-react';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
+const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
+const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
+  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
+  : _rawAPI) + '/api';
 function h() { return getAuthHeaders(); }
 
 async function createConv(title = 'AI Session') {

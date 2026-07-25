@@ -11,7 +11,10 @@ import html2pdf from 'html2pdf.js';
 import DOMPurify from 'dompurify';
 export { FormSubmissions } from './StudentTools';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
+const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
+const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
+  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
+  : _rawAPI) + '/api';
 function h() { return getAuthHeaders(); }
 const tint = (color, amount) => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
 

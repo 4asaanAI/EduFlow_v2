@@ -6,7 +6,10 @@ import { Upload, X, FileText, Image, Download } from 'lucide-react';
 import { useUser } from '../../contexts/UserContext';
 import { getAuthHeaders } from '../../lib/authSession';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
+const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
+const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
+  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
+  : _rawAPI) + '/api';
 
 const ALLOWED_BY_ROLE = {
   owner: ['pdf', 'docx', 'xlsx', 'xls', 'png', 'jpg', 'jpeg', 'heic', 'mp4'],

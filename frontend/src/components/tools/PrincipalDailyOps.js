@@ -6,7 +6,10 @@ import {
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, ActionBtn } from './ToolPage';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
+const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
+const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
+  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
+  : _rawAPI) + '/api';
 const h = () => getAuthHeaders();
 const money = v => `₹${Number(v || 0).toLocaleString('en-IN')}`;
 

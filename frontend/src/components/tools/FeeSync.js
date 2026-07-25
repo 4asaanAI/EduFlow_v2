@@ -4,7 +4,10 @@ import { getFeeSyncJob, resolveFeeSyncConflict, triggerFeeSync } from '../../lib
 import { getAuthHeaders } from '../../lib/authSession';
 import { ErrorCard, LoadingCard } from './ToolPage';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
+const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
+const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
+  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
+  : _rawAPI) + '/api';
 const POLL_MAX = 10;
 const POLL_INTERVAL_MS = 3000;
 
