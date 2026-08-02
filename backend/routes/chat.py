@@ -14,6 +14,7 @@ Handles:
   - Multi-tool chaining (up to 3 rounds)
   - LLM parameter extraction with entity resolution
 """
+import os
 import json
 import asyncio
 import base64
@@ -35,6 +36,7 @@ from models.schemas import (
     CONVERSATION_BULK_DELETE_MAX,
 )
 from ai.llm_client import llm_client, AI_UNAVAILABLE_MESSAGE
+from ai.tool_role_config import get_tool_names_for_role
 from ai.prompts import build_system_prompt
 from ai.context_builder import build_school_context, detect_language
 from ai.tool_functions_v2 import TOOL_REGISTRY, WRITE_TOOL_NAMES, openai_tool_schema
@@ -99,14 +101,24 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 # text — streamed and persisted like any real answer — instead of a silent blank.
 FALLBACK_TEXT = "I wasn't able to produce an answer for that. Please try again or rephrase."
 
+# Phase 13a normally makes a SECOND streaming LLM call to re-synthesise the answer
+# Phase 8 already produced, purely for token-by-token UX. On a TPM-limited provider
+# (Groq free tier: 8000 TPM) that DOUBLES token spend per turn and triggers 429
+# throttling with 10–40s SDK backoffs. When disabled (default), we simulate-stream
+# the answer Phase 8 already generated — identical text, ~half the tokens, ~half the
+# latency, no throttling. Set AI_STREAM_SECOND_CALL=1 to restore true second-call
+# streaming (only worthwhile on a provider with generous rate limits, e.g. Azure).
+STREAM_SECOND_CALL = os.environ.get("AI_STREAM_SECOND_CALL", "0").strip().lower() in ("1", "true", "yes")
+
 MAX_TOOL_ROUNDS = 3  # AD2/FR5: bounds planning/read iterations ONLY (not confirmed writes)
 MAX_PLAN_STEPS = ai_planner.MAX_PLAN_STEPS  # AD2/FR5: bounds plan SIZE
 KEEPALIVE_INTERVAL = 5  # seconds — keep short for fast disconnect detection
 LLM_WALLCLOCK_BUDGET = 90  # seconds; bounded ceiling above per-call 45s timeout
-CHAR_BUDGET = 24000
+CHAR_BUDGET = 10000
 HISTORY_LIMIT = 20
 HISTORY_KEEP_FIRST = 2
-HISTORY_KEEP_RECENT = 10
+HISTORY_KEEP_RECENT = 2   # Groq 8k TPM: each AI turn with markdown/JSON burns ~1,200 tokens
+HISTORY_MSG_MAX_CHARS = 600  # Truncate individual history messages to cap Groq token spend
 THINKING_DELAY_MIN = 0.15  # 150ms
 THINKING_DELAY_MAX = 0.30  # 300ms
 
@@ -1024,6 +1036,26 @@ def safe_token_count(tokens_from_api, fallback_text: str = "") -> int:
 
 # ─── Conversation history trimming (BUG FIX #2) ──────────────────────────────
 
+import re as _re
+
+_RICH_BLOCK_RE = _re.compile(r"<<<RICH_CONTENT>>>.*?<<<END>>>", _re.DOTALL)
+
+
+def _strip_history_content(content: str) -> str:
+    """Remove rich-content blocks and truncate to HISTORY_MSG_MAX_CHARS.
+
+    Rich blocks (stat_grid, table JSON) are rendered by the frontend but add
+    ~300-600 BPE tokens per turn the LLM doesn't need in context. Stripping
+    them and capping message length keeps history from blowing Groq's 8k TPM.
+    """
+    if not content:
+        return content
+    content = _RICH_BLOCK_RE.sub("", content).strip()
+    if len(content) > HISTORY_MSG_MAX_CHARS:
+        content = content[:HISTORY_MSG_MAX_CHARS] + "…"
+    return content
+
+
 def _trim_history(messages: list[dict]) -> list[dict]:
     """
     Trim conversation history to fit within char budget.
@@ -1032,6 +1064,12 @@ def _trim_history(messages: list[dict]) -> list[dict]:
     """
     if not messages:
         return messages
+
+    # Strip rich-content blocks and truncate each message before char accounting.
+    messages = [
+        {**m, "content": _strip_history_content(m.get("content", "") or "")}
+        for m in messages
+    ]
 
     total_chars = sum(len(m.get("content", "") or "") for m in messages)
     if total_chars <= CHAR_BUDGET:
@@ -1714,13 +1752,16 @@ async def _stream_final_answer(system_prompt, messages, session_id, sink: dict):
             full = "".join(buf)
             if not marker_seen and len(full) > emitted:
                 yield f"data: {json.dumps({'type': 'text_delta', 'delta': full[emitted:]})}\n\n"
-            sink.update({"text": full, "tokens": ev.get("tokens", 0), "ok": True})
+            sink.update({"text": full, "tokens": ev.get("tokens", 0), "ok": True,
+                         "provider": ev.get("provider"), "model": ev.get("model")})
             return
         elif et == "error":
             sink.update({
                 "text": ev.get("text", "") or "".join(buf),
                 "ok": False,
                 "error": ev.get("reason") or "stream_failed",
+                "provider": ev.get("provider"),
+                "model": ev.get("model"),
             })
             return
     # Stream ended without an explicit terminal event — best-effort salvage.
@@ -1729,7 +1770,7 @@ async def _stream_final_answer(system_prompt, messages, session_id, sink: dict):
 
 async def _record_turn_trace(db, *, conv_id, message_id, user, outcome, lang,
                              tool_calls=None, llm_reason=None, llm_ok=True,
-                             error_type=None, tokens=0):
+                             error_type=None, tokens=0, provider=None, model=None):
     """R11.5: persist a compact per-turn diagnostic row so the "AI didn't reply"
     incident class is diagnosable from the trace viewer WITHOUT server-log access.
 
@@ -1757,9 +1798,12 @@ async def _record_turn_trace(db, *, conv_id, message_id, user, outcome, lang,
             "tools": tools,
             # Internal-only provider/model — NEVER surfaced to a client (R11.5
             # confidentiality); the endpoint reports the assistant as "Layaa AI".
+            # Attribute to the provider/model that ACTUALLY answered (Groq primary
+            # or Azure fallback), not the configured Azure deployment. Falls back to
+            # the Azure config only when the caller couldn't determine it.
             "llm": {
-                "provider": "azure_openai",
-                "model": llm_client.deployment,
+                "provider": provider or "azure_openai",
+                "model": model or llm_client.deployment,
                 "finish_reason": llm_reason,
                 "ok": llm_ok,
                 "error_type": error_type,
@@ -1830,6 +1874,16 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
       13. Persist assistant message
       14. Done event
     """
+    logger.info('[_generate_chat_sse] START', extra={
+        'conversation_id': conv_id,
+        'user_id': user.get('id'),
+        'user_role': user.get('role'),
+        'text_length': len(user_text),
+        'has_image': bool(image_data),
+        'session_id': session_id,
+        'timestamp': datetime.now().isoformat(),
+    })
+
     db = get_db()
     session_id = session_id or conv_id
     total_tokens_used = 0
@@ -1853,6 +1907,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
 
     # ── Phase 1: Save user message ────────────────────────────────────────
     try:
+        logger.info('[_generate_chat_sse] Phase 1 - Saving user message', extra={'conversation_id': conv_id})
         lang = detect_language(user_text)
         user_msg = Message(
             conversation_id=conv_id,
@@ -1861,6 +1916,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             language_detected=lang,
         )
         await db.messages.insert_one({**user_msg.dict(), "_id": user_msg.id})
+        logger.info('[_generate_chat_sse] Phase 1 - User message saved', extra={'message_id': user_msg.id, 'language': lang})
 
         # Update conversation timestamp + auto-title
         conv = await db.conversations.find_one(_owned_conversation_filter(conv_id, user))
@@ -1868,9 +1924,10 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         if conv and conv.get("title") in ("New conversation", None, ""):
             update_fields["title"] = user_text[:50].strip()
         await db.conversations.update_one(_owned_conversation_filter(conv_id, user), {"$set": update_fields})
+        logger.info('[_generate_chat_sse] Phase 1 - Conversation updated', extra={'conversation_id': conv_id})
 
     except Exception as e:
-        logger.error(f"Phase 1 (save user message) error: {e}")
+        logger.error(f"Phase 1 (save user message) error: {e}", extra={'conversation_id': conv_id, 'error_type': type(e).__name__})
         yield f"data: {json.dumps({'type': 'error', 'phase': 'save_message', 'message': 'Failed to save your message. Please try again.'})}\n\n"
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
         return
@@ -2188,7 +2245,12 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
 
     # ── Phase 8: First LLM call ───────────────────────────────────────────
     try:
+        logger.info('[_generate_chat_sse] Phase 8 - Starting LLM call', extra={'conversation_id': conv_id})
         if tool_result:
+            logger.info('[_generate_chat_sse] Phase 8 - Processing tool result', extra={
+                'tool_name': tool_name,
+                'result_size': len(str(tool_result)),
+            })
             # BUG FIX #6: Check for empty results message
             empty_msg = _extract_empty_message(tool_result)
             empty_note = ""
@@ -2221,7 +2283,21 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         # R11.2: advertise the caller's authorized tools via native function
         # calling — the model returns structured tool_calls (or a final answer),
         # never JSON-in-text, and can only name a tool it is allowed to use.
-        llm_tools = _build_llm_tools(user)
+        # Pre-filter by role before building schemas to reduce token payload.
+        _role_tool_names = get_tool_names_for_role(
+            user.get("role", ""), user.get("sub_category")
+        )
+        llm_tools = _build_llm_tools(user, only=_role_tool_names or None)
+        _hist_debug = [(m.get("role","?"), len(m.get("content","") or "")) for m in messages_for_llm_final]
+        logger.info('[_generate_chat_sse] Phase 8 ENTRY', extra={
+            'user_role': user.get('role'),
+            'sub_category': user.get('sub_category'),
+            'tool_count': len(llm_tools),
+            'history_msgs': len(messages_for_llm_final),
+            'message_sizes': _hist_debug,
+            'conversation_id': conv_id,
+        })
+        print(f"[PHASE8 ENTRY] user_role={user.get('role')} | sub_category={user.get('sub_category')} | tool_count={len(llm_tools)} | history_msgs={len(messages_for_llm_final)} | msg_sizes={_hist_debug}")
 
         yield thinking_event("analyzing", "Processing the data..." if tool_result else "Thinking about your question...")
         await _thinking_delay()
@@ -2239,19 +2315,46 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         llm_ok = True           # R1.7: availability tracked explicitly, not by result type
         llm_tool_calls = []     # R11.2: structured tool calls requested by the model
         llm_reason = None       # R11.5: finish_reason for the turn trace
+        llm_provider = None     # actual provider that answered (Groq/Azure)
+        llm_model = None        # actual model that answered
         # LLM_WALLCLOCK_BUDGET is a module constant (see top of file)
 
         async def _llm_call():
-            nonlocal llm_response, llm_tokens, llm_ok, llm_tool_calls, llm_reason
+            nonlocal llm_response, llm_tokens, llm_ok, llm_tool_calls, llm_reason, llm_provider, llm_model
             try:
                 session_id = f"{conv_id}-{uuid.uuid4()}"
+                logger.info('[_generate_chat_sse] Phase 8 - Calling LLM', extra={
+                    'session_id': session_id,
+                    'tool_count': len(llm_tools),
+                    'message_count': len(messages_for_llm_final),
+                    'conversation_id': conv_id,
+                    'timestamp': datetime.now().isoformat(),
+                })
+                print(f"[PHASE8] calling llm_client.chat | tools={len(llm_tools)} | messages={len(messages_for_llm_final)} | session={session_id}")
                 result = await llm_client.chat(system_prompt, messages_for_llm_final, session_id, tools=llm_tools)
+                logger.info('[_generate_chat_sse] Phase 8 - LLM response received', extra={
+                    'ok': result.ok,
+                    'reason': result.reason,
+                    'text_length': len(result.text),
+                    'tool_calls_count': len(result.tool_calls or []),
+                    'tokens': result.tokens,
+                    'conversation_id': conv_id,
+                })
+                print(f"[PHASE8] result: ok={result.ok} | reason={result.reason} | text_len={len(result.text)} | tool_calls={len(result.tool_calls or [])}")
                 llm_response = result.text
                 llm_tokens = result.tokens
                 llm_ok = result.ok
                 llm_tool_calls = result.tool_calls or []
                 llm_reason = result.reason
-            except Exception:
+                llm_provider = result.provider
+                llm_model = result.model
+            except Exception as e:
+                logger.exception('[_generate_chat_sse] Phase 8 - LLM call EXCEPTION', extra={
+                    'error_type': type(e).__name__,
+                    'error_message': str(e)[:300],
+                    'conversation_id': conv_id,
+                })
+                print(f"[PHASE8 EXCEPTION] {type(e).__name__}: {str(e)[:300]}")
                 logger.exception("LLM call raised unexpectedly in Phase 8")
                 llm_response = ""
                 llm_tokens = 0
@@ -2303,7 +2406,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             await _record_turn_trace(
                 db, conv_id=conv_id, message_id=ai_msg.id, user=user, outcome="unavailable",
                 lang=lang, llm_reason=llm_reason, llm_ok=False, error_type="ai_unavailable",
-                tokens=total_tokens_used,
+                tokens=total_tokens_used, provider=llm_provider, model=llm_model,
             )
             yield f"data: {json.dumps({'type': 'done', 'message_id': ai_msg.id, 'tokens_used': total_tokens_used})}\n\n"
             return
@@ -2590,6 +2693,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                     db, conv_id=conv_id, message_id=ai_msg.id, user=user, outcome="unavailable",
                     lang=lang, tool_calls=all_tool_calls, llm_reason=llm_reason, llm_ok=False,
                     error_type="ai_unavailable", tokens=total_tokens_used,
+                    provider=llm_provider, model=llm_model,
                 )
                 yield f"data: {json.dumps({'type': 'done', 'message_id': ai_msg.id, 'tokens_used': total_tokens_used})}\n\n"
                 return
@@ -2658,12 +2762,15 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
     _role = user.get("role")
     stream_error = None
     stream_final = (
-        _role != "student"
+        STREAM_SECOND_CALL
+        and _role != "student"
         and llm_ok
         and not pending_calls
         and (llm_response or "") != FALLBACK_TEXT
         and bool(messages_for_llm_final)
     )
+    # When the second streaming call is disabled, Phase 8's answer is reused and
+    # simulate-streamed via the buffered path below — one LLM call per turn.
     raw_final = llm_response or ""
 
     _composing_sent = False
@@ -2685,8 +2792,12 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
 
         streamed_text = _sink.get("text") or ""
         if streamed_text.strip():
-            # Streaming produced real content.
+            # Streaming produced real content — attribute tokens to the provider
+            # that actually streamed it (may differ from the Phase 8 provider).
             raw_final = streamed_text
+            if _sink.get("provider"):
+                llm_provider = _sink.get("provider")
+                llm_model = _sink.get("model")
             total_tokens_used += safe_token_count(_sink.get("tokens", 0), raw_final)
             if not _sink.get("ok"):
                 # AC3: a mid-stream provider failure keeps the partial text and
@@ -2790,6 +2901,13 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
     # empty-turn short-circuit (done + f"empty-{conv_id}", no persist, no debit)
     # is gone. A turn can no longer end silently or escape token accounting.
     try:
+        logger.info('[_generate_chat_sse] Phase 14 - Preparing to save AI message', extra={
+            'conversation_id': conv_id,
+            'response_length': len(clean_text),
+            'has_rich_content': bool(rich_content),
+            'tokens_used': total_tokens_used,
+        })
+
         ai_msg = Message(
             conversation_id=conv_id,
             role="assistant",
@@ -2801,6 +2919,11 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             language_detected=lang,
         )
         await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
+        logger.info('[_generate_chat_sse] Phase 14 - AI message saved to DB', extra={
+            'message_id': ai_msg.id,
+            'conversation_id': conv_id,
+        })
+
         # R10.4 AC2: surface recalled memories to the live stream so the "Data used"
         # footer shows them without a reload (matches the persisted message).
         if recalled_memories:
@@ -2813,9 +2936,15 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                 budget_check.get("source", "unlimited"),
                 conversation_id=conv_id,
                 tool_name=tool_name,
+                model=llm_model,
+                provider=llm_provider,
             )
+            logger.info('[_generate_chat_sse] Phase 14b - Token usage recorded', extra={
+                'tokens_used': total_tokens_used,
+                'conversation_id': conv_id,
+            })
         except Exception as e:
-            logger.error(f"Phase 14b (record token usage) error: {e}")
+            logger.error(f"Phase 14b (record token usage) error: {e}", extra={'conversation_id': conv_id})
 
         # ── Phase 14c: turn-outcome metric (R9.3 AC3 / architecture §8) ──
         # The permanent alarm for the silent-empty-turn incident class: a spike in
@@ -2832,13 +2961,28 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             db, conv_id=conv_id, message_id=ai_msg.id, user=user, outcome=outcome,
             lang=lang, tool_calls=all_tool_calls, llm_reason=llm_reason,
             llm_ok=(not stream_error), error_type=stream_error, tokens=total_tokens_used,
+            provider=llm_provider, model=llm_model,
         )
+        logger.info('[_generate_chat_sse] Phase 14c - Metrics recorded', extra={
+            'outcome': outcome,
+            'conversation_id': conv_id,
+        })
 
         # BUG FIX #7: done event comes AFTER persistence
+        logger.info('[_generate_chat_sse] SENDING DONE EVENT', extra={
+            'message_id': ai_msg.id,
+            'tokens_used': total_tokens_used,
+            'conversation_id': conv_id,
+            'timestamp': datetime.now().isoformat(),
+        })
         yield f"data: {json.dumps({'type': 'done', 'message_id': ai_msg.id, 'tokens_used': total_tokens_used})}\n\n"
 
     except Exception as e:
-        logger.error(f"Phase 14 (persistence) error: {e}")
+        logger.error(f"Phase 14 (persistence) error: {e}", extra={
+            'error_type': type(e).__name__,
+            'conversation_id': conv_id,
+            'error_message': str(e)[:300],
+        })
         # Still send done event even if persistence fails
         yield f"data: {json.dumps({'type': 'done', 'tokens_used': total_tokens_used, 'error': 'Message saved but may not persist.'})}\n\n"
 
@@ -2866,6 +3010,11 @@ def _tool_accepts_scope(tool_def: dict) -> bool:
 
 @router.post("/conversations/{conv_id}/messages")
 async def send_message(conv_id: str, request: Request):
+    logger.info('[send_message] START - POST /messages', extra={
+        'conversation_id': conv_id,
+        'timestamp': datetime.now().isoformat(),
+    })
+
     db = get_db()
     user = get_current_user(request)
     await _require_owned_conversation(db, conv_id, user)
@@ -2878,8 +3027,13 @@ async def send_message(conv_id: str, request: Request):
         # R9.4 (X8) AC3: reject a malformed/oversized image before it reaches the LLM.
         img_err = _validate_image_data(image_data)
         if img_err:
+            logger.warning('[send_message] Image validation failed', extra={
+                'conversation_id': conv_id,
+                'error': img_err,
+            })
             return {"success": False, "error": img_err}
     if not user_text and not image_data:
+        logger.warning('[send_message] Empty message', extra={'conversation_id': conv_id})
         return {"success": False, "error": "Empty message"}
     if not user_text:
         user_text = "[Image attached — please describe or ask about the image]"
@@ -2888,6 +3042,15 @@ async def send_message(conv_id: str, request: Request):
     if not session_id:
         session_id = str(uuid.uuid4())
         logger.warning("chat_sse_session_id_missing", extra={"conversation_id": conv_id, "generated_session_id": session_id})
+
+    logger.info('[send_message] Starting SSE stream', extra={
+        'conversation_id': conv_id,
+        'session_id': session_id,
+        'user_id': user.get('id'),
+        'user_role': user.get('role'),
+        'text_length': len(user_text),
+        'has_image': bool(image_data),
+    })
 
     from services.layaastat import emit_event
     # R7.3/AC5: the auth user dict keys id as "id" (not "user_id"), so the old

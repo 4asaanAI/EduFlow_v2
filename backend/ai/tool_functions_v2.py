@@ -3378,15 +3378,7 @@ TOOL_REGISTRY = {
         "fn": tool_draft_document,
         "roles": ["owner", "admin", "teacher"],
         "dispatch_type": "read",
-        "description": (
-            "Create a real downloadable file from content you have written — a Word "
-            "document, Excel workbook, PowerPoint deck, PDF, CSV, Markdown or plain "
-            "text. Use this whenever someone asks for a circular, notice, letter, fee "
-            "sheet, report, template or presentation as a FILE they can print, sign, "
-            "email or share. Put prose in `paragraphs` and tabular data in "
-            "`headers` + `rows`. Returns a short `file_id` (not a link); append it in a "
-            "`file` rich block and the download button fetches a fresh link on tap."
-        ),
+        "description": "Create a downloadable file (docx, xlsx, pptx, pdf, csv, md, txt). Use for circulars, letters, reports, templates.",
         "params_schema": {
             "doc_type": {"type": "string", "description": "docx, xlsx, pptx, pdf, csv, md or txt"},
             "title": {"type": "string", "description": "Document title / heading"},
@@ -3485,11 +3477,7 @@ TOOL_REGISTRY = {
         "fn": tool_recall_history,
         "roles": ["owner", "admin"],
         "sub_categories": ["principal"],
-        "description": (
-            "Synthesize a briefing on a student/family/topic from what you remember "
-            "PLUS the records the user may already read (e.g. before a meeting). "
-            "Read-only; reuses existing read-tool scoping."
-        ),
+        "description": "Synthesize a briefing on a student/family/topic from memory and accessible records.",
         "params_schema": {
             "subject": {"type": "string", "description": "Who/what to brief on (name, family, or topic)"},
             "student_id": {"type": "string", "description": "Optional exact student ID"},
@@ -4668,7 +4656,7 @@ WRITE_TOOL_NAMES = {
 }
 
 
-def openai_tool_schema(name: str, tool_def: dict, required: "tuple | list" = ()) -> dict:
+def openai_tool_schema(name: str, tool_def: dict, required: "tuple | list" = (), slim: bool = True) -> dict:
     """R11.2 AC2: derive a native function-calling schema from ONE registry entry.
 
     TOOL_REGISTRY is the single source of truth — the same `params_schema` that
@@ -4676,7 +4664,18 @@ def openai_tool_schema(name: str, tool_def: dict, required: "tuple | list" = ())
     Because the provider constrains the model to the advertised tool names,
     invented tool names become impossible (AC3), and the R3 prompt↔registry
     parity gate becomes structural rather than only test-enforced.
+
+    slim=True (default): truncates descriptions to keep serialised JSON within
+    Groq's free-tier TPM limit. Full descriptions remain in TOOL_REGISTRY.
+
+    Optional parameters (not in `required`) are declared as nullable so Groq
+    accepts null values that the model may produce for unspecified optional args
+    (Groq validates tool call arguments strictly against the schema; without null
+    union types it returns 400 tool_use_failed for any null optional param).
     """
+    _DESC_MAX = 80   # chars — enough for a clear one-liner
+    _PARAM_MAX = 50  # chars — keeps param intent clear without prose bloat
+
     props = {}
     for key, spec in (tool_def.get("params_schema") or {}).items():
         spec = dict(spec) if isinstance(spec, dict) else {"type": "string"}
@@ -4685,16 +4684,32 @@ def openai_tool_schema(name: str, tool_def: dict, required: "tuple | list" = ())
         # default when the registry entry omits it (e.g. attendance rows).
         if spec.get("type") == "array" and "items" not in spec:
             spec["items"] = {}
+        if slim and "description" in spec and len(spec["description"]) > _PARAM_MAX:
+            spec = dict(spec)
+            spec["description"] = spec["description"][:_PARAM_MAX].rstrip()
         props[key] = spec
+
+    # Make optional params nullable: Groq rejects null values for non-nullable params.
+    required_set = set(required or ())
+    for key in props:
+        if key not in required_set:
+            ptype = props[key].get("type", "string")
+            if isinstance(ptype, str):
+                props[key] = dict(props[key])
+                props[key]["type"] = [ptype, "null"]
+
     parameters = {"type": "object", "properties": props}
-    req = [k for k in (required or ()) if k in props]
+    req = [k for k in required_set if k in props]
     if req:
         parameters["required"] = req
+    description = tool_def.get("description", "") or name.replace("_", " ")
+    if slim and len(description) > _DESC_MAX:
+        description = description[:_DESC_MAX].rstrip()
     return {
         "type": "function",
         "function": {
             "name": name,
-            "description": tool_def.get("description", "") or name.replace("_", " "),
+            "description": description,
             "parameters": parameters,
         },
     }

@@ -88,8 +88,10 @@ def test_expected_tools_are_coherent_with_the_advertised_toolset():
 
 
 def test_system_prompt_builds_for_every_conversation():
-    """The real prompt builder must produce a non-trivial prompt that advertises
-    the expected tool (when one is expected) for every corpus entry."""
+    """The real prompt builder must produce a non-trivial prompt for every corpus entry,
+    and the expected tool (when one is named) must be advertised to the role via native
+    function-calling tools (R11.2: tools are no longer listed inside the system prompt)."""
+    from ai.tool_role_config import get_tool_names_for_role
     failures = []
     for c in CORPUS:
         user = {"role": c.role, "sub_category": c.sub_category, "name": "Eval User"}
@@ -101,6 +103,9 @@ def test_system_prompt_builds_for_every_conversation():
         if not prompt or len(prompt) < 100:
             failures.append((c.id, "prompt suspiciously short"))
         if c.expected_outcome in TOOL_USING_OUTCOMES and c.expected_tool:
-            if c.expected_tool not in prompt:
+            # R11.2: tool definitions are sent via the native `tools=` parameter,
+            # not listed in the system prompt text. Check the role's tool list instead.
+            role_tools = get_tool_names_for_role(c.role, c.sub_category)
+            if c.expected_tool not in role_tools:
                 failures.append((c.id, f"expected_tool {c.expected_tool!r} absent from the built prompt"))
     assert not failures, "prompt-build failures:\n  " + "\n  ".join(f"{i}: {m}" for i, m in failures)

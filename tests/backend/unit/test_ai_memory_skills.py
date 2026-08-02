@@ -115,7 +115,7 @@ async def test_g4_extract_splits_autosave_and_uncertain(monkeypatch):
         '{"text": "Owner prefers concise morning briefs", "category": "preference", "confidence": 0.9},'
         '{"text": "Owner might be planning a new branch", "category": "fact", "confidence": 0.55},'
         '{"text": "trivial", "category": "fact", "confidence": 0.1}]}')
-    out = await extractor.extract_memory_items("u", "a")
+    out = await extractor.extract_memory_items("I prefer concise morning briefs for the school", "a")
     assert [i["text"] for i in out["autosave"]] == ["Owner prefers concise morning briefs"]
     assert [i["text"] for i in out["uncertain"]] == ["Owner might be planning a new branch"]
 
@@ -129,7 +129,7 @@ async def test_g4_finalize_autosaves_and_asks_uncertain(monkeypatch):
     user = {"id": "owner-1", "role": "owner", "name": "T", "branch_id": "branch-a"}
     await db.conversations.insert_one({"id": "c1", "user_id": "owner-1", "schoolId": "aaryans-joya"})
     q = await chat_integration.finalize_turn(
-        db, user, user_text="hi", assistant_text="hello", conv_id="c1",
+        db, user, user_text="I want to switch to a different vendor for fees", assistant_text="hello", conv_id="c1",
         history=[], round_count=0, tool_count=0,
     )
     assert q and "Owner may switch fee vendor" in q

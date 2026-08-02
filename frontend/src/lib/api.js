@@ -138,17 +138,30 @@ export function sendMessageStream(convId, text, user, onEvent, sessionId = null,
   const chatSessionId = sessionId || getBrowserSseSessionId();
   const body = JSON.stringify({ text, session_id: chatSessionId, image_data: imageData || undefined });
 
-  const doFetch = () => fetch(`${API}/chat/conversations/${convId}/messages`, {
-    method: 'POST',
-    headers: {
-      ...getHeaders(),
-      'X-SSE-Session-ID': chatSessionId,
-    },
-    credentials: 'include',
-    body,
+  console.log('[API.sendMessageStream] START', {
+    convId,
+    text: text.substring(0, 100),
+    chatSessionId,
+    hasImage: !!imageData,
+    timestamp: new Date().toISOString(),
   });
 
+  const doFetch = () => {
+    console.log('[API.sendMessageStream] Initiating fetch to backend...', { url: `${API}/chat/conversations/${convId}/messages` });
+    return fetch(`${API}/chat/conversations/${convId}/messages`, {
+      method: 'POST',
+      headers: {
+        ...getHeaders(),
+        'X-SSE-Session-ID': chatSessionId,
+      },
+      credentials: 'include',
+      body,
+    });
+  };
+
   return doFetch().then(async (res) => {
+    console.log('[API.sendMessageStream] Initial response received', { status: res.status, statusText: res.statusText });
+
     if (res.status === 401) {
       // FH1 (R8.1 AC1): a 401 on the initial response means the session expired
       // BEFORE any assistant output or token debit — so a single refresh + retry
@@ -180,39 +193,68 @@ export function sendMessageStream(convId, text, user, onEvent, sessionId = null,
       if (!part.startsWith('data: ')) return;
       try {
         const data = JSON.parse(part.slice(6));
-        if (data?.type === 'done') receivedDone = true;
+        console.log('[API.sendMessageStream] SSE event received', {
+          type: data?.type,
+          timestamp: new Date().toISOString(),
+          ...(data?.type === 'text_delta' && { deltaLength: data.delta?.length }),
+          ...(data?.type === 'thinking' && { step: data.step }),
+          ...(data?.type === 'tool_call' && { tool: data.tool }),
+        });
+
+        if (data?.type === 'done') {
+          console.log('[API.sendMessageStream] DONE event received - stream complete');
+          receivedDone = true;
+        }
         onEvent(data);
       } catch (err) {
         // R1.1 AC3: never swallow a malformed SSE frame silently.
-        console.warn('malformed SSE event JSON', err, part.slice(0, 200));
+        console.warn('[API.sendMessageStream] malformed SSE event JSON', err, part.slice(0, 200));
       }
     };
 
     try {
+      let frameCount = 0;
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          console.log('[API.sendMessageStream] Stream reader closed');
+          break;
+        }
         buffer += decoder.decode(value, { stream: true });
         const parts = buffer.split('\n\n');
         buffer = parts.pop();
-        for (const part of parts) processFrame(part);
+        for (const part of parts) {
+          frameCount++;
+          processFrame(part);
+        }
       }
+      console.log('[API.sendMessageStream] Stream reading complete', { frameCount, receivedDone });
+
       // R8.4 AC4: flush the decoder + buffer tail. A stream whose final frame
       // (often the terminal `done`) is not followed by a trailing "\n\n" would
       // otherwise be dropped on the floor — a silent-turn tail-loss.
       buffer += decoder.decode();
-      for (const part of buffer.split('\n\n')) processFrame(part);
-    } catch {
+      for (const part of buffer.split('\n\n')) {
+        if (part) {
+          frameCount++;
+          processFrame(part);
+        }
+      }
+      console.log('[API.sendMessageStream] Final buffer flushed', { frameCount, receivedDone });
+    } catch (err) {
+      console.error('[API.sendMessageStream] Stream read error', { error: err?.message });
       onEvent({ type: 'thinking_clear' });
       onEvent({ type: 'stream_error', retryable: true, reason: 'stream_network_error' });
       return;
     }
 
     if (!receivedDone) {
+      console.error('[API.sendMessageStream] Stream closed without DONE event - potential data loss');
       onEvent({ type: 'thinking_clear' });
       onEvent({ type: 'stream_error', retryable: true, reason: 'stream_closed_without_done' });
     }
-  }).catch(() => {
+  }).catch((err) => {
+    console.error('[API.sendMessageStream] Fetch promise rejected', { error: err?.message });
     onEvent({ type: 'thinking_clear' });
     onEvent({ type: 'stream_error', retryable: true, reason: 'stream_network_error' });
   });

@@ -439,7 +439,18 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   };
 
   const handleSend = async (text, imageData = null, opts = {}) => {
-    if (!text.trim() || streaming) return;
+    console.log('[ChatInterface.handleSend] START', {
+      text: text.substring(0, 100),
+      hasImage: !!imageData,
+      conversationId: convId,
+      streaming,
+      timestamp: new Date().toISOString(),
+    });
+
+    if (!text.trim() || streaming) {
+      console.log('[ChatInterface.handleSend] Early return - invalid state', { textEmpty: !text.trim(), isStreaming: streaming });
+      return;
+    }
     const { skipUserBubble = false, forceCid = null } = opts;
 
     // A fresh user turn resets the one-shot auto-reconnect budget; a retry
@@ -448,18 +459,23 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     setSendError('');
 
     let cid = forceCid || convId;
+    console.log('[ChatInterface.handleSend] Initial cid', { cid, forceCid, conversationId: convId });
 
     if (!cid) {
       // FH2 (R8.1 AC2): a failed createConversation must be VISIBLE and must not
       // eat the user's text. Return false so InputBar restores what was typed.
+      console.log('[ChatInterface.handleSend] No conversation ID - creating new conversation');
       let res;
       try {
         res = await createConversation(currentUser);
-      } catch {
+        console.log('[ChatInterface.handleSend] createConversation response', { success: res?.success, hasId: !!res?.data?.id });
+      } catch (err) {
+        console.error('[ChatInterface.handleSend] createConversation failed', { error: err?.message });
         setSendError("Couldn't start a new conversation — check your connection and try again.");
         return false;
       }
       if (!res || !res.success || !res.data?.id) {
+        console.error('[ChatInterface.handleSend] createConversation invalid response', { success: res?.success, data: res?.data });
         setSendError("Couldn't start a new conversation — please try again.");
         return false;
       }
@@ -467,6 +483,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
       justCreatedRef.current = true;
       setConvId(cid);
       onConvCreated(cid);
+      console.log('[ChatInterface.handleSend] New conversation created', { cid });
     }
 
     if (!skipUserBubble) {
@@ -474,6 +491,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
       const userMsg = { id: tempId, role: 'user', content: text, created_at: new Date().toISOString() };
       processedMessageIds.current.add(tempId);
       setMessages(prev => [...prev, userMsg]);
+      console.log('[ChatInterface.handleSend] User message added to UI', { tempId, text: text.substring(0, 50) });
     }
 
     // Reset thinking state before starting SSE
@@ -505,8 +523,16 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     // Story 5.2: start the clock the moment the turn begins, not on first token —
     // a request that is accepted and then never answered is the case being caught.
     noteStreamActivity();
+    console.log('[ChatInterface.handleSend] Calling sendMessageStream', { cid, textLength: text.length });
+
     try {
       await sendMessageStream(cid, text, currentUser, (event) => {
+        console.log('[ChatInterface.handleSend] Received SSE event', {
+          type: event.type,
+          timestamp: new Date().toISOString(),
+          ...(event.type === 'text_delta' && { deltaLength: event.delta?.length }),
+          ...(event.type === 'error' && { message: event.message }),
+        });
         // ANY inbound event counts as life, including a keepalive and a thinking
         // step. A long but genuinely-working answer must never be called stalled.
         noteStreamActivity();
@@ -684,6 +710,12 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           }
           setStreaming(false);
         } else if (event.type === 'done') {
+          console.log('[ChatInterface.handleSend] DONE event - stream complete', {
+            messageId: event.message_id,
+            tokensUsed: event.tokens_used,
+            hasStreamContent: !!streamMsgRef.current?.content,
+          });
+
           autoRetryRef.current = 0;  // a completed turn clears the reconnect budget
           const messageId = event.message_id || `ai-${Date.now()}`;
           if (event.tokens_used) {
@@ -719,7 +751,18 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           console.warn('unhandled SSE event', event.type, event);
         }
       }, chatSessionIdRef.current, imageData);
-      if (streamErrored) return;
+
+      console.log('[ChatInterface.handleSend] sendMessageStream completed', {
+        streamErrored,
+        producedOutput,
+        hasPendingMsg: !!pendingFinalMsgRef.current,
+        streamContent: streamMsgRef.current?.content?.substring(0, 100),
+      });
+
+      if (streamErrored) {
+        console.log('[ChatInterface.handleSend] Stream errored - returning early');
+        return;
+      }
       // R1.2 AC2: terminal-state backstop (FM4: no side effects inside updaters).
       // If a live stream message is still open, finalize it; if the stream
       // resolved having produced nothing at all (a silent resolve — audit S12),
@@ -731,6 +774,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           processedMessageIds.current.add(fallbackId);
           pendingFinalMsgRef.current = { ...prev, id: fallbackId, role: 'assistant' };
           setStream(null);
+          console.log('[ChatInterface.handleSend] Stream message finalized with ID', { fallbackId });
         }
       }
       setStreaming(false);
@@ -743,9 +787,11 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
       if (pendingFinalMsgRef.current) {
         const finalMsg = pendingFinalMsgRef.current;
         pendingFinalMsgRef.current = null;
+        console.log('[ChatInterface.handleSend] Flushing final message to UI', { id: finalMsg.id });
         setMessages(m => (m.some(x => x.id === finalMsg.id) ? m : [...m, finalMsg]));
       }
       if (!producedOutput && !pendingFinalMsgRef.current) {
+        console.warn('[ChatInterface.handleSend] No output produced - using fallback message');
         setMessages(cur => [...cur, {
           id: `ai-fallback-${Date.now()}`,
           role: 'assistant',
@@ -754,7 +800,8 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           created_at: new Date().toISOString(),
         }]);
       }
-    } catch {
+    } catch (err) {
+      console.error('[ChatInterface.handleSend] sendMessageStream threw exception', { error: err?.message, stack: err?.stack });
       // On SSE error: append "(Response interrupted)" and show Retry.
       // FM4: read the accumulated body from the ref; no side effects in updaters.
       const prev = streamMsgRef.current;
@@ -769,6 +816,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           content: prev.content + '\n\n*(Response interrupted)*',
           interrupted: true,
         };
+        console.log('[ChatInterface.handleSend] Preserved partial content before error', { id: interruptedId });
       }
       setStreaming(false);
       clearStallWatch();
@@ -776,6 +824,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
       setThinkingSteps(ts => ts.map(s => ({ ...s, status: 'done' })));
       // If there was no content at all, show a plain error message with retry
       if (!pendingFinalMsgRef.current) {
+        console.log('[ChatInterface.handleSend] No content to preserve - showing error message');
         setMessages(cur => [...cur, {
           id: `err-${Date.now()}`,
           role: 'assistant',

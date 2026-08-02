@@ -100,7 +100,7 @@ def test_flo_is_told_not_to_use_long_dashes():
     I help...": the long dash is an AI tell. The first version of these rules left
     that out as marginal; that judgement was wrong."""
     prompt = _prompt()
-    assert "NEVER use the em-dash" in prompt
+    assert "NEVER use em-dash" in prompt
     assert "—" in prompt, "the rule must show the actual em-dash character"
     assert "–" in prompt, "the rule must show the actual en-dash character"
 

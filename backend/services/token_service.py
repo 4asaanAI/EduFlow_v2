@@ -192,10 +192,16 @@ async def record_usage(
     source: str,
     conversation_id: str = None,
     tool_name: str = None,
+    model: str = None,
+    provider: str = None,
 ) -> None:
     """
     Called AFTER every LLM call. Inserts a usage log entry and updates
     the appropriate balance (plan counter, personal top-up, or school pool).
+
+    `model`/`provider` attribute the spend to the LLM that ACTUALLY answered
+    (Groq primary or Azure fallback) rather than whatever is configured — so
+    usage reports reflect the real model, not an assumed one.
     """
     if tokens_used <= 0:
         return
@@ -216,6 +222,8 @@ async def record_usage(
         "source": source,
         "conversation_id": conversation_id,
         "tool_name": tool_name,
+        "model": model,
+        "provider": provider,
         "created_at": now_iso,
     }
     try:

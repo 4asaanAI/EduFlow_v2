@@ -88,6 +88,10 @@ async def extract_memory_items(user_text: str, assistant_text: str, *, session_i
     empty = {"autosave": [], "uncertain": []}
     if not user_text or not user_text.strip():
         return empty
+    # Skip LLM call for short queries that can't contain memory-worthy content.
+    # Saves one Groq request per turn for conversational messages.
+    if len(user_text.split()) < 8:
+        return empty
     convo = f"[administrator] {user_text}\n[assistant] {assistant_text or ''}"
     data = await _llm_json(_MEMORY_PROMPT, f"Turn:\n{convo}", session_id)
     if not isinstance(data, dict):
