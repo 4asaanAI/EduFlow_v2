@@ -4,38 +4,19 @@ import {
   clearLegacyLongLivedTokens,
   getAccessToken,
   getStoredUser,
-  redirectToLoginOnce,
   refreshAccessToken,
   setAuthSession,
 } from '../lib/authSession';
+import { API } from '../lib/api';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
-
-// ─── Authenticated fetch wrapper ────────────────────────────────────────────
-
-export async function authFetch(url, options = {}) {
-  const token = getAccessToken();
-  const headers = { ...options.headers };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  let res = await fetch(url, { credentials: 'include', ...options, headers });
-
-  if (res.status === 401) {
-    try {
-      await refreshAccessToken(API);
-      const retryHeaders = { ...headers };
-      if (getAccessToken()) retryHeaders.Authorization = `Bearer ${getAccessToken()}`;
-      res = await fetch(url, { credentials: 'include', ...options, headers: retryHeaders });
-      if (res.status !== 401) return res;
-    } catch {}
-    redirectToLoginOnce('/login');
-  }
-
-  return res;
-}
+// NEW-08: this file used to read `REACT_APP_BACKEND_URL` itself, so it never got
+// the http→https upgrade commit 80d803b added — on the login and token-refresh
+// path, the two calls the whole app depends on. The address now comes from
+// `lib/api.js`, which is the only place it is read.
+//
+// The `authFetch` wrapper that used to live here was a second copy of `apiFetch`
+// with NO callers anywhere in the app. Deleted rather than kept in sync by
+// discipline: there is one refreshing wrapper, `apiFetch` in `lib/api.js`. (NEW-03)
 
 // ─── Context ────────────────────────────────────────────────────────────────
 
@@ -82,6 +63,10 @@ export function UserProvider({ children }) {
 
   // ─── Password login ──────────────────────────────────────────────────────
 
+  // Deliberately a plain `fetch`, NOT `apiFetch`. A 401 here means the password is
+  // wrong — that is the answer, not an expired session. Sending it through the
+  // refreshing wrapper would try to renew a login that does not exist yet and then
+  // bounce the person to the login page they are already on. Same for logout below.
   const loginPassword = useCallback(async (username, password) => {
     const res = await fetch(`${API}/auth/login`, {
       method: 'POST',

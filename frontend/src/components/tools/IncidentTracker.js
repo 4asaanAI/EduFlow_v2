@@ -7,11 +7,8 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, Badge, ActionBtn, FormField, DataTable } from './ToolPage';
 import { Plus, MessageSquare, UserCheck, AlertTriangle } from 'lucide-react';
+import { API, apiFetch } from '../../lib/api';
 
-const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
-const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
-  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
-  : _rawAPI) + '/api';
 function h() { return getAuthHeaders(); }
 
 const SEVERITY_COLORS = { low: 'var(--tool-hex-34d399)', medium: 'var(--tool-hex-facc15)', high: 'var(--tool-hex-f87171)' };
@@ -47,7 +44,7 @@ export default function IncidentTracker() {
     if (statusFilter) params.append('status', statusFilter);
     if (searchQ) params.append('q', searchQ);
     try {
-      const res = await fetch(`${API}/ops/incidents?${params}`, { headers: h() });
+      const res = await apiFetch(`${API}/ops/incidents?${params}`, { headers: h() });
       const data = await res.json();
       if (data.success) setIncidents(data.data || []);
     } catch {}
@@ -57,7 +54,7 @@ export default function IncidentTracker() {
   const loadVisitors = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/ops/visitors`, { headers: h() });
+      const res = await apiFetch(`${API}/ops/visitors`, { headers: h() });
       const data = await res.json();
       if (data.success) setVisitors(data.data || []);
     } catch {}
@@ -71,7 +68,7 @@ export default function IncidentTracker() {
 
   const openDetail = async (id) => {
     try {
-      const res = await fetch(`${API}/ops/incidents/${id}`, { headers: h() });
+      const res = await apiFetch(`${API}/ops/incidents/${id}`, { headers: h() });
       const data = await res.json();
       if (data.success) setSelected(data.data);
     } catch {}
@@ -82,7 +79,7 @@ export default function IncidentTracker() {
     if (!form.description) { setFormError('Description required'); return; }
     setSaving(true);
     setFormError('');
-    const res = await fetch(`${API}/ops/incidents`, {
+    const res = await apiFetch(`${API}/ops/incidents`, {
       method: 'POST',
       headers: { ...h(), 'Content-Type': 'application/json' },
       body: JSON.stringify(form),
@@ -96,7 +93,7 @@ export default function IncidentTracker() {
   const createVisitor = async (e) => {
     e.preventDefault();
     setSaving(true);
-    const res = await fetch(`${API}/ops/visitors`, {
+    const res = await apiFetch(`${API}/ops/visitors`, {
       method: 'POST',
       headers: { ...h(), 'Content-Type': 'application/json' },
       body: JSON.stringify(visitorForm),
@@ -108,7 +105,7 @@ export default function IncidentTracker() {
 
   const addThread = async () => {
     if (!threadMsg.trim() || !selected) return;
-    const res = await fetch(`${API}/ops/incidents/${selected.id}/thread`, {
+    const res = await apiFetch(`${API}/ops/incidents/${selected.id}/thread`, {
       method: 'POST',
       headers: { ...h(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: threadMsg }),

@@ -23,8 +23,19 @@
 > `_bmad-output/implementation-artifacts/ui-sweep/`. As of 2026-07-23, Epics 1–6, 8, 9, 10 are
 > shipped and Epic 7 (School Directory) is built and gate-green, awaiting deploy. The remaining
 > open work is the deeper tool-merge consolidation (`epic-7-tool-merge-impact-note.md`, D-44).
-> **Baseline note:** the "25 pinned failures" phrasing below is historical — the current suite
-> has **2–3** pre-existing order-dependent failures (D-03 ×2 + the time-of-day D-35), not 25.
+> **Baseline note (corrected 2026-08-04):** the "25 pinned failures" phrasing below is
+> historical, and so is the "2–3 order-dependent failures" note that replaced it — D-03 ×2 and
+> D-35 were all fixed on 2026-07-23. **The suite baseline is 0 failures.** It was 1967 passed /
+> **1 failed** between 2026-07-25 and 2026-08-04 (the certificate permission test, NEW-01/02);
+> that is now closed. Never re-pin a non-zero baseline.
+>
+> ## 🚧 CURRENT INITIATIVE — Inspection Remediation (2026-08-04) — branch `inspection-remediation-2026-08-04`
+>
+> The 14 findings of the 2026-08-04 platform inspection, worked in 3 blocks of 5/5/4.
+> Process and the fixed handoff prompt: `_bmad-output/INSPECTION-REMEDIATION-PROTOCOL-2026-08-04.md`.
+> **The register is the only source of truth for progress:**
+> `_bmad-output/planning-artifacts/inspection-findings-2026-08-04.md`.
+> Logs in `_bmad-output/implementation-artifacts/inspection-2026-08-04/`.
 
 ---
 
@@ -332,8 +343,15 @@ Sprint-status keys: `hotfix-1-file-serve-unauthenticated`, `hotfix-2-fee-collect
 ## Running Tests
 
 ```bash
-# Backend (from repo root) — must show 420 passed, 0 skipped
-python -m pytest tests/backend/ -x -q
+# Backend (from repo root) — 0 failed. The "420 passed" here was the Part-4 number and
+# went stale years of work ago; the count grows every epic, so the number that matters is
+# the FAILURE count. 14 deselected is normal (the credentialed mongo_real + llm_eval tiers).
+# Pin the DB first, or a fail-closed guard in conftest.py stops the run (D-04):
+#   MONGO_URL=mongodb://127.0.0.1:27099/eduflow_test DB_NAME=eduflow_test
+python -m pytest tests/backend/ -q
+
+# Frontend unit tests — 2 pre-existing failures in LayoutRouting.test.js (NEW-10 / T12)
+CI=true npx craco test --watchAll=false
 
 # Frontend E2E
 npx playwright test

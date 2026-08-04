@@ -5,11 +5,8 @@ import {
 } from 'lucide-react';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, ActionBtn } from './ToolPage';
+import { API, apiFetch } from '../../lib/api';
 
-const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
-const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
-  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
-  : _rawAPI) + '/api';
 const h = () => getAuthHeaders();
 const money = v => `₹${Number(v || 0).toLocaleString('en-IN')}`;
 
@@ -194,10 +191,10 @@ export default function PrincipalDailyOps() {
     setError('');
     try {
       const [subsRes, leavesRes, certsRes, feesRes] = await Promise.allSettled([
-        fetch(`${API}/academics/substitutions?date=${date}`, { headers: h() }),
-        fetch(`${API}/staff/leaves/pending`, { headers: h() }),
-        fetch(`${API}/ops/certificates`, { headers: h() }),
-        fetch(`${API}/fees/summary`, { headers: h() }),
+        apiFetch(`${API}/academics/substitutions?date=${date}`, { headers: h() }),
+        apiFetch(`${API}/staff/leaves/pending`, { headers: h() }),
+        apiFetch(`${API}/ops/certificates`, { headers: h() }),
+        apiFetch(`${API}/fees/summary`, { headers: h() }),
       ]);
       const subsJson = subsRes.status === 'fulfilled' ? await subsRes.value.json() : { success: false };
       if (!subsJson.success) throw new Error(subsJson.detail || 'Unable to load substitution data');
@@ -223,7 +220,7 @@ export default function PrincipalDailyOps() {
       setLessonLoading(true);
       try {
         const month = new Date().toISOString().slice(0, 7);
-        const res = await fetch(`${API}/academics/lesson-plan-completion?month=${month}`, { headers: h() });
+        const res = await apiFetch(`${API}/academics/lesson-plan-completion?month=${month}`, { headers: h() });
         if (res.ok) { const d = await res.json(); setLessonCompletion(d.data || []); }
       } catch {}
       setLessonLoading(false);
@@ -234,7 +231,7 @@ export default function PrincipalDailyOps() {
     (async () => {
       setClassSummaryLoading(true);
       try {
-        const res = await fetch(`${API}/attendance/class-summary`, { headers: h() });
+        const res = await apiFetch(`${API}/attendance/class-summary`, { headers: h() });
         if (res.ok) { const d = await res.json(); setClassSummary(d?.data || []); }
       } catch {}
       setClassSummaryLoading(false);
@@ -243,7 +240,7 @@ export default function PrincipalDailyOps() {
 
   const assign = async (item, teacherId) => {
     if (!teacherId) return;
-    const res = await fetch(`${API}/academics/substitutions`, {
+    const res = await apiFetch(`${API}/academics/substitutions`, {
       method: 'POST',
       headers: { ...h(), 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -257,7 +254,7 @@ export default function PrincipalDailyOps() {
   };
 
   const decideLeave = async (leaveId, status) => {
-    await fetch(`${API}/staff/leaves/${leaveId}`, {
+    await apiFetch(`${API}/staff/leaves/${leaveId}`, {
       method: 'PATCH',
       headers: { ...h(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ status, rejection_reason: status === 'rejected' ? 'Rejected by principal' : undefined }),
@@ -266,12 +263,12 @@ export default function PrincipalDailyOps() {
   };
 
   const approveCert = async certId => {
-    await fetch(`${API}/ops/certificates/${certId}/approve`, { method: 'PATCH', headers: h() });
+    await apiFetch(`${API}/ops/certificates/${certId}/approve`, { method: 'PATCH', headers: h() });
     load();
   };
 
   const rejectCert = async (certId, reason) => {
-    await fetch(`${API}/ops/certificates/${certId}/reject`, {
+    await apiFetch(`${API}/ops/certificates/${certId}/reject`, {
       method: 'PATCH',
       headers: { ...h(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason }),

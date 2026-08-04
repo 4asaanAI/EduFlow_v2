@@ -14,6 +14,10 @@ jest.mock('../../contexts/ThemeContext', () => ({
   useTheme: () => ({ isDark: true, toggleTheme: jest.fn() }),
 }));
 jest.mock('../../lib/api', () => ({
+  // NEW-03: these screens now import `API`/`apiFetch` from lib/api. A factory mock does
+  // NOT fall through to the real module, so any omitted name is `undefined` (D-48).
+  API: '/api',
+  apiFetch: (...a) => global.fetch(...a),
   getAcademicYear: jest.fn(),
   getNotifications: jest.fn(),
   getUnreadNotificationCount: jest.fn(),

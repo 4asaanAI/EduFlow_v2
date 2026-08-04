@@ -8,7 +8,7 @@ import {
   Save,
   ShieldAlert,
 } from 'lucide-react';
-import {
+import { API, apiFetch,
   bulkMarkAttendance,
   correctAttendance,
   createManualAttendance,
@@ -18,10 +18,6 @@ import {
 } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 
-const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
-const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
-  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
-  : _rawAPI) + '/api';
 
 const STATUS_OPTIONS = [
   { value: 'present', label: 'Present', color: 'var(--tool-hex-34d399)' },
@@ -187,7 +183,7 @@ export default function AttendanceRecorder() {
     setError('');
     try {
       const month = date.slice(0, 7);
-      const res = await fetch(`${API}/attendance/export?class_id=${selectedClass}&month=${month}&format=csv`, { headers: getAuthHeaders() });
+      const res = await apiFetch(`${API}/attendance/export?class_id=${selectedClass}&month=${month}&format=csv`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error('Attendance export failed');
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);

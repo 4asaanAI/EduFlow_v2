@@ -3,7 +3,7 @@
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useUser } from '../../contexts/UserContext';
-import { getAllClasses, getStudents, getTodayAttendance, bulkMarkAttendance } from '../../lib/api';
+import { API, apiFetch, getAllClasses, getStudents, getTodayAttendance, bulkMarkAttendance } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn } from './ToolPage';
 import { Plus, CheckCircle, Save, Bold, Underline, List } from 'lucide-react';
@@ -11,10 +11,6 @@ import html2pdf from 'html2pdf.js';
 import DOMPurify from 'dompurify';
 export { FormSubmissions } from './StudentTools';
 
-const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
-const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
-  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
-  : _rawAPI) + '/api';
 function h() { return getAuthHeaders(); }
 const tint = (color, amount) => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
 
@@ -29,7 +25,7 @@ function useTeachingScope() {
   useEffect(() => {
     let alive = true;
     if (currentUser?.role !== 'teacher') { setScope({ is_teacher: false }); return undefined; }
-    fetch(`${API}/academics/my-teaching-scope`, { headers: h(currentUser) })
+    apiFetch(`${API}/academics/my-teaching-scope`, { headers: h(currentUser) })
       .then(r => r.json())
       .then(r => { if (alive) setScope(r.success ? r.data : { is_teacher: false }); })
       .catch(() => { if (alive) setScope({ is_teacher: false }); });
@@ -94,7 +90,7 @@ export function ClassAttendanceMarker() {
     });
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (selectedClass) { setLoading(true);
-    fetch(`${API}/attendance/student/today/${selectedClass}?date=${date}`, { headers: h(currentUser) })
+    apiFetch(`${API}/attendance/student/today/${selectedClass}?date=${date}`, { headers: h(currentUser) })
       .then(r => r.json()).then(r => { if (r.success) setRecords(r.data || []); }).finally(() => setLoading(false)); 
   } }, [selectedClass, date]);
 
@@ -165,7 +161,7 @@ export function AssignmentGenerator() {
   const [error, setError] = useState('');
 
   const load = async () => {
-    const r = await fetch(`${API}/academics/assignments`, { headers: h(currentUser) }).then(r => r.json());
+    const r = await apiFetch(`${API}/academics/assignments`, { headers: h(currentUser) }).then(r => r.json());
     if (r.success) setAssignments(r.data || []);
   };
 
@@ -178,7 +174,7 @@ export function AssignmentGenerator() {
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadSubjects = async (classId) => {
-    const r = await fetch(`${API}/academics/subjects?class_id=${classId}`, { headers: h(currentUser) }).then(r => r.json());
+    const r = await apiFetch(`${API}/academics/subjects?class_id=${classId}`, { headers: h(currentUser) }).then(r => r.json());
     if (r.success) setSubjects(filterSubjects(r.data || [], scope));
   };
 
@@ -192,7 +188,7 @@ export function AssignmentGenerator() {
     try {
       const url = editingId ? `${API}/academics/assignments/${editingId}` : `${API}/academics/assignments`;
       const method = editingId ? 'PATCH' : 'POST';
-      const res = await fetch(url, { method, headers: h(currentUser), body: JSON.stringify(form) }).then(r => r.json());
+      const res = await apiFetch(url, { method, headers: h(currentUser), body: JSON.stringify(form) }).then(r => r.json());
       if (res.success) { setShowForm(false); setEditingId(null); await load(); }
       else setError(res.message || 'Failed');
     } catch (err) { setError(err.message); }
@@ -201,7 +197,7 @@ export function AssignmentGenerator() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this assignment?')) return;
-    await fetch(`${API}/academics/assignments/${id}`, { method: 'DELETE', headers: h(currentUser) });
+    await apiFetch(`${API}/academics/assignments/${id}`, { method: 'DELETE', headers: h(currentUser) });
     await load();
   };
 
@@ -297,8 +293,8 @@ export function QuestionPaperCreator() {
     const load = async () => {
       try {
         const [subj, pap] = await Promise.all([
-          fetch(`${API}/academics/subjects`, { headers: h(currentUser) }).then(r => r.json()),
-          fetch(`${API}/academics/question-papers`, { headers: h(currentUser) }).then(r => r.json())
+          apiFetch(`${API}/academics/subjects`, { headers: h(currentUser) }).then(r => r.json()),
+          apiFetch(`${API}/academics/question-papers`, { headers: h(currentUser) }).then(r => r.json())
         ]);
         if (subj.success) setSubjects(subj.data || []);
         if (pap.success) setPapers(pap.data || []);
@@ -320,7 +316,7 @@ export function QuestionPaperCreator() {
     setError('');
     try {
       const subj = subjects.find(s => s.id === form.subject_id);
-      const res = await fetch(`${API}/academics/question-papers/generate`, {
+      const res = await apiFetch(`${API}/academics/question-papers/generate`, {
         method: 'POST',
         headers: h(currentUser),
         body: JSON.stringify({
@@ -425,8 +421,8 @@ export function QuestionPaperCreator() {
     setEditedContent(content);
     setSaveFeedback('saving');
     try {
-      await fetch(`${API}/academics/question-papers/${generatedPaper.id}`, { method: 'PATCH', headers: h(currentUser), body: JSON.stringify({ title: generatedPaper.title, generated_content: content }) });
-      const r = await fetch(`${API}/academics/question-papers`, { headers: h(currentUser) }).then(r => r.json());
+      await apiFetch(`${API}/academics/question-papers/${generatedPaper.id}`, { method: 'PATCH', headers: h(currentUser), body: JSON.stringify({ title: generatedPaper.title, generated_content: content }) });
+      const r = await apiFetch(`${API}/academics/question-papers`, { headers: h(currentUser) }).then(r => r.json());
       if (r.success) setPapers(r.data || []);
       setSaveFeedback('saved');
       setTimeout(() => setSaveFeedback(''), 2000);
@@ -532,7 +528,7 @@ export function QuestionPaperCreator() {
                   <td style={{ padding: '10px 14px' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button onClick={async () => {
-                        const res = await fetch(`${API}/academics/question-papers/${p.id}`, { headers: h(currentUser) }).then(r => r.json());
+                        const res = await apiFetch(`${API}/academics/question-papers/${p.id}`, { headers: h(currentUser) }).then(r => r.json());
                         const full = res.success ? res.data : p;
                         const rawContent = full.generated_content || '';
                         // Content may already be HTML (saved after editing) or markdown (fresh from AI)
@@ -542,7 +538,7 @@ export function QuestionPaperCreator() {
                         setEditedContent(html);
                         setIsEditing(true);
                       }} style={btnStyle('var(--tool-hex-4f8ff7)')}>Edit</button>
-                      <button onClick={async () => { if (!window.confirm('Delete this question paper?')) return; await fetch(`${API}/academics/question-papers/${p.id}`, { method: 'DELETE', headers: h(currentUser) }); const r = await fetch(`${API}/academics/question-papers`, { headers: h(currentUser) }).then(r => r.json()); if (r.success) setPapers(r.data || []); }} style={btnStyle('var(--tool-hex-f87171)')}>Delete</button>
+                      <button onClick={async () => { if (!window.confirm('Delete this question paper?')) return; await apiFetch(`${API}/academics/question-papers/${p.id}`, { method: 'DELETE', headers: h(currentUser) }); const r = await apiFetch(`${API}/academics/question-papers`, { headers: h(currentUser) }).then(r => r.json()); if (r.success) setPapers(r.data || []); }} style={btnStyle('var(--tool-hex-f87171)')}>Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -574,7 +570,7 @@ export function LeaveApplication() {
     setLoading(true);
     try {
       // Use my-leaves endpoint instead of pending (which requires owner/admin)
-      const r = await fetch(`${API}/staff/leaves/my`, { headers: h(currentUser) }).then(r => r.json());
+      const r = await apiFetch(`${API}/staff/leaves/my`, { headers: h(currentUser) }).then(r => r.json());
       if (r.success) setMyLeaves(r.data || []);
     } catch {}
     setLoading(false);
@@ -591,7 +587,7 @@ export function LeaveApplication() {
     setSubmitting(true);
     setError('');
     try {
-      const r = await fetch(`${API}/ops/leaves`, { method: 'POST', headers: h(currentUser), body: JSON.stringify(form) }).then(r => r.json());
+      const r = await apiFetch(`${API}/ops/leaves`, { method: 'POST', headers: h(currentUser), body: JSON.stringify(form) }).then(r => r.json());
       if (r.success) {
         setSubmitted(true);
         setForm({ leave_type: 'casual', start_date: '', end_date: '', reason: '' });
@@ -654,7 +650,7 @@ export function LessonPlanGenerator() {
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
 
   const load = async () => {
-    const r = await fetch(`${API}/academics/lesson-plans`, { headers: h(currentUser) }).then(r => r.json());
+    const r = await apiFetch(`${API}/academics/lesson-plans`, { headers: h(currentUser) }).then(r => r.json());
     if (r.success) setPlans(r.data || []);
   };
 
@@ -662,7 +658,7 @@ export function LessonPlanGenerator() {
     if (!scopeReady(scope)) return;
     Promise.all([
       getAllClasses(currentUser).then(r => { if (r.success) setClasses(filterClasses(r.data || [], scope, 'all')); }),
-      fetch(`${API}/academics/subjects`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setSubjects(filterSubjects(r.data || [], scope)); }),
+      apiFetch(`${API}/academics/subjects`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setSubjects(filterSubjects(r.data || [], scope)); }),
       load(),
     ]).finally(() => setLoading(false));
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -678,7 +674,7 @@ export function LessonPlanGenerator() {
       const body = { ...form, content: { description: form.content, topics: [], objectives: [] } };
       const url = editingId ? `${API}/academics/lesson-plans/${editingId}` : `${API}/academics/lesson-plans`;
       const method = editingId ? 'PATCH' : 'POST';
-      const r = await fetch(url, { method, headers: h(currentUser), body: JSON.stringify(body) }).then(r => r.json());
+      const r = await apiFetch(url, { method, headers: h(currentUser), body: JSON.stringify(body) }).then(r => r.json());
       if (r.success) { setShowForm(false); setEditingId(null); setForm({ class_id: '', subject_id: '', week: '', chapter: '', content: '' }); await load(); }
     } catch {}
     setSaving(false);
@@ -686,7 +682,7 @@ export function LessonPlanGenerator() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this lesson plan?')) return;
-    await fetch(`${API}/academics/lesson-plans/${id}`, { method: 'DELETE', headers: h(currentUser) });
+    await apiFetch(`${API}/academics/lesson-plans/${id}`, { method: 'DELETE', headers: h(currentUser) });
     await load();
   };
 
@@ -756,13 +752,13 @@ export function WorksheetCreator() {
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
 
   const load = async () => {
-    const r = await fetch(`${API}/academics/worksheets`, { headers: h(currentUser) }).then(r => r.json()).catch(() => ({ success: false }));
+    const r = await apiFetch(`${API}/academics/worksheets`, { headers: h(currentUser) }).then(r => r.json()).catch(() => ({ success: false }));
     if (r.success) setWorksheets(r.data || []);
   };
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API}/academics/subjects`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setSubjects(r.data || []); }),
+      apiFetch(`${API}/academics/subjects`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setSubjects(r.data || []); }),
       load(),
     ]).finally(() => setLoading(false));
   }, []);
@@ -775,7 +771,7 @@ export function WorksheetCreator() {
     setSaving(true);
     const url = editingId ? `${API}/academics/worksheets/${editingId}` : `${API}/academics/worksheets`;
     const method = editingId ? 'PATCH' : 'POST';
-    await fetch(url, { method, headers: h(currentUser), body: JSON.stringify(form) }).catch(() => {});
+    await apiFetch(url, { method, headers: h(currentUser), body: JSON.stringify(form) }).catch(() => {});
     setShowForm(false); setEditingId(null);
     await load();
     setSaving(false);
@@ -783,7 +779,7 @@ export function WorksheetCreator() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this worksheet?')) return;
-    await fetch(`${API}/academics/worksheets/${id}`, { method: 'DELETE', headers: h(currentUser) });
+    await apiFetch(`${API}/academics/worksheets/${id}`, { method: 'DELETE', headers: h(currentUser) });
     await load();
   };
 
@@ -842,7 +838,7 @@ export function SubstitutionViewer() {
 
   useEffect(() => {
     // Fetch timetable changes / substitutions
-    fetch(`${API}/academics/substitutions?user_id=${currentUser.id}`, { headers: h(currentUser) })
+    apiFetch(`${API}/academics/substitutions?user_id=${currentUser.id}`, { headers: h(currentUser) })
       .then(r => r.json()).then(r => { if (r.success) setSubs(r.data || []); })
       .catch(() => {}).finally(() => setLoading(false));
   }, []);
@@ -884,8 +880,8 @@ export function ClassPerformanceAnalytics() {
     setLoadingResults(true);
     try {
       const [stuRes, resRes] = await Promise.all([
-        fetch(`${API}/students?class_id=${classId}`, { headers: h(currentUser) }).then(r => r.json()),
-        fetch(`${API}/academics/results?class_id=${classId}`, { headers: h(currentUser) }).then(r => r.json()),
+        apiFetch(`${API}/students?class_id=${classId}`, { headers: h(currentUser) }).then(r => r.json()),
+        apiFetch(`${API}/academics/results?class_id=${classId}`, { headers: h(currentUser) }).then(r => r.json()),
       ]);
       if (stuRes.success) setStudents(stuRes.data || []);
       if (resRes.success) setResults(resRes.data || []);
@@ -950,7 +946,7 @@ export function PtmNotes() {
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
 
   const load = async () => {
-    const r = await fetch(`${API}/academics/ptm-notes`, { headers: h(currentUser) }).then(r => r.json());
+    const r = await apiFetch(`${API}/academics/ptm-notes`, { headers: h(currentUser) }).then(r => r.json());
     if (r.success) setNotes(r.data || []);
   };
 
@@ -983,7 +979,7 @@ export function PtmNotes() {
     setSaving(true);
     const url = editingId ? `${API}/academics/ptm-notes/${editingId}` : `${API}/academics/ptm-notes`;
     const method = editingId ? 'PATCH' : 'POST';
-    await fetch(url, { method, headers: h(currentUser), body: JSON.stringify({ student_id: form.student_id, notes: form.notes }) });
+    await apiFetch(url, { method, headers: h(currentUser), body: JSON.stringify({ student_id: form.student_id, notes: form.notes }) });
     setShowForm(false); setEditingId(null); setForm({ class_id: '', student_id: '', notes: '' }); setFilteredStudents([]);
     await load();
     setSaving(false);
@@ -991,7 +987,7 @@ export function PtmNotes() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this PTM note?')) return;
-    await fetch(`${API}/academics/ptm-notes/${id}`, { method: 'DELETE', headers: h(currentUser) });
+    await apiFetch(`${API}/academics/ptm-notes/${id}`, { method: 'DELETE', headers: h(currentUser) });
     await load();
   };
 
@@ -1055,7 +1051,7 @@ export function CurriculumTracker() {
   const statusColors = { not_started: 'gray', in_progress: 'yellow', completed: 'green', revised: 'blue' };
 
   const load = async () => {
-    const r = await fetch(`${API}/academics/curriculum`, { headers: h(currentUser) }).then(r => r.json());
+    const r = await apiFetch(`${API}/academics/curriculum`, { headers: h(currentUser) }).then(r => r.json());
     if (r.success) setProgress(r.data || []);
   };
 
@@ -1063,7 +1059,7 @@ export function CurriculumTracker() {
     if (!scopeReady(scope)) return;
     Promise.all([
       getAllClasses(currentUser).then(r => { if (r.success) setClasses(filterClasses(r.data || [], scope, 'all')); }),
-      fetch(`${API}/academics/subjects`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setSubjects(filterSubjects(r.data || [], scope)); }),
+      apiFetch(`${API}/academics/subjects`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setSubjects(filterSubjects(r.data || [], scope)); }),
       load(),
     ]).finally(() => setLoading(false));
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1077,7 +1073,7 @@ export function CurriculumTracker() {
     setSaving(true);
     const url = editingId ? `${API}/academics/curriculum/${editingId}` : `${API}/academics/curriculum`;
     const method = editingId ? 'PATCH' : 'POST';
-    await fetch(url, { method, headers: h(currentUser), body: JSON.stringify(form) });
+    await apiFetch(url, { method, headers: h(currentUser), body: JSON.stringify(form) });
     setShowForm(false); setEditingId(null); setForm({ class_id: '', subject_id: '', topic: '', status: 'not_started' });
     await load();
     setSaving(false);
@@ -1085,7 +1081,7 @@ export function CurriculumTracker() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this curriculum entry?')) return;
-    await fetch(`${API}/academics/curriculum/${id}`, { method: 'DELETE', headers: h(currentUser) });
+    await apiFetch(`${API}/academics/curriculum/${id}`, { method: 'DELETE', headers: h(currentUser) });
     await load();
   };
 

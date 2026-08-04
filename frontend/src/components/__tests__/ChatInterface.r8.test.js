@@ -12,6 +12,8 @@ jest.mock('../../contexts/ThemeContext', () => ({
   useTheme: () => ({ isDark: true }),
 }));
 jest.mock('../../lib/api', () => ({
+  // Without `API` the URL under test is literally "undefined/tokens/usage/me" (D-48).
+  API: '/api',
   apiFetch: jest.fn(() => Promise.resolve({ json: async () => ({ success: false }) })),
   createConversation: jest.fn(() => Promise.resolve({ success: true, data: { id: 'c1' } })),
   getMessages: jest.fn(() => Promise.resolve({ success: true, data: [] })),

@@ -3,16 +3,12 @@
  */
 import React, { useState, useEffect, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
-import { getStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, correctFeeTransaction, deleteFeeTransaction, getPendingLeaves, updateLeave, getWhatsappDefaulters, sendAttendanceAlerts, getSchoolSettings } from '../../lib/api';
+import { API, apiFetch, getStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, correctFeeTransaction, deleteFeeTransaction, getPendingLeaves, updateLeave, getWhatsappDefaulters, sendAttendanceAlerts, getSchoolSettings } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, LineChartWidget } from './ToolPage';
 import { Search, Plus, CheckCircle, XCircle, Save, RefreshCw, X, FileDown, MessageSquare, Edit3, Trash2 } from 'lucide-react';
 import FullStudentDatabase from './StudentDatabase';
 
-const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
-const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
-  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
-  : _rawAPI) + '/api';
 function h() { return getAuthHeaders(); }
 const tint = (color, amount) => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
 
@@ -26,7 +22,7 @@ export function ReportsTrends() {
   const load = async () => {
     setLoading(true);
     try {
-      const a = await fetch(`${API}/reports/attendance-trends?months=3`, { headers: h() }).then(r => r.json());
+      const a = await apiFetch(`${API}/reports/attendance-trends?months=3`, { headers: h() }).then(r => r.json());
       setAttendance(a);
     } catch {}
     setLoading(false);
@@ -88,7 +84,7 @@ export function FeeTracker() {
         setLoadingStudents(true);
         // Fetch all students for this specific class (no pagination limit)
         try {
-          const res = await fetch(`${API}/students/?class_id=${v}&page=1`, { headers: h(currentUser) }).then(r => r.json());
+          const res = await apiFetch(`${API}/students/?class_id=${v}&page=1`, { headers: h(currentUser) }).then(r => r.json());
           if (res.success) {
             // Fetch more pages if needed
             const total = res.meta?.total || 0;
@@ -97,7 +93,7 @@ export function FeeTracker() {
               const pages = Math.ceil(total / 20);
               const extra = await Promise.all(
                 Array.from({ length: pages - 1 }, (_, i) =>
-                  fetch(`${API}/students/?class_id=${v}&page=${i + 2}`, { headers: h(currentUser) }).then(r => r.json())
+                  apiFetch(`${API}/students/?class_id=${v}&page=${i + 2}`, { headers: h(currentUser) }).then(r => r.json())
                 )
               );
               extra.forEach(r => { if (r.success) all = [...all, ...(r.data || [])]; });
@@ -128,7 +124,7 @@ export function FeeTracker() {
       if (classFilter) params.class_id = classFilter;
       const [txnRes, summaryRes] = await Promise.all([
         getFeeTransactions(currentUser, params),
-        fetch(`${API}/fees/class-summary`, { headers: h(currentUser) }).then(r => r.json()),
+        apiFetch(`${API}/fees/class-summary`, { headers: h(currentUser) }).then(r => r.json()),
       ]);
       if (txnRes.success) setTxns(txnRes.data || []);
       if (summaryRes.success) setClassSummary(summaryRes.data || []);
@@ -618,11 +614,27 @@ export function AttendanceWhatsAppAlerts() {
 // 4. Certificate Generator
 const CERT_LABELS = { transfer: 'Transfer Certificate', bonafide: 'Bonafide Certificate', character: 'Character Certificate', sports: 'Sports Certificate', participation: 'Participation Certificate', migration: 'Migration Certificate' };
 
+// A refused or failed document download must SAY so. Both callers used to pass no
+// `onError`, so the failure was caught and dropped: the button went from "Generating…"
+// back to normal with no file and no message, and the person retried it as a bug.
+// That silence became reachable the moment issuing was narrowed to Owner + Principal
+// (NEW-01) — office staff who still see these tiles now get a refusal here.
+function explainDownloadFailure(status) {
+  if (status === 403) {
+    return 'Only the Owner and the Principal can issue this. Please ask one of them.';
+  }
+  if (status === 429) {
+    return "Today's limit for generated documents has been reached. Please try tomorrow.";
+  }
+  if (status === 404) return 'That student record could not be found.';
+  return 'The document could not be generated. Please try again.';
+}
+
 async function downloadBlobAsPdf(url, body, filename, onStart, onDone, onError) {
   onStart();
   try {
-    const res = await fetch(url, { method: 'POST', headers: h(), body: JSON.stringify(body) });
-    if (!res.ok) throw new Error(await res.text());
+    const res = await apiFetch(url, { method: 'POST', headers: h(), body: JSON.stringify(body) });
+    if (!res.ok) throw new Error(explainDownloadFailure(res.status));
     const blob = await res.blob();
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -646,22 +658,23 @@ export function CertificateGenerator() {
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState(null);
   const [downloading, setDownloading] = useState(null);
+  const [downloadError, setDownloadError] = useState('');
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
   const [school, setSchool] = useState({});
 
   const loadCerts = async () => {
-    const r = await fetch(`${API}/ops/certificates`, { headers: h(currentUser) }).then(r => r.json());
+    const r = await apiFetch(`${API}/ops/certificates`, { headers: h(currentUser) }).then(r => r.json());
     if (r.success) setCerts(r.data || []);
   };
 
   const approveCert = async (certId) => {
-    await fetch(`${API}/ops/certificates/${certId}/approve`, { method: 'PATCH', headers: h(currentUser) });
+    await apiFetch(`${API}/ops/certificates/${certId}/approve`, { method: 'PATCH', headers: h(currentUser) });
     await loadCerts();
   };
 
   const rejectCert = async (certId, reason) => {
-    await fetch(`${API}/ops/certificates/${certId}/reject`, {
+    await apiFetch(`${API}/ops/certificates/${certId}/reject`, {
       method: 'PATCH', headers: h(currentUser),
       body: JSON.stringify({ reason }),
     });
@@ -686,7 +699,7 @@ export function CertificateGenerator() {
     setGenerating(true);
     try {
       const student = students.find(s => s.id === form.student_id);
-      const r = await fetch(`${API}/ops/certificates`, {
+      const r = await apiFetch(`${API}/ops/certificates`, {
         method: 'POST', headers: h(currentUser),
         body: JSON.stringify({
           student_id: form.student_id,
@@ -718,8 +731,9 @@ export function CertificateGenerator() {
         serial_number: cert.serial_number || '',
       },
       filename,
-      () => setDownloading(key),
+      () => { setDownloadError(''); setDownloading(key); },
       () => setDownloading(null),
+      (e) => setDownloadError(e.message),
     );
   };
 
@@ -735,6 +749,11 @@ export function CertificateGenerator() {
             <FormField label="Certificate Type" type="select" value={form.cert_type} onChange={f('cert_type')}
               options={Object.entries(CERT_LABELS).map(([v, l]) => ({ value: v, label: l }))} />
             <ActionBtn label={generating ? 'Generating...' : 'Generate Certificate'} onClick={generate} disabled={generating || !form.student_id} />
+            {downloadError && (
+              <div data-testid="certificate-error" style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginTop: 10 }}>
+                {downloadError}
+              </div>
+            )}
           </div>
 
           {generated && (
@@ -855,7 +874,7 @@ export function CircularSender() {
   }));
 
   const load = async () => {
-    const r = await fetch(`${API}/ops/announcements`, { headers: h(currentUser) }).then(r => r.json());
+    const r = await apiFetch(`${API}/ops/announcements`, { headers: h(currentUser) }).then(r => r.json());
     if (r.success) setAnnouncements(r.data || []);
   };
 
@@ -873,7 +892,7 @@ export function CircularSender() {
     if (form.audience_type === 'role' && form.audience_roles.length === 0) { setError('Select at least one role'); return; }
     setSending(true); setError('');
     try {
-      const res = await fetch(`${API}/ops/announcements`, {
+      const res = await apiFetch(`${API}/ops/announcements`, {
         method: 'POST', headers: h(currentUser),
         body: JSON.stringify({ ...form, is_draft: false }),
       }).then(r => r.json());
@@ -1009,14 +1028,14 @@ export function EnquiryRegister() {
   const statusColors = { new: 'blue', contacted: 'yellow', visit_scheduled: 'purple', visited: 'purple', documents_submitted: 'yellow', fee_paid: 'green', enrolled: 'green', lost: 'red' };
 
   useEffect(() => { load(); }, []);
-  const load = async () => { setLoading(true); try { const r = await fetch(`${API}/ops/enquiries`, { headers: h(currentUser) }).then(r => r.json()); if (r.success) setEnquiries(r.data || []); } catch {} setLoading(false); };
+  const load = async () => { setLoading(true); try { const r = await apiFetch(`${API}/ops/enquiries`, { headers: h(currentUser) }).then(r => r.json()); if (r.success) setEnquiries(r.data || []); } catch {} setLoading(false); };
 
   const handleAdd = async (e) => {
     e.preventDefault();
     setError('');
     if (!form.student_name || !form.parent_name || !form.phone) { setError('Name, parent, and phone are required'); return; }
     try {
-      const res = await fetch(`${API}/ops/enquiries`, { method: 'POST', headers: h(currentUser), body: JSON.stringify(form) }).then(r => r.json());
+      const res = await apiFetch(`${API}/ops/enquiries`, { method: 'POST', headers: h(currentUser), body: JSON.stringify(form) }).then(r => r.json());
       if (res.success) {
         setShowForm(false);
         setForm({ student_name: '', parent_name: '', phone: '', class_applying: '', source: 'walk_in' });
@@ -1029,7 +1048,7 @@ export function EnquiryRegister() {
 
   const updateStatus = async (id, newStatus) => {
     try {
-      const res = await fetch(`${API}/ops/enquiries/${id}`, { method: 'PATCH', headers: h(currentUser), body: JSON.stringify({ status: newStatus }) }).then(r => r.json());
+      const res = await apiFetch(`${API}/ops/enquiries/${id}`, { method: 'PATCH', headers: h(currentUser), body: JSON.stringify({ status: newStatus }) }).then(r => r.json());
       if (res.success) {
         load();
         setSelectedEnquiry(null);
@@ -1143,7 +1162,7 @@ export function DocumentScanner() {
   useEffect(() => {
     Promise.all([
       getAllClasses(currentUser).then(r => { if (r.success) setClasses(r.data || []); }),
-      fetch(`${API}/students/`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setAllStudents(r.data || []); }),
+      apiFetch(`${API}/students/`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setAllStudents(r.data || []); }),
     ]).finally(() => setLoading(false));
   }, []);
 
@@ -1165,7 +1184,7 @@ export function DocumentScanner() {
     formData.append('entity_type', 'students');
     formData.append('entity_id', studentId);
     try {
-      const res = await fetch(`${API}/uploads`, {
+      const res = await apiFetch(`${API}/uploads`, {
         method: 'POST',
         credentials: 'include',
         headers: getAuthHeaders(null),
@@ -1174,7 +1193,7 @@ export function DocumentScanner() {
       if (res.success) {
         setResult({ ...res.data, doc_type: docType });
         setFiles(prev => [...prev, { ...res.data, doc_type: docType, student_name: allStudents.find(s => s.id === studentId)?.name || 'Unknown' }]);
-        await fetch(`${API}/students/${studentId}`, { method: 'PATCH', headers: h(currentUser), body: JSON.stringify({ [`documents.${docType}`]: res.data.file_url }) });
+        await apiFetch(`${API}/students/${studentId}`, { method: 'PATCH', headers: h(currentUser), body: JSON.stringify({ [`documents.${docType}`]: res.data.file_url }) });
       } else {
         setResult({ error: res.detail || 'Upload failed' });
       }
@@ -1271,7 +1290,7 @@ export function SmartFeeDefaulter() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/tools/get_fee_summary/execute`, {
+      const res = await apiFetch(`${API}/tools/get_fee_summary/execute`, {
         method: 'POST',
         headers: h(currentUser),
         body: JSON.stringify({ params: {} }),
@@ -1292,7 +1311,7 @@ export function SmartFeeDefaulter() {
   useEffect(() => {
     let alive = true;
     loadData();
-    fetch(`${API}/sms/config-status`, { headers: h(currentUser) })
+    apiFetch(`${API}/sms/config-status`, { headers: h(currentUser) })
       .then(r => r.json())
       .then(r => { if (alive && r.success) setTwilioConfigured(r.data.configured); })
       .catch(() => {});
@@ -1300,7 +1319,7 @@ export function SmartFeeDefaulter() {
   }, []);
 
   const loadLogs = async () => {
-    const r = await fetch(`${API}/sms/logs`, { headers: h(currentUser) }).then(r => r.json());
+    const r = await apiFetch(`${API}/sms/logs`, { headers: h(currentUser) }).then(r => r.json());
     if (r.success) setSmsLogs(r.data || []);
   };
 
@@ -1320,7 +1339,7 @@ export function SmartFeeDefaulter() {
     setSending(true);
     setSmsResult(null);
     try {
-      const res = await fetch(`${API}/sms/send-reminder`, {
+      const res = await apiFetch(`${API}/sms/send-reminder`, {
         method: 'POST',
         headers: h(currentUser),
         body: JSON.stringify({
@@ -1351,7 +1370,7 @@ export function SmartFeeDefaulter() {
     setBulkSending(true);
     setBulkResult(null);
     try {
-      const res = await fetch(`${API}/sms/send-bulk`, {
+      const res = await apiFetch(`${API}/sms/send-bulk`, {
         method: 'POST',
         headers: h(currentUser),
         body: JSON.stringify({
@@ -1520,7 +1539,7 @@ function AdmissionFunnelAdmin() {
   const { currentUser } = useUser();
   const [enquiries, setEnquiries] = useState([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { fetch(`${API}/ops/enquiries`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setEnquiries(r.data || []); }).finally(() => setLoading(false)); }, []);
+  useEffect(() => { apiFetch(`${API}/ops/enquiries`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setEnquiries(r.data || []); }).finally(() => setLoading(false)); }, []);
   const stages = ['new', 'contacted', 'visit_scheduled', 'visited', 'documents_submitted', 'fee_paid', 'enrolled', 'lost'];
   const counts = stages.reduce((acc, s) => { acc[s] = enquiries.filter(e => e.status === s).length; return acc; }, {});
   return (
@@ -1548,8 +1567,8 @@ export function ParentMessage() {
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API}/settings/classes`, { headers: h(currentUser) }).then(r => r.json()),
-      fetch(`${API}/students/`, { headers: h(currentUser) }).then(r => r.json()),
+      apiFetch(`${API}/settings/classes`, { headers: h(currentUser) }).then(r => r.json()),
+      apiFetch(`${API}/students/`, { headers: h(currentUser) }).then(r => r.json()),
     ]).then(([cls, stu]) => {
       if (cls.success) setClasses(cls.data || []);
       if (stu.success) setAllStudents(stu.data || []);
@@ -1588,7 +1607,7 @@ export function ParentMessage() {
     setSending(true);
     setResult(null);
     try {
-      const res = await fetch(`${API}/sms/send-parent-message`, {
+      const res = await apiFetch(`${API}/sms/send-parent-message`, {
         method: 'POST',
         headers: h(currentUser),
         body: JSON.stringify({ student_ids: [...selectedStudents], message }),
@@ -1725,7 +1744,7 @@ export function StudentTransfer() {
   useEffect(() => {
     Promise.all([
       getAllClasses(currentUser).then(r => { if (r.success) setClasses(r.data || []); }),
-      fetch(`${API}/students/`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setAllStudents(r.data || []); }),
+      apiFetch(`${API}/students/`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setAllStudents(r.data || []); }),
     ]).finally(() => setLoading(false));
   }, []);
 
@@ -1744,7 +1763,7 @@ export function StudentTransfer() {
       const today = new Date().toISOString().slice(0, 10);
       if (transferType === 'class_change') {
         // Just update class_id
-        const res = await fetch(`${API}/students/${selectedStudent.id}`, {
+        const res = await apiFetch(`${API}/students/${selectedStudent.id}`, {
           method: 'PATCH', headers: h(currentUser),
           body: JSON.stringify({ class_id: destinationClass, updated_at: new Date().toISOString() }),
         }).then(r => r.json());
@@ -1753,7 +1772,7 @@ export function StudentTransfer() {
       } else {
         // Transfer or withdrawal — deactivate student
         const status = transferType === 'transfer' ? 'transferred' : 'withdrawn';
-        const patchRes = await fetch(`${API}/students/${selectedStudent.id}`, {
+        const patchRes = await apiFetch(`${API}/students/${selectedStudent.id}`, {
           method: 'PATCH', headers: h(currentUser),
           body: JSON.stringify({ status, is_active: false, withdrawal_reason: reason, withdrawal_date: today }),
         }).then(r => r.json());
@@ -1761,7 +1780,7 @@ export function StudentTransfer() {
 
         // Auto-generate Transfer Certificate
         const cls = selectedStudent.class_info;
-        const certRes = await fetch(`${API}/ops/certificates`, {
+        const certRes = await apiFetch(`${API}/ops/certificates`, {
           method: 'POST', headers: h(currentUser),
           body: JSON.stringify({
             student_id: selectedStudent.id,
@@ -1926,10 +1945,11 @@ export function IdCardGenerator() {
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState([]);
   const [printing, setPrinting] = useState(false);
+  const [printError, setPrintError] = useState('');
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API}/students/`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setStudents(r.data || []); }),
+      apiFetch(`${API}/students/`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setStudents(r.data || []); }),
       // Was a raw fetch, which bypassed api.js and so skipped the class ordering
       // applied in getAllClasses. Project convention is that all API calls go
       // through api.js for exactly this reason.
@@ -1952,8 +1972,9 @@ export function IdCardGenerator() {
       `${API}/image-gen/id-cards`,
       { students: selected, school_name: 'The Aaryans School', academic_year: '2025-26' },
       filename,
-      () => setPrinting(true),
+      () => { setPrintError(''); setPrinting(true); },
       () => setPrinting(false),
+      (e) => setPrintError(e.message),
     );
   };
 
@@ -1969,6 +1990,11 @@ export function IdCardGenerator() {
         <ActionBtn label={selectedIds.length === filtered.length ? 'Deselect All' : 'Select All'} variant="secondary" onClick={toggleAll} />
         <ActionBtn label={printing ? 'Generating PDF...' : `Download ${selectedIds.length} ID Cards PDF`} onClick={printCards} disabled={selectedIds.length === 0 || printing} />
       </div>
+      {printError && (
+        <div data-testid="id-card-error" style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 12 }}>
+          {printError}
+        </div>
+      )}
       <DataTable headers={['', 'Name', 'Class', 'Adm No.', 'Roll']}
         rows={filtered.map(s => [
           <input type="checkbox" checked={selectedIds.includes(s.id)} onChange={() => setSelectedIds(p => p.includes(s.id) ? p.filter(x => x !== s.id) : [...p, s.id])} />,
@@ -2004,8 +2030,8 @@ export function TimetableBuilder() {
   useEffect(() => {
     Promise.all([
       getAllClasses(currentUser),
-      fetch(`${API}/academics/subjects`, { headers: h(currentUser) }).then(r => r.json()),
-      fetch(`${API}/staff/`, { headers: h(currentUser) }).then(r => r.json())
+      apiFetch(`${API}/academics/subjects`, { headers: h(currentUser) }).then(r => r.json()),
+      apiFetch(`${API}/staff/`, { headers: h(currentUser) }).then(r => r.json())
     ]).then(([classRes, subjRes, staffRes]) => {
       if (classRes.success && classRes.data.length > 0) {
         setClasses(classRes.data);
@@ -2019,7 +2045,7 @@ export function TimetableBuilder() {
   const loadSlots = async (classId) => {
     if (!classId) return;
     try {
-      const r = await fetch(`${API}/academics/timetable/${classId}`, { headers: h(currentUser) }).then(r => r.json());
+      const r = await apiFetch(`${API}/academics/timetable/${classId}`, { headers: h(currentUser) }).then(r => r.json());
       if (r.success) setSlots(r.data || []);
     } catch { }
   };
@@ -2050,7 +2076,7 @@ export function TimetableBuilder() {
       const url = editingSlot ? `${API}/academics/timetable/${editingSlot.id}` : `${API}/academics/timetable`;
       const method = editingSlot ? 'PATCH' : 'POST';
 
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
         headers: h(currentUser),
         body: JSON.stringify(payload)
@@ -2088,7 +2114,7 @@ export function TimetableBuilder() {
   const handleDelete = async (slotId) => {
     if (!window.confirm('Delete this slot?')) return;
     try {
-      const res = await fetch(`${API}/academics/timetable/${slotId}`, {
+      const res = await apiFetch(`${API}/academics/timetable/${slotId}`, {
         method: 'DELETE',
         headers: h(currentUser)
       }).then(r => r.json());
@@ -2168,7 +2194,7 @@ export function AssetTracker() {
   const load = async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${API}/ops/assets`, { headers: h(currentUser) }).then(r => r.json());
+      const r = await apiFetch(`${API}/ops/assets`, { headers: h(currentUser) }).then(r => r.json());
       if (r.success) setAssets(r.data || []);
     } catch {}
     setLoading(false);
@@ -2184,7 +2210,7 @@ export function AssetTracker() {
 
     setSaving(true);
     try {
-      const res = await fetch(`${API}/ops/assets`, {
+      const res = await apiFetch(`${API}/ops/assets`, {
         method: 'POST',
         headers: h(currentUser),
         body: JSON.stringify({
@@ -2280,7 +2306,7 @@ export function TransportManager() {
     setLoading(true);
     try {
       const [routesRes, studentsRes] = await Promise.all([
-        fetch(`${API}/ops/transport`, { headers: h(currentUser) }).then(r => r.json()),
+        apiFetch(`${API}/ops/transport`, { headers: h(currentUser) }).then(r => r.json()),
         getStudents(currentUser, {})
       ]);
       if (routesRes.success) setRoutes(routesRes.data || []);
@@ -2300,7 +2326,7 @@ export function TransportManager() {
     const method = editingId ? 'PATCH' : 'POST';
     const url = editingId ? `${API}/ops/transport/${editingId}` : `${API}/ops/transport`;
     try {
-      const res = await fetch(url, { method, headers: h(currentUser), body: JSON.stringify(form) }).then(r => r.json());
+      const res = await apiFetch(url, { method, headers: h(currentUser), body: JSON.stringify(form) }).then(r => r.json());
       if (res.success) {
         setShowForm(false);
         setEditingId(null);
@@ -2319,7 +2345,7 @@ export function TransportManager() {
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this route?')) return;
     try {
-      const res = await fetch(`${API}/ops/transport/${id}`, { method: 'DELETE', headers: h(currentUser) }).then(r => r.json());
+      const res = await apiFetch(`${API}/ops/transport/${id}`, { method: 'DELETE', headers: h(currentUser) }).then(r => r.json());
       if (res.success) load();
     } catch {}
   };
@@ -2332,7 +2358,7 @@ export function TransportManager() {
       return;
     }
     try {
-      const res = await fetch(`${API}/students/${assignForm.student_id}`, {
+      const res = await apiFetch(`${API}/students/${assignForm.student_id}`, {
         method: 'PATCH',
         headers: h(currentUser),
         body: JSON.stringify({ bus_route: assignForm.bus_route, uses_transport: true })
@@ -2504,7 +2530,7 @@ export function CustomFormBuilder() {
   const load = async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${API}/settings/forms`, { headers: h(currentUser) }).then(r => r.json());
+      const r = await apiFetch(`${API}/settings/forms`, { headers: h(currentUser) }).then(r => r.json());
       if (r.success) setForms(r.data || []);
     } catch {}
     setLoading(false);
@@ -2532,7 +2558,7 @@ export function CustomFormBuilder() {
         }))
       };
       const headers = h(currentUser);
-      const fetchRes = await fetch(`${API}/settings/forms`, {
+      const fetchRes = await apiFetch(`${API}/settings/forms`, {
         method: 'POST',
         headers: headers,
         body: JSON.stringify(payload)
@@ -2555,7 +2581,7 @@ export function CustomFormBuilder() {
 
   const loadResponses = async (formId) => {
     try {
-      const r = await fetch(`${API}/settings/forms/${formId}/responses`, { headers: h(currentUser) }).then(r => r.json());
+      const r = await apiFetch(`${API}/settings/forms/${formId}/responses`, { headers: h(currentUser) }).then(r => r.json());
       if (r.success) setResponses(r.data || []);
     } catch {}
   };
@@ -2569,7 +2595,7 @@ export function CustomFormBuilder() {
   const handleDelete = async (formId) => {
     if (!window.confirm('Delete this form and all responses?')) return;
     try {
-      const res = await fetch(`${API}/settings/forms/${formId}`, { method: 'DELETE', headers: h(currentUser) }).then(r => r.json());
+      const res = await apiFetch(`${API}/settings/forms/${formId}`, { method: 'DELETE', headers: h(currentUser) }).then(r => r.json());
       if (res.success) load();
     } catch {}
   };
@@ -2689,8 +2715,8 @@ export function ReportCardBuilder() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { fetch(`${API}/academics/exams`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setExams(r.data || []); }).finally(() => setLoading(false)); }, []);
-  useEffect(() => { if (selectedExam) fetch(`${API}/academics/results?exam_id=${selectedExam}`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setResults(r.data || []); }); }, [selectedExam]);
+  useEffect(() => { apiFetch(`${API}/academics/exams`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setExams(r.data || []); }).finally(() => setLoading(false)); }, []);
+  useEffect(() => { if (selectedExam) apiFetch(`${API}/academics/results?exam_id=${selectedExam}`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setResults(r.data || []); }); }, [selectedExam]);
 
   return (
     <ToolPage title="Report Card Builder" subtitle="Enter marks & generate report cards" loading={loading}>
@@ -2722,17 +2748,17 @@ export function StudentPerformanceViewer() {
   useEffect(() => {
     Promise.all([
       getStudents(currentUser).then(r => { if (r.success) setStudents(r.data || []); }),
-      fetch(`${API}/academics/results`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setResults(r.data || []); }),
+      apiFetch(`${API}/academics/results`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setResults(r.data || []); }),
     ]).finally(() => setLoading(false));
   }, []);
 
   const viewStudent = async (student) => {
     setSelectedStudent(student);
     // Get results
-    const r1 = await fetch(`${API}/academics/results?student_id=${student.id}`, { headers: h(currentUser) }).then(r => r.json());
+    const r1 = await apiFetch(`${API}/academics/results?student_id=${student.id}`, { headers: h(currentUser) }).then(r => r.json());
     if (r1.success) setStudentResults(r1.data || []);
     // Get attendance summary
-    const r2 = await fetch(`${API}/attendance/student?student_id=${student.id}`, { headers: h(currentUser) }).then(r => r.json());
+    const r2 = await apiFetch(`${API}/attendance/student?student_id=${student.id}`, { headers: h(currentUser) }).then(r => r.json());
     if (r2.success) {
       const records = r2.data || [];
       const present = records.filter(r => r.status === 'present').length;

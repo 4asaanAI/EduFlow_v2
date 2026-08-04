@@ -192,7 +192,7 @@ async def consume_confirm_token(
     Atomically marks a confirmation token used before action execution.
 
     Replays fail closed. Expired or missing tokens return 400, wrong-session
-    tokens return 401, already-used tokens return 409, and tenant drift
+    tokens return 403, already-used tokens return 409, and tenant drift
     (school_id/branch_id mismatch) returns 409 to signal the token cannot
     be replayed in this tenant context.
     """
@@ -290,7 +290,14 @@ async def consume_confirm_token(
     if doc.get("used"):
         raise HTTPException(status_code=409, detail="Confirmation token has already been used")
     if doc.get("user_id") != user_id or doc.get("session_id") != session_id:
-        raise HTTPException(status_code=401, detail="Confirmation token does not belong to this session")
+        # 403, NOT 401. The caller IS authenticated — it is the TOKEN that belongs to
+        # someone else or to an earlier browser session. Answering 401 told the client
+        # "your login expired", which was harmless while the confirm card used a bare
+        # fetch, and became a real defect the moment every call went through the
+        # refreshing wrapper (NEW-03): refresh succeeds, the retry 401s again, and the
+        # person is signed out for tapping a stale Confirm button. 403 is both the
+        # honest status and the one the wrapper leaves alone.
+        raise HTTPException(status_code=403, detail="Confirmation token does not belong to this session")
     if doc.get("expires_at") and doc["expires_at"] <= now:
         # AC2: typed reason code so the caller/frontend never string-matches on
         # "expired". The intent echo lets the user re-issue in one tap.

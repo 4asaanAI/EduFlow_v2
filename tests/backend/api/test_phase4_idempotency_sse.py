@@ -59,7 +59,17 @@ def test_used_confirmation_token_replay_returns_409(client, fake_db):
     assert response.status_code == 409
 
 
-def test_cross_session_confirmation_token_returns_401(client, fake_db):
+def test_cross_session_confirmation_token_returns_403(client, fake_db):
+    """Rewritten 2026-08-04 (was `..._returns_401`), NOT deleted — the behaviour it
+    guards is unchanged and still guarded: a token issued in one browser session must
+    not be usable from another. Only the status changed, 401 → 403.
+
+    Why: the caller IS authenticated; it is the token that is foreign. Answering 401
+    told the client "your login expired", which was harmless while the confirm card
+    used a bare fetch, and became a real defect once every call went through the
+    refreshing wrapper (NEW-03) — the refresh succeeds, the retry is refused
+    identically, and the person is signed out for tapping a stale Confirm button.
+    """
     fake_db.confirm_tokens.docs[:] = [
         {
             "_id": "session-token",
@@ -79,7 +89,10 @@ def test_cross_session_confirmation_token_returns_401(client, fake_db):
         headers=_headers(),
     )
 
-    assert response.status_code == 401
+    assert response.status_code == 403
+    # The refusal must NOT read as an authentication failure, or the client will try
+    # to renew a login that is perfectly valid.
+    assert response.status_code != 401
 
 
 def test_fee_stream_emits_snapshot_with_session_header(client, fake_db):

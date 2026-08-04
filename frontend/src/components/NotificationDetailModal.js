@@ -4,8 +4,8 @@ import { useTheme } from '../contexts/ThemeContext';
 import { X, Info, AlertTriangle, CheckCircle, AlertCircle, Clock, User, Tag, ArrowRight, ExternalLink } from 'lucide-react';
 import { getAuthHeaders } from '../lib/authSession';
 import { getToolForNotification, TOOL_LABELS } from '../lib/notifRouting';
+import { API, apiFetch } from '../lib/api';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 const TYPE_META = {
   info:    { color: '#4f8ff7', Icon: Info },
@@ -236,7 +236,7 @@ export default function NotificationDetailModal({ notification, onClose }) {
     if (isDigest) return;
     setLoading(true);
     setError('');
-    fetch(`${API}/notifications/${notification.id}/detail`, { headers: getAuthHeaders(null) })
+    apiFetch(`${API}/notifications/${notification.id}/detail`, { headers: getAuthHeaders(null) })
       .then(r => r.json())
       .then(r => {
         if (r.success) setDetail(r.data);

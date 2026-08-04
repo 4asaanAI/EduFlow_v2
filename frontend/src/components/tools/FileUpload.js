@@ -5,11 +5,8 @@ import React, { useState, useRef } from 'react';
 import { Upload, X, FileText, Image, Download } from 'lucide-react';
 import { useUser } from '../../contexts/UserContext';
 import { getAuthHeaders } from '../../lib/authSession';
+import { BACKEND, API, apiFetch } from '../../lib/api';
 
-const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
-const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
-  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
-  : _rawAPI) + '/api';
 
 const ALLOWED_BY_ROLE = {
   owner: ['pdf', 'docx', 'xlsx', 'xls', 'png', 'jpg', 'jpeg', 'heic', 'mp4'],
@@ -54,7 +51,7 @@ export default function FileUpload({ entityType = 'general', entityId = '', onUp
     formData.append('entity_type', entityType);
     formData.append('entity_id', entityId);
     try {
-      const res = await fetch(`${API}/uploads`, {
+      const res = await apiFetch(`${API}/uploads`, {
         method: 'POST',
         credentials: 'include',
         headers: getAuthHeaders(null),
@@ -77,7 +74,7 @@ export default function FileUpload({ entityType = 'general', entityId = '', onUp
   };
 
   const handleDelete = async (fileId) => {
-    await fetch(`${API}/uploads/${fileId}`, { method: 'DELETE', credentials: 'include', headers: getAuthHeaders() });
+    await apiFetch(`${API}/uploads/${fileId}`, { method: 'DELETE', credentials: 'include', headers: getAuthHeaders() });
     setFiles(prev => prev.filter(f => f.id !== fileId));
   };
 
@@ -94,7 +91,7 @@ export default function FileUpload({ entityType = 'general', entityId = '', onUp
         {files.map(f => (
           <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
             {getFileIcon(f.file_name)}
-            <a href={`${process.env.REACT_APP_BACKEND_URL}${f.file_url}`} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--tool-hex-4f8ff7)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.file_name}</a>
+            <a href={`${BACKEND}${f.file_url}`} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--tool-hex-4f8ff7)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.file_name}</a>
             <span style={{ fontSize: 10, color: text }}>{f.file_size_kb}KB</span>
             <button onClick={() => handleDelete(f.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tool-hex-f87171)' }}><X size={10} /></button>
           </div>
@@ -125,7 +122,7 @@ export default function FileUpload({ entityType = 'general', entityId = '', onUp
               {getFileIcon(f.file_name)}
               <span style={{ flex: 1, fontSize: 12, color: isDark ? 'var(--tool-hex-e5e5e5)' : 'var(--tool-hex-171717)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.file_name}</span>
               <span style={{ fontSize: 10, color: text }}>{f.file_size_kb}KB</span>
-              <a href={`${process.env.REACT_APP_BACKEND_URL}${f.file_url}`} target="_blank" rel="noreferrer" style={{ color: 'var(--tool-hex-4f8ff7)' }}><Download size={12} /></a>
+              <a href={`${BACKEND}${f.file_url}`} target="_blank" rel="noreferrer" style={{ color: 'var(--tool-hex-4f8ff7)' }}><Download size={12} /></a>
               <button onClick={() => handleDelete(f.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tool-hex-f87171)' }}><X size={12} /></button>
             </div>
           ))}

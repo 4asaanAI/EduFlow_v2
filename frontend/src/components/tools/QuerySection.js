@@ -7,11 +7,8 @@ import {
   Plus, X, Paperclip, ChevronDown, CheckCircle2, Circle,
   AlertCircle, AlertTriangle, Info, Loader2, Trash2, FileVideo, Image,
 } from 'lucide-react';
+import { BACKEND, API, apiFetch } from '../../lib/api';
 
-const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
-const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
-  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
-  : _rawAPI) + '/api';
 
 function authHeaders() {
   return getAuthHeaders(null);
@@ -47,7 +44,7 @@ function AttachmentPreview({ url, type, isDark }) {
   const bg = isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-fafafa)';
   const isVideo = type === 'mp4';
   const isImage = ['png', 'jpg', 'jpeg'].includes(type);
-  const fullUrl = process.env.REACT_APP_BACKEND_URL + url;
+  const fullUrl = BACKEND + url;
 
   if (isImage) {
     return (
@@ -225,7 +222,7 @@ export function QuerySection() {
     setLoading(true);
     try {
       const params = filter !== 'all' ? `?status=${filter}` : '';
-      const res = await fetch(`${API}/queries${params}`, { headers: authHeaders() });
+      const res = await apiFetch(`${API}/queries${params}`, { headers: authHeaders() });
       const data = await res.json();
       if (data.success) setTickets(data.data);
     } catch {}
@@ -265,7 +262,7 @@ export function QuerySection() {
       fd.append('priority', form.priority);
       if (file) fd.append('attachment', file);
 
-      const res = await fetch(`${API}/queries`, {
+      const res = await apiFetch(`${API}/queries`, {
         method: 'POST',
         headers: authHeaders(),
         body: fd,
@@ -287,7 +284,7 @@ export function QuerySection() {
 
   const handleResolve = async (id) => {
     try {
-      const res = await fetch(`${API}/queries/${id}/resolve`, { method: 'PATCH', headers: authHeaders() });
+      const res = await apiFetch(`${API}/queries/${id}/resolve`, { method: 'PATCH', headers: authHeaders() });
       const data = await res.json();
       if (data.success) {
         setTickets(prev => prev.map(t => t.id === id
@@ -300,7 +297,7 @@ export function QuerySection() {
 
   const handleUnresolve = async (id) => {
     try {
-      const res = await fetch(`${API}/queries/${id}/unresolve`, { method: 'PATCH', headers: authHeaders() });
+      const res = await apiFetch(`${API}/queries/${id}/unresolve`, { method: 'PATCH', headers: authHeaders() });
       const data = await res.json();
       if (data.success) {
         setTickets(prev => prev.map(t => t.id === id
@@ -314,7 +311,7 @@ export function QuerySection() {
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this ticket?')) return;
     try {
-      await fetch(`${API}/queries/${id}`, { method: 'DELETE', headers: authHeaders() });
+      await apiFetch(`${API}/queries/${id}`, { method: 'DELETE', headers: authHeaders() });
       setTickets(prev => prev.filter(t => t.id !== id));
     } catch {}
   };

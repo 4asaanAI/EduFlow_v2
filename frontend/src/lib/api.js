@@ -1,12 +1,19 @@
 import { getAccessToken, redirectToLoginOnce, refreshAccessToken } from './authSession';
 import { sortClasses } from './classOrder';
 
+// ─── The ONE place the server's address is decided (NEW-08) ──────────────────
+// `REACT_APP_BACKEND_URL` must not be read anywhere else in the app except
+// `setupProxy.js` (dev-server only, runs in Node before this module exists).
+// It used to be read in 25 files, each re-deriving the same thing, which is how
+// commit 80d803b's https fix reached 13 of them and missed 7 — including the
+// login and token-refresh path. `frontend/src/lib/__tests__/apiBaseUrl.test.js`
+// fails the build if a 26th reader appears.
 const _rawBackend = process.env.REACT_APP_BACKEND_URL || '';
 // Force HTTPS when the page is served over HTTPS (prevents mixed-content blocks on Amplify/CloudFront)
-const BACKEND = typeof window !== 'undefined' && window.location.protocol === 'https:'
+export const BACKEND = typeof window !== 'undefined' && window.location.protocol === 'https:'
   ? _rawBackend.replace(/^http:\/\/(?!localhost)/, 'https://')
   : _rawBackend;
-const API = `${BACKEND}/api`;
+export const API = `${BACKEND}/api`;
 
 // REACT_APP_UPLOAD_URL: direct EB URL for file uploads, bypassing CloudFront (which
 // blocks POST multipart). Falls back to BACKEND if not set (works fine in local dev).
@@ -247,16 +254,38 @@ export function subscribeSSE(path, onEvent, { onReconnect, reconnect = true, max
   const open = async () => {
     if (stopped) return;
     controller = new AbortController();
+    const request = () => fetch(`${API}${path}`, {
+      method: 'GET',
+      headers: {
+        ...getHeaders(),
+        'X-SSE-Session-ID': sessionId,
+      },
+      credentials: 'include',
+      signal: controller.signal,
+    });
     try {
-      const res = await fetch(`${API}${path}`, {
-        method: 'GET',
-        headers: {
-          ...getHeaders(),
-          'X-SSE-Session-ID': sessionId,
-        },
-        credentials: 'include',
-        signal: controller.signal,
-      });
+      let res = await request();
+
+      // NEW-03: this stream is the one call `apiFetch` cannot own — the response body
+      // is read incrementally and a redirect-on-failure would kill a background
+      // subscription. It still has to renew an expired login, and it did not: a 401
+      // fell straight into scheduleReconnect(), which retried forever with the same
+      // dead token, so live notifications stopped after 60 minutes and never came back
+      // until the page was reloaded. A GET cannot duplicate anything, so refreshing
+      // once and reopening is safe. Same shape as `sendMessageStream` above.
+      if (res.status === 401) {
+        try {
+          await refreshAccessToken(API);
+          res = await request();
+        } catch {}
+        if (res.status === 401) {
+          // Say so out loud rather than reconnecting into a wall forever.
+          onEvent({ type: 'sse_auth_expired' });
+          stopped = true;
+          return;
+        }
+      }
+
       if (!res.ok || !res.body) {
         scheduleReconnect();
         return;
@@ -573,19 +602,13 @@ export async function applyFeeDiscount(data) {
   return res.json();
 }
 
-export async function approveFeeDiscount(applicationId) {
-  const res = await apiFetch(`${API}/fees/discounts/${applicationId}/approve`, {
-    method: 'POST', headers: getHeaders(),
-  });
-  return res.json();
-}
-
-export async function rejectFeeDiscount(applicationId, reason) {
-  const res = await apiFetch(`${API}/fees/discounts/${applicationId}/reject`, {
-    method: 'POST', headers: getHeaders(), body: JSON.stringify({ reason }),
-  });
-  return res.json();
-}
+// NEW-11 (2026-08-04): `approveFeeDiscount` and `rejectFeeDiscount` used to sit here.
+// They called POST /fees/discounts/{id}/approve|reject — wrong path AND wrong method;
+// the server only serves PATCH /fees/discounts/pending-approvals/{id}/approve|reject.
+// Nothing called them: the Fee Collection screen already calls the correct address
+// itself. Deleted rather than corrected, because a helper that looks ready to use and
+// would 404 on first use is worse than no helper. If a caller is ever needed, write it
+// against `PATCH /fees/discounts/pending-approvals/{approval_id}/approve|reject`.
 
 export async function getSalaryStructures() {
   const res = await apiFetch(`${API}/fees/payroll/structures`, { headers: getHeaders() });

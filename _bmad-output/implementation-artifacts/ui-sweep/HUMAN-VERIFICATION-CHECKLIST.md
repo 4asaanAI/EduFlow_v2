@@ -513,6 +513,52 @@ find" — it was **unreachable by any route in the product**. Both now have a pa
 
 ---
 
+## Inspection Remediation — Block 1 (2026-08-04)
+
+Nothing here is live yet. It is on a branch, waiting for your go-ahead to merge.
+
+### Needs a decision from you
+
+- [ ] **Which extra office role should be able to print certificates and ID cards?**
+      You said: owner, principal, and one more admin position you would name later. For now
+      it is **you and the Principal only**, which is how it worked before 25 July. Tell me
+      the position (accountant? receptionist?) and I will add exactly that one.
+
+- [ ] **Until you name it, the menus are wider than the permission.** The Certificates and
+      ID Cards tiles still appear for office staff who will now be refused when they press
+      the button. I deliberately did not hide them, because I would only have to put one
+      back once you answer. If you would rather they disappear in the meantime, say so.
+
+### Worth you checking in the app (after this is deployed)
+
+- [ ] **Leave a screen open for over an hour, then use it.** This is the main thing this
+      block fixed. Your login quietly renews itself after 60 minutes. Before, most of the
+      tool screens did not know how to do that — they just showed nothing, or an error,
+      until you refreshed the page. Open Fee Collection or a teacher's class list, leave it
+      an hour, then click something. It should just work.
+
+- [ ] **Notifications after a long idle period.** Same cause, separate path: the live
+      notification feed used to go quiet after an hour and never recover until you reloaded.
+      It now renews itself once, and if your login has genuinely ended it says so instead of
+      silently retrying forever.
+
+- [ ] **Try attaching a photo in Document Scanner and in a maintenance request.** Not
+      changed by this work, but I found that these two uploads take a different route from
+      the chat attachment, and nobody has confirmed they work since the file-storage setup.
+      If they fail, that is a real defect and I would like to know.
+
+### For the record
+
+- **Certificates could be issued by any office login since 25 July.** That included
+  maintenance, transport and support staff. It was not a security hole in the sense that
+  the contents could be faked — the details are read from the student's own record — but
+  it did mean people who should not be issuing official documents could. That is closed.
+
+- **The "mixed content" worry from the 25 July fix turned out to be nothing.** Seven files
+  had been missed by that fix. I checked your actual settings rather than assuming: the
+  address is already secure, so nothing was ever broken for the school. The files are
+  tidied up so the next person cannot get it wrong, but no outage was fixed.
+
 ## Change log
 
 | Date | Epic | What was added |

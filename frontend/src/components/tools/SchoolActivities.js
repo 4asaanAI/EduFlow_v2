@@ -2,11 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { Award, Plus, Shield, Star, Trash2, Trophy, Users, X } from 'lucide-react';
 import { getAuthHeaders } from '../../lib/authSession';
-
-const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
-const API = typeof window !== 'undefined' && window.location.protocol === 'https:'
-  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
-  : _rawAPI;
+import { API, apiFetch } from '../../lib/api';
 
 // Normalize FastAPI error shapes into a plain string.
 // FastAPI 422 returns {"detail": [{msg, loc, type}]} — not a string.
@@ -20,8 +16,14 @@ function extractDetail(data, fallback = 'An error occurred') {
   return fallback;
 }
 
-async function apiFetch(url, opts = {}) {
-  const res = await fetch(url, opts);
+// Reads the response as JSON and turns a failure into a plain sentence. It is NOT
+// a second fetch wrapper — it delegates to the shared `apiFetch`, which is what
+// refreshes an expired login and retries. This function used to be CALLED `apiFetch`
+// and called bare `fetch` itself, so every screen in this file looked like it was
+// using the shared wrapper and was not. Renamed so the two can never be confused
+// again; the name was the whole disguise. (NEW-03)
+async function activitiesRequest(url, opts = {}) {
+  const res = await apiFetch(url, opts);
   let data;
   try {
     data = await res.json();
@@ -34,14 +36,14 @@ async function apiFetch(url, opts = {}) {
   return data;
 }
 
-const listHouses = () => apiFetch(`${API}/api/activities/houses`, { headers: getAuthHeaders() });
-const awardPoints = (houseId, delta, reason) => apiFetch(`${API}/api/activities/houses/${houseId}/points`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ delta, reason }) });
-const listPositions = () => apiFetch(`${API}/api/activities/positions`, { headers: getAuthHeaders() });
-const assignPosition = (data) => apiFetch(`${API}/api/activities/positions`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data) });
-const removePosition = (id) => apiFetch(`${API}/api/activities/positions/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
-const listTeams = () => apiFetch(`${API}/api/activities/teams`, { headers: getAuthHeaders() });
-const createTeam = (data) => apiFetch(`${API}/api/activities/teams`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data) });
-const deleteTeam = (id) => apiFetch(`${API}/api/activities/teams/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
+const listHouses = () => activitiesRequest(`${API}/activities/houses`, { headers: getAuthHeaders() });
+const awardPoints = (houseId, delta, reason) => activitiesRequest(`${API}/activities/houses/${houseId}/points`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ delta, reason }) });
+const listPositions = () => activitiesRequest(`${API}/activities/positions`, { headers: getAuthHeaders() });
+const assignPosition = (data) => activitiesRequest(`${API}/activities/positions`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data) });
+const removePosition = (id) => activitiesRequest(`${API}/activities/positions/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
+const listTeams = () => activitiesRequest(`${API}/activities/teams`, { headers: getAuthHeaders() });
+const createTeam = (data) => activitiesRequest(`${API}/activities/teams`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data) });
+const deleteTeam = (id) => activitiesRequest(`${API}/activities/teams/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
 
 // ─── Shared UI ────────────────────────────────────────────────────────────────
 

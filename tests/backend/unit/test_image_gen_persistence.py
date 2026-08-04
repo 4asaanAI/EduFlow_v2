@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from middleware.auth import create_jwt
+from middleware.auth import create_jwt, SUB_CATEGORIES_BY_ROLE
 import routes.image_gen as image_gen_routes
 
 
@@ -103,6 +103,97 @@ def test_certificate_denied_for_non_principal_admin(client):
     resp = client.post("/api/image-gen/certificate", json=_certificate_payload(),
                        headers=_headers(role="admin", sub_category="accountant"))
     assert resp.status_code == 403
+
+
+# ── NEW-01 / NEW-02 — who may issue an official school document ──────────────
+# Owner decision 2026-08-04: Owner and Principal only. Commit 1011034 widened both
+# routes to every admin sub_category; nothing but the single accountant test above
+# noticed, and the ID-card route had NO permission test at all — which is why the
+# widening survived. These tests encode the decided rule on BOTH routes so the next
+# change to either gate has to argue with a red suite.
+
+# Every admin sub_category that is NOT principal. Derived from the auth module so a
+# newly-added sub_category is covered the day it is added, not the day someone
+# remembers to extend this list.
+#
+# DELIBERATE DEVIATION from CLAUDE.md's "never parametrize across security boundaries".
+# That rule exists so an ALLOWED case and a REFUSED case are never averaged into one
+# test. These parametrised cases are all on the SAME side of the boundary — every one
+# expects 403 — and the allowed profiles (owner, principal) each have their own named
+# test below. Deriving the list is the point: NEW-01 happened because a permission
+# widened and a hand-maintained list did not notice.
+_NON_PRINCIPAL_ADMIN_SUBS = sorted(
+    SUB_CATEGORIES_BY_ROLE["admin"] - {"principal"}
+)
+
+
+@pytest.mark.parametrize("sub_category", _NON_PRINCIPAL_ADMIN_SUBS)
+def test_certificate_refused_for_every_non_principal_admin(client, sub_category):
+    resp = client.post("/api/image-gen/certificate", json=_certificate_payload(),
+                       headers=_headers(role="admin", sub_category=sub_category))
+    assert resp.status_code == 403, f"{sub_category} must not be able to issue a certificate"
+
+
+@pytest.mark.parametrize("sub_category", _NON_PRINCIPAL_ADMIN_SUBS)
+def test_id_cards_refused_for_every_non_principal_admin(client, sub_category):
+    resp = client.post("/api/image-gen/id-cards",
+                       json={"class_id": "class-1", "students": [{"student_id": "student-1"}]},
+                       headers=_headers(role="admin", sub_category=sub_category))
+    assert resp.status_code == 403, f"{sub_category} must not be able to issue an ID card"
+
+
+def test_certificate_allowed_for_principal(client):
+    resp = client.post("/api/image-gen/certificate", json=_certificate_payload(),
+                       headers=_headers(role="admin", sub_category="principal"))
+    assert resp.status_code == 200
+
+
+def test_id_cards_allowed_for_principal(client):
+    resp = client.post("/api/image-gen/id-cards",
+                       json={"class_id": "class-1", "students": [{"student_id": "student-1"}]},
+                       headers=_headers(role="admin", sub_category="principal"))
+    assert resp.status_code == 200
+
+
+# The decided rule is TWO profiles, so both halves need a test. Without these, a later
+# change that narrowed the gate to principal-only would lock the Owner out of issuing
+# any certificate — with a fully green suite. That is the same shape of miss that let
+# NEW-01 through: a permission moved and no test was watching that direction.
+def test_certificate_allowed_for_owner(client):
+    resp = client.post("/api/image-gen/certificate", json=_certificate_payload(),
+                       headers=_headers(role="owner"))
+    assert resp.status_code == 200
+
+
+def test_id_cards_allowed_for_owner(client):
+    resp = client.post("/api/image-gen/id-cards",
+                       json={"class_id": "class-1", "students": [{"student_id": "student-1"}]},
+                       headers=_headers(role="owner"))
+    assert resp.status_code == 200
+
+
+def test_certificate_refused_for_teacher(client):
+    resp = client.post("/api/image-gen/certificate", json=_certificate_payload(),
+                       headers=_headers(role="teacher", sub_category="class_teacher"))
+    assert resp.status_code == 403
+
+
+def test_id_cards_refused_for_student(client):
+    resp = client.post("/api/image-gen/id-cards",
+                       json={"class_id": "class-1", "students": [{"student_id": "student-1"}]},
+                       headers=_headers(role="student", sub_category="student"))
+    assert resp.status_code == 403
+
+
+def test_certificate_unauthenticated_returns_401(client):
+    resp = client.post("/api/image-gen/certificate", json=_certificate_payload())
+    assert resp.status_code == 401
+
+
+def test_id_cards_unauthenticated_returns_401(client):
+    resp = client.post("/api/image-gen/id-cards",
+                       json={"class_id": "class-1", "students": [{"student_id": "student-1"}]})
+    assert resp.status_code == 401
 
 
 def test_id_cards_persist_true_stores_pdf(client, fake_db):

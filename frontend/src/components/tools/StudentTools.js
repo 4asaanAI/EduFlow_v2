@@ -6,15 +6,12 @@ import { useUser } from '../../contexts/UserContext';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn } from './ToolPage';
 import { Brain, HelpCircle, Send } from 'lucide-react';
+import { API, apiFetch } from '../../lib/api';
 
-const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
-const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
-  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
-  : _rawAPI) + '/api';
 function h() { return getAuthHeaders(); }
 
 async function createConv(title = 'AI Session') {
-  const res = await fetch(`${API}/chat/conversations`, {
+  const res = await apiFetch(`${API}/chat/conversations`, {
     method: 'POST',
     headers: { ...h(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ title }),
@@ -24,7 +21,7 @@ async function createConv(title = 'AI Session') {
 }
 
 async function* streamChat(convId, text) {
-  const res = await fetch(`${API}/chat/conversations/${convId}/messages`, {
+  const res = await apiFetch(`${API}/chat/conversations/${convId}/messages`, {
     method: 'POST',
     headers: { ...h(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
@@ -173,7 +170,7 @@ export function HomeworkViewer() {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedAssignment, setSelectedAssignment] = useState(null);
-  useEffect(() => { fetch(`${API}/academics/assignments`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setAssignments(r.data || []); }).finally(() => setLoading(false)); }, []);
+  useEffect(() => { apiFetch(`${API}/academics/assignments`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setAssignments(r.data || []); }).finally(() => setLoading(false)); }, []);
   const today = new Date().toISOString().slice(0, 10);
 
   if (selectedAssignment) {
@@ -542,7 +539,7 @@ export function StudyPlanner() {
   const f = k => v => setPlan(p => ({ ...p, [k]: v }));
 
   useEffect(() => {
-    fetch(`${API}/ops/study-plan`, { headers: h(currentUser) }).then(r => r.json())
+    apiFetch(`${API}/ops/study-plan`, { headers: h(currentUser) }).then(r => r.json())
       .then(r => { if (r.success && r.data) setPlan(r.data); })
       .catch(() => {}).finally(() => setLoading(false));
   }, []);
@@ -550,7 +547,7 @@ export function StudyPlanner() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const r = await fetch(`${API}/ops/study-plan`, { method: 'POST', headers: h(currentUser), body: JSON.stringify(plan) }).then(r => r.json());
+      const r = await apiFetch(`${API}/ops/study-plan`, { method: 'POST', headers: h(currentUser), body: JSON.stringify(plan) }).then(r => r.json());
       if (r.success) { setSaved(true); setTimeout(() => setSaved(false), 3000); }
     } catch {}
     setSaving(false);
@@ -584,7 +581,7 @@ export function CareerGuidance() {
 
   useEffect(() => {
     // Load student's results for context
-    fetch(`${API}/academics/results`, { headers: h(currentUser) }).then(r => r.json())
+    apiFetch(`${API}/academics/results`, { headers: h(currentUser) }).then(r => r.json())
       .then(r => { if (r.success) setResults(r.data || []); }).catch(() => {});
   }, []);
 
@@ -638,7 +635,7 @@ export function FeeStatusViewer() {
   const [feeSummary, setFeeSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    fetch(`${API}/fees/my`, { headers: h(currentUser) })
+    apiFetch(`${API}/fees/my`, { headers: h(currentUser) })
       .then(r => r.json())
       .then(r => {
         if (r.success) {
@@ -676,7 +673,7 @@ export function PtmSummaryViewer() {
   const { currentUser } = useUser();
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { fetch(`${API}/academics/ptm-notes`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setNotes(r.data || []); }).finally(() => setLoading(false)); }, []);
+  useEffect(() => { apiFetch(`${API}/academics/ptm-notes`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setNotes(r.data || []); }).finally(() => setLoading(false)); }, []);
   return (
     <ToolPage title="PTM Summary" subtitle="Read teacher notes from parent-teacher meetings" loading={loading}>
       {notes.length === 0 ? (
@@ -709,7 +706,7 @@ export function FormSubmissions() {
   const load = async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${API}/settings/forms`, { headers: h(currentUser) }).then(r => r.json());
+      const r = await apiFetch(`${API}/settings/forms`, { headers: h(currentUser) }).then(r => r.json());
       if (r.success) {
         const availableForms = r.data?.filter(f => {
           if (f.audience === 'all') return true;
@@ -747,7 +744,7 @@ export function FormSubmissions() {
       return;
     }
     try {
-      const res = await fetch(`${API}/settings/forms/${selectedForm.id}/responses`, {
+      const res = await apiFetch(`${API}/settings/forms/${selectedForm.id}/responses`, {
         method: 'POST',
         headers: h(currentUser),
         body: JSON.stringify({ answers })

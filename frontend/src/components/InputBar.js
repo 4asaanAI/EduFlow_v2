@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ArrowUp, Slash, AtSign, Paperclip, X, Loader, Mic } from 'lucide-react';
 import { useUser } from '../contexts/UserContext';
 import { getAuthHeaders } from '../lib/authSession';
-import { uploadChatFile } from '../lib/api';
+import { API, apiFetch, uploadChatFile } from '../lib/api';
 
 const TOOLS_BY_ROLE = {
   owner: [
@@ -80,7 +80,6 @@ const TOOLS_BY_ROLE = {
   ],
 };
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
 function getHeaders() {
   return getAuthHeaders(null);
 }
@@ -171,7 +170,7 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
       setShowAt(true);
       setSelectedIdx(0);
       if (query.length >= 1) {
-        fetch(`${API}/search?q=${encodeURIComponent(query)}&type=persons`, { headers: getHeaders(currentUser) })
+        apiFetch(`${API}/search?q=${encodeURIComponent(query)}&type=persons`, { headers: getHeaders(currentUser) })
           .then(r => r.json())
           .then(r => { if (r.success) setAtResults(r.data || []); })
           .catch(() => setAtResults([]));

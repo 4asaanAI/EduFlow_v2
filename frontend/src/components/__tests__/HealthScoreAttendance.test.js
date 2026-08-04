@@ -19,6 +19,10 @@ jest.mock('../../lib/authSession', () => ({ getAuthHeaders: () => ({}) }));
 
 const mockExecuteTool = jest.fn();
 jest.mock('../../lib/api', () => ({
+  // NEW-03: these screens now import `API`/`apiFetch` from lib/api. A factory mock does
+  // NOT fall through to the real module, so any omitted name is `undefined` (D-48).
+  API: '/api',
+  apiFetch: (...a) => global.fetch(...a),
   executeTool: (...a) => mockExecuteTool(...a),
   updateLeave: jest.fn(),
   getStaff: jest.fn(),

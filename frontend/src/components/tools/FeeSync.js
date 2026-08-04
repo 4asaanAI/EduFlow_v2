@@ -1,13 +1,9 @@
 import React, { useState } from 'react';
 import { CheckCircle, RefreshCw } from 'lucide-react';
-import { getFeeSyncJob, resolveFeeSyncConflict, triggerFeeSync } from '../../lib/api';
+import { API, apiFetch, getFeeSyncJob, resolveFeeSyncConflict, triggerFeeSync } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ErrorCard, LoadingCard } from './ToolPage';
 
-const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
-const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
-  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
-  : _rawAPI) + '/api';
 const POLL_MAX = 10;
 const POLL_INTERVAL_MS = 3000;
 
@@ -24,7 +20,7 @@ export default function FeeSync() {
       await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
       attempts++;
       try {
-        const res = await fetch(`${API}/fees/sync/${jobId}`, {
+        const res = await apiFetch(`${API}/fees/sync/${jobId}`, {
           headers: getAuthHeaders(),
         });
         const data = await res.json();

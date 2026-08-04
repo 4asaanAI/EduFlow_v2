@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { getAuthHeaders } from '../lib/authSession';
+import { API, apiFetch } from '../lib/api';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 const SPIN_KEYFRAMES = `
 @keyframes cac-spin {
@@ -318,7 +318,7 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
     setErrorMsg('');
 
     try {
-      const res = await fetch(`${API}/chat/conversations/${conversationId}/confirm`, {
+      const res = await apiFetch(`${API}/chat/conversations/${conversationId}/confirm`, {
         method: 'POST',
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({

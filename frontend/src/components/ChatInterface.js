@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { apiFetch, createConversation, getBrowserSseSessionId, getMessages, sendMessageStream } from '../lib/api';
+import { API, apiFetch, createConversation, getBrowserSseSessionId, getMessages, sendMessageStream } from '../lib/api';
 import MessageRenderer from './MessageRenderer';
 import InputBar from './InputBar';
 import TokenBudgetBar from './TokenBudgetBar';
@@ -12,7 +12,6 @@ import ThinkingProcess from './ThinkingProcess';
 import ConfirmActionCard from './ConfirmActionCard';
 import ChatFollowup from './ChatFollowup';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 /* Epic 5 (UX-DR8): ONE left edge and ONE vertical rhythm for everything stacked in a
    streaming turn. The gutter is the space the assistant avatar occupies — 28px wide
@@ -363,7 +362,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   // Fetch token usage on mount and when user changes
   const fetchTokenUsage = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/tokens/usage/me`, { headers: getHeaders(currentUser) });
+      const res = await apiFetch(`${API}/tokens/usage/me`, { headers: getHeaders(currentUser) });
       const data = await res.json();
       if (data.success && data.data) {
         const d = data.data;

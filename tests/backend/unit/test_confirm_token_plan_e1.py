@@ -133,6 +133,69 @@ async def test_consume_tampered_plan_raises_plan_tampered_409():
     assert exc.value.detail["code"] == "plan_tampered"
 
 
+async def test_consume_foreign_session_token_is_403_not_401():
+    """NEW-03 fallout: a token that belongs to another session is a FORBIDDEN, not an
+    UNAUTHENTICATED. The caller's own login is perfectly valid.
+
+    This used to answer 401. Once every screen went through the refreshing wrapper,
+    a 401 meant "renew the login and try again" — the renewal succeeds, the retry is
+    refused identically, and the person is signed out for tapping a stale Confirm
+    button. 403 says what is actually true and leaves the session alone.
+    """
+    now = datetime.now(timezone.utc)
+    doc = {
+        "token": "t", "user_id": "u1", "session_id": "s1",
+        "school_id": "sch", "branch_id": "b1", "used": False,
+        "expires_at": now + timedelta(minutes=5),
+        "action": "approve_leave", "params": {"leave_id": "lv-1"},
+    }
+
+    # `_consume_db` above deliberately ignores the query, which is fine for the
+    # happy-path tests but would let this one pass without the code being right.
+    # This fake honours the owner/session filter the real atomic claim uses.
+    def _owner_checked_db(stored):
+        class Col:
+            async def update_one(self, query, update, **kw):
+                matches = all(stored.get(k) == v for k, v in query.items()
+                              if not isinstance(v, dict))
+
+                class R:
+                    modified_count = 1 if matches else 0
+                return R()
+
+            async def find_one(self, query):
+                return dict(stored)
+
+        class Db:
+            confirm_tokens = Col()
+
+        return Db()
+
+    # Same person, a different browser session (e.g. the tab was reloaded).
+    with pytest.raises(HTTPException) as exc:
+        await consume_confirm_token(
+            token="t", user_id="u1", session_id="a-different-session",
+            school_id="sch", branch_id="b1", db=_owner_checked_db(doc),
+        )
+    assert exc.value.status_code == 403
+
+    # And a different person entirely.
+    with pytest.raises(HTTPException) as exc:
+        await consume_confirm_token(
+            token="t", user_id="someone-else", session_id="s1",
+            school_id="sch", branch_id="b1", db=_owner_checked_db(doc),
+        )
+    assert exc.value.status_code == 403
+
+    # ...while the rightful owner in the right session is still let through, so this
+    # test cannot pass by refusing everybody.
+    ok = await consume_confirm_token(
+        token="t", user_id="u1", session_id="s1",
+        school_id="sch", branch_id="b1", db=_owner_checked_db(doc),
+    )
+    assert ok["action"] == "approve_leave"
+
+
 async def test_consume_legacy_token_without_plan_still_works():
     now = datetime.now(timezone.utc)
     doc = {

@@ -1,15 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
-import { executeTool, updateLeave, getStaff, fetchPlatformHealth } from '../../lib/api';
+import { API, apiFetch, executeTool, updateLeave, getStaff, fetchPlatformHealth } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, useToolData, LineChartWidget, BarChartWidget, PieChartWidget } from './ToolPage';
 import { EmptyState } from '../ui/primitives';
 import { Activity, CheckCircle, XCircle, AlertTriangle, Plus, RefreshCw, Save, TrendingUp, Users, FileText, Send, Download, Upload, Zap, Database, Cloud, BookOpen, User, CreditCard, Calendar, Wrench, Monitor, ShieldAlert, UserCheck, ClipboardList } from 'lucide-react';
 
-const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
-const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
-  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
-  : _rawAPI) + '/api';
 function h() { return getAuthHeaders(); }
 function money(value) { return `Rs ${Number(value || 0).toLocaleString('en-IN')}`; }
 const tint = (color, amount) => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
@@ -120,7 +116,7 @@ export function SchoolPulse() {
     try {
       const [pulseRes, feeRes] = await Promise.all([
         executeTool('get_school_pulse', {}, currentUser),
-        fetch(`${API}/fees/summary`, { headers: h() }).then(r => r.json()),
+        apiFetch(`${API}/fees/summary`, { headers: h() }).then(r => r.json()),
       ]);
       if (pulseRes.success) setData(pulseRes.data);
       if (feeRes.success) setFeeSummary(feeRes.data);
@@ -374,8 +370,8 @@ export function ReportsTrends() {
     setLoading(true);
     try {
       const [a, f] = await Promise.all([
-        fetch(`${API}/reports/attendance-trends?months=3`, { headers: h() }).then(r => r.json()),
-        fetch(`${API}/reports/fee-collection-summary?months=6`, { headers: h() }).then(r => r.json()),
+        apiFetch(`${API}/reports/attendance-trends?months=3`, { headers: h() }).then(r => r.json()),
+        apiFetch(`${API}/reports/fee-collection-summary?months=6`, { headers: h() }).then(r => r.json()),
       ]);
       setAttendance(a);
       setFees(f);
@@ -465,8 +461,8 @@ export function StudentStrength() {
     setLoading(true);
     try {
       const [classRes, studRes] = await Promise.all([
-        fetch(`${API}/settings/classes`, { headers: h() }).then(r => r.json()),
-        fetch(`${API}/students/?limit=2000`, { headers: h() }).then(r => r.json()),
+        apiFetch(`${API}/settings/classes`, { headers: h() }).then(r => r.json()),
+        apiFetch(`${API}/students/?limit=2000`, { headers: h() }).then(r => r.json()),
       ]);
       const classes = classRes.data || [];
       const students = studRes.data || [];
@@ -543,7 +539,7 @@ export function DataImport() {
     try {
       const headers = h();
       delete headers['Content-Type'];
-      const res = await fetch(`${API}/import/${mode}`, {
+      const res = await apiFetch(`${API}/import/${mode}`, {
         method: 'POST',
         headers,
         body: form,
@@ -649,7 +645,7 @@ export function AttendanceOverview() {
     try {
       const [attRes, classRes] = await Promise.all([
         executeTool('get_attendance_overview', { days: 30 }, currentUser),
-        fetch(`${API}/settings/classes`, { headers: h() }).then(r => r.json()),
+        apiFetch(`${API}/settings/classes`, { headers: h() }).then(r => r.json()),
       ]);
       if (attRes.success) setData(attRes.data);
       setClasses(classRes.data || []);
@@ -764,7 +760,7 @@ export function StaffAttendanceTracker({ title = 'Staff Tracker', subtitle = 'St
     setSaveMsg('');
     try {
       const records = Object.entries(markData).map(([staff_id, status]) => ({ staff_id, status }));
-      const res = await fetch(`${API}/attendance/staff/bulk`, {
+      const res = await apiFetch(`${API}/attendance/staff/bulk`, {
         method: 'POST',
         headers: { ...h(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ date: markDate, records }),
@@ -963,7 +959,7 @@ export function FinancialReports() {
     try {
       const [feeRes, expRes] = await Promise.all([
         executeTool('get_financial_report', {}, currentUser),
-        fetch(`${API}/ops/expenses`, { headers: h() }).then(r => r.json()),
+        apiFetch(`${API}/ops/expenses`, { headers: h() }).then(r => r.json()),
       ]);
       if (feeRes.success) setData(feeRes.data);
       if (expRes.success) setExpenses(expRes.data || []);
@@ -1010,11 +1006,11 @@ export function AnnouncementBroadcaster() {
   const load = async () => {
     setLoading(true);
     try {
-      const annRes = await fetch(`${API}/ops/announcements`, { headers: h() }).then(r => r.json());
+      const annRes = await apiFetch(`${API}/ops/announcements`, { headers: h() }).then(r => r.json());
       if (annRes.success) setAnnouncements(annRes.data || []);
     } catch {}
     try {
-      const classRes = await fetch(`${API}/settings/classes`, { headers: h() }).then(r => r.json());
+      const classRes = await apiFetch(`${API}/settings/classes`, { headers: h() }).then(r => r.json());
       setClasses(classRes.data || []);
     } catch {}
     setLoading(false);
@@ -1051,7 +1047,7 @@ export function AnnouncementBroadcaster() {
         audience_classes: form.audience_type === 'class' ? form.audience_classes : [],
         is_draft: false,
       };
-      const res = await fetch(`${API}/ops/announcements`, { method: 'POST', headers: { ...h(), 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const res = await apiFetch(`${API}/ops/announcements`, { method: 'POST', headers: { ...h(), 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const r = await res.json();
       if (r.success) { resetForm(); load(); }
       else alert(`Failed to send announcement: ${r.detail || r.message || `HTTP ${res.status}`}`);
@@ -1182,7 +1178,7 @@ export function StaffPerformance() {
     try {
       const [staffRes, attRes] = await Promise.all([
         getStaff({ limit: 500 }),
-        fetch(`${API}/attendance/staff`, { headers: h() }).then(r => r.json()),
+        apiFetch(`${API}/attendance/staff`, { headers: h() }).then(r => r.json()),
       ]);
       const staffList = staffRes.success ? (staffRes.data || []) : [];
       setStaff(staffList);
@@ -1575,7 +1571,7 @@ export function ExpenseTracker() {
   const [form, setForm] = useState(emptyForm);
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
   useEffect(() => { load(); }, []);
-  const load = async () => { setLoading(true); try { const r = await fetch(`${API}/ops/expenses`, { headers: h() }).then(r => r.json()); if (r.success) setExpenses(r.data || []); } catch {} setLoading(false); };
+  const load = async () => { setLoading(true); try { const r = await apiFetch(`${API}/ops/expenses`, { headers: h() }).then(r => r.json()); if (r.success) setExpenses(r.data || []); } catch {} setLoading(false); };
 
   const openAdd = () => { setEditExpense(null); setForm(emptyForm); setShowForm(true); };
   const openEdit = (e) => { setEditExpense(e); setForm({ category: e.category || '', description: e.description || '', amount: String(e.amount || ''), date: e.date || new Date().toISOString().slice(0, 10), vendor: e.vendor || '' }); setShowForm(true); };
@@ -1588,12 +1584,12 @@ export function ExpenseTracker() {
     try {
       let r;
       if (editExpense) {
-        r = await fetch(`${API}/ops/expenses/${editExpense.id}`, {
+        r = await apiFetch(`${API}/ops/expenses/${editExpense.id}`, {
           method: 'PATCH', headers: h(),
           body: JSON.stringify(payload),
         }).then(res => res.json());
       } else {
-        r = await fetch(`${API}/ops/expenses`, {
+        r = await apiFetch(`${API}/ops/expenses`, {
           method: 'POST', headers: h(),
           body: JSON.stringify(payload),
         }).then(res => res.json());
@@ -1606,7 +1602,7 @@ export function ExpenseTracker() {
   const handleDelete = async (e) => {
     if (!window.confirm(`Delete expense: ${e.description || e.category}?`)) return;
     try {
-      const r = await fetch(`${API}/ops/expenses/${e.id}`, { method: 'DELETE', headers: h() }).then(res => res.json());
+      const r = await apiFetch(`${API}/ops/expenses/${e.id}`, { method: 'DELETE', headers: h() }).then(res => res.json());
       if (r.success) load();
       else alert('Failed to delete expense.');
     } catch { alert('Network error.'); }
@@ -1681,7 +1677,7 @@ export function CustomReportBuilder() {
   const toggle = (id) => setSelectedSources(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
 
   const buildUrl = (endpoint) => {
-    let url = `${process.env.REACT_APP_BACKEND_URL}/api/export/${endpoint}`;
+    let url = `${API}/export/${endpoint}`;
     const params = [];
     if (dateRange.start) params.push(`start_date=${dateRange.start}`);
     if (dateRange.end) params.push(`end_date=${dateRange.end}`);
@@ -1692,7 +1688,7 @@ export function CustomReportBuilder() {
   // Download a single CSV with auth headers and trigger browser download
   const downloadCSV = async (src) => {
     try {
-      const res = await fetch(buildUrl(src.endpoint), { headers: h() });
+      const res = await apiFetch(buildUrl(src.endpoint), { headers: h() });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         alert(`Export failed for ${src.label}: ${err.detail || res.status}`);
@@ -1777,7 +1773,7 @@ export function CustomReportBuilder() {
         let fetchOk = false;
 
         try {
-          const res = await fetch(buildUrl(src.endpoint), { headers: h() });
+          const res = await apiFetch(buildUrl(src.endpoint), { headers: h() });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const text = await res.text();
           const parsed = parseCSV(text);
@@ -1943,7 +1939,7 @@ async function runTool(name, params, user) {
 /** Same contract for the plain REST sources. A non-2xx must NOT become an empty list —
  *  `.catch(() => ({ data: [] }))` is how "0 staff" used to mean "403 Forbidden". */
 async function runRest(url) {
-  const res = await fetch(url, { headers: h() });
+  const res = await apiFetch(url, { headers: h() });
   if (!res.ok) throw new Error('Could not load this.');
   const body = await res.json();
   if (!body?.success && body?.detail) throw new Error(body.detail);
@@ -2384,7 +2380,7 @@ export function YearEndTransition() {
     if (!confirmed) { setConfirmed(true); return; }
     setLoading(true);
     try {
-      const r = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/settings/year-end-transition`, {
+      const r = await apiFetch(`${API}/settings/year-end-transition`, {
         method: 'POST', headers: h(),
         body: JSON.stringify({ new_year_name: newYear, start_date: startDate, end_date: endDate })
       }).then(r => r.json());
@@ -2452,7 +2448,7 @@ export function AttendanceAlerts() {
   const [smsLogs, setSmsLogs] = useState([]);
 
   useEffect(() => {
-    fetch(`${API}/sms/config-status`, { headers: h() })
+    apiFetch(`${API}/sms/config-status`, { headers: h() })
       .then(r => r.json())
       .then(r => { if (r.success) setTwilioConfigured(r.data.configured); })
       .catch(() => {});
@@ -2462,7 +2458,7 @@ export function AttendanceAlerts() {
     setLoading(true);
     setFetched(false);
     try {
-      const res = await fetch(`${API}/attendance/low-attendance?threshold=${threshold}&days=${days}`, { headers: h() });
+      const res = await apiFetch(`${API}/attendance/low-attendance?threshold=${threshold}&days=${days}`, { headers: h() });
       const r = await res.json();
       if (r.success) { setStudents(r.data || []); setFetched(true); setSelectedRows([]); }
     } catch (e) {
@@ -2473,7 +2469,7 @@ export function AttendanceAlerts() {
   };
 
   const loadLogs = async () => {
-    const r = await fetch(`${API}/sms/logs`, { headers: h() }).then(r => r.json());
+    const r = await apiFetch(`${API}/sms/logs`, { headers: h() }).then(r => r.json());
     if (r.success) setSmsLogs(r.data || []);
   };
 
@@ -2487,7 +2483,7 @@ export function AttendanceAlerts() {
     });
     // Fetch fresh guardian/student data to get the latest phone number
     try {
-      const r = await fetch(`${API}/students/${s.student_id}/guardians`, { headers: h() }).then(r => r.json());
+      const r = await apiFetch(`${API}/students/${s.student_id}/guardians`, { headers: h() }).then(r => r.json());
       if (r.success && r.data?.length > 0) {
         const primaryG = r.data.find(g => g.is_primary) || r.data[0];
         const freshPhone = primaryG?.phone || primaryG?.whatsapp_phone || s.phone || '';
@@ -2506,7 +2502,7 @@ export function AttendanceAlerts() {
     setSending(true);
     setSmsResult(null);
     try {
-      const res = await fetch(`${API}/sms/send-parent-message`, {
+      const res = await apiFetch(`${API}/sms/send-parent-message`, {
         method: 'POST',
         headers: h(),
         body: JSON.stringify({
@@ -2533,7 +2529,7 @@ export function AttendanceAlerts() {
     setBulkSending(true);
     setBulkResult(null);
     try {
-      const res = await fetch(`${API}/sms/send-bulk`, {
+      const res = await apiFetch(`${API}/sms/send-bulk`, {
         method: 'POST',
         headers: h(),
         body: JSON.stringify({

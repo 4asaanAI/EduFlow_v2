@@ -5,15 +5,11 @@ import {
   Plus, ChevronRight, ChevronLeft, Edit2, Trash2, BookOpen,
   Users, BarChart2, Calendar, CheckCircle, X, ClipboardList, AlertTriangle, Save, Eye,
 } from 'lucide-react';
-import {
+import { API, apiFetch,
   listExams, createExam, updateExam, deleteExam, getAllClasses, getSubjects,
   getExamSheet, saveExamSchedule, bulkEnterResults,
 } from '../../lib/api';
 
-const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
-const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
-  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
-  : _rawAPI) + '/api';
 function _authHeaders(user) {
   const token = localStorage.getItem('token');
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -166,7 +162,7 @@ export default function ExamManager() {
   useEffect(() => {
     if (!isTeacher) { setTeachingScope({ is_teacher: false }); return; }
     let alive = true;
-    fetch(`${API}/academics/my-teaching-scope`, { headers: _authHeaders(currentUser) })
+    apiFetch(`${API}/academics/my-teaching-scope`, { headers: _authHeaders(currentUser) })
       .then(r => r.json())
       .then(r => { if (alive) setTeachingScope(r.success ? r.data : { is_teacher: false }); })
       .catch(() => { if (alive) setTeachingScope({ is_teacher: false }); });

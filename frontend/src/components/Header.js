@@ -5,7 +5,7 @@ import { Search, Bell, ChevronLeft, Menu, X, CalendarDays } from 'lucide-react';
 import { getAuthHeaders } from '../lib/authSession';
 import NotificationDetailModal from './NotificationDetailModal';
 import { getToolForNotification } from '../lib/notifRouting';
-import {
+import { API, apiFetch,
   getAcademicYear,
   getNotifications,
   getUnreadNotificationCount,
@@ -13,7 +13,6 @@ import {
   markNotificationRead,
 } from '../lib/api';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 /* Every icon button in the header — menu, search, bell — uses THIS, so they
    share one size and one baseline.
@@ -60,7 +59,7 @@ function SearchPanel({ user, onClose, isDark }) {
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
-        const r = await fetch(`${API}/search?q=${encodeURIComponent(query)}`, { headers: getH(user) }).then(r => r.json());
+        const r = await apiFetch(`${API}/search?q=${encodeURIComponent(query)}`, { headers: getH(user) }).then(r => r.json());
         if (r.success) setResults(r.data || []);
       } catch {}
       setLoading(false);

@@ -29,6 +29,11 @@ jest.mock('../../lib/api', () => ({
   updateLeave: jest.fn(),
   getStaff: jest.fn(),
   fetchPlatformHealth: jest.fn(),
+  // NEW-03: the screen's direct server calls now go through the shared refreshing
+  // wrapper instead of a bare `fetch`, so the module mock has to provide it — the
+  // `global.fetch` stub below is still what answers.
+  API: '/api',
+  apiFetch: (...args) => global.fetch(...args),
 }));
 
 // One envelope. `data` is the payload — never another envelope.

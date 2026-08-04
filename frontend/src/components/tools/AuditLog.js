@@ -7,11 +7,8 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, ActionBtn } from './ToolPage';
 import { ChevronDown, ChevronRight, Search, Filter } from 'lucide-react';
+import { API, apiFetch } from '../../lib/api';
 
-const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
-const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
-  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
-  : _rawAPI) + '/api';
 function h() { return getAuthHeaders(); }
 const tint = (color, amount) => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
 
@@ -121,7 +118,7 @@ export default function AuditLog() {
     const params = new URLSearchParams({ page: pg, limit: LIMIT });
     Object.entries(filters).forEach(([k, v]) => { if (v) params.append(k, v); });
     try {
-      const res = await fetch(`${API}/audit-log?${params}`, { headers: h() });
+      const res = await apiFetch(`${API}/audit-log?${params}`, { headers: h() });
       const data = await res.json();
       if (data.success) {
         setEntries(data.data || []);

@@ -7,11 +7,8 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, ActionBtn, FormField } from './ToolPage';
 import { Plus, Trash2, Edit2, Save, X } from 'lucide-react';
+import { API, apiFetch } from '../../lib/api';
 
-const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
-const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
-  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
-  : _rawAPI) + '/api';
 function h() { return getAuthHeaders(); }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -44,8 +41,8 @@ export default function TimetableBuilder() {
   useEffect(() => {
     // Use allSettled so a failing staff fetch doesn't block class list from loading
     Promise.allSettled([
-      fetch(`${API}/settings/classes`, { headers: h() }).then(r => r.json()),
-      fetch(`${API}/staff/?limit=100`, { headers: h() }).then(r => r.json()),
+      apiFetch(`${API}/settings/classes`, { headers: h() }).then(r => r.json()),
+      apiFetch(`${API}/staff/?limit=100`, { headers: h() }).then(r => r.json()),
     ]).then(([clsResult, staffResult]) => {
       if (clsResult.status === 'fulfilled' && clsResult.value?.success) setClasses(clsResult.value.data || []);
       if (staffResult.status === 'fulfilled' && staffResult.value?.success) {
@@ -59,7 +56,7 @@ export default function TimetableBuilder() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API}/academics/timetable/${classId}`, { headers: h() });
+      const res = await apiFetch(`${API}/academics/timetable/${classId}`, { headers: h() });
       const data = await res.json();
       if (data.success) setSlots(data.data || []);
       else setError(data.detail || 'Failed to load timetable');
@@ -96,13 +93,13 @@ export default function TimetableBuilder() {
         ...editForm,
       };
       if (editSlot.id) {
-        await fetch(`${API}/academics/timetable/${editSlot.id}`, {
+        await apiFetch(`${API}/academics/timetable/${editSlot.id}`, {
           method: 'PATCH',
           headers: { ...h(), 'Content-Type': 'application/json' },
           body: JSON.stringify(editForm),
         });
       } else {
-        await fetch(`${API}/academics/timetable`, {
+        await apiFetch(`${API}/academics/timetable`, {
           method: 'POST',
           headers: { ...h(), 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -116,7 +113,7 @@ export default function TimetableBuilder() {
 
   const deleteSlot = async (slotId) => {
     if (!slotId) return;
-    await fetch(`${API}/academics/timetable/${slotId}`, { method: 'DELETE', headers: h() });
+    await apiFetch(`${API}/academics/timetable/${slotId}`, { method: 'DELETE', headers: h() });
     loadTimetable(selectedClass);
   };
 

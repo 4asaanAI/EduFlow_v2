@@ -8,11 +8,8 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, Badge, ActionBtn, FormField, DataTable } from './ToolPage';
 import { Plus, RefreshCw, MessageSquare, CheckCircle, Calendar, Users, Wrench, AlertTriangle, ClipboardList, Camera, X as XIcon, Clock, User, History } from 'lucide-react';
+import { API, apiFetch } from '../../lib/api';
 
-const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
-const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
-  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
-  : _rawAPI) + '/api';
 function h() { return getAuthHeaders(); }
 
 // ─── Request History Modal ────────────────────────────────────────────────────
@@ -108,7 +105,7 @@ function RequestHistoryModal({ item, issueType, onClose, isDark }) {
   useEffect(() => {
     setLoading(true);
     setError('');
-    fetch(`${API}/issues/${issueType}/${item.id}/history`, { headers: h() })
+    apiFetch(`${API}/issues/${issueType}/${item.id}/history`, { headers: h() })
       .then(r => r.json())
       .then(r => { if (r.success) setData(r.data); else setError(r.detail || 'Failed to load history'); })
       .catch(() => setError('Network error'))
@@ -365,7 +362,7 @@ function IssuePanel({ type, title }) {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API}/issues/${type}`, { headers: h() });
+      const res = await apiFetch(`${API}/issues/${type}`, { headers: h() });
       const data = await res.json();
       if (data.success) setItems(data.data || []);
       else setError(data.detail || 'Failed to load');
@@ -383,7 +380,7 @@ function IssuePanel({ type, title }) {
     setSaving(true);
     setFormError('');
     try {
-      const res = await fetch(`${API}/issues/${type}`, {
+      const res = await apiFetch(`${API}/issues/${type}`, {
         method: 'POST',
         headers: { ...h(), 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
@@ -398,7 +395,7 @@ function IssuePanel({ type, title }) {
   const handleUpdate = async (id, updates, issueType) => {
     const resolvedType = issueType || type;
     try {
-      const res = await fetch(`${API}/issues/${resolvedType}/${id}`, {
+      const res = await apiFetch(`${API}/issues/${resolvedType}/${id}`, {
         method: 'PATCH',
         headers: { ...h(), 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
@@ -412,7 +409,7 @@ function IssuePanel({ type, title }) {
   };
 
   const handleConfirm = async (id) => {
-    await fetch(`${API}/issues/facility/${id}/confirm-resolution`, { method: 'POST', headers: h() });
+    await apiFetch(`${API}/issues/facility/${id}/confirm-resolution`, { method: 'POST', headers: h() });
     load();
   };
 
@@ -580,7 +577,7 @@ function PhotoUploader({ photos, onChange, isDark }) {
       const fd = new FormData();
       fd.append('file', file);
       fd.append('entity_type', 'maintenance_request');
-      const res = await fetch(`${API}/uploads`, { method: 'POST', headers: h(), body: fd });
+      const res = await apiFetch(`${API}/uploads`, { method: 'POST', headers: h(), body: fd });
       const data = await res.json();
       if (data.success) onChange([...photos, data.data.file_url]);
     } catch {}
@@ -630,7 +627,7 @@ export function MaintenanceSchedule() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/issues/maintenance/schedule?limit=50`, { headers: h() });
+      const res = await apiFetch(`${API}/issues/maintenance/schedule?limit=50`, { headers: h() });
       const data = await res.json();
       if (data.success) setEntries(data.data || []);
     } catch {}
@@ -645,7 +642,7 @@ export function MaintenanceSchedule() {
     setSaving(true);
     setFormError('');
     try {
-      const res = await fetch(`${API}/issues/maintenance/schedule`, {
+      const res = await apiFetch(`${API}/issues/maintenance/schedule`, {
         method: 'POST',
         headers: { ...h(), 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
@@ -658,7 +655,7 @@ export function MaintenanceSchedule() {
   };
 
   const handleStatusChange = async (id, status) => {
-    await fetch(`${API}/issues/maintenance/schedule/${id}`, {
+    await apiFetch(`${API}/issues/maintenance/schedule/${id}`, {
       method: 'PATCH',
       headers: { ...h(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
@@ -735,7 +732,7 @@ export function VendorLog() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/issues/maintenance/vendors?limit=100`, { headers: h() });
+      const res = await apiFetch(`${API}/issues/maintenance/vendors?limit=100`, { headers: h() });
       const data = await res.json();
       if (data.success) setVendors(data.data || []);
     } catch {}
@@ -750,7 +747,7 @@ export function VendorLog() {
     setSaving(true);
     setFormError('');
     try {
-      const res = await fetch(`${API}/issues/maintenance/vendors`, {
+      const res = await apiFetch(`${API}/issues/maintenance/vendors`, {
         method: 'POST',
         headers: { ...h(), 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
@@ -763,7 +760,7 @@ export function VendorLog() {
   };
 
   const toggleActive = async (vendor) => {
-    await fetch(`${API}/issues/maintenance/vendors/${vendor.id}`, {
+    await apiFetch(`${API}/issues/maintenance/vendors/${vendor.id}`, {
       method: 'PATCH',
       headers: { ...h(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_active: !vendor.is_active }),
@@ -849,8 +846,8 @@ export function RaiseMaintenanceRequest() {
     setLoading(true);
     try {
       const [facRes, techRes] = await Promise.all([
-        fetch(`${API}/issues/facility?limit=20`, { headers: h() }),
-        fetch(`${API}/issues/tech?limit=20`, { headers: h() }),
+        apiFetch(`${API}/issues/facility?limit=20`, { headers: h() }),
+        apiFetch(`${API}/issues/tech?limit=20`, { headers: h() }),
       ]);
       const [facData, techData] = await Promise.all([facRes.json(), techRes.json()]);
       const fac = (facData.success ? facData.data || [] : []).map(i => ({ ...i, issue_type: 'facility' }));
@@ -873,7 +870,7 @@ export function RaiseMaintenanceRequest() {
       ? { description: form.description, location: form.location, category: form.category }
       : { description: form.description, location: form.location, category: form.category, priority: form.priority, photos: formPhotos };
     try {
-      const res = await fetch(endpoint, {
+      const res = await apiFetch(endpoint, {
         method: 'POST',
         headers: { ...h(), 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -1010,7 +1007,7 @@ export function AllIssuesView() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/issues?type=all`, { headers: h() });
+      const res = await apiFetch(`${API}/issues?type=all`, { headers: h() });
       const data = await res.json();
       if (data.success) setItems(data.data || []);
     } catch {}

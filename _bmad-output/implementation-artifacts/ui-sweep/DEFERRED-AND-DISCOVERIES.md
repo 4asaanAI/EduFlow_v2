@@ -101,8 +101,14 @@ standing rule); with every epic that owed that deferral now shipped, they were f
 2. They were sync tests driving the loop with `asyncio.get_event_loop().run_until_complete`,
    which reuses (and can inherit a closed) loop from an earlier async test. Both now use
    `asyncio.run()` — a fresh loop each time.
-**Verified:** pass in isolation AND in the full suite; suite now **1968 passed / 0 failed /
+**Verified:** pass in isolation AND in the full suite; suite was **1968 passed / 0 failed /
 14 deselected** (the 14 are the credentialed mongo_real + llm_eval tiers, not failures).
+
+> **Count corrected 2026-08-04.** "1968 passed" was true on 2026-07-23 and went stale two
+> days later, when commit `1011034` left the suite at 1967 passed / **1 failed** (NEW-01 /
+> NEW-02). That is now closed and the suite is back to **0 failed**. The passing COUNT keeps
+> growing with every block, so it is not worth quoting; the number that means anything is
+> the failure count, and it is 0. D-03 itself has not returned.
 
 ### D-04 (was RISK-3) — Test runs could reach the production database — **CLOSED 2026-07-22**
 `backend/.env` holds the live `MONGO_URL`, pulled from Elastic Beanstalk. `conftest.py`
@@ -551,7 +557,8 @@ IAM → Users → `claude-hosting` → Permissions → tick `s3-file-storage-pol
 **Fixed:** the test now seeds "today" with `datetime.now(timezone.utc)` — the same clock
 the service uses (`actor_ctx.now()`, UTC) — so the duplicate window always lines up
 regardless of wall-clock hour. One line in the test, exactly as the diagnosis predicted;
-no product/code change. Verified in a full-suite run (1968 passed / 0 failed). The mild
+no product/code change. Verified in a full-suite run (1968 passed / 0 failed at the time;
+the count has grown since — see the correction under D-03). The mild
 product oddity noted below (an IST visitor checked in 00:00–05:30 gets "today" as the
 previous UTC day) is left as-is — nobody checks visitors in at 00:30, and changing the
 service clock is an R15.4 decision, not a test fix. Original diagnosis kept below.
@@ -863,6 +870,103 @@ a reason:
 The School Directory shows the register code where derivable (Principal → PRIN) and says
 plainly, in a legend, that the teacher tier (NTT/PRT/TGT/PGT) is not yet recorded per staff
 member. Populating those codes is the Track 2 data load, unchanged.
+
+---
+
+## Discoveries from Inspection Remediation BLOCK 1 (2026-08-04)
+
+Found while doing T1–T5. Numbered `D-47+` so they do not collide with the `NEW-nn`
+inspection register. Anything fixed in-run is recorded in `block-1-completed.md` instead;
+everything below is **open**.
+
+### D-47 — File uploads from tool screens still go through CloudFront — **OPEN, may be live**
+`lib/api.js` deliberately keeps a second base, `UPLOAD_API` (`REACT_APP_UPLOAD_URL`),
+because CloudFront was believed to block multipart POST, and `uploadChatFile` uses it.
+But **four** other multipart uploads post to the ordinary `${API}` base:
+`FileUpload.js` (the shared uploader), `AdminTools.js` (Document Scanner),
+`MaintenanceTools.js` (photo uploader) and `QuerySection.js` (query attachment).
+
+**Not resolved either way on purpose.** Two facts pull in opposite directions: the D-37
+investigation recorded that CloudFront *does* forward multipart POST (verified by seeing
+401/422 reach FastAPI), and today both Amplify variables point at the same CloudFront
+URL — so the two bases are currently identical and nothing can be broken by the
+difference *right now*. But if `REACT_APP_UPLOAD_URL` is ever repointed, four uploads
+silently keep using the wrong one. Either delete `UPLOAD_API` as obsolete or route all
+five uploads through it; both are a decision, not a cleanup. **Worth Abhimanyu testing
+whether a photo attaches from Document Scanner and from a maintenance request** — nobody
+has confirmed those two paths since the S3 work.
+
+### D-48 — Nine frontend test files stub `lib/api` and would break on contact — **OPEN, latent**
+`jest.mock('../../lib/api', () => ({ ... }))` with an explicit factory does **not** fall
+through to the real module, so any name the factory omits is `undefined`. T3 made 21
+component files import `API`/`apiFetch` from that module; `BoardReport.test.js` broke on
+exactly this and was fixed in-run. Nine others carry the same stub and pass today only
+because they do not render a converted screen: `LayoutRouting`, `ConversationTrace`,
+`ChatStreamProgress`, `ChatInterface.r8`, `HealthScoreAttendance`, `Epic6NothingGetsLost`,
+`GeneratedFile`, `LearningTools`, `UserAttachment`.
+
+**Matters most for `LayoutRouting.test.js`**, which is NEW-10 / T12's subject: it renders
+`AttendanceRecorder`, which is now a converted screen. Whoever fixes its `AggregateError`
+must add `API` and `apiFetch` to its mock as well, or they will fix one crash and find
+another. Not pre-emptively edited here because it is another block's file.
+
+### D-49 — Certificate and ID-card tools are still offered to staff who cannot use them — **OPEN, needs the owner's list**
+T1 put issuing back to Owner + Principal on the server. The **menus were not changed**:
+`Sidebar.js` still lists ID Cards for the receptionist, and the tool registries
+(`ToolDashboard`, `CommandPalette`, `Layout`, `Sidebar`) still offer Certificates and ID
+Cards to admin generally. So a receptionist can open the tool and will be refused when
+they press the button.
+
+**Deliberately not changed.** Hiding a tool from someone is itself a visible decision, and
+Abhimanyu has said he will name **one additional office position** that should be able to
+print certificates. Editing the menus twice — once to remove, once to add his position
+back — is worse than editing them once when he answers. The server is the gate and the
+server is correct; this is a tidiness issue, not a hole. On the human checklist.
+
+### D-50 — An unexplained 7,267-line `upload.sh` sits untracked at the repo root — **OPEN, trivial**
+Header says "Paxel upload script". Nothing in EduFlow references it, and it predates this
+work (present in `git status` before the branch was cut). Left untracked and **not
+committed**. Someone should confirm it is a stray from another project and delete it,
+rather than it being committed by accident one day.
+
+### D-52 — Nothing stops a red test suite reaching `main` — **OPEN, the process hole behind NEW-02**
+The inspection framed NEW-02 as "a test went stale". Looking at it properly, that is not what
+happened. Commit `1011034` changed a permission, **turned an existing test red**, and was
+merged to `main` and deployed to the school anyway — and stayed red for ten days. The test
+did its job. Nothing was listening.
+
+Fixing the certificate gate (T1/T2) closes the symptom. **The hole is that a failing suite is
+not blocking**, and it will produce another NEW-02 in some other file. Worth one look at
+whether there is a pre-merge check at all, and adding one that runs
+`pytest tests/backend/` and `CI=true npx craco test` on a pull request. Note this is
+entangled with T11 (NEW-09): the frontend build cannot be used as a gate until its 48
+warnings are cleared, which is exactly why nobody turned one on.
+
+Not started here: setting up a merge gate is its own piece of work with its own blast radius
+(it can block the owner's deploys), and it is nobody's task in the current 14.
+
+### D-53 — Certificates and ID cards have no branch scoping — **OPEN, no live impact today**
+`backend/routes/image_gen.py` resolves the student with `db.students.find_one({"id": ...})`
+and the ID-card batch with `{"id": {"$in": ids}}` — **school-scoped only, no `branch_id`**.
+The daily generation cap (`_enforce_daily_cap`) is likewise keyed on
+`{schoolId, kind, day}`, so it is one pool for the whole school rather than per branch.
+
+**No effect today: the school has exactly one branch** (`branch-joya` — confirmed under
+D-28, all 1,802 students assigned to it). The moment a second branch exists, one branch's
+principal could issue an official certificate for another branch's student, and could
+exhaust the other branch's daily quota.
+
+**Deliberately not fixed in Block 1.** T1 was a question about WHO may issue a document;
+this is a question about WHICH STUDENTS they may issue one for. Adding a branch filter
+changes what a principal can do and is therefore an owner decision, exactly like T1 was.
+Note the file has **no** `scoped_filter`/`scoped_query` calls at all, so the standing audit
+grep passes vacuously on it — worth remembering when the multi-branch work starts.
+
+### D-51 — `AGENTS.md` carries the same stale test baseline `CLAUDE.md` did — **OPEN, docs**
+`AGENTS.md:307` still says "must show 420 passed, 0 skipped". `CLAUDE.md` was corrected in
+this block; `AGENTS.md` was left because the two files have drifted from each other in more
+places than this one line, and reconciling them is its own job. Flagged so the next reader
+of `AGENTS.md` does not trust the number.
 
 ---
 

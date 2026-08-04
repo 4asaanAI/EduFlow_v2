@@ -2,9 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useUser } from '../contexts/UserContext';
 import { X, Sun, Moon, Bell, Lock, Check, KeyRound, Eye, EyeOff } from 'lucide-react';
-import { getSchoolSettings, getAcademicYear } from '../lib/api';
+import { API, apiFetch, getSchoolSettings, getAcademicYear } from '../lib/api';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 function Toggle({ active, onToggle, isDark }) {
   return (
@@ -109,7 +108,7 @@ export default function SettingsModal({ onClose }) {
     setPwSaving(true);
     try {
       const authToken = token || currentUser?.token || localStorage.getItem('token') || '';
-      const res = await fetch(`${API}/auth/set-password`, {
+      const res = await apiFetch(`${API}/auth/set-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({ new_password: pwForm.new_password }),

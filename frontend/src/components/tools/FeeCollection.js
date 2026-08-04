@@ -2,11 +2,24 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle, Edit3, Percent, Phone, RefreshCw, Save, FileDown, MessageSquare, Trash2, X } from 'lucide-react';
 import { getAuthHeaders } from '../../lib/authSession';
 import { useUser } from '../../contexts/UserContext';
+import { API, apiFetch,
+  correctFeeTransaction,
+  deleteFeeTransaction,
+  createFeeContactLog,
+  createDiscountType,
+  getDiscountSummary,
+  getDiscountTypes,
+  getFeeDiscounts,
+  getFeeSummary,
+  getFeeTransactions,
+  getStudents,
+  getWhatsappDefaulters,
+  listPayrollDisbursements,
+  recordFeePayment,
+  sendFeeReminders,
+  subscribeSSE,
+} from '../../lib/api';
 
-const _rawAPI = process.env.REACT_APP_BACKEND_URL || '';
-const API = (typeof window !== 'undefined' && window.location.protocol === 'https:'
-  ? _rawAPI.replace(/^http:\/\/(?!localhost)/, 'https://')
-  : _rawAPI) + '/api';
 
 async function downloadReceipt(transactionId) {
   if (!transactionId) {
@@ -14,7 +27,7 @@ async function downloadReceipt(transactionId) {
     return;
   }
   try {
-    const res = await fetch(
+    const res = await apiFetch(
       `${API}/fees/transactions/${encodeURIComponent(transactionId)}/receipt?format=json`,
       { headers: getAuthHeaders() }
     );
@@ -33,7 +46,7 @@ async function downloadReceipt(transactionId) {
 
 async function exportFeeCSV(period) {
   const params = period ? `?period=${period}` : '';
-  const res = await fetch(`${API}/fees/export${params}`, { headers: getAuthHeaders() });
+  const res = await apiFetch(`${API}/fees/export${params}`, { headers: getAuthHeaders() });
   if (!res.ok) { alert('Export failed'); return; }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
@@ -43,24 +56,6 @@ async function exportFeeCSV(period) {
   a.click();
   URL.revokeObjectURL(url);
 }
-import {
-  apiFetch,
-  correctFeeTransaction,
-  deleteFeeTransaction,
-  createFeeContactLog,
-  createDiscountType,
-  getDiscountSummary,
-  getDiscountTypes,
-  getFeeDiscounts,
-  getFeeSummary,
-  getFeeTransactions,
-  getStudents,
-  getWhatsappDefaulters,
-  listPayrollDisbursements,
-  recordFeePayment,
-  sendFeeReminders,
-  subscribeSSE,
-} from '../../lib/api';
 
 const today = new Date().toISOString().slice(0, 10);
 const initialPayment = { student_id: '', fee_period: '', fee_head: 'tuition', amount: '', paid_amount: '', payment_mode: 'upi', status: 'paid', due_date: today, transaction_ref: '' };
