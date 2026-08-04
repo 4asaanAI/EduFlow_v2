@@ -613,10 +613,15 @@ an agent working alone**, which is why they are still here.
 - `D-32` the "taking longer than usual" thresholds were reasoned, never measured on the
   school's connection on a real morning.
 
-**Bigger pieces of work, scoped but not started**
-- `D-25` two doors into one tool registry. Architectural, worth its own run.
-- `D-44` deeper tool consolidation (the deep-link half is now unblocked by `D-59`).
-- `D-06`–`D-10` the data-load gaps, all of which write to live school data (Track 2).
-- `D-52`/`D-54` nothing stops a red test suite reaching `main`, and a tier that is skipped by
-  default can rot invisibly. Both are process, and setting up a merge gate can block the
-  owner's deploys, so it needs saying yes to first.
+**Bigger pieces of work** *(three of the four were done later the same day — see below)*
+- ~~`D-25` two doors into one tool registry~~ **DONE.** One `invoke_tool()`; both doors call
+  it; a structural test fails if a third door ever calls a tool directly.
+- `D-44` **half done.** The deep link to a person works for students and staff. The tool
+  **clusters** (fee, messaging, documents) still need Abhimanyu's yes/no per cluster —
+  Epic 9's rule is that a wrong merge is worse than no merge.
+- ~~`D-52`/`D-54`~~ **CHECK BUILT.** The suites and the production build now run on every
+  pull request, and the skipped write-rollback tier runs nightly and fails if it skips.
+  **One thing left, and only Abhimanyu can do it:** make the check *required* in
+  Settings → Branches. Turning that on can stop his own merges, so it was not done for him.
+- `D-06`–`D-10` the data-load gaps. **Not started and not startable by an agent:** every one
+  of them writes to live school data, which needs explicit approval first.

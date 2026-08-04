@@ -1,0 +1,136 @@
+# D-52 / D-54 — something has to be watching the safety nets.
+#
+# Why this file exists. On 2026-07-25 a commit changed a permission, turned an
+# existing test red, and was merged to main and deployed to the school anyway. It
+# stayed red for ten days. The test did its job; nothing was listening. Separately,
+# a whole tier of tests (tests/backend/mongo_real) had never passed OR failed for
+# months, because it is deselected by default and "not run" looks exactly like
+# "passing" from the outside.
+#
+# WHAT THIS DOES NOT DO: it does not block anything by itself. Making a check
+# required is a repository setting (Settings -> Branches -> branch protection), and
+# turning that on can stop the owner merging and deploying, so it is his call, not
+# an agent's. Until he turns it on, this reports; it does not gate. That is still
+# the difference between finding out in ten minutes and finding out in ten days.
+#
+# The three jobs mirror the three things that are actually checked before a change
+# is called done: the backend suite, the frontend suite, and the production build
+# with the hook-dependency rule set to error (which is the gate T11 turned on).
+
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # 02:30 UTC = 08:00 IST, so a nightly result is waiting at the start of the day.
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: Backend suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'   # matches .python-version
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r backend/requirements.txt
+
+      - name: Run the suite
+        # The default tier runs against FakeDb, so no database is needed. The
+        # variables are still set because conftest.py fails closed if MONGO_URL
+        # points at a hosted cluster (D-04) and refuses to run without one.
+        env:
+          MONGO_URL: mongodb://127.0.0.1:27099/eduflow_test
+          DB_NAME: eduflow_test
+          PYTHONPATH: backend
+        run: python -m pytest tests/backend/ -q
+
+  frontend:
+    name: Frontend suite and production build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Run the suite
+        env:
+          CI: 'true'
+        run: npx craco test --watchAll=false
+
+      - name: Build with the hook-dependency rule at error
+        # This is the T11 gate. react-hooks/exhaustive-deps is "error" on a
+        # production build, so a reintroduced stale dependency fails here rather
+        # than showing someone yesterday's data on a screen.
+        run: npx craco build
+
+  mongo-real:
+    name: Real-Mongo write-rollback tier
+    # Not on every pull request: the tier needs a replica set and covers the write
+    # path specifically. It runs nightly, on main, and on any change that touches
+    # the AI layer or the database. Policy written down in
+    # tests/backend/mongo_real/README.md.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r backend/requirements.txt
+
+      - name: Start a single-node replica set
+        # A replica set NAME is what enables transactions; one node is enough.
+        # Started with `docker run` rather than a services: block because the
+        # service syntax cannot pass --replSet to the container's command.
+        run: |
+          docker run -d --name mongo-rs -p 27099:27017 mongo:7.0 \
+            mongod --replSet rs0 --bind_ip_all
+          for i in $(seq 1 30); do
+            if docker exec mongo-rs mongosh --quiet --eval 'db.runCommand({ping:1})' >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          docker exec mongo-rs mongosh --quiet --eval \
+            'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
+
+      - name: Run the tier
+        env:
+          MONGO_TEST_URL: mongodb://127.0.0.1:27099/?directConnection=true
+          MONGO_URL: mongodb://127.0.0.1:27099/eduflow_test
+          DB_NAME: eduflow_test
+          PYTHONPATH: backend
+        # It must not silently skip here. The tier skips cleanly when no replica set
+        # is available, which is right locally and wrong in CI: a skip would put this
+        # job straight back into the "never passed, never failed" state that hid it
+        # for months. -W error::UserWarning is not enough, so the skip count is
+        # checked explicitly.
+        run: |
+          python -m pytest -m mongo_real tests/backend/mongo_real -q -rs | tee tier.log
+          if grep -qE '[0-9]+ skipped' tier.log; then
+            echo "::error::The mongo_real tier SKIPPED in CI. A skipped tier is how this went unnoticed for months (D-54). Fix the replica set rather than ignoring this."
+            exit 1
+          fi

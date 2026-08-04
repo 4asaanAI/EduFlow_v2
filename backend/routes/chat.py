@@ -41,6 +41,14 @@ from ai.context_builder import build_school_context, detect_language
 from ai.tool_functions_v2 import TOOL_REGISTRY, WRITE_TOOL_NAMES, openai_tool_schema
 from ai.scope_resolver import resolve_scope, Scope
 from ai.tool_access import is_tool_authorized
+from ai.tool_invoker import (
+    UNKNOWN,
+    ToolNotAvailable,
+    invoke_tool,
+    resolve_tool,
+    safe_failure,
+    tool_accepts_scope,
+)
 from ai.tool_chat_exclusions import is_chat_advertised
 from ai.content_filter import filter_response, check_input_safety
 from ai.redaction import redact_for_llm
@@ -2049,7 +2057,13 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
 
     if detected_tool:
         tool_name = detected_tool
-        tool_def = TOOL_REGISTRY.get(tool_name)
+        # D-25: lookup + gate are one call, shared with the tool-panel door. Writes are
+        # not blocked here — this path leads to the confirm card, which is where a write
+        # gets its token, kill-switch check and audit row.
+        try:
+            tool_def = resolve_tool(tool_name, user, authorize=_is_tool_authorized)
+        except ToolNotAvailable:
+            tool_def = None
 
         # Determine intent description for thinking event
         intent_desc = tool_name.replace("get_", "").replace("_", " ")
@@ -2057,7 +2071,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         await _thinking_delay()
 
         # ── BUG FIX #5: Role validation (explicit check) ─────────────
-        if not tool_def or not _is_tool_authorized(user, tool_def):
+        if not tool_def:
             logger.warning(f"Role {user['role']} not allowed for tool {tool_name}")
             tool_name = None
             detected_tool = None
@@ -2165,10 +2179,11 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             # stream into an idle-timeout. (Previously the keepalive coroutine was
             # defined but never scheduled, and yielded nothing.)
             try:
-                if _tool_accepts_scope(tool_def):
-                    tool_task = asyncio.create_task(tool_def["fn"]({}, user, scope))
-                else:
-                    tool_task = asyncio.create_task(tool_def["fn"]({}, user))
+                # D-25: one invoker, shared with the tool-panel door. The gate already
+                # ran above, so the resolved def is passed straight through.
+                tool_task = asyncio.create_task(
+                    invoke_tool(tool_name, {}, user, scope, tool_def=tool_def)
+                )
                 try:
                     while not tool_task.done():
                         try:
@@ -2194,10 +2209,9 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             except Exception as e:
                 # Part 2 Patch P3: never expose `str(e)` to the LLM / client —
                 # may contain Mongo URIs, collection names, stack frame paths.
-                # Log to server with a correlation_id; surface a generic token.
-                corr_id = str(uuid.uuid4())
-                logger.exception("Tool execution error (%s) [%s]", tool_name, corr_id)
-                tool_result = {"error": "data_unavailable", "correlation_id": corr_id}
+                # D-25: one definition of that shape, shared with the other door.
+                tool_result = safe_failure(tool_name, e)
+                corr_id = tool_result["correlation_id"]
                 yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'error', 'error': 'data_unavailable', 'correlation_id': corr_id})}\n\n"
                 all_tool_calls.append({"tool": tool_name, "result": tool_result})
 
@@ -2388,19 +2402,24 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             llm_tool_name = llm_tool_call.get("action")
             llm_tool_params = llm_tool_call.get("params", {})
 
-            tool_def = TOOL_REGISTRY.get(llm_tool_name)
-            if not tool_def:
-                # R1.5 AC1: name the missing capability + suggest close authorized
-                # matches. Setting llm_response (not a bare break) means Phase 14
-                # streams + persists this explanation instead of a silent dead end.
-                _close = _close_tool_matches(llm_tool_name, user)
-                _suffix = f" Did you mean: {', '.join(_close)}?" if _close else ""
-                llm_response = f'I don\'t have a capability called "{llm_tool_name}".{_suffix}'
-                break
-            if not _is_tool_authorized(user, tool_def):
-                # R1.5 AC2: a real capability the caller's role can't use — distinct
-                # message from "unknown" so we don't imply the feature doesn't exist.
-                llm_response = "That action isn't available for your role."
+            # D-25: lookup + gate are one call. The wording stays this door's own —
+            # the tool panel answers 403 for both cases so the registry cannot be
+            # mapped, while chat must not tell someone a feature does not exist when
+            # it does. `reason` is what keeps both true from one code path.
+            try:
+                tool_def = resolve_tool(llm_tool_name, user, authorize=_is_tool_authorized)
+            except ToolNotAvailable as unavailable:
+                if unavailable.reason == UNKNOWN:
+                    # R1.5 AC1: name the missing capability + suggest close authorized
+                    # matches. Setting llm_response (not a bare break) means Phase 14
+                    # streams + persists this explanation instead of a silent dead end.
+                    _close = _close_tool_matches(llm_tool_name, user)
+                    _suffix = f" Did you mean: {', '.join(_close)}?" if _close else ""
+                    llm_response = f'I don\'t have a capability called "{llm_tool_name}".{_suffix}'
+                else:
+                    # R1.5 AC2: a real capability the caller's role can't use — distinct
+                    # message from "unknown" so we don't imply the feature doesn't exist.
+                    llm_response = "That action isn't available for your role."
                 break
 
             tool_name = llm_tool_name
@@ -2489,7 +2508,10 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'running'})}\n\n"
 
             try:
-                raw_tool_result = await tool_def["fn"](resolved_params, user, scope) if _tool_accepts_scope(tool_def) else await tool_def["fn"](resolved_params, user)
+                # D-25: one invoker, shared with the tool-panel door.
+                raw_tool_result = await invoke_tool(
+                    tool_name, resolved_params, user, scope, tool_def=tool_def
+                )
                 await _audit_minor_read(db, user, tool_name, raw_tool_result)
                 result_count = _extract_result_count(raw_tool_result)
                 tool_result = _safe_tool_result_for_chat(raw_tool_result)
@@ -2503,9 +2525,9 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
 
             except Exception as e:
                 # Part 2 Patch P3: opaque error to LLM/client, full exception logged.
-                corr_id = str(uuid.uuid4())
-                logger.exception("Tool execution error (%s) [%s]", tool_name, corr_id)
-                tool_result = {"error": "data_unavailable", "correlation_id": corr_id}
+                # D-25: one definition of that shape, shared with the other door.
+                tool_result = safe_failure(tool_name, e)
+                corr_id = tool_result["correlation_id"]
                 yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'error', 'error': 'data_unavailable', 'correlation_id': corr_id})}\n\n"
                 all_tool_calls.append({"tool": tool_name, "params": resolved_params, "result": tool_result})
                 break  # Stop chaining on error
@@ -2869,20 +2891,12 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
 # ─── Helper: check if tool function accepts scope parameter ───────────────────
 
 def _tool_accepts_scope(tool_def: dict) -> bool:
+    """Kept as a local name for existing call sites and tests.
+
+    D-25: the implementation moved to `ai/tool_invoker.tool_accepts_scope`, which the
+    tool-panel door uses too. There is one calling convention now, not two.
     """
-    Check if a tool function accepts a scope parameter (3 args vs 2).
-    Existing tools take (params, user). New tools may take (params, user, scope).
-    We try gracefully: if the function signature has 3+ params, pass scope.
-    """
-    import inspect
-    fn = tool_def.get("fn")
-    if fn is None:
-        return False
-    try:
-        sig = inspect.signature(fn)
-        return len(sig.parameters) >= 3
-    except (ValueError, TypeError):
-        return False
+    return tool_accepts_scope(tool_def)
 
 
 # ─── SSE streaming endpoint ──────────────────────────────────────────────────
@@ -2946,11 +2960,16 @@ async def execute_action(conv_id: str, request: Request):
     # hole — but a refusal that reports itself as a success cannot be counted by any
     # monitoring that watches rejected requests, and CLAUDE.md is explicit:
     # "Errors — ALWAYS raise HTTPException, never return raw dicts."
-    tool_def = TOOL_REGISTRY.get(action)
-    if not tool_def:
-        raise HTTPException(status_code=404, detail=f"Unknown action: {action}")
-    # auth: registry enforces role + sub_category — see _is_tool_authorized
-    if not _is_tool_authorized(user, tool_def):
+    #
+    # D-25: lookup + gate are one call. This door keeps 404-vs-403 (unlike the tool
+    # panel, which flattens both to 403) because the caller here is the chat screen
+    # replaying an action button it was itself given, so an unknown action means the
+    # button is stale, not that someone is probing the registry.
+    try:
+        tool_def = resolve_tool(action, user, authorize=_is_tool_authorized)
+    except ToolNotAvailable as unavailable:
+        if unavailable.reason == UNKNOWN:
+            raise HTTPException(status_code=404, detail=f"Unknown action: {action}")
         raise HTTPException(
             status_code=403,
             detail="You do not have permission to run this action.",
@@ -2965,10 +2984,8 @@ async def execute_action(conv_id: str, request: Request):
         # Resolve scope for the action
         scope = await resolve_scope(user, db)
 
-        if _tool_accepts_scope(tool_def):
-            result = await tool_def["fn"](params, user, scope)
-        else:
-            result = await tool_def["fn"](params, user)
+        # D-25: one invoker, shared with the tool-panel door.
+        result = await invoke_tool(action, params, user, scope, tool_def=tool_def)
 
         msg_content = result.get("message", f"Action '{label}' completed successfully.")
 
@@ -3200,14 +3217,17 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
 
         def _make_runner(s_tool: str, s_params: dict):
             s_def = TOOL_REGISTRY.get(s_tool)
-            accepts_scope = _tool_accepts_scope(s_def)
 
             async def _runner():
                 # The forward write action. Runs inside the executor's transaction;
                 # the tool's services enlist via the ambient txn-session contextvar.
-                if accepts_scope:
-                    return await s_def["fn"](s_params, user, scope)
-                return await s_def["fn"](s_params, user)
+                #
+                # D-25: the same invoker as every other door. It deliberately does NOT
+                # catch exceptions, which is what this path depends on — a failure has
+                # to reach the executor for the transaction to roll back.
+                # Every step was already gated above (AD14 authorizes the whole plan
+                # before any of it runs), so the resolved def is passed through.
+                return await invoke_tool(s_tool, s_params, user, scope, tool_def=s_def)
 
             return _runner
 

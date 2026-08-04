@@ -343,7 +343,24 @@ several are order-sensitive by nature (a timetable's rows are periods). **This i
 "sorting is done" — it is 34 of ~57.** Belongs with Epic 3's remit; sized as its own
 pass. Recorded here so the coverage map is not read as complete again.
 
-### D-25 — Two dispatch paths into one tool registry — **DEFERRED, architectural**
+### D-25 — Two dispatch paths into one tool registry — **CLOSED 2026-08-04**
+> **CLOSED.** `ai/tool_invoker.py` is the single `invoke_tool(name, params, user, scope)`
+> the entry below describes as the end state. Both doors call it and neither keeps its
+> own copy of the lookup, the gate, the scope resolution, the calling convention or the
+> failure shape. Guarded by `tests/backend/unit/test_d25_one_tool_invoker.py`, whose
+> structural test fails if anyone anywhere calls a tool's function directly again.
+>
+> **A real gap the unification closed:** the tool-panel door called every tool with
+> three arguments unconditionally while chat checked the signature first. All 112
+> registered tools take three today, so nothing was broken — but the first two-argument
+> tool added would have worked in chat and failed on the panel as a generic
+> "Tool execution failed", with the real cause buried in a log.
+>
+> Deliberately NOT changed: the invoker does not catch exceptions from a tool. The
+> confirm path runs writes inside a database transaction and needs the failure to reach
+> the executor so the write rolls back. Verified by running the real-Mongo tier against
+> a replica set after the change: **13 passed**, executor rollback included.
+
 Raised by the architecture review during Epic 4. The chat tool-loop and
 `POST /api/tools/{id}/execute` are two doors into one `TOOL_REGISTRY` that grew their
 own gates, their own envelope handling, and their own idea of a turn. That is *how* a
@@ -852,7 +869,23 @@ exclusion (or the >60 MB custom rule) FIRST, verify a ~50 MB owner upload still 
 THEN switch to Block — and keep it owner-approved, same as every other prod change.
 Belongs on the human-verification checklist, not in a code run.
 
-### D-44 — Epic 7 deferred: deep-link-to-person and deeper tool consolidation — **OPEN**
+### D-44 — Epic 7 deferred: deep-link-to-person and deeper tool consolidation — **HALF CLOSED 2026-08-04**
+> **Part 1 (deep-link to a person) is CLOSED.** A Directory row now opens that person's
+> record, not just the owning tool. The student half had already been built on `focus`;
+> the staff half is now the same shape — Staff Tracker reads `focus`, fetches the staff
+> member **by id** (that list is paginated on the server, so it cannot assume the person
+> is on the page that happens to be loaded), and opens the SAME editor the row's own
+> Edit button opens. No second profile-editing path was created, which is the fork this
+> entry was written to avoid. A record that cannot be opened says so plainly and leaves
+> the list working. Tests: `tools/__tests__/DirectoryDeepLink.test.js`.
+>
+> This needed `D-59` fixed first, which it now is.
+>
+> **Part 2 (the tool clusters) stays OPEN and is the owner's call, per cluster.** The fee
+> cluster, the messaging cluster and the document cluster each look like one job and are
+> not confidently the same job. Epic 9's rule stands: a wrong merge is worse than no
+> merge. Nothing here can be decided by an agent.
+
 Raised during Epic 7 (School Directory). Two things were deliberately not built, each for
 a reason:
 
@@ -947,7 +980,20 @@ work (present in `git status` before the branch was cut). Left untracked and **n
 committed**. Someone should confirm it is a stray from another project and delete it,
 rather than it being committed by accident one day.
 
-### D-52 — Nothing stops a red test suite reaching `main` — **OPEN, the process hole behind NEW-02**
+### D-52 — Nothing stops a red test suite reaching `main` — **CHECK BUILT 2026-08-04; making it blocking is the owner's switch**
+> **Built:** `.github/workflows/tests.yml` runs the backend suite, the frontend suite
+> and the production build (with the hook-dependency rule at error, the T11 gate) on
+> every pull request and every push to `main`, plus nightly. `scripts/check.ps1` runs
+> the same three locally in one command, which is what matters today because this branch
+> has never been pushed.
+>
+> **Deliberately NOT done:** the check does not block a merge. Making a check *required*
+> is a repository setting (Settings → Branches → branch protection) and turning it on can
+> stop Abhimanyu merging and deploying. That is his switch, not an agent's. Until he
+> flips it, this reports rather than gates — which is still the difference between
+> finding out in ten minutes and finding out in ten days, which is what actually
+> happened in the NEW-02 case.
+
 The inspection framed NEW-02 as "a test went stale". Looking at it properly, that is not what
 happened. Commit `1011034` changed a permission, **turned an existing test red**, and was
 merged to `main` and deployed to the school anyway — and stayed red for ten days. The test
@@ -986,7 +1032,13 @@ this block; `AGENTS.md` was left because the two files have drifted from each ot
 places than this one line, and reconciling them is its own job. Flagged so the next reader
 of `AGENTS.md` does not trust the number.
 
-### D-54 — A whole tier of tests was un-runnable and it showed up as neither a pass nor a failure — **OPEN as a process hole; the tier itself FIXED 2026-08-04**
+### D-54 — A whole tier of tests was un-runnable and it showed up as neither a pass nor a failure — **CLOSED 2026-08-04 (the hole, not just the tier)**
+> **CLOSED.** The `mongo-real` job in `.github/workflows/tests.yml` runs the tier nightly
+> and on every push to `main` against a single-node replica set, and it **fails if the
+> tier skips**. That last part is the point: this tier skips cleanly when no replica set
+> is present, which is right on a laptop and wrong in CI, because a silent skip is
+> exactly the state that hid it for months. "Not run" can no longer look like "passing".
+
 The real-Mongo write-rollback tests (`tests/backend/mongo_real/`) had never passed and never
 failed. The shared setup created the database client on one event loop and handed it to tests
 running on another, so every test errored before a single assertion ran. Because the tier is

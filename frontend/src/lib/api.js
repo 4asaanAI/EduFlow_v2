@@ -679,6 +679,16 @@ export async function getStaff(params = {}) {
   return res.json();
 }
 
+// D-44: one staff record by id. The Staff Tracker paginates on the server, so a
+// deep link from the School Directory cannot assume the person is on the page that
+// happens to be loaded. The server refuses this for anyone who may not manage staff
+// (and for a staff member asking about someone else), so the deep link degrades to a
+// plain message rather than showing a record it should not.
+export async function getStaffMember(staffId) {
+  const res = await apiFetch(`${API}/staff/${encodeURIComponent(staffId)}`, { headers: getHeaders() });
+  return res.json();
+}
+
 // Story 1.3 — your own staff record, READ ONLY. Nobody edits their own details;
 // corrections go through the Owner or Principal on the staff screen. There is
 // deliberately no update counterpart here: the server refuses one, and shipping

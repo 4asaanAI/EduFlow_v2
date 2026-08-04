@@ -132,10 +132,11 @@ export default function SchoolDirectory() {
           onOpen={(s) => setSearchParams({ tool: 'student-database', focus: s.id })}
         />
       ) : (
-        // Staff is 88 rows on one page — the row lands on the Staff Tracker list,
-        // where the person is trivially findable. Opening the exact staff editor
-        // by deep-link needs a staff-by-id open path; deferred (D-44).
-        <StaffTab onOpen={() => setSearchParams({ tool: 'staff-tracker' })} />
+        // D-44 CLOSED 2026-08-04: the row now opens that person's record, not just
+        // the list. Staff Tracker reads `focus` and fetches the staff member by id,
+        // so it works whatever page that paginated list happens to be showing, and
+        // says so plainly if the record cannot be opened.
+        <StaffTab onOpen={(s) => setSearchParams({ tool: 'staff-tracker', focus: s.id })} />
       )}
     </div>
   );

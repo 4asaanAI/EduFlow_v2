@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { adminResetPassword, createStaff, deactivateStaff, decideProfileChangeRequest, getPendingLeaves, getProfileChangeRequests, getStaff, subscribeSSE, updateLeave, updateStaff } from '../../lib/api';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { adminResetPassword, createStaff, deactivateStaff, decideProfileChangeRequest, getPendingLeaves, getProfileChangeRequests, getStaff, getStaffMember, subscribeSSE, updateLeave, updateStaff } from '../../lib/api';
 import { ArrowRight, CheckCircle, Edit3, KeyRound, Plus, RefreshCw, X, XCircle } from 'lucide-react';
 import { useUser } from '../../contexts/UserContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -322,6 +323,45 @@ export default function StaffTracker() {
     || (currentUser.role === 'admin' && currentUser.sub_category === 'principal');
   const attendanceLiveLabel = lastUpdatedLabel(attendanceStreamUpdatedAt);
 
+  // D-44 — deep link from the School Directory. A staff row there opens
+  // `?tool=staff-tracker&focus=<id>`. This opens the SAME editor the row's own Edit
+  // button opens; it is not a second way to edit a profile, which is the fork D-44
+  // was written to avoid. The record is fetched by id because this list is paginated
+  // on the server, so the person may not be on the page that happens to be loaded.
+  // Applied once via the ref, then the parameter is stripped so closing the editor
+  // (or reloading) does not reopen it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const appliedFocusRef = useRef(false);
+  const [focusError, setFocusError] = useState('');
+  useEffect(() => {
+    if (appliedFocusRef.current) return;
+    const focus = searchParams.get('focus');
+    if (!focus) return;
+    appliedFocusRef.current = true;
+
+    // The parameter is stripped AFTER the record is fetched, not before. Stripping
+    // first re-runs this effect, and a cleanup that cancelled the in-flight request
+    // would throw away the answer it was waiting for — the deep link then silently
+    // did nothing, which is exactly the failure mode D-63 was about.
+    (async () => {
+      try {
+        const res = await getStaffMember(focus);
+        if (res && res.success && res.data) setEditing(res.data);
+        // The server refuses this for anyone who may not manage staff. Say so
+        // plainly and leave the list usable rather than failing silently.
+        else setFocusError('That staff member could not be opened. They may have been removed, or you may not have permission to view the record.');
+      } catch {
+        setFocusError('That staff member could not be opened just now.');
+      } finally {
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('focus');
+          return next;
+        }, { replace: true });
+      }
+    })();
+  }, [searchParams, setSearchParams]);
+
   // UX-DR10: page size, remembered per table. Keyed 'staff', so sizing this
   // list does not resize the student list.
   const [pageSize, setPageSize] = useTablePageSize('staff');
@@ -470,6 +510,11 @@ export default function StaffTracker() {
       </div>
 
       {error && <div style={{ color: 'var(--tool-hex-f87171)', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.18)', borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 12 }}>{error}</div>}
+
+      {/* D-44: a deep link that could not be opened says so, and the list still works. */}
+      {focusError && (
+        <div data-testid="staff-focus-error" style={{ color: 'var(--tool-hex-f87171)', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.18)', borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 12 }}>{focusError}</div>
+      )}
 
       {activeTab === 'profiles' && (
         <>
