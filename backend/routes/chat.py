@@ -546,8 +546,11 @@ NAVIGATE_MAP = {
     "open maintenance": "facility-requests",
     "open school activities": "school-activities",
     "show school activities": "school-activities",
-    "open fee receipts": "fee-receipts",
-    "show fee receipts": "fee-receipts",
+    # D-44 part 2: "fee receipts" was never a separate screen — it opened the same
+    # Fee Collection screen. The phrases stay, because that is what people say;
+    # only the id they resolve to changed.
+    "open fee receipts": "fee-collection",
+    "show fee receipts": "fee-collection",
     "open certificates": "certificate-generator",
     "show certificates": "certificate-generator",
     "open certificate generator": "certificate-generator",

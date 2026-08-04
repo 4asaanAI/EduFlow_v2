@@ -903,7 +903,50 @@ exclusion (or the >60 MB custom rule) FIRST, verify a ~50 MB owner upload still 
 THEN switch to Block — and keep it owner-approved, same as every other prod change.
 Belongs on the human-verification checklist, not in a code run.
 
-### D-44 — Epic 7 deferred: deep-link-to-person and deeper tool consolidation — **HALF CLOSED 2026-08-04**
+### D-44 — Epic 7 deferred: deep-link-to-person and deeper tool consolidation — **CLOSED 2026-08-04 (both parts)**
+> **Part 2 (the three tool clusters) is now CLOSED.** Worked under the owner's "yes but
+> properly, do not break anything". Every tool in every cluster was read against its
+> siblings before anything moved. **One merge was made; five tools were examined and
+> deliberately left alone.** The proof for each is in `ToolMerge.test.js`, so a later pass
+> does not have to redo it and cannot silently undo it.
+>
+> **Merged — Fee Receipts into Fee Collection.** `fee-receipts` and `fee-collection` were
+> never two screens: both ids loaded the same component (`tools/FeeCollection`), and the
+> school's owner was offered BOTH, in the same sidebar, under two names. Nothing could be
+> lost, because there was nothing on one side that was not literally the other side. The
+> old name still works everywhere it is still spoken — a bookmarked `?tool=fee-receipts`,
+> a notification link, or Flo being asked "open fee receipts" — via one alias map in
+> `lib/toolAliases.js`, resolved in one place (`Layout` reading the URL) so the sidebar
+> highlight and the header name follow too. The accountant, the only admin who had the
+> receipts entry, keeps the screen; the subtitle everywhere now reads "Payments, receipts
+> & export" so anyone searching the word "receipts" still lands on it (⌘K scores subtitles).
+>
+> **Not merged, with the reason each is its own screen:**
+> - `fee-tracker` — the only screen with the class-wise fee summary (`/fees/class-summary`).
+> - `smart-fee-defaulter` — the only screen listing defaulters and sending fee-reminder SMS
+>   (`/sms/send-reminder`, `/sms/send-bulk`) with its own SMS log.
+> - `circular-sender` — writes an in-app announcement. Sends no SMS.
+> - `parent-message` — sends SMS to hand-picked students' parents. Writes no announcement.
+> - `attendance-alerts` — finds students under an attendance threshold, then messages them
+>   in bulk. Neither of the other two can find that list.
+> - `certificate-generator` — creates a serial-numbered record with an approve/reject
+>   workflow and a history. `id-card-generator` creates no record, has no approval, and is
+>   the only bulk multi-student print. They share a PDF and a permission gate and nothing
+>   else; folding them together would have been navigation dressed up as consolidation.
+>
+> **Found while proving it, NOT merged, needs the owner:** `announcement-broadcaster`
+> (owner) and `circular-sender` (admin) are near-identical — same endpoint, same fields.
+> They are **not** a lossless merge: the broadcaster can target **parents** and the circular
+> cannot; the circular can target the **owner** role and the broadcaster cannot; and the two
+> write class labels in **different formats** (`1-A` vs `1 A`). Merging them means choosing
+> one format, and choosing wrong silently mis-targets circulars. Left alone deliberately.
+>
+> **Also fixed here (correctness, not a merge):** the refusal message on the certificate and
+> ID-card screens still read "Only the Owner and the Principal can issue this" — stale since
+> D-53 added the accountant. It sent the reader to ask the wrong people. It now names all
+> three. Its pinned test was updated in the same change.
+
+### D-44 — original entry (part 1) — **CLOSED 2026-08-04**
 > **Part 1 (deep-link to a person) is CLOSED.** A Directory row now opens that person's
 > record, not just the owning tool. The student half had already been built on `focus`;
 > the staff half is now the same shape — Staff Tracker reads `focus`, fetches the staff
@@ -915,10 +958,7 @@ Belongs on the human-verification checklist, not in a code run.
 >
 > This needed `D-59` fixed first, which it now is.
 >
-> **Part 2 (the tool clusters) stays OPEN and is the owner's call, per cluster.** The fee
-> cluster, the messaging cluster and the document cluster each look like one job and are
-> not confidently the same job. Epic 9's rule stands: a wrong merge is worse than no
-> merge. Nothing here can be decided by an agent.
+> **Part 2 (the tool clusters) — superseded by the entry above; closed 2026-08-04.**
 
 Raised during Epic 7 (School Directory). Two things were deliberately not built, each for
 a reason:
@@ -1382,7 +1422,7 @@ is not only in a chat transcript.
 | D-53 | one branch only | student lookup, ID-card batch and the daily cap all branch-keyed |
 | D-57 | no | no change: Flo keeps the trimmed chat tool list. **Closed as decided.** |
 | D-64 | purge the logs | operations task, see D-64 |
-| D-44 | yes, but properly | part 1 shipped; the clusters are being worked separately |
+| D-44 | yes, but properly | **both parts closed 2026-08-04.** One merge made (Fee Receipts → Fee Collection, same screen under two names); five tools proven unique and left alone; one further duplicate found and left for him (`announcement-broadcaster` vs `circular-sender`) |
 | T9 / D-30 / D-31 / D-33 / D-20 | leave them | unchanged, still open by choice |
 | D-32 | do what seems right, otherwise leave | **left alone.** Changing a threshold without a measurement just moves an unmeasured guess. It stays as written until someone watches it on a school morning. |
 | D-06/07/08/10 | load from `aaryans_database` | analysis first — the folder mixes two financial years, see the note below |

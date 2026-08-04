@@ -16,7 +16,11 @@ const ALL_TOOLS = [
   // the Principal gets it from the sidebar, which does gate on sub_category.
   { id: 'school-directory',       name: 'School Directory',      subtitle: 'Find any person',          icon: Compass,       roles: ['owner'] },
   { id: 'student-database',       name: 'Student Database',      subtitle: 'Manage & search students', icon: Users,         roles: ['owner','admin'] },
-  { id: 'fee-collection',         name: 'Fee Collection',        subtitle: 'Revenue & defaulters',     icon: IndianRupee,   roles: ['owner'] },
+  // D-44 part 2: 'fee-receipts' was a second entry loading this same screen, and it was
+  // offered to owner AND admin. Merged into this one; the roles list keeps both, so
+  // nobody who could reach the screen before has lost it. "receipts" stays in the
+  // subtitle because ⌘K scores subtitle matches too.
+  { id: 'fee-collection',         name: 'Fee Collection',        subtitle: 'Payments, receipts & export', icon: IndianRupee, roles: ['owner','admin'] },
   { id: 'fee-tracker',            name: 'Fee Tracker',           subtitle: 'Dues & reminders',         icon: IndianRupee,   roles: ['admin'] },
   { id: 'attendance-recorder',    name: 'Attendance',            subtitle: 'Mark & track daily',       icon: ClipboardList, roles: ['owner','admin'] },
   { id: 'attendance-overview',    name: 'Attendance Overview',   subtitle: 'Trends & patterns',        icon: ClipboardList, roles: ['owner'] },
@@ -35,7 +39,6 @@ const ALL_TOOLS = [
   { id: 'academic-structure',     name: 'Academic Structure',    subtitle: 'Classes, subjects & teachers', icon: BookOpen,  roles: ['admin'] },
   { id: 'school-settings',        name: 'School Settings',       subtitle: 'Identity & profile',       icon: Settings,      roles: ['owner'] },
   { id: 'school-activities',      name: 'School Activities',     subtitle: 'Houses, sports, awards',   icon: Trophy,        roles: ['owner','admin'] },
-  { id: 'fee-receipts',           name: 'Fee Receipts',          subtitle: 'PDF & export',             icon: FileText,      roles: ['owner','admin'] },
   // D-49: server-restricted to owner + principal + accountant. `roles` alone cannot
   // say that, so the sub_category half is enforced by canUseTool() in the filter below.
   { id: 'certificate-generator',  name: 'Certificates',          subtitle: 'TC, Bonafide, etc.',       icon: Award,         roles: ['owner','admin'] },

@@ -10,8 +10,10 @@ import { createConversation, getConversations } from '../lib/api';
 import ProfileModal from './ProfileModal';
 import SettingsModal from './SettingsModal';
 import CommandPalette from './CommandPalette';
+import { resolveToolId } from '../lib/toolAliases';
 
-const loadTool = async (toolId) => {
+const loadTool = async (rawToolId) => {
+  const toolId = resolveToolId(rawToolId);
   // Phase 3 dedicated tool panels — loaded directly
   if (toolId === 'facility-requests') return (await import('./tools/MaintenanceTools')).MaintenanceFacilityTracker;
   if (toolId === 'tech-issues') return (await import('./tools/MaintenanceTools')).ITTechIssueTracker;
@@ -24,7 +26,6 @@ const loadTool = async (toolId) => {
   if (toolId === 'audit-log') return (await import('./tools/AuditLog')).default;
   if (toolId === 'school-settings') return (await import('./tools/SchoolSettings')).default;
   if (toolId === 'academic-structure') return (await import('./tools/AcademicStructure')).default;
-  if (toolId === 'fee-receipts') return (await import('./tools/FeeCollection')).default;
   if (toolId === 'principal-daily') return (await import('./tools/PrincipalDailyOps')).default;
   if (toolId === 'exam-manager') return (await import('./tools/ExamManager')).default;
   if (toolId === 'what-ive-learned') return (await import('./tools/LearningTools')).default;
@@ -90,7 +91,10 @@ export default function Layout() {
   const { currentUser } = useUser();
   const { isDark } = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTool = searchParams.get('tool');
+  // Resolved here, not deeper in, so a retired id (see TOOL_ALIASES) also lights up
+  // the right sidebar row and puts the right name in the header — not just the right
+  // screen in the middle.
+  const activeTool = resolveToolId(searchParams.get('tool'));
   const [activeConvId, setActiveConvId] = useState(null);
   const [activeConvTitle, setActiveConvTitle] = useState('');
   const [convRefresh, setConvRefresh] = useState(0);

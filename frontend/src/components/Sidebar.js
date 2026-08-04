@@ -21,7 +21,11 @@ const TOOLS_BY_ROLE = {
     // principal pool below is built from this owner list, so this one definition
     // serves both. Rendered via TOOL_GROUPS (top strip) for each.
     { id: 'school-directory', name: 'School Directory', subtitle: 'Find any person', icon: Compass, color: '#4f8ff7' },
-    { id: 'fee-collection', name: 'Fee Collection', subtitle: 'Revenue & defaulters', icon: IndianRupee, color: '#4f8ff7' },
+    // D-44 part 2: this list also carried a 'fee-receipts' row further down, which
+    // loaded this exact same screen — the owner's own menu offered one screen twice.
+    // The duplicate row is gone; the subtitle now names receipts so nothing is lost
+    // from what a person scanning this list is looking for.
+    { id: 'fee-collection', name: 'Fee Collection', subtitle: 'Payments, receipts & export', icon: IndianRupee, color: '#4f8ff7' },
     { id: 'fee-sync', name: 'Fee Sync', subtitle: 'External API conflicts', icon: RefreshCw, color: '#6366f1' },
     { id: 'student-database', name: 'Student Database', subtitle: 'Strength, manage & search', icon: Users, color: '#4f8ff7' },
     { id: 'data-import', name: 'Data Import', subtitle: 'Validate & seed students', icon: Database, color: '#22d3ee' },
@@ -46,7 +50,6 @@ const TOOLS_BY_ROLE = {
     { id: 'incident-tracker', name: 'Incidents & Visitors', subtitle: 'Log & track', icon: AlertTriangle, color: '#f87171' },
     { id: 'school-activities', name: 'School Activities', subtitle: 'Houses, sports, awards', icon: Trophy, color: '#f59e0b' },
     { id: 'audit-log', name: 'Audit Log', subtitle: 'Who did what', icon: ScrollText, color: '#737373' },
-    { id: 'fee-receipts', name: 'Fee Receipts', subtitle: 'PDF & export', icon: FileText, color: '#34d399' },
     { id: 'query-section', name: 'Query & Support', subtitle: 'Tickets & issues', icon: LifeBuoy, color: '#22d3ee' },
     { id: 'exam-manager', name: 'Exams', subtitle: 'Schedule & results', icon: ClipboardList, color: '#a78bfa' },
     { id: 'school-settings', name: 'School Settings', subtitle: 'Identity & profile', icon: Settings, color: '#737373' },
@@ -55,7 +58,7 @@ const TOOLS_BY_ROLE = {
     { id: 'academic-structure', name: 'Academic Structure', subtitle: 'Classes, subjects & teachers', icon: BookOpen, color: '#4f8ff7' },
     { id: 'student-database', name: 'Student Database', subtitle: 'Manage & search', icon: Users, color: '#4f8ff7' },
     { id: 'fee-tracker', name: 'Fee Tracker', subtitle: 'Reminders & dues', icon: IndianRupee, color: '#34d399' },
-    { id: 'fee-receipts', name: 'Fee Receipts', subtitle: 'PDF & export', icon: FileText, color: '#34d399' },
+    { id: 'fee-collection', name: 'Fee Collection', subtitle: 'Payments, receipts & export', icon: FileText, color: '#34d399' },
     { id: 'attendance-recorder', name: 'Attendance', subtitle: 'Mark & track', icon: ClipboardList, color: '#fb923c' },
     { id: 'principal-daily', name: 'Principal Daily', subtitle: 'Absences & substitutes', icon: CalendarDays, color: '#fbbf24' },
     { id: 'certificate-generator', name: 'Certificates', subtitle: 'TC, Bonafide, etc.', icon: Award, color: '#fbbf24' },
@@ -128,7 +131,7 @@ const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', teacher: 'Teacher', studen
 const ADMIN_SUBCATEGORY_TOOLS = {
   // D-49: the accountant is one of the three profiles the server lets issue
   // certificates and ID cards (owner decision 2026-08-04, decision 2).
-  accountant: ['student-database', 'fee-tracker', 'smart-fee-defaulter', 'fee-receipts', 'certificate-generator', 'id-card-generator', 'custom-form-builder', 'raise-maintenance'],
+  accountant: ['student-database', 'fee-tracker', 'smart-fee-defaulter', 'fee-collection', 'certificate-generator', 'id-card-generator', 'custom-form-builder', 'raise-maintenance'],
   transport_head: ['student-database', 'transport-manager', 'transport-optimisation', 'asset-tracker', 'custom-form-builder', 'raise-maintenance'],
   principal: [
     'school-directory',

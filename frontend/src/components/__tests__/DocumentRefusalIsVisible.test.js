@@ -1,9 +1,11 @@
 /**
  * NEW-01 fallout — a refused document must SAY it was refused.
  *
- * T1 narrowed certificate and ID-card issuing back to Owner + Principal. The tool tiles
- * are still offered to office staff (D-49, waiting on the owner naming one more role), so
- * a receptionist can now press "Download 40 ID Cards PDF" and get a 403.
+ * T1 narrowed certificate and ID-card issuing, and D-53 then settled the final list:
+ * the school's owner, admin+principal and admin+accountant, nobody else. D-49 took the
+ * tiles out of the menus of everyone else, so a receptionist should not see the button
+ * at all — but the menus are not the gate, the server is, and a refusal still has to
+ * explain itself rather than look like a broken button.
  *
  * Both callers of `downloadBlobAsPdf` passed no `onError`, and the helper's `catch` did
  * `onError && onError(e)` — so the failure was caught and dropped on the floor. The button
@@ -78,7 +80,12 @@ test('a refused ID-card download tells the person why, in their own words', asyn
   fireEvent.click(await screen.findByText(/Download 1 ID Cards PDF/i));
 
   const error = await screen.findByTestId('id-card-error');
-  expect(error).toHaveTextContent(/Owner and the Principal/i);
+  // D-53 widened the server gate to owner, principal AND accountant. The message used
+  // to name only the first two, which sent the reader to ask the wrong people. It must
+  // name all three, or it is telling someone their accounts colleague cannot help them.
+  expect(error).toHaveTextContent(/school owner/i);
+  expect(error).toHaveTextContent(/principal/i);
+  expect(error).toHaveTextContent(/accounts/i);
   // Not a status code, not a stack trace, not silence.
   expect(error).not.toHaveTextContent(/403|Forbidden|Error:/);
 });

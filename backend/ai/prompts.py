@@ -1054,7 +1054,6 @@ NAVIGATE_PANELS = [
     "incident-tracker",
     "facility-requests",
     "school-activities",
-    "fee-receipts",
     "certificate-generator",
     "asset-tracker",
     "custom-form-builder",

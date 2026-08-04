@@ -42,7 +42,10 @@ const T = {
   'audit-log':             { id: 'audit-log',             name: 'Audit Log',           subtitle: 'Who did what',          icon: ScrollText,    color: '#737373' },
   'what-ive-learned':      { id: 'what-ive-learned',      name: "What I've Learned",   subtitle: 'Review & control memory', icon: Brain,       color: '#a78bfa' },
   'conversation-trace':    { id: 'conversation-trace',    name: 'Conversation Trace',  subtitle: 'Did Flo reply?', icon: MessageSquare, color: '#22d3ee' },
-  'fee-receipts':          { id: 'fee-receipts',          name: 'Fee Receipts',        subtitle: 'PDF & export',          icon: FileText,      color: '#34d399' },
+  // D-44 part 2: this used to be a second entry, 'fee-receipts', that loaded the very
+  // same screen as 'fee-collection'. One screen, one entry. The subtitle keeps the word
+  // "receipts" so anyone searching for it still lands here.
+  'fee-collection':        { id: 'fee-collection',        name: 'Fee Collection',      subtitle: 'Payments, receipts & export', icon: FileText, color: '#34d399' },
   'principal-daily':       { id: 'principal-daily',       name: 'Principal Daily',     subtitle: 'Absences & subs',       icon: CalendarDays,  color: '#fbbf24' },
   'school-activities':     { id: 'school-activities',     name: 'School Activities',   subtitle: 'Houses, sports, awards', icon: Trophy,         color: '#f59e0b' },
 
@@ -89,7 +92,7 @@ const TOOL_SETS = {
   // D-49: the accountant is one of the three profiles the server lets issue
   // certificates and ID cards (owner decision 2026-08-04, decision 2).
   admin_accountant: [
-    'student-database','fee-tracker','smart-fee-defaulter','fee-receipts',
+    'student-database','fee-tracker','smart-fee-defaulter','fee-collection',
     'certificate-generator','id-card-generator',
     'custom-form-builder','raise-maintenance',
   ],
@@ -151,7 +154,7 @@ const OWNER_TOOLS = [
   'circular-sender','enquiry-register','smart-fee-defaulter',
   'parent-message','id-card-generator','timetable-builder','asset-tracker',
   'transport-manager','incident-tracker','facility-requests',
-  'fee-receipts','school-activities','audit-log','automated-report',
+  'fee-collection','school-activities','audit-log','automated-report',
   'custom-form-builder','query-section','what-ive-learned','conversation-trace',
 ];
 

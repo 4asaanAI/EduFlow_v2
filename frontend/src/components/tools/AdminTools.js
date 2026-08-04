@@ -618,7 +618,10 @@ const CERT_LABELS = { transfer: 'Transfer Certificate', bonafide: 'Bonafide Cert
 // (NEW-01) — office staff who still see these tiles now get a refusal here.
 function explainDownloadFailure(status) {
   if (status === 403) {
-    return 'Only the Owner and the Principal can issue this. Please ask one of them.';
+    // D-53 widened the server gate to owner, principal AND accountant
+    // (require_owner_principal_or_accountant). This message still named only two of
+    // the three, so it told the reader to go and ask the wrong people.
+    return 'Only the school owner, the principal or the accounts staff can issue this. Please ask one of them.';
   }
   if (status === 429) {
     return "Today's limit for generated documents has been reached. Please try tomorrow.";
