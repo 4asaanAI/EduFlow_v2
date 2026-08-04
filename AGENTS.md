@@ -1,48 +1,20 @@
-# EduFlow — Claude Code Project Context
+# EduFlow — Codex Project Context
 
-**Model:** Claude Sonnet 4.6 (1M context)
+**Model:** Codex Sonnet 4.6 (1M context)
 **Last updated:** 2026-06-07
 **Working agent:** any capable coding model (Anthropic Sonnet/Opus or other providers) — execution protocols are written model-agnostically
 
 ---
 
-> ## ✅ SHIPPED — AI Layer Reliability (Zero Silent Failures) — completed 2026-07-10
+> ## 🚧 ACTIVE INITIATIVE — AI Layer Reliability (Zero Silent Failures) — 2026-07-08
 >
-> This initiative is **DONE and merged** — all 11 epics (R1–R11) shipped, plus the companion
-> non-AI reliability set (R12–R15). See `_bmad-output/platform-quality-sweep.md` rows 18–19
-> and `_bmad-output/implementation-artifacts/ai-reliability/epic-R*-completed.md`. Its planning
-> docs remain in `_bmad-output/planning-artifacts/` for reference; the execution protocol
-> (`EPIC-EXECUTION-PROTOCOL-AI-RELIABILITY.md`) and its 7 standing rules still govern any
-> follow-on AI-layer work. *(This banner previously read "implementation has NOT started" —
-> that was true when written and became stale after the work shipped; corrected 2026-07-23.)*
+> A production incident (owner's chat turn got NO reply, no error) triggered a four-pass adversarial audit of the entire AI layer. Planning is complete; implementation has NOT started. If a user asks what to work on / what's next, present these docs in `_bmad-output/planning-artifacts/`:
+> 1. `audit-ai-layer-reliability-2026-07-08.md` — incident root cause + full findings inventory (Critical: silent-empty-turn contract gap, plan-executor false success, memory pre-turn hijack of "delete student…" commands, `import json` NameError in recall_history, Azure key env-var mismatch, accountant→principal prompt leak, corrupted question-paper output).
+> 2. `architecture-ai-layer-reliability.md` — target design (Turn Completion Contract, single tool envelope, prompt↔registry parity gate, fail-closed scoping).
+> 3. `epics-ai-layer-reliability.md` — 11 epics / 51 stories with exact file:line + ACs. Build order R1 → R9 → (gated) R10 → R11, with R11.1 (eval corpus) pulled forward after R3; R1+R2 are the incident fix.
 >
-> ## 🚧 CURRENT INITIATIVE — UI Sweep (owner-reported defects, 2026-07-22) — branch `ui-sweep-2026-07-22`
->
-> Decomposes the owner's reported defects into epics; same 7 standing rules and one-epic-per-run
-> discipline. Plan: `_bmad-output/planning-artifacts/epics-ui-sweep-2026-07-22.md`; live logs in
-> `_bmad-output/implementation-artifacts/ui-sweep/`. As of 2026-07-23, Epics 1–6, 8, 9, 10 are
-> shipped and Epic 7 (School Directory) is built and gate-green, awaiting deploy. The remaining
-> open work is the deeper tool-merge consolidation (`epic-7-tool-merge-impact-note.md`, D-44).
-> **Baseline note:** the "25 pinned failures" phrasing below is historical — the current suite
-> has **2–3** pre-existing order-dependent failures (D-03 ×2 + the time-of-day D-35), not 25.
-
----
-
-## How To Talk To The Humans Here (MANDATORY)
-
-**Always use plain, human, non-technical language** when explaining, reporting, or
-replying — every message, not just end-of-task summaries. Abhimanyu and Shubham
-read these to make decisions and to relay them to the school's staff, not to
-review implementation detail.
-
-- Lead with what it means in ordinary words. Use a technical name only when they
-  have to type or click it — then give the exact string, clearly marked.
-- Leave out internal machinery (file paths, class names, framework terms) unless
-  asked, or unless it's the thing that must change.
-- Plain ≠ vague or softened. Be just as direct about failures, costs, and risks —
-  only in everyday words. If tests fail, say so plainly.
-- This governs prose written *to* the user. Code, commit messages, and the epic
-  logs keep their normal technical precision.
+> **Execution is ONE EPIC PER RUN** per [`_bmad-output/EPIC-EXECUTION-PROTOCOL-AI-RELIABILITY.md`](./_bmad-output/EPIC-EXECUTION-PROTOCOL-AI-RELIABILITY.md) — it carries the 7 standing rules (per-epic quality gate, fixed no-drift handoff prompt, mandatory completed/deferred/review logs, plain-English reporting to Abhimanyu/Shubham) and is written for ANY executing model (Anthropic or others). The 25 pinned baseline failures stay deferred to the end.
+> The previous initiative (AI Layer Hardening, 11 epics) SHIPPED and is merged; its planning docs live in `_bmad-output/outdated/`.
 
 ---
 
@@ -369,9 +341,8 @@ SCHOOL_ID=aaryans-joya        # Required in non-dev (raises ValueError if missin
 CORS_ORIGINS=http://localhost:3000
 ENVIRONMENT=development        # development | staging | production
 AZURE_OPENAI_ENDPOINT=...
-AZURE_OPENAI_API_KEY=...        # preferred (SDK-native); AZURE_OPENAI_KEY also accepted (R9.1)
+AZURE_OPENAI_KEY=...
 AZURE_OPENAI_DEPLOYMENT=gpt-5.3-chat   # Azure deployment name (default in llm_client.py)
-# Non-dev: a missing Azure key OR endpoint raises ValueError at startup (fail-loud, like SCHOOL_ID)
 S3_BUCKET=...
 AWS_REGION=ap-south-1
 ```

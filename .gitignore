@@ -89,3 +89,9 @@ backend/uploads/
 aaryans_database/
 **/*.xlsx
 
+# MemPalace: exclude vendored/agent-artifact bulk from mining
+_bmad/
+
+# MemPalace per-project files (issue #185)
+mempalace.yaml
+entities.json
