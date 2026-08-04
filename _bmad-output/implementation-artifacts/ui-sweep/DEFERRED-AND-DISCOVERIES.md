@@ -30,6 +30,7 @@ Branch: `ui-sweep-2026-07-22`
 
 | 2026-07-23 | **Epic 6** | **Nothing Gets Lost — DONE.** Three product questions went to the Owner before any code (D-18); two were refusals, now written into the code as comments so the absences survive the next reader. The bell had been counting `n.is_read` — a field that has never existed in this product — so the red dot appeared whenever anyone had any notification at all and never cleared; it now reads the endpoint written for the question and shows the number. Notifications past the newest twenty, and chats past the newest fifty, were unreachable by ANY route in the product; both now have a page. Bulk chat delete is behind a typed count. Two traps were found before they shipped: an untyped request body would have turned "delete these three" into "delete everything you own", and the message-delete filter carries no user_id — safe one id at a time, catastrophic on a list. 78 new tests. Suite 1955 passed / 3 pre-existing / 14 deselected; frontend 244 / 2 pre-existing. Closes the `NotificationsPanel` half of D-22 and the last of D-05. Adds D-35, D-36, D-37. **No production writes.** |
 
+| 2026-07-23 | **Epic 7** | **A Directory Shaped Like The School — BUILT, gate green, NOT yet deployed.** The last UI-sweep epic, and the one deliberately left un-storied pending a design pass. Owner decisions taken first (tabbed shape; consolidate this run; the school's own PRIN/NTT/PRT/TGT/PGT vocabulary). Shipped: a tabbed Directory (Students/Staff) on the shared server-sorted table, Owner+Principal only, reusing the existing endpoints (no new server surface); the register vocabulary honoured only where derivable (PRIN) with the teacher tier honestly flagged as not-yet-recorded (D-09/Track 2); a Students row deep-links straight to the profile; one confident tool de-dup (maintenance's duplicate report shortcut). Wired into all four tool registries (dashboard, sidebar, router, ⌘K). 15 new tests; frontend **267 passed / 2 pre-existing failed**; production build clean. Epic-close self-review caught + fixed 2 issues before commit (wrong student column field-names → "looks broken"; the sidebar being the real nav). Stories 7.1–7.3 written into the epics doc. Adds D-44 (deeper consolidation + staff deep-link deferred, each needing owner input) and the tool-merge impact note. **No production writes. NOT committed-to-remote or deployed — held for owner go-ahead; the two origin/main commits (D-45 + dropdown fix) get pulled in first.** |
 | 2026-07-22/23 | **DEPLOYED** | **The whole sweep went live.** Backend first (EB `eduflow-uisweep-20260722-213022-d235c89`, Green in ~90s), then main merged and Amplify rebuilt. Verified by downloading the SERVED bundle and grepping for strings this release introduced, not by trusting a green build. Two problems were caught BEFORE the deploy: the OCR install was a `packages:` block that would have FAILED THE WHOLE DEPLOY if tesseract was absent from the instance repos, and production had no S3 bucket so every generated document would have 500'd. Both fixed first. A merge conflict with two commits that landed on main mid-flight was resolved by reading both sides — their `table { display: block }` was refused because it is D-01. **File storage configured 2026-07-23**: private bucket in ap-south-1, all public access blocked, encrypted, versioned; health now reads `s3: ok`. That also unblocks certificates, student photos and PDF receipts, broken in prod until now. |
 ---
 
@@ -86,15 +87,22 @@ API, deliberately bypassing the UI. The dropdown change remains as a second laye
 **Owner assignment is now out-of-band only** — see the human-verification checklist for
 what that means in practice.
 
-### D-03 (was RISK-2) — Two order-dependent backend test failures — **DEFERRED**
+### D-03 (was RISK-2) — Two order-dependent backend test failures — **FIXED 2026-07-23**
 `tests/backend/api/test_r13_tenancy_rbac.py::test_scoped_collection_find_one_and_update_injects_school_id`
-and `::test_scoped_collection_distinct_scopes_to_school` fail in a full-suite run but
-pass in isolation (38 passed alone). Verified pre-existing by running the full suite
-against a clean `main` worktree — identical two failures.
-**Baseline for this initiative: 1636 passed, 2 failed, 14 deselected.**
-**Reason deferred:** pre-existing, unrelated to this initiative, caused by shared state
-left behind by an earlier test. Do not attribute to your own changes; do confirm the
-count is still exactly 2 at each epic close.
+and `::test_scoped_collection_distinct_scopes_to_school` failed in a full-suite run but
+passed in isolation. The initiative deferred them (the "fix the pinned failures LAST"
+standing rule); with every epic that owed that deferral now shipped, they were fixed.
+
+**Two order-dependence sources, both removed (the fix is in the TESTS, not the code —
+`ScopedCollection` was always correct):**
+1. They used the SHARED `fake_db.students` and only appended rows, so a doc left by an
+   earlier test could shadow the lookup (a stray `"Target"` / a school-A `"inactive"`).
+   Each test now builds its own private `FakeCollection([...])` and asserts only over it.
+2. They were sync tests driving the loop with `asyncio.get_event_loop().run_until_complete`,
+   which reuses (and can inherit a closed) loop from an earlier async test. Both now use
+   `asyncio.run()` — a fresh loop each time.
+**Verified:** pass in isolation AND in the full suite; suite now **1968 passed / 0 failed /
+14 deselected** (the 14 are the credentialed mongo_real + llm_eval tiers, not failures).
 
 ### D-04 (was RISK-3) — Test runs could reach the production database — **CLOSED 2026-07-22**
 `backend/.env` holds the live `MONGO_URL`, pulled from Elastic Beanstalk. `conftest.py`
@@ -200,6 +208,14 @@ Roughly 30 pre-existing `react-hooks/exhaustive-deps` warnings across
 a warnings-as-errors build fails, both before and after Epic 1. So the build cannot
 currently be used as a gate on new warnings. **Reason deferred:** unrelated to this
 epic and touching a dozen files; it would bury a security diff. Worth a dedicated pass.
+
+**Partial close 2026-07-23 (owner asked to tie off the specific `ToolPage.js:398` line):**
+that one is the `useToolData(fetcher, deps)` hook — an intentional deps-passthrough (the
+caller owns invalidation; `fetcher` must NOT be a dependency or it refetches forever), so
+the correct resolution is a scoped `// eslint-disable-next-line react-hooks/exhaustive-deps`
+on that line with a comment explaining why. Done. Zero behaviour change. The remaining
+~29 warnings across the dozen files stay deferred as their own pass — this was one named
+line, not the sweep.
 
 ### D-17 — Pre-existing `scoped_filter(` hits carry no intent comment — **DEFERRED, hygiene**
 Seven hits in `backend/routes/staff.py` predate this initiative and lack the
@@ -531,7 +547,17 @@ granted again for the duration.
 principal should not be able to edit its own permissions. Console:
 IAM → Users → `claude-hosting` → Permissions → tick `s3-file-storage-policy` → Remove.
 
-### D-35 — The pinned test baseline drifts with the time of day — **EXPLAINED, not fixed**
+### D-35 — The pinned test baseline drifts with the time of day — **FIXED 2026-07-23**
+**Fixed:** the test now seeds "today" with `datetime.now(timezone.utc)` — the same clock
+the service uses (`actor_ctx.now()`, UTC) — so the duplicate window always lines up
+regardless of wall-clock hour. One line in the test, exactly as the diagnosis predicted;
+no product/code change. Verified in a full-suite run (1968 passed / 0 failed). The mild
+product oddity noted below (an IST visitor checked in 00:00–05:30 gets "today" as the
+previous UTC day) is left as-is — nobody checks visitors in at 00:30, and changing the
+service clock is an R15.4 decision, not a test fix. Original diagnosis kept below.
+
+---
+**Original entry (EXPLAINED, not-yet-fixed) —**
 The Epic 6 handoff pinned "1917 passed, 2 failed". A clean-tree run at ~02:00 local on
 2026-07-23 measured **1916 passed, 3 failed**. The third failure is real and has a
 cause:
@@ -788,6 +814,55 @@ Calibrated to NOT over-block real school questions (per the DPDP calibration rul
 Prompt change ⇒ eval gate: structural + judge-logic green, and the credentialed
 `-m llm_eval` tier (gpt-5.6-terra) re-run — **passed, no regression vs baseline**. Ships
 with the backend (EB).
+
+### D-41 — re-confirmed 2026-07-23 — **STILL OPEN, out of scope, no action taken**
+Reviewed while closing out the owner's open-items list. Nothing changed: the telemetry
+pipe to the Amplify observability app still 400/500s and is a separate subsystem from the
+school-facing product. Left open deliberately — fixing it is not part of the UI sweep and
+would need its own look at that other app. Recorded here so it is not re-raised as new.
+
+### D-46 — WAF `SizeRestrictions_BODY` is in Count mode ACL-wide — **OPEN, NEEDS OWNER DECISION (do not flip quietly)**
+Surfaced from the standing open-items list while tidying up. The AWS WAF web-ACL rule that
+limits request-body size is currently in **Count** mode (it logs oversize bodies but does
+not block them). A stricter posture would re-enable **Block** — but ONLY with a scope-down
+that excludes `/api/*`, or with a custom >60 MB rule — because the app legitimately accepts
+large uploads (chat attachments up to 20 MB; owner document/photo uploads up to 50 MB; the
+nginx cap is 55 MB per D-42). **Flipping to Block without that carve-out would re-break
+every large upload the D-42 fix just restored.**
+
+**Why this is not being done here, and must not be done quietly:** it is an AWS-console
+change to a production security control with a real blast radius (a wrong scope-down blocks
+real uploads school-wide), and the owner explicitly flagged it as low priority and a
+deliberate decision. **Left in Count mode.** When/if it is revisited: add the `/api/*`
+exclusion (or the >60 MB custom rule) FIRST, verify a ~50 MB owner upload still succeeds,
+THEN switch to Block — and keep it owner-approved, same as every other prod change.
+Belongs on the human-verification checklist, not in a code run.
+
+### D-44 — Epic 7 deferred: deep-link-to-person and deeper tool consolidation — **OPEN**
+Raised during Epic 7 (School Directory). Two things were deliberately not built, each for
+a reason:
+
+1. **Deep-link to a specific person.** A Directory row opens the owning tool (Student
+   Database / Staff Tracker), not that person's open profile — those tools do not yet
+   accept a target id in the URL. Wiring it is real work and risks forking a second
+   profile-editing path that could drift from the originals. The Directory is a fast
+   find/scan surface for now; deep-linking is a refinement.
+2. **Deeper tool consolidation.** The owner chose "Directory + consolidation this run."
+   The confident, safe fold was done (the maintenance admin's duplicate `raise-maintenance`
+   beside `facility-requests`). The Directory does NOT replace Student Database for
+   Owner/Principal, because Student Database also creates/edits/erases students and shows
+   class strength — read-only Directory does not, so removing it is a capability loss, not
+   a consolidation. The fee cluster (`fee-tracker` / `smart-fee-defaulter` / `fee-receipts`),
+   the messaging cluster (`circular-sender` / `parent-message` / `attendance-alerts`) and
+   the document cluster (`certificate-generator` / `id-card-generator`) each look like
+   candidates but are **not confidently** the same job — each needs the owner's per-cluster
+   yes/no (the Epic 9 "a wrong merge is worse than no merge" rule). Recorded so "tools were
+   consolidated" is not read as complete.
+
+### D-09 update — Epic 7 honoured the staff vocabulary as far as the data allows
+The School Directory shows the register code where derivable (Principal → PRIN) and says
+plainly, in a legend, that the teacher tier (NTT/PRT/TGT/PGT) is not yet recorded per staff
+member. Populating those codes is the Track 2 data load, unchanged.
 
 ---
 

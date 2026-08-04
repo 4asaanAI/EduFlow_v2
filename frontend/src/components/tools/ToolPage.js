@@ -395,6 +395,12 @@ export function useToolData(fetcher, deps = [], options = {}) {
     try { const result = await fetcher(); setData(result); setError(null); }
     catch (e) { setError(e.message); }
     setLoading(false);
+    // Intentional: `deps` is the CALLER's invalidation list, by design — this is a
+    // generic data hook, so `fetcher` is recreated every render and must NOT be a
+    // dependency (it would refetch forever). ESLint can't verify a variable deps
+    // array, hence the disable. Scoped to this ONE line; the wider exhaustive-deps
+    // sweep (D-16, ~30 warnings across a dozen files) stays its own deferred pass.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
   React.useEffect(() => { load(); }, [load]);
   const ErrorView = options.renderError === null ? null : (options.renderError || ErrorCard);

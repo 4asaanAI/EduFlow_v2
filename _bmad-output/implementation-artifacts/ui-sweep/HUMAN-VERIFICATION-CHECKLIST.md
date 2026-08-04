@@ -79,6 +79,38 @@ Not a shrunken browser window — your real phone.
 
 ---
 
+## Epic 7 — School Directory + open-items cleanup (added 2026-07-23)
+
+### To check once it's live (NOT deployed yet — you'll see it after the next update)
+
+- [ ] **The new "School Directory".** It appears in your sidebar (and the Principal's),
+      near the top. It has two tabs — Students and Staff — and lets you find any person in
+      one place, sorted and paged like the other lists. **Only you and the Principal have
+      it** — please confirm no other staff member sees it.
+- [ ] **Click a student row.** It should jump straight into that student's profile. A staff
+      row takes you to the Staff Tracker list (that list is short — one page — so the person
+      is right there).
+- [ ] **Staff job labels.** The Principal shows as **PRIN**. Other teachers show their plain
+      job title for now, because the school's teacher codes (NTT/PRT/TGT/PGT) aren't stored
+      against each person yet — the screen says so. Those fill in with the Track 2 data load.
+
+### A decision only you can make — WAF upload-size rule (no rush)
+
+- [ ] **A security setting is deliberately left "watching, not blocking".** Your firewall has
+      a rule that could block oversized uploads; it is currently only *counting* them, not
+      blocking. Turning it to block would need a carve-out for the app first — otherwise it
+      would re-break the large `.docx`/`.pdf`/photo uploads we just fixed. It is low priority
+      and safe as-is. **No action needed from you unless you want it tightened** — if so, tell
+      us and we'll add the carve-out, test a big upload still works, then switch it on.
+
+### Done this run, for your awareness (no check needed)
+
+- The wobbly automated tests are fixed — the test suite is now fully green (it used to have
+  two or three failures that came and went, one of them only in the small hours). This is
+  behind-the-scenes quality only; nothing you can see changed.
+
+---
+
 ## Epic 1 — Access That Cannot Be Talked Around (added 2026-07-22)
 
 ### Decisions — SETTLED 2026-07-22
@@ -493,3 +525,4 @@ find" — it was **unreachable by any route in the product**. Both now have a pa
 | 2026-07-23 | Epic 6 | The bell that had always been wrong, the notifications and chats that were unreachable past the newest handful, bulk chat delete behind a typed count, and one decision of mine to overrule if you want. Plus the Flo/Word-document failure you reported today — real, live, and not fixed. |
 | 2026-07-22 | Epic 4 | The zeros (eleven screens, not one), honest failure states, the school's real details and affiliation number awaiting your save, the assistant finally knowing the principal, column sorting on 34 tables, and the Class Strength column you queried. Three things I could not verify myself are named explicitly. |
 | 2026-07-23 | D-37 fix | Flo's Word-document download fixed at the root: the long link no longer passes through Flo, the button fetches a fresh link when you tap it (so it can't go stale), and an old/dead link now says "expired, ask again" instead of showing an Amazon page with your account number. Its own run, gates green. **Not deployed yet** — you'll see it after the next update. |
+| 2026-07-23 | Epic 7 + cleanup | The new School Directory (Owner/Principal only) with student deep-link and the school's own staff labels; one WAF security decision left for you (low priority); and the wobbly automated tests fixed so the suite is fully green. **Directory not deployed yet** — you'll see it after the next update. |

@@ -11,6 +11,9 @@ import {
 
 // ─── All tool definitions ──────────────────────────────────────────────────────
 const T = {
+  // Epic 7 — find any person (students + staff) in one place. Owner + Principal
+  // only; it lives in their tool sets and reads the existing endpoints.
+  'school-directory':      { id: 'school-directory',      name: 'School Directory',    subtitle: 'Find any person',       icon: Compass,       color: '#4f8ff7' },
   'student-database':      { id: 'student-database',      name: 'Student Database',    subtitle: 'Manage & search',       icon: Users,         color: '#4f8ff7' },
   'fee-tracker':           { id: 'fee-tracker',           name: 'Fee Tracker',         subtitle: 'Reminders & dues',      icon: IndianRupee,   color: '#34d399' },
   'attendance-recorder':   { id: 'attendance-recorder',   name: 'Attendance',          subtitle: 'Mark & track',          icon: ClipboardList, color: '#fb923c' },
@@ -74,6 +77,7 @@ const T = {
 const TOOL_SETS = {
   // Admin sub-roles
   admin_principal: [
+    'school-directory',
     'student-database','fee-tracker','attendance-recorder','certificate-generator',
     'circular-sender','enquiry-register','document-scanner','smart-fee-defaulter',
     'parent-message','student-transfer','id-card-generator',
@@ -96,8 +100,13 @@ const TOOL_SETS = {
   admin_it_tech: [
     'tech-issues','raise-maintenance','custom-form-builder','query-section',
   ],
+  // Epic 7 consolidation: the maintenance admin carried BOTH 'facility-requests'
+  // (the queue they manage) and 'raise-maintenance' ("Report an Issue") — two
+  // entry points into the same maintenance queue for the one role that owns it.
+  // Kept the queue; dropped the duplicate report shortcut. 'raise-maintenance'
+  // still exists for the OTHER roles, where it is their only way in.
   admin_maintenance: [
-    'facility-requests','raise-maintenance',
+    'facility-requests',
   ],
 
   // Student
@@ -132,6 +141,7 @@ const SUB_ROLE_LABELS = {
 };
 
 const OWNER_TOOLS = [
+  'school-directory',
   'student-database','fee-tracker','attendance-recorder','certificate-generator',
   'circular-sender','enquiry-register','smart-fee-defaulter',
   'parent-message','id-card-generator','timetable-builder','asset-tracker',
@@ -139,6 +149,11 @@ const OWNER_TOOLS = [
   'fee-receipts','school-activities','audit-log','automated-report',
   'custom-form-builder','query-section','what-ive-learned','conversation-trace',
 ];
+
+// Exported for tests — the role→tool-id mapping is a security-adjacent surface
+// (Epic 7, Story 7.2/7.3: the Directory is Owner+Principal only, and consolidated
+// sets must not silently regain a duplicate). The server remains the real gate.
+export { OWNER_TOOLS, TOOL_SETS };
 
 function getTools(user) {
   if (user.role === 'owner') {

@@ -2249,3 +2249,170 @@ erase-student dialog in `StudentDatabase.js` does neither *(readiness finding Q-
 **Then** focus moves into it, `Escape` closes it without deleting anything, and focus
 returns to the control that opened it. A dialog announced as an `alertdialog` that a
 keyboard user can neither reach nor leave is worse than one that is not announced at all
+
+---
+
+## Epic 7: A Directory Shaped Like The School
+
+Owner and Principal find any person in the school — student, teacher or admin — in one
+place, and reach the tools they need without wading through a long list of
+near-duplicates.
+
+**Requirements covered:** FR35, FR77, FR78, FR81 · UX-DR1, UX-DR4, UX-DR5, UX-DR9, UX-DR10,
+NFR-A1, NFR-A2, NFR-S1
+**Owner item:** 17 (tool consolidation; School Directory) — Owner and Principal ONLY
+**Builds on:** Epic 3's shared `DataTable` (server-sorted, rows-per-page) and Epic 4's
+`EmptyState`. **Does not require future epics.**
+
+### Owner decisions taken before story creation (2026-07-23, the design pass the epic waited on)
+
+The plan flagged Epic 7 as genuinely new product scope and asked for a design pass before
+story creation. Abhimanyu was asked and chose, in plain terms:
+
+1. **Shape — a tabbed Directory.** One "Directory" screen with **Students** and **Staff**
+   tabs, each rendered through Epic 3's shared server-sorted table. Not a single merged
+   list, and not merely a global search bolted onto the existing separate screens.
+2. **Scope — Directory AND tool consolidation in the same run.** Fold the tool clusters
+   that are confidently near-duplicates, in this run, rather than only auditing them.
+3. **Staff naming — the school's own vocabulary.** Show the register's codes
+   (**PRIN / NTT / PRT / TGT / PGT / Other**), expanded on hover, rather than the machine
+   `role / sub_category`.
+
+**Honesty constraint carried into the stories (the D-15b / Epic 4 lesson).** The register's
+teacher-tier codes (NTT / PRT / TGT / PGT) are **not stored** anywhere in the platform
+today — only `designation` ("Class Teacher" / "Teacher" / "Principal"), `staff_type`,
+`role` and `sub_category` are. So "the school's real vocabulary" can be honoured **only
+where a code is confidently derivable** (Principal → PRIN). The teacher tier cannot be
+invented from data that does not carry it; doing so would be the failure-that-looks-like-a-
+fact defect in a new place. The Directory therefore shows a code **only when derivable**,
+falls back to the readable designation otherwise, and the tier codes wait on the Track 2
+data load (D-09). This gap is stated on the screen's legend, not hidden.
+
+### Story 7.1: One place to find anyone — the tabbed Directory
+
+As the Owner or the Principal,
+I want a single Directory screen with a Students tab and a Staff tab,
+So that I can find any person in the school without knowing which of a dozen tools holds them.
+
+**Acceptance Criteria:**
+
+**Given** FR35's single-view precedent and the owner's choice of a tabbed shape
+**When** the Directory opens
+**Then** it shows two tabs — **Students** and **Staff** — each backed by the shared
+`DataTable`, with the active tab reflected in the URL (`?tool=school-directory&tab=staff`)
+so a reload or a shared link lands on the same tab (FR81 persistent-surface spirit)
+
+**Given** a school of 1,802 students and 88 staff
+**When** either tab is sorted or paged
+**Then** **the server performs the sort and pagination** across the whole set and returns
+one page — never a client-side slice of an already-fetched payload (UX-DR5, UX-DR10) —
+reusing the existing `getStudents`/`getStaff` endpoints unchanged
+
+**Given** UX-DR10
+**When** each tab renders
+**Then** it carries its own rows-per-page selector (5/10/15/20/25/30, default 15) keyed
+**per tab** (`directory-students`, `directory-staff`) so sizing one does not resize the
+other, and changing size or sort returns to page 1
+
+**Given** the Staff tab and the owner's vocabulary decision
+**When** a staff row renders its designation
+**Then** it shows the register **code where confidently derivable** (Principal → **PRIN**),
+expanded on hover/`title` and `aria-label` to the full term, and falls back to the stored
+readable `designation` otherwise — never the machine `role / sub_category` string the owner
+objected to on 2026-07-22 (§11)
+
+**Given** the tier codes NTT / PRT / TGT / PGT are not in the data (see the honesty
+constraint)
+**When** the Staff tab renders
+**Then** a short legend states the codes and that the teacher tier is not yet recorded, so
+the absence is visible rather than silently shown as "Other" for every teacher
+
+**Given** a person is found
+**When** the Owner or Principal opens their row
+**Then** the Students tab opens the existing student profile view and the Staff tab the
+existing staff profile view — the Directory is a way *in*, and does not fork a second
+editing path that could drift from `StudentDatabase`/`StaffTracker` (FR77, FR78)
+
+**Given** a column whose value is missing for every record (dob, gender, house)
+**When** it is shown
+**Then** it reads **"not recorded"**, consistent with Epic 3/4 and §12 of the
+source-of-truth
+
+**Given** the Directory at 390px, and the D-01 rule
+**When** it renders
+**Then** each table's wrapper scrolls rather than the table being re-laid-out, every
+interactive element carries a `data-testid`, uses CSS variables only, and has a visible
+focus state at ≥3:1 (UX-DR1, UX-DR4, UX-DR9, NFR-A2)
+
+### Story 7.2: The Directory is Owner-and-Principal only, and proven so at the server
+
+As the Owner,
+I want the Directory reachable only by me and the Principal,
+So that a consolidated view of every person is not a new way for a narrower role to see
+across the school.
+
+**Acceptance Criteria:**
+
+**Given** the owner's "Owner and Principal ONLY" decision and NFR-S1 (server is the
+authoritative gate)
+**When** any role that is not Owner or Principal reaches the two endpoints the Directory
+reads (`GET /api/students`, `GET /api/staff`)
+**Then** the platform's **existing** role gates on those endpoints decide the answer — the
+Directory adds **no** new data endpoint and therefore no new server surface to secure;
+this story's job is to prove the existing gates cover the Directory's use and to place the
+`school-directory` nav entry only in the Owner and Principal tool sets
+
+**Given** the standing endpoint-test convention
+**When** the story ships
+**Then** the current 401-unauthenticated and 403-wrong-role coverage on `GET /api/students`
+and `GET /api/staff` is confirmed present (and added if any gap is found), so the
+Directory's two data sources are provably gated — no new endpoint means the regression
+lives on the endpoints themselves
+
+**Given** the frontend nav is a convenience, never the gate
+**When** the `school-directory` tool is registered
+**Then** it appears only in `OWNER_TOOLS` and the `admin_principal` tool set, and a
+frontend test asserts it is **absent** from the accountant, receptionist, transport,
+it_tech, maintenance, teacher and student sets — the nav matching the server, not
+substituting for it
+
+### Story 7.3: Fewer, clearer tools — consolidate the near-duplicates
+
+As the Owner or Principal,
+I want the sidebar to stop offering me several tools that do the same job,
+So that reaching the one I need is a choice, not a hunt through near-duplicates.
+
+**Acceptance Criteria:**
+
+**Given** the owner's objection to "a long list of near-duplicates" and his decision to
+consolidate in this run
+**When** the tool catalog is revised
+**Then** only clusters that are **confidently** the same job are folded, each fold is named
+with its before/after in the completion log, and anything ambiguous is **left alone and
+logged** rather than guessed — the Epic 9 lesson that a wrong merge is worse than no merge
+
+**Given** the "raise an issue" cluster — `raise-maintenance` ("Report an Issue"),
+`facility-requests` ("Facility Requests") and, for the maintenance/IT verticals,
+`tech-issues`
+**When** the catalog is revised
+**Then** the duplicate **entry points a single role sees** are reduced (e.g. the Owner and
+Principal do not carry both `raise-maintenance` and `facility-requests` for the same
+queue), and any tool removed from a role's set still exists for the role that owns that
+workflow — consolidation is de-duplication per role, not deletion of a capability
+
+**Given** the Student Database and the new Directory both list students for Owner/Principal
+**When** the Owner and Principal sets are revised
+**Then** they carry the **Directory** as the person-finding surface and do not also carry a
+second student-listing entry that now does a subset of the same thing — the Directory is
+the consolidation, so the thing it consolidates is removed from those two sets (and remains
+for any narrower role that still relies on the standalone Student Database)
+
+**Given** every role whose set changes
+**When** the revision ships
+**Then** a frontend test pins each affected role's resulting tool-id list, so a later edit
+that re-introduces a duplicate fails a test rather than reaching the owner
+
+**Given** the `CommandPalette` (⌘K) reads from the same catalog
+**When** a tool is consolidated
+**Then** it is reachable or not reachable from ⌘K consistently with the sidebar — the two
+must not disagree about whether a tool exists
