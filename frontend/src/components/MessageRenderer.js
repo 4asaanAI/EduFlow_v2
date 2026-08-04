@@ -4,6 +4,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { ThumbsUp, ThumbsDown, Download, FileText } from 'lucide-react';
 import BotMascot from './ui/BotMascot';
 import { emitFeedback, getGeneratedFileLink } from '../lib/api';
+import { useColumnSort, SortableHeaderRow } from './tools/ToolPage';
 
 /**
  * A file Flo made, as something you can tap (Epic 10, Story 10.3).
@@ -212,6 +213,15 @@ function StatGrid({ stats }) {
 }
 
 function RichDataTable({ title, headers, rows, isDark }) {
+  // D-24: a table Flo puts into a chat reply is as much a table as one on a tool screen,
+  // and the owner asked for sorting on every table. It sorts from the shared hook, so a
+  // column heading here behaves exactly as it does everywhere else on the platform.
+  // Every column is sortable: unlike a tool screen these cells are always plain data.
+  const cellAccessors = React.useMemo(
+    () => (headers || []).map((_, i) => (row) => row[i]),
+    [headers],
+  );
+  const sort = useColumnSort(rows, cellAccessors);
   const bg = isDark ? '#1e1e1e' : '#fff';
   const border = isDark ? '#2e2e2e' : '#e5e5e5';
   const rowBorder = isDark ? '#252525' : '#f5f5f5';
@@ -224,13 +234,17 @@ function RichDataTable({ title, headers, rows, isDark }) {
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr>
-              {headers.map((h, i) => <th key={i} style={{ padding: '8px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: isDark ? '#737373' : '#525252', textTransform: 'uppercase', letterSpacing: '0.04em', background: thBg, borderBottom: `1px solid ${border}` }}>{h}</th>)}
-            </tr>
+            <SortableHeaderRow
+              tableId="chat-table"
+              headers={headers}
+              accessors={cellAccessors}
+              sort={sort}
+              thStyle={{ padding: '8px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: isDark ? '#737373' : '#525252', textTransform: 'uppercase', letterSpacing: '0.04em', background: thBg, borderBottom: `1px solid ${border}` }}
+            />
           </thead>
           <tbody>
-            {rows.map((row, i) => (
-              <tr key={i} style={{ borderBottom: i < rows.length - 1 ? `1px solid ${rowBorder}` : 'none' }}>
+            {sort.items.map((row, i) => (
+              <tr key={i} style={{ borderBottom: i < sort.items.length - 1 ? `1px solid ${rowBorder}` : 'none' }}>
                 {row.map((cell, j) => (
                   <td key={j} style={{ padding: '9px 14px', fontSize: 13, color: typeof cell === 'string' && cell.startsWith('\u20B9') ? '#fbbf24' : tc }}>
                     {typeof cell === 'object' ? cell : String(cell ?? '')}

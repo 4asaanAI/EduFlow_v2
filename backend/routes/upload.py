@@ -219,7 +219,7 @@ async def serve_file(filename: str, user: dict = Depends(get_current_user)):
     record = await db.file_uploads.find_one(
         # branch-scope: intentional — file_uploads is school-scoped; a file belongs to
         # its uploader and the school, not to a branch.
-        scoped_filter({"safe_filename": filename}, get_school_id())
+        scoped_filter({"safe_filename": filename}, get_school_id())  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
     )
     if not record:
         raise HTTPException(404, "File not found")
@@ -254,7 +254,7 @@ async def generated_file_link(file_id: str, user: dict = Depends(get_current_use
     record = await db.file_uploads.find_one(
         # branch-scope: intentional — file_uploads is school-scoped; a file belongs to
         # its uploader and the school, not to a branch.
-        scoped_filter({"id": file_id}, get_school_id())
+        scoped_filter({"id": file_id}, get_school_id())  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
     )
     if not record:
         raise HTTPException(404, "That file could not be found. Please ask for it again.")
@@ -297,7 +297,7 @@ async def list_uploads(
         if entity_id:
             query["linked_id"] = entity_id
     # branch-scope: intentional — file_uploads is school-scoped, not branch-scoped.
-    query = scoped_filter(query, get_school_id())
+    query = scoped_filter(query, get_school_id())  # branch-scope: intentional — see the note directly above this line
     skip = (page - 1) * limit
     total = await db.file_uploads.count_documents(query)
     files = await db.file_uploads.find(
@@ -321,7 +321,7 @@ async def delete_file(file_id: str, request: Request):
     db = get_db()
     user = get_user(request)
     # branch-scope: intentional — file_uploads is school-scoped, not branch-scoped.
-    record = await db.file_uploads.find_one(scoped_filter({"id": file_id}, get_school_id()), {"data": 0})
+    record = await db.file_uploads.find_one(scoped_filter({"id": file_id}, get_school_id()), {"data": 0})  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
     if not record:
         raise HTTPException(404, "File not found")
     if record["uploaded_by"] != user["id"] and user["role"] not in ["owner", "admin"]:
@@ -329,5 +329,5 @@ async def delete_file(file_id: str, request: Request):
     if record.get("s3_key"):
         delete_object(record["s3_key"])
     # branch-scope: intentional — file_uploads is school-scoped, not branch-scoped.
-    await db.file_uploads.delete_one(scoped_filter({"id": file_id}, get_school_id()))
+    await db.file_uploads.delete_one(scoped_filter({"id": file_id}, get_school_id()))  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
     return {"success": True}

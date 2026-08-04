@@ -57,9 +57,26 @@ review implementation detail.
 
 ---
 
+---
+
+## IMPORTANT: `owner` is a SCHOOL role, not Abhimanyu
+
+`owner` in this codebase is **the school's owner** (the account is "Aman Litt"). Abhimanyu is
+the **founder of the platform** — he commissions the work and approves deploys, and he does
+NOT hold the `owner` role. Corrected 2026-08-04 after several documents addressed him as
+though he did ("your AI limit is used up", "only you can print certificates"), which is a
+statement about a school staff account and could have produced the wrong decision about who
+may do what.
+
+In prose written to Abhimanyu, never say "you" for an `owner`-role capability — say "the
+school's owner". In code, `owner` means exactly what it always did; nothing about the
+permission model changes.
+
 ## What This Project Is
 
-EduFlow is a **chat-first, multi-role school management SaaS** for The Aaryans (multi-branch CBSE school, UP, India). School staff (owner, principal, teachers, accountants, etc.) manage attendance, fees, academics, staff, and operations through an AI chat assistant + structured tool panels.
+EduFlow is a **chat-first, multi-role school management SaaS** for The Aaryans (CBSE school, Joya, Amroha, UP, India). **ONE branch, `branch-joya`, and all 1,802 students sit on it** — the trust has other branches but this platform serves Joya only (Abhimanyu, 2026-07-22; see `backend/school_identity.py`). The wording here used to say "multi-branch", which was wrong and led an agent to raise branch-scoping as a live gap on 2026-08-04. Branch scoping still exists in the code and stays, but it guards a future second branch, not a present one.
+
+School staff (owner, principal, teachers, accountants, etc.) manage attendance, fees, academics, staff, and operations through an AI chat assistant + structured tool panels.
 
 **Stack:** React 19 SPA (AWS Amplify) ↔ FastAPI + Python 3.9 (AWS Elastic Beanstalk) ↔ MongoDB Atlas + AWS S3 + Azure OpenAI
 
@@ -79,6 +96,12 @@ EduFlow is a **chat-first, multi-role school management SaaS** for The Aaryans (
 | 4 Multi-tenancy | ✅ Done | 387→420 |
 | 5–16 | ✅ All Done | 699 tests, full party-mode + adversarial ceremony |
 | **Operations.py** | 🔧 Wave 3 in progress | expenses/incidents/transport branch isolation |
+
+> **These are historical per-part figures, not a baseline.** They record how many tests each
+> part added at the time it shipped; they are not the size of the suite today and must never
+> be copied into a "the suite should show N" instruction (D-51/D-56). The current measured
+> numbers live in **Running Tests** below: backend 2012 passed / 0 failed / 14 deselected,
+> frontend 286 passed / 0 failed, both measured 2026-08-04. The bar is the FAILURE count.
 
 **Epic files for all parts:** `_bmad-output/planning-artifacts/epic-part*.md`
 

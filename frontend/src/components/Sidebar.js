@@ -3,6 +3,7 @@ import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getConversations, updateConversation, deleteConversation, getMyTokenUsage, getSchoolSettings } from '../lib/api';
 import TokenUpgradeModal from './TokenUpgradeModal';
+import { filterToolsForUser } from '../lib/toolPermissions';
 import {
   Activity, IndianRupee, Users, BarChart2, Bell, FileText, HeartPulse, Megaphone,
   CalendarDays, UserPlus, MessageSquare, Pin, Star, Trash2, Plus, BookOpen,
@@ -125,18 +126,25 @@ const ROLE_COLORS = { owner: '#fb923c', admin: '#4f8ff7', teacher: '#34d399', st
 const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', teacher: 'Teacher', student: 'Student' };
 
 const ADMIN_SUBCATEGORY_TOOLS = {
-  accountant: ['student-database', 'fee-tracker', 'smart-fee-defaulter', 'fee-receipts', 'custom-form-builder', 'raise-maintenance'],
+  // D-49: the accountant is one of the three profiles the server lets issue
+  // certificates and ID cards (owner decision 2026-08-04, decision 2).
+  accountant: ['student-database', 'fee-tracker', 'smart-fee-defaulter', 'fee-receipts', 'certificate-generator', 'id-card-generator', 'custom-form-builder', 'raise-maintenance'],
   transport_head: ['student-database', 'transport-manager', 'transport-optimisation', 'asset-tracker', 'custom-form-builder', 'raise-maintenance'],
   principal: [
     'school-directory',
     'academic-structure', 'student-database', 'attendance-recorder', 'attendance-overview', 'principal-daily',
-    'timetable-builder', 'certificate-generator', 'circular-sender', 'parent-message',
+    // D-49: the principal may issue both document types on the server, and the
+    // grouped navigation below already lists ID Cards under Students — it just never
+    // resolved, because this allow-list omitted it.
+    'timetable-builder', 'certificate-generator', 'id-card-generator', 'circular-sender', 'parent-message',
     'enquiry-register', 'smart-fee-defaulter', 'staff-tracker',
     'staff-performance', 'staff-leave-manager', 'incident-tracker', 'smart-alerts',
     'transport-manager', 'school-activities', 'document-scanner', 'audit-log',
     'facility-requests', 'raise-maintenance', 'custom-form-builder', 'query-section', 'exam-manager',
   ],
-  receptionist: ['student-database', 'enquiry-register', 'parent-message', 'student-transfer', 'id-card-generator', 'asset-tracker', 'incident-tracker', 'raise-maintenance', 'custom-form-builder'],
+  // D-49: 'id-card-generator' removed — the server refuses a receptionist, so
+  // offering the button only produced a refusal when they pressed it.
+  receptionist: ['student-database', 'enquiry-register', 'parent-message', 'student-transfer', 'asset-tracker', 'incident-tracker', 'raise-maintenance', 'custom-form-builder'],
   it_tech: ['tech-issues', 'raise-maintenance', 'custom-form-builder', 'query-section'],
   maintenance: ['maintenance-schedule', 'vendor-log', 'raise-maintenance'],
   management: ['academic-structure', 'timetable-builder', 'exam-manager', 'raise-maintenance', 'audit-log', 'query-section'],
@@ -208,6 +216,11 @@ const TOOL_GROUPS = {
   },
 };
 
+// Exported for tests — D-49: the menus and the server have to agree about who is
+// offered Certificates and ID Cards, and the only way to keep them agreeing is for a
+// test to be able to read the menu definition.
+export { TOOLS_BY_ROLE, ADMIN_SUBCATEGORY_TOOLS, getSidebarTools };
+
 function getGroupConfig(user) {
   if (user.role === 'owner') return TOOL_GROUPS.owner;
   if (user.role === 'admin' && user.sub_category === 'principal') return TOOL_GROUPS.principal;
@@ -217,7 +230,11 @@ function getGroupConfig(user) {
 }
 
 function getSidebarTools(user) {
-  const tools = TOOLS_BY_ROLE[user.role] || [];
+  // D-49: the generic role list is the fallback for an admin whose sub_category has
+  // no entry below (e.g. support_staff, or no sub_category at all), and it contains
+  // Certificates and ID Cards. Those two are server-restricted, so strip them here
+  // rather than trusting every branch out of this function to remember.
+  const tools = filterToolsForUser(user, TOOLS_BY_ROLE[user.role] || []);
   if (user.role !== 'admin') return tools;
   const allowed = ADMIN_SUBCATEGORY_TOOLS[user.sub_category];
   if (!allowed) return tools;

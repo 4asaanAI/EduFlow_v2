@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle, Edit3, Percent, Phone, RefreshCw, Save, FileDown, MessageSquare, Trash2, X } from 'lucide-react';
 import { getAuthHeaders } from '../../lib/authSession';
 import { useUser } from '../../contexts/UserContext';
+import { useColumnSort, SortableHeaderRow } from './ToolPage';
 import { API, apiFetch,
   correctFeeTransaction,
   deleteFeeTransaction,
@@ -172,9 +173,9 @@ export default function FeeCollection() {
     try {
       const [summaryRes, txnRes, overdueRes, studentRes, discountTypesRes, discountSummaryRes] = await Promise.all([
         getFeeSummary(payment.fee_period ? { fee_period: payment.fee_period } : {}),
-        getFeeTransactions(null, {}),
-        getFeeTransactions(null, { overdue_days: overdueDays }),
-        getStudents(null, { limit: 500 }),
+        getFeeTransactions({}),
+        getFeeTransactions({ overdue_days: overdueDays }),
+        getStudents({ limit: 500 }),
         getDiscountTypes(),
         getDiscountSummary(),
       ]);
@@ -211,6 +212,31 @@ export default function FeeCollection() {
   const selectedTxn = useMemo(() => transactions.find(t => t.id === correction.transaction_id), [transactions, correction.transaction_id]);
   const overdue = overdueList;
 
+  // D-24: these two tables were hand-rolled and could not be sorted. They keep their own
+  // markup because `fee-txn-table` carries this screen's own mobile styling, and take
+  // their sorting from the shared hook so it behaves like every other table.
+  const payrollSortAccessors = useMemo(() => [
+    (d) => d.staff_name || d.staff_id || '',
+    (d) => d.month || '',
+    (d) => Number(d.gross) || 0,
+    (d) => Number(d.net) || 0,
+    (d) => d.status || '',
+  ], []);
+  const payrollSort = useColumnSort(disbursements, payrollSortAccessors);
+
+  // Receipt and Actions are controls, not data — no sorting offered on them.
+  const overdueSortAccessors = useMemo(() => [
+    (t) => t.student_name || t.student_id || '',
+    (t) => t.class_name || '',
+    (t) => t.fee_head || t.fee_type || '',
+    (t) => Number(t.amount) || 0,
+    (t) => t.due_date || '',
+    (t) => t.status || '',
+    null,
+    null,
+  ], []);
+  const overdueSort = useColumnSort(overdue, overdueSortAccessors);
+
   async function savePayment() {
     setSaving(true);
     setError('');
@@ -222,7 +248,7 @@ export default function FeeCollection() {
       const key = `${payment.student_id}|${payment.fee_period}|${(payment.fee_head || '').trim().toLowerCase()}`;
       const payload = { ...payment, amount: Number(payment.amount), fee_type: payment.fee_head };
       if (payment.paid_amount) payload.paid_amount = Number(payment.paid_amount);
-      const res = await recordFeePayment(null, payload, key);
+      const res = await recordFeePayment(payload, key);
       if (!res.success) throw new Error(res.detail || 'Payment could not be saved');
 
       // Auto-close matching overdue transactions for this student + fee head
@@ -656,14 +682,16 @@ export default function FeeCollection() {
           <div style={{ overflowX: 'auto' }}>
         <table className="fee-txn-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 400 }}>
             <thead>
-              <tr>
-                {['Staff', 'Month', 'Gross', 'Net', 'Status'].map(h => (
-                  <th key={h} style={thStyle}>{h}</th>
-                ))}
-              </tr>
+              <SortableHeaderRow
+                tableId="payroll-disbursements"
+                headers={['Staff', 'Month', 'Gross', 'Net', 'Status']}
+                accessors={payrollSortAccessors}
+                sort={payrollSort}
+                thStyle={thStyle}
+              />
             </thead>
             <tbody>
-              {disbursements.map((d, index) => (
+              {payrollSort.items.map((d, index) => (
                 <tr key={d.id} style={{ borderTop: index ? '1px solid var(--color-border)' : 'none' }}>
                   <td style={tdStyle}>{d.staff_name || d.staff_id}</td>
                   <td style={tdStyle}>{d.month}</td>
@@ -794,9 +822,17 @@ export default function FeeCollection() {
         ) : (
           <div style={{ overflowX: 'auto' }}>
           <table className="fee-txn-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 500 }}>
-            <thead><tr>{['Student', 'Class', 'Head', 'Amount', 'Due', 'Status', 'Receipt', 'Actions'].map(h => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+            <thead>
+              <SortableHeaderRow
+                tableId="fee-overdue"
+                headers={['Student', 'Class', 'Head', 'Amount', 'Due', 'Status', 'Receipt', 'Actions']}
+                accessors={overdueSortAccessors}
+                sort={overdueSort}
+                thStyle={thStyle}
+              />
+            </thead>
             <tbody>
-              {overdue.map((txn, index) => (
+              {overdueSort.items.map((txn, index) => (
                 <tr key={txn.id} style={{ borderTop: index ? '1px solid var(--color-border)' : 'none' }}>
                   <td style={tdStyle}>{txn.student_name || txn.student_id}</td>
                   <td style={tdStyle}>{txn.class_name || 'N/A'}</td>

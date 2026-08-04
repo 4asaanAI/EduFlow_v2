@@ -566,7 +566,7 @@ NAVIGATE_MAP = {
 
 
 def _owned_conversation_filter(conv_id: str, user: dict) -> dict:
-    return scoped_filter({"id": conv_id, "user_id": user["id"]}, get_school_id())
+    return scoped_filter({"id": conv_id, "user_id": user["id"]}, get_school_id())  # branch-scope: intentional — scoped to one named person's own record, not to a branch
 
 
 async def _require_owned_conversation(db, conv_id: str, user: dict) -> dict:
@@ -621,7 +621,7 @@ async def list_conversations(
     # is strictly narrower than branch_id. Conversation documents carry no
     # branch_id field (models/schemas.py Conversation is school-scoped only), so
     # a branch clause here would match nothing and empty everyone's history.
-    query = scoped_filter({"user_id": user["id"]}, get_school_id())
+    query = scoped_filter({"user_id": user["id"]}, get_school_id())  # branch-scope: intentional — scoped to one named person's own record, not to a branch
     term = (search or "").strip()[:MAX_CONVERSATION_SEARCH]
     if term:
         # re.escape or the term is a pattern: an injection surface, and a way to
@@ -674,7 +674,7 @@ async def bulk_delete_conversations(body: ConversationBulkDelete, request: Reque
     # branch-scope: intentional — pinned to the caller's own user_id, which is
     # narrower than branch; conversations carry no branch_id field.
     owned = await db.conversations.find(
-        scoped_filter({"id": {"$in": requested}, "user_id": user["id"]}, school_id),
+        scoped_filter({"id": {"$in": requested}, "user_id": user["id"]}, school_id),  # branch-scope: intentional — scoped to one named person's own record, not to a branch
         {"_id": 0, "id": 1},
     ).to_list(len(requested))
     owned_ids = [c["id"] for c in owned]
@@ -684,13 +684,13 @@ async def bulk_delete_conversations(body: ConversationBulkDelete, request: Reque
         # conversation that outlives its messages is a chat that opens empty.
         # branch-scope: intentional — own user_id, as above.
         await db.conversations.delete_many(
-            scoped_filter({"id": {"$in": owned_ids}, "user_id": user["id"]}, school_id)
+            scoped_filter({"id": {"$in": owned_ids}, "user_id": user["id"]}, school_id)  # branch-scope: intentional — scoped to one named person's own record, not to a branch
         )
         # branch-scope: intentional — `owned_ids` are already proven to be this
         # caller's, which is what makes a filter with no user_id safe here. Same
         # reasoning as the single-delete path directly below.
         await db.messages.delete_many(
-            scoped_filter({"conversation_id": {"$in": owned_ids}}, school_id)
+            scoped_filter({"conversation_id": {"$in": owned_ids}}, school_id)  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
         )
 
     # Ids only, never a title or any message text (NFR-S2).
@@ -748,7 +748,7 @@ async def delete_conversation(conv_id: str, request: Request):
     user = get_current_user(request)
     await _require_owned_conversation(db, conv_id, user)
     await db.conversations.delete_one(_owned_conversation_filter(conv_id, user))
-    await db.messages.delete_many(scoped_filter({"conversation_id": conv_id}, get_school_id()))
+    await db.messages.delete_many(scoped_filter({"conversation_id": conv_id}, get_school_id()))  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
     return {"success": True}
 
 
@@ -758,7 +758,7 @@ async def get_messages(conv_id: str, request: Request):
     user = get_current_user(request)
     await _require_owned_conversation(db, conv_id, user)
     msgs = await db.messages.find(
-        scoped_filter({"conversation_id": conv_id}, get_school_id()), {"_id": 0}
+        scoped_filter({"conversation_id": conv_id}, get_school_id()), {"_id": 0}  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
     ).sort("created_at", 1).to_list(100)
     return {"success": True, "data": msgs}
 
@@ -776,7 +776,7 @@ async def conversation_trace(conv_id: str, request: Request, user: dict = Depend
     """
     db = get_db()
     traces = await db.ai_turn_traces.find(
-        scoped_filter({"conversation_id": conv_id}, get_school_id()), {"_id": 0}
+        scoped_filter({"conversation_id": conv_id}, get_school_id()), {"_id": 0}  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
     ).sort("created_at", 1).to_list(200)
     turns = []
     for t in traces:
@@ -2002,7 +2002,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
     # Fix: load first HISTORY_KEEP_FIRST anchors ASC + last HISTORY_KEEP_RECENT
     # by DESC and re-sort. Total messages == both ends, never the middle.
     try:
-        msg_filter = scoped_filter({"conversation_id": conv_id, "role": {"$in": ["user", "assistant"]}, "is_flagged": {"$ne": True}}, get_school_id())
+        msg_filter = scoped_filter({"conversation_id": conv_id, "role": {"$in": ["user", "assistant"]}, "is_flagged": {"$ne": True}}, get_school_id())  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
         anchors = await db.messages.find(msg_filter, {"_id": 0}).sort("created_at", 1).to_list(HISTORY_KEEP_FIRST)
         anchor_ids = {a.get("id") for a in anchors if a.get("id")}
         recent = await db.messages.find(msg_filter, {"_id": 0}).sort("created_at", -1).to_list(HISTORY_KEEP_RECENT)

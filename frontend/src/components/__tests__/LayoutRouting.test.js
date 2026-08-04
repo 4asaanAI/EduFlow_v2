@@ -2,9 +2,15 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import Layout from '../Layout';
 
+// The signed-in user is a mutable module-level value so a test can render the shell
+// as a SECOND person — which is what D-59's safety property is about. Reset in
+// beforeEach so one test cannot leak its user into the next. The `mock` prefix is
+// required: jest.mock() factories may only reference out-of-scope names spelled that way.
+let mockCurrentUser = { id: 'owner-1', role: 'owner', name: 'Owner User' };
+
 jest.mock('../../contexts/UserContext', () => ({
   useUser: () => ({
-    currentUser: { id: 'owner-1', role: 'owner', name: 'Owner User' },
+    currentUser: mockCurrentUser,
     logout: () => {},
   }),
 }));
@@ -39,12 +45,16 @@ jest.mock('../../lib/api', () => {
   return stub;
 });
 
-// Layout clears `?tool=` once per browser session, the first time it sees a user id
-// it has not recorded (the "someone else logged in" reset). Marking the session as
-// already belonging to this user is what a normal in-session navigation or reload
-// looks like, which is the case these tests are about.
+// D-59, fixed 2026-08-04: this used to seed `eduflow_session_user` before every test,
+// because Layout cleared `?tool=` whenever the tab held no record of the current user
+// — which on a fresh tab is always. That seeding was a workaround for the bug, and the
+// bug is gone: a first visit now records the user and leaves the URL alone. Seeding it
+// here would hide a regression of exactly that behaviour, so storage starts EMPTY, the
+// way a real new tab does. The "different person" case seeds deliberately, in the test
+// that is about it.
 beforeEach(() => {
-  sessionStorage.setItem('eduflow_session_user', 'owner-1');
+  sessionStorage.clear();
+  mockCurrentUser = { id: 'owner-1', role: 'owner', name: 'Owner User' };
 });
 
 afterEach(() => {
@@ -105,4 +115,43 @@ test('tool selection updates URL search param', async () => {
   // And the newly named tool is the one on screen, replacing the previous one.
   expect(await screen.findByTestId('fee-sync-tool')).toBeInTheDocument();
   expect(screen.queryByTestId('attendance-recorder-tool')).not.toBeInTheDocument();
+});
+
+
+// ─── D-59: a link straight to a screen, in a fresh browser tab ────────────────
+// Owner decision 2026-08-04 (decision 3): links must always work, with the shared-
+// computer safety check made smarter rather than removed. Both directions are
+// tested; the second one is the safety property and matters more than the first.
+
+test('a deep link survives a cold browser tab with no session record', async () => {
+  // A genuinely fresh tab: nothing recorded at all. This is the case that used to
+  // dump the visitor on the chat screen.
+  expect(sessionStorage.getItem('eduflow_session_user')).toBeNull();
+
+  render(<Harness initialEntries={['/?tool=attendance-recorder']} />);
+
+  expect(await screen.findByTestId('attendance-recorder-tool')).toBeInTheDocument();
+  await waitFor(() => {
+    expect(screen.getByTestId('location-search')).toHaveTextContent('tool=attendance-recorder');
+  });
+
+  // ...and the tab now remembers who this was, so the next person is detectable.
+  expect(sessionStorage.getItem('eduflow_session_user')).toBe('owner-1');
+});
+
+test('a genuinely different user still gets the previous tool cleared', async () => {
+  // Someone else used this tab first and their id is on record. This is the shared-
+  // school-computer case the check exists for: the link must NOT open.
+  sessionStorage.setItem('eduflow_session_user', 'someone-else-9');
+
+  render(<Harness initialEntries={['/?tool=attendance-recorder']} />);
+
+  await waitFor(() => {
+    expect(screen.getByTestId('location-search')).not.toHaveTextContent('tool=');
+  });
+  expect(screen.queryByTestId('attendance-recorder-tool')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('back-to-chat-btn')).not.toBeInTheDocument();
+
+  // The tab is re-stamped with the person actually signed in now.
+  expect(sessionStorage.getItem('eduflow_session_user')).toBe('owner-1');
 });

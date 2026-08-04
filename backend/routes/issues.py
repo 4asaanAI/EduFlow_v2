@@ -132,7 +132,7 @@ async def _notification_targets(db, query: dict, projection: dict, limit: int = 
     if users is None:
         return []
     # branch-scope: intentional — user records are school-wide; notifications fan out to all admins/owners regardless of branch
-    scoped_q = scoped_filter(query, get_school_id())
+    scoped_q = scoped_filter(query, get_school_id())  # branch-scope: intentional — see the note directly above this line
     return await users.find(scoped_q, projection).to_list(limit)
 
 
@@ -647,7 +647,7 @@ async def get_request_history(issue_type: str, request_id: str, request: Request
 
     # 2. Audit log events (sorted ascending — history order)
     audit_entries = await db.audit_logs.find(
-        scoped_filter({"entity_id": request_id}, school_id), {"_id": 0}
+        scoped_filter({"entity_id": request_id}, school_id), {"_id": 0}  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
     ).sort("created_at", 1).to_list(200)
 
     for entry in audit_entries:

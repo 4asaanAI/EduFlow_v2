@@ -183,6 +183,103 @@ function compareCells(a, b) {
 }
 
 /**
+ * Column sorting for a table that CANNOT move onto `DataTable` (D-24).
+ *
+ * `DataTable` takes rows as arrays of cells. A handful of screens cannot express
+ * themselves that way — a certificate row can expand into a full-width "reason for
+ * rejection" row underneath it, an exam sheet holds a live marks input per row, a
+ * timetable's cells span periods. Those keep their own <table>, and take their sorting
+ * from here so it behaves, reads and announces itself EXACTLY like every other table on
+ * the platform rather than being invented a second time per screen.
+ *
+ * It sorts a list of OBJECTS (what those screens already hold) rather than cell arrays,
+ * so the screen's own <td> rendering is untouched.
+ *
+ * @param {Array} items       the full result set, in the order the server gave it
+ * @param {Array} accessors   one entry per column, in column order: a function
+ *                            `(item) => comparable value`, or `null` for a column that
+ *                            must not offer sorting (an actions column, a checkbox).
+ * @returns {{items: Array, index: number|null, direction: string, toggle: Function}}
+ */
+export function useColumnSort(items, accessors) {
+  const [state, setState] = React.useState({ index: null, direction: 'ascending' });
+
+  // Memoised for the same reason `DataTable.safeRows` is: without it the `: []` branch
+  // is a new array every render, and the sort below would re-run forever.
+  const safe = React.useMemo(() => (Array.isArray(items) ? items : []), [items]);
+
+  const sorted = React.useMemo(() => {
+    const accessor = state.index === null ? null : accessors[state.index];
+    if (!accessor) return safe;
+    const factor = state.direction === 'descending' ? -1 : 1;
+    // Copy before sorting — mutating the caller's array would reorder their state.
+    return [...safe].sort((a, b) => factor * compareCells(accessor(a), accessor(b)));
+  }, [safe, accessors, state]);
+
+  const toggle = React.useCallback((i) => setState((prev) => (
+    prev.index === i
+      ? { index: i, direction: prev.direction === 'ascending' ? 'descending' : 'ascending' }
+      : { index: i, direction: 'ascending' }
+  )), []);
+
+  return { items: sorted, index: state.index, direction: state.direction, toggle };
+}
+
+/**
+ * The `<thead>` row for a table using `useColumnSort`.
+ *
+ * Kept as one component so the accessibility contract is written once: `aria-sort` lives
+ * on the `<th>` (that is what a screen reader announces for the column) and the control
+ * is a real `<button>` (so the column is sortable from the keyboard). Getting either of
+ * those wrong is invisible until someone who needs them tries to use the screen.
+ *
+ * `thStyle` is passed in because these screens each have their own header styling and
+ * this change is about sorting, not about restyling them underneath their owners. It may
+ * be a plain object, or `(index) => style` where columns differ (a sticky first column,
+ * centred numeric columns).
+ */
+export function SortableHeaderRow({ headers, sort, accessors, thStyle, trStyle, tableId = 'tool-table' }) {
+  const styleFor = (i) => (typeof thStyle === 'function' ? thStyle(i) : thStyle);
+  return (
+    <tr style={trStyle}>
+      {headers.map((label, i) => {
+        const canSort = Boolean(accessors[i]);
+        const thStyleI = styleFor(i);
+        const isSorted = canSort && sort.index === i;
+        const ariaSort = isSorted ? sort.direction : 'none';
+        const inner = {
+          display: 'inline-flex', alignItems: 'center', gap: 5, width: '100%',
+          background: 'none', border: 'none', padding: 0, font: 'inherit',
+          color: isSorted ? 'var(--color-accent-blue)' : 'inherit',
+          cursor: canSort ? 'pointer' : 'default',
+          textAlign: thStyleI?.textAlign || 'left',
+          justifyContent: thStyleI?.textAlign === 'center' ? 'center' : undefined,
+        };
+        if (!canSort) {
+          return <th key={i} scope="col" style={thStyleI}>{label}</th>;
+        }
+        const Glyph = isSorted
+          ? (sort.direction === 'ascending' ? ChevronUp : ChevronDown)
+          : ChevronsUpDown;
+        return (
+          <th key={i} scope="col" aria-sort={ariaSort} style={thStyleI}>
+            <button
+              type="button"
+              data-testid={`${tableId}-sort-${i}`}
+              onClick={() => sort.toggle(i)}
+              style={inner}
+            >
+              {label}
+              <Glyph size={11} aria-hidden="true" style={{ opacity: isSorted ? 1 : 0.4, flexShrink: 0 }} />
+            </button>
+          </th>
+        );
+      })}
+    </tr>
+  );
+}
+
+/**
  * The tool-screen table.
  *
  * Column sorting was added here in UI Sweep Epic 4 rather than screen by screen:

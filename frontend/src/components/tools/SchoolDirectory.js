@@ -159,7 +159,7 @@ function StudentsTab({ user, onOpen }) {
     setLoading(true);
     setError('');
     try {
-      const res = await getStudents(user, { page, sort, limit: pageSize });
+      const res = await getStudents({ page, sort, limit: pageSize });
       if (res.success) {
         setRows(res.data || []);
         setTotal(res.meta?.total || 0);
@@ -170,7 +170,7 @@ function StudentsTab({ user, onOpen }) {
       setError(err.message || 'Unable to load students');
     }
     setLoading(false);
-  }, [user, page, sort, pageSize]);
+  }, [page, sort, pageSize]);
 
   useEffect(() => { load(); }, [load]);
 

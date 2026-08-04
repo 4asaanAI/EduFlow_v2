@@ -51,8 +51,8 @@ def _is_support_admin(user: dict) -> bool:
 def _ticket_scope(user: dict, query: dict | None = None) -> dict:
     query = query or {}
     if _is_support_admin(user):
-        return scoped_filter(query, get_school_id())
-    return scoped_filter(
+        return scoped_filter(query, get_school_id())  # branch-scope: intentional — a support admin triages every ticket in the school; branch is not the boundary here, role is
+    return scoped_filter(  # branch-scope: intentional — everyone else sees only tickets they raised or were assigned, which is narrower than any branch
         {"$and": [query, {"$or": [{"created_by": user.get("id")}, {"assigned_to": user.get("id")}]}]},
         get_school_id(),
     )

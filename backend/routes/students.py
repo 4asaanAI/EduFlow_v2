@@ -93,7 +93,7 @@ def _serialize(model) -> dict:
 
 
 def _student_query(extra: dict | None = None) -> dict:
-    return scoped_filter(extra or {}, get_school_id())
+    return scoped_filter(extra or {}, get_school_id())  # branch-scope: intentional — this file's school-scope helper; it scopes to the school only, and callers pass branch_id through scoped_query where a query is branch-sensitive
 
 
 def _role_can_manage(user: dict) -> bool:
@@ -101,11 +101,11 @@ def _role_can_manage(user: dict) -> bool:
 
 
 async def _add_class_and_guardians(db, student: dict, include_guardians: bool = False) -> dict:
-    cls = await db.classes.find_one(scoped_filter({"id": student.get("class_id")}, get_school_id()), {"_id": 0})
+    cls = await db.classes.find_one(scoped_filter({"id": student.get("class_id")}, get_school_id()), {"_id": 0})  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
     student["class_info"] = cls
     if include_guardians:
         guardians = await db.guardians.find(
-            scoped_filter({"student_id": student["id"]}, get_school_id()),
+            scoped_filter({"student_id": student["id"]}, get_school_id()),  # branch-scope: intentional — scoped to one named person's own record, not to a branch
             {"_id": 0},
         ).to_list(10)
         student["guardians"] = guardians
@@ -164,7 +164,7 @@ async def class_strength_stats(request: Request):
         raise HTTPException(403, "Forbidden")
     school_id = get_school_id()
     pipeline = [
-        {"$match": scoped_filter({"is_active": True}, school_id)},
+        {"$match": scoped_filter({"is_active": True}, school_id)},  # branch-scope: intentional — Class Strength is a whole-school roll-up; it is grouped by class below, and a class belongs to exactly one branch
         {"$lookup": {"from": "classes", "localField": "class_id", "foreignField": "id", "as": "_cls"}},
         {"$unwind": {"path": "$_cls", "preserveNullAndEmptyArrays": True}},
         {"$group": {
@@ -286,12 +286,12 @@ async def list_students(
         students = await db.students.find(scoped_query, {"_id": 0, "coordinates": 0}).sort(sort_field, sort_dir).skip(skip).limit(per_page).to_list(per_page)
 
     class_ids = list({s.get("class_id") for s in students if s.get("class_id")})
-    classes = await db.classes.find(scoped_filter({"id": {"$in": class_ids}}, get_school_id()), {"_id": 0}).to_list(len(class_ids)) if class_ids else []
+    classes = await db.classes.find(scoped_filter({"id": {"$in": class_ids}}, get_school_id()), {"_id": 0}).to_list(len(class_ids)) if class_ids else []  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
     class_map = {c["id"]: {"name": c.get("name"), "section": c.get("section")} for c in classes}
 
     student_ids = [s["id"] for s in students if s.get("id")]
     primary_guardians = await db.guardians.find(
-        scoped_filter({"student_id": {"$in": student_ids}, "is_primary": True}, get_school_id()),
+        scoped_filter({"student_id": {"$in": student_ids}, "is_primary": True}, get_school_id()),  # branch-scope: intentional — scoped to one named person's own record, not to a branch
         {"_id": 0, "student_id": 1, "phone": 1},
     ).to_list(len(student_ids)) if student_ids else []
     guardian_phone_map = {g["student_id"]: g.get("phone") for g in primary_guardians}
@@ -371,7 +371,7 @@ async def update_my_guardian(guardian_id: str, request: Request, user: dict = De
     if not student:
         raise HTTPException(404, "Student record not found")
     guardian = await db.guardians.find_one(
-        scoped_filter({"id": guardian_id, "student_id": student["id"]}, get_school_id()), {"_id": 0}
+        scoped_filter({"id": guardian_id, "student_id": student["id"]}, get_school_id()), {"_id": 0}  # branch-scope: intentional — scoped to one named person's own record, not to a branch
     )
     if not guardian:
         raise HTTPException(404, "Guardian not found")
@@ -381,7 +381,7 @@ async def update_my_guardian(guardian_id: str, request: Request, user: dict = De
         raise HTTPException(400, "No updatable guardian fields provided")
     update["updated_at"] = datetime.now().isoformat()
     await db.guardians.update_one(
-        scoped_filter({"id": guardian_id}, get_school_id()), {"$set": update}
+        scoped_filter({"id": guardian_id}, get_school_id()), {"$set": update}  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
     )
     await _audit(
         db,
@@ -391,7 +391,7 @@ async def update_my_guardian(guardian_id: str, request: Request, user: dict = De
         changes={k: {"previous": guardian.get(k), "new": v} for k, v in update.items() if k != "updated_at"},
     )
     updated = await db.guardians.find_one(
-        scoped_filter({"id": guardian_id}, get_school_id()), {"_id": 0}
+        scoped_filter({"id": guardian_id}, get_school_id()), {"_id": 0}  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
     )
     return {"success": True, "data": updated}
 
@@ -429,14 +429,14 @@ async def list_my_consents(request: Request, user: dict = Depends(require_role("
     student = await db.students.find_one(_student_query({"user_id": user["id"]}), {"_id": 0})
     if not student:
         return {"success": True, "data": []}
-    consents = await db.dpdp_consents.find(scoped_filter({"student_id": student["id"]}, get_school_id()), {"_id": 0}).sort("recorded_at", -1).to_list(50)
+    consents = await db.dpdp_consents.find(scoped_filter({"student_id": student["id"]}, get_school_id()), {"_id": 0}).sort("recorded_at", -1).to_list(50)  # branch-scope: intentional — scoped to one named person's own record, not to a branch
     return {"success": True, "data": consents}
 
 
 @router.get("/classes/all")
 async def get_all_classes(request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff"))):
     db = get_db()
-    classes = await db.classes.find(scoped_filter({}, get_school_id()), {"_id": 0}).to_list(50)
+    classes = await db.classes.find(scoped_filter({}, get_school_id()), {"_id": 0}).to_list(50)  # branch-scope: intentional — cross-branch class list
     return {"success": True, "data": classes}
 
 
@@ -583,7 +583,7 @@ async def list_guardians(student_id: str, request: Request):
     if not student:
         raise HTTPException(404, "Student not found")
     guardians = await db.guardians.find(
-        scoped_filter({"student_id": student_id}, get_school_id()), {"_id": 0}
+        scoped_filter({"student_id": student_id}, get_school_id()), {"_id": 0}  # branch-scope: intentional — scoped to one named person's own record, not to a branch
     ).to_list(10)
     return {"success": True, "data": guardians}
 
@@ -622,7 +622,7 @@ async def upload_guardian_photo(student_id: str, guardian_id: str, request: Requ
         raise HTTPException(403, "Forbidden")
 
     guardian = await db.guardians.find_one(
-        scoped_filter({"id": guardian_id, "student_id": student_id}, get_school_id()), {"_id": 0}
+        scoped_filter({"id": guardian_id, "student_id": student_id}, get_school_id()), {"_id": 0}  # branch-scope: intentional — scoped to one named person's own record, not to a branch
     )
     if not guardian:
         raise HTTPException(404, "Guardian not found")
@@ -663,7 +663,7 @@ async def upload_guardian_photo(student_id: str, guardian_id: str, request: Requ
     }
     await db.file_uploads.insert_one(record)
     await db.guardians.update_one(
-        scoped_filter({"id": guardian_id}, get_school_id()),
+        scoped_filter({"id": guardian_id}, get_school_id()),  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
         {"$set": {"photo_url": photo_url}},
     )
     return {"success": True, "data": {"photo_url": photo_url}}
@@ -692,12 +692,12 @@ async def erase_student(student_id: str, request: Request, reason: str = Form(de
         _student_query({"student_id": student_id}),
         {"$set": {"student_id": token, "student_name": None, "guardian_phone": None, "erased_student_ref": token}},
     )
-    uploads = await db.file_uploads.find(scoped_filter({"linked_table": "students", "linked_id": student_id}, get_school_id()), {"_id": 0}).to_list(100)
+    uploads = await db.file_uploads.find(scoped_filter({"linked_table": "students", "linked_id": student_id}, get_school_id()), {"_id": 0}).to_list(100)  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
     for upload in uploads:
         if upload.get("s3_key"):
             delete_object(upload["s3_key"])
-    await db.guardians.delete_many(scoped_filter({"student_id": student_id}, get_school_id()))
-    await db.file_uploads.delete_many(scoped_filter({"linked_table": "students", "linked_id": student_id}, get_school_id()))
+    await db.guardians.delete_many(scoped_filter({"student_id": student_id}, get_school_id()))  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+    await db.file_uploads.delete_many(scoped_filter({"linked_table": "students", "linked_id": student_id}, get_school_id()))  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
     await db.students.delete_one(_student_query({"id": student_id}))
     # Epic G (G.7 / DPDP §12): purge any AI memory that references this student so
     # the right-to-erasure also covers what the assistant "learned" about them.

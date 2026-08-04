@@ -491,7 +491,7 @@ async def get_platform_health(user: dict = Depends(require_owner)):
     # ── Fee sync last job (school-wide, not branch-scoped) ──────────────────
     # branch-scope: intentional — fee sync is a school-wide operation
     jobs = await db.fee_sync_jobs.find(
-        scoped_filter({}, school_id),
+        scoped_filter({}, school_id),  # branch-scope: intentional — see the note directly above this line
         {"_id": 0},
     ).sort("started_at", -1).to_list(1)
     job = jobs[0] if jobs else None
@@ -508,7 +508,7 @@ async def get_platform_health(user: dict = Depends(require_owner)):
     # branch-scope: intentional — operator health is a school-wide aggregate view
     now = datetime.now(timezone.utc)
     sixty_min_ago = now - timedelta(minutes=60)
-    error_query = scoped_filter(
+    error_query = scoped_filter(  # branch-scope: intentional — see the note directly above this line
         {
             "created_at": {"$gte": sixty_min_ago},
             "action": {"$regex": "fail|error", "$options": "i"},
@@ -520,7 +520,7 @@ async def get_platform_health(user: dict = Depends(require_owner)):
     # ── Active user count (school-wide) ────────────────────────────────────
     # branch-scope: intentional — operator health is a school-wide aggregate view
     active_user_count = await db.auth_users.count_documents(
-        scoped_filter({"is_active": True}, school_id)
+        scoped_filter({"is_active": True}, school_id)  # branch-scope: intentional — see the note directly above this line
     )
 
     return {

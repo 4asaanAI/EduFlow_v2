@@ -47,7 +47,7 @@ export default function SchoolPulse() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const res = await executeTool('get_school_pulse', {}, currentUser);
+      const res = await executeTool('get_school_pulse', {});
       if (res.success) setData(res.data);
     } catch {}
     setLoading(false);

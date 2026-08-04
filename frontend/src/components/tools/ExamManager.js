@@ -4,13 +4,15 @@ import { useTheme } from '../../contexts/ThemeContext';
 import {
   Plus, ChevronRight, ChevronLeft, Edit2, Trash2, BookOpen,
   Users, BarChart2, Calendar, CheckCircle, X, ClipboardList, AlertTriangle, Save, Eye,
+  ChevronUp, ChevronDown, ChevronsUpDown,
 } from 'lucide-react';
+import { useColumnSort, SortableHeaderRow } from './ToolPage';
 import { API, apiFetch,
   listExams, createExam, updateExam, deleteExam, getAllClasses, getSubjects,
   getExamSheet, saveExamSchedule, bulkEnterResults,
 } from '../../lib/api';
 
-function _authHeaders(user) {
+function _authHeaders() {
   const token = localStorage.getItem('token');
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
@@ -149,6 +151,27 @@ export default function ExamManager() {
   const [sheet, setSheet] = useState(null);
   const [marksDraft, setMarksDraft] = useState({});
   const [scheduleDraft, setScheduleDraft] = useState({});
+
+  // D-24: the datesheet and the marks grid were hand-rolled <table>s with no sorting.
+  // They keep their own markup — the marks grid has one live input per subject per
+  // student and a sticky first column, which the shared DataTable cannot express — and
+  // take their sorting from the shared hook so it behaves identically everywhere.
+  //
+  // The hooks live here, at the top of the component, because the tables themselves are
+  // rendered inside an inline function further down and hooks cannot be called there.
+  // Sorting the full list and filtering afterwards is equivalent: filter preserves order.
+  const subjectSortAccessors = React.useMemo(() => [
+    (sub) => sub.name || '',
+    (sub) => scheduleDraft[sub.id]?.exam_date || sub.exam_date || '',
+    (sub) => Number(scheduleDraft[sub.id]?.max_marks ?? sub.max_marks ?? 100),
+  ], [scheduleDraft]);
+  const subjectSort = useColumnSort(sheet?.subjects || [], subjectSortAccessors);
+
+  // Only the Student column and the Total offer sorting on the marks grid. A subject
+  // column is a data-entry surface: re-ordering the rows under someone's cursor while
+  // they are typing marks would be a hazard, not a feature.
+  const studentSortAccessors = React.useMemo(() => [(st) => st.name || ''], []);
+  const studentSort = useColumnSort(sheet?.students || [], studentSortAccessors);
   const [savingMarks, setSavingMarks] = useState(false);
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
@@ -162,7 +185,7 @@ export default function ExamManager() {
   useEffect(() => {
     if (!isTeacher) { setTeachingScope({ is_teacher: false }); return; }
     let alive = true;
-    apiFetch(`${API}/academics/my-teaching-scope`, { headers: _authHeaders(currentUser) })
+    apiFetch(`${API}/academics/my-teaching-scope`, { headers: _authHeaders() })
       .then(r => r.json())
       .then(r => { if (alive) setTeachingScope(r.success ? r.data : { is_teacher: false }); })
       .catch(() => { if (alive) setTeachingScope({ is_teacher: false }); });
@@ -539,8 +562,8 @@ export default function ExamManager() {
             <EmptyState icon={<AlertTriangle size={40} />} message="Couldn't load this class sheet." />
           ) : (() => {
             const canEdit = !!sheet.can_edit;
-            const allSubjects = sheet.subjects || [];
-            const students = sheet.students || [];
+            const allSubjects = subjectSort.items;
+            const students = studentSort.items;
             const resultMap = {};
             for (const r of sheet.results || []) resultMap[`${r.student_id}|${r.subject_id}`] = r;
 
@@ -598,11 +621,14 @@ export default function ExamManager() {
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <thead>
-                        <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
-                          <th style={{ textAlign: 'left', padding: '6px 10px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>Subject</th>
-                          <th style={{ textAlign: 'left', padding: '6px 10px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>Exam Date</th>
-                          <th style={{ textAlign: 'left', padding: '6px 10px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>Max Marks</th>
-                        </tr>
+                        <SortableHeaderRow
+                          tableId="exam-datesheet"
+                          headers={['Subject', 'Exam Date', 'Max Marks']}
+                          accessors={subjectSortAccessors}
+                          sort={subjectSort}
+                          trStyle={{ borderBottom: '1px solid var(--color-border)' }}
+                          thStyle={{ textAlign: 'left', padding: '6px 10px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}
+                        />
                       </thead>
                       <tbody>
                         {subjects.map(sub => {
@@ -657,7 +683,18 @@ export default function ExamManager() {
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                         <thead>
                           <tr style={{ borderBottom: '2px solid var(--color-border)' }}>
-                            <th style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', position: 'sticky', left: 0, background: surface }}>Student</th>
+                            {/* D-24: only this heading is a sort control — see the note
+                                on studentSortAccessors at the top of the component. */}
+                            <th scope="col" aria-sort={studentSort.index === 0 ? studentSort.direction : 'none'}
+                              style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', position: 'sticky', left: 0, background: surface }}>
+                              <button type="button" data-testid="exam-marks-sort-0" onClick={() => studentSort.toggle(0)}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer', color: studentSort.index === 0 ? 'var(--color-accent-blue)' : 'inherit' }}>
+                                Student
+                                {studentSort.index === 0
+                                  ? (studentSort.direction === 'ascending' ? <ChevronUp size={11} aria-hidden="true" /> : <ChevronDown size={11} aria-hidden="true" />)
+                                  : <ChevronsUpDown size={11} aria-hidden="true" style={{ opacity: 0.4 }} />}
+                              </button>
+                            </th>
                             {subjects.map(sub => (
                               <th key={sub.id} style={{ textAlign: 'center', padding: '8px 12px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                                 {sub.name}

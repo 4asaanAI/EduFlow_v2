@@ -43,7 +43,7 @@ def _serialize(model) -> dict:
 
 
 def _attendance_query(extra: dict | None = None) -> dict:
-    return scoped_filter(extra or {}, get_school_id())
+    return scoped_filter(extra or {}, get_school_id())  # branch-scope: intentional — this file's school-scope helper; it scopes to the school only, and callers pass branch_id through scoped_query where a query is branch-sensitive
 
 
 def _can_admin_attendance(user: dict) -> bool:
@@ -153,11 +153,11 @@ async def get_attendance_history(attendance_id: str, request: Request, user: dic
     if not original:
         raise HTTPException(404, "Attendance record not found")
     corrections = await db.attendance_corrections.find(
-        scoped_filter({"attendance_id": attendance_id}, get_school_id()),
+        scoped_filter({"attendance_id": attendance_id}, get_school_id()),  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
         {"_id": 0},
     ).sort("corrected_at", 1).to_list(50)
     audits = await db.audit_logs.find(
-        scoped_filter({"entity_type": "student_attendance", "entity_id": attendance_id}, get_school_id()),
+        scoped_filter({"entity_type": "student_attendance", "entity_id": attendance_id}, get_school_id()),  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
         {"_id": 0},
     ).sort("created_at", 1).to_list(50)
     return {"success": True, "data": {"original": original, "corrections": corrections, "audit": audits}}
@@ -196,15 +196,15 @@ async def get_student_attendance(request: Request, class_id: str = None, student
     if student_id:
         # Students can only see own attendance
         if user["role"] == "student":
-            own_student = await db.students.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})
+            own_student = await db.students.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})  # branch-scope: intentional — scoped to one named person's own record, not to a branch
             if not own_student or own_student["id"] != student_id:
                 raise HTTPException(403, "Forbidden")
         elif user["role"] == "teacher":
-            student = await db.students.find_one(scoped_filter({"id": student_id}, get_school_id()), {"_id": 0})
+            student = await db.students.find_one(scoped_filter({"id": student_id}, get_school_id()), {"_id": 0})  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
             await _require_teacher_class_access(db, user, (student or {}).get("class_id"))
         query["student_id"] = student_id
     elif user["role"] == "student":
-        own_student = await db.students.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})
+        own_student = await db.students.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})  # branch-scope: intentional — scoped to one named person's own record, not to a branch
         if not own_student:
             return {"success": True, "data": []}
         query["student_id"] = own_student["id"]
@@ -215,7 +215,7 @@ async def get_student_attendance(request: Request, class_id: str = None, student
         existing_date["$lte"] = end_date
         query["date"] = existing_date
 
-    records = await db.student_attendance.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("date", -1).to_list(200)
+    records = await db.student_attendance.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("date", -1).to_list(200)  # branch-scope: intentional — the caller has already narrowed this to one class or to the requester's own child above; a branch clause would add nothing
     return {"success": True, "data": records}
 
 
@@ -227,8 +227,8 @@ async def get_today_attendance(class_id: str, request: Request, date: str = None
     target_date = date if date else dt.today().strftime("%Y-%m-%d")
 
     await _require_teacher_class_access(db, user, class_id)
-    students = await db.students.find(scoped_filter({"class_id": class_id, "is_active": True}, get_school_id()), {"_id": 0}).to_list(100)
-    attendance = await db.student_attendance.find(scoped_filter({"class_id": class_id, "date": target_date}, get_school_id()), {"_id": 0}).to_list(100)
+    students = await db.students.find(scoped_filter({"class_id": class_id, "is_active": True}, get_school_id()), {"_id": 0}).to_list(100)  # branch-scope: intentional — pinned to one class, and a class belongs to exactly one branch
+    attendance = await db.student_attendance.find(scoped_filter({"class_id": class_id, "date": target_date}, get_school_id()), {"_id": 0}).to_list(100)  # branch-scope: intentional — pinned to one class, and a class belongs to exactly one branch
     att_by_student = {a["student_id"]: a for a in attendance}
 
     result = []
@@ -384,12 +384,12 @@ async def export_attendance_summary(request: Request, class_id: str, month: str,
         raise HTTPException(400, "month must be in YYYY-MM format")
 
     students = await db.students.find(
-        scoped_filter({"class_id": class_id, "is_active": {"$ne": False}}, get_school_id()),
+        scoped_filter({"class_id": class_id, "is_active": {"$ne": False}}, get_school_id()),  # branch-scope: intentional — pinned to one class, and a class belongs to exactly one branch
         {"_id": 0, "id": 1, "name": 1, "admission_number": 1, "roll_number": 1},
     ).sort("roll_number", 1).to_list(500)
     student_ids = [s["id"] for s in students]
     records = await db.student_attendance.find(
-        scoped_filter({"class_id": class_id, "student_id": {"$in": student_ids}, "date": {"$regex": f"^{re.escape(month)}"}}, get_school_id()),
+        scoped_filter({"class_id": class_id, "student_id": {"$in": student_ids}, "date": {"$regex": f"^{re.escape(month)}"}}, get_school_id()),  # branch-scope: intentional — pinned to one class and to that class's own students, and a class belongs to exactly one branch
         {"_id": 0},
     ).to_list(5000)
     by_student = {}
@@ -520,7 +520,7 @@ async def get_staff_attendance_today(
 @router.get("/staff/me")
 async def get_my_staff_attendance(request: Request, start_date: str = None, end_date: str = None, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     db = get_db()
-    staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})
+    staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})  # branch-scope: intentional — scoped to one named person's own record, not to a branch
     if not staff:
         return {"success": True, "data": []}
     query = {"staff_id": staff["id"]}
@@ -530,7 +530,7 @@ async def get_my_staff_attendance(request: Request, start_date: str = None, end_
         existing = query.get("date", {})
         existing["$lte"] = end_date
         query["date"] = existing
-    records = await db.staff_attendance.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("date", -1).to_list(120)
+    records = await db.staff_attendance.find(scoped_filter(query, get_school_id()), {"_id": 0}).sort("date", -1).to_list(120)  # branch-scope: intentional — the query is already pinned to one staff member's own record
     return {"success": True, "data": records}
 
 

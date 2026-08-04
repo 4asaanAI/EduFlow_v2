@@ -176,7 +176,7 @@ async def export_expenses(request: Request, format: str = "csv", user: dict = De
     # the Epic 10 audit: narrowing it would change what an accountant can see, which
     # is a permission decision and not this story's to make. No practical effect today
     # (the school has one branch), so it is logged as D-29 rather than fixed quietly.
-    expenses = await db.expenses.find(scoped_filter({}, get_school_id()), {"_id": 0}).sort("date", -1).to_list(1000)
+    expenses = await db.expenses.find(scoped_filter({}, get_school_id()), {"_id": 0}).sort("date", -1).to_list(1000)  # branch-scope: intentional — see the note directly above this line
     headers = ["Date", "Category", "Description", "Amount", "Vendor"]
     rows = [[e.get("date"), e.get("category"), e.get("description", ""), e.get("amount"), e.get("vendor", "")] for e in expenses]
     return make_export_response(rows, headers, f"expenses_{date.today()}", format, "Expenses")

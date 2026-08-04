@@ -8,6 +8,7 @@ import {
   Target, FileCheck, LifeBuoy, Wrench, Monitor, AlertTriangle,
   ScrollText, Shield, Trophy, Brain, HelpCircle, Compass,
 } from 'lucide-react';
+import { filterToolsForUser } from '../lib/toolPermissions';
 
 // ─── All tool definitions ──────────────────────────────────────────────────────
 const T = {
@@ -85,16 +86,20 @@ const TOOL_SETS = {
     'school-activities','automated-report','custom-form-builder','attendance-alerts',
     'query-section','audit-log','what-ive-learned',
   ],
+  // D-49: the accountant is one of the three profiles the server lets issue
+  // certificates and ID cards (owner decision 2026-08-04, decision 2).
   admin_accountant: [
     'student-database','fee-tracker','smart-fee-defaulter','fee-receipts',
+    'certificate-generator','id-card-generator',
     'custom-form-builder','raise-maintenance',
   ],
   admin_transport_head: [
     'student-database','transport-manager','asset-tracker','custom-form-builder','raise-maintenance',
   ],
+  // D-49: 'id-card-generator' removed — the server refuses a receptionist.
   admin_receptionist: [
     'student-database','enquiry-register','parent-message',
-    'student-transfer','id-card-generator','asset-tracker','incident-tracker',
+    'student-transfer','asset-tracker','incident-tracker',
     'custom-form-builder','raise-maintenance',
   ],
   admin_it_tech: [
@@ -156,14 +161,18 @@ const OWNER_TOOLS = [
 export { OWNER_TOOLS, TOOL_SETS };
 
 function getTools(user) {
+  // D-49: every branch below is filtered through the shared permission check. The
+  // admin branch falls back to the PRINCIPAL set for an unknown sub_category, which
+  // would otherwise hand Certificates and ID Cards to any admin the sets forgot.
+  const resolve = (ids) => filterToolsForUser(user, ids).map(id => T[id]).filter(Boolean);
   if (user.role === 'owner') {
-    return OWNER_TOOLS.map(id => T[id]).filter(Boolean);
+    return resolve(OWNER_TOOLS);
   }
   if (user.role === 'admin') {
     const key = `admin_${user.sub_category || 'principal'}`;
-    return (TOOL_SETS[key] || TOOL_SETS.admin_principal).map(id => T[id]).filter(Boolean);
+    return resolve(TOOL_SETS[key] || TOOL_SETS.admin_principal);
   }
-  return (TOOL_SETS[user.role] || []).map(id => T[id]).filter(Boolean);
+  return resolve(TOOL_SETS[user.role] || []);
 }
 
 function greeting() {

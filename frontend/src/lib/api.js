@@ -343,13 +343,13 @@ export function subscribeSSE(path, onEvent, { onReconnect, reconnect = true, max
 }
 
 // --- Students ---
-export async function getStudents(user, params = {}) {
+export async function getStudents(params = {}) {
   const qs = new URLSearchParams(params).toString();
   const res = await apiFetch(`${API}/students/?${qs}`, { headers: getHeaders() });
   return res.json();
 }
 
-export async function createStudent(user, data) {
+export async function createStudent(data) {
   const res = await apiFetch(`${API}/students/`, {
     method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
   });
@@ -536,13 +536,13 @@ export async function getAttendanceHistory(attendanceId) {
 }
 
 // --- Fees ---
-export async function getFeeTransactions(user, params = {}) {
+export async function getFeeTransactions(params = {}) {
   const qs = new URLSearchParams(params).toString();
   const res = await apiFetch(`${API}/fees/transactions?${qs}`, { headers: getHeaders() });
   return res.json();
 }
 
-export async function recordFeePayment(user, data, idempotencyKey) {
+export async function recordFeePayment(data, idempotencyKey) {
   const headers = getHeaders();
   if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
   const res = await apiFetch(`${API}/fees/transactions`, {

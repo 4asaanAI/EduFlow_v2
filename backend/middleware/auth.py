@@ -299,6 +299,35 @@ def require_owner_principal_or_management(request: Request):
     raise HTTPException(status_code=403, detail="Forbidden")
 
 
+def require_owner_principal_or_accountant(request: Request):
+    """Owner, admin+principal, or admin+accountant.
+
+    Semantics: owner role is allowed regardless of sub_category; admin is allowed
+    only when sub_category is 'principal' or 'accountant'. Nobody else.
+
+    OWNER DECISION 2026-08-04 (decision 2, closes D-49): the three profiles that may
+    put the school's name on an official document (certificates, ID cards) are the
+    school's owner, the principal, and the accountant.
+
+    NOTE for anyone tempted to "simplify" this into a single
+    ``require_access("owner", "admin", sub_category=(...))`` call: that would ALSO
+    apply the sub_category check to the owner, and the owner's sub_category is
+    'owner' — so the school's owner would be locked out of their own certificates.
+    The role check must short-circuit for owner BEFORE any sub_category test, which
+    is exactly what this helper does.
+    """
+    user = get_current_user(request)
+    if user.get("role") == "owner":
+        return user
+    if user.get("role") == "admin" and user.get("sub_category") in ("principal", "accountant"):
+        return user
+    logger.info(
+        "owner/principal/accountant gate failed: role=%s sub=%s path=%s",
+        user.get("role"), user.get("sub_category"), request.url.path,
+    )
+    raise HTTPException(status_code=403, detail="Forbidden")
+
+
 def require_exam_manager(request: Request):
     """Owner, admin+principal, admin+management, or teacher can manage exams."""
     user = get_current_user(request)

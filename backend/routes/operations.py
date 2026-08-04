@@ -186,7 +186,7 @@ async def create_leave_request(request: Request, user: dict = Depends(get_curren
         raise HTTPException(403, "Cannot submit leave on behalf of another user")
     if not body.get("date_range") or not body.get("leave_type") or not body.get("reason"):
         raise HTTPException(400, "date_range, leave_type, and reason are required")
-    staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})
+    staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})  # branch-scope: intentional — scoped to one named person's own record, not to a branch
     if not staff:
         raise HTTPException(404, "Staff profile not found")
     leave = {
@@ -230,7 +230,7 @@ async def decide_leave_request(leave_id: str, request: Request, user: dict = Dep
     body = await request.json()
     if body.get("status") not in ("approved", "rejected") or not body.get("reason"):
         raise HTTPException(400, "status approved/rejected and reason are required")
-    leave = await db.leave_requests.find_one(scoped_filter({"id": leave_id}, get_school_id()), {"_id": 0})
+    leave = await db.leave_requests.find_one(scoped_filter({"id": leave_id}, get_school_id()), {"_id": 0})  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
     if not leave:
         raise HTTPException(404, "Leave request not found")
     update = {
@@ -239,10 +239,10 @@ async def decide_leave_request(leave_id: str, request: Request, user: dict = Dep
         "decided_by": user["id"],
         "decided_at": datetime.now().isoformat(),
     }
-    await db.leave_requests.update_one(scoped_filter({"id": leave_id}, get_school_id()), {"$set": update})
+    await db.leave_requests.update_one(scoped_filter({"id": leave_id}, get_school_id()), {"$set": update})  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
     if body["status"] == "approved":
         await db.staff_availability.update_one(
-            scoped_filter({"staff_id": leave["staff_id"], "leave_request_id": leave_id}, get_school_id()),
+            scoped_filter({"staff_id": leave["staff_id"], "leave_request_id": leave_id}, get_school_id()),  # branch-scope: intentional — scoped to one named person's own record, not to a branch
             {"$set": {
                 "staff_id": leave["staff_id"],
                 "leave_request_id": leave_id,
@@ -263,7 +263,7 @@ async def decide_leave_request(leave_id: str, request: Request, user: dict = Dep
         source_id=leave_id,
         source_type="leave_request",
     )
-    updated = await db.leave_requests.find_one(scoped_filter({"id": leave_id}, get_school_id()), {"_id": 0})
+    updated = await db.leave_requests.find_one(scoped_filter({"id": leave_id}, get_school_id()), {"_id": 0})  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
     return {"success": True, "data": updated}
 
 
@@ -293,7 +293,7 @@ async def create_approval_request(request: Request, user: dict = Depends(require
     await db.approval_requests.insert_one(record)
     await _write_audit(db, "approval_submit", "approval_request", record["id"], user, {"created": {k: v for k, v in record.items() if k != "_id"}})
     # Notify by role: find actual user IDs rather than sending to literal role strings
-    owner_users = await db.users.find(scoped_filter({"role": "owner"}, get_school_id()), {"_id": 0, "id": 1}).to_list(5)
+    owner_users = await db.users.find(scoped_filter({"role": "owner"}, get_school_id()), {"_id": 0, "id": 1}).to_list(5)  # branch-scope: intentional — every owner in the school is notified, whichever branch they sit in
     await fan_out_notifications(
         db,
         [ou["id"] for ou in owner_users],
@@ -304,7 +304,7 @@ async def create_approval_request(request: Request, user: dict = Depends(require
         source_type="approval_request",
     )
     if body["routing"] == "owner_and_principal":
-        principal_users = await db.users.find(scoped_filter({"role": "admin", "sub_category": "principal"}, get_school_id()), {"_id": 0, "id": 1}).to_list(5)
+        principal_users = await db.users.find(scoped_filter({"role": "admin", "sub_category": "principal"}, get_school_id()), {"_id": 0, "id": 1}).to_list(5)  # branch-scope: intentional — every principal in the school is notified, whichever branch they sit in
         await fan_out_notifications(
             db,
             [pu["id"] for pu in principal_users],
@@ -1045,7 +1045,7 @@ async def save_study_plan(request: Request, user: dict = Depends(get_current_use
     body = await request.json()
     from datetime import datetime as dt
     await db.study_plans.update_one(
-        scoped_filter({"user_id": user["id"]}, get_school_id()),
+        scoped_filter({"user_id": user["id"]}, get_school_id()),  # branch-scope: intentional — scoped to one named person's own record, not to a branch
         {"$set": {**body, "user_id": user["id"], "updated_at": dt.now().isoformat()}},
         upsert=True
     )
@@ -1160,7 +1160,7 @@ async def list_announcements(request: Request, page: int = 1, limit: int = 20, u
             "is_draft": {"$ne": True},
             "$and": [audience_clause, status_clause],
         }
-    query = scoped_filter(query, get_school_id())
+    query = scoped_filter(query, get_school_id())  # branch-scope: intentional — announcements are published to the whole school; audience is decided by the audience_clause above, not by branch
     total = await db.announcements.count_documents(query)
     announcements = await db.announcements.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     return {"success": True, "data": announcements, "meta": {"page": page, "limit": limit, "total": total}}
@@ -1260,7 +1260,7 @@ async def list_complaints(request: Request, user: dict = Depends(require_role("a
     """List complaints; masks caller phone numbers for everyone except the owner (DPDP)."""
     db = get_db()
     # branch-scope: intentional — complaints are triaged school-wide by the front desk
-    rows = await db.complaints.find(scoped_filter({}, get_school_id()), {"_id": 0}).to_list(500)
+    rows = await db.complaints.find(scoped_filter({}, get_school_id()), {"_id": 0}).to_list(500)  # branch-scope: intentional — see the note directly above this line
     if user.get("role") != "owner":
         for row in rows:
             if row.get("on_behalf_of_phone"):
@@ -1273,7 +1273,7 @@ async def list_pending_announcements(request: Request, user: dict = Depends(requ
     """Story 7-47: principal-only list of announcements awaiting approval."""
     db = get_db()
     rows = (
-        await db.announcements.find(scoped_filter({"status": "pending_approval"}, get_school_id()), {"_id": 0})
+        await db.announcements.find(scoped_filter({"status": "pending_approval"}, get_school_id()), {"_id": 0})  # branch-scope: intentional — the principal's approval queue covers every announcement awaiting approval in the school
         .sort("created_at", -1)
         .to_list(200)
     )
@@ -1379,7 +1379,7 @@ async def list_overdue_visitors(request: Request, stale_hours: int = None, hours
 async def apply_leave(request: Request, user: dict = Depends(get_current_user)):
     db = get_db()
     body = await request.json()
-    staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()))
+    staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()))  # branch-scope: intentional — scoped to one named person's own record, not to a branch
     if not staff:
         # Create a minimal staff record for this teacher if not found
         from datetime import datetime as dt
@@ -1413,7 +1413,7 @@ async def apply_leave(request: Request, user: dict = Depends(get_current_user)):
 @router.get("/study-plan")
 async def get_study_plan(request: Request, user: dict = Depends(get_current_user)):
     db = get_db()
-    plan = await db.study_plans.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})
+    plan = await db.study_plans.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})  # branch-scope: intentional — scoped to one named person's own record, not to a branch
     if not plan:
         return {"success": True, "data": {"monday": "", "tuesday": "", "wednesday": "", "thursday": "", "friday": "", "saturday": ""}}
     return {"success": True, "data": plan}

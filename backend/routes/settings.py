@@ -51,7 +51,7 @@ def _settings_query(extra: dict | None = None) -> dict:
     # identity, its class list, its academic year) is shared by every branch. A
     # branch filter here would give each branch a different school. Annotated during
     # the Epic 4 audit; the behaviour is unchanged and pre-existing.
-    return scoped_filter(extra or {}, get_school_id())
+    return scoped_filter(extra or {}, get_school_id())  # branch-scope: intentional — this file's school-scope helper; it scopes to the school only, and callers pass branch_id through scoped_query where a query is branch-sensitive
 
 
 # --- Token Usage Tracking ---

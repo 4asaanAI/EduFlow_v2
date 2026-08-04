@@ -25,7 +25,7 @@ function useTeachingScope() {
   useEffect(() => {
     let alive = true;
     if (currentUser?.role !== 'teacher') { setScope({ is_teacher: false }); return undefined; }
-    apiFetch(`${API}/academics/my-teaching-scope`, { headers: h(currentUser) })
+    apiFetch(`${API}/academics/my-teaching-scope`, { headers: h() })
       .then(r => r.json())
       .then(r => { if (alive) setScope(r.success ? r.data : { is_teacher: false }); })
       .catch(() => { if (alive) setScope({ is_teacher: false }); });
@@ -81,7 +81,7 @@ export function ClassAttendanceMarker() {
   // class teacher of in the Academic Structure.
   useEffect(() => {
     if (!scopeReady(scope)) return;
-    getAllClasses(currentUser).then(r => {
+    getAllClasses().then(r => {
       if (r.success) {
         const list = filterClasses(r.data || [], scope, 'class_teacher');
         setClasses(list);
@@ -90,13 +90,13 @@ export function ClassAttendanceMarker() {
     });
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (selectedClass) { setLoading(true);
-    apiFetch(`${API}/attendance/student/today/${selectedClass}?date=${date}`, { headers: h(currentUser) })
+    apiFetch(`${API}/attendance/student/today/${selectedClass}?date=${date}`, { headers: h() })
       .then(r => r.json()).then(r => { if (r.success) setRecords(r.data || []); }).finally(() => setLoading(false)); 
   } }, [selectedClass, date, currentUser]);
 
   const handleSave = async () => {
     setSaving(true);
-    await bulkMarkAttendance({ class_id: selectedClass, date, records: records.map(s => ({ student_id: s.student_id, status: s.status })) }, currentUser);
+    await bulkMarkAttendance({ class_id: selectedClass, date, records: records.map(s => ({ student_id: s.student_id, status: s.status })) });
     setSaved(true); setSaving(false); setTimeout(() => setSaved(false), 3000);
   };
 
@@ -161,20 +161,20 @@ export function AssignmentGenerator() {
   const [error, setError] = useState('');
 
   const load = async () => {
-    const r = await apiFetch(`${API}/academics/assignments`, { headers: h(currentUser) }).then(r => r.json());
+    const r = await apiFetch(`${API}/academics/assignments`, { headers: h() }).then(r => r.json());
     if (r.success) setAssignments(r.data || []);
   };
 
   useEffect(() => {
     if (!scopeReady(scope)) return;
     Promise.all([
-      getAllClasses(currentUser).then(r => { if (r.success) setClasses(filterClasses(r.data || [], scope, 'all')); }),
+      getAllClasses().then(r => { if (r.success) setClasses(filterClasses(r.data || [], scope, 'all')); }),
       load(),
     ]).finally(() => setLoading(false));
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadSubjects = async (classId) => {
-    const r = await apiFetch(`${API}/academics/subjects?class_id=${classId}`, { headers: h(currentUser) }).then(r => r.json());
+    const r = await apiFetch(`${API}/academics/subjects?class_id=${classId}`, { headers: h() }).then(r => r.json());
     if (r.success) setSubjects(filterSubjects(r.data || [], scope));
   };
 
@@ -188,7 +188,7 @@ export function AssignmentGenerator() {
     try {
       const url = editingId ? `${API}/academics/assignments/${editingId}` : `${API}/academics/assignments`;
       const method = editingId ? 'PATCH' : 'POST';
-      const res = await apiFetch(url, { method, headers: h(currentUser), body: JSON.stringify(form) }).then(r => r.json());
+      const res = await apiFetch(url, { method, headers: h(), body: JSON.stringify(form) }).then(r => r.json());
       if (res.success) { setShowForm(false); setEditingId(null); await load(); }
       else setError(res.message || 'Failed');
     } catch (err) { setError(err.message); }
@@ -197,7 +197,7 @@ export function AssignmentGenerator() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this assignment?')) return;
-    await apiFetch(`${API}/academics/assignments/${id}`, { method: 'DELETE', headers: h(currentUser) });
+    await apiFetch(`${API}/academics/assignments/${id}`, { method: 'DELETE', headers: h() });
     await load();
   };
 
@@ -223,30 +223,22 @@ export function AssignmentGenerator() {
           </form>
         </div>
       )}
-      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr style={{ borderBottom: '1px solid var(--c-border)' }}>
-            {['Title', 'Class', 'Subject', 'Due Date', 'Actions'].map(h2 => <th key={h2} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase' }}>{h2}</th>)}
-          </tr></thead>
-          <tbody>
-            {assignments.length === 0 ? <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No assignments yet</td></tr>
-              : assignments.map((a, i) => (
-                <tr key={a.id} style={{ borderBottom: i < assignments.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-text)' }}>{a.title}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{a.class_name || 'N/A'}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{a.subject_name || 'N/A'}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{a.due_date || 'N/A'}</td>
-                  <td style={{ padding: '10px 14px' }}>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => openEdit(a)} style={btnStyle('var(--tool-hex-4f8ff7)')}>Edit</button>
-                      <button onClick={() => handleDelete(a.id)} style={btnStyle('var(--tool-hex-f87171)')}>Delete</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      </div>
+      {/* D-24: hand-rolled table moved onto the shared sortable DataTable. */}
+      <DataTable
+        tableId="teacher-assignments"
+        headers={['Title', 'Class', 'Subject', 'Due Date', 'Actions']}
+        rows={assignments.map(a => [
+          a.title,
+          a.class_name || 'N/A',
+          a.subject_name || 'N/A',
+          a.due_date || 'N/A',
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => openEdit(a)} style={btnStyle('var(--tool-hex-4f8ff7)')}>Edit</button>
+            <button onClick={() => handleDelete(a.id)} style={btnStyle('var(--tool-hex-f87171)')}>Delete</button>
+          </div>,
+        ])}
+        emptyMsg="No assignments yet"
+      />
     </ToolPage>
   );
 }
@@ -293,8 +285,8 @@ export function QuestionPaperCreator() {
     const load = async () => {
       try {
         const [subj, pap] = await Promise.all([
-          apiFetch(`${API}/academics/subjects`, { headers: h(currentUser) }).then(r => r.json()),
-          apiFetch(`${API}/academics/question-papers`, { headers: h(currentUser) }).then(r => r.json())
+          apiFetch(`${API}/academics/subjects`, { headers: h() }).then(r => r.json()),
+          apiFetch(`${API}/academics/question-papers`, { headers: h() }).then(r => r.json())
         ]);
         if (subj.success) setSubjects(subj.data || []);
         if (pap.success) setPapers(pap.data || []);
@@ -318,7 +310,7 @@ export function QuestionPaperCreator() {
       const subj = subjects.find(s => s.id === form.subject_id);
       const res = await apiFetch(`${API}/academics/question-papers/generate`, {
         method: 'POST',
-        headers: h(currentUser),
+        headers: h(),
         body: JSON.stringify({
           subject: subj?.name || form.title,
           chapters: form.chapters,
@@ -421,8 +413,8 @@ export function QuestionPaperCreator() {
     setEditedContent(content);
     setSaveFeedback('saving');
     try {
-      await apiFetch(`${API}/academics/question-papers/${generatedPaper.id}`, { method: 'PATCH', headers: h(currentUser), body: JSON.stringify({ title: generatedPaper.title, generated_content: content }) });
-      const r = await apiFetch(`${API}/academics/question-papers`, { headers: h(currentUser) }).then(r => r.json());
+      await apiFetch(`${API}/academics/question-papers/${generatedPaper.id}`, { method: 'PATCH', headers: h(), body: JSON.stringify({ title: generatedPaper.title, generated_content: content }) });
+      const r = await apiFetch(`${API}/academics/question-papers`, { headers: h() }).then(r => r.json());
       if (r.success) setPapers(r.data || []);
       setSaveFeedback('saved');
       setTimeout(() => setSaveFeedback(''), 2000);
@@ -512,39 +504,32 @@ export function QuestionPaperCreator() {
         </div>
       )}
       {papers.length > 0 ? (
-        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
-                {['Title', 'Subject', 'Created', 'Actions'].map(c => <th key={c} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase' }}>{c}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {papers.map((p, i) => (
-                <tr key={p.id || i} style={{ borderBottom: i < papers.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-text)' }}>{p.title}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{p.subject_id || 'N/A'}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{new Date(p.created_at).toLocaleDateString()}</td>
-                  <td style={{ padding: '10px 14px' }}>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={async () => {
-                        const res = await apiFetch(`${API}/academics/question-papers/${p.id}`, { headers: h(currentUser) }).then(r => r.json());
-                        const full = res.success ? res.data : p;
-                        const rawContent = full.generated_content || '';
-                        // Content may already be HTML (saved after editing) or markdown (fresh from AI)
-                        const html = rawContent.trim().startsWith('<') ? rawContent : markdownToHtml(rawContent);
-                        pendingContentRef.current = html;
-                        setGeneratedPaper(full);
-                        setEditedContent(html);
-                        setIsEditing(true);
-                      }} style={btnStyle('var(--tool-hex-4f8ff7)')}>Edit</button>
-                      <button onClick={async () => { if (!window.confirm('Delete this question paper?')) return; await apiFetch(`${API}/academics/question-papers/${p.id}`, { method: 'DELETE', headers: h(currentUser) }); const r = await apiFetch(`${API}/academics/question-papers`, { headers: h(currentUser) }).then(r => r.json()); if (r.success) setPapers(r.data || []); }} style={btnStyle('var(--tool-hex-f87171)')}>Delete</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div>
+          {/* D-24: hand-rolled table moved onto the shared sortable DataTable. */}
+          <DataTable
+            tableId="question-papers"
+            headers={['Title', 'Subject', 'Created', 'Actions']}
+            emptyMsg="No question papers yet"
+            rows={papers.map(p => [
+              p.title,
+              p.subject_id || 'N/A',
+              new Date(p.created_at).toLocaleDateString(),
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={async () => {
+                  const res = await apiFetch(`${API}/academics/question-papers/${p.id}`, { headers: h() }).then(r => r.json());
+                  const full = res.success ? res.data : p;
+                  const rawContent = full.generated_content || '';
+                  // Content may already be HTML (saved after editing) or markdown (fresh from AI)
+                  const html = rawContent.trim().startsWith('<') ? rawContent : markdownToHtml(rawContent);
+                  pendingContentRef.current = html;
+                  setGeneratedPaper(full);
+                  setEditedContent(html);
+                  setIsEditing(true);
+                }} style={btnStyle('var(--tool-hex-4f8ff7)')}>Edit</button>
+                <button onClick={async () => { if (!window.confirm('Delete this question paper?')) return; await apiFetch(`${API}/academics/question-papers/${p.id}`, { method: 'DELETE', headers: h() }); const r = await apiFetch(`${API}/academics/question-papers`, { headers: h() }).then(r => r.json()); if (r.success) setPapers(r.data || []); }} style={btnStyle('var(--tool-hex-f87171)')}>Delete</button>
+              </div>,
+            ])}
+          />
         </div>
       ) : (
         <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, fontSize: 12 }}>
@@ -570,11 +555,11 @@ export function LeaveApplication() {
     setLoading(true);
     try {
       // Use my-leaves endpoint instead of pending (which requires owner/admin)
-      const r = await apiFetch(`${API}/staff/leaves/my`, { headers: h(currentUser) }).then(r => r.json());
+      const r = await apiFetch(`${API}/staff/leaves/my`, { headers: h() }).then(r => r.json());
       if (r.success) setMyLeaves(r.data || []);
     } catch {}
     setLoading(false);
-  }, [currentUser]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -587,7 +572,7 @@ export function LeaveApplication() {
     setSubmitting(true);
     setError('');
     try {
-      const r = await apiFetch(`${API}/ops/leaves`, { method: 'POST', headers: h(currentUser), body: JSON.stringify(form) }).then(r => r.json());
+      const r = await apiFetch(`${API}/ops/leaves`, { method: 'POST', headers: h(), body: JSON.stringify(form) }).then(r => r.json());
       if (r.success) {
         setSubmitted(true);
         setForm({ leave_type: 'casual', start_date: '', end_date: '', reason: '' });
@@ -650,15 +635,15 @@ export function LessonPlanGenerator() {
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
 
   const load = async () => {
-    const r = await apiFetch(`${API}/academics/lesson-plans`, { headers: h(currentUser) }).then(r => r.json());
+    const r = await apiFetch(`${API}/academics/lesson-plans`, { headers: h() }).then(r => r.json());
     if (r.success) setPlans(r.data || []);
   };
 
   useEffect(() => {
     if (!scopeReady(scope)) return;
     Promise.all([
-      getAllClasses(currentUser).then(r => { if (r.success) setClasses(filterClasses(r.data || [], scope, 'all')); }),
-      apiFetch(`${API}/academics/subjects`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setSubjects(filterSubjects(r.data || [], scope)); }),
+      getAllClasses().then(r => { if (r.success) setClasses(filterClasses(r.data || [], scope, 'all')); }),
+      apiFetch(`${API}/academics/subjects`, { headers: h() }).then(r => r.json()).then(r => { if (r.success) setSubjects(filterSubjects(r.data || [], scope)); }),
       load(),
     ]).finally(() => setLoading(false));
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -674,7 +659,7 @@ export function LessonPlanGenerator() {
       const body = { ...form, content: { description: form.content, topics: [], objectives: [] } };
       const url = editingId ? `${API}/academics/lesson-plans/${editingId}` : `${API}/academics/lesson-plans`;
       const method = editingId ? 'PATCH' : 'POST';
-      const r = await apiFetch(url, { method, headers: h(currentUser), body: JSON.stringify(body) }).then(r => r.json());
+      const r = await apiFetch(url, { method, headers: h(), body: JSON.stringify(body) }).then(r => r.json());
       if (r.success) { setShowForm(false); setEditingId(null); setForm({ class_id: '', subject_id: '', week: '', chapter: '', content: '' }); await load(); }
     } catch {}
     setSaving(false);
@@ -682,7 +667,7 @@ export function LessonPlanGenerator() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this lesson plan?')) return;
-    await apiFetch(`${API}/academics/lesson-plans/${id}`, { method: 'DELETE', headers: h(currentUser) });
+    await apiFetch(`${API}/academics/lesson-plans/${id}`, { method: 'DELETE', headers: h() });
     await load();
   };
 
@@ -707,34 +692,26 @@ export function LessonPlanGenerator() {
           </form>
         </div>
       )}
-      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr style={{ borderBottom: '1px solid var(--c-border)' }}>
-            {['Chapter', 'Subject', 'Class', 'Week', 'Actions'].map(c => <th key={c} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase' }}>{c}</th>)}
-          </tr></thead>
-          <tbody>
-            {plans.length === 0 ? <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No lesson plans yet</td></tr>
-              : plans.map((p, i) => {
-                const subj = subjects.find(s => s.id === p.subject_id);
-                const cls = classes.find(c => c.id === p.class_id);
-                return (
-                  <tr key={p.id} style={{ borderBottom: i < plans.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-text)' }}>{p.chapter}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{subj?.name || 'N/A'}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{cls ? `${cls.name}-${cls.section}` : 'N/A'}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{p.week || p.created_at?.slice(0, 10) || 'N/A'}</td>
-                    <td style={{ padding: '10px 14px' }}>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={() => openEdit(p)} style={btnStyle('var(--tool-hex-4f8ff7)')}>Edit</button>
-                        <button onClick={() => handleDelete(p.id)} style={btnStyle('var(--tool-hex-f87171)')}>Delete</button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-          </tbody>
-        </table>
-      </div>
+      {/* D-24: hand-rolled table moved onto the shared sortable DataTable. */}
+      <DataTable
+        tableId="lesson-plans"
+        headers={['Chapter', 'Subject', 'Class', 'Week', 'Actions']}
+        emptyMsg="No lesson plans yet"
+        rows={plans.map(p => {
+          const subj = subjects.find(s => s.id === p.subject_id);
+          const cls = classes.find(c => c.id === p.class_id);
+          return [
+            p.chapter,
+            subj?.name || 'N/A',
+            cls ? `${cls.name}-${cls.section}` : 'N/A',
+            p.week || p.created_at?.slice(0, 10) || 'N/A',
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => openEdit(p)} style={btnStyle('var(--tool-hex-4f8ff7)')}>Edit</button>
+            <button onClick={() => handleDelete(p.id)} style={btnStyle('var(--tool-hex-f87171)')}>Delete</button>
+          </div>,
+          ];
+        })}
+      />
     </ToolPage>
   );
 }
@@ -752,13 +729,13 @@ export function WorksheetCreator() {
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
 
   const load = useCallback(async () => {
-    const r = await apiFetch(`${API}/academics/worksheets`, { headers: h(currentUser) }).then(r => r.json()).catch(() => ({ success: false }));
+    const r = await apiFetch(`${API}/academics/worksheets`, { headers: h() }).then(r => r.json()).catch(() => ({ success: false }));
     if (r.success) setWorksheets(r.data || []);
-  }, [currentUser]);
+  }, []);
 
   useEffect(() => {
     Promise.all([
-      apiFetch(`${API}/academics/subjects`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setSubjects(r.data || []); }),
+      apiFetch(`${API}/academics/subjects`, { headers: h() }).then(r => r.json()).then(r => { if (r.success) setSubjects(r.data || []); }),
       load(),
     ]).finally(() => setLoading(false));
   }, [currentUser, load]);
@@ -771,7 +748,7 @@ export function WorksheetCreator() {
     setSaving(true);
     const url = editingId ? `${API}/academics/worksheets/${editingId}` : `${API}/academics/worksheets`;
     const method = editingId ? 'PATCH' : 'POST';
-    await apiFetch(url, { method, headers: h(currentUser), body: JSON.stringify(form) }).catch(() => {});
+    await apiFetch(url, { method, headers: h(), body: JSON.stringify(form) }).catch(() => {});
     setShowForm(false); setEditingId(null);
     await load();
     setSaving(false);
@@ -779,7 +756,7 @@ export function WorksheetCreator() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this worksheet?')) return;
-    await apiFetch(`${API}/academics/worksheets/${id}`, { method: 'DELETE', headers: h(currentUser) });
+    await apiFetch(`${API}/academics/worksheets/${id}`, { method: 'DELETE', headers: h() });
     await load();
   };
 
@@ -803,30 +780,22 @@ export function WorksheetCreator() {
           </form>
         </div>
       )}
-      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr style={{ borderBottom: '1px solid var(--c-border)' }}>
-            {['Topic', 'Subject', 'Type', 'Created', 'Actions'].map(c => <th key={c} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase' }}>{c}</th>)}
-          </tr></thead>
-          <tbody>
-            {worksheets.length === 0 ? <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No worksheets yet</td></tr>
-              : worksheets.map((w, i) => (
-                <tr key={w.id} style={{ borderBottom: i < worksheets.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-text)' }}>{w.topic}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{subjects.find(s => s.id === w.subject_id)?.name || 'N/A'}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{w.type}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{w.created_at?.slice(0, 10)}</td>
-                  <td style={{ padding: '10px 14px' }}>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => openEdit(w)} style={btnStyle('var(--tool-hex-4f8ff7)')}>Edit</button>
-                      <button onClick={() => handleDelete(w.id)} style={btnStyle('var(--tool-hex-f87171)')}>Delete</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      </div>
+      {/* D-24: hand-rolled table moved onto the shared sortable DataTable. */}
+      <DataTable
+        tableId="worksheets"
+        headers={['Topic', 'Subject', 'Type', 'Created', 'Actions']}
+        emptyMsg="No worksheets yet"
+        rows={worksheets.map(w => [
+          w.topic,
+          subjects.find(s => s.id === w.subject_id)?.name || 'N/A',
+          w.type,
+          w.created_at?.slice(0, 10) || '',
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => openEdit(w)} style={btnStyle('var(--tool-hex-4f8ff7)')}>Edit</button>
+            <button onClick={() => handleDelete(w.id)} style={btnStyle('var(--tool-hex-f87171)')}>Delete</button>
+          </div>,
+        ])}
+      />
     </ToolPage>
   );
 }
@@ -836,12 +805,20 @@ export function SubstitutionViewer() {
   const [subs, setSubs] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // D-63: read the id through `?.` like every other component on this screen does.
+  // Without it, rendering before the session has resolved throws and takes the whole
+  // screen down with a React error that says nothing about substitutions.
+  const userId = currentUser?.id;
+
   useEffect(() => {
+    // No signed-in user yet: stay on the loading state rather than asking the server
+    // for `?user_id=undefined`, which would come back empty and read as "no changes".
+    if (!userId) return;
     // Fetch timetable changes / substitutions
-    apiFetch(`${API}/academics/substitutions?user_id=${currentUser.id}`, { headers: h(currentUser) })
+    apiFetch(`${API}/academics/substitutions?user_id=${userId}`, { headers: h() })
       .then(r => r.json()).then(r => { if (r.success) setSubs(r.data || []); })
       .catch(() => {}).finally(() => setLoading(false));
-  }, [currentUser]);
+  }, [userId]);
 
   return (
     <ToolPage title="Substitution Viewer" subtitle="View your schedule changes" loading={loading}>
@@ -869,7 +846,7 @@ export function ClassPerformanceAnalytics() {
 
   useEffect(() => {
     if (!scopeReady(scope)) return;
-    getAllClasses(currentUser).then(r => { if (r.success) setClasses(filterClasses(r.data || [], scope, 'all')); }).finally(() => setLoading(false));
+    getAllClasses().then(r => { if (r.success) setClasses(filterClasses(r.data || [], scope, 'all')); }).finally(() => setLoading(false));
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleClassChange = async (classId) => {
@@ -880,8 +857,8 @@ export function ClassPerformanceAnalytics() {
     setLoadingResults(true);
     try {
       const [stuRes, resRes] = await Promise.all([
-        apiFetch(`${API}/students?class_id=${classId}`, { headers: h(currentUser) }).then(r => r.json()),
-        apiFetch(`${API}/academics/results?class_id=${classId}`, { headers: h(currentUser) }).then(r => r.json()),
+        apiFetch(`${API}/students?class_id=${classId}`, { headers: h() }).then(r => r.json()),
+        apiFetch(`${API}/academics/results?class_id=${classId}`, { headers: h() }).then(r => r.json()),
       ]);
       if (stuRes.success) setStudents(stuRes.data || []);
       if (resRes.success) setResults(resRes.data || []);
@@ -946,15 +923,15 @@ export function PtmNotes() {
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
 
   const load = async () => {
-    const r = await apiFetch(`${API}/academics/ptm-notes`, { headers: h(currentUser) }).then(r => r.json());
+    const r = await apiFetch(`${API}/academics/ptm-notes`, { headers: h() }).then(r => r.json());
     if (r.success) setNotes(r.data || []);
   };
 
   useEffect(() => {
     if (!scopeReady(scope)) return;
     Promise.all([
-      getAllClasses(currentUser).then(r => { if (r.success) setClasses(filterClasses(r.data || [], scope, 'all')); }),
-      getStudents(currentUser).then(r => { if (r.success) setStudents(r.data || []); }),
+      getAllClasses().then(r => { if (r.success) setClasses(filterClasses(r.data || [], scope, 'all')); }),
+      getStudents().then(r => { if (r.success) setStudents(r.data || []); }),
       load(),
     ]).finally(() => setLoading(false));
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -979,7 +956,7 @@ export function PtmNotes() {
     setSaving(true);
     const url = editingId ? `${API}/academics/ptm-notes/${editingId}` : `${API}/academics/ptm-notes`;
     const method = editingId ? 'PATCH' : 'POST';
-    await apiFetch(url, { method, headers: h(currentUser), body: JSON.stringify({ student_id: form.student_id, notes: form.notes }) });
+    await apiFetch(url, { method, headers: h(), body: JSON.stringify({ student_id: form.student_id, notes: form.notes }) });
     setShowForm(false); setEditingId(null); setForm({ class_id: '', student_id: '', notes: '' }); setFilteredStudents([]);
     await load();
     setSaving(false);
@@ -987,7 +964,7 @@ export function PtmNotes() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this PTM note?')) return;
-    await apiFetch(`${API}/academics/ptm-notes/${id}`, { method: 'DELETE', headers: h(currentUser) });
+    await apiFetch(`${API}/academics/ptm-notes/${id}`, { method: 'DELETE', headers: h() });
     await load();
   };
 
@@ -1010,29 +987,21 @@ export function PtmNotes() {
           </form>
         </div>
       )}
-      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr style={{ borderBottom: '1px solid var(--c-border)' }}>
-            {['Student', 'Notes', 'Date', 'Actions'].map(c => <th key={c} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase' }}>{c}</th>)}
-          </tr></thead>
-          <tbody>
-            {notes.length === 0 ? <tr><td colSpan={4} style={{ padding: 20, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No PTM notes yet</td></tr>
-              : notes.map((n, i) => (
-                <tr key={n.id} style={{ borderBottom: i < notes.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-text)' }}>{n.student_name}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{(n.notes?.slice(0, 60) || '') + (n.notes?.length > 60 ? '...' : '')}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{n.created_at?.slice(0, 10)}</td>
-                  <td style={{ padding: '10px 14px' }}>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => openEdit(n)} style={btnStyle('var(--tool-hex-4f8ff7)')}>Edit</button>
-                      <button onClick={() => handleDelete(n.id)} style={btnStyle('var(--tool-hex-f87171)')}>Delete</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      </div>
+      {/* D-24: hand-rolled table moved onto the shared sortable DataTable. */}
+      <DataTable
+        tableId="ptm-notes"
+        headers={['Student', 'Notes', 'Date', 'Actions']}
+        emptyMsg="No PTM notes yet"
+        rows={notes.map(n => [
+          n.student_name,
+          (n.notes?.slice(0, 60) || '') + (n.notes?.length > 60 ? '...' : ''),
+          n.created_at?.slice(0, 10) || '',
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => openEdit(n)} style={btnStyle('var(--tool-hex-4f8ff7)')}>Edit</button>
+            <button onClick={() => handleDelete(n.id)} style={btnStyle('var(--tool-hex-f87171)')}>Delete</button>
+          </div>,
+        ])}
+      />
     </ToolPage>
   );
 }
@@ -1051,15 +1020,15 @@ export function CurriculumTracker() {
   const statusColors = { not_started: 'gray', in_progress: 'yellow', completed: 'green', revised: 'blue' };
 
   const load = async () => {
-    const r = await apiFetch(`${API}/academics/curriculum`, { headers: h(currentUser) }).then(r => r.json());
+    const r = await apiFetch(`${API}/academics/curriculum`, { headers: h() }).then(r => r.json());
     if (r.success) setProgress(r.data || []);
   };
 
   useEffect(() => {
     if (!scopeReady(scope)) return;
     Promise.all([
-      getAllClasses(currentUser).then(r => { if (r.success) setClasses(filterClasses(r.data || [], scope, 'all')); }),
-      apiFetch(`${API}/academics/subjects`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setSubjects(filterSubjects(r.data || [], scope)); }),
+      getAllClasses().then(r => { if (r.success) setClasses(filterClasses(r.data || [], scope, 'all')); }),
+      apiFetch(`${API}/academics/subjects`, { headers: h() }).then(r => r.json()).then(r => { if (r.success) setSubjects(filterSubjects(r.data || [], scope)); }),
       load(),
     ]).finally(() => setLoading(false));
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1073,7 +1042,7 @@ export function CurriculumTracker() {
     setSaving(true);
     const url = editingId ? `${API}/academics/curriculum/${editingId}` : `${API}/academics/curriculum`;
     const method = editingId ? 'PATCH' : 'POST';
-    await apiFetch(url, { method, headers: h(currentUser), body: JSON.stringify(form) });
+    await apiFetch(url, { method, headers: h(), body: JSON.stringify(form) });
     setShowForm(false); setEditingId(null); setForm({ class_id: '', subject_id: '', topic: '', status: 'not_started' });
     await load();
     setSaving(false);
@@ -1081,7 +1050,7 @@ export function CurriculumTracker() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this curriculum entry?')) return;
-    await apiFetch(`${API}/academics/curriculum/${id}`, { method: 'DELETE', headers: h(currentUser) });
+    await apiFetch(`${API}/academics/curriculum/${id}`, { method: 'DELETE', headers: h() });
     await load();
   };
 
@@ -1105,35 +1074,27 @@ export function CurriculumTracker() {
           </form>
         </div>
       )}
-      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr style={{ borderBottom: '1px solid var(--c-border)' }}>
-            {['Topic', 'Class', 'Subject', 'Status', 'Updated', 'Actions'].map(c => <th key={c} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase' }}>{c}</th>)}
-          </tr></thead>
-          <tbody>
-            {progress.length === 0 ? <tr><td colSpan={6} style={{ padding: 20, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No curriculum entries yet</td></tr>
-              : progress.map((p, i) => {
-                const cls = classes.find(c => c.id === p.class_id);
-                const subj = subjects.find(s => s.id === p.subject_id);
-                return (
-                  <tr key={p.id} style={{ borderBottom: i < progress.length - 1 ? '1px solid var(--c-border)' : 'none' }}>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-text)' }}>{p.topic}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{cls ? `${cls.name}-${cls.section}` : 'N/A'}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{subj?.name || 'N/A'}</td>
-                    <td style={{ padding: '10px 14px' }}><Badge text={p.status?.replace('_', ' ')} color={statusColors[p.status] || 'gray'} /></td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{p.updated_at?.slice(0, 10)}</td>
-                    <td style={{ padding: '10px 14px' }}>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={() => openEdit(p)} style={btnStyle('var(--tool-hex-4f8ff7)')}>Edit</button>
-                        <button onClick={() => handleDelete(p.id)} style={btnStyle('var(--tool-hex-f87171)')}>Delete</button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-          </tbody>
-        </table>
-      </div>
+      {/* D-24: hand-rolled table moved onto the shared sortable DataTable. */}
+      <DataTable
+        tableId="curriculum-progress"
+        headers={['Topic', 'Class', 'Subject', 'Status', 'Updated', 'Actions']}
+        emptyMsg="No curriculum entries yet"
+        rows={progress.map(p => {
+          const cls = classes.find(c => c.id === p.class_id);
+          const subj = subjects.find(s => s.id === p.subject_id);
+          return [
+            p.topic,
+            cls ? `${cls.name}-${cls.section}` : 'N/A',
+            subj?.name || 'N/A',
+            <Badge text={p.status?.replace('_', ' ')} color={statusColors[p.status] || 'gray'} />,
+            p.updated_at?.slice(0, 10) || '',
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => openEdit(p)} style={btnStyle('var(--tool-hex-4f8ff7)')}>Edit</button>
+            <button onClick={() => handleDelete(p.id)} style={btnStyle('var(--tool-hex-f87171)')}>Delete</button>
+          </div>,
+          ];
+        })}
+      />
     </ToolPage>
   );
 }

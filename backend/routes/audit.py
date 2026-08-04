@@ -84,7 +84,7 @@ async def list_audit_log(
         ]
 
     skip = (page - 1) * limit
-    scoped = scoped_filter(query, get_school_id())
+    scoped = scoped_filter(query, get_school_id())  # branch-scope: intentional — the audit trail is a school-wide record; role-based narrowing is applied to `query` above, not here
     async with TimedQuery(collection_name="audit_logs", operation="count_documents", query_shape="audit_log_list"):
         total = await db.audit_logs.count_documents(scoped)
     async with TimedQuery(collection_name="audit_logs", operation="find", query_shape="audit_log_list"):
@@ -122,7 +122,7 @@ async def get_record_history(
             query["branch_id"] = user.get("branch_id")
     elif is_it_tech:
         query["collection"] = {"$nin": list(FINANCIAL_COLLECTIONS)}
-    scoped = scoped_filter(query, get_school_id())
+    scoped = scoped_filter(query, get_school_id())  # branch-scope: intentional — a principal is already pinned to their own branch_id a few lines above; owners and IT read the school
     skip = (page - 1) * limit
     async with TimedQuery(collection_name="audit_logs", operation="count_documents", query_shape="record_history"):
         total = await db.audit_logs.count_documents(scoped)

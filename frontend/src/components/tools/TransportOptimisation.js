@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { MapPin, Navigation, AlertTriangle, CheckCircle, Search, RefreshCw, Zap } from 'lucide-react';
 import {
   geocodeAddress,
@@ -9,6 +9,7 @@ import {
   updateStudent,
   getStudents,
 } from '@/lib/api';
+import { useColumnSort, SortableHeaderRow } from './ToolPage';
 
 const TABS = [
   { id: 'geocode', label: 'Geocode Address', icon: MapPin, color: '#4f8ff7' },
@@ -81,7 +82,7 @@ const tdStyle = { padding: '10px 14px', fontSize: 12, color: 'var(--c-text)', bo
 // Resolve admission number → student_id
 async function resolveAdmissionNumber(admNo) {
   try {
-    const res = await getStudents(null, { search: admNo.trim(), limit: 5 });
+    const res = await getStudents({ search: admNo.trim(), limit: 5 });
     if (!res.success || !res.data?.length) return null;
     const exact = res.data.find(s => s.admission_number === admNo.trim());
     return (exact || res.data[0]);
@@ -371,6 +372,21 @@ function ClusterAnalysisTab() {
   };
 
   const suboptimal = Array.isArray(result?.data) ? result.data : [];
+
+  // D-24: this table was hand-rolled with no sorting. It keeps its own markup (each row
+  // carries a Reassign control) and takes its sorting from the shared hook. Ordering by
+  // Saving is the point of the screen — biggest wins first.
+  const suboptimalSortAccessors = React.useMemo(() => [
+    (r) => r.student_name || '',
+    (r) => r.admission_number || '',
+    (r) => r.current_zone_name || '',
+    (r) => Number(r.current_distance_km) || 0,
+    (r) => r.nearest_zone_name || '',
+    (r) => Number(r.nearest_distance_km) || 0,
+    (r) => Number(r.savings_km) || 0,
+    null,
+  ], []);
+  const suboptimalSort = useColumnSort(suboptimal, suboptimalSortAccessors);
   const meta = result?.meta || {};
 
   return (
@@ -410,14 +426,16 @@ function ClusterAnalysisTab() {
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 10, overflow: 'hidden' }}>
             <thead>
-              <tr>
-                {['Student', 'Adm. No.', 'Current Zone', 'Dist.', 'Nearest Zone', 'Dist.', 'Saving', 'Action'].map(h => (
-                  <th key={h} style={thStyle}>{h}</th>
-                ))}
-              </tr>
+              <SortableHeaderRow
+                tableId="transport-suboptimal"
+                headers={['Student', 'Adm. No.', 'Current Zone', 'Dist.', 'Nearest Zone', 'Dist.', 'Saving', 'Action']}
+                accessors={suboptimalSortAccessors}
+                sort={suboptimalSort}
+                thStyle={thStyle}
+              />
             </thead>
             <tbody>
-              {suboptimal.map(row => (
+              {suboptimalSort.items.map(row => (
                 <tr key={row.student_id} style={{ transition: 'background 0.15s' }}
                   onMouseEnter={e => e.currentTarget.style.background = 'var(--c-deep)'}
                   onMouseLeave={e => e.currentTarget.style.background = ''}>

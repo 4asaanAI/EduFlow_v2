@@ -7,6 +7,7 @@ import {
   ScrollText, Settings, Shield, Target, Trash2, Truck, Trophy, Users, UserCheck, UserPlus,
   Wrench, X,
 } from 'lucide-react';
+import { canUseTool } from '../lib/toolPermissions';
 
 const ALL_TOOLS = [
   { id: 'school-pulse',           name: 'School Pulse',          subtitle: "Today's overview",         icon: Activity,      roles: ['owner'] },
@@ -35,6 +36,8 @@ const ALL_TOOLS = [
   { id: 'school-settings',        name: 'School Settings',       subtitle: 'Identity & profile',       icon: Settings,      roles: ['owner'] },
   { id: 'school-activities',      name: 'School Activities',     subtitle: 'Houses, sports, awards',   icon: Trophy,        roles: ['owner','admin'] },
   { id: 'fee-receipts',           name: 'Fee Receipts',          subtitle: 'PDF & export',             icon: FileText,      roles: ['owner','admin'] },
+  // D-49: server-restricted to owner + principal + accountant. `roles` alone cannot
+  // say that, so the sub_category half is enforced by canUseTool() in the filter below.
   { id: 'certificate-generator',  name: 'Certificates',          subtitle: 'TC, Bonafide, etc.',       icon: Award,         roles: ['owner','admin'] },
   { id: 'principal-daily',        name: 'Principal Daily',       subtitle: 'Absences & subs',          icon: CalendarDays,  roles: ['admin'] },
   { id: 'asset-tracker',          name: 'Asset Tracker',         subtitle: 'Inventory & items',        icon: Package,       roles: ['owner','admin'] },
@@ -45,7 +48,10 @@ const ALL_TOOLS = [
   { id: 'fee-sync',               name: 'Fee Sync',              subtitle: 'External API conflicts',   icon: RefreshCw,     roles: ['owner'] },
   { id: 'parent-message',         name: 'Parent Messages',       subtitle: 'Compose & send',           icon: MessageSquare, roles: ['owner','admin'] },
   { id: 'circular-sender',        name: 'Circulars',             subtitle: 'Notices & messages',       icon: Megaphone,     roles: ['admin'] },
-  { id: 'id-card-generator',      name: 'ID Cards',              subtitle: 'Generate & print',         icon: Printer,       roles: ['admin'] },
+  // D-49: same restricted pair as Certificates above. 'owner' added because the
+  // school's owner may issue ID cards on the server and ⌘K was the one menu that
+  // never offered it to them.
+  { id: 'id-card-generator',      name: 'ID Cards',              subtitle: 'Generate & print',         icon: Printer,       roles: ['owner','admin'] },
   { id: 'financial-reports',      name: 'Financial Reports',     subtitle: 'Revenue & expenses',       icon: FileText,      roles: ['owner'] },
   { id: 'staff-leave-manager',    name: 'Leave Manager',         subtitle: 'Approve & reject',         icon: CalendarDays,  roles: ['owner','admin'] },
   { id: 'staff-performance',      name: 'Staff Performance',     subtitle: 'Overview & analytics',     icon: BarChart2,     roles: ['owner','admin'] },
@@ -80,6 +86,10 @@ const ALL_TOOLS = [
   { id: 'ptm-summary-viewer',  name: 'PTM Summary',       subtitle: 'Teacher notes',             icon: MessageSquare,  roles: ['student'] },
 ];
 
+// Exported for tests — see the note in Sidebar.js; ⌘K is the third menu that has to
+// agree with the server about the document-issuing tools (D-49).
+export { ALL_TOOLS };
+
 function scoreMatch(tool, query) {
   const q = query.toLowerCase();
   const name = tool.name.toLowerCase();
@@ -100,6 +110,9 @@ export default function CommandPalette({ onSelectTool, onClose }) {
 
   const filtered = ALL_TOOLS
     .filter(t => t.roles.includes(currentUser.role))
+    // D-49: ⌘K used to filter on role alone, so every admin sub_category saw
+    // Certificates and ID Cards and was refused on pressing the button.
+    .filter(t => canUseTool(currentUser, t.id))
     .map(t => ({ ...t, score: query ? scoreMatch(t, query) : 50 }))
     .filter(t => !query || t.score > 0)
     .sort((a, b) => b.score - a.score)

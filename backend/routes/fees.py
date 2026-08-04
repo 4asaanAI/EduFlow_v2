@@ -66,7 +66,7 @@ def _serialize(model) -> dict:
 
 
 def _fee_query(extra: dict | None = None) -> dict:
-    return scoped_filter(extra or {}, get_school_id())
+    return scoped_filter(extra or {}, get_school_id())  # branch-scope: intentional — this file's school-scope helper; it scopes to the school only, and callers pass branch_id through scoped_query where a query is branch-sensitive
 
 
 def _parse_date(value: str | None):

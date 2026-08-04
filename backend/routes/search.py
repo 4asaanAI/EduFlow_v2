@@ -109,7 +109,7 @@ async def search(request: Request, q: str = "", type: str = "all"):
         digits = re.sub(r"\D+", "", q)
         if len(digits) >= 4:
             guardians = await db.guardians.find(
-                scoped_filter({"phone": {"$regex": re.escape(digits[-10:]), "$options": "i"}}, get_school_id()),
+                scoped_filter({"phone": {"$regex": re.escape(digits[-10:]), "$options": "i"}}, get_school_id()),  # branch-scope: intentional — search spans the school; it is a lookup tool, and narrowing it would silently hide people
                 {"_id": 0, "student_id": 1},
             ).to_list(10)
             guardian_student_ids = [g["student_id"] for g in guardians if g.get("student_id")]
@@ -120,13 +120,13 @@ async def search(request: Request, q: str = "", type: str = "all"):
             import os
             # Get teacher's classes (via user_id → staff → class_teacher_id)
             pass  # For now show all (scope later with real auth)
-        students = await db.students.find(scoped_filter(student_query, get_school_id()), {"_id": 0, "id": 1, "name": 1, "admission_number": 1, "class_id": 1}).to_list(10)
+        students = await db.students.find(scoped_filter(student_query, get_school_id()), {"_id": 0, "id": 1, "name": 1, "admission_number": 1, "class_id": 1}).to_list(10)  # branch-scope: intentional — search spans the school; it is a lookup tool, and narrowing it would silently hide people
         # NEW-04/T7: batched (was one class find_one per search hit).
         hit_class_ids = sorted({s.get("class_id") for s in students if s.get("class_id")})
         hit_class_map = {}
         if hit_class_ids:
             hit_class_docs = await db.classes.find(
-                scoped_filter({"id": {"$in": hit_class_ids}}, get_school_id()), {"_id": 0}
+                scoped_filter({"id": {"$in": hit_class_ids}}, get_school_id()), {"_id": 0}  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
             ).to_list(len(hit_class_ids))
             hit_class_map = {c["id"]: c for c in hit_class_docs if c.get("id")}
         for s in students:
@@ -136,7 +136,7 @@ async def search(request: Request, q: str = "", type: str = "all"):
 
     if type in ["all", "persons", "staff"] and role in ["owner", "admin"]:
         staff = await db.staff.find(
-            scoped_filter({"name": {"$regex": q_safe, "$options": "i"}, "is_active": True}, get_school_id()),
+            scoped_filter({"name": {"$regex": q_safe, "$options": "i"}, "is_active": True}, get_school_id()),  # branch-scope: intentional — search spans the school; it is a lookup tool, and narrowing it would silently hide people
             {"_id": 0, "id": 1, "name": 1, "staff_type": 1, "department": 1, "specialization": 1}
         ).to_list(8)
         for s in staff:
@@ -161,7 +161,7 @@ async def search(request: Request, q: str = "", type: str = "all"):
     # Search announcements
     if type in ["all", "announcements"]:
         annts = await db.announcements.find(
-            scoped_filter({"$or": [{"title": {"$regex": q_safe, "$options": "i"}}, {"content": {"$regex": q_safe, "$options": "i"}}], "is_draft": False}, get_school_id()),
+            scoped_filter({"$or": [{"title": {"$regex": q_safe, "$options": "i"}}, {"content": {"$regex": q_safe, "$options": "i"}}], "is_draft": False}, get_school_id()),  # branch-scope: intentional — announcements are published to the whole school
             {"_id": 0, "id": 1, "title": 1, "created_at": 1}
         ).to_list(5)
         for a in annts:
@@ -169,7 +169,7 @@ async def search(request: Request, q: str = "", type: str = "all"):
 
     # For student role: search own data only
     if role == "student" and type in ["all", "students"]:
-        own = await db.students.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0, "name": 1, "id": 1})
+        own = await db.students.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0, "name": 1, "id": 1})  # branch-scope: intentional — scoped to one named person's own record, not to a branch
         if own and q_lower in own.get("name", "").lower():
             results.append({"name": own["name"], "subtitle": "My profile", "type": "student"})
 

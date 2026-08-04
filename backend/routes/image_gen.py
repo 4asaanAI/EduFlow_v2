@@ -14,7 +14,7 @@ from datetime import date
 from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.responses import Response, JSONResponse
 from database import get_db
-from middleware.auth import require_owner_or_principal
+from middleware.auth import require_owner_principal_or_accountant
 from tenant import add_school_id, get_school_id
 from services.s3_storage import (
     PRESIGNED_URL_EXPIRY_SECONDS,
@@ -395,13 +395,17 @@ async def _resolve_class_name(db, class_id) -> str:
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 @router.post("/certificate")
-async def generate_certificate(request: Request, user: dict = Depends(require_owner_or_principal)):
+async def generate_certificate(request: Request, user: dict = Depends(require_owner_principal_or_accountant)):
     # OWNER DECISION 2026-08-04 (NEW-01): issuing an official school document is an
     # AUTHORITY question, not a forgery question. R9.5 resolves identity from the DB so
     # the CONTENTS cannot be forged — that is why 1011034 widened this to every admin
     # sub_category — but who may put the school's name on a certificate was never asked.
-    # Abhimanyu's answer: Owner and Principal only. A third office position may be added
-    # later; he will name it. Do NOT re-widen this to require_role("admin", "owner").
+    # Abhimanyu's first answer was Owner and Principal, with a third office position to
+    # be named. On the same day he named it: the ACCOUNTANT (decision 2 in
+    # `_bmad-output/planning-artifacts/owner-decisions-2026-08-04.md`). So the gate is
+    # school owner + admin/principal + admin/accountant, and nobody else.
+    # Do NOT re-widen this to require_role("admin", "owner") — that readmits all eight
+    # admin sub_categories.
     try:
         data = await request.json()
     except Exception:
@@ -458,7 +462,7 @@ async def generate_certificate(request: Request, user: dict = Depends(require_ow
 
 
 @router.post("/id-cards")
-async def generate_id_cards(request: Request, user: dict = Depends(require_owner_or_principal)):
+async def generate_id_cards(request: Request, user: dict = Depends(require_owner_principal_or_accountant)):
     # OWNER DECISION 2026-08-04 (NEW-01) — same gate as /certificate above; see the note there.
     try:
         data = await request.json()

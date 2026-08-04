@@ -17,6 +17,7 @@ import { API, apiFetch,
   getTodayAttendance,
 } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
+import { useColumnSort, SortableHeaderRow } from './ToolPage';
 
 
 const STATUS_OPTIONS = [
@@ -66,6 +67,20 @@ export default function AttendanceRecorder() {
     loadClasses();
     return () => { active = false; };
   }, []);
+
+  // D-24: this register keeps its own <table> because the screen is not a ToolPage and
+  // has its own shell; it takes its sorting from the shared hook so it behaves exactly
+  // like every other table. "Show me everyone still marked absent" is the question a
+  // teacher asks before saving, and until now the only order available was roll number.
+  // Safe to reorder: Mark and Audit act on `row.student_id`, never on a row position.
+  const recordSortAccessors = useMemo(() => [
+    (r) => r.roll_number || '',
+    (r) => r.name || '',
+    (r) => badge(r.status).label,
+    null,
+    null,
+  ], []);
+  const recordSort = useColumnSort(records, recordSortAccessors);
 
   const selectedClassLabel = useMemo(() => {
     const item = classes.find(c => c.id === selectedClass);
@@ -253,14 +268,16 @@ export default function AttendanceRecorder() {
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr>
-                {['Roll', 'Student', 'Current', 'Mark', 'Audit'].map(head => (
-                  <th key={head} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{head}</th>
-                ))}
-              </tr>
+              <SortableHeaderRow
+                tableId="attendance-recorder"
+                headers={['Roll', 'Student', 'Current', 'Mark', 'Audit']}
+                accessors={recordSortAccessors}
+                sort={recordSort}
+                thStyle={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}
+              />
             </thead>
             <tbody>
-              {records.map((row, i) => {
+              {recordSort.items.map((row, i) => {
                 const current = badge(row.status);
                 const dirty = row.attendance_id && row.status !== row.original_status;
                 return (

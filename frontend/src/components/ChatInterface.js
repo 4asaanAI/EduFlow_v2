@@ -35,11 +35,11 @@ function getHeaders() {
   return getAuthHeaders();
 }
 
-async function executeAction(convId, action, params, label, user) {
+async function executeAction(convId, action, params, label) {
   // FL (R8.4): route through apiFetch so a 401 gets one refresh + retry instead
   // of a raw fetch that would fail the action silently on an expired token.
   const res = await apiFetch(`${API}/chat/conversations/${convId}/action`, {
-    method: 'POST', headers: getHeaders(user),
+    method: 'POST', headers: getHeaders(),
     body: JSON.stringify({ action, params, label }),
   });
   const body = await res.json().catch(() => ({}));
@@ -91,7 +91,7 @@ function HealthScoreWidget({ user }) {
   const [score, setScore] = useState(null);
   useEffect(() => {
     if (user.role !== 'owner' && user.role !== 'admin') return;
-    executeTool('get_school_pulse', {}, user).then(r => {
+    executeTool('get_school_pulse', {}).then(r => {
       if (!r.success) return;
       const d = r.data?.summary || {};
       // Epic 4 / Story 4.2: attendance_rate reads "not marked yet" before anyone has
@@ -369,7 +369,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   // Fetch token usage on mount and when user changes
   const fetchTokenUsage = useCallback(async () => {
     try {
-      const res = await apiFetch(`${API}/tokens/usage/me`, { headers: getHeaders(currentUser) });
+      const res = await apiFetch(`${API}/tokens/usage/me`, { headers: getHeaders() });
       const data = await res.json();
       if (data.success && data.data) {
         const d = data.data;
@@ -383,7 +383,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     } catch {
       // Non-fatal — token bar just won't show
     }
-  }, [currentUser]);
+  }, []);
 
   useEffect(() => {
     fetchTokenUsage();
@@ -431,7 +431,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     // conversation — show a retry affordance instead of a silent blank screen.
     setLoadError(false);
     try {
-      const res = await getMessages(id, currentUser);
+      const res = await getMessages(id);
       if (res && res.success) {
         const msgs = res.data || [];
         msgs.forEach(m => processedMessageIds.current.add(m.id));
@@ -460,7 +460,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
       // eat the user's text. Return false so InputBar restores what was typed.
       let res;
       try {
-        res = await createConversation(currentUser);
+        res = await createConversation();
       } catch {
         setSendError("Couldn't start a new conversation — check your connection and try again.");
         return false;
@@ -811,7 +811,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     const actionId = `act-${Date.now()}`;
     setMessages(prev => [...prev, { id: actionId, role: 'user', content: `\u25B6 ${label || action}`, isAction: true, created_at: new Date().toISOString() }]);
     try {
-      const res = await executeAction(convId, action, params, label, currentUser);
+      const res = await executeAction(convId, action, params, label);
       if (res.success) {
         const resultId = `res-${Date.now()}`;
         setMessages(prev => [...prev, { id: resultId, role: 'assistant', content: res.data?.message || 'Done.', created_at: new Date().toISOString() }]);

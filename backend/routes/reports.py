@@ -69,7 +69,7 @@ async def attendance_trends(
     # Pull only rows in the window. `date` is stored as ISO `YYYY-MM-DD` string,
     # so a $gte against the bucket start works lexicographically.
     rows = await db.student_attendance.find(
-        scoped_filter({"date": {"$gte": f"{earliest_bucket}-01"}}, get_school_id()),
+        scoped_filter({"date": {"$gte": f"{earliest_bucket}-01"}}, get_school_id()),  # branch-scope: intentional — the trend report is a whole-school figure by design
         {"_id": 0},
     ).to_list(20000)
 
@@ -146,7 +146,7 @@ async def fee_collection_summary(
         {"due_date": {"$gte": f"{earliest_bucket}-01"}, "status": {"$in": ["pending", "overdue", "unpaid"]}},
     ]}
     rows = await db.fee_transactions.find(
-        scoped_filter(date_filter, get_school_id()), {"_id": 0}
+        scoped_filter(date_filter, get_school_id()), {"_id": 0}  # branch-scope: intentional — the trend report is a whole-school figure by design
     ).to_list(20000)
 
     if not rows:

@@ -241,7 +241,7 @@ function StudentProfileModal({ classes, initialStudent, onClose, onSaved }) {
         if (!res.success) { setError(res.detail || 'Unable to save'); setSaving(false); return; }
         studentId = initialStudent.id;
       } else {
-        const res = await createStudent(null, payload);
+        const res = await createStudent(payload);
         if (!res.success) { setError(res.detail || 'Unable to save'); setSaving(false); return; }
         studentId = res.data?.id;
       }
@@ -781,7 +781,7 @@ export default function StudentDatabase() {
       if (search) params.search = search;
       if (filterClass) params.class_id = filterClass;
       if (includeInactive) params.include_inactive = true;
-      const res = await getStudents(currentUser, params);
+      const res = await getStudents(params);
       if (res.success) {
         setStudents(res.data || []);
         setTotal(res.meta?.total || 0);
@@ -792,7 +792,7 @@ export default function StudentDatabase() {
       setError(err.message || 'Unable to load students');
     }
     setLoading(false);
-  }, [search, filterClass, includeInactive, sort, page, pageSize, currentUser]);
+  }, [search, filterClass, includeInactive, sort, page, pageSize]);
 
   useEffect(() => { loadClasses(); }, [loadClasses]);
   useEffect(() => { loadData(); }, [loadData]);

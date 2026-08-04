@@ -98,22 +98,27 @@ def test_certificate_unknown_student_is_404(client):
     assert resp.status_code == 404
 
 
-def test_certificate_denied_for_non_principal_admin(client):
-    # R9.5 AC1: owner/principal only — an accountant admin can no longer mint certs.
+def test_certificate_denied_for_receptionist_admin(client):
+    # A named refusal for one ordinary office role, alongside the derived sweep below.
+    # (This test used to name the accountant; owner decision 2026-08-04 moved the
+    # accountant to the ALLOWED side, so it now names the receptionist instead — the
+    # refusal it was written to protect is still asserted, just for a role that is
+    # still refused.)
     resp = client.post("/api/image-gen/certificate", json=_certificate_payload(),
-                       headers=_headers(role="admin", sub_category="accountant"))
+                       headers=_headers(role="admin", sub_category="receptionist"))
     assert resp.status_code == 403
 
 
-# ── NEW-01 / NEW-02 — who may issue an official school document ──────────────
-# Owner decision 2026-08-04: Owner and Principal only. Commit 1011034 widened both
-# routes to every admin sub_category; nothing but the single accountant test above
-# noticed, and the ID-card route had NO permission test at all — which is why the
+# ── NEW-01 / NEW-02 / D-49 — who may issue an official school document ───────
+# Owner decision 2026-08-04: the school's owner, the principal, AND the accountant —
+# the third office position Abhimanyu said he would name (decision 2). Commit 1011034
+# had widened both routes to every admin sub_category; nothing but a single accountant
+# test noticed, and the ID-card route had NO permission test at all — which is why the
 # widening survived. These tests encode the decided rule on BOTH routes so the next
 # change to either gate has to argue with a red suite.
 
-# Every admin sub_category that is NOT principal. Derived from the auth module so a
-# newly-added sub_category is covered the day it is added, not the day someone
+# Every admin sub_category that is NOT an allowed issuer. Derived from the auth module
+# so a newly-added sub_category is covered the day it is added, not the day someone
 # remembers to extend this list.
 #
 # DELIBERATE DEVIATION from CLAUDE.md's "never parametrize across security boundaries".
@@ -122,20 +127,21 @@ def test_certificate_denied_for_non_principal_admin(client):
 # expects 403 — and the allowed profiles (owner, principal) each have their own named
 # test below. Deriving the list is the point: NEW-01 happened because a permission
 # widened and a hand-maintained list did not notice.
-_NON_PRINCIPAL_ADMIN_SUBS = sorted(
-    SUB_CATEGORIES_BY_ROLE["admin"] - {"principal"}
+_ISSUER_ADMIN_SUBS = frozenset({"principal", "accountant"})
+_NON_ISSUER_ADMIN_SUBS = sorted(
+    SUB_CATEGORIES_BY_ROLE["admin"] - _ISSUER_ADMIN_SUBS
 )
 
 
-@pytest.mark.parametrize("sub_category", _NON_PRINCIPAL_ADMIN_SUBS)
-def test_certificate_refused_for_every_non_principal_admin(client, sub_category):
+@pytest.mark.parametrize("sub_category", _NON_ISSUER_ADMIN_SUBS)
+def test_certificate_refused_for_every_non_issuer_admin(client, sub_category):
     resp = client.post("/api/image-gen/certificate", json=_certificate_payload(),
                        headers=_headers(role="admin", sub_category=sub_category))
     assert resp.status_code == 403, f"{sub_category} must not be able to issue a certificate"
 
 
-@pytest.mark.parametrize("sub_category", _NON_PRINCIPAL_ADMIN_SUBS)
-def test_id_cards_refused_for_every_non_principal_admin(client, sub_category):
+@pytest.mark.parametrize("sub_category", _NON_ISSUER_ADMIN_SUBS)
+def test_id_cards_refused_for_every_non_issuer_admin(client, sub_category):
     resp = client.post("/api/image-gen/id-cards",
                        json={"class_id": "class-1", "students": [{"student_id": "student-1"}]},
                        headers=_headers(role="admin", sub_category=sub_category))
@@ -155,10 +161,27 @@ def test_id_cards_allowed_for_principal(client):
     assert resp.status_code == 200
 
 
-# The decided rule is TWO profiles, so both halves need a test. Without these, a later
-# change that narrowed the gate to principal-only would lock the Owner out of issuing
-# any certificate — with a fully green suite. That is the same shape of miss that let
-# NEW-01 through: a permission moved and no test was watching that direction.
+def test_certificate_allowed_for_accountant(client):
+    # Owner decision 2026-08-04 (decision 2): the accountant is the third issuer.
+    resp = client.post("/api/image-gen/certificate", json=_certificate_payload(),
+                       headers=_headers(role="admin", sub_category="accountant"))
+    assert resp.status_code == 200
+
+
+def test_id_cards_allowed_for_accountant(client):
+    resp = client.post("/api/image-gen/id-cards",
+                       json={"class_id": "class-1", "students": [{"student_id": "student-1"}]},
+                       headers=_headers(role="admin", sub_category="accountant"))
+    assert resp.status_code == 200
+
+
+# The decided rule is THREE profiles, so every one of them needs a test. Without these,
+# a later change that narrowed the gate to principal-only would lock the school's owner
+# out of issuing any certificate — with a fully green suite. That is the same shape of
+# miss that let NEW-01 through: a permission moved and no test was watching that
+# direction. The owner case is the sharpest of the three, because the obvious-looking
+# `require_access("owner", "admin", sub_category=(...))` construct passes every other
+# test in this file and silently 403s the owner.
 def test_certificate_allowed_for_owner(client):
     resp = client.post("/api/image-gen/certificate", json=_certificate_payload(),
                        headers=_headers(role="owner"))

@@ -1114,6 +1114,32 @@ screen down, and the message the user sees would not point at this.
 
 ---
 
+### D-64 — Every chat load wrote the signed-in person's details into the web address — **FIXED 2026-08-04**
+
+`Layout.js` asked the server for the conversation list by handing it the whole signed-in
+user. That helper turns whatever it is given into the query string, so the person's id,
+name, email and role were serialised into the URL of every conversation lookup, and from
+there into the server and CloudFront access logs. It happened on every single chat load.
+
+The screen showed exactly the right thing throughout, which is why it survived: there was
+no symptom to notice. Found only because a sweep for leftover arguments (D-62) flagged the
+call as dead weight, and it turned out not to be dead at all.
+
+**Why it matters:** personal data does not belong in a URL. Addresses are logged in more
+places than request bodies are, kept longer, and are visible to anyone with log access
+including the CDN. This is the same shape of mistake as **D-61** (the attendance register),
+where an ignored argument turned out to land somewhere real.
+
+Fixed, along with a matching dead-weight call on the same file. The guard test at
+`frontend/src/lib/__tests__/apiDeadArgs.test.js` now has an **empty** exemption list, so any
+recurrence fails the suite.
+
+**Still worth doing on the operations side, and not something the code can fix:** the URLs
+already written to existing server and CloudFront logs still contain those details. Whether
+those logs need purging is Abhimanyu's call.
+
+---
+
 ## Track 2 (data load) — explicitly OUT OF SCOPE for these epics
 
 Requires separate owner approval; involves writes to live data.
@@ -1126,3 +1152,82 @@ Requires separate owner approval; involves writes to live data.
 4. Class-teacher assignments for all 48 sections.
 5. Correcting the school's own details (address, phone, email, principal, affiliation) —
    currently placeholder data for a real school.
+
+---
+
+## Small-tidy-up sweep (owner decision 10) — 2026-08-04
+
+Worked in one pass. **D-24, D-62, D-63, D-36, D-17/D-58, D-50, D-51, D-60 are CLOSED.**
+Verified at the end: backend **2012 passed / 0 failed / 14 deselected**; frontend
+**374 passed / 0 failed / 35 suites**; production build clean (no `exhaustive-deps` errors).
+
+### D-64 — `Layout.js` puts the whole signed-in user into a request URL — **OPEN, live, NOT FIXED (fenced)**
+
+Found while sweeping D-62, and it is the one stray argument that is NOT harmless.
+`Layout.js:163` calls `getConversations(currentUser)`. `getConversations(params)` spreads its
+argument into the query string, so every conversation-title lookup goes out as
+`GET /api/chat/conversations?id=…&name=…&email=…&role=…` — the signed-in person's details
+serialised into a URL, and therefore into the CloudFront and server access logs. The list
+itself still comes back correct, so nothing looks wrong on screen.
+
+`Layout.js:139` also calls `createConversation(currentUser)`, which takes nothing — that one
+is only dead weight.
+
+**Not fixed** because `Layout.js` was owned by a concurrent workstream on 2026-08-04. Both
+call sites are recorded as explicit exclusions in
+`frontend/src/lib/__tests__/apiDeadArgs.test.js`; delete the exclusion when the calls are
+fixed and that test holds the line from then on. **This is the same root cause as D-61** —
+an argument nobody looked twice at landing in a slot that was real.
+
+### D-58 correction — it was never "roughly two dozen"
+
+The real count of un-annotated `scoped_filter(` hits across `backend/routes/` was **103**,
+not ~24. Every one now carries a `# branch-scope: intentional — <reason>` note; the audit
+grep returns **0** un-annotated hits. **Nothing was migrated to `scoped_query`.** That was
+deliberate: there is one branch, so no migration can change behaviour today, and a wrong
+migration would be invisible until a second branch exists. 67 of the 103 are lookups pinned
+by a unique id or to one named person, where a branch clause could only turn a real row into
+a false 404; the other 36 were read individually and annotated with why they are school-wide.
+Six already carried the explanation on the line ABOVE, which the audit grep cannot see — they
+now carry a marker on the hit line too. This is a fourth case of the register's numbers being
+wrong (see **D-56**) — this time understated, not overstated.
+
+### D-24 — how it was closed
+
+**20 hand-rolled tables + 1 chat table.** Eleven moved onto the shared `ToolPage` `DataTable`
+outright. Nine kept their own markup and took sorting from a NEW shared hook,
+`useColumnSort` + `SortableHeaderRow` in `ToolPage.js`, which reuses the same comparator as
+`DataTable` — so there is still only one idea of sorting on the platform, not two.
+
+They resisted for real reasons, not effort: a certificate row expands into a full-width
+"reason for rejection" row; the exam marks grid has a live input per subject per student and
+a sticky first column; the fee tables carry this screen's own mobile CSS; the student
+assignment list opens a dialog on row click, which `DataTable` has no hook for.
+
+**One table is deliberately NOT sortable and must stay that way:** the Timetable Builder's
+weekly grid. Its rows are periods and its columns are days — the order IS the information,
+and a timetable re-ordered by "Subject" would still look like the school's real schedule.
+Commented in place.
+
+Guarded by `frontend/src/components/tools/__tests__/SortableHandRolledTables.test.js`
+(8 tests: order, reversal, money sorting by value not text, `aria-sort`, real `<button>`,
+no control on an actions column, no mutation of caller state, empty input).
+
+### D-36 — no migration needed
+
+The duplicate `notifications` index declaration is removed from `_create_indexes()`. Mongo
+treated the repeat as a no-op, so **nothing was ever created twice and nothing needs
+dropping**. No migration was written and none is required.
+
+### D-50 — identified and ignored, not committed
+
+`upload.sh` is the installer for a third-party developer-analytics product ("Paxel") that
+reads local Claude Code / Codex / Cursor transcripts plus git history and uploads summaries
+to its own server. Nothing in EduFlow references it. Added to `.gitignore` with that
+explanation so it can never be committed by accident; the file itself is left on disk for
+Abhimanyu to delete.
+
+### D-05 — was already closed
+
+`project-context.md` already carries the corrected sidebar width (260px desktop / 280px
+drawer) in both places. No change needed.

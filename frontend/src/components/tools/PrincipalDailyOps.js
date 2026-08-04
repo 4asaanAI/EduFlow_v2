@@ -4,7 +4,7 @@ import {
   BookOpen, Users, ClipboardList, Award, AlertCircle, RefreshCw,
 } from 'lucide-react';
 import { getAuthHeaders } from '../../lib/authSession';
-import { ToolPage, ActionBtn } from './ToolPage';
+import { ToolPage, ActionBtn, useColumnSort, SortableHeaderRow } from './ToolPage';
 import { API, apiFetch } from '../../lib/api';
 
 const h = () => getAuthHeaders();
@@ -175,6 +175,23 @@ function SubRow({ item, onAssign }) {
 export default function PrincipalDailyOps() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [items, setItems] = useState([]);
+
+  // D-24: this table was hand-rolled with no sorting. It keeps its own markup because
+  // each row is a `<SubRow>` with its own assign control, and takes its sorting from the
+  // shared hook. Ordering by Status matters most here — a principal wants the unfilled
+  // periods together, not scattered through the day.
+  const conflictSortAccessors = React.useMemo(() => [
+    (it) => it.absent_teacher_name || '',
+    (it) => Number(it.period_number) || 0,
+    (it) => it.class_name || '',
+    (it) => it.subject_name || '',
+    // Status is not a stored field here — it is derived from whether a substitute has
+    // been assigned, exactly as SubRow renders it. Sort by the same thing the eye reads.
+    (it) => (it.assigned_substitute ? 'Assigned' : 'Open'),
+    (it) => it.assigned_substitute?.substitute_teacher_name || it.candidate_substitutes?.[0]?.name || '',
+    null,
+  ], []);
+  const conflictSort = useColumnSort(items, conflictSortAccessors);
   const [leaves, setLeaves] = useState([]);
   const [certificates, setCertificates] = useState([]);
   const [feeSummary, setFeeSummary] = useState(null);
@@ -373,14 +390,17 @@ export default function PrincipalDailyOps() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
-                <tr style={{ borderBottom: '2px solid var(--tool-hex-2e2e2e)' }}>
-                  {['Absent Teacher', 'Period', 'Class', 'Subject', 'Status', 'Suggested Sub', 'Action'].map(h => (
-                    <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--tool-hex-666)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{h}</th>
-                  ))}
-                </tr>
+                <SortableHeaderRow
+                  tableId="substitution-conflicts"
+                  headers={['Absent Teacher', 'Period', 'Class', 'Subject', 'Status', 'Suggested Sub', 'Action']}
+                  accessors={conflictSortAccessors}
+                  sort={conflictSort}
+                  trStyle={{ borderBottom: '2px solid var(--tool-hex-2e2e2e)' }}
+                  thStyle={{ padding: '8px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--tool-hex-666)', letterSpacing: '0.06em', textTransform: 'uppercase' }}
+                />
               </thead>
               <tbody>
-                {items.map((item, i) => <SubRow key={i} item={item} onAssign={assign} />)}
+                {conflictSort.items.map((item, i) => <SubRow key={i} item={item} onAssign={assign} />)}
               </tbody>
             </table>
           </div>

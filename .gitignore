@@ -95,3 +95,10 @@ _bmad/
 # MemPalace per-project files (issue #185)
 mempalace.yaml
 entities.json
+
+# D-50: `upload.sh` at the repo root is NOT part of EduFlow. It is the installer for a
+# third-party developer-analytics product ("Paxel") that reads local Claude Code /
+# Codex / Cursor transcripts plus git history and uploads summaries to its own server.
+# Nothing in this codebase references it and it arrived here by accident. Ignored so it
+# can never be committed by mistake; safe to simply delete the file.
+/upload.sh

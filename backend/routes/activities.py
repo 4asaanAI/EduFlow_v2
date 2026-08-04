@@ -53,7 +53,7 @@ VALID_SPORTS = {
 
 
 def _scope(extra: dict | None = None) -> dict:
-    return scoped_filter(extra or {}, get_school_id())
+    return scoped_filter(extra or {}, get_school_id())  # branch-scope: intentional — this file's school-scope helper; it scopes to the school only, and callers pass branch_id through scoped_query where a query is branch-sensitive
 
 
 # ─────────────────── Houses ────────────────────────────────────────────────────

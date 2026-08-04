@@ -152,7 +152,14 @@ export default function TimetableBuilder() {
         <div style={{ color: muted, textAlign: 'center', padding: 40 }}>Select a class to view and edit its timetable.</div>
       ) : (
         <>
-          {/* Weekly grid */}
+          {/* Weekly grid.
+
+              D-24 (deliberate exception): this table is NOT sortable and must not become
+              sortable. Its rows are periods 1..N and its columns are the days of the
+              week — the order IS the information. A timetable re-ordered by "Subject"
+              would still be a grid of the right cells and would be read as the school's
+              actual schedule, which is the worst possible outcome. The same rule is
+              written on `DataTable`'s `sortable={false}` option in ToolPage.js. */}
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>

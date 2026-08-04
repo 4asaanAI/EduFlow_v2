@@ -39,7 +39,7 @@ async def count_unread(db, user_id: str) -> int:
         # carry no branch_id at all (services/notification_service.py builds them
         # with add_school_id only), so scoped_query(branch_id=...) here would
         # match nothing and silently empty every bell in the school.
-        scoped_filter({"user_id": user_id, "read": False}, get_school_id())
+        scoped_filter({"user_id": user_id, "read": False}, get_school_id())  # branch-scope: intentional — scoped to one named person's own record, not to a branch
     )
 
 
@@ -78,7 +78,7 @@ async def get_notifications(
     # branch-scope: intentional — scoped to the caller's own user_id, which is
     # narrower than any branch. See count_unread() above for why adding a
     # branch_id clause would return nothing.
-    query = scoped_filter(base, get_school_id())
+    query = scoped_filter(base, get_school_id())  # branch-scope: intentional — see the note directly above this line
     total = await db.notifications.count_documents(query)
     persistent = await db.notifications.find(query, {"_id": 0}).sort("created_at", direction).skip(skip).limit(limit).to_list(limit)
 
@@ -91,37 +91,37 @@ async def get_notifications(
     if page == 1 and synthetic_allowed:
         role = user["role"]
         today = date.today().strftime("%Y-%m-%d")
-        ann_query = scoped_filter({"is_draft": {"$ne": True}}, get_school_id())
+        ann_query = scoped_filter({"is_draft": {"$ne": True}}, get_school_id())  # branch-scope: intentional — announcements are published to the whole school
         recent_ann = await db.announcements.find(ann_query, {"_id": 0, "title": 1, "created_at": 1, "audience_roles": 1}).sort("created_at", -1).to_list(5)
 
         if role in ["owner", "admin"]:
-            pending = await db.leave_requests.count_documents(scoped_filter({"status": "pending"}, get_school_id()))
+            pending = await db.leave_requests.count_documents(scoped_filter({"status": "pending"}, get_school_id()))  # branch-scope: intentional — the approver queue counts every pending leave in the school, which is what an owner or principal approves against
             if pending > 0:
                 digest.append({"type": "warning", "title": "Pending Leave Requests", "message": f"{pending} leave request(s) awaiting approval", "time": "Now", "read": True, "is_digest": True})
-            overdue = await db.fee_transactions.count_documents(scoped_filter({"status": "overdue"}, get_school_id()))
+            overdue = await db.fee_transactions.count_documents(scoped_filter({"status": "overdue"}, get_school_id()))  # branch-scope: intentional — the overdue-fee count is a school-wide figure on the owner's dashboard
             if overdue > 0:
                 digest.append({"type": "error", "title": "Fee Overdue", "message": f"{overdue} fee transaction(s) overdue", "time": "Today", "read": True, "is_digest": True})
-            open_facility = await db.facility_requests.count_documents(scoped_filter({"status": {"$in": ["open", "in_progress"]}}, get_school_id()))
+            open_facility = await db.facility_requests.count_documents(scoped_filter({"status": {"$in": ["open", "in_progress"]}}, get_school_id()))  # branch-scope: intentional — facility requests are handled by one school-wide maintenance queue
             if open_facility > 0:
                 digest.append({"type": "info", "title": "Open Facility Requests", "message": f"{open_facility} facility request(s) in progress", "time": "Today", "read": True, "is_digest": True})
 
         elif role == "teacher":
-            staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()))
+            staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()))  # branch-scope: intentional — scoped to one named person's own record, not to a branch
             if staff:
-                my_leaves = await db.leave_requests.count_documents(scoped_filter({"staff_id": staff["id"], "status": "pending"}, get_school_id()))
+                my_leaves = await db.leave_requests.count_documents(scoped_filter({"staff_id": staff["id"], "status": "pending"}, get_school_id()))  # branch-scope: intentional — scoped to one named person's own record, not to a branch
                 if my_leaves > 0:
                     digest.append({"type": "info", "title": "Leave Status", "message": "Your leave request is pending approval", "time": "Now", "read": True, "is_digest": True})
 
         elif role == "student":
-            own = await db.students.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()))
+            own = await db.students.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()))  # branch-scope: intentional — scoped to one named person's own record, not to a branch
             if own:
-                records = await db.student_attendance.find(scoped_filter({"student_id": own["id"]}, get_school_id())).to_list(200)
+                records = await db.student_attendance.find(scoped_filter({"student_id": own["id"]}, get_school_id())).to_list(200)  # branch-scope: intentional — scoped to one named person's own record, not to a branch
                 if records:
                     present = sum(1 for r in records if r["status"] == "present")
                     rate = round(present / len(records) * 100, 1)
                     if rate < 75:
                         digest.append({"type": "error", "title": "Low Attendance", "message": f"Your attendance is {rate}% — below 75% threshold", "time": "Today", "read": True, "is_digest": True})
-                overdue = await db.fee_transactions.count_documents(scoped_filter({"student_id": own["id"], "status": {"$in": ["overdue", "pending"]}}, get_school_id()))
+                overdue = await db.fee_transactions.count_documents(scoped_filter({"student_id": own["id"], "status": {"$in": ["overdue", "pending"]}}, get_school_id()))  # branch-scope: intentional — scoped to one named person's own record, not to a branch
                 if overdue > 0:
                     digest.append({"type": "warning", "title": "Fee Due", "message": f"{overdue} fee payment(s) pending", "time": "Today", "read": True, "is_digest": True})
 
@@ -166,7 +166,7 @@ async def mark_notification_read(notification_id: str, request: Request):
     db = get_db()
     user = get_user(request)
     result = await db.notifications.update_one(
-        scoped_filter({"id": notification_id, "user_id": user["id"]}, get_school_id()),
+        scoped_filter({"id": notification_id, "user_id": user["id"]}, get_school_id()),  # branch-scope: intentional — scoped to one named person's own record, not to a branch
         {"$set": {"read": True, "read_at": datetime.now().isoformat()}}
     )
     if result.matched_count == 0:
@@ -180,7 +180,7 @@ async def mark_all_read(request: Request):
     user = get_user(request)
     request_start = datetime.now().isoformat()
     await db.notifications.update_many(
-        scoped_filter(
+        scoped_filter(  # branch-scope: intentional — scoped to the caller's own user_id, which is narrower than any branch
             {"user_id": user["id"], "read": False, "created_at": {"$lt": request_start}},
             get_school_id(),
         ),
@@ -339,7 +339,7 @@ async def get_notification_detail(notification_id: str, request: Request):
     school_id = get_school_id()
 
     notif = await db.notifications.find_one(
-        scoped_filter({"id": notification_id, "user_id": user["id"]}, school_id), {"_id": 0}
+        scoped_filter({"id": notification_id, "user_id": user["id"]}, school_id), {"_id": 0}  # branch-scope: intentional — scoped to one named person's own record, not to a branch
     )
     if not notif:
         raise HTTPException(404, "Notification not found")
@@ -362,7 +362,7 @@ async def get_notification_detail(notification_id: str, request: Request):
             coll = getattr(db, coll_name, None)
             if coll is not None:
                 source = await coll.find_one(
-                    scoped_filter({"id": source_id}, school_id), {"_id": 0}
+                    scoped_filter({"id": source_id}, school_id), {"_id": 0}  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
                 )
 
         if source:
@@ -371,7 +371,7 @@ async def get_notification_detail(notification_id: str, request: Request):
 
             # Audit log events for this record
             audit_entries = await db.audit_logs.find(
-                scoped_filter({"entity_id": source_id}, school_id), {"_id": 0}
+                scoped_filter({"entity_id": source_id}, school_id), {"_id": 0}  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
             ).sort("created_at", 1).to_list(50)
 
             for entry in audit_entries:
@@ -451,7 +451,7 @@ async def create_notification(request: Request, user: dict = Depends(require_rol
     if not ok:
         raise HTTPException(503, "Notification could not be created")
     created = await db.notifications.find_one(
-        scoped_filter(
+        scoped_filter(  # branch-scope: intentional — matches back the notification just written for one named user
             {
                 "user_id": body["user_id"],
                 "title": body["title"],

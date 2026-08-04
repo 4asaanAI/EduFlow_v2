@@ -170,7 +170,7 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
       setShowAt(true);
       setSelectedIdx(0);
       if (query.length >= 1) {
-        apiFetch(`${API}/search?q=${encodeURIComponent(query)}&type=persons`, { headers: getHeaders(currentUser) })
+        apiFetch(`${API}/search?q=${encodeURIComponent(query)}&type=persons`, { headers: getHeaders() })
           .then(r => r.json())
           .then(r => { if (r.success) setAtResults(r.data || []); })
           .catch(() => setAtResults([]));

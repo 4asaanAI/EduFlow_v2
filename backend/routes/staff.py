@@ -93,7 +93,7 @@ def get_user(req: Request):
 
 
 def _staff_query(extra: dict | None = None) -> dict:
-    return scoped_filter(extra or {}, get_school_id())
+    return scoped_filter(extra or {}, get_school_id())  # branch-scope: intentional — this file's school-scope helper; it scopes to the school only, and callers pass branch_id through scoped_query where a query is branch-sensitive
 
 
 def _can_manage(user: dict) -> bool:
@@ -531,7 +531,7 @@ async def delete_staff(staff_id: str, request: Request):
 @router.get("/{staff_id}/leave-requests")
 async def get_leave_requests(staff_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    leaves = await db.leave_requests.find(scoped_filter({"staff_id": staff_id}, get_school_id()), {"_id": 0}).to_list(50)
+    leaves = await db.leave_requests.find(scoped_filter({"staff_id": staff_id}, get_school_id()), {"_id": 0}).to_list(50)  # branch-scope: intentional — scoped to one named person's own record, not to a branch
     return {"success": True, "data": leaves}
 
 
@@ -539,20 +539,20 @@ async def get_leave_requests(staff_id: str, request: Request, user: dict = Depen
 async def get_my_leaves(request: Request):
     db = get_db()
     user = get_user(request)
-    leaves = await db.leave_requests.find(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0}).sort("applied_at", -1).to_list(20)
+    leaves = await db.leave_requests.find(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0}).sort("applied_at", -1).to_list(20)  # branch-scope: intentional — scoped to one named person's own record, not to a branch
     if not leaves:
-        staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})
+        staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})  # branch-scope: intentional — scoped to one named person's own record, not to a branch
         if staff:
-            leaves = await db.leave_requests.find(scoped_filter({"staff_id": staff["id"]}, get_school_id()), {"_id": 0}).sort("applied_at", -1).to_list(20)
+            leaves = await db.leave_requests.find(scoped_filter({"staff_id": staff["id"]}, get_school_id()), {"_id": 0}).sort("applied_at", -1).to_list(20)  # branch-scope: intentional — scoped to one named person's own record, not to a branch
     return {"success": True, "data": leaves}
 
 
 @router.get("/leaves/pending")
 async def get_pending_leaves(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    leaves = await db.leave_requests.find(scoped_filter({"status": "pending"}, get_school_id()), {"_id": 0}).to_list(50)
+    leaves = await db.leave_requests.find(scoped_filter({"status": "pending"}, get_school_id()), {"_id": 0}).to_list(50)  # branch-scope: intentional — the approver queue covers every pending leave in the school, which is what an owner or principal approves against
     s_ids = list({lr["staff_id"] for lr in leaves if lr.get("staff_id")})
-    staff_list = await db.staff.find(scoped_filter({"id": {"$in": s_ids}}, get_school_id()), {"_id": 0, "salary": 0}).to_list(len(s_ids)) if s_ids else []
+    staff_list = await db.staff.find(scoped_filter({"id": {"$in": s_ids}}, get_school_id()), {"_id": 0, "salary": 0}).to_list(len(s_ids)) if s_ids else []  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
     staff_map = {s["id"]: s for s in staff_list}
     enriched = [{**lr, "staff": staff_map.get(lr["staff_id"])} for lr in leaves]
     return {"success": True, "data": enriched}

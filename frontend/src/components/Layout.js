@@ -136,7 +136,8 @@ export default function Layout() {
   const handleNewChat = async () => {
     setActiveToolParam(null);
     closeDrawerOnNavigate();
-    const res = await createConversation(currentUser);
+    // D-64: takes no arguments (see the note on getConversations below).
+    const res = await createConversation();
     if (res.success) {
       setActiveConvId(res.data.id);
       setActiveConvTitle('');
@@ -160,7 +161,14 @@ export default function Layout() {
     setActiveConvId(convId);
     closeDrawerOnNavigate();
     try {
-      const res = await getConversations(currentUser);
+      // D-64: NEVER pass the signed-in person here. This helper turns its argument
+      // into the query string, so handing it the user object wrote that person's id,
+      // name, email and role into the request URL — and from there into the server
+      // and CloudFront access logs — on every single chat load. The screen looked
+      // correct throughout, which is why it survived. The caller is already
+      // authenticated by the bearer token; the server knows who is asking.
+      // Guarded by lib/__tests__/apiDeadArgs.test.js, whose exemption list is empty.
+      const res = await getConversations();
       const conv = res.data?.find(c => c.id === convId);
       setActiveConvTitle(conv?.title || '');
     } catch {}
@@ -218,13 +226,39 @@ export default function Layout() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  /**
+   * Someone else signed in on this computer — drop the previous person's open tool.
+   *
+   * D-59 (owner decision 2026-08-04, decision 3): a link that points straight at a
+   * screen must work when it is opened in a fresh browser tab. The old version of
+   * this check cleared `?tool=` whenever the tab held no record of the current user,
+   * and a brand new tab NEVER holds one — so a pasted deep link always landed on the
+   * chat screen instead of the tool it named.
+   *
+   * The distinction that was missing:
+   *   - no record at all  = FIRST visit in this tab. Nobody else's session can be on
+   *                         screen, because nothing has been on screen yet. Record
+   *                         who this is and leave the URL exactly as it arrived.
+   *   - a DIFFERENT record = someone else used this tab. Clear the tool and the
+   *                         conversation, which is the safety behaviour this check
+   *                         was written for.
+   *
+   * Signing out and signing in as someone else on the same machine still clears,
+   * because nothing removes this key on logout: the tab keeps the previous person's
+   * id, the next person's id does not match it, and the else-branch fires. The ref
+   * covers the same swap happening without this component unmounting.
+   */
   useEffect(() => {
     const SESSION_KEY = 'eduflow_session_user';
     const lastUserId = sessionStorage.getItem(SESSION_KEY);
-    const isNewUser = previousUserIdRef.current !== currentUser.id || lastUserId !== currentUser.id;
-    if (isNewUser) {
-      previousUserIdRef.current = currentUser.id;
-      sessionStorage.setItem(SESSION_KEY, currentUser.id);
+    const isFirstVisitInThisTab = lastUserId === null;
+    const isDifferentUser = !isFirstVisitInThisTab && lastUserId !== currentUser.id;
+    const switchedWhileMounted = previousUserIdRef.current !== currentUser.id;
+
+    previousUserIdRef.current = currentUser.id;
+    sessionStorage.setItem(SESSION_KEY, currentUser.id);
+
+    if (isDifferentUser || switchedWhileMounted) {
       setActiveToolParam(null, { replace: true });
       setActiveConvId(null);
       setActiveConvTitle('');

@@ -13,21 +13,38 @@ jest.mock('../../contexts/UserContext', () => ({
 jest.mock('../../contexts/ThemeContext', () => ({
   useTheme: () => ({ isDark: true, toggleTheme: jest.fn() }),
 }));
-jest.mock('../../lib/api', () => ({
-  // NEW-03: these screens now import `API`/`apiFetch` from lib/api. A factory mock does
-  // NOT fall through to the real module, so any omitted name is `undefined` (D-48).
-  API: '/api',
-  apiFetch: (...a) => global.fetch(...a),
-  getAcademicYear: jest.fn(),
-  getNotifications: jest.fn(),
-  getUnreadNotificationCount: jest.fn(),
-  markAllNotificationsRead: jest.fn(),
-  markNotificationRead: jest.fn(),
-  getConversations: jest.fn(),
-  bulkDeleteConversations: jest.fn(),
-  deleteConversation: jest.fn(),
-  updateConversation: jest.fn(),
-}));
+jest.mock('../../lib/api', () => {
+  // D-60: the stub is derived from the REAL module's export list rather than hand-written.
+  // A hand-written list names a handful of helpers while `lib/api` exports over a hundred,
+  // and a factory mock does NOT fall through to the real module — so the first time this
+  // screen calls a helper nobody thought to name, it gets `undefined` and React reports an
+  // error that points nowhere near the cause. That is exactly how D-48/T12 cost an hour.
+  const actual = jest.requireActual('../../lib/api');
+  const stub = {};
+  Object.keys(actual).forEach((key) => {
+    // PLAIN functions, deliberately NOT jest.fn(). CRA's jest preset sets `resetMocks: true`,
+    // which wipes any implementation supplied in a module factory before every test — a
+    // jest.fn() default would quietly become a do-nothing that returns undefined.
+    stub[key] = typeof actual[key] === 'function'
+      ? async () => ({ success: true, data: [] })
+      : actual[key];
+  });
+  return Object.assign(stub, {
+    // NEW-03: these screens now import `API`/`apiFetch` from lib/api. A factory mock does
+    // NOT fall through to the real module, so any omitted name is `undefined` (D-48).
+    API: '/api',
+    apiFetch: (...a) => global.fetch(...a),
+    getAcademicYear: jest.fn(),
+    getNotifications: jest.fn(),
+    getUnreadNotificationCount: jest.fn(),
+    markAllNotificationsRead: jest.fn(),
+    markNotificationRead: jest.fn(),
+    getConversations: jest.fn(),
+    bulkDeleteConversations: jest.fn(),
+    deleteConversation: jest.fn(),
+    updateConversation: jest.fn(),
+  });
+});
 
 import Header from '../Header';
 import AllNotifications from '../tools/AllNotifications';

@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { getAuthHeaders } from '../../lib/authSession';
-import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn } from './ToolPage';
+import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, useColumnSort, SortableHeaderRow } from './ToolPage';
 import { Brain, HelpCircle, Send } from 'lucide-react';
 import { API, apiFetch } from '../../lib/api';
 
@@ -170,8 +170,19 @@ export function HomeworkViewer() {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedAssignment, setSelectedAssignment] = useState(null);
-  useEffect(() => { apiFetch(`${API}/academics/assignments`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setAssignments(r.data || []); }).finally(() => setLoading(false)); }, [currentUser]);
+  useEffect(() => { apiFetch(`${API}/academics/assignments`, { headers: h() }).then(r => r.json()).then(r => { if (r.success) setAssignments(r.data || []); }).finally(() => setLoading(false)); }, [currentUser]);
   const today = new Date().toISOString().slice(0, 10);
+
+  // D-24: this table keeps its own markup because clicking a row opens the assignment's
+  // full instructions, which the shared DataTable has no row-click for. Sorting comes
+  // from the shared hook. Due Date is the one a student actually wants.
+  const assignmentSortAccessors = React.useMemo(() => [
+    (a) => a.title || '',
+    (a) => a.subject_name || '',
+    (a) => a.due_date || '',
+    (a) => (a.due_date && a.due_date < today ? 'OVERDUE' : 'ACTIVE'),
+  ], [today]);
+  const assignmentSort = useColumnSort(assignments, assignmentSortAccessors);
 
   if (selectedAssignment) {
     const a = selectedAssignment;
@@ -218,18 +229,20 @@ export function HomeworkViewer() {
       <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
-              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Title</th>
-              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Subject</th>
-              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Due Date</th>
-              <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Status</th>
-            </tr>
+            <SortableHeaderRow
+              tableId="student-assignments"
+              headers={['Title', 'Subject', 'Due Date', 'Status']}
+              accessors={assignmentSortAccessors}
+              sort={assignmentSort}
+              trStyle={{ borderBottom: '1px solid var(--c-border)' }}
+              thStyle={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.06em' }}
+            />
           </thead>
           <tbody>
             {assignments.length === 0 ? (
               <tr><td colSpan={4} style={{ padding: 20, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No assignments</td></tr>
             ) : (
-              assignments.map((a, i) => {
+              assignmentSort.items.map((a, i) => {
                 const isOverdue = a.due_date && a.due_date < today;
                 return (
                   <tr key={i} onClick={() => setSelectedAssignment(a)} style={{ borderBottom: i < assignments.length - 1 ? '1px solid var(--c-border)' : 'none', cursor: 'pointer', background: 'transparent' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(99,102,241,0.04)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
@@ -254,7 +267,7 @@ export function AttendanceSelfCheck() {
   const { currentUser } = useUser();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { import('../../lib/api').then(({ executeTool }) => executeTool('get_my_attendance', {}, currentUser).then(r => { if (r.success) setData(r.data); setLoading(false); })); }, [currentUser]);
+  useEffect(() => { import('../../lib/api').then(({ executeTool }) => executeTool('get_my_attendance', {}).then(r => { if (r.success) setData(r.data); setLoading(false); })); }, [currentUser]);
   return (
     <ToolPage title="My Attendance" subtitle="View your attendance record" loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16, maxWidth: 600 }}>
@@ -281,7 +294,7 @@ export function ResultViewer() {
   const { currentUser } = useUser();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { import('../../lib/api').then(({ executeTool }) => executeTool('get_my_results', {}, currentUser).then(r => { if (r.success) setData(r.data); setLoading(false); })); }, [currentUser]);
+  useEffect(() => { import('../../lib/api').then(({ executeTool }) => executeTool('get_my_results', {}).then(r => { if (r.success) setData(r.data); setLoading(false); })); }, [currentUser]);
   return (
     <ToolPage title="My Results" subtitle="View your exam marks & grades" loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16, maxWidth: 400 }}>
@@ -539,7 +552,7 @@ export function StudyPlanner() {
   const f = k => v => setPlan(p => ({ ...p, [k]: v }));
 
   useEffect(() => {
-    apiFetch(`${API}/ops/study-plan`, { headers: h(currentUser) }).then(r => r.json())
+    apiFetch(`${API}/ops/study-plan`, { headers: h() }).then(r => r.json())
       .then(r => { if (r.success && r.data) setPlan(r.data); })
       .catch(() => {}).finally(() => setLoading(false));
   }, [currentUser]);
@@ -547,7 +560,7 @@ export function StudyPlanner() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const r = await apiFetch(`${API}/ops/study-plan`, { method: 'POST', headers: h(currentUser), body: JSON.stringify(plan) }).then(r => r.json());
+      const r = await apiFetch(`${API}/ops/study-plan`, { method: 'POST', headers: h(), body: JSON.stringify(plan) }).then(r => r.json());
       if (r.success) { setSaved(true); setTimeout(() => setSaved(false), 3000); }
     } catch {}
     setSaving(false);
@@ -581,7 +594,7 @@ export function CareerGuidance() {
 
   useEffect(() => {
     // Load student's results for context
-    apiFetch(`${API}/academics/results`, { headers: h(currentUser) }).then(r => r.json())
+    apiFetch(`${API}/academics/results`, { headers: h() }).then(r => r.json())
       .then(r => { if (r.success) setResults(r.data || []); }).catch(() => {});
   }, [currentUser]);
 
@@ -635,7 +648,7 @@ export function FeeStatusViewer() {
   const [feeSummary, setFeeSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    apiFetch(`${API}/fees/my`, { headers: h(currentUser) })
+    apiFetch(`${API}/fees/my`, { headers: h() })
       .then(r => r.json())
       .then(r => {
         if (r.success) {
@@ -673,7 +686,7 @@ export function PtmSummaryViewer() {
   const { currentUser } = useUser();
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { apiFetch(`${API}/academics/ptm-notes`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setNotes(r.data || []); }).finally(() => setLoading(false)); }, [currentUser]);
+  useEffect(() => { apiFetch(`${API}/academics/ptm-notes`, { headers: h() }).then(r => r.json()).then(r => { if (r.success) setNotes(r.data || []); }).finally(() => setLoading(false)); }, [currentUser]);
   return (
     <ToolPage title="PTM Summary" subtitle="Read teacher notes from parent-teacher meetings" loading={loading}>
       {notes.length === 0 ? (
@@ -706,7 +719,7 @@ export function FormSubmissions() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await apiFetch(`${API}/settings/forms`, { headers: h(currentUser) }).then(r => r.json());
+      const r = await apiFetch(`${API}/settings/forms`, { headers: h() }).then(r => r.json());
       if (r.success) {
         const availableForms = r.data?.filter(f => {
           if (f.audience === 'all') return true;
@@ -746,7 +759,7 @@ export function FormSubmissions() {
     try {
       const res = await apiFetch(`${API}/settings/forms/${selectedForm.id}/responses`, {
         method: 'POST',
-        headers: h(currentUser),
+        headers: h(),
         body: JSON.stringify({ answers })
       }).then(r => r.json());
       if (res.success) {

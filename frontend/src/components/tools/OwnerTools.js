@@ -24,7 +24,7 @@ function WhatsAppReminderModal({ onClose }) {
         // second one, so this read `r.data.data`. There is one envelope now and
         // `r.data` IS the payload — the old `?? ` fallback would silently return
         // the wrong thing for any payload that happened to carry a `data` key.
-        const r = await executeTool('get_fee_defaulters', {}, currentUser);
+        const r = await executeTool('get_fee_defaulters', {});
         const rawData = r.success ? r.data : [];
         setDefaulters(Array.isArray(rawData) ? rawData : []);
       } catch {}
@@ -113,14 +113,14 @@ export function SchoolPulse() {
     setLoading(true);
     try {
       const [pulseRes, feeRes] = await Promise.all([
-        executeTool('get_school_pulse', {}, currentUser),
+        executeTool('get_school_pulse', {}),
         apiFetch(`${API}/fees/summary`, { headers: h() }).then(r => r.json()),
       ]);
       if (pulseRes.success) setData(pulseRes.data);
       if (feeRes.success) setFeeSummary(feeRes.data);
     } catch {}
     setLoading(false);
-  }, [currentUser]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -149,10 +149,10 @@ export function SchoolPulse() {
                   // Fetch all data in parallel
                   let pulseData = data;
                   const [pulseRes, feeRes, attRes, alertsRes] = await Promise.all([
-                    pulseData ? Promise.resolve({ success: true, data: pulseData }) : executeTool('get_school_pulse', {}, currentUser),
-                    executeTool('get_fee_summary', {}, currentUser),
-                    executeTool('get_attendance_overview', { days: 30 }, currentUser),
-                    executeTool('get_smart_alerts', {}, currentUser),
+                    pulseData ? Promise.resolve({ success: true, data: pulseData }) : executeTool('get_school_pulse', {}),
+                    executeTool('get_fee_summary', {}),
+                    executeTool('get_attendance_overview', { days: 30 }),
+                    executeTool('get_smart_alerts', {}),
                   ]);
                   if (pulseRes.success && !pulseData) { pulseData = pulseRes.data; setData(pulseRes.data); }
                   const feeData = feeRes.success ? feeRes.data : null;
@@ -424,7 +424,7 @@ export function FeeCollection() {
   const { currentUser } = useUser();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const loadData = useCallback(async () => { setLoading(true); try { const r = await executeTool('get_fee_summary', {}, currentUser); if (r.success) setData(r.data); } catch {} setLoading(false); }, [currentUser]);
+  const loadData = useCallback(async () => { setLoading(true); try { const r = await executeTool('get_fee_summary', {}); if (r.success) setData(r.data); } catch {} setLoading(false); }, []);
   useEffect(() => { loadData(); }, [loadData]);
   const stats = data?.stats || {};
   const defaulters = data?.defaulters || [];
@@ -643,14 +643,14 @@ export function AttendanceOverview() {
     setLoading(true);
     try {
       const [attRes, classRes] = await Promise.all([
-        executeTool('get_attendance_overview', { days: 30 }, currentUser),
+        executeTool('get_attendance_overview', { days: 30 }),
         apiFetch(`${API}/settings/classes`, { headers: h() }).then(r => r.json()),
       ]);
       if (attRes.success) setData(attRes.data);
       setClasses(classRes.data || []);
     } catch {}
     setLoading(false);
-  }, [currentUser]);
+  }, []);
   useEffect(() => { load(); }, [load]);
 
   const chartData = (data?.daily_trend || []).map(d => ({ date: d.date?.slice(5), rate: d.rate, present: d.present, absent: d.absent }));
@@ -727,9 +727,9 @@ export function StaffAttendanceTracker({ title = 'Staff Tracker', subtitle = 'St
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { const r = await executeTool('get_staff_status', {}, currentUser); if (r.success) setData(r.data); } catch {}
+    try { const r = await executeTool('get_staff_status', {}); if (r.success) setData(r.data); } catch {}
     setLoading(false);
-  }, [currentUser]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -958,14 +958,14 @@ export function FinancialReports() {
     setLoading(true);
     try {
       const [feeRes, expRes] = await Promise.all([
-        executeTool('get_financial_report', {}, currentUser),
+        executeTool('get_financial_report', {}),
         apiFetch(`${API}/ops/expenses`, { headers: h() }).then(r => r.json()),
       ]);
       if (feeRes.success) setData(feeRes.data);
       if (expRes.success) setExpenses(expRes.data || []);
     } catch {}
     setLoading(false);
-  }, [currentUser]);
+  }, []);
   useEffect(() => { load(); }, [load]);
 
   const totalExp = expenses.reduce((s, e) => s + (e.amount || 0), 0);
@@ -1130,7 +1130,7 @@ export function AdmissionFunnel() {
   const { currentUser } = useUser();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const load = useCallback(async () => { setLoading(true); try { const r = await executeTool('get_enquiries', {}, currentUser); if (r.success) setData(r.data); } catch {} setLoading(false); }, [currentUser]);
+  const load = useCallback(async () => { setLoading(true); try { const r = await executeTool('get_enquiries', {}); if (r.success) setData(r.data); } catch {} setLoading(false); }, []);
   useEffect(() => { load(); }, [load]);
   const funnel = data?.funnel || {};
   const stages = ['new', 'contacted', 'visit_scheduled', 'visited', 'documents_submitted', 'fee_paid', 'enrolled', 'lost'];
@@ -1292,7 +1292,7 @@ export function AiHealthReport() {
     setLoading(true);
     setError(null);
     try {
-      const r = await executeTool('get_school_pulse', {}, currentUser);
+      const r = await executeTool('get_school_pulse', {});
       if (!r.success) throw new Error(r.detail || 'Failed to load health data');
       const d = r.data;
       const s = d.summary || {};
@@ -1434,11 +1434,11 @@ export function SmartAlerts() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await executeTool('get_smart_alerts', {}, currentUser);
+      const r = await executeTool('get_smart_alerts', {});
       if (r.success) setData(r.data);
     } catch {}
     setLoading(false);
-  }, [currentUser]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1930,8 +1930,8 @@ export function CustomReportBuilder() {
 
 /** Run a tool and return its payload, throwing on refusal or failure.
  *  There is ONE envelope (Story 4.1) — `r.data` is the payload, not another envelope. */
-async function runTool(name, params, user) {
-  const r = await executeTool(name, params, user);
+async function runTool(name, params) {
+  const r = await executeTool(name, params);
   if (r?.denied) throw new Error('You do not have access to this figure.');
   if (!r?.success) throw new Error(r?.message || r?.detail || 'Could not load this.');
   return r.data;
@@ -1948,10 +1948,10 @@ async function runRest(url) {
 }
 
 const BOARD_SOURCES = {
-  pulse: { label: 'School overview', run: (u) => runTool('get_school_pulse', {}, u) },
-  fee: { label: 'Fees', run: (u) => runTool('get_fee_summary', {}, u) },
-  alerts: { label: 'Alerts', run: (u) => runTool('get_smart_alerts', {}, u) },
-  attendance: { label: 'Attendance', run: (u) => runTool('get_attendance_overview', { days: 30 }, u) },
+  pulse: { label: 'School overview', run: () => runTool('get_school_pulse', {}) },
+  fee: { label: 'Fees', run: () => runTool('get_fee_summary', {}) },
+  alerts: { label: 'Alerts', run: () => runTool('get_smart_alerts', {}) },
+  attendance: { label: 'Attendance', run: () => runTool('get_attendance_overview', { days: 30 }) },
   staff: { label: 'Staff', run: () => runRest(`${API}/staff/`) },
   expenses: { label: 'Expenses', run: () => runRest(`${API}/ops/expenses`) },
 };
@@ -2012,7 +2012,7 @@ export function BoardReport() {
   const loadSource = async (key) => {
     setSources(prev => ({ ...prev, [key]: { ...(prev[key] || {}), status: 'loading' } }));
     try {
-      const payload = await BOARD_SOURCES[key].run(currentUser);
+      const payload = await BOARD_SOURCES[key].run();
       // `message` is cleared on success so a later `failed()` check cannot resurrect
       // a stale failure from an earlier attempt.
       setSources(prev => ({ ...prev, [key]: { status: 'ok', data: payload, attempts: 0, message: '' } }));

@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { API, apiFetch, getStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, correctFeeTransaction, deleteFeeTransaction, getPendingLeaves, updateLeave, getWhatsappDefaulters, sendAttendanceAlerts, getSchoolSettings } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
-import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, LineChartWidget } from './ToolPage';
+import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, LineChartWidget, useColumnSort, SortableHeaderRow } from './ToolPage';
 import { Search, Plus, CheckCircle, XCircle, Save, RefreshCw, X, FileDown, MessageSquare, Edit3, Trash2 } from 'lucide-react';
 import FullStudentDatabase from './StudentDatabase';
 
@@ -84,7 +84,7 @@ export function FeeTracker() {
         setLoadingStudents(true);
         // Fetch all students for this specific class (no pagination limit)
         try {
-          const res = await apiFetch(`${API}/students/?class_id=${v}&page=1`, { headers: h(currentUser) }).then(r => r.json());
+          const res = await apiFetch(`${API}/students/?class_id=${v}&page=1`, { headers: h() }).then(r => r.json());
           if (res.success) {
             // Fetch more pages if needed
             const total = res.meta?.total || 0;
@@ -93,7 +93,7 @@ export function FeeTracker() {
               const pages = Math.ceil(total / 20);
               const extra = await Promise.all(
                 Array.from({ length: pages - 1 }, (_, i) =>
-                  apiFetch(`${API}/students/?class_id=${v}&page=${i + 2}`, { headers: h(currentUser) }).then(r => r.json())
+                  apiFetch(`${API}/students/?class_id=${v}&page=${i + 2}`, { headers: h() }).then(r => r.json())
                 )
               );
               extra.forEach(r => { if (r.success) all = [...all, ...(r.data || [])]; });
@@ -111,7 +111,7 @@ export function FeeTracker() {
   };
 
   useEffect(() => {
-    getAllClasses(currentUser).then(r => { if (r.success) setClasses(r.data || []); });
+    getAllClasses().then(r => { if (r.success) setClasses(r.data || []); });
   }, [currentUser]);
 
   const load = useCallback(async () => {
@@ -121,14 +121,14 @@ export function FeeTracker() {
       if (statusFilter) params.status = statusFilter;
       if (classFilter) params.class_id = classFilter;
       const [txnRes, summaryRes] = await Promise.all([
-        getFeeTransactions(currentUser, params),
-        apiFetch(`${API}/fees/class-summary`, { headers: h(currentUser) }).then(r => r.json()),
+        getFeeTransactions(params),
+        apiFetch(`${API}/fees/class-summary`, { headers: h() }).then(r => r.json()),
       ]);
       if (txnRes.success) setTxns(txnRes.data || []);
       if (summaryRes.success) setClassSummary(summaryRes.data || []);
     } catch {}
     setLoading(false);
-  }, [currentUser, statusFilter, classFilter]);
+  }, [statusFilter, classFilter]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -143,7 +143,7 @@ export function FeeTracker() {
     try {
       const idempotencyKey = `${form.student_id}|${form.fee_period}|${(form.fee_head || '').trim().toLowerCase()}`;
       const payload = { ...form, amount: parseFloat(form.amount), fee_type: form.fee_head };
-      const res = await recordFeePayment(currentUser, payload, idempotencyKey);
+      const res = await recordFeePayment(payload, idempotencyKey);
       if (!res.success) { setError(res.detail || 'Failed to record payment'); return; }
       setShowForm(false);
       setForm({ class_id: '', student_id: '', fee_head: 'tuition', fee_period: '', amount: '', payment_mode: 'cash', status: 'paid', due_date: '' });
@@ -404,43 +404,34 @@ export function FeeTracker() {
           emptyMsg="No transactions found"
         />
       ) : (
-        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                {['Class', 'Students', 'Collected', 'Pending', 'Total', 'Txns', 'Collection %'].map(h => (
-                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.06em', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {classSummary.length === 0 ? (
-                <tr><td colSpan={7} style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No data available</td></tr>
-              ) : classSummary.map((cls, i) => {
-                const pct = cls.total > 0 ? Math.round((cls.paid / cls.total) * 100) : 0;
-                const barColor = pct >= 75 ? 'var(--tool-hex-34d399)' : pct >= 40 ? 'var(--tool-hex-fbbf24)' : 'var(--tool-hex-f87171)';
-                return (
-                  <tr key={cls.class_id} style={{ borderBottom: i < classSummary.length - 1 ? '1px solid var(--tool-hex-242424)' : 'none' }}>
-                    <td style={{ padding: '10px 14px', fontSize: 13, color: 'var(--c-text)', fontWeight: 600 }}>{cls.class_name}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{cls.total_students}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--tool-hex-34d399)', fontWeight: 600 }}>₹{(cls.paid || 0).toLocaleString('en-IN')}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--tool-hex-f87171)' }}>₹{(cls.pending || 0).toLocaleString('en-IN')}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-text)' }}>₹{(cls.total || 0).toLocaleString('en-IN')}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--c-muted)' }}>{cls.transactions}</td>
-                    <td style={{ padding: '10px 14px', minWidth: 120 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ flex: 1, height: 6, background: 'var(--c-border)', borderRadius: 3, overflow: 'hidden' }}>
-                          <div style={{ width: `${pct}%`, height: '100%', background: barColor, borderRadius: 3, transition: 'width 0.4s' }} />
-                        </div>
-                        <span style={{ fontSize: 11, color: barColor, fontWeight: 700, minWidth: 32 }}>{pct}%</span>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        // D-24: was a hand-rolled <table> with no column sorting. Moved onto the shared
+        // DataTable so the accountant can order by pending amount or collection rate,
+        // which is the actual question this screen gets asked.
+        <DataTable
+          tableId="fee-class-summary"
+          headers={['Class', 'Students', 'Collected', 'Pending', 'Total', 'Txns', 'Collection %']}
+          rows={classSummary.map(cls => {
+            const pct = cls.total > 0 ? Math.round((cls.paid / cls.total) * 100) : 0;
+            const barColor = pct >= 75 ? 'var(--tool-hex-34d399)' : pct >= 40 ? 'var(--tool-hex-fbbf24)' : 'var(--tool-hex-f87171)';
+            return [
+              <span style={{ fontWeight: 600, color: 'var(--c-text)' }}>{cls.class_name}</span>,
+              cls.total_students,
+              <span style={{ color: 'var(--tool-hex-34d399)', fontWeight: 600 }}>{`₹${(cls.paid || 0).toLocaleString('en-IN')}`}</span>,
+              <span style={{ color: 'var(--tool-hex-f87171)' }}>{`₹${(cls.pending || 0).toLocaleString('en-IN')}`}</span>,
+              `₹${(cls.total || 0).toLocaleString('en-IN')}`,
+              cls.transactions,
+              // The bar is decoration; the readable number sits beside it so the sort
+              // (which reads the text, not the pixels) orders by the real percentage.
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 120 }}>
+                <div style={{ flex: 1, height: 6, background: 'var(--c-border)', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{ width: `${pct}%`, height: '100%', background: barColor, borderRadius: 3, transition: 'width 0.4s' }} />
+                </div>
+                <span style={{ fontSize: 11, color: barColor, fontWeight: 700, minWidth: 32 }}>{`${pct}%`}</span>
+              </div>,
+            ];
+          })}
+          emptyMsg="No data available"
+        />
       )}
     </ToolPage>
   );
@@ -459,7 +450,7 @@ export function AttendanceRecorder() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => { getAllClasses(currentUser).then(r => { if (r.success && r.data.length > 0) { setClasses(r.data); setSelectedClass(r.data[0].id); } }); }, [currentUser]);
+  useEffect(() => { getAllClasses().then(r => { if (r.success && r.data.length > 0) { setClasses(r.data); setSelectedClass(r.data[0].id); } }); }, [currentUser]);
 
   // NEW-09/T11: `date` was in the effect's dependency list but never reached the
   // request. getTodayAttendance(classId, date) was being handed `currentUser` as its
@@ -480,7 +471,7 @@ export function AttendanceRecorder() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await bulkMarkAttendance({ class_id: selectedClass, date, records: records.map(s => ({ student_id: s.student_id, status: s.status })) }, currentUser);
+      await bulkMarkAttendance({ class_id: selectedClass, date, records: records.map(s => ({ student_id: s.student_id, status: s.status })) });
       setSaved(true); setTimeout(() => setSaved(false), 3000);
     } catch {}
     setSaving(false);
@@ -506,37 +497,36 @@ export function AttendanceRecorder() {
           ))}
         </div>
       )}
-      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden', marginBottom: 14 }}>
-        {loading ? <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>Loading students...</div> : records.length === 0 ? <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No students or no class selected</div> : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr>
-              {['Roll', 'Student Name', 'Status', 'Quick Mark'].map(h => <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: 9.5, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.06em', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{h}</th>)}
-            </tr></thead>
-            <tbody>
-              {records.map((s, i) => {
-                const statusOpt = { present: { color: 'var(--tool-hex-34d399)' }, absent: { color: 'var(--tool-hex-f87171)' }, late: { color: 'var(--tool-hex-fbbf24)' }, holiday: { color: 'var(--c-faint)' } };
-                const sc = statusOpt[s.status] || { color: 'var(--c-faint)' };
-                return (
-                  <tr key={s.student_id || i} style={{ borderBottom: i < records.length - 1 ? '1px solid var(--tool-hex-242424)' : 'none' }}>
-                    <td style={{ padding: '8px 14px', fontSize: 11, color: 'var(--c-faint)', fontFamily: 'JetBrains Mono, monospace' }}>{s.roll_number || '-'}</td>
-                    <td style={{ padding: '8px 14px', fontSize: 13, color: 'var(--c-text)', fontWeight: 500 }}>{s.name}</td>
-                    <td style={{ padding: '8px 14px' }}><span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: tint(sc.color, 8), color: sc.color }}>{s.status}</span></td>
-                    <td style={{ padding: '8px 14px' }}>
-                      <div style={{ display: 'flex', gap: 3 }}>
-                        {['P', 'A', 'L'].map((lbl, li) => {
-                          const vals = ['present', 'absent', 'late'];
-                          const c = [{ color: 'var(--tool-hex-34d399)' }, { color: 'var(--tool-hex-f87171)' }, { color: 'var(--tool-hex-fbbf24)' }][li];
-                          return <button key={lbl} onClick={() => setRecords(prev => prev.map(st => st.student_id === s.student_id ? { ...st, status: vals[li] } : st))}
-                            style={{ background: s.status === vals[li] ? tint(c.color, 13) : 'transparent', border: `1px solid ${s.status === vals[li] ? tint(c.color, 31) : 'var(--c-border)'}`, borderRadius: 4, padding: '3px 7px', color: s.status === vals[li] ? c.color : 'var(--c-faint)', fontSize: 10, cursor: 'pointer', fontWeight: 700 }}>{lbl}</button>;
-                        })}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
+      {/* D-24: was a hand-rolled <table>. Moved onto the shared DataTable so the register
+          can be ordered by roll number, by name, or by status — "show me everyone still
+          marked absent" is the question a teacher actually asks before saving.
+          Safe to reorder: each Quick Mark button updates the record by student_id, never
+          by its position in the list. `Quick Mark` is not sortable-meaningful but the
+          shared component makes every heading a button, which is harmless here. */}
+      <div style={{ marginBottom: 14 }}>
+        <DataTable
+          tableId="attendance-register"
+          headers={['Roll', 'Student Name', 'Status', 'Quick Mark']}
+          loading={loading}
+          emptyMsg={loading ? 'Loading students...' : 'No students or no class selected'}
+          rows={records.map((s) => {
+            const statusOpt = { present: { color: 'var(--tool-hex-34d399)' }, absent: { color: 'var(--tool-hex-f87171)' }, late: { color: 'var(--tool-hex-fbbf24)' }, holiday: { color: 'var(--c-faint)' } };
+            const sc = statusOpt[s.status] || { color: 'var(--c-faint)' };
+            return [
+              <span style={{ fontSize: 11, color: 'var(--c-faint)', fontFamily: 'JetBrains Mono, monospace' }}>{s.roll_number || '-'}</span>,
+              <span style={{ color: 'var(--c-text)', fontWeight: 500 }}>{s.name}</span>,
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: tint(sc.color, 8), color: sc.color }}>{s.status}</span>,
+              <div style={{ display: 'flex', gap: 3 }}>
+                {['P', 'A', 'L'].map((lbl, li) => {
+                  const vals = ['present', 'absent', 'late'];
+                  const c = [{ color: 'var(--tool-hex-34d399)' }, { color: 'var(--tool-hex-f87171)' }, { color: 'var(--tool-hex-fbbf24)' }][li];
+                  return <button key={lbl} onClick={() => setRecords(prev => prev.map(st => st.student_id === s.student_id ? { ...st, status: vals[li] } : st))}
+                    style={{ background: s.status === vals[li] ? tint(c.color, 13) : 'transparent', border: `1px solid ${s.status === vals[li] ? tint(c.color, 31) : 'var(--c-border)'}`, borderRadius: 4, padding: '3px 7px', color: s.status === vals[li] ? c.color : 'var(--c-faint)', fontSize: 10, cursor: 'pointer', fontWeight: 700 }}>{lbl}</button>;
+                })}
+              </div>,
+            ];
+          })}
+        />
       </div>
       {records.length > 0 && <button data-testid="save-attendance-btn" onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 7, background: saved ? 'var(--tool-hex-34d399)' : saving ? 'var(--tool-hex-1e3a5f)' : 'var(--tool-hex-4f8ff7)', border: 'none', borderRadius: 8, padding: '10px 20px', color: 'var(--tool-hex-fff)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
         {saved ? <CheckCircle size={14} /> : <Save size={14} />}
@@ -670,19 +660,34 @@ export function CertificateGenerator() {
   const [rejectReason, setRejectReason] = useState('');
   const [school, setSchool] = useState({});
 
+  // D-24: this table keeps its own <table> because a row can expand into a full-width
+  // "reason for rejection" row underneath itself, which the shared DataTable (one array
+  // of cells per row) cannot express. It takes its sorting from the shared hook instead,
+  // so it behaves and announces itself exactly like every other table on the platform.
+  // `null` = a column that must not offer sorting; Actions is buttons, not data.
+  const certSortAccessors = React.useMemo(() => [
+    (c) => c.student_name || c.content_data?.student_name || '',
+    (c) => CERT_LABELS[c.cert_type] || c.cert_type || '',
+    (c) => c.serial_number || '',
+    (c) => c.issued_date || '',
+    (c) => c.status || '',
+    null,
+  ], []);
+  const certSort = useColumnSort(certs, certSortAccessors);
+
   const loadCerts = useCallback(async () => {
-    const r = await apiFetch(`${API}/ops/certificates`, { headers: h(currentUser) }).then(r => r.json());
+    const r = await apiFetch(`${API}/ops/certificates`, { headers: h() }).then(r => r.json());
     if (r.success) setCerts(r.data || []);
-  }, [currentUser]);
+  }, []);
 
   const approveCert = async (certId) => {
-    await apiFetch(`${API}/ops/certificates/${certId}/approve`, { method: 'PATCH', headers: h(currentUser) });
+    await apiFetch(`${API}/ops/certificates/${certId}/approve`, { method: 'PATCH', headers: h() });
     await loadCerts();
   };
 
   const rejectCert = async (certId, reason) => {
     await apiFetch(`${API}/ops/certificates/${certId}/reject`, {
-      method: 'PATCH', headers: h(currentUser),
+      method: 'PATCH', headers: h(),
       body: JSON.stringify({ reason }),
     });
     setRejectingId(null);
@@ -692,7 +697,7 @@ export function CertificateGenerator() {
 
   useEffect(() => {
     Promise.all([
-      getStudents(currentUser).then(r => { if (r.success) setStudents(r.data || []); }),
+      getStudents().then(r => { if (r.success) setStudents(r.data || []); }),
       loadCerts(),
       // Epic 4 / Story 4.3: the affiliation line on a certificate used to be a
       // hard-coded string in this file. A CBSE certificate carries the school's
@@ -707,7 +712,7 @@ export function CertificateGenerator() {
     try {
       const student = students.find(s => s.id === form.student_id);
       const r = await apiFetch(`${API}/ops/certificates`, {
-        method: 'POST', headers: h(currentUser),
+        method: 'POST', headers: h(),
         body: JSON.stringify({
           student_id: form.student_id,
           cert_type: form.cert_type,
@@ -790,14 +795,16 @@ export function CertificateGenerator() {
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr>
-                  {['Student', 'Type', 'Serial No.', 'Date', 'Status', 'Actions'].map((hd, i) => (
-                    <th key={i} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{hd}</th>
-                  ))}
-                </tr>
+                <SortableHeaderRow
+                  tableId="certificates"
+                  headers={['Student', 'Type', 'Serial No.', 'Date', 'Status', 'Actions']}
+                  accessors={certSortAccessors}
+                  sort={certSort}
+                  thStyle={{ padding: '9px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}
+                />
               </thead>
               <tbody>
-                {certs.map((c, i) => {
+                {certSort.items.map((c, i) => {
                   const isPending = c.status === 'pending_approval';
                   const isApproved = c.status === 'approved';
                   const statusColor = isApproved ? '#22c55e' : isPending ? '#fbbf24' : '#f87171';
@@ -881,14 +888,14 @@ export function CircularSender() {
   }));
 
   const load = useCallback(async () => {
-    const r = await apiFetch(`${API}/ops/announcements`, { headers: h(currentUser) }).then(r => r.json());
+    const r = await apiFetch(`${API}/ops/announcements`, { headers: h() }).then(r => r.json());
     if (r.success) setAnnouncements(r.data || []);
-  }, [currentUser]);
+  }, []);
 
   useEffect(() => {
     Promise.all([
       load(),
-      getAllClasses(currentUser).then(r => { if (r.success) setClasses(r.data || []); }),
+      getAllClasses().then(r => { if (r.success) setClasses(r.data || []); }),
     ]).finally(() => setLoading(false));
   }, [currentUser, load]);
 
@@ -900,7 +907,7 @@ export function CircularSender() {
     setSending(true); setError('');
     try {
       const res = await apiFetch(`${API}/ops/announcements`, {
-        method: 'POST', headers: h(currentUser),
+        method: 'POST', headers: h(),
         body: JSON.stringify({ ...form, is_draft: false }),
       }).then(r => r.json());
       if (res.success) {
@@ -990,28 +997,17 @@ export function CircularSender() {
           <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--c-border)', fontSize: 11, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase' }}>
             Recent Circulars ({announcements.length})
           </div>
-          {announcements.length === 0 ? (
-            <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', fontSize: 12 }}>No circulars sent yet</div>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  {['Title', 'Sent To', 'Date'].map(hd => (
-                    <th key={hd} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)' }}>{hd}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {announcements.map((a, i) => (
-                  <tr key={a.id || i} style={{ borderBottom: i < announcements.length - 1 ? '1px solid var(--tool-hex-242424)' : 'none' }}>
-                    <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--c-text)', fontWeight: 500 }}>{a.title}</td>
-                    <td style={{ padding: '9px 14px', fontSize: 11, color: 'var(--c-muted)' }}>{audienceLabel(a)}</td>
-                    <td style={{ padding: '9px 14px', fontSize: 11, color: 'var(--c-faint)' }}>{a.created_at?.slice(0, 10)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          {/* D-24: hand-rolled table moved onto the shared sortable DataTable. */}
+          <DataTable
+            tableId="recent-circulars"
+            headers={['Title', 'Sent To', 'Date']}
+            rows={announcements.map(a => [
+              <span style={{ color: 'var(--c-text)', fontWeight: 500 }}>{a.title}</span>,
+              audienceLabel(a),
+              a.created_at?.slice(0, 10) || '',
+            ])}
+            emptyMsg="No circulars sent yet"
+          />
         </div>
       </div>
     </ToolPage>
@@ -1034,7 +1030,7 @@ export function EnquiryRegister() {
   const stageFunnelColors = { new: '#4f8ff7', contacted: '#818cf8', visit_scheduled: '#a78bfa', visited: '#c084fc', documents_submitted: '#fbbf24', fee_paid: '#34d399', enrolled: '#10b981', lost: '#f87171' };
   const statusColors = { new: 'blue', contacted: 'yellow', visit_scheduled: 'purple', visited: 'purple', documents_submitted: 'yellow', fee_paid: 'green', enrolled: 'green', lost: 'red' };
 
-  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch(`${API}/ops/enquiries`, { headers: h(currentUser) }).then(r => r.json()); if (r.success) setEnquiries(r.data || []); } catch {} setLoading(false); }, [currentUser]);
+  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch(`${API}/ops/enquiries`, { headers: h() }).then(r => r.json()); if (r.success) setEnquiries(r.data || []); } catch {} setLoading(false); }, []);
   useEffect(() => { load(); }, [load]);
 
   const handleAdd = async (e) => {
@@ -1042,7 +1038,7 @@ export function EnquiryRegister() {
     setError('');
     if (!form.student_name || !form.parent_name || !form.phone) { setError('Name, parent, and phone are required'); return; }
     try {
-      const res = await apiFetch(`${API}/ops/enquiries`, { method: 'POST', headers: h(currentUser), body: JSON.stringify(form) }).then(r => r.json());
+      const res = await apiFetch(`${API}/ops/enquiries`, { method: 'POST', headers: h(), body: JSON.stringify(form) }).then(r => r.json());
       if (res.success) {
         setShowForm(false);
         setForm({ student_name: '', parent_name: '', phone: '', class_applying: '', source: 'walk_in' });
@@ -1055,7 +1051,7 @@ export function EnquiryRegister() {
 
   const updateStatus = async (id, newStatus) => {
     try {
-      const res = await apiFetch(`${API}/ops/enquiries/${id}`, { method: 'PATCH', headers: h(currentUser), body: JSON.stringify({ status: newStatus }) }).then(r => r.json());
+      const res = await apiFetch(`${API}/ops/enquiries/${id}`, { method: 'PATCH', headers: h(), body: JSON.stringify({ status: newStatus }) }).then(r => r.json());
       if (res.success) {
         load();
         setSelectedEnquiry(null);
@@ -1168,8 +1164,8 @@ export function DocumentScanner() {
 
   useEffect(() => {
     Promise.all([
-      getAllClasses(currentUser).then(r => { if (r.success) setClasses(r.data || []); }),
-      apiFetch(`${API}/students/`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setAllStudents(r.data || []); }),
+      getAllClasses().then(r => { if (r.success) setClasses(r.data || []); }),
+      apiFetch(`${API}/students/`, { headers: h() }).then(r => r.json()).then(r => { if (r.success) setAllStudents(r.data || []); }),
     ]).finally(() => setLoading(false));
   }, [currentUser]);
 
@@ -1200,7 +1196,7 @@ export function DocumentScanner() {
       if (res.success) {
         setResult({ ...res.data, doc_type: docType });
         setFiles(prev => [...prev, { ...res.data, doc_type: docType, student_name: allStudents.find(s => s.id === studentId)?.name || 'Unknown' }]);
-        await apiFetch(`${API}/students/${studentId}`, { method: 'PATCH', headers: h(currentUser), body: JSON.stringify({ [`documents.${docType}`]: res.data.file_url }) });
+        await apiFetch(`${API}/students/${studentId}`, { method: 'PATCH', headers: h(), body: JSON.stringify({ [`documents.${docType}`]: res.data.file_url }) });
       } else {
         setResult({ error: res.detail || 'Upload failed' });
       }
@@ -1299,7 +1295,7 @@ export function SmartFeeDefaulter() {
     try {
       const res = await apiFetch(`${API}/tools/get_fee_summary/execute`, {
         method: 'POST',
-        headers: h(currentUser),
+        headers: h(),
         body: JSON.stringify({ params: {} }),
       });
       if (!res.ok) {
@@ -1313,12 +1309,12 @@ export function SmartFeeDefaulter() {
     } finally {
       setLoading(false);
     }
-  }, [currentUser]);
+  }, []);
 
   useEffect(() => {
     let alive = true;
     loadData();
-    apiFetch(`${API}/sms/config-status`, { headers: h(currentUser) })
+    apiFetch(`${API}/sms/config-status`, { headers: h() })
       .then(r => r.json())
       .then(r => { if (alive && r.success) setTwilioConfigured(r.data.configured); })
       .catch(() => {});
@@ -1326,7 +1322,7 @@ export function SmartFeeDefaulter() {
   }, [currentUser, loadData]);
 
   const loadLogs = async () => {
-    const r = await apiFetch(`${API}/sms/logs`, { headers: h(currentUser) }).then(r => r.json());
+    const r = await apiFetch(`${API}/sms/logs`, { headers: h() }).then(r => r.json());
     if (r.success) setSmsLogs(r.data || []);
   };
 
@@ -1348,7 +1344,7 @@ export function SmartFeeDefaulter() {
     try {
       const res = await apiFetch(`${API}/sms/send-reminder`, {
         method: 'POST',
-        headers: h(currentUser),
+        headers: h(),
         body: JSON.stringify({
           student_id: selectedDefaulter.student_id,
           student_name: selectedDefaulter.student_name,
@@ -1379,7 +1375,7 @@ export function SmartFeeDefaulter() {
     try {
       const res = await apiFetch(`${API}/sms/send-bulk`, {
         method: 'POST',
-        headers: h(currentUser),
+        headers: h(),
         body: JSON.stringify({
           message_template: bulkTemplate,
           recipients: targets.map(d => ({
@@ -1546,7 +1542,7 @@ function AdmissionFunnelAdmin() {
   const { currentUser } = useUser();
   const [enquiries, setEnquiries] = useState([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { apiFetch(`${API}/ops/enquiries`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setEnquiries(r.data || []); }).finally(() => setLoading(false)); }, [currentUser]);
+  useEffect(() => { apiFetch(`${API}/ops/enquiries`, { headers: h() }).then(r => r.json()).then(r => { if (r.success) setEnquiries(r.data || []); }).finally(() => setLoading(false)); }, [currentUser]);
   const stages = ['new', 'contacted', 'visit_scheduled', 'visited', 'documents_submitted', 'fee_paid', 'enrolled', 'lost'];
   const counts = stages.reduce((acc, s) => { acc[s] = enquiries.filter(e => e.status === s).length; return acc; }, {});
   return (
@@ -1574,8 +1570,8 @@ export function ParentMessage() {
 
   useEffect(() => {
     Promise.all([
-      apiFetch(`${API}/settings/classes`, { headers: h(currentUser) }).then(r => r.json()),
-      apiFetch(`${API}/students/`, { headers: h(currentUser) }).then(r => r.json()),
+      apiFetch(`${API}/settings/classes`, { headers: h() }).then(r => r.json()),
+      apiFetch(`${API}/students/`, { headers: h() }).then(r => r.json()),
     ]).then(([cls, stu]) => {
       if (cls.success) setClasses(cls.data || []);
       if (stu.success) setAllStudents(stu.data || []);
@@ -1616,7 +1612,7 @@ export function ParentMessage() {
     try {
       const res = await apiFetch(`${API}/sms/send-parent-message`, {
         method: 'POST',
-        headers: h(currentUser),
+        headers: h(),
         body: JSON.stringify({ student_ids: [...selectedStudents], message }),
       }).then(r => r.json());
       if (res.success) {
@@ -1750,8 +1746,8 @@ export function StudentTransfer() {
 
   useEffect(() => {
     Promise.all([
-      getAllClasses(currentUser).then(r => { if (r.success) setClasses(r.data || []); }),
-      apiFetch(`${API}/students/`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setAllStudents(r.data || []); }),
+      getAllClasses().then(r => { if (r.success) setClasses(r.data || []); }),
+      apiFetch(`${API}/students/`, { headers: h() }).then(r => r.json()).then(r => { if (r.success) setAllStudents(r.data || []); }),
     ]).finally(() => setLoading(false));
   }, [currentUser]);
 
@@ -1771,7 +1767,7 @@ export function StudentTransfer() {
       if (transferType === 'class_change') {
         // Just update class_id
         const res = await apiFetch(`${API}/students/${selectedStudent.id}`, {
-          method: 'PATCH', headers: h(currentUser),
+          method: 'PATCH', headers: h(),
           body: JSON.stringify({ class_id: destinationClass, updated_at: new Date().toISOString() }),
         }).then(r => r.json());
         if (!res.success) throw new Error(res.detail || 'Failed');
@@ -1780,7 +1776,7 @@ export function StudentTransfer() {
         // Transfer or withdrawal — deactivate student
         const status = transferType === 'transfer' ? 'transferred' : 'withdrawn';
         const patchRes = await apiFetch(`${API}/students/${selectedStudent.id}`, {
-          method: 'PATCH', headers: h(currentUser),
+          method: 'PATCH', headers: h(),
           body: JSON.stringify({ status, is_active: false, withdrawal_reason: reason, withdrawal_date: today }),
         }).then(r => r.json());
         if (!patchRes.success) throw new Error(patchRes.detail || 'Failed to update student');
@@ -1788,7 +1784,7 @@ export function StudentTransfer() {
         // Auto-generate Transfer Certificate
         const cls = selectedStudent.class_info;
         const certRes = await apiFetch(`${API}/ops/certificates`, {
-          method: 'POST', headers: h(currentUser),
+          method: 'POST', headers: h(),
           body: JSON.stringify({
             student_id: selectedStudent.id,
             cert_type: 'transfer',
@@ -1956,11 +1952,11 @@ export function IdCardGenerator() {
 
   useEffect(() => {
     Promise.all([
-      apiFetch(`${API}/students/`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setStudents(r.data || []); }),
+      apiFetch(`${API}/students/`, { headers: h() }).then(r => r.json()).then(r => { if (r.success) setStudents(r.data || []); }),
       // Was a raw fetch, which bypassed api.js and so skipped the class ordering
       // applied in getAllClasses. Project convention is that all API calls go
       // through api.js for exactly this reason.
-      getAllClasses(currentUser).then(r => { if (r.success) setClasses(r.data || []); })
+      getAllClasses().then(r => { if (r.success) setClasses(r.data || []); })
     ]).finally(() => setLoading(false));
   }, [currentUser]);
 
@@ -2036,9 +2032,9 @@ export function TimetableBuilder() {
 
   useEffect(() => {
     Promise.all([
-      getAllClasses(currentUser),
-      apiFetch(`${API}/academics/subjects`, { headers: h(currentUser) }).then(r => r.json()),
-      apiFetch(`${API}/staff/`, { headers: h(currentUser) }).then(r => r.json())
+      getAllClasses(),
+      apiFetch(`${API}/academics/subjects`, { headers: h() }).then(r => r.json()),
+      apiFetch(`${API}/staff/`, { headers: h() }).then(r => r.json())
     ]).then(([classRes, subjRes, staffRes]) => {
       if (classRes.success && classRes.data.length > 0) {
         setClasses(classRes.data);
@@ -2052,10 +2048,10 @@ export function TimetableBuilder() {
   const loadSlots = useCallback(async (classId) => {
     if (!classId) return;
     try {
-      const r = await apiFetch(`${API}/academics/timetable/${classId}`, { headers: h(currentUser) }).then(r => r.json());
+      const r = await apiFetch(`${API}/academics/timetable/${classId}`, { headers: h() }).then(r => r.json());
       if (r.success) setSlots(r.data || []);
     } catch { }
-  }, [currentUser]);
+  }, []);
 
   useEffect(() => { loadSlots(selectedClass); }, [selectedClass, loadSlots]);
 
@@ -2085,7 +2081,7 @@ export function TimetableBuilder() {
 
       const res = await apiFetch(url, {
         method,
-        headers: h(currentUser),
+        headers: h(),
         body: JSON.stringify(payload)
       }).then(r => r.json());
 
@@ -2123,7 +2119,7 @@ export function TimetableBuilder() {
     try {
       const res = await apiFetch(`${API}/academics/timetable/${slotId}`, {
         method: 'DELETE',
-        headers: h(currentUser)
+        headers: h()
       }).then(r => r.json());
       if (res.success) loadSlots(selectedClass);
     } catch { }
@@ -2199,11 +2195,11 @@ export function AssetTracker() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await apiFetch(`${API}/ops/assets`, { headers: h(currentUser) }).then(r => r.json());
+      const r = await apiFetch(`${API}/ops/assets`, { headers: h() }).then(r => r.json());
       if (r.success) setAssets(r.data || []);
     } catch {}
     setLoading(false);
-  }, [currentUser]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -2219,7 +2215,7 @@ export function AssetTracker() {
     try {
       const res = await apiFetch(`${API}/ops/assets`, {
         method: 'POST',
-        headers: h(currentUser),
+        headers: h(),
         body: JSON.stringify({
           name: form.name.trim(),
           category: form.category,
@@ -2313,14 +2309,14 @@ export function TransportManager() {
     setLoading(true);
     try {
       const [routesRes, studentsRes] = await Promise.all([
-        apiFetch(`${API}/ops/transport`, { headers: h(currentUser) }).then(r => r.json()),
-        getStudents(currentUser, {})
+        apiFetch(`${API}/ops/transport`, { headers: h() }).then(r => r.json()),
+        getStudents({})
       ]);
       if (routesRes.success) setRoutes(routesRes.data || []);
       if (studentsRes.success) setStudents(studentsRes.data || []);
     } catch {}
     setLoading(false);
-  }, [currentUser]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -2333,7 +2329,7 @@ export function TransportManager() {
     const method = editingId ? 'PATCH' : 'POST';
     const url = editingId ? `${API}/ops/transport/${editingId}` : `${API}/ops/transport`;
     try {
-      const res = await apiFetch(url, { method, headers: h(currentUser), body: JSON.stringify(form) }).then(r => r.json());
+      const res = await apiFetch(url, { method, headers: h(), body: JSON.stringify(form) }).then(r => r.json());
       if (res.success) {
         setShowForm(false);
         setEditingId(null);
@@ -2352,7 +2348,7 @@ export function TransportManager() {
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this route?')) return;
     try {
-      const res = await apiFetch(`${API}/ops/transport/${id}`, { method: 'DELETE', headers: h(currentUser) }).then(r => r.json());
+      const res = await apiFetch(`${API}/ops/transport/${id}`, { method: 'DELETE', headers: h() }).then(r => r.json());
       if (res.success) load();
     } catch {}
   };
@@ -2367,7 +2363,7 @@ export function TransportManager() {
     try {
       const res = await apiFetch(`${API}/students/${assignForm.student_id}`, {
         method: 'PATCH',
-        headers: h(currentUser),
+        headers: h(),
         body: JSON.stringify({ bus_route: assignForm.bus_route, uses_transport: true })
       }).then(r => r.json());
       if (res.success) {
@@ -2537,11 +2533,11 @@ export function CustomFormBuilder() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await apiFetch(`${API}/settings/forms`, { headers: h(currentUser) }).then(r => r.json());
+      const r = await apiFetch(`${API}/settings/forms`, { headers: h() }).then(r => r.json());
       if (r.success) setForms(r.data || []);
     } catch {}
     setLoading(false);
-  }, [currentUser]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -2564,7 +2560,7 @@ export function CustomFormBuilder() {
           options: (f.type === 'select' || f.type === 'radio') && f.options ? f.options.split(',').map(o => o.trim()).filter(o => o) : []
         }))
       };
-      const headers = h(currentUser);
+      const headers = h();
       const fetchRes = await apiFetch(`${API}/settings/forms`, {
         method: 'POST',
         headers: headers,
@@ -2588,7 +2584,7 @@ export function CustomFormBuilder() {
 
   const loadResponses = async (formId) => {
     try {
-      const r = await apiFetch(`${API}/settings/forms/${formId}/responses`, { headers: h(currentUser) }).then(r => r.json());
+      const r = await apiFetch(`${API}/settings/forms/${formId}/responses`, { headers: h() }).then(r => r.json());
       if (r.success) setResponses(r.data || []);
     } catch {}
   };
@@ -2602,7 +2598,7 @@ export function CustomFormBuilder() {
   const handleDelete = async (formId) => {
     if (!window.confirm('Delete this form and all responses?')) return;
     try {
-      const res = await apiFetch(`${API}/settings/forms/${formId}`, { method: 'DELETE', headers: h(currentUser) }).then(r => r.json());
+      const res = await apiFetch(`${API}/settings/forms/${formId}`, { method: 'DELETE', headers: h() }).then(r => r.json());
       if (res.success) load();
     } catch {}
   };
@@ -2678,36 +2674,25 @@ export function CustomFormBuilder() {
             <h4 style={{ color: 'var(--c-text)', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{selectedForm.title}</h4>
             <p style={{ color: 'var(--c-faint)', fontSize: 11 }}>Responses: {responses.length} | Audience: <span style={{ textTransform: 'capitalize' }}>{selectedForm.audience}</span></p>
           </div>
-          {responses.length === 0 ? (
-            <div style={{ textAlign: 'center', color: 'var(--c-faint)', padding: '40px 20px' }}>No responses yet</div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--c-border)' }}>
-                    <th style={{ padding: '8px', textAlign: 'left', color: 'var(--c-muted)', fontWeight: 600 }}>Submitted By</th>
-                    <th style={{ padding: '8px', textAlign: 'left', color: 'var(--c-muted)', fontWeight: 600 }}>Role</th>
-                    {selectedForm.fields?.slice(0, 3).map(f => (
-                      <th key={f.label} style={{ padding: '8px', textAlign: 'left', color: 'var(--c-muted)', fontWeight: 600 }}>{f.label}</th>
-                    ))}
-                    <th style={{ padding: '8px', textAlign: 'left', color: 'var(--c-muted)', fontWeight: 600 }}>Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {responses.map(resp => (
-                    <tr key={resp.id} style={{ borderBottom: '1px solid var(--c-border)' }}>
-                      <td style={{ padding: '8px', color: 'var(--c-text)' }}>{resp.submitted_by_name}</td>
-                      <td style={{ padding: '8px', color: 'var(--c-text)', textTransform: 'capitalize' }}>{resp.submitted_by_role}</td>
-                      {selectedForm.fields?.slice(0, 3).map(f => (
-                        <td key={f.label} style={{ padding: '8px', color: 'var(--tool-hex-d4d4d4)', fontSize: 11 }}>{String(resp.answers?.[f.label] || 'N/A').slice(0, 30)}</td>
-                      ))}
-                      <td style={{ padding: '8px', color: 'var(--c-faint)', fontSize: 10 }}>{resp.submitted_at?.slice(0, 10)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {/* D-24: hand-rolled table moved onto the shared sortable DataTable. The middle
+              columns are the form's own questions, so the headers and the cells are both
+              built from `selectedForm.fields` — sorting works on those just as well. */}
+          <DataTable
+            tableId="form-responses"
+            headers={[
+              'Submitted By',
+              'Role',
+              ...(selectedForm.fields?.slice(0, 3).map(f => f.label) || []),
+              'Date',
+            ]}
+            rows={responses.map(resp => [
+              resp.submitted_by_name,
+              <span style={{ textTransform: 'capitalize' }}>{resp.submitted_by_role}</span>,
+              ...(selectedForm.fields?.slice(0, 3).map(f => String(resp.answers?.[f.label] || 'N/A').slice(0, 30)) || []),
+              resp.submitted_at?.slice(0, 10) || '',
+            ])}
+            emptyMsg="No responses yet"
+          />
         </>
       )}
     </ToolPage>
@@ -2722,8 +2707,8 @@ export function ReportCardBuilder() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { apiFetch(`${API}/academics/exams`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setExams(r.data || []); }).finally(() => setLoading(false)); }, [currentUser]);
-  useEffect(() => { if (selectedExam) apiFetch(`${API}/academics/results?exam_id=${selectedExam}`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setResults(r.data || []); }); }, [selectedExam, currentUser]);
+  useEffect(() => { apiFetch(`${API}/academics/exams`, { headers: h() }).then(r => r.json()).then(r => { if (r.success) setExams(r.data || []); }).finally(() => setLoading(false)); }, [currentUser]);
+  useEffect(() => { if (selectedExam) apiFetch(`${API}/academics/results?exam_id=${selectedExam}`, { headers: h() }).then(r => r.json()).then(r => { if (r.success) setResults(r.data || []); }); }, [selectedExam, currentUser]);
 
   return (
     <ToolPage title="Report Card Builder" subtitle="Enter marks & generate report cards" loading={loading}>
@@ -2754,18 +2739,18 @@ export function StudentPerformanceViewer() {
 
   useEffect(() => {
     Promise.all([
-      getStudents(currentUser).then(r => { if (r.success) setStudents(r.data || []); }),
-      apiFetch(`${API}/academics/results`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setResults(r.data || []); }),
+      getStudents().then(r => { if (r.success) setStudents(r.data || []); }),
+      apiFetch(`${API}/academics/results`, { headers: h() }).then(r => r.json()).then(r => { if (r.success) setResults(r.data || []); }),
     ]).finally(() => setLoading(false));
   }, [currentUser]);
 
   const viewStudent = async (student) => {
     setSelectedStudent(student);
     // Get results
-    const r1 = await apiFetch(`${API}/academics/results?student_id=${student.id}`, { headers: h(currentUser) }).then(r => r.json());
+    const r1 = await apiFetch(`${API}/academics/results?student_id=${student.id}`, { headers: h() }).then(r => r.json());
     if (r1.success) setStudentResults(r1.data || []);
     // Get attendance summary
-    const r2 = await apiFetch(`${API}/attendance/student?student_id=${student.id}`, { headers: h(currentUser) }).then(r => r.json());
+    const r2 = await apiFetch(`${API}/attendance/student?student_id=${student.id}`, { headers: h() }).then(r => r.json());
     if (r2.success) {
       const records = r2.data || [];
       const present = records.filter(r => r.status === 'present').length;

@@ -378,7 +378,13 @@ async def _create_indexes():
     await db.audit_logs.create_index([("entity_type", 1), ("entity_id", 1)])
     await db.lesson_plans.create_index([("class_id", 1), ("week", 1)])
     await db.sms_logs.create_index("created_at", expireAfterSeconds=7776000)
-    await db.notifications.create_index([("user_id", 1), ("read", 1), ("created_at", -1)])
+    # D-36: the notifications (user_id, read, created_at) index used to be declared a
+    # second time here, identically to line ~371. Mongo treated the repeat as a no-op,
+    # so the cost was only confusion — a reader could not tell whether two different
+    # indexes were intended. Removed; the single declaration above is the live one.
+    # NOTE: removing a line from this function does NOT drop anything from a database
+    # that already has it. Nothing was ever created twice, so nothing needs dropping
+    # and no migration is required.
     # Part 10: Payroll disbursement unique index (EC-10.4 — prevents concurrent double-disbursement)
     try:
         await db.salary_disbursements.create_index(
