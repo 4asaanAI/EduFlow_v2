@@ -129,7 +129,7 @@ Escape hatch for a deliberate remote run:
 offending source; with `MONGO_URL` pinned to a local test database the full suite runs at
 the pinned baseline — 1636 passed, 2 failed, 14 deselected. Approved by Abhimanyu.
 
-### D-05 (was RISK-4) — `project-context.md` carries a stale fact — **DEFERRED**
+### D-05 (was RISK-4) — `project-context.md` carries a stale fact — **CLOSED 2026-08-04** (see "D-05 — was already closed" at the end of this file)
 It states "Sidebar width is 120px fixed". Actual: 260px, and 280px as a mobile drawer.
 It is loaded as authoritative context by every BMAD workflow, so it misinforms agents.
 **Reason deferred:** documentation-only; fix alongside Epic 2 (the sidebar epic).
@@ -223,7 +223,7 @@ on that line with a comment explaining why. Done. Zero behaviour change. The rem
 ~29 warnings across the dozen files stay deferred as their own pass — this was one named
 line, not the sweep.
 
-### D-17 — Pre-existing `scoped_filter(` hits carry no intent comment — **DEFERRED, hygiene**
+### D-17 — Pre-existing `scoped_filter(` hits carry no intent comment — **CLOSED 2026-08-04** (all 103 annotated; audit grep returns 0 — see "D-58 correction" at the end of this file)
 Seven hits in `backend/routes/staff.py` predate this initiative and lack the
 `# branch-scope: intentional — <reason>` annotation the standing audit expects. They
 appear to be correct (school-scoped leave and staff lookups) but are unannotated, so
@@ -272,8 +272,15 @@ School Settings screen, which writes through `updateSchoolSettings()` and is aud
 That path was offered first; the owner chose to have it done directly. Any future
 correction of this kind should prefer the in-app route.
 
-### D-21 — The rest of the school's own details are still placeholder data — **OPEN**
-Still stored on the same record, and all wrong for a real school:
+### D-21 — The rest of the school's own details are still placeholder data — **CLOSED 2026-08-04**
+> **CLOSED. Do not re-raise this.** Abhimanyu confirmed on 2026-08-04 that the stored
+> school record was updated, which was the only part still outstanding. The code half was
+> already done in Epic 4 (`backend/school_identity.py` carries the verified address, phone,
+> email, principal, website, affiliation number and school code, all sourced from the
+> school's own material). Both halves are now correct. The table below is the historical
+> record of what was wrong; it is NOT the current state.
+
+Historical, for the record. Was stored on the same record, and all wrong for a real school:
 
 | Field | Stored now | The school's actual value (source-of-truth §1) |
 |---|---|---|
@@ -307,7 +314,7 @@ single tab. Reported by the owner. The header now shows the title only when the 
 does not — on the chat view, and on phones where the page heading scrolls away and
 the sticky header is the only remaining indication of where you are.
 
-### D-21 update — **FIXED IN CODE in Epic 4; the stored values still need the Owner**
+### D-21 update — **FIXED IN CODE in Epic 4; stored values confirmed updated 2026-08-04**
 Epic 4 created one verified source for the school's identity
 (`backend/school_identity.py`), taken from the school's own website on Abhimanyu's
 instruction, and added the CBSE affiliation number (2133014) and school code (81936),
@@ -321,7 +328,7 @@ corrected**: the change reaches his screen when he opens School Settings and sav
 (audited as his action, which is the D-15b lesson), or approves the direct write.
 Verified values are in `epic-4-completed.md` and on the human checklist.
 
-### D-24 — Roughly 22 hand-rolled tables still have no column sorting — **DEFERRED**
+### D-24 — Roughly 22 hand-rolled tables still have no column sorting — **CLOSED** (see "D-24 — how it was closed" below)
 Abhimanyu asked on 2026-07-22 for column sorting on *every* table. Enumerated rather
 than estimated: **2** screens used the shared server-sorted table; **33** rendered
 through the older `ToolPage` `DataTable`; **~22** are hand-rolled `<table>` elements.
@@ -589,7 +596,7 @@ defect first and a product curiosity second.
 **Baseline for Epic 7: 1955 passed, 3 failed, 14 deselected** — and expect the third to
 disappear if the suite is run after 05:30 IST.
 
-### D-36 — A duplicate index on `notifications` — **DEFERRED, hygiene**
+### D-36 — A duplicate index on `notifications` — **CLOSED** (verified 2026-08-04: only one such declaration remains in `database.py`)
 `db.notifications.create_index([("user_id", 1), ("read", 1), ("created_at", -1)])`
 appears twice in `backend/database.py`, at line 367 and again at line 377, identically.
 Mongo treats the second as a no-op, so the cost is confusion rather than storage. Found
@@ -896,7 +903,11 @@ five uploads through it; both are a decision, not a cleanup. **Worth Abhimanyu t
 whether a photo attaches from Document Scanner and from a maintenance request** — nobody
 has confirmed those two paths since the S3 work.
 
-### D-48 — Nine frontend test files stub `lib/api` and would break on contact — **OPEN, latent**
+### D-48 — Nine frontend test files stub `lib/api` and would break on contact — **CLOSED 2026-08-04**
+> **CLOSED.** All nine now build their stub from the real module's export list
+> (`jest.requireActual('../../lib/api')`), so a new helper can never be silently missing
+> again. `LayoutRouting` was done in T12; the other eight in the tidy-up sweep. See **D-60**.
+
 `jest.mock('../../lib/api', () => ({ ... }))` with an explicit factory does **not** fall
 through to the real module, so any name the factory omits is `undefined`. T3 made 21
 component files import `API`/`apiFetch` from that module; `BoardReport.test.js` broke on
@@ -910,7 +921,14 @@ because they do not render a converted screen: `LayoutRouting`, `ConversationTra
 must add `API` and `apiFetch` to its mock as well, or they will fix one crash and find
 another. Not pre-emptively edited here because it is another block's file.
 
-### D-49 — Certificate and ID-card tools are still offered to staff who cannot use them — **OPEN, needs the owner's list**
+### D-49 — Certificate and ID-card tools are still offered to staff who cannot use them — **CLOSED 2026-08-04**
+> **CLOSED.** Abhimanyu named the third position: the **accountant**. The server rule is
+> now `require_owner_principal_or_accountant` (owner is checked first and returns, so the
+> sub-category test can never lock the school's owner out), and the four menus that each
+> carried their own copy of the rule now share one definition in
+> `frontend/src/lib/toolPermissions.js`, checked against the server rule for every role and
+> sub-category by `DocumentIssuerMenus.test.js`.
+
 T1 put issuing back to Owner + Principal on the server. The **menus were not changed**:
 `Sidebar.js` still lists ID Cards for the receptionist, and the tool registries
 (`ToolDashboard`, `CommandPalette`, `Layout`, `Sidebar`) still offer Certificates and ID
@@ -923,7 +941,7 @@ print certificates. Editing the menus twice — once to remove, once to add his 
 back — is worse than editing them once when he answers. The server is the gate and the
 server is correct; this is a tidiness issue, not a hole. On the human checklist.
 
-### D-50 — An unexplained 7,267-line `upload.sh` sits untracked at the repo root — **OPEN, trivial**
+### D-50 — An unexplained 7,267-line `upload.sh` sits untracked at the repo root — **CLOSED 2026-08-04** (identified as a third-party analytics installer, gitignored with the explanation; the file itself is Abhimanyu's to delete)
 Header says "Paxel upload script". Nothing in EduFlow references it, and it predates this
 work (present in `git status` before the branch was cut). Left untracked and **not
 committed**. Someone should confirm it is a stray from another project and delete it,
@@ -962,7 +980,7 @@ changes what a principal can do and is therefore an owner decision, exactly like
 Note the file has **no** `scoped_filter`/`scoped_query` calls at all, so the standing audit
 grep passes vacuously on it — worth remembering when the multi-branch work starts.
 
-### D-51 — `AGENTS.md` carries the same stale test baseline `CLAUDE.md` did — **OPEN, docs**
+### D-51 — `AGENTS.md` carries the same stale test baseline `CLAUDE.md` did — **CLOSED 2026-08-04** (the "420 passed" line is gone from `AGENTS.md`; the failure count is the bar in both files)
 `AGENTS.md:307` still says "must show 420 passed, 0 skipped". `CLAUDE.md` was corrected in
 this block; `AGENTS.md` was left because the two files have drifted from each other in more
 places than this one line, and reconciling them is its own job. Flagged so the next reader
@@ -1016,7 +1034,7 @@ rather than fill in the form, that will not work any more. Nobody has ever repor
 that way, but nobody was asked either. One question to Abhimanyu at a convenient moment
 settles it, and the list is one file to edit if the answer is "put them back".
 
-### D-58 — Two dozen older `scoped_filter` calls still have no note saying why — **OPEN, points at D-17**
+### D-58 — Two dozen older `scoped_filter` calls still have no note saying why — **CLOSED 2026-08-04** (it was 103, not two dozen; all annotated, nothing migrated — see "D-58 correction" at the end of this file)
 The standing rule is that every `scoped_filter(` hit either carries a
 `# branch-scope: intentional — <reason>` comment or gets migrated to `scoped_query(...)`.
 Across the route files roughly two dozen pre-existing hits still carry neither. Block 2 added
@@ -1030,7 +1048,11 @@ which is exactly the mistake that bites the first day a second branch exists (se
 
 ---
 
-### D-59 — A pasted tool link does not survive a fresh browser tab — **OPEN, blocks D-44**
+### D-59 — A pasted tool link does not survive a fresh browser tab — **CLOSED 2026-08-04, no longer blocks D-44**
+> **CLOSED.** "No record of anyone in this tab" and "a genuinely different person" were
+> being treated as the same thing; they are now distinct, so a link straight to a screen
+> survives a fresh tab while a different user still gets the previous person's screen
+> cleared. Both directions are covered by tests. D-44's deep-link work is unblocked.
 
 Found while repairing the tool-routing tests (T12). `Layout.js` clears the `?tool=` part of
 the address on load whenever the browser has no record of the current user from an earlier
@@ -1051,7 +1073,9 @@ and will need one more case once this is settled.
 
 ---
 
-### D-60 — Eight more test files carry the mock that made the routing tests impossible — **OPEN, latent, sharpens D-48**
+### D-60 — Eight more test files carry the mock that made the routing tests impossible — **CLOSED 2026-08-04**
+> **CLOSED.** All eight now derive their stub from the real module's export list, the fix
+> D-48 describes. Both traps below still apply to anyone writing a NEW stub.
 
 D-48 said nine frontend test files stub `lib/api` and would break on contact. T12 proved it
 by hitting exactly that, and the fix is now written down in one place. The other eight
@@ -1089,7 +1113,9 @@ fail on the old code.
 
 ---
 
-### D-62 — Dead arguments left over from an API refactor — **OPEN, small, same root as D-61**
+### D-62 — Dead arguments left over from an API refactor — **CLOSED 2026-08-04**
+> **CLOSED.** 130 dead arguments removed across 9 screens, and the sweep is what surfaced
+> **D-64**, which was not dead at all. `apiDeadArgs.test.js` now holds the line.
 
 Several screens still pass `currentUser` into helpers that do not take it: `h(currentUser)`
 where `h()` takes nothing, `getAllClasses(currentUser)`, `getStudents(currentUser, ...)`.
@@ -1102,7 +1128,10 @@ let D-61 sit there. Worth one small dedicated pass over the call sites.
 
 ---
 
-### D-63 — `SubstitutionViewer` reads the user without a guard — **OPEN, latent**
+### D-63 — `SubstitutionViewer` reads the user without a guard — **CLOSED 2026-08-04**
+> **CLOSED.** It now reads `currentUser?.id` and does not ask the server at all until it
+> has one, so it can no longer send `user_id=undefined` and read the empty answer back as
+> "no changes today".
 
 `TeacherTools.js`'s `SubstitutionViewer` reads `currentUser.id` with no null check, so it
 would throw if it ever rendered before the session finished loading. Pre-existing and not
@@ -1161,7 +1190,12 @@ Worked in one pass. **D-24, D-62, D-63, D-36, D-17/D-58, D-50, D-51, D-60 are CL
 Verified at the end: backend **2012 passed / 0 failed / 14 deselected**; frontend
 **374 passed / 0 failed / 35 suites**; production build clean (no `exhaustive-deps` errors).
 
-### D-64 — `Layout.js` puts the whole signed-in user into a request URL — **OPEN, live, NOT FIXED (fenced)**
+### D-64 — `Layout.js` puts the whole signed-in user into a request URL — **FIXED 2026-08-04, later the same day**
+> **This entry recorded the moment of discovery, when the file was owned by a concurrent
+> piece of work. It was fixed before the day ended.** The live status is the D-64 entry
+> above; the text below is the original finding, kept for the record. The one part still
+> outstanding is not a code question: existing server and CloudFront logs already contain
+> these URLs, and whether they need purging is Abhimanyu's call.
 
 Found while sweeping D-62, and it is the one stray argument that is NOT harmless.
 `Layout.js:163` calls `getConversations(currentUser)`. `getConversations(params)` spreads its

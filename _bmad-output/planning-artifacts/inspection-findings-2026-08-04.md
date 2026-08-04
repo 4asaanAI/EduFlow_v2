@@ -567,12 +567,56 @@ Mark `⏸ Blocked on owner` until he confirms it is done.
 Already in `_bmad-output/implementation-artifacts/ui-sweep/DEFERRED-AND-DISCOVERIES.md` and
 re-confirmed still true on 2026-08-04. Listed so nobody re-raises them as new:
 
-`D-21` school's own address/phone/email/principal still placeholder ·
-`D-33` file writing, photo reading and image understanding live but never verified ·
-`D-29` expense export is school-wide while its neighbours are branch-scoped ·
-`D-36` duplicate notifications index · `D-24` ~22 tables still without column sorting ·
-`D-25` two dispatch paths into one tool registry · `D-41` telemetry ingest failing ·
-`D-46` WAF size rule in Count mode (deliberate, owner's call) ·
-`D-44` Directory deep-link and deeper tool consolidation ·
-`D-06`–`D-10` data-load gaps · `D-30`/`D-31` scanned PDFs and on-demand vision ·
-`D-32` stall thresholds never measured on the school's connection.
+**Re-verified against the code on 2026-08-04, not copied forward.** Three that this list
+still carried as open are in fact **CLOSED** and must not be re-raised: `D-21` (the school's
+own address/phone/email/principal — the code half shipped in Epic 4 and Abhimanyu confirmed
+the stored record was updated), `D-24` (column sorting — 20 hand-rolled tables done, guarded
+by `SortableHandRolledTables.test.js`; the Timetable grid is deliberately not sortable), and
+`D-36` (the duplicate notifications index — `database.py` now declares it once).
+
+**Second reconciliation, 2026-08-04 (end of day).** Ten more that this list or the defect
+log still carried as open were in fact closed by the owner-decisions round and the tidy-up
+sweep, verified against the code, not taken from a commit message: `D-05`, `D-17`, `D-48`,
+`D-49`, `D-50`, `D-51`, `D-58`, `D-59`, `D-60`, `D-62`, `D-63`, `D-64`. Their headings in
+`DEFERRED-AND-DISCOVERIES.md` now say so. **`D-59` closing means `D-44`'s deep-link work is
+no longer blocked.**
+
+### Genuinely still open — the whole list, in one place
+
+Nothing else is open. Everything here needs either a decision from Abhimanyu, a credential
+this machine does not have, or real-world use to settle it. **No item below can be closed by
+an agent working alone**, which is why they are still here.
+
+**Waiting on a decision from Abhimanyu**
+- `D-29` expense export is school-wide while its neighbours are branch-scoped. Narrowing it
+  changes what an accountant can see. Annotated in place. No effect while there is one branch.
+- `D-46` the WAF size rule is in Count mode across the board. Deliberate, his call to flip.
+- `D-47` four uploads use the ordinary server address and one uses a separate upload address.
+  Both point at the same place today, so nothing is broken; the choice is to delete the second
+  address or route all five through it.
+- `D-53` certificates and ID cards have no branch scoping. No effect today, one branch.
+- `D-57` Flo no longer volunteers 26 setup jobs in chat. Permissions unchanged. One question:
+  does anyone actually want to create a fee structure by talking to Flo?
+- `D-64` follow-up: existing server and CloudFront logs still contain the URLs that carried
+  personal details. Whether to purge them is an operations decision.
+- `T14`/`D-34` remove `iam:PutRolePolicy` from the `claude-hosting` AWS user. The agent cannot
+  read it, let alone remove it.
+
+**Waiting on a credential or a real environment**
+- `T9`/`NEW-13` the AI answer-quality baseline needs the production Azure OpenAI key. The
+  corpus half is done (55 conversations, three of them `draft_document`); only the
+  credentialed run is left.
+- `D-33` writing a file as the server, reading a photo, and whether the model accepts images
+  at all: three things that are live and unproven. All three need someone to try them.
+- `D-30`/`D-31` scanned PDFs and calling the vision fallback on demand.
+- `D-41` backend telemetry ingest failing in production.
+- `D-32` the "taking longer than usual" thresholds were reasoned, never measured on the
+  school's connection on a real morning.
+
+**Bigger pieces of work, scoped but not started**
+- `D-25` two doors into one tool registry. Architectural, worth its own run.
+- `D-44` deeper tool consolidation (the deep-link half is now unblocked by `D-59`).
+- `D-06`–`D-10` the data-load gaps, all of which write to live school data (Track 2).
+- `D-52`/`D-54` nothing stops a red test suite reaching `main`, and a tier that is skipped by
+  default can rot invisibly. Both are process, and setting up a merge gate can block the
+  owner's deploys, so it needs saying yes to first.
