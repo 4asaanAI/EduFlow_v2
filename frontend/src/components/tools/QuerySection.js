@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { ToolPage } from './ToolPage';
@@ -218,7 +218,7 @@ export function QuerySection() {
   const secondary = isDark ? 'var(--tool-hex-a0a0a0)' : 'var(--tool-hex-525252)';
   const inputBg = isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-fafafa)';
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const params = filter !== 'all' ? `?status=${filter}` : '';
@@ -227,9 +227,9 @@ export function QuerySection() {
       if (data.success) setTickets(data.data);
     } catch {}
     setLoading(false);
-  };
+  }, [filter]);
 
-  useEffect(() => { load(); }, [filter]);
+  useEffect(() => { load(); }, [load]);
 
   const handleFileChange = (e) => {
     const f = e.target.files[0];

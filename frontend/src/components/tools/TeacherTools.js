@@ -92,7 +92,7 @@ export function ClassAttendanceMarker() {
   useEffect(() => { if (selectedClass) { setLoading(true);
     apiFetch(`${API}/attendance/student/today/${selectedClass}?date=${date}`, { headers: h(currentUser) })
       .then(r => r.json()).then(r => { if (r.success) setRecords(r.data || []); }).finally(() => setLoading(false)); 
-  } }, [selectedClass, date]);
+  } }, [selectedClass, date, currentUser]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -304,7 +304,7 @@ export function QuestionPaperCreator() {
       setLoading(false);
     };
     load();
-  }, []);
+  }, [currentUser]);
 
   const handleGenerate = async (e) => {
     e.preventDefault();
@@ -566,7 +566,7 @@ export function LeaveApplication() {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       // Use my-leaves endpoint instead of pending (which requires owner/admin)
@@ -574,9 +574,9 @@ export function LeaveApplication() {
       if (r.success) setMyLeaves(r.data || []);
     } catch {}
     setLoading(false);
-  };
+  }, [currentUser]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const handleApply = async (e) => {
     e.preventDefault();
@@ -751,17 +751,17 @@ export function WorksheetCreator() {
   const [saving, setSaving] = useState(false);
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const r = await apiFetch(`${API}/academics/worksheets`, { headers: h(currentUser) }).then(r => r.json()).catch(() => ({ success: false }));
     if (r.success) setWorksheets(r.data || []);
-  };
+  }, [currentUser]);
 
   useEffect(() => {
     Promise.all([
       apiFetch(`${API}/academics/subjects`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setSubjects(r.data || []); }),
       load(),
     ]).finally(() => setLoading(false));
-  }, []);
+  }, [currentUser, load]);
 
   const openCreate = () => { setEditingId(null); setForm({ subject_id: '', topic: '', type: 'practice', content: '' }); setShowForm(true); };
   const openEdit = (w) => { setEditingId(w.id); setForm({ subject_id: w.subject_id || '', topic: w.topic || '', type: w.type || 'practice', content: w.content || '' }); setShowForm(true); };
@@ -841,7 +841,7 @@ export function SubstitutionViewer() {
     apiFetch(`${API}/academics/substitutions?user_id=${currentUser.id}`, { headers: h(currentUser) })
       .then(r => r.json()).then(r => { if (r.success) setSubs(r.data || []); })
       .catch(() => {}).finally(() => setLoading(false));
-  }, []);
+  }, [currentUser]);
 
   return (
     <ToolPage title="Substitution Viewer" subtitle="View your schedule changes" loading={loading}>

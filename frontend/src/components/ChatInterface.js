@@ -42,7 +42,14 @@ async function executeAction(convId, action, params, label, user) {
     method: 'POST', headers: getHeaders(user),
     body: JSON.stringify({ action, params, label }),
   });
-  return res.json();
+  const body = await res.json().catch(() => ({}));
+  // NEW-07/T13: a refused action now answers 403/404 with {detail}, not 200 with
+  // {success:false, error}. Normalise both shapes here so the person still sees the
+  // real reason ("You do not have permission...") instead of a generic failure.
+  if (!res.ok) {
+    return { success: false, error: body.detail || body.error || 'Action failed. Please try again.' };
+  }
+  return body;
 }
 
 function TypingIndicator() {
@@ -102,7 +109,7 @@ function HealthScoreWidget({ user }) {
       const s = Math.max(0, Math.min(100, Math.round(base - (alerts * 5))));
       setScore(s);
     }).catch(() => {});
-  }, [user.id]);
+  }, [user]);
 
   if (score === null || (user.role !== 'owner' && user.role !== 'admin')) return null;
   const color = score >= 80 ? '#34d399' : score >= 60 ? '#fbbf24' : '#f87171';
@@ -299,7 +306,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     if (activeConvId && activeConvId !== convId) {
       setConvId(activeConvId);
     }
-  }, [activeConvId]);
+  }, [activeConvId, convId]);
 
   // FH4 (R8.2 AC1): wipe ALL turn-scoped UI state when the conversation changes,
   // so a stale confirm card / followup / error / half-streamed message from the

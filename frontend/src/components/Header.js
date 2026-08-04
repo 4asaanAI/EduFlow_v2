@@ -65,7 +65,7 @@ function SearchPanel({ user, onClose, isDark }) {
       setLoading(false);
     }, 300);
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [query, user]);
 
   const bg = 'var(--color-surface)';
   const border = 'var(--color-border)';

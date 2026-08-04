@@ -242,8 +242,13 @@ function timeAgo(iso) {
 
 function ConvMenu({ conv, onClose, onRename, onPin, onStar, onDelete, isDark }) {
   const ref = useRef(null);
+  // `onClose` is passed as a fresh inline arrow on every parent render. Listing it as
+  // a dependency directly would tear down and re-add the document listener on every
+  // render, so the latest one is kept in a ref and the listener is registered once.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
-    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onCloseRef.current(); };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
@@ -310,7 +315,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
     if (!groupConfig) return;
     const active = groupConfig.groups.find(g => g.tools.includes(activeTool));
     if (active) setOpenGroups(prev => new Set([...prev, active.id]));
-  }, [activeTool]);
+  }, [activeTool, groupConfig]);
 
   useEffect(() => {
     const handleNavigate = (e) => {

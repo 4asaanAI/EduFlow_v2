@@ -1,7 +1,7 @@
 /**
  * All 10 Student Tools
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn } from './ToolPage';
@@ -170,7 +170,7 @@ export function HomeworkViewer() {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedAssignment, setSelectedAssignment] = useState(null);
-  useEffect(() => { apiFetch(`${API}/academics/assignments`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setAssignments(r.data || []); }).finally(() => setLoading(false)); }, []);
+  useEffect(() => { apiFetch(`${API}/academics/assignments`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setAssignments(r.data || []); }).finally(() => setLoading(false)); }, [currentUser]);
   const today = new Date().toISOString().slice(0, 10);
 
   if (selectedAssignment) {
@@ -254,7 +254,7 @@ export function AttendanceSelfCheck() {
   const { currentUser } = useUser();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { import('../../lib/api').then(({ executeTool }) => executeTool('get_my_attendance', {}, currentUser).then(r => { if (r.success) setData(r.data); setLoading(false); })); }, []);
+  useEffect(() => { import('../../lib/api').then(({ executeTool }) => executeTool('get_my_attendance', {}, currentUser).then(r => { if (r.success) setData(r.data); setLoading(false); })); }, [currentUser]);
   return (
     <ToolPage title="My Attendance" subtitle="View your attendance record" loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16, maxWidth: 600 }}>
@@ -281,7 +281,7 @@ export function ResultViewer() {
   const { currentUser } = useUser();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { import('../../lib/api').then(({ executeTool }) => executeTool('get_my_results', {}, currentUser).then(r => { if (r.success) setData(r.data); setLoading(false); })); }, []);
+  useEffect(() => { import('../../lib/api').then(({ executeTool }) => executeTool('get_my_results', {}, currentUser).then(r => { if (r.success) setData(r.data); setLoading(false); })); }, [currentUser]);
   return (
     <ToolPage title="My Results" subtitle="View your exam marks & grades" loading={loading}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16, maxWidth: 400 }}>
@@ -542,7 +542,7 @@ export function StudyPlanner() {
     apiFetch(`${API}/ops/study-plan`, { headers: h(currentUser) }).then(r => r.json())
       .then(r => { if (r.success && r.data) setPlan(r.data); })
       .catch(() => {}).finally(() => setLoading(false));
-  }, []);
+  }, [currentUser]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -583,7 +583,7 @@ export function CareerGuidance() {
     // Load student's results for context
     apiFetch(`${API}/academics/results`, { headers: h(currentUser) }).then(r => r.json())
       .then(r => { if (r.success) setResults(r.data || []); }).catch(() => {});
-  }, []);
+  }, [currentUser]);
 
   const ask = async () => {
     if (!input.trim() || loading) return;
@@ -645,7 +645,7 @@ export function FeeStatusViewer() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [currentUser]);
   return (
     <ToolPage title="My Fee Status" subtitle="View your payment history" loading={loading}>
       {feeSummary && (
@@ -673,7 +673,7 @@ export function PtmSummaryViewer() {
   const { currentUser } = useUser();
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { apiFetch(`${API}/academics/ptm-notes`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setNotes(r.data || []); }).finally(() => setLoading(false)); }, []);
+  useEffect(() => { apiFetch(`${API}/academics/ptm-notes`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setNotes(r.data || []); }).finally(() => setLoading(false)); }, [currentUser]);
   return (
     <ToolPage title="PTM Summary" subtitle="Read teacher notes from parent-teacher meetings" loading={loading}>
       {notes.length === 0 ? (
@@ -703,7 +703,7 @@ export function FormSubmissions() {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const r = await apiFetch(`${API}/settings/forms`, { headers: h(currentUser) }).then(r => r.json());
@@ -719,9 +719,9 @@ export function FormSubmissions() {
       }
     } catch {}
     setLoading(false);
-  };
+  }, [currentUser]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const handleSelectForm = (form) => {
     setSelectedForm(form);

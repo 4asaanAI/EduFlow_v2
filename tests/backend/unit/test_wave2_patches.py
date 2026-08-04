@@ -473,9 +473,11 @@ def test_empty_message_rejection_strips_zero_width_whitespace(client, fake_db):
         headers=headers,
         json={"text": "​‌"},
     )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body.get("error") == "Empty message"
+    # NEW-07/T13: this refusal used to answer HTTP 200 with {"success": False}, which
+    # meant no monitoring could ever count it and the browser tried to read a stream
+    # that was not there. It is a client error and now says so.
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Empty message"
 
 
 def test_extract_rich_content_uses_json_candidates():

@@ -1,7 +1,7 @@
 /**
  * All 19 Admin Tools
  */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { API, apiFetch, getStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, correctFeeTransaction, deleteFeeTransaction, getPendingLeaves, updateLeave, getWhatsappDefaulters, sendAttendanceAlerts, getSchoolSettings } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
@@ -112,11 +112,9 @@ export function FeeTracker() {
 
   useEffect(() => {
     getAllClasses(currentUser).then(r => { if (r.success) setClasses(r.data || []); });
-  }, []);
+  }, [currentUser]);
 
-  useEffect(() => { load(); }, [statusFilter, classFilter]);
-
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const params = {};
@@ -130,7 +128,9 @@ export function FeeTracker() {
       if (summaryRes.success) setClassSummary(summaryRes.data || []);
     } catch {}
     setLoading(false);
-  };
+  }, [currentUser, statusFilter, classFilter]);
+
+  useEffect(() => { load(); }, [load]);
 
   const handleRecord = async (e) => {
     e.preventDefault();
@@ -459,14 +459,21 @@ export function AttendanceRecorder() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => { getAllClasses(currentUser).then(r => { if (r.success && r.data.length > 0) { setClasses(r.data); setSelectedClass(r.data[0].id); } }); }, []);
-  useEffect(() => { if (selectedClass) loadStudents(); }, [selectedClass, date]);
+  useEffect(() => { getAllClasses(currentUser).then(r => { if (r.success && r.data.length > 0) { setClasses(r.data); setSelectedClass(r.data[0].id); } }); }, [currentUser]);
 
-  const loadStudents = async () => {
+  // NEW-09/T11: `date` was in the effect's dependency list but never reached the
+  // request. getTodayAttendance(classId, date) was being handed `currentUser` as its
+  // second argument, so the URL carried `?date=[object Object]` on EVERY load. The
+  // server found no rows for that literal string, so the register showed every child
+  // as "not marked" whatever had actually been recorded, on today's date as well as
+  // any other. Guarded by AttendanceRecorderDate.test.js.
+  const loadStudents = useCallback(async () => {
     setLoading(true);
-    try { const r = await getTodayAttendance(selectedClass, currentUser); if (r.success) setRecords(r.data || []); } catch {}
+    try { const r = await getTodayAttendance(selectedClass, date); if (r.success) setRecords(r.data || []); } catch {}
     setLoading(false);
-  };
+  }, [selectedClass, date]);
+
+  useEffect(() => { if (selectedClass) loadStudents(); }, [selectedClass, loadStudents]);
 
   const markAll = status => setRecords(prev => prev.map(s => ({ ...s, status })));
 
@@ -663,10 +670,10 @@ export function CertificateGenerator() {
   const [rejectReason, setRejectReason] = useState('');
   const [school, setSchool] = useState({});
 
-  const loadCerts = async () => {
+  const loadCerts = useCallback(async () => {
     const r = await apiFetch(`${API}/ops/certificates`, { headers: h(currentUser) }).then(r => r.json());
     if (r.success) setCerts(r.data || []);
-  };
+  }, [currentUser]);
 
   const approveCert = async (certId) => {
     await apiFetch(`${API}/ops/certificates/${certId}/approve`, { method: 'PATCH', headers: h(currentUser) });
@@ -692,7 +699,7 @@ export function CertificateGenerator() {
       // affiliation number, and that number now lives on the school record.
       getSchoolSettings().then(r => { if (r.success) setSchool(r.data || {}); }).catch(() => {}),
     ]).finally(() => setLoading(false));
-  }, []);
+  }, [currentUser, loadCerts]);
 
   const generate = async () => {
     if (!form.student_id) return;
@@ -873,17 +880,17 @@ export function CircularSender() {
     [key]: p[key].includes(val) ? p[key].filter(x => x !== val) : [...p[key], val],
   }));
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const r = await apiFetch(`${API}/ops/announcements`, { headers: h(currentUser) }).then(r => r.json());
     if (r.success) setAnnouncements(r.data || []);
-  };
+  }, [currentUser]);
 
   useEffect(() => {
     Promise.all([
       load(),
       getAllClasses(currentUser).then(r => { if (r.success) setClasses(r.data || []); }),
     ]).finally(() => setLoading(false));
-  }, []);
+  }, [currentUser, load]);
 
   const send = async (e) => {
     e.preventDefault();
@@ -1027,8 +1034,8 @@ export function EnquiryRegister() {
   const stageFunnelColors = { new: '#4f8ff7', contacted: '#818cf8', visit_scheduled: '#a78bfa', visited: '#c084fc', documents_submitted: '#fbbf24', fee_paid: '#34d399', enrolled: '#10b981', lost: '#f87171' };
   const statusColors = { new: 'blue', contacted: 'yellow', visit_scheduled: 'purple', visited: 'purple', documents_submitted: 'yellow', fee_paid: 'green', enrolled: 'green', lost: 'red' };
 
-  useEffect(() => { load(); }, []);
-  const load = async () => { setLoading(true); try { const r = await apiFetch(`${API}/ops/enquiries`, { headers: h(currentUser) }).then(r => r.json()); if (r.success) setEnquiries(r.data || []); } catch {} setLoading(false); };
+  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch(`${API}/ops/enquiries`, { headers: h(currentUser) }).then(r => r.json()); if (r.success) setEnquiries(r.data || []); } catch {} setLoading(false); }, [currentUser]);
+  useEffect(() => { load(); }, [load]);
 
   const handleAdd = async (e) => {
     e.preventDefault();
@@ -1164,7 +1171,7 @@ export function DocumentScanner() {
       getAllClasses(currentUser).then(r => { if (r.success) setClasses(r.data || []); }),
       apiFetch(`${API}/students/`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setAllStudents(r.data || []); }),
     ]).finally(() => setLoading(false));
-  }, []);
+  }, [currentUser]);
 
   // Reset student selection when class changes
   const handleClassChange = (cls) => { setSelectedClass(cls); setStudentId(''); };
@@ -1287,7 +1294,7 @@ export function SmartFeeDefaulter() {
 
   const defaulters = data?.defaulters || [];
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const res = await apiFetch(`${API}/tools/get_fee_summary/execute`, {
@@ -1306,7 +1313,7 @@ export function SmartFeeDefaulter() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentUser]);
 
   useEffect(() => {
     let alive = true;
@@ -1316,7 +1323,7 @@ export function SmartFeeDefaulter() {
       .then(r => { if (alive && r.success) setTwilioConfigured(r.data.configured); })
       .catch(() => {});
     return () => { alive = false; };
-  }, []);
+  }, [currentUser, loadData]);
 
   const loadLogs = async () => {
     const r = await apiFetch(`${API}/sms/logs`, { headers: h(currentUser) }).then(r => r.json());
@@ -1539,7 +1546,7 @@ function AdmissionFunnelAdmin() {
   const { currentUser } = useUser();
   const [enquiries, setEnquiries] = useState([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { apiFetch(`${API}/ops/enquiries`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setEnquiries(r.data || []); }).finally(() => setLoading(false)); }, []);
+  useEffect(() => { apiFetch(`${API}/ops/enquiries`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setEnquiries(r.data || []); }).finally(() => setLoading(false)); }, [currentUser]);
   const stages = ['new', 'contacted', 'visit_scheduled', 'visited', 'documents_submitted', 'fee_paid', 'enrolled', 'lost'];
   const counts = stages.reduce((acc, s) => { acc[s] = enquiries.filter(e => e.status === s).length; return acc; }, {});
   return (
@@ -1573,7 +1580,7 @@ export function ParentMessage() {
       if (cls.success) setClasses(cls.data || []);
       if (stu.success) setAllStudents(stu.data || []);
     }).finally(() => setLoading(false));
-  }, []);
+  }, [currentUser]);
 
   const studentsInClass = selectedClass
     ? allStudents.filter(s => s.class_id === selectedClass)
@@ -1746,7 +1753,7 @@ export function StudentTransfer() {
       getAllClasses(currentUser).then(r => { if (r.success) setClasses(r.data || []); }),
       apiFetch(`${API}/students/`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setAllStudents(r.data || []); }),
     ]).finally(() => setLoading(false));
-  }, []);
+  }, [currentUser]);
 
   const filteredStudents = allStudents.filter(s => {
     const matchClass = !selectedClass || s.class_id === selectedClass;
@@ -1955,7 +1962,7 @@ export function IdCardGenerator() {
       // through api.js for exactly this reason.
       getAllClasses(currentUser).then(r => { if (r.success) setClasses(r.data || []); })
     ]).finally(() => setLoading(false));
-  }, []);
+  }, [currentUser]);
 
   const toggleAll = () => {
     const filtered = filterClass ? students.filter(s => s.class_id === filterClass) : students;
@@ -2040,17 +2047,17 @@ export function TimetableBuilder() {
       if (subjRes.success) setSubjects(subjRes.data || []);
       if (staffRes.success) setStaff(staffRes.data || []);
     }).finally(() => setLoading(false));
-  }, []);
+  }, [currentUser]);
 
-  const loadSlots = async (classId) => {
+  const loadSlots = useCallback(async (classId) => {
     if (!classId) return;
     try {
       const r = await apiFetch(`${API}/academics/timetable/${classId}`, { headers: h(currentUser) }).then(r => r.json());
       if (r.success) setSlots(r.data || []);
     } catch { }
-  };
+  }, [currentUser]);
 
-  useEffect(() => { loadSlots(selectedClass); }, [selectedClass]);
+  useEffect(() => { loadSlots(selectedClass); }, [selectedClass, loadSlots]);
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -2189,16 +2196,16 @@ export function AssetTracker() {
   const [saving, setSaving] = useState(false);
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
 
-  useEffect(() => { load(); }, []);
-
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const r = await apiFetch(`${API}/ops/assets`, { headers: h(currentUser) }).then(r => r.json());
       if (r.success) setAssets(r.data || []);
     } catch {}
     setLoading(false);
-  };
+  }, [currentUser]);
+
+  useEffect(() => { load(); }, [load]);
 
   const handleAdd = async (e) => {
     e.preventDefault();
@@ -2302,7 +2309,7 @@ export function TransportManager() {
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
   const fa = k => v => setAssignForm(p => ({ ...p, [k]: v }));
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [routesRes, studentsRes] = await Promise.all([
@@ -2313,9 +2320,9 @@ export function TransportManager() {
       if (studentsRes.success) setStudents(studentsRes.data || []);
     } catch {}
     setLoading(false);
-  };
+  }, [currentUser]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -2527,16 +2534,16 @@ export function CustomFormBuilder() {
   const [responses, setResponses] = useState([]);
   const [error, setError] = useState('');
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const r = await apiFetch(`${API}/settings/forms`, { headers: h(currentUser) }).then(r => r.json());
       if (r.success) setForms(r.data || []);
     } catch {}
     setLoading(false);
-  };
+  }, [currentUser]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const addField = () => setFields(p => [...p, { label: '', type: 'text', options: '' }]);
   const updateField = (i, key, val) => setFields(p => p.map((f, idx) => idx === i ? { ...f, [key]: val } : f));
@@ -2715,8 +2722,8 @@ export function ReportCardBuilder() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { apiFetch(`${API}/academics/exams`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setExams(r.data || []); }).finally(() => setLoading(false)); }, []);
-  useEffect(() => { if (selectedExam) apiFetch(`${API}/academics/results?exam_id=${selectedExam}`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setResults(r.data || []); }); }, [selectedExam]);
+  useEffect(() => { apiFetch(`${API}/academics/exams`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setExams(r.data || []); }).finally(() => setLoading(false)); }, [currentUser]);
+  useEffect(() => { if (selectedExam) apiFetch(`${API}/academics/results?exam_id=${selectedExam}`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setResults(r.data || []); }); }, [selectedExam, currentUser]);
 
   return (
     <ToolPage title="Report Card Builder" subtitle="Enter marks & generate report cards" loading={loading}>
@@ -2750,7 +2757,7 @@ export function StudentPerformanceViewer() {
       getStudents(currentUser).then(r => { if (r.success) setStudents(r.data || []); }),
       apiFetch(`${API}/academics/results`, { headers: h(currentUser) }).then(r => r.json()).then(r => { if (r.success) setResults(r.data || []); }),
     ]).finally(() => setLoading(false));
-  }, []);
+  }, [currentUser]);
 
   const viewStudent = async (student) => {
     setSelectedStudent(student);

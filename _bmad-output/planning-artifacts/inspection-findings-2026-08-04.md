@@ -32,10 +32,10 @@ handoff prompt.
 | T9 | Establish a real AI answer-quality baseline | NEW-13 | ⏸ Blocked on owner (no Azure OpenAI credentials on this machine) |
 | T10 | Run the write-rollback safety tests once, for real | NEW-06 | ✅ Done (2026-08-04) |
 | **BLOCK 3 — hygiene and standing risk** ||||
-| T11 | Clear the 48 warnings and turn the build gate on | NEW-09 | ⬜ Not started |
-| T12 | Repair the tool-routing tests | NEW-10 | ⬜ Not started |
-| T13 | Error shape + internal-id exclusions | NEW-07 | ⬜ Not started |
-| T14 | Remove the standing AWS permission | NEW-14 | ⬜ Not started |
+| T11 | Clear the 48 warnings and turn the build gate on | NEW-09 | ✅ Done (2026-08-04) |
+| T12 | Repair the tool-routing tests | NEW-10 | ✅ Done (2026-08-04) |
+| T13 | Error shape + internal-id exclusions | NEW-07 | ✅ Done (2026-08-04) |
+| T14 | Remove the standing AWS permission | NEW-14 | ⏸ Blocked on owner (only Abhimanyu can remove it; agent cannot even read it) |
 
 Status values: `⬜ Not started` · `🔵 In progress` · `✅ Done (date)` · `⏸ Blocked on owner (reason)` · `❌ Dropped (reason)`
 
@@ -371,7 +371,35 @@ next person can repeat it in one line.
 
 ---
 
-## BLOCK 3
+## BLOCK 3 — CLOSED 2026-08-04
+
+Branch `inspection-remediation-2026-08-04`, **not merged to main**.
+Logs: `_bmad-output/implementation-artifacts/inspection-2026-08-04/block-3-completed.md`
+and `block-3-review.md`.
+
+**Gate at close:** backend **2012 passed / 0 failed / 14 deselected**; frontend
+**286 passed / 0 failed** (the suite is fully green for the first time); production build
+**compiles clean with 0 warnings** and the gate set to error, demonstrated to fail on a
+reintroduced violation; evals **18 passed**; no new `scoped_filter(` hits.
+
+**Outcomes worth carrying forward:**
+- **A live defect was found while clearing the warnings** and is the single most important
+  thing in this block: the attendance register never showed what had already been marked,
+  on any date including today, because the screen asked the server a malformed question.
+  Logged as **D-61**, fixed, and guarded by a test confirmed to fail on the old code.
+- T12's real cause was **D-48**, exactly as suspected. Two of the two failing assertions
+  were also looking for text that does not exist anywhere in the app, so those tests could
+  never have passed. Eight other test files carry the same trap and are logged as **D-60**.
+- T13's "48 reads" was re-measured: **52** reads lack the projection, but only **4** reach
+  a response body. Blanket-adding the rest would have been churn, and one of them would
+  have broken outright.
+- **T14 could not even be read.** Three read-only attempts were all denied. "Cannot
+  confirm" is recorded rather than a guess in either direction.
+- New discoveries **D-59…D-63**. The one to read first is **D-59**: a link straight to a
+  screen does not survive a fresh browser tab, which is exactly what D-44's deep-linking
+  work intends to build on, so it needs deciding before that work starts.
+
+## Task detail
 
 ### T11 · NEW-09 — 48 warnings, and no gate
 **Severity:** medium · **Type:** build hygiene · **Supersedes D-16 (which estimated ~30)**
@@ -386,6 +414,36 @@ silencing the rule). Where a deps-passthrough is intentional, use a scoped
 `ToolPage.js:398`. Then turn the gate on so it never regrows. This must be its own change; do not
 bury it inside another task's diff.
 
+> **✅ DONE 2026-08-04. 48 → 0, and NOT ONE scoped eslint-disable was added** — every
+> warning had a real fix. The single pre-existing disable at `ToolPage.js` (`useToolData`)
+> was left alone and is now cited in the config as the reference pattern.
+>
+> 20 sites got the proper `useCallback` treatment; 24 were a genuinely stable dependency
+> (almost all `currentUser`, which is context **state**, so it cannot loop and its absence
+> was why some screens showed the previous person's data); 4 needed real thought:
+> - The sidebar conversation menu was re-registering a document listener on every render
+>   once `onClose` was listed. Held in a ref instead.
+> - The sidebar's auto-open-group effect **would genuinely have looped** (sets state →
+>   re-render → new config object → effect again). It is safe only because
+>   `getGroupConfig()` returns a reference into a module-level constant. Verified, not
+>   assumed.
+> - `DataTable`'s `safeRows` re-sorted the whole table on every render because its `: []`
+>   branch minted a new array each time.
+>
+> **The gate:** `react-hooks/exhaustive-deps` is now **`"error"` on the production build**
+> and stays `"warn"` under `craco start`. Run it with `cd frontend && npx craco build`.
+> There is no CI workflow in this repo, so the build command IS the gate. **Proven**: a
+> dependency was deliberately removed again, the build printed `Failed to compile.` naming
+> the rule, then it was restored and the build went clean.
+>
+> **A live defect was found on the way and fixed** (F-1 in `block-3-review.md`): the
+> Attendance Recorder was passing the signed-in user where the date belongs, so it asked
+> the server for `?date=[object Object]`, matched nothing, and showed **every child as
+> "not marked" regardless of what had actually been recorded** — on today's date as much
+> as any other. Someone could have re-marked over a register that was already taken.
+> Guarded by `AttendanceRecorderDate.test.js`, confirmed to fail on the old code.
+> This supersedes **D-16**.
+
 ---
 
 ### T12 · NEW-10 — The tool-routing tests crash on render
@@ -398,6 +456,38 @@ weeks as "2 pre-existing failures", which is accurate and has become an excuse.
 
 **Do:** fix the harness (likely a missing provider or mock), get both green. This behaviour is
 what D-44's deep-linking work wants to build on, so it needs to be guarded first.
+
+> **✅ DONE 2026-08-04. Frontend suite is now fully green: 284 passed / 0 failed**, stable
+> across three runs including a serial one.
+>
+> The `AggregateError` was React swallowing the real error thrown inside a mount effect.
+> Unwrapped, it was `getMyTokenUsage is not a function` and
+> `getUnreadNotificationCount is not a function` — **exactly D-48**. The test mocked
+> `lib/api` with an explicit factory listing 8 functions; the real module exports **123**,
+> and the shell calls about fifteen of them. Every unlisted name was `undefined`, so the
+> first effect to fire blew up before any assertion ran.
+>
+> Two traps underneath it, both worth knowing before anyone touches the other eight files
+> carrying the same stub:
+> 1. Create React App's Jest preset sets **`resetMocks: true`**, which strips the
+>    implementation off every `jest.fn()` before each test. So `jest.fn(async () => …)`
+>    returns `undefined`, not a promise, and the obvious fix fails confusingly. The stubs
+>    must be plain functions.
+> 2. **Two of the old assertions were simply wrong.** They looked for the text
+>    "Attendance Recorder" and a header matching `/Tools \(/`; neither string exists
+>    anywhere in the app. These tests could never have passed even with a working harness.
+>    They were stale, not merely broken.
+>
+> The mock is now derived from the real module's export list, so a new API helper can never
+> silently break this suite again. Assertions were strengthened, not just repaired: test 1
+> proves the URL-named tool mounted, is not the spinner or the error boundary, that a
+> different tool is NOT showing, and that the URL was not rewritten; test 2 proves the
+> address bar gains `tool=fee-sync`, loses the old one, and that the panel actually swapped.
+> Only the test file changed — no application code, no configuration.
+>
+> **One real application defect found and deliberately NOT fixed** (logged as D-59):
+> deep links do not survive a cold browser tab. This is precisely what D-44 wants to build
+> on, so it must be decided before that work starts.
 
 ---
 
@@ -414,6 +504,28 @@ Two small departures from the project's own written conventions:
 
 **Do:** convert the refusals to proper `HTTPException`s, checking the frontend callers handle the
 status change. Add `{"_id": 0}` where the result can reach a response body.
+
+> **✅ DONE 2026-08-04.** Four refusals converted, and the frontend was updated in the same
+> change so nobody loses a message they used to see:
+> - unknown action → **404** with the action name (was 200 + `{"success": False}`)
+> - action not permitted → **403** "You do not have permission to run this action."
+> - empty message → **400** (this one mattered: the browser used to receive a 200 and try
+>   to read it as a live stream, which produced a silent turn)
+> - rejected image attachment → **400**
+>
+> Frontend: `ChatInterface.executeAction` now normalises both shapes so the person still
+> sees the real reason instead of a generic "Action failed", and `sendMessageStream` pulls
+> the sentence out of `{"detail": ...}` instead of throwing raw JSON at the user.
+>
+> Second half: the "48 reads without `{"_id": 0}`" figure was re-measured properly (the
+> naive grep over-counts, because the projection is often on the next line). The real
+> number is **52** reads without the exclusion, and of those only **4** actually reach a
+> response body: a student's own fee transactions, the pending-discount approvals list, a
+> single facility request, and the token-usage records. Those four are fixed. The other 48
+> are internal lookups whose fields are copied into a hand-built response, or need `_id`
+> (`image_gen` quota increments by it), or are write-path re-reads. Blanket-adding a
+> projection to those would have been churn with a real chance of breaking something, so
+> it was not done. Tests: `tests/backend/api/test_inspection_block3_error_shape.py`.
 
 ---
 
@@ -435,6 +547,18 @@ Removing it breaks nothing: the running application authenticates as the EC2 ins
 access, and (b) put the exact click-path in front of Abhimanyu:
 IAM → Users → `claude-hosting` → Permissions → `s3-file-storage-policy` → Remove.
 Mark `⏸ Blocked on owner` until he confirms it is done.
+
+> **⏸ BLOCKED ON OWNER 2026-08-04.** Part (a) could NOT be completed and this is worth
+> recording rather than glossing: the permission cannot be *read* either. Three read-only
+> attempts were made and all three were denied — `iam:ListUserPolicies` as the `Claude`
+> user, `iam:GetUserPolicy` as `claude-hosting` itself, and `iam:SimulatePrincipalPolicy`
+> as a last resort. So the agent can neither confirm nor deny that the permission is still
+> attached, and D-34's original finding stands unchanged as the last known state.
+>
+> Part (b) is done — the click path is in front of Abhimanyu, in the human checklist:
+> **IAM → Users → `claude-hosting` → Permissions → `s3-file-storage-policy` → Remove.**
+> Removing it breaks nothing: the running app authenticates as the EC2 instance role, and
+> `EduFlowFileStorage` on that role is what serves files. Stays blocked until he confirms.
 
 ---
 

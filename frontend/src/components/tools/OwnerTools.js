@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { API, apiFetch, executeTool, updateLeave, getStaff, fetchPlatformHealth } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
@@ -109,9 +109,7 @@ export function SchoolPulse() {
   const [loading, setLoading] = useState(true);
   const [showWaModal, setShowWaModal] = useState(false);
 
-  useEffect(() => { load(); }, []);
-
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [pulseRes, feeRes] = await Promise.all([
@@ -122,7 +120,9 @@ export function SchoolPulse() {
       if (feeRes.success) setFeeSummary(feeRes.data);
     } catch {}
     setLoading(false);
-  };
+  }, [currentUser]);
+
+  useEffect(() => { load(); }, [load]);
 
   const s = data?.summary || {};
   const leaves = data?.pending_leave_requests || [];
@@ -424,8 +424,8 @@ export function FeeCollection() {
   const { currentUser } = useUser();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { loadData(); }, []);
-  const loadData = async () => { setLoading(true); try { const r = await executeTool('get_fee_summary', {}, currentUser); if (r.success) setData(r.data); } catch {} setLoading(false); };
+  const loadData = useCallback(async () => { setLoading(true); try { const r = await executeTool('get_fee_summary', {}, currentUser); if (r.success) setData(r.data); } catch {} setLoading(false); }, [currentUser]);
+  useEffect(() => { loadData(); }, [loadData]);
   const stats = data?.stats || {};
   const defaulters = data?.defaulters || [];
 
@@ -639,8 +639,7 @@ export function AttendanceOverview() {
   const [data, setData] = useState(null);
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { load(); }, []);
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [attRes, classRes] = await Promise.all([
@@ -651,7 +650,8 @@ export function AttendanceOverview() {
       setClasses(classRes.data || []);
     } catch {}
     setLoading(false);
-  };
+  }, [currentUser]);
+  useEffect(() => { load(); }, [load]);
 
   const chartData = (data?.daily_trend || []).map(d => ({ date: d.date?.slice(5), rate: d.rate, present: d.present, absent: d.absent }));
 
@@ -724,13 +724,14 @@ export function StaffAttendanceTracker({ title = 'Staff Tracker', subtitle = 'St
   const [saveMsg, setSaveMsg] = useState('');
 
   useEffect(() => { setActiveTab(singleTab || defaultTab); }, [singleTab, defaultTab]);
-  useEffect(() => { load(); }, []);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try { const r = await executeTool('get_staff_status', {}, currentUser); if (r.success) setData(r.data); } catch {}
     setLoading(false);
-  };
+  }, [currentUser]);
+
+  useEffect(() => { load(); }, [load]);
 
   const staff = data?.staff_list || [];
   const leaves = data?.pending_leaves || [];
@@ -953,8 +954,7 @@ export function FinancialReports() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expenses, setExpenses] = useState([]);
-  useEffect(() => { load(); }, []);
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [feeRes, expRes] = await Promise.all([
@@ -965,7 +965,8 @@ export function FinancialReports() {
       if (expRes.success) setExpenses(expRes.data || []);
     } catch {}
     setLoading(false);
-  };
+  }, [currentUser]);
+  useEffect(() => { load(); }, [load]);
 
   const totalExp = expenses.reduce((s, e) => s + (e.amount || 0), 0);
   const fmtExp = totalExp >= 100000 ? `₹${(totalExp / 100000).toFixed(1)}L` : `₹${totalExp.toLocaleString('en-IN')}`;
@@ -1129,8 +1130,8 @@ export function AdmissionFunnel() {
   const { currentUser } = useUser();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { load(); }, []);
-  const load = async () => { setLoading(true); try { const r = await executeTool('get_enquiries', {}, currentUser); if (r.success) setData(r.data); } catch {} setLoading(false); };
+  const load = useCallback(async () => { setLoading(true); try { const r = await executeTool('get_enquiries', {}, currentUser); if (r.success) setData(r.data); } catch {} setLoading(false); }, [currentUser]);
+  useEffect(() => { load(); }, [load]);
   const funnel = data?.funnel || {};
   const stages = ['new', 'contacted', 'visit_scheduled', 'visited', 'documents_submitted', 'fee_paid', 'enrolled', 'lost'];
 
@@ -1430,16 +1431,16 @@ export function SmartAlerts() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
 
-  useEffect(() => { load(); }, []);
-
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const r = await executeTool('get_smart_alerts', {}, currentUser);
       if (r.success) setData(r.data);
     } catch {}
     setLoading(false);
-  };
+  }, [currentUser]);
+
+  useEffect(() => { load(); }, [load]);
 
   const allAlerts = data?.alerts || [];
   const filtered = filter === 'all' ? allAlerts : allAlerts.filter(a => a.type === filter);

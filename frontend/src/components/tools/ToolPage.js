@@ -208,7 +208,9 @@ export function DataTable({ title, headers, rows, emptyMsg = 'No data found', ac
   const tc = isDark ? 'var(--color-text-secondary)' : 'var(--color-text-secondary)';
   const hc = isDark ? 'var(--color-text-primary)' : 'var(--color-text-primary)';
 
-  const safeRows = Array.isArray(rows) ? rows : [];
+  // Memoised because `sortedRows` below depends on it: without this, the `: []`
+  // branch would produce a brand-new array every render and re-sort on every render.
+  const safeRows = React.useMemo(() => (Array.isArray(rows) ? rows : []), [rows]);
   const sortedRows = React.useMemo(() => {
     if (!sortable || sortState.index === null) return safeRows;
     const factor = sortState.direction === 'descending' ? -1 : 1;

@@ -174,7 +174,15 @@ export function sendMessageStream(convId, text, user, onEvent, sessionId = null,
     }
 
     if (!res.ok || !res.body) {
-      const message = await res.text().catch(() => '');
+      const raw = await res.text().catch(() => '');
+      // NEW-07/T13: a rejected message (empty text, bad attachment) now answers 400
+      // with {"detail": "..."} instead of a 200 that looked like a stream and
+      // produced a silent turn. Show the sentence, not the raw JSON around it.
+      let message = raw;
+      try {
+        const parsed = JSON.parse(raw);
+        message = parsed?.detail || parsed?.error || raw;
+      } catch {}
       throw new Error(message || `Chat request failed (${res.status})`);
     }
 

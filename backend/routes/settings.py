@@ -101,7 +101,9 @@ async def get_token_usage_admin(request: Request, user: dict = Depends(require_o
     db = get_db()
     DEFAULT_LIMIT = 50000
 
-    usage_records = await db.token_usage.find(_settings_query()).to_list(None)
+    # NEW-07/T13: usage_records is returned as the response data — exclude the
+    # internal id. custom_limits never leaves this function (it becomes limit_map).
+    usage_records = await db.token_usage.find(_settings_query(), {"_id": 0}).to_list(None)
     custom_limits = await db.token_limits.find(_settings_query()).to_list(None)
     limit_map = {rec.get("user_id"): rec.get("limit", DEFAULT_LIMIT) for rec in custom_limits}
 

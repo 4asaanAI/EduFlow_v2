@@ -37,7 +37,21 @@ let webpackConfig = {
       extends: ["plugin:react-hooks/recommended"],
       rules: {
         "react-hooks/rules-of-hooks": "error",
-        "react-hooks/exhaustive-deps": "warn",
+        // T11 / NEW-09 (2026-08-04). This was "warn", and 48 of them had piled up:
+        // effects that never re-ran when their inputs changed, which is what "it
+        // shows old data until I refresh" actually was. All 48 were cleared, and
+        // the rule is now an ERROR on the production build so the count cannot
+        // regrow — `npx craco build` fails outright on a new one.
+        //
+        // Still only a warning under `craco start`, so a half-written effect does
+        // not block the dev server mid-edit.
+        //
+        // If a dependency is genuinely meant to be left out, do NOT relax this back
+        // to "warn": put a scoped `// eslint-disable-next-line
+        // react-hooks/exhaustive-deps` on the line, with a comment above it saying
+        // why. The pattern is set in `src/components/tools/ToolPage.js`
+        // (`useToolData`), the one place in the app where it is correct.
+        "react-hooks/exhaustive-deps": isDevServer ? "warn" : "error",
       },
     },
   },

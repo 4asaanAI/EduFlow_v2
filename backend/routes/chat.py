@@ -2901,9 +2901,10 @@ async def send_message(conv_id: str, request: Request):
         # R9.4 (X8) AC3: reject a malformed/oversized image before it reaches the LLM.
         img_err = _validate_image_data(image_data)
         if img_err:
-            return {"success": False, "error": img_err}
+            # NEW-07/T13: a rejected attachment is a client error, not a 200.
+            raise HTTPException(status_code=400, detail=img_err)
     if not user_text and not image_data:
-        return {"success": False, "error": "Empty message"}
+        raise HTTPException(status_code=400, detail="Empty message")
     if not user_text:
         user_text = "[Image attached — please describe or ask about the image]"
     raw_session_id = body.get("session_id") or request.headers.get("x-session-id") or request.headers.get("X-SSE-Session-ID")
@@ -2940,12 +2941,20 @@ async def execute_action(conv_id: str, request: Request):
     params = body.get("params", {})
     label = body.get("label", action)
 
+    # NEW-07/T13: these two refusals used to answer HTTP 200 with
+    # {"success": False, ...}. The action WAS correctly blocked, so this was never a
+    # hole — but a refusal that reports itself as a success cannot be counted by any
+    # monitoring that watches rejected requests, and CLAUDE.md is explicit:
+    # "Errors — ALWAYS raise HTTPException, never return raw dicts."
     tool_def = TOOL_REGISTRY.get(action)
     if not tool_def:
-        return {"success": False, "error": f"Unknown action: {action}"}
+        raise HTTPException(status_code=404, detail=f"Unknown action: {action}")
     # auth: registry enforces role + sub_category — see _is_tool_authorized
     if not _is_tool_authorized(user, tool_def):
-        return {"success": False, "error": "Forbidden"}
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have permission to run this action.",
+        )
     if action in WRITE_ACTION_TOOLS:
         raise HTTPException(
             status_code=400,

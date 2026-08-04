@@ -337,8 +337,11 @@ async def get_my_fees(request: Request, user: dict = Depends(require_role("stude
     if not student:
         raise HTTPException(404, "Student record not found")
 
+    # NEW-07/T13: these rows ARE the response body, so the internal Mongo id must not
+    # ride along. The project rule is "never expose _id in responses".
     txns = await db.fee_transactions.find(
-        scoped_query({"student_id": student["id"]}, branch_id=user.get("branch_id"))
+        scoped_query({"student_id": student["id"]}, branch_id=user.get("branch_id")),
+        {"_id": 0},
     ).to_list(200)
 
     # EC-15.2: Include paid_amount from partial-status transactions in total_paid
@@ -612,8 +615,9 @@ async def list_pending_discount_approvals(request: Request, user: dict = Depends
     """P10.4: Owner-only — list pending large-discount approval requests."""
     db = get_db()
     bid = user.get("branch_id")
+    # NEW-07/T13: returned straight to the caller — exclude the internal id.
     pending = await db.pending_discount_approvals.find(
-        scoped_query({"status": "pending"}, branch_id=bid)
+        scoped_query({"status": "pending"}, branch_id=bid), {"_id": 0}
     ).to_list(100)
     return {"success": True, "data": pending}
 

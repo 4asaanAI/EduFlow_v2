@@ -277,7 +277,10 @@ async def get_facility_request(request_id: str, request: Request, user: dict = D
     """Single facility request by ID. Fix 12.5."""
     db = get_db()
     bid = user.get("branch_id")
-    rec = await db.facility_requests.find_one(scoped_query({"id": request_id}, branch_id=bid))
+    # NEW-07/T13: this document IS the response body — exclude the internal id.
+    rec = await db.facility_requests.find_one(
+        scoped_query({"id": request_id}, branch_id=bid), {"_id": 0}
+    )
     if not rec:
         raise HTTPException(404, "Facility request not found")
     rec["is_overdue"] = _is_overdue(rec)

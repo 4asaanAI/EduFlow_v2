@@ -616,6 +616,62 @@ Nothing here is live yet. It is on a branch, waiting for your go-ahead to merge.
   changes: she is offered a shorter list of tools, and she no longer writes each answer
   out twice.
 
+## Inspection Remediation — Block 3 (2026-08-04), the last block
+
+### Needs something from you
+
+- [ ] **Remove one Amazon permission. Only you can do it.** A setup account still holds the
+      right to rewrite what the production servers are allowed to do. It was needed once for
+      a job in July that is finished. Removing it breaks nothing, because the running app
+      identifies itself a different way. The path is:
+      **IAM → Users → `claude-hosting` → Permissions → `s3-file-storage-policy` → Remove.**
+      Being straight with you: I could not even *look* at this permission to confirm it is
+      still there. Three different read-only attempts were all refused, which is by design.
+      So this is "please check and remove", not "I have confirmed it and please remove".
+
+- [ ] **A decision, before the directory deep-linking work starts.** If someone sends you a
+      link that opens straight to a particular screen, it works when you are already signed
+      in in that tab, but not in a brand new tab. The app deliberately clears it, to stop
+      one person's open screen carrying over to the next person on a shared computer. That
+      is a sensible instinct but it currently catches everybody. Do you want links to
+      always open where they point, or should the safety check stay as it is? This blocks a
+      piece of the directory work.
+
+- [ ] **Flo's answer quality still needs the AI service login from you** (carried over from
+      the last block, still the only thing standing in the way).
+
+### Worth you checking in the app (after this is deployed)
+
+- [ ] **The attendance register, first thing.** This is the most important line in this
+      document. The register was asking the server a malformed question, so it showed
+      **every child as "not marked"** no matter what had actually been recorded, on every
+      date including today. Anyone opening it saw a blank register and could re-mark over
+      attendance that had already been taken that morning. It is fixed. Please open it for
+      a class where attendance was definitely taken and confirm you now see what was
+      marked, and that picking an earlier date shows that day rather than nothing.
+
+- [ ] **Screens that used to show stale information until you refreshed.** Forty-eight
+      places in the app had a known flaw where a screen would not reload when it should.
+      All forty-eight are fixed, and the build now refuses outright if anyone reintroduces
+      one, so the number cannot creep back up. If you had a screen that "needed a refresh",
+      try it again.
+
+- [ ] **Refusals now say why.** If you press a button on one of Flo's suggestions that your
+      account is not allowed to use, you get "You do not have permission to run this
+      action" instead of a blank failure. Sending an empty message also fails properly
+      instead of leaving Flo apparently thinking forever.
+
+### For the record
+
+- **Every automated check now passes, on both halves of the app.** Backend 2012 passing,
+  frontend 286 passing, nothing failing anywhere, and the build is clean for the first time.
+  The frontend tests had been red for weeks; two of them turned out to have been looking for
+  words that do not exist anywhere in the app, so they could never have passed.
+
+- **All fourteen findings from the inspection are now closed or sitting with you.**
+  Three are waiting on you: the Amazon permission, the AI service login, and the deep-link
+  decision above.
+
 ## Change log
 
 | Date | Epic | What was added |

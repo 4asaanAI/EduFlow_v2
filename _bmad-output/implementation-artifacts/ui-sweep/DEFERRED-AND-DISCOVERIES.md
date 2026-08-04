@@ -1030,6 +1030,90 @@ which is exactly the mistake that bites the first day a second branch exists (se
 
 ---
 
+### D-59 — A pasted tool link does not survive a fresh browser tab — **OPEN, blocks D-44**
+
+Found while repairing the tool-routing tests (T12). `Layout.js` clears the `?tool=` part of
+the address on load whenever the browser has no record of the current user from an earlier
+visit in that tab. On a brand new tab there is never such a record, so the condition is
+always true the first time. The practical effect: if someone sends you a link straight to a
+tool and you open it in a new tab, you land on the chat screen instead of the tool.
+
+The check exists for a good reason, which is to stop one person's open tool carrying over
+into the next person's session on a shared computer. The fix is a judgement call, not a
+one-liner: it probably wants to compare against the *previous* user rather than treat
+"nobody recorded yet" as "a different person".
+
+**Why it matters:** this is exactly the behaviour **D-44's** deep-link work intends to build
+on, so it has to be decided before that work starts, not during it. Not fixed in Block 3
+because it is application behaviour with a product decision inside it, and Block 3's rule was
+hygiene only. The repaired tests cover the case that works today (returning within a session)
+and will need one more case once this is settled.
+
+---
+
+### D-60 — Eight more test files carry the mock that made the routing tests impossible — **OPEN, latent, sharpens D-48**
+
+D-48 said nine frontend test files stub `lib/api` and would break on contact. T12 proved it
+by hitting exactly that, and the fix is now written down in one place. The other eight
+(`ConversationTrace`, `ChatStreamProgress`, `ChatInterface.r8`, `HealthScoreAttendance`,
+`Epic6NothingGetsLost`, `GeneratedFile`, `LearningTools`, `UserAttachment`) pass today only
+because none of them renders a screen that reaches the missing helpers.
+
+Two traps for whoever fixes them, both discovered the hard way in T12:
+1. The stub lists a handful of names by hand while the real module exports 123. Derive the
+   mock from the real module's export list instead, and it can never rot again.
+2. The test setup wipes the behaviour off every mock function before each test, so the
+   obvious fix (`jest.fn(async () => ...)`) yields nothing at all and fails confusingly.
+   Plain functions work.
+
+**Why it matters:** these are silent traps, not failures. Each one only bites the day someone
+adds a render to that file, and then costs an hour of confused debugging, because the error
+React shows is not the error that happened.
+
+---
+
+### D-61 — The attendance register never showed what had already been marked — **FIXED 2026-08-04 (T11), supersedes part of D-16**
+
+Found while clearing the build warnings. The Attendance Recorder asked the server for the
+register with the signed-in user in the slot where the date belongs, so every request went
+out as `?date=[object Object]`. The server looked for that literal text, found nothing, and
+the screen showed **every child as "not marked"** whatever had actually been recorded. It
+did this on today's date as much as on any other, and picking a different date changed
+nothing at all.
+
+**Why it matters:** this was live. Anyone opening the register saw a blank one and could
+re-mark over attendance that had already been taken that morning. It is exactly the "shows
+the wrong data" class of defect the warning cleanup was aimed at, and it was invisible until
+the warning next to it was taken seriously. Now fixed, with a test that was confirmed to
+fail on the old code.
+
+---
+
+### D-62 — Dead arguments left over from an API refactor — **OPEN, small, same root as D-61**
+
+Several screens still pass `currentUser` into helpers that do not take it: `h(currentUser)`
+where `h()` takes nothing, `getAllClasses(currentUser)`, `getStudents(currentUser, ...)`.
+Harmless today because the extra argument is ignored.
+
+**Why it matters:** it is not the harmlessness that matters, it is that this is the same
+mistake that caused **D-61**, where the ignored argument happened to land in a slot that was
+real. While the pattern is normal in this codebase nobody looks twice at it, which is what
+let D-61 sit there. Worth one small dedicated pass over the call sites.
+
+---
+
+### D-63 — `SubstitutionViewer` reads the user without a guard — **OPEN, latent**
+
+`TeacherTools.js`'s `SubstitutionViewer` reads `currentUser.id` with no null check, so it
+would throw if it ever rendered before the session finished loading. Pre-existing and not
+touched in Block 3.
+
+**Why it matters:** it does not happen today because of the order things load in, which is
+a guarantee nobody wrote down and nobody is testing. A React error here takes the whole
+screen down, and the message the user sees would not point at this.
+
+---
+
 ## Track 2 (data load) — explicitly OUT OF SCOPE for these epics
 
 Requires separate owner approval; involves writes to live data.
