@@ -15,7 +15,7 @@ from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.responses import Response, JSONResponse
 from database import get_db
 from middleware.auth import require_owner_principal_or_accountant
-from tenant import add_school_id, get_school_id
+from tenant import add_school_id, get_school_id, scoped_query
 from services.s3_storage import (
     PRESIGNED_URL_EXPIRY_SECONDS,
     build_upload_key,
@@ -352,15 +352,20 @@ async def _persist_generated_pdf(
 
 # ─── DB resolution + rate cap (R9.5 / X9) ──────────────────────────────────────
 
-async def _enforce_daily_cap(db, school_id: str, kind: str) -> bool:
-    """Per-school, per-kind daily generation cap (X9 AC3). Returns False when over.
+async def _enforce_daily_cap(db, school_id: str, kind: str, branch_id: str | None = None) -> bool:
+    """Per-school, per-branch, per-kind daily generation cap (X9 AC3).
 
-    Robust, test-friendly increment: find the day's counter, reject if at the cap,
-    else bump (or create). A tiny race can let a couple past the cap concurrently —
-    acceptable for an abuse brake.
+    Returns False when over. Robust, test-friendly increment: find the day's counter,
+    reject if at the cap, else bump (or create). A tiny race can let a couple past the
+    cap concurrently — acceptable for an abuse brake.
+
+    D-53 (2026-08-04): the counter is now keyed on the issuing branch as well. It used
+    to be one pool for the whole school, so one branch's principal could exhaust another
+    branch's allowance for the day. An owner carries no branch and keeps a single
+    school-wide pool, which is correct: they issue for anyone.
     """
     day = date.today().isoformat()
-    q = {"schoolId": school_id, "kind": kind, "day": day}
+    q = {"schoolId": school_id, "kind": kind, "day": day, "branch_id": branch_id or None}
     existing = await db.image_gen_quota.find_one(q)
     if existing:
         if existing.get("count", 0) >= DAILY_GEN_CAP:
@@ -419,11 +424,19 @@ async def generate_certificate(request: Request, user: dict = Depends(require_ow
     student_id = str(data.get("student_id") or "").strip()
     if not student_id:
         raise HTTPException(400, "student_id is required")
-    student = await db.students.find_one({"id": student_id}, {"_id": 0})
+    # D-53 (2026-08-04, owner's "make everything one-branch specific"): the student is
+    # resolved within the issuer's own branch. Before this, a branch-bound principal
+    # could issue an official certificate for a student who is not theirs. An owner
+    # carries no branch_id and still issues for any student, by design.
+    # A student outside the issuer's branch answers 404, the same as one who does not
+    # exist — a "you may not issue for this child" message would confirm the child is
+    # enrolled somewhere, which is not the issuer's business.
+    issuer_branch = user.get("branch_id")
+    student = await db.students.find_one(scoped_query({"id": student_id}, branch_id=issuer_branch), {"_id": 0})
     if not student:
         raise HTTPException(404, "Student not found")
 
-    if not await _enforce_daily_cap(db, school_id, "certificate"):
+    if not await _enforce_daily_cap(db, school_id, "certificate", issuer_branch):
         raise HTTPException(429, "Daily certificate generation limit reached — try again tomorrow")
 
     meta = await _school_meta(db)
@@ -481,10 +494,17 @@ async def generate_id_cards(request: Request, user: dict = Depends(require_owner
     if not ids:
         return JSONResponse(status_code=400, content={"detail": "students with student_id are required"})
 
-    if not await _enforce_daily_cap(db, school_id, "id_card"):
+    # D-53: same branch rule as /certificate above.
+    issuer_branch = user.get("branch_id")
+    if not await _enforce_daily_cap(db, school_id, "id_card", issuer_branch):
         raise HTTPException(429, "Daily ID-card generation limit reached — try again tomorrow")
 
-    docs = await db.students.find({"id": {"$in": ids}}, {"_id": 0}).to_list(len(ids))
+    # Students outside the issuer's branch simply do not come back, so a batch that
+    # names them produces cards for the ones they may issue and silently omits the rest
+    # — the same shape as asking for an id that does not exist.
+    docs = await db.students.find(
+        scoped_query({"id": {"$in": ids}}, branch_id=issuer_branch), {"_id": 0}
+    ).to_list(len(ids))
     by_id = {d["id"]: d for d in docs if d.get("id")}
     class_ids = list({d.get("class_id") for d in docs if d.get("class_id")})
     class_docs = await db.classes.find(

@@ -15,13 +15,20 @@ export const BACKEND = typeof window !== 'undefined' && window.location.protocol
   : _rawBackend;
 export const API = `${BACKEND}/api`;
 
-// REACT_APP_UPLOAD_URL: direct EB URL for file uploads, bypassing CloudFront (which
-// blocks POST multipart). Falls back to BACKEND if not set (works fine in local dev).
-const _rawUpload = process.env.REACT_APP_UPLOAD_URL || _rawBackend;
-const UPLOAD_BACKEND = typeof window !== 'undefined' && window.location.protocol === 'https:'
-  ? _rawUpload.replace(/^http:\/\/(?!localhost)/, 'https://')
-  : _rawUpload;
-const UPLOAD_API = `${UPLOAD_BACKEND}/api`;
+// D-47 CLOSED 2026-08-04 (owner's decision: delete the second address, map everything
+// to the one that remains).
+//
+// There used to be a second base here, UPLOAD_API, built from REACT_APP_UPLOAD_URL. It
+// existed on the belief that CloudFront blocked multipart POST. That belief turned out
+// to be wrong — the D-37 investigation watched multipart requests reach the application
+// through CloudFront — and in the deployed setup both variables held the SAME value
+// anyway, so the two bases were identical and only one of the five uploads used the
+// second one. Four uploads on one address and one on another, agreeing by accident, is
+// a trap: the day REACT_APP_UPLOAD_URL was pointed anywhere else, four of them would
+// have silently kept using the wrong address.
+//
+// There is now one address, `API`, for every request including uploads.
+// REACT_APP_UPLOAD_URL is no longer read anywhere and can be deleted from Amplify.
 
 /**
  * Build headers for API requests.
@@ -941,7 +948,7 @@ export async function uploadChatFile(file) {
     // of failing on a stale in-memory access token. Only the Authorization header is
     // passed; Content-Type is left unset so the browser writes the multipart boundary.
     const token = getAccessToken();
-    const res = await apiFetch(`${UPLOAD_API}/chat/upload`, {
+    const res = await apiFetch(`${API}/chat/upload`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: form,

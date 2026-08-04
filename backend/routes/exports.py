@@ -171,12 +171,16 @@ async def export_staff(request: Request, format: str = "csv", user: dict = Depen
 @router.get("/expenses")
 async def export_expenses(request: Request, format: str = "csv", user: dict = Depends(_require_owner_or_accountant)):
     db = get_db()
-    # branch-scope: intentional — school-wide, and INCONSISTENT with its neighbours,
-    # which all use scoped_query(branch_id=...). Annotated rather than changed during
-    # the Epic 10 audit: narrowing it would change what an accountant can see, which
-    # is a permission decision and not this story's to make. No practical effect today
-    # (the school has one branch), so it is logged as D-29 rather than fixed quietly.
-    expenses = await db.expenses.find(scoped_filter({}, get_school_id()), {"_id": 0}).sort("date", -1).to_list(1000)  # branch-scope: intentional — see the note directly above this line
+    # D-29 CLOSED 2026-08-04 by the owner's decision ("Aaryans has only one branch, make
+    # EduFlow one-branch specific"). This was the one export that read school-wide while
+    # every neighbour scoped to the caller's branch. It now matches them.
+    #
+    # No visible change today: there is exactly one branch (branch-joya) and all 1,802
+    # students sit on it, so the same rows come back. What changes is that a branch-bound
+    # accountant can no longer see another branch's spending the day a second branch
+    # exists. An owner carries no branch_id and still reads across, by design.
+    bid = user.get("branch_id")
+    expenses = await db.expenses.find(scoped_query({}, branch_id=bid), {"_id": 0}).sort("date", -1).to_list(1000)
     headers = ["Date", "Category", "Description", "Amount", "Vendor"]
     rows = [[e.get("date"), e.get("category"), e.get("description", ""), e.get("amount"), e.get("vendor", "")] for e in expenses]
     return make_export_response(rows, headers, f"expenses_{date.today()}", format, "Expenses")

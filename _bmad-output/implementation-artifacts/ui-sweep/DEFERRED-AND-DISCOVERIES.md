@@ -507,7 +507,15 @@ third-party instructions into a repository handling the records of 1,802 childre
 the `SKILL.md` before adopting it, as was done for all three here — that review is what
 established that two of them do not belong anywhere near Flo.
 
-### D-29 — `export_expenses` is school-wide while its neighbours are branch-scoped — **DEFERRED**
+### D-29 — `export_expenses` is school-wide while its neighbours are branch-scoped — **CLOSED 2026-08-04**
+> **CLOSED by the owner's decision:** "Aaryans has only one branch, make EduFlow
+> one-branch specific." The export now scopes to the caller's branch like every other
+> export. Nothing changes on screen today (one branch, all 1,802 students on it); what
+> changes is that a branch-bound accountant cannot see another branch's spending the day
+> a second branch exists. The owner carries no branch and still reads across, which is
+> the half a careless fix breaks. Both directions tested in
+> `tests/backend/api/test_one_branch_scoping.py`.
+
 Found by the Epic 10 audit. Every other export in `routes/exports.py` uses
 `scoped_query(branch_id=...)`; expenses uses `scoped_filter` and so returns every
 branch's expenses to a branch-bound accountant.
@@ -919,7 +927,14 @@ Found while doing T1–T5. Numbered `D-47+` so they do not collide with the `NEW
 inspection register. Anything fixed in-run is recorded in `block-1-completed.md` instead;
 everything below is **open**.
 
-### D-47 — File uploads from tool screens still go through CloudFront — **OPEN, may be live**
+### D-47 — File uploads from tool screens still go through CloudFront — **CLOSED 2026-08-04**
+> **CLOSED, owner's decision: delete the second address and map everything to the one
+> that remains.** `UPLOAD_API` and its `REACT_APP_UPLOAD_URL` variable are gone from
+> `lib/api.js`; all five uploads now use the single `API` base like every other request.
+> Nothing changes in behaviour today, because both variables held the same CloudFront
+> URL; what goes away is the trap. **`REACT_APP_UPLOAD_URL` can be deleted from the
+> Amplify configuration** — nothing reads it any more.
+
 `lib/api.js` deliberately keeps a second base, `UPLOAD_API` (`REACT_APP_UPLOAD_URL`),
 because CloudFront was believed to block multipart POST, and `uploadChatFile` uses it.
 But **four** other multipart uploads post to the ordinary `${API}` base:
@@ -1009,7 +1024,15 @@ warnings are cleared, which is exactly why nobody turned one on.
 Not started here: setting up a merge gate is its own piece of work with its own blast radius
 (it can block the owner's deploys), and it is nobody's task in the current 14.
 
-### D-53 — Certificates and ID cards have no branch scoping — **OPEN, no live impact today**
+### D-53 — Certificates and ID cards have no branch scoping — **CLOSED 2026-08-04**
+> **CLOSED by the same owner decision as D-29.** Three changes: the certificate resolves
+> the student inside the issuer's branch; the ID-card batch does the same, so another
+> branch's child simply does not come back; and the daily generation cap is keyed on the
+> branch, so one branch can no longer use up another's allowance. A student outside the
+> issuer's branch answers **404**, the same as one who does not exist — saying "you may
+> not issue for this child" would confirm the child is enrolled somewhere, which is not
+> the issuer's business. The owner has no branch and still issues for anyone.
+
 `backend/routes/image_gen.py` resolves the student with `db.students.find_one({"id": ...})`
 and the ID-card batch with `{"id": {"$in": ids}}` — **school-scoped only, no `branch_id`**.
 The daily generation cap (`_enforce_daily_cap`) is likewise keyed on
@@ -1317,3 +1340,42 @@ Abhimanyu to delete.
 
 `project-context.md` already carries the corrected sidebar width (260px desktop / 280px
 drawer) in both places. No change needed.
+
+---
+
+## Owner decisions round 2 — 2026-08-04 (evening)
+
+Abhimanyu answered the whole remaining list in one pass. Recorded here so the reasoning
+is not only in a chat transcript.
+
+| Item | His answer | What was done |
+|---|---|---|
+| D-29 | one branch only | scoped to the caller's branch, owner still cross-branch |
+| D-46 | flip the firewall rule to blocking | **carve-out first** — see D-46, doing it in the wrong order breaks every large upload |
+| D-47 | delete the secondary address | `UPLOAD_API` removed; `REACT_APP_UPLOAD_URL` can be deleted from Amplify |
+| D-53 | one branch only | student lookup, ID-card batch and the daily cap all branch-keyed |
+| D-57 | no | no change: Flo keeps the trimmed chat tool list. **Closed as decided.** |
+| D-64 | purge the logs | operations task, see D-64 |
+| D-44 | yes, but properly | part 1 shipped; the clusters are being worked separately |
+| T9 / D-30 / D-31 / D-33 / D-20 | leave them | unchanged, still open by choice |
+| D-32 | do what seems right, otherwise leave | **left alone.** Changing a threshold without a measurement just moves an unmeasured guess. It stays as written until someone watches it on a school morning. |
+| D-06/07/08/10 | load from `aaryans_database` | analysis first — the folder mixes two financial years, see the note below |
+
+### D-57 — **CLOSED 2026-08-04, decided: leave it trimmed**
+Asked plainly ("does anyone actually want to create a fee structure by talking to Flo?")
+and answered **no**. The 26 structural setup tools stay out of the chat tool list.
+Permissions were never touched, so anyone who could do these before still can, from the
+normal screens and the tool panel. No code change; this entry exists so nobody
+"restores" them later thinking it was an oversight.
+
+### D-65 — A frontend test failed once and has not failed since — **OPEN, watch it**
+During the D-47 verification the frontend suite reported **1 failed / 377 passed** once,
+somewhere around `HealthScoreAttendance` / the AI health report on the Owner screen. It
+has not reproduced: three subsequent full runs and three isolated runs of that file are
+all green, and the change in that run touched only the upload address.
+
+**Why it is logged rather than shrugged off:** the whole lesson of D-52 is that a signal
+nobody writes down is a signal nobody acts on. A test that fails one time in eight is
+worse than one that always fails, because the first person to see it will assume it is
+noise. If it appears again, it is real and it is a timing problem in that test, not in
+the product.
