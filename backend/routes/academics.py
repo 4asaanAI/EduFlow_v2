@@ -35,6 +35,21 @@ def _academic_query(extra: dict | None = None) -> dict:
     return scoped_filter(extra or {}, get_school_id())
 
 
+async def _map_by_id(collection, ids, projection: dict | None = None) -> dict:
+    """NEW-04/T7: one school-scoped ``$in`` read instead of a ``find_one`` per row.
+
+    Returns ``{id: doc}``; empty input issues no query. Tenancy is composed the
+    same way the per-row lookups did, via ``_academic_query``.
+    """
+    unique = sorted({i for i in ids if i})
+    if not unique:
+        return {}
+    q = _academic_query({"id": {"$in": unique}})
+    proj = projection if projection is not None else {"_id": 0}
+    docs = await collection.find(q, proj).to_list(len(unique))
+    return {d["id"]: d for d in docs if d.get("id")}
+
+
 async def _teacher_can_access_class(db, user: dict, class_id: str | None) -> bool:
     """A teacher may act on a class only if the Academic Structure assigns it to
     them — as the class teacher OR by teaching a subject in it. Non-teachers and
@@ -88,10 +103,13 @@ async def list_assignments(request: Request, class_id: str = None):
         if student:
             query["class_id"] = student["class_id"]
     assignments = await db.assignments.find(_academic_query(query), {"_id": 0}).sort("created_at", -1).to_list(50)
+    # NEW-04/T7: two batched lookups (were two find_one calls per assignment).
+    subject_map = await _map_by_id(db.subjects, [a.get("subject_id") for a in assignments])
+    class_map = await _map_by_id(db.classes, [a.get("class_id") for a in assignments])
     for a in assignments:
-        subj = await db.subjects.find_one(_academic_query({"id": a.get("subject_id")}), {"_id": 0})
+        subj = subject_map.get(a.get("subject_id"))
         a["subject_name"] = subj["name"] if subj else "N/A"
-        cls = await db.classes.find_one(_academic_query({"id": a.get("class_id")}), {"_id": 0})
+        cls = class_map.get(a.get("class_id"))
         a["class_name"] = f"{cls['name']}-{cls['section']}" if cls else "N/A"
     return {"success": True, "data": assignments}
 
@@ -254,9 +272,13 @@ async def get_results(request: Request, exam_id: str = None, student_id: str = N
         query["published"] = True
     results = await db.exam_results.find(_academic_query(query), {"_id": 0}).to_list(500)
     enriched = []
+    # NEW-04/T7: two batched lookups (were two find_one calls per result row —
+    # up to 1,000 round trips for one screen).
+    subject_map = await _map_by_id(db.subjects, [r.get("subject_id") for r in results])
+    student_map = await _map_by_id(db.students, [r.get("student_id") for r in results])
     for r in results:
-        subj = await db.subjects.find_one(_academic_query({"id": r.get("subject_id")}), {"_id": 0})
-        student = await db.students.find_one(_academic_query({"id": r.get("student_id")}), {"_id": 0})
+        subj = subject_map.get(r.get("subject_id"))
+        student = student_map.get(r.get("student_id"))
         enriched.append({**r, "subject_name": subj["name"] if subj else "N/A", "student_name": student["name"] if student else "N/A"})
     return {"success": True, "data": enriched}
 
@@ -851,8 +873,10 @@ async def get_timetable(class_id: str, request: Request, user: dict = Depends(re
     db = get_db()
     slots = await db.timetable_slots.find({"class_id": class_id}, {"_id": 0}).sort("day_of_week", 1).to_list(100)
     enriched = []
+    # NEW-04/T7: batched (was one subject find_one per timetable slot).
+    subject_map = await _map_by_id(db.subjects, [s.get("subject_id") for s in slots])
     for s in slots:
-        subj = await db.subjects.find_one({"id": s.get("subject_id")}, {"_id": 0})
+        subj = subject_map.get(s.get("subject_id"))
         s["subject_name"] = subj["name"] if subj else "N/A"
         enriched.append(s)
     return {"success": True, "data": enriched}
@@ -905,6 +929,10 @@ async def bulk_import_timetable(request: Request, user: dict = Depends(require_r
     if not entries:
         raise HTTPException(400, "entries array is required")
     created = replaced = skipped = 0
+    # NEW-04/T7: validate referential integrity from two batched reads instead of
+    # a class lookup plus a teacher lookup on every imported row.
+    valid_class_ids = set(await _map_by_id(db.classes, [e.get("class_id") for e in entries], {"_id": 0, "id": 1}))
+    valid_teacher_ids = set(await _map_by_id(db.staff, [e.get("teacher_id") for e in entries], {"_id": 0, "id": 1}))
     for entry in entries:
         class_id = entry.get("class_id")
         day = entry.get("day_of_week")
@@ -913,17 +941,14 @@ async def bulk_import_timetable(request: Request, user: dict = Depends(require_r
             skipped += 1
             continue
         # Referential integrity: class must exist
-        cls = await db.classes.find_one({"id": class_id})
-        if not cls:
+        if class_id not in valid_class_ids:
             skipped += 1
             continue
         # Teacher must exist if provided
         teacher_id = entry.get("teacher_id")
-        if teacher_id:
-            teacher = await db.staff.find_one({"id": teacher_id})
-            if not teacher:
-                skipped += 1
-                continue
+        if teacher_id and teacher_id not in valid_teacher_ids:
+            skipped += 1
+            continue
         slot = {
             "id": str(uuid.uuid4()),
             "class_id": class_id,
@@ -936,6 +961,8 @@ async def bulk_import_timetable(request: Request, user: dict = Depends(require_r
             "room": entry.get("room", ""),
             "updated_at": datetime.now().isoformat(),
         }
+        # NEW-04/T7 audit: NOT an N+1 to batch away — this is the read-before-write of
+        # an upsert loop and must see rows written earlier in this same import.
         existing = await db.timetable_slots.find_one({"class_id": class_id, "day_of_week": day, "period_number": period})
         if existing:
             await db.timetable_slots.update_one(
@@ -985,8 +1012,10 @@ async def list_ptm_notes(request: Request, student_id: str = None):
     elif user["role"] == "teacher":
         query["teacher_id"] = user["id"]
     notes = await db.ptm_notes.find(_academic_query(query), {"_id": 0}).sort("created_at", -1).to_list(50)
+    # NEW-04/T7: batched (was one student find_one per note).
+    note_student_map = await _map_by_id(db.students, [n.get("student_id") for n in notes])
     for n in notes:
-        student = await db.students.find_one(_academic_query({"id": n.get("student_id")}), {"_id": 0})
+        student = note_student_map.get(n.get("student_id"))
         n["student_name"] = student["name"] if student else "N/A"
         if user["role"] == "student":
             n["notes"] = n.get("student_summary") or n.get("notes")
@@ -1155,16 +1184,26 @@ async def list_substitutions(request: Request, date: str = None, teacher_id: str
     ).to_list(300)
 
     result = []
+    # NEW-04/T7: three batched reads replace three queries per slot. The busy-teacher
+    # map is built once for every period on this day; classes and subjects are `$in`ed.
+    needed_periods = sorted({s.get("period_number") for s in slots if s.get("period_number") is not None})
+    busy_by_period: dict = {}
+    if needed_periods:
+        busy_rows = await db.timetable_slots.find(
+            {"day_of_week": day_of_week, "period_number": {"$in": needed_periods}, "teacher_id": {"$ne": ""}},
+            {"_id": 0, "teacher_id": 1, "period_number": 1},
+        ).to_list(20000)
+        for b in busy_rows:
+            busy_by_period.setdefault(b.get("period_number"), set()).add(b.get("teacher_id"))
+    slot_class_map = await _map_by_id(db.classes, [s.get("class_id") for s in slots])
+    slot_subject_map = await _map_by_id(db.subjects, [s.get("subject_id") for s in slots])
+
     for slot in slots:
         period = slot.get("period_number")
-        busy = await db.timetable_slots.find(
-            {"day_of_week": day_of_week, "period_number": period, "teacher_id": {"$ne": ""}},
-            {"_id": 0, "teacher_id": 1},
-        ).to_list(300)
-        busy_ids = {b.get("teacher_id") for b in busy} | {tid for tid, p in busy_teacher_periods if p == period}
+        busy_ids = set(busy_by_period.get(period, set())) | {tid for tid, p in busy_teacher_periods if p == period}
         candidates = [t for t in all_teachers if t["id"] not in busy_ids][:5]
-        cls = await db.classes.find_one({"id": slot.get("class_id")}, {"_id": 0})
-        subj = await db.subjects.find_one({"id": slot.get("subject_id")}, {"_id": 0})
+        cls = slot_class_map.get(slot.get("class_id"))
+        subj = slot_subject_map.get(slot.get("subject_id"))
         existing = sub_by_slot.get((slot.get("teacher_id"), period, slot.get("class_id")))
         result.append({
             "date": target_date,

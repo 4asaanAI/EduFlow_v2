@@ -254,13 +254,26 @@ async def send_parent_message(request: Request, user: dict = Depends(require_rol
 
     results = {"sent": 0, "failed": 0, "no_phone": 0, "not_configured": 0, "logs": []}
 
+    # NEW-04/T7: two batched reads up front (was a student lookup plus a guardian
+    # lookup for every single recipient, up to 500 per send).
+    sms_student_docs = await db.students.find(
+        scoped_query({"id": {"$in": list(student_ids)}}, branch_id=bid), {"_id": 0}
+    ).to_list(len(student_ids)) if student_ids else []
+    sms_student_map = {s["id"]: s for s in sms_student_docs if s.get("id")}
+    sms_guardian_docs = await db.guardians.find(
+        {"student_id": {"$in": list(student_ids)}}, {"_id": 0}
+    ).to_list(20000) if student_ids else []
+    sms_guardian_map: dict = {}
+    for g in sms_guardian_docs:
+        sms_guardian_map.setdefault(g.get("student_id"), g)
+
     for sid in student_ids:
-        student = await db.students.find_one(scoped_query({"id": sid}, branch_id=bid), {"_id": 0})
+        student = sms_student_map.get(sid)
         if not student:
             continue
 
         # Look up guardian phone as primary contact
-        guardian = await db.guardians.find_one({"student_id": sid}, {"_id": 0})
+        guardian = sms_guardian_map.get(sid)
         phone = (guardian or {}).get("phone") or student.get("phone") or ""
 
         if not phone:

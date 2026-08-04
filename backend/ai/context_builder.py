@@ -364,13 +364,29 @@ async def _build_coordinator_context(db, today: str, user_id: str) -> dict:
     class_ids = [c["id"] for c in classes if "id" in c]
 
     class_attendance = []
-    for cls in classes[:8]:  # cap at 8 classes to keep context size manageable
-        present = await db.student_attendance.count_documents(
-            _tenant_query({"class_id": cls["id"], "date": today, "status": "present"})
-        )
-        total = await db.students.count_documents(
-            _tenant_query({"class_id": cls["id"], "is_active": True})
-        )
+    shown_classes = classes[:8]  # cap at 8 classes to keep context size manageable
+    # NEW-04/T7: two batched reads for all 8 classes, then group in memory
+    # (was 2 count_documents per class — 16 round trips on every context build).
+    shown_ids = [c["id"] for c in shown_classes if c.get("id")]
+    present_by_class: dict = {}
+    roll_by_class: dict = {}
+    if shown_ids:
+        present_rows = await db.student_attendance.find(
+            _tenant_query({"class_id": {"$in": shown_ids}, "date": today, "status": "present"}),
+            {"_id": 0, "class_id": 1},
+        ).to_list(20000)
+        for row in present_rows:
+            present_by_class[row.get("class_id")] = present_by_class.get(row.get("class_id"), 0) + 1
+        roll_rows = await db.students.find(
+            _tenant_query({"class_id": {"$in": shown_ids}, "is_active": True}),
+            {"_id": 0, "class_id": 1},
+        ).to_list(20000)
+        for row in roll_rows:
+            roll_by_class[row.get("class_id")] = roll_by_class.get(row.get("class_id"), 0) + 1
+
+    for cls in shown_classes:
+        present = present_by_class.get(cls["id"], 0)
+        total = roll_by_class.get(cls["id"], 0)
         pct = round(present / total * 100, 1) if total else 0
         class_attendance.append(f"{cls.get('name', '')} {cls.get('section', '')}: {pct}% ({present}/{total})")
 

@@ -283,14 +283,65 @@ def _empty_result(message: str, query_time_ms: float = 0) -> dict:
     }
 
 
-def _ok(data: list, query_time_ms: float, message: str = "") -> dict:
+def _ok(data: list, query_time_ms: float, message: str = "", total: int | None = None) -> dict:
+    """NEW-05/T6: pass `total` when the read was capped. If the cap actually bit,
+    the tool result carries `total` / `showing_first` / `truncated` in meta AND a
+    plain-English message, so Flo says "the first 500 of 1,802" instead of
+    answering confidently for a slice. Silence is never acceptable."""
+    meta = {"count": len(data), "query_time_ms": round(query_time_ms, 2)}
+    if total is not None and total > len(data):
+        meta["total"] = total
+        meta["showing_first"] = len(data)
+        meta["truncated"] = True
+        truncation_note = (
+            f"Showing the first {len(data)} of {total} matching records. "
+            f"Narrow the request (by class, section, status or a search term) to see the rest."
+        )
+        message = f"{message} {truncation_note}".strip() if message else truncation_note
     return {
         "success": True,
         "data": data,
-        "meta": {"count": len(data), "query_time_ms": round(query_time_ms, 2)},
+        "meta": meta,
         "message": message,
         "denied": False,
     }
+
+
+# NEW-05/T6 — the cap for reads over collections that can exceed the school's
+# roll (1,802 students today). Fetching `limit + 1` rows is how we learn there
+# was more without paying for a count on every call.
+ROW_CAP = 500
+
+
+async def _find_capped(collection, query: dict, projection: dict | None = None,
+                       limit: int = ROW_CAP, sort=None):
+    """Run a capped read and report the true total when the cap bites.
+
+    Returns `(rows, total)`. `total == len(rows)` means nothing was cut.
+    Only pays for `count_documents` when the cap actually bit.
+    """
+    cursor = collection.find(query, projection) if projection is not None else collection.find(query)
+    if sort:
+        cursor = cursor.sort(*sort)
+    rows = await cursor.to_list(limit + 1)
+    if len(rows) > limit:
+        rows = rows[:limit]
+        return rows, await collection.count_documents(query)
+    return rows, len(rows)
+
+
+async def _map_by_id(collection, ids, projection: dict | None = None) -> dict:
+    """NEW-04/T7: one batched `$in` read instead of a `find_one` per row.
+
+    Returns `{id: doc}`. Empty input costs nothing (no query is issued).
+    """
+    unique = sorted({i for i in ids if i})
+    if not unique:
+        return {}
+    q = {"id": {"$in": unique}}
+    cursor = collection.find(q, projection) if projection is not None else collection.find(q)
+    docs = await cursor.to_list(len(unique))
+    return {d["id"]: d for d in docs if d.get("id")}
 
 
 def _denied(message: str, query_time_ms: float = 0) -> dict:
@@ -369,11 +420,15 @@ async def tool_get_student_database(params: dict, user: dict, scope: dict = None
             else:
                 query["class_id"] = cls["id"]
 
-    students = await db.students.find(query).to_list(500)
+    students, total = await _find_capped(db.students, query)
+
+    # NEW-04/T7: one batched class lookup instead of one find_one per student
+    # (was up to 501 round trips for a single question).
+    class_map = await _map_by_id(db.classes, [s.get("class_id") for s in students])
 
     results = []
     for s in students:
-        cls = await db.classes.find_one({"id": s.get("class_id")})
+        cls = class_map.get(s.get("class_id"))
         results.append({
             "name": s.get("name", ""),
             "class": f"{cls['name']}-{cls['section']}" if cls else "N/A",
@@ -386,7 +441,7 @@ async def tool_get_student_database(params: dict, user: dict, scope: dict = None
     elapsed = (time.time() - t0) * 1000
     if not results:
         return _empty_result("No students found matching the given filters.", elapsed)
-    return _ok(results, elapsed)
+    return _ok(results, elapsed, total=total)
 
 
 # =========================================================================
@@ -853,13 +908,14 @@ async def tool_get_my_class_students(params: dict, user: dict, scope: dict = Non
         return _empty_result("No classes assigned to your account.", elapsed)
 
     class_ids = _scope_class_ids(scope)
-    students = await db.students.find({
+    # NEW-05/T6: a teacher with many sections can exceed the cap; report the true total.
+    students, students_total = await _find_capped(db.students, {
         "class_id": {"$in": class_ids},
         "is_active": True,
-    }).to_list(500)
+    })
 
-    # Build class-name lookup
-    classes = await db.classes.find({"id": {"$in": class_ids}}).to_list(20)
+    # Build class-name lookup (cap = the number of ids asked for, never a fixed 20).
+    classes = await db.classes.find({"id": {"$in": class_ids}}).to_list(len(class_ids))
     class_map = {c["id"]: f"{c.get('name', '')}-{c.get('section', '')}" for c in classes}
 
     results = []
@@ -877,7 +933,7 @@ async def tool_get_my_class_students(params: dict, user: dict, scope: dict = Non
     elapsed = (time.time() - t0) * 1000
     if not results:
         return _empty_result("No students found in your assigned classes.", elapsed)
-    return _ok(results, elapsed)
+    return _ok(results, elapsed, total=students_total)
 
 
 # =========================================================================
@@ -1025,9 +1081,21 @@ async def tool_get_house_details(params: dict, user: dict, scope: dict = None) -
         return _empty_result("House not found. Please check the name and try again.", elapsed)
 
     # Members
-    members_raw = await db.students.find({"house_id": house["id"], "is_active": True}).to_list(500)
+    # NEW-05/T6: four houses across 1,802 students sits right at the old cap, so the
+    # member list is capped explicitly and `member_count` reports the TRUE total.
+    members_raw, members_total = await _find_capped(
+        db.students, {"house_id": house["id"], "is_active": True}
+    )
     members = [{"name": m.get("name", ""), "class": m.get("class_id", ""), "role": m.get("house_role", "member")} for m in members_raw]
-    captains = [m for m in members if m["role"] in ("captain", "vice_captain")]
+    # NEW-05/T6: captains are asked for BY ROLE, never sliced out of the capped member
+    # page — a captain sitting past row 500 would otherwise vanish while member_count
+    # confidently reported the full roll. There are at most a handful per house.
+    captains_raw = await db.students.find({
+        "house_id": house["id"], "is_active": True,
+        "house_role": {"$in": ["captain", "vice_captain"]},
+    }).to_list(50)
+    captains = [{"name": c.get("name", ""), "class": c.get("class_id", ""),
+                 "role": c.get("house_role", "member")} for c in captains_raw]
 
     # Recent points (last 20 entries)
     recent_points = await db.house_points.find({"house_id": house["id"]}).sort("created_at", -1).to_list(20)
@@ -1055,13 +1123,20 @@ async def tool_get_house_details(params: dict, user: dict, scope: dict = None) -
         "house_name": house.get("name", ""),
         "color": house.get("color", ""),
         "total_points": total_points,
-        "member_count": len(members),
+        "member_count": members_total,
         "captains": captains,
+        "members_listed": len(members),
         "recent_points": recent,
     }]
 
     elapsed = (time.time() - t0) * 1000
-    return _ok(data, elapsed)
+    message = ""
+    if members_total > len(members):
+        message = (
+            f"{members_total} students belong to this house; the member list below "
+            f"shows the first {len(members)}."
+        )
+    return _ok(data, elapsed, message)
 
 
 # =========================================================================
@@ -1224,6 +1299,7 @@ async def tool_get_library_status(params: dict, user: dict, scope: dict = None) 
 
     # Role-specific detail
     detail = []
+    truncation_notes: list = []  # NEW-05/T6 — never truncate this read in silence
 
     if _scope_student_id(scope):
         # Student: show own issued books
@@ -1231,8 +1307,10 @@ async def tool_get_library_status(params: dict, user: dict, scope: dict = None) 
             "student_id": _scope_student_id(scope),
             "status": {"$in": ["issued", "overdue"]},
         }).to_list(50)
+        # NEW-04/T7: batch the book lookups (was one find_one per issued book).
+        book_map = await _map_by_id(db.library_books, [i.get("book_id") for i in my_issues])
         for iss in my_issues:
-            book = await db.library_books.find_one({"id": iss.get("book_id")})
+            book = book_map.get(iss.get("book_id"))
             detail.append({
                 "book_title": book.get("title", "Unknown") if book else "Unknown",
                 "author": book.get("author", "") if book else "",
@@ -1243,10 +1321,17 @@ async def tool_get_library_status(params: dict, user: dict, scope: dict = None) 
 
     elif _scope_class_ids(scope) is not None:
         # Teacher: overdue books for students in their classes
-        students_in_class = await db.students.find({
+        # NEW-05/T6 audit: the roster feeds an `$in`, so a silent cut here would
+        # silently drop students' overdue books. Capped read, true total reported.
+        students_in_class, students_total = await _find_capped(db.students, {
             "class_id": {"$in": _scope_class_ids(scope)},
             "is_active": True,
-        }).to_list(500)
+        })
+        if students_total > len(students_in_class):
+            truncation_notes.append(
+                f"Only the first {len(students_in_class)} of {students_total} students in your "
+                f"classes were checked for overdue books."
+            )
         student_ids = [s["id"] for s in students_in_class]
         student_map = {s["id"]: s["name"] for s in students_in_class}
 
@@ -1256,8 +1341,10 @@ async def tool_get_library_status(params: dict, user: dict, scope: dict = None) 
             "due_date": {"$lt": today_str},
         }).to_list(200)
 
+        # NEW-04/T7: batch the book lookups (was one find_one per overdue issue).
+        book_map = await _map_by_id(db.library_books, [i.get("book_id") for i in overdue_issues])
         for iss in overdue_issues:
-            book = await db.library_books.find_one({"id": iss.get("book_id")})
+            book = book_map.get(iss.get("book_id"))
             detail.append({
                 "student_name": student_map.get(iss.get("student_id"), "Unknown"),
                 "book_title": book.get("title", "Unknown") if book else "Unknown",
@@ -1272,9 +1359,12 @@ async def tool_get_library_status(params: dict, user: dict, scope: dict = None) 
             "due_date": {"$lt": today_str},
         }).sort("due_date", 1).to_list(50)
 
+        # NEW-04/T7: two batched lookups instead of two find_one calls per row.
+        student_map_all = await _map_by_id(db.students, [i.get("student_id") for i in overdue_issues])
+        book_map = await _map_by_id(db.library_books, [i.get("book_id") for i in overdue_issues])
         for iss in overdue_issues:
-            student = await db.students.find_one({"id": iss.get("student_id")})
-            book = await db.library_books.find_one({"id": iss.get("book_id")})
+            student = student_map_all.get(iss.get("student_id"))
+            book = book_map.get(iss.get("book_id"))
             days = 0
             if iss.get("due_date"):
                 try:
@@ -1293,7 +1383,7 @@ async def tool_get_library_status(params: dict, user: dict, scope: dict = None) 
         "overview": overview,
         "detail": detail,
     }]
-    return _ok(data, elapsed)
+    return _ok(data, elapsed, " ".join(truncation_notes))
 
 
 # =========================================================================
@@ -2040,8 +2130,12 @@ async def tool_query_attendance_status(params: dict, user: dict, scope: dict = N
     db = get_db()
     target_date = params.get("date", date.today().isoformat())
     bid = _branch_id(user, scope)
-    records = await db.staff_attendance.find(scoped_query({"date": target_date}, branch_id=bid), {"_id": 0}).to_list(500)
-    return _ok(records, 0, "Staff attendance status ready.")
+    # NEW-05/T6 audit: one row per staff member per day — the school has ~90 staff,
+    # so 500 is far above the real ceiling. Capped read reports a total anyway.
+    records, total = await _find_capped(
+        db.staff_attendance, scoped_query({"date": target_date}, branch_id=bid), {"_id": 0}
+    )
+    return _ok(records, 0, "Staff attendance status ready.", total=total)
 
 
 async def tool_query_fee_status(params: dict, user: dict, scope: dict = None) -> dict:
@@ -2053,8 +2147,12 @@ async def tool_query_fee_status(params: dict, user: dict, scope: dict = None) ->
     if params.get("status"):
         base["status"] = params["status"]
     query = scoped_query(base, branch_id=bid)
-    txns = await db.fee_transactions.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
-    return _ok(txns, 0, "Fee status ready.")
+    # NEW-05/T6: school-wide fee transactions pass 500 well inside one term, so this
+    # read reports its total rather than answering for the newest 500 in silence.
+    txns, total = await _find_capped(
+        db.fee_transactions, query, {"_id": 0}, sort=("created_at", -1)
+    )
+    return _ok(txns, 0, "Fee status ready.", total=total)
 
 
 async def tool_query_incidents(params: dict, user: dict, scope: dict = None) -> dict:
@@ -2163,12 +2261,15 @@ async def tool_get_timetable(params: dict, user: dict, scope: dict = None) -> di
 
     # Enrich with teacher names
     results = []
+    # NEW-04/T7: batched (was one staff find_one per timetable period).
+    teacher_map = await _map_by_id(
+        db.staff, [s.get("teacher_id") for s in slots], {"_id": 0, "id": 1, "name": 1}
+    )
     for s in slots:
         teacher_name = "TBD"
-        if s.get("teacher_id"):
-            staff = await db.staff.find_one({"id": s["teacher_id"]}, {"_id": 0, "name": 1})
-            if staff:
-                teacher_name = staff["name"]
+        staff = teacher_map.get(s.get("teacher_id"))
+        if staff:
+            teacher_name = staff.get("name", "TBD")
         results.append({
             "period": s.get("period_number", "?"),
             "time": f"{s.get('start_time','?')}–{s.get('end_time','?')}",
@@ -2218,12 +2319,19 @@ async def tool_get_exam_results_summary(params: dict, user: dict, scope: dict = 
         return _empty_result("No exams found matching the criteria.", (time.time() - t0) * 1000)
 
     results = []
+    # NEW-04/T7 + NEW-05/T6: one read for all 5 exams (was one query per exam, each
+    # capped at 200 rows — a whole-school exam would have been cut in silence).
+    exam_ids = [e["id"] for e in exams if e.get("id")]
+    all_exam_results = await db.exam_results.find(
+        scoped_query({"exam_id": {"$in": exam_ids}}, branch_id=bid),
+        {"_id": 0, "exam_id": 1, "student_id": 1, "marks_obtained": 1, "max_marks": 1, "grade": 1},
+    ).to_list(20000) if exam_ids else []
+    results_by_exam: dict = {}
+    for r in all_exam_results:
+        results_by_exam.setdefault(r.get("exam_id"), []).append(r)
+
     for exam in exams:
-        # Get results for this exam
-        exam_results = await db.exam_results.find(
-            scoped_query({"exam_id": exam["id"]}, branch_id=bid),
-            {"_id": 0, "student_id": 1, "marks_obtained": 1, "max_marks": 1, "grade": 1}
-        ).to_list(200)
+        exam_results = results_by_exam.get(exam.get("id"), [])
 
         if not exam_results:
             continue

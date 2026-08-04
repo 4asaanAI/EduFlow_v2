@@ -559,6 +559,63 @@ Nothing here is live yet. It is on a branch, waiting for your go-ahead to merge.
   address is already secure, so nothing was ever broken for the school. The files are
   tidied up so the next person cannot get it wrong, but no outage was fixed.
 
+## Inspection Remediation — Block 2 (2026-08-04)
+
+### Needs something from you
+
+- [ ] **Flo's answer quality still has nothing to measure against.** There is a set of 55
+      test questions with a marking scheme, but it has never been scored against the real
+      Flo, so if her answers get worse next month nothing would notice. To run it I need
+      the login details for the AI service the live app uses. Without them I refused to
+      score against a different AI and call it a baseline, because that reads as
+      authoritative when it is not. Send me those details, or point me at a machine that
+      already has them, and it is a one-off run.
+
+- [ ] **A decision you already made, so you know what to expect.** You chose to turn off
+      the effect where Flo's answer types itself out word by word. From the next update,
+      answers appear complete, in one go, after a short wait. This halves what every
+      message costs. If anyone finds the wait uncomfortable, it is a single setting to
+      flip back, no rebuild, so say the word.
+
+### Worth you checking in the app (after this is deployed)
+
+- [ ] **Ask Flo something that returns a lot of students.** For example "list all the
+      students" or "who is in Ganga house". She should now tell you when she is only
+      showing you part of the list, in words, with both numbers ("the first 500 of
+      1,802"). Before, she answered confidently for a slice and said nothing about the
+      rest, which is the kind of thing that quietly produces a wrong decision.
+
+- [ ] **Ask for a house's details.** The member count used to be capped at 500, so a big
+      house was under-reported. It now shows the real number. Also, if a house captain
+      happens to sit late in the list, she should still be named as captain.
+
+- [ ] **Notice whether Flo feels faster.** Several questions used to make hundreds of
+      separate trips to the database while you waited. The worst was a student search
+      making up to 501 of them for a single question. Sending an SMS to a class used to
+      make two lookups per child.
+
+- [ ] **Check that nothing you actually do in chat has gone missing.** To cut cost, Flo is
+      no longer offered 26 setup-type tools in conversation for you and the principal:
+      creating branches, classes, houses, fee structures, discount types, the asset and
+      transport registers, school settings, and the year-end changeover. Those are all
+      still there on the screens, and nobody's permissions changed. Everyday things
+      (recording a payment, marking attendance, applying a discount, adding a student,
+      drafting a document) are untouched. If you ever did one of those setup jobs by
+      talking to Flo, tell me and I will put it back.
+
+### For the record
+
+- **A set of safety tests had never actually run, ever.** There are 13 tests that check
+  that if Flo is halfway through changing a student or fee record and something goes
+  wrong, the half-finished change is undone rather than left behind. They were switched
+  off by default, and it turns out they were broken in a way that meant they could not run
+  at all, so they had never passed and never failed. They are fixed and all 13 now pass on
+  a real database. Nothing was wrong with the app itself; the check on it was hollow.
+
+- **The cost of talking to Flo is roughly 60 percent lower per message for you.** Two
+  changes: she is offered a shorter list of tools, and she no longer writes each answer
+  out twice.
+
 ## Change log
 
 | Date | Epic | What was added |

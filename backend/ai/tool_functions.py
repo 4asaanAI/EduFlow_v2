@@ -80,6 +80,21 @@ def _tenant_query(scope, base: dict | None = None) -> dict:
     return scoped_query(dict(base or {}), branch_id=_scope_branch_id(scope))
 
 
+async def _map_by_id(collection, scope, ids, projection: dict | None = None) -> dict:
+    """NEW-04/T7: one tenant-scoped ``$in`` read instead of a ``find_one`` per row.
+
+    Returns ``{id: doc}``. Empty input issues no query at all. Tenancy is composed
+    exactly as the per-row lookups did, via ``_tenant_query``.
+    """
+    unique = sorted({i for i in ids if i})
+    if not unique:
+        return {}
+    q = _tenant_query(scope, {"id": {"$in": unique}})
+    cursor = collection.find(q, projection) if projection is not None else collection.find(q)
+    docs = await cursor.to_list(len(unique))
+    return {d["id"]: d for d in docs if d.get("id")}
+
+
 async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
     db = get_db()
     today = date.today().strftime("%Y-%m-%d")
@@ -106,8 +121,10 @@ async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
     staff_att = await db.staff_attendance.find(_tenant_query(scope, {"date": today})).to_list(100)
     staff_absent = [a for a in staff_att if a.get("status") == "absent"]
     staff_absent_names = []
+    # NEW-04/T7: batched (was one find_one per absent staff member).
+    absent_staff_map = await _map_by_id(db.staff, scope, [a.get("staff_id") for a in staff_absent])
     for sa in staff_absent:
-        st = await db.staff.find_one(_tenant_query(scope, {"id": sa.get("staff_id")}))
+        st = absent_staff_map.get(sa.get("staff_id"))
         if st:
             staff_absent_names.append(st.get("name", "Unknown"))
 
@@ -120,8 +137,10 @@ async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
     # Pending leaves
     pending_leaves = await db.leave_requests.find(_tenant_query(scope, {"status": "pending"})).to_list(20)
     leave_details = []
+    # NEW-04/T7: batched (was one find_one per pending leave request).
+    leave_staff_map = await _map_by_id(db.staff, scope, [lr.get("staff_id") for lr in pending_leaves])
     for lr in pending_leaves:
-        staff = await db.staff.find_one(_tenant_query(scope, {"id": lr.get("staff_id")}))
+        staff = leave_staff_map.get(lr.get("staff_id"))
         leave_details.append({
             "id": lr.get("id"),
             "staff_name": staff.get("name", "Unknown") if staff else "Unknown",
@@ -344,22 +363,31 @@ async def tool_get_staff_status(params: dict, user: dict, scope=None) -> dict:
             late_staff.append(s.get("name", "Unknown"))
 
     # Late arrivals in last 5 days
+    # NEW-04/T7: one read for all staff across all 5 days (was 5 × staff-count
+    # round trips — ~450 queries for a 90-person school, inside a chat turn).
     late_patterns = []
+    last_5_days = [(date.today() - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(5)]
+    staff_ids = [s.get("id") for s in all_staff if s.get("id")]
+    late_recs = await db.staff_attendance.find(_tenant_query(scope, {
+        "staff_id": {"$in": staff_ids},
+        "date": {"$in": last_5_days},
+        "status": "late",
+    })).to_list(len(staff_ids) * len(last_5_days) or 1) if staff_ids else []
+    late_counts: dict = {}
+    for rec in late_recs:
+        late_counts[rec.get("staff_id")] = late_counts.get(rec.get("staff_id"), 0) + 1
     for s in all_staff:
-        late_count = 0
-        for i in range(5):
-            d = (date.today() - timedelta(days=i)).strftime("%Y-%m-%d")
-            rec = await db.staff_attendance.find_one(_tenant_query(scope, {"staff_id": s.get("id"), "date": d, "status": "late"}))
-            if rec:
-                late_count += 1
+        late_count = late_counts.get(s.get("id"), 0)
         if late_count >= 3:
             late_patterns.append({"name": s.get("name", "Unknown"), "late_days": late_count})
 
     # Pending leaves
     pending_leaves = await db.leave_requests.find(_tenant_query(scope, {"status": "pending"})).to_list(20)
     leave_details = []
+    # NEW-04/T7: batched (was one find_one per pending leave request).
+    leave_staff_map = await _map_by_id(db.staff, scope, [lr.get("staff_id") for lr in pending_leaves])
     for lr in pending_leaves:
-        st = await db.staff.find_one(_tenant_query(scope, {"id": lr.get("staff_id")}))
+        st = leave_staff_map.get(lr.get("staff_id"))
         leave_details.append({
             "id": lr.get("id"),
             "staff_name": st.get("name", "Unknown") if st else "Unknown",
@@ -431,8 +459,17 @@ async def tool_get_attendance_overview(params: dict, user: dict, scope=None) -> 
     today = end_date.strftime("%Y-%m-%d")
     classes = await db.classes.find(_tenant_query(scope, {})).to_list(20)
     class_stats = []
+    # NEW-04/T7: one read for today across every class, then group in memory
+    # (was one query per class).
+    class_ids = [c["id"] for c in classes if c.get("id")]
+    today_records = await db.student_attendance.find(_tenant_query(scope, {
+        "date": today, "class_id": {"$in": class_ids},
+    })).to_list(20000) if class_ids else []
+    records_by_class: dict = {}
+    for r in today_records:
+        records_by_class.setdefault(r.get("class_id"), []).append(r)
     for cls in classes:
-        cls_records = await db.student_attendance.find(_tenant_query(scope, {"date": today, "class_id": cls["id"]})).to_list(100)
+        cls_records = records_by_class.get(cls.get("id"), [])
         if cls_records:
             p = sum(1 for r in cls_records if r.get("status") == "present")
             t = len(cls_records)
@@ -648,8 +685,10 @@ async def tool_search_students(params: dict, user: dict, scope=None) -> dict:
 
     students = await db.students.find(_tenant_query(scope, filter_q)).to_list(20)
     result = []
+    # NEW-04/T7: batched (was one class find_one per student).
+    class_map = await _map_by_id(db.classes, scope, [s.get("class_id") for s in students])
     for s in students:
-        cls = await db.classes.find_one(_tenant_query(scope, {"id": s.get("class_id")}))
+        cls = class_map.get(s.get("class_id"))
         class_label = f"{cls.get('name', '')}-{cls.get('section', '')}" if cls else "N/A"
         result.append({
             "id": s.get("id"),
@@ -677,8 +716,10 @@ async def tool_get_fee_transactions(params: dict, user: dict, scope=None) -> dic
 
     txns = await db.fee_transactions.find(_tenant_query(scope, query)).to_list(50)
     result = []
+    # NEW-04/T7: batched (was one student find_one per transaction).
+    txn_student_map = await _map_by_id(db.students, scope, [t.get("student_id") for t in txns])
     for t in txns:
-        student = await db.students.find_one(_tenant_query(scope, {"id": t.get("student_id")}))
+        student = txn_student_map.get(t.get("student_id"))
         result.append({
             "id": t.get("id"),
             "student_name": student.get("name", "Unknown") if student else "Unknown",
@@ -822,9 +863,12 @@ async def tool_get_my_results(params: dict, user: dict, scope=None) -> dict:
 
     results = await db.exam_results.find(_tenant_query(scope, {"student_id": student["id"]})).to_list(50)
     enriched = []
+    # NEW-04/T7: two batched lookups (were two find_one calls per result row).
+    subject_map = await _map_by_id(db.subjects, scope, [r.get("subject_id") for r in results])
+    exam_map = await _map_by_id(db.exams, scope, [r.get("exam_id") for r in results])
     for r in results:
-        subj = await db.subjects.find_one(_tenant_query(scope, {"id": r.get("subject_id")}))
-        exam = await db.exams.find_one(_tenant_query(scope, {"id": r.get("exam_id")}))
+        subj = subject_map.get(r.get("subject_id"))
+        exam = exam_map.get(r.get("exam_id"))
         enriched.append({
             "exam": exam.get("name", "N/A") if exam else "N/A",
             "subject": subj.get("name", "N/A") if subj else "N/A",

@@ -121,8 +121,16 @@ async def search(request: Request, q: str = "", type: str = "all"):
             # Get teacher's classes (via user_id → staff → class_teacher_id)
             pass  # For now show all (scope later with real auth)
         students = await db.students.find(scoped_filter(student_query, get_school_id()), {"_id": 0, "id": 1, "name": 1, "admission_number": 1, "class_id": 1}).to_list(10)
+        # NEW-04/T7: batched (was one class find_one per search hit).
+        hit_class_ids = sorted({s.get("class_id") for s in students if s.get("class_id")})
+        hit_class_map = {}
+        if hit_class_ids:
+            hit_class_docs = await db.classes.find(
+                scoped_filter({"id": {"$in": hit_class_ids}}, get_school_id()), {"_id": 0}
+            ).to_list(len(hit_class_ids))
+            hit_class_map = {c["id"]: c for c in hit_class_docs if c.get("id")}
         for s in students:
-            cls = await db.classes.find_one(scoped_filter({"id": s.get("class_id")}, get_school_id()), {"_id": 0})
+            cls = hit_class_map.get(s.get("class_id"))
             sub_role = f"{cls['name']}-{cls['section']}" if cls else "Student"
             results.append({"id": s["id"], "name": s["name"], "subtitle": sub_role, "type": "student", "role": "student", "sub_role": sub_role})
 

@@ -319,20 +319,45 @@ async def get_low_attendance_students(request: Request, threshold: float = 75.0,
     ]
     agg = await db.student_attendance.aggregate(pipeline).to_list(2000)
 
+    # NEW-04/T7: everything the loop used to look up per student is fetched in four
+    # batched reads (was up to 4 round trips per low-attendance student).
+    at_risk = [a for a in agg if a["total"] and round(a["present"] / a["total"] * 100, 1) < threshold]
+    at_risk_ids = [a["_id"] for a in at_risk if a.get("_id")]
+    student_map: dict = {}
+    guardian_map: dict = {}
+    class_map: dict = {}
+    if at_risk_ids:
+        student_docs = await db.students.find(
+            {"id": {"$in": at_risk_ids}, "is_active": True}, {"_id": 0}
+        ).to_list(len(at_risk_ids))
+        student_map = {s["id"]: s for s in student_docs if s.get("id")}
+        guardian_docs = await db.guardians.find(
+            {"student_id": {"$in": at_risk_ids}}, {"_id": 0}
+        ).to_list(20000)
+        # Same rule as the per-row lookups: primary guardian wins, else any guardian.
+        for g in guardian_docs:
+            guardian_map.setdefault(g.get("student_id"), g)
+        for g in guardian_docs:
+            if g.get("is_primary"):
+                guardian_map[g.get("student_id")] = g
+        cls_ids = sorted({s.get("class_id") for s in student_map.values() if s.get("class_id")})
+        if cls_ids:
+            cls_docs = await db.classes.find({"id": {"$in": cls_ids}}, {"_id": 0}).to_list(len(cls_ids))
+            class_map = {c["id"]: c for c in cls_docs if c.get("id")}
+
     results = []
     for a in agg:
         if a["total"] == 0:
             continue
         rate = round(a["present"] / a["total"] * 100, 1)
         if rate < threshold:
-            student = await db.students.find_one({"id": a["_id"], "is_active": True}, {"_id": 0})
+            student = student_map.get(a["_id"])
             if not student:
                 continue
             # Resolve parent phone: prefer primary guardian, fall back to any guardian, then student fields
-            primary_guardian = await db.guardians.find_one({"student_id": a["_id"], "is_primary": True}, {"_id": 0})
-            guardian = primary_guardian or await db.guardians.find_one({"student_id": a["_id"]}, {"_id": 0})
+            guardian = guardian_map.get(a["_id"])
             phone = (guardian or {}).get("phone") or (guardian or {}).get("whatsapp_phone") or student.get("guardian_phone") or student.get("phone") or ""
-            class_obj = await db.classes.find_one({"id": student.get("class_id")}, {"_id": 0})
+            class_obj = class_map.get(student.get("class_id"))
             results.append({
                 "student_id": a["_id"],
                 "student_name": student.get("name", ""),
@@ -425,8 +450,16 @@ async def get_class_summary(
 
     # Enrich with class names
     enriched = []
+    # NEW-04/T7: batched (was one class find_one per class row).
+    agg_class_ids = sorted({r["_id"] for r in results if r.get("_id")})
+    agg_class_map = {}
+    if agg_class_ids:
+        agg_class_docs = await db.classes.find(
+            scoped_query({"id": {"$in": agg_class_ids}}, branch_id=bid)
+        ).to_list(len(agg_class_ids))
+        agg_class_map = {c["id"]: c for c in agg_class_docs if c.get("id")}
     for r in results:
-        cls = await db.classes.find_one(scoped_query({"id": r["_id"]}, branch_id=bid))
+        cls = agg_class_map.get(r["_id"])
         class_name = f"{cls.get('name','')} {cls.get('section','')}".strip() if cls else r["_id"]
         total = r["total"]
         enriched.append({
@@ -461,8 +494,16 @@ async def get_staff_attendance_today(
 
     # Enrich with staff names
     result = []
+    # NEW-04/T7: batched (was one staff find_one per attendance record).
+    rec_staff_ids = sorted({r.get("staff_id") for r in attendance_records if r.get("staff_id")})
+    rec_staff_map = {}
+    if rec_staff_ids:
+        rec_staff_docs = await db.staff.find(
+            scoped_query({"id": {"$in": rec_staff_ids}}, branch_id=bid)
+        ).to_list(len(rec_staff_ids))
+        rec_staff_map = {s["id"]: s for s in rec_staff_docs if s.get("id")}
     for rec in attendance_records:
-        staff = await db.staff.find_one(scoped_query({"id": rec.get("staff_id")}, branch_id=bid))
+        staff = rec_staff_map.get(rec.get("staff_id"))
         result.append({
             "staff_id": rec.get("staff_id"),
             "staff_name": staff.get("name") if staff else rec.get("staff_id"),

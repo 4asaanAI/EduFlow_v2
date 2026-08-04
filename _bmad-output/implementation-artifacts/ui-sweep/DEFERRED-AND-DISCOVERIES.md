@@ -968,6 +968,66 @@ this block; `AGENTS.md` was left because the two files have drifted from each ot
 places than this one line, and reconciling them is its own job. Flagged so the next reader
 of `AGENTS.md` does not trust the number.
 
+### D-54 — A whole tier of tests was un-runnable and it showed up as neither a pass nor a failure — **OPEN as a process hole; the tier itself FIXED 2026-08-04**
+The real-Mongo write-rollback tests (`tests/backend/mongo_real/`) had never passed and never
+failed. The shared setup created the database client on one event loop and handed it to tests
+running on another, so every test errored before a single assertion ran. Because the tier is
+**deselected by default**, that produced no red mark anywhere. It sat like that for months.
+Fixed in T10 and now green: **13 passed**.
+
+**Why it matters:** the fix closes this tier, not the hole. Any test tier that is deselected
+by default can rot in exactly the same invisible way — nobody is told, because "not run" and
+"passing" look identical from the outside. Same family as **D-52** (nothing stops a red suite
+reaching `main`): our safety nets only help when something is actually watching them. Worth
+one pass over every deselected marker (`mongo_real`, `llm_eval`) to decide who runs it and how
+often.
+
+### D-55 — MongoDB 8.3 will not run on this Windows 10 machine — **LOGGED, workaround written down**
+The `winget` package installs cleanly and then the program exits immediately with
+`STATUS_ENTRYPOINT_NOT_FOUND`, printing nothing at all. The Windows service it installs cannot
+start either. **MongoDB 7.0.16**, taken as a zip from the fastdl download, works fine and is
+what the T10 run used.
+
+**Why it matters:** an hour went into working this out from a blank error. The exact working
+command is now at the top of `tests/backend/mongo_real/README.md` so the next person setting
+up a local database for these tests does not repeat it.
+
+### D-56 — The register's numbers have been wrong twice, both times overstated — **LOGGED**
+Three counts from the 2026-08-04 inspection register did not survive contact with the code.
+NEW-03 said 113 calls across 18 files; the real figures were **178 across 21**. NEW-04 said 53
+in-loop database queries; a repeatable detector found **27** live sites (the register had
+double-counted across the two AI tool files). NEW-06 said 14 tests; the tier collects **13**.
+
+**Why it matters:** the register is still the source of truth for **what** needs doing, and
+none of these findings were wrong about that. But its **numbers** should be measured again
+before anyone acts on them, and never quoted as fact in a report or a commit message. Counting
+first is cheap; being caught quoting a wrong number is not.
+
+### D-57 — Flo is no longer offered 26 setup tools in chat for owner and principal — **OPEN, low**
+T8 trimmed the tool list handed to the assistant on each message, to cut the cost of a turn.
+The 26 removed are all structural setup jobs: creating branches, classes and houses, fee
+structures and discount types, asset and transport registers, school settings, the year-end
+transition, and list-screen deletes. **Permissions were not touched** — anyone who could do
+these before still can, from the normal screens, from the tool panel, and from a suggested
+action. What changed is that Flo will no longer volunteer them in conversation.
+
+**Why it matters:** if someone genuinely prefers to say "make a new fee structure" to Flo
+rather than fill in the form, that will not work any more. Nobody has ever reported working
+that way, but nobody was asked either. One question to Abhimanyu at a convenient moment
+settles it, and the list is one file to edit if the answer is "put them back".
+
+### D-58 — Two dozen older `scoped_filter` calls still have no note saying why — **OPEN, points at D-17**
+The standing rule is that every `scoped_filter(` hit either carries a
+`# branch-scope: intentional — <reason>` comment or gets migrated to `scoped_query(...)`.
+Across the route files roughly two dozen pre-existing hits still carry neither. Block 2 added
+exactly **one** new hit (`routes/search.py:129`) and it copies the tenancy of the per-row
+lookup it replaced, so nothing got worse in this block.
+
+**Why it matters:** the backlog is unchanged and it is the same one already logged as
+**D-17**. Nothing is broken today, but until each of those is either explained or migrated,
+the audit grep cannot tell "deliberately school-wide" from "someone forgot the branch filter",
+which is exactly the mistake that bites the first day a second branch exists (see **D-53**).
+
 ---
 
 ## Track 2 (data load) — explicitly OUT OF SCOPE for these epics

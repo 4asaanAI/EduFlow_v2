@@ -18,6 +18,24 @@ These tests therefore live here and carry `@pytest.mark.mongo_real`.
 
 ## Running locally
 
+**The one-liner that is known to work on Windows (T10/NEW-06, first real run 2026-08-04).**
+No Docker needed. MongoDB **7.0** — the 8.3 build from `winget` will not start on
+Windows 10 19045 (it exits with `STATUS_ENTRYPOINT_NOT_FOUND` before printing anything).
+Download `mongodb-windows-x86_64-7.0.16.zip` from fastdl.mongodb.org, unzip it, then:
+
+```bash
+# 1. start a single-node replica set (transactions need a replSet name, one node is enough)
+mongod --dbpath <somewhere>/data --port 27099 --replSet rs0 --bind_ip 127.0.0.1 --logpath <somewhere>/mongod.log
+
+# 2. initiate it, once
+python -c "from pymongo import MongoClient; MongoClient('mongodb://127.0.0.1:27099/?directConnection=true').admin.command('replSetInitiate', {'_id':'rs0','members':[{'_id':0,'host':'127.0.0.1:27099'}]})"
+
+# 3. run the tier
+MONGO_TEST_URL='mongodb://127.0.0.1:27099/?replicaSet=rs0' MONGO_URL=mongodb://127.0.0.1:27099/eduflow_test DB_NAME=eduflow_test python -m pytest -m mongo_real tests/backend/mongo_real -q
+```
+
+Expected: **13 passed**. (The register said 14; the tier collects 13.)
+
 ```bash
 # Option A — point at a replica set you already run
 mongod --replSet rs0 --dbpath /tmp/rs0 &

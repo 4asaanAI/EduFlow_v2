@@ -15,6 +15,7 @@ Handles:
   - LLM parameter extraction with entity resolution
 """
 import json
+import os
 import asyncio
 import base64
 import random
@@ -40,6 +41,7 @@ from ai.context_builder import build_school_context, detect_language
 from ai.tool_functions_v2 import TOOL_REGISTRY, WRITE_TOOL_NAMES, openai_tool_schema
 from ai.scope_resolver import resolve_scope, Scope
 from ai.tool_access import is_tool_authorized
+from ai.tool_chat_exclusions import is_chat_advertised
 from ai.content_filter import filter_response, check_input_safety
 from ai.redaction import redact_for_llm
 from middleware.auth import get_current_user, require_owner
@@ -109,6 +111,14 @@ HISTORY_KEEP_FIRST = 2
 HISTORY_KEEP_RECENT = 10
 THINKING_DELAY_MIN = 0.15  # 150ms
 THINKING_DELAY_MAX = 0.30  # 300ms
+
+# NEW-12/T8 — the word-by-word typing-out effect costs a SECOND model call per turn
+# to re-say an answer that is already worked out. Owner decision 2026-08-04: off.
+# Flip to "true" in the environment to restore it; no code change, no deploy of new
+# behaviour beyond the setting. Read at import so tests can monkeypatch the constant.
+AI_STREAM_SECOND_CALL = os.environ.get("AI_STREAM_SECOND_CALL", "false").strip().lower() in (
+    "1", "true", "yes", "on",
+)
 
 # Tools that require user confirmation before execution
 WRITE_ACTION_TOOLS = set(WRITE_TOOL_NAMES)
@@ -937,6 +947,11 @@ def _build_llm_tools(user: dict, only: "set | None" = None) -> list:
         if only is not None and name not in only:
             continue
         if not _is_tool_authorized(user, tdef):
+            continue
+        # NEW-12/T8: trim the advertised list for owner/principal. Cost only — the
+        # authorization gate above is unchanged, and an explicitly-named tool
+        # (`only=...`) is never trimmed, so nothing becomes unreachable.
+        if only is None and not is_chat_advertised(user, name):
             continue
         required = WRITE_TOOL_REQUIRED_PARAMS.get(name, ())
         tools.append(openai_tool_schema(name, tdef, required))
@@ -2655,10 +2670,18 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
     # must run BEFORE any text reaches a student, so students keep the buffered
     # filter-then-emit path below. Confidentiality: no provider/model identity is
     # ever emitted — deltas carry only the assistant's words.
+    #
+    # NEW-12/T8: this second model call exists ONLY to re-say an answer that has
+    # already been worked out, word by word. It roughly doubles the cost of every
+    # turn. Abhimanyu decided on 2026-08-04 to switch it off, so the default is
+    # off; set AI_STREAM_SECOND_CALL=true to bring the typing-out effect back
+    # without a code change. When it is off, the answer is delivered through the
+    # buffered simulated-chunk path below — same text, no second call.
     _role = user.get("role")
     stream_error = None
     stream_final = (
-        _role != "student"
+        AI_STREAM_SECOND_CALL
+        and _role != "student"
         and llm_ok
         and not pending_calls
         and (llm_response or "") != FALLBACK_TEXT

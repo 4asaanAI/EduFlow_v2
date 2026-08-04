@@ -372,8 +372,16 @@ async def list_certs(request: Request, student_id: str = None, user: dict = Depe
     certs = await db.certificates.find(scoped_query(query, branch_id=bid), {"_id": 0}).sort("created_at", -1).to_list(50)
     now = datetime.now()
     CERT_APPROVAL_SLA_HOURS = int(os.environ.get("CERT_APPROVAL_SLA_HOURS", "48"))
+    # NEW-04/T7: batched (was one student find_one per certificate).
+    cert_sids = sorted({c.get("student_id") for c in certs if c.get("student_id")})
+    cert_student_map = {}
+    if cert_sids:
+        cert_docs = await db.students.find(
+            scoped_query({"id": {"$in": cert_sids}}, branch_id=bid), {"_id": 0}
+        ).to_list(len(cert_sids))
+        cert_student_map = {s["id"]: s for s in cert_docs if s.get("id")}
     for c in certs:
-        s = await db.students.find_one(scoped_query({"id": c.get("student_id")}, branch_id=bid), {"_id": 0})
+        s = cert_student_map.get(c.get("student_id"))
         c["student_name"] = s["name"] if s else "N/A"
         # Fix 5: mark overdue pending certs
         if c.get("status") == "pending_approval" and c.get("created_at"):
@@ -708,10 +716,20 @@ async def list_transport(request: Request, user: dict = Depends(require_role("ow
     db = get_db()
     bid = user.get("branch_id")
     routes = await db.transport_routes.find(scoped_query({}, branch_id=bid), {"_id": 0}).to_list(50)
-    # Enrich with student count per zone
+    # Enrich with student count per zone.
+    # NEW-04/T7: one read for every zone, counted in memory (was one count per route).
+    route_ids = [r.get("id") for r in routes if r.get("id")]
+    counts_by_zone: dict = {}
+    if route_ids:
+        zone_rows = await db.students.find(
+            scoped_query({"route_zone_id": {"$in": route_ids}, "is_active": {"$ne": False}}, branch_id=bid),
+            {"_id": 0, "route_zone_id": 1},
+        ).to_list(20000)
+        for row in zone_rows:
+            zid = row.get("route_zone_id")
+            counts_by_zone[zid] = counts_by_zone.get(zid, 0) + 1
     for route in routes:
-        count = await db.students.count_documents(scoped_query({"route_zone_id": route.get("id"), "is_active": {"$ne": False}}, branch_id=bid))
-        route["student_count"] = count
+        route["student_count"] = counts_by_zone.get(route.get("id"), 0)
     return {"success": True, "data": routes}
 
 

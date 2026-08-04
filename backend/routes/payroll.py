@@ -78,8 +78,16 @@ async def list_disbursements(request: Request, month: str = None):
 
     # Enrich with staff names
     results = []
+    # NEW-04/T7: batched (was one staff find_one per disbursement).
+    disb_staff_ids = sorted({d.get("staff_id") for d in disbursements if d.get("staff_id")})
+    disb_staff_map = {}
+    if disb_staff_ids:
+        disb_staff_docs = await db.staff.find(
+            scoped_query({"id": {"$in": disb_staff_ids}}, branch_id=bid)
+        ).to_list(len(disb_staff_ids))
+        disb_staff_map = {s["id"]: s for s in disb_staff_docs if s.get("id")}
     for d in disbursements:
-        staff = await db.staff.find_one(scoped_query({"id": d.get("staff_id")}, branch_id=bid))
+        staff = disb_staff_map.get(d.get("staff_id"))
         results.append({
             **d,
             "staff_name": staff.get("name") if staff else d.get("staff_id"),

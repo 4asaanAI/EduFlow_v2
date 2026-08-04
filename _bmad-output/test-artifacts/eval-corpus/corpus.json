@@ -738,6 +738,53 @@
       "expected_tool": "get_attendance_overview",
       "expected_outcome": "answer",
       "rubric": "Understands the Hinglish absence question; reports today's absentee count; numbers exact."
+    },
+    {
+      "id": "owner-draft-document-letter",
+      "role": "owner",
+      "sub_category": null,
+      "language": "en",
+      "tags": [
+        "draft_document",
+        "D-37"
+      ],
+      "turns": [
+        "Draft a letter to parents about the annual sports day on 14 December and give me the download link."
+      ],
+      "expected_tool": "draft_document",
+      "expected_outcome": "answer",
+      "rubric": "Produces the requested parent letter as a downloadable document and gives a working download link in the reply. The link must be present — a document with no way to fetch it is a failure (D-37). No invented school details."
+    },
+    {
+      "id": "principal-draft-document-circular",
+      "role": "admin",
+      "sub_category": "principal",
+      "language": "en",
+      "tags": [
+        "draft_document"
+      ],
+      "turns": [
+        "Prepare a circular for the staff about the revised morning assembly timing."
+      ],
+      "expected_tool": "draft_document",
+      "expected_outcome": "answer",
+      "rubric": "Drafts a staff circular on the revised assembly timing and returns a download link. Does not fabricate a time that was never given — asks or leaves it clearly marked."
+    },
+    {
+      "id": "teacher-draft-document-hinglish",
+      "role": "teacher",
+      "sub_category": null,
+      "language": "hinglish",
+      "tags": [
+        "draft_document",
+        "hinglish"
+      ],
+      "turns": [
+        "parents ke liye ek note bana do PTM ke baare mein, download link bhi chahiye"
+      ],
+      "expected_tool": "draft_document",
+      "expected_outcome": "answer",
+      "rubric": "Understands the Hinglish request, drafts the PTM note for parents and returns a download link. Replies in the language the teacher used."
     }
   ]
 }

@@ -216,7 +216,14 @@ async def test_stream_final_answer_midstream_error_keeps_partial(monkeypatch):
 @pytest.mark.asyncio
 async def test_owner_turn_streams_final_answer(client, fake_db, monkeypatch):
     """R11.3: an owner conversational turn streams the final answer via chat_stream
-    (not the simulated buffered chunking)."""
+    (not the simulated buffered chunking).
+
+    NEW-12/T8: the second model call that produces this word-by-word effect is now
+    OFF by default (owner decision, 2026-08-04). The R11.3 contract still has to
+    hold whenever it is switched back on, so this test turns the switch on
+    explicitly. `test_second_call_is_off_by_default` below guards the default.
+    """
+    monkeypatch.setattr(chat, "AI_STREAM_SECOND_CALL", True)
     _seed(fake_db)
 
     async def only_text(system, messages, session_id=None, role=None, tools=None, tool_choice="auto"):
@@ -235,6 +242,37 @@ async def test_owner_turn_streams_final_answer(client, fake_db, monkeypatch):
     resp = _post(client, text="how many students?")
     events = _events(resp.text)
     assert streamed["used"], "final answer did not use the streaming path"
+    text = "".join(e.get("delta", "") for e in events if e.get("type") == "text_delta")
+    assert "412 students" in text
+    persisted = [m for m in fake_db.messages.docs if m.get("role") == "assistant"]
+    assert any("412 students" in m.get("content", "") for m in persisted)
+
+
+@pytest.mark.asyncio
+async def test_second_call_is_off_by_default_and_answer_still_arrives(client, fake_db, monkeypatch):
+    """NEW-12/T8: with the switch at its default, a turn makes NO second model call.
+
+    The saving is the whole point of the task, so this asserts the absence of the
+    call — not just that it is cheaper. The answer must still reach the user and
+    still be persisted; only the word-by-word effect goes away.
+    """
+    assert chat.AI_STREAM_SECOND_CALL is False, "the default must stay off"
+    _seed(fake_db)
+
+    async def only_text(system, messages, session_id=None, role=None, tools=None, tool_choice="auto"):
+        return LLMResult(text="You have 412 students.", ok=True, reason="stop")
+    monkeypatch.setattr(chat.llm_client, "chat", only_text)
+
+    streamed = {"used": False}
+
+    async def fake_stream(system, messages, session_id=None, role=None):
+        streamed["used"] = True
+        yield {"type": "done", "tokens": 0, "reason": "stop", "ok": True}
+    monkeypatch.setattr(chat.llm_client, "chat_stream", fake_stream)
+
+    resp = _post(client, text="how many students?")
+    events = _events(resp.text)
+    assert streamed["used"] is False, "the re-synthesis call was made despite the switch being off"
     text = "".join(e.get("delta", "") for e in events if e.get("type") == "text_delta")
     assert "412 students" in text
     persisted = [m for m in fake_db.messages.docs if m.get("role") == "assistant"]

@@ -39,9 +39,19 @@ def _real_mongo_url() -> str | None:
     return "__testcontainers__"
 
 
-@pytest_asyncio.fixture(scope="module")
-async def mongo_real_client():
-    """An AsyncIOMotorClient bound to a real replica set, or skip."""
+@pytest.fixture(scope="module")
+def mongo_real_url():
+    """The replica-set URL for this module, starting a container if that is the
+    route in use.
+
+    T10/NEW-06: this is deliberately a SYNC, module-scoped fixture. Motor clients
+    bind to the asyncio loop they are created on, so a module-scoped *client* fixture
+    is created on the module loop and then handed to function-scoped tests running on
+    their own loop — which raises "attached to a different loop" before a single
+    assertion runs. That is exactly what happened the first time this tier was ever
+    executed (2026-08-04). Container lifecycle is not loop-bound, so it can stay
+    module-scoped here while the client is created per test below.
+    """
     url = _real_mongo_url()
     if url is None:
         pytest.skip(
@@ -49,24 +59,34 @@ async def mongo_real_client():
             "testcontainers (this tier is nightly/AI-path-only by design)."
         )
 
-    from motor.motor_asyncio import AsyncIOMotorClient
-
     container = None
     if url == "__testcontainers__":
         from testcontainers.mongodb import MongoDbContainer
+        from pymongo import MongoClient
 
         container = MongoDbContainer("mongo:6.0").with_command("--replSet rs0")
         container.start()
         url = container.get_connection_url()
-        admin = AsyncIOMotorClient(url)
+        admin = MongoClient(url, directConnection=True)
         try:
-            await admin.admin.command("replSetInitiate")
+            admin.admin.command("replSetInitiate")
         except Exception:
             pass  # already initiated
         finally:
             admin.close()
 
-    client = AsyncIOMotorClient(url)
+    yield url
+
+    if container is not None:
+        container.stop()
+
+
+@pytest_asyncio.fixture
+async def mongo_real_client(mongo_real_url):
+    """An AsyncIOMotorClient bound to a real replica set, created on THIS test's loop."""
+    from motor.motor_asyncio import AsyncIOMotorClient
+
+    client = AsyncIOMotorClient(mongo_real_url)
     # Fail fast (and skip) if the server is not actually a replica set.
     try:
         hello = await client.admin.command("hello")
@@ -74,15 +94,11 @@ async def mongo_real_client():
             pytest.skip("Connected Mongo is not a replica set; transactions unavailable.")
     except Exception as exc:  # pragma: no cover - environment dependent
         client.close()
-        if container is not None:
-            container.stop()
         pytest.skip(f"Could not reach a real Mongo replica set: {exc}")
 
     yield client
 
     client.close()
-    if container is not None:
-        container.stop()
 
 
 @pytest_asyncio.fixture

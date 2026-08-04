@@ -97,6 +97,22 @@ async def _validate_rows(db, rows: list[dict], branch_id: str | None = None) -> 
     valid_rows = []
     duplicates = []
     class_cache = {}
+    # NEW-04/T7: existing-name cache, one read per DISTINCT class instead of one
+    # duplicate lookup per imported row (a 1,800-row import was 1,800 queries).
+    existing_by_class: dict = {}
+
+    async def _existing_in_class(class_id: str) -> dict:
+        """{exact name: student doc} for the active students already in this class."""
+        if class_id not in existing_by_class:
+            docs = await db.students.find(
+                scoped_query({"class_id": class_id, "is_active": True}, branch_id=branch_id),
+                {"_id": 0},
+            ).to_list(20000)
+            by_name: dict = {}
+            for d in docs:
+                by_name.setdefault(d.get("name"), d)
+            existing_by_class[class_id] = by_name
+        return existing_by_class[class_id]
 
     for index, row in enumerate(rows, start=2):
         row_errors = []
@@ -118,10 +134,7 @@ async def _validate_rows(db, rows: list[dict], branch_id: str | None = None) -> 
 
         duplicate = None
         if cls and row.get("name"):
-            duplicate = await db.students.find_one(
-                scoped_query({"name": row["name"], "class_id": cls["id"], "is_active": True}, branch_id=branch_id),
-                {"_id": 0},
-            )
+            duplicate = (await _existing_in_class(cls["id"])).get(row["name"])
 
         if row_errors:
             errors.extend(row_errors)

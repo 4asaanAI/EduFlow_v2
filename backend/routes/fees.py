@@ -289,12 +289,30 @@ async def get_class_fee_summary(request: Request, user: dict = Depends(require_r
     db = get_db()
     classes = await db.classes.find(_fee_query(), {"_id": 0}).to_list(50)
     result = []
+    # NEW-04/T7: two batched reads for every class, then group in memory (was two
+    # queries per class — 100 round trips for a 50-class school).
+    all_class_ids = [c["id"] for c in classes if c.get("id")]
+    students_by_class: dict = {}
+    txns_by_student: dict = {}
+    if all_class_ids:
+        all_students = await db.students.find(
+            _fee_query({"class_id": {"$in": all_class_ids}}), {"_id": 0, "id": 1, "class_id": 1}
+        ).to_list(20000)
+        for s in all_students:
+            students_by_class.setdefault(s.get("class_id"), []).append(s["id"])
+        every_sid = [s["id"] for s in all_students if s.get("id")]
+        if every_sid:
+            all_txns = await db.fee_transactions.find(
+                _fee_query({"student_id": {"$in": every_sid}, "deleted": {"$ne": True}}), {"_id": 0}
+            ).to_list(200000)
+            for t in all_txns:
+                txns_by_student.setdefault(t.get("student_id"), []).append(t)
+
     for cls in classes:
-        students = await db.students.find(_fee_query({"class_id": cls["id"]}), {"_id": 0, "id": 1}).to_list(200)
-        s_ids = [s["id"] for s in students]
+        s_ids = students_by_class.get(cls["id"], [])
         if not s_ids:
             continue
-        txns = await db.fee_transactions.find(_fee_query({"student_id": {"$in": s_ids}, "deleted": {"$ne": True}}), {"_id": 0}).to_list(1000)
+        txns = [t for sid in s_ids for t in txns_by_student.get(sid, [])]
         paid = sum(t["amount"] for t in txns if t.get("status") == "paid")
         pending = sum(t["amount"] for t in txns if t.get("status") in ("pending", "overdue"))
         result.append({
@@ -1013,8 +1031,16 @@ async def export_fee_transactions(request: Request, period: str = None, format: 
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["student_name", "class", "fee_head", "amount", "payment_date", "receipt_number", "payment_mode", "status"])
+    # NEW-04/T7: batched (was one student find_one per exported row).
+    export_sids = sorted({t.get("student_id") for t in txns if t.get("student_id")})
+    export_student_map = {}
+    if export_sids:
+        export_docs = await db.students.find(
+            _fee_query({"id": {"$in": export_sids}}), {"_id": 0, "id": 1, "name": 1, "class_name": 1}
+        ).to_list(len(export_sids))
+        export_student_map = {s["id"]: s for s in export_docs if s.get("id")}
     for t in txns:
-        student = await db.students.find_one(_fee_query({"id": t.get("student_id")}), {"_id": 0, "name": 1, "class_name": 1})
+        student = export_student_map.get(t.get("student_id"))
         writer.writerow([
             student["name"] if student else "",
             student.get("class_name", "") if student else "",

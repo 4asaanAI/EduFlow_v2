@@ -127,6 +127,9 @@ async def trigger_sync(
         if not student_id or not period or not fee_head:
             continue
         existing = await db.fee_transactions.find_one(
+            # NEW-04/T7 audit: NOT an N+1 to batch away. This is the read-before-write
+            # of an upsert loop — the check must see the effect of the rows already
+            # written in this same run, so a pre-fetched snapshot would be wrong.
             # branch-scope: intentional — matches the legacy _fee_query school-wide
             # duplicate check; fee txns are keyed (student, period, head) per school
             scoped_filter({"student_id": student_id, "fee_period": period, "fee_head": fee_head}, school_id),

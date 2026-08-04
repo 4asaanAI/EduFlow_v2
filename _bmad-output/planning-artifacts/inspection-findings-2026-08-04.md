@@ -26,11 +26,11 @@ handoff prompt.
 | T4 | One shared server-address definition; fix the 7 missed files | NEW-08 | ✅ Done (2026-08-04) |
 | T5 | Remove or correct the two dead fee-discount helpers | NEW-11 | ✅ Done (2026-08-04) |
 | **BLOCK 2 — correctness under real data volume, and cost** ||||
-| T6 | Stop silent truncation at 500 rows | NEW-05 | ⬜ Not started |
-| T7 | Remove the 53 one-query-per-row loops (AI layer first) | NEW-04 | ⬜ Not started |
-| T8 | Cut the per-message AI cost | NEW-12 | ⬜ Not started |
-| T9 | Establish a real AI answer-quality baseline | NEW-13 | ⬜ Not started |
-| T10 | Run the write-rollback safety tests once, for real | NEW-06 | ⬜ Not started |
+| T6 | Stop silent truncation at 500 rows | NEW-05 | ✅ Done (2026-08-04) |
+| T7 | Remove the 53 one-query-per-row loops (AI layer first) | NEW-04 | ✅ Done (2026-08-04) |
+| T8 | Cut the per-message AI cost | NEW-12 | ✅ Done (2026-08-04) |
+| T9 | Establish a real AI answer-quality baseline | NEW-13 | ⏸ Blocked on owner (no Azure OpenAI credentials on this machine) |
+| T10 | Run the write-rollback safety tests once, for real | NEW-06 | ✅ Done (2026-08-04) |
 | **BLOCK 3 — hygiene and standing risk** ||||
 | T11 | Clear the 48 warnings and turn the build gate on | NEW-09 | ⬜ Not started |
 | T12 | Repair the tool-routing tests | NEW-10 | ⬜ Not started |
@@ -202,6 +202,19 @@ The correct pattern already exists in this codebase: `backend/routes/sms.py:146`
 Audit the other 32 sub-1802 caps found and annotate the legitimately-scoped ones so the next
 audit does not re-derive them.
 
+> **✅ DONE 2026-08-04.** The cap stays at 500 (a bigger page would just spend the token
+> budget the sibling task T8 is cutting); what changed is that it can no longer be silent.
+> `_find_capped()` in `ai/tool_functions_v2.py` fetches `limit + 1` rows so it knows more
+> existed, then counts ONLY in that case, and `_ok(..., total=)` puts `total`,
+> `showing_first` and `truncated` in the tool result plus a plain sentence Flo can relay.
+> Applied to the two named reads and to three more found in the audit that can genuinely
+> pass 500 in this school: a teacher's own roster, the same roster feeding the overdue-books
+> check, and school-wide fee transactions. `member_count` on a house is now the true roll,
+> not the page size (it was understating). A fixed `.to_list(20)` on a teacher's class-name
+> lookup was replaced with the number of ids actually asked for. Caps that cannot reach
+> 1,802 (staff at ~90, one class at ~60) are left alone with a note. Regression tests:
+> `tests/backend/unit/test_inspection_block2_scale.py`.
+
 ---
 
 ### T7 · NEW-04 — 53 one-query-per-row loops
@@ -220,6 +233,22 @@ inside the 500-row search from T6 — up to **501 round trips for one question**
 
 **Do:** batch each with `{"id": {"$in": [...]}}` into a dict. Start with the AI layer. Add a
 regression check (a fake collection that counts calls) on at least the student-search path.
+
+> **✅ DONE 2026-08-04.** A repeatable detector (walk the file, track `for`/`while` bodies,
+> flag any `await db.*.find*` inside one) found **27** live sites, not 53 — the register's
+> count was per-statement across both AI tool files and double-counted. All 27 were worked:
+> AI layer first (`tool_functions.py`, `tool_functions_v2.py`, `context_builder.py`), then
+> `academics.py`, `attendance.py`, `fees.py`, `operations.py`, `payroll.py`, `search.py`,
+> `sms.py`, `import_data.py`. Worst cases removed: the 501-round-trip student search; a
+> late-arrival check that ran 5 queries per staff member (~450 for one question); a
+> substitution planner running 3 queries per timetable slot; a class fee summary running
+> 2 queries per class; the SMS send doing 2 lookups per recipient (up to 1,000 per send);
+> and the context builder doing 16 counts on every single message. Two remaining sites are
+> deliberately NOT batched and now carry a comment saying why: both are the read-before-write
+> of an upsert loop, which must see rows written earlier in the same run. Detector re-run at
+> block close reports those two and nothing else. Regression guard: a call-counting fake
+> collection asserts the student search issues exactly one class read for 300 students, and
+> none at all when no student has a class.
 
 ---
 
@@ -252,6 +281,30 @@ Two independent savings:
 **Do:** implement (1). Ask about (2), and if approved implement it as an env-var switch, not a
 deletion. Prompt/tool change ⇒ the eval gate applies (see the protocol's guardrails).
 
+> **✅ DONE 2026-08-04 — both halves, (2) with the owner's explicit approval this session.**
+>
+> (1) `ai/tool_chat_exclusions.py` holds `EXCLUDE_FOR_ROLE` and is consulted ONLY where the
+> chat tool list is built (`_build_llm_tools`, and only when no tool is named explicitly).
+> It changes what is OFFERED, never what is ALLOWED: `ai/tool_access.is_tool_authorized`
+> is untouched and is still the only thing consulted at dispatch, so an excluded tool is
+> still permitted, still reachable from the tool panel and from a suggested action. 26
+> structural configuration tools are trimmed (branches, classes, houses, fee structures,
+> discount types, asset and transport registers, school settings, year-end transition,
+> list-screen deletes) for owner and principal only. Owner: **107 → 81 tools**, the tools
+> block drops from ~11,700 to ~8,750 tokens. Everyday work (record a payment, mark
+> attendance, apply a discount, create a student, draft a document) is explicitly asserted
+> to stay. Every other role is untouched, asserted by test.
+>
+> (2) **Abhimanyu approved turning the typing-out effect off** (asked in plain English,
+> answered "Turn typing-out off"). Implemented as `AI_STREAM_SECOND_CALL`, defaulting
+> **off**; set it to `true` in the environment to restore the effect with no code change.
+> The R11.3 streaming contract test now switches it on explicitly rather than being
+> weakened, and a new test asserts that at the default NO second model call is made and the
+> answer still arrives and is still saved. Combined with (1), an owner turn drops from
+> ~43,000 input tokens to roughly ~17,000.
+>
+> Structural + judge-logic evals green (the AI layer was touched).
+
 ---
 
 ### T9 · NEW-13 — No baseline for AI answer quality
@@ -270,6 +323,20 @@ Known coverage gap, also from D-37: no conversation in the 52-item corpus exerci
 resulting baseline. If the production deployment is not reachable from this machine, say so
 plainly and mark T9 `⏸ Blocked on owner` rather than committing a substitute-model baseline.
 
+> **⏸ BLOCKED ON OWNER 2026-08-04 — the corpus half is done, the credentialed run is not.**
+> The coverage gap is closed: three `draft_document` conversations were added to the corpus
+> (owner letter, principal circular, Hinglish teacher note), each with a rubric that
+> explicitly requires the **download link** to be present, since a document with no way to
+> fetch it is the exact D-37 failure. Corpus is now **55** conversations; the structural and
+> judge-logic evals are green with them in.
+>
+> The credentialed run could NOT be done: this machine has no Azure OpenAI endpoint or key
+> (checked `.env` and `backend/.env` — neither carries one), so `pytest -m llm_eval` has
+> nothing to call. Per the register's own instruction, no substitute-model baseline was
+> committed. **What is needed from Abhimanyu:** the production Azure OpenAI endpoint and key
+> for the `gpt-5.3-chat` deployment, or a machine that already has them. The run then costs
+> 55 model calls plus judging, once.
+
 ---
 
 ### T10 · NEW-06 — The write-rollback safety tests have never run
@@ -284,6 +351,23 @@ writes to live student and fee records. They have never passed and never failed.
 replica-set name is enough), run the tier once, and record the result in the review log. If any
 fail, that is a finding of its own and goes in the register. Document the exact command so the
 next person can repeat it in one line.
+
+> **✅ DONE 2026-08-04 — and the first run found a defect of its own.**
+> The tier collects **13** tests, not 14. On the first attempt every one of them ERRORED
+> before a single assertion ran: `mongo_real/conftest.py` created the Motor client in a
+> module-scoped async fixture and handed it to function-scoped tests, and Motor binds to
+> the loop it was created on ("attached to a different loop"). That is precisely why the
+> tier had never passed *or* failed — it was un-runnable, and being deselected by default
+> meant nobody found out. Fixed by splitting the fixture (URL + container lifecycle stay
+> module-scoped; the client is created per test). **Result: 13 passed** — transaction
+> commit/rollback, executor rollback, idempotency under concurrency, precondition
+> revalidation, atomic multi-step plans, dry-run persisting nothing, cross-tenant
+> transaction scoping.
+>
+> Environment gotcha worth keeping: MongoDB **8.3** (the winget package) will not start on
+> this Windows 10 build — `STATUS_ENTRYPOINT_NOT_FOUND`, no log, and the installed service
+> cannot start either. MongoDB **7.0.16** from the fastdl zip works. The exact one-line
+> repeat command is at the top of `tests/backend/mongo_real/README.md`.
 
 ---
 
