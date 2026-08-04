@@ -789,7 +789,33 @@ change; verified by observation. If a similar gap recurs after an instance repla
 the next step is instance-level (`amazon-cloudwatch-agent` status over SSH) — but it is
 not open now. `logs:DescribeLogGroups` is denied to this IAM user; `GetLogEvents` is not.
 
-### D-41 — Backend telemetry ingest (otel / layaastat) is failing in production — **OPEN, out of scope**
+### D-41 — Backend telemetry ingest (otel / layaastat) is failing in production — **FIXED IN CODE 2026-08-04, needs a deploy**
+> **Diagnosed against the live endpoint, not guessed, and fixed. Two separate faults,
+> both in EduFlow's client, neither in the key or the URL.**
+>
+> The suspicion was always a bad key. It was not: the production key is accepted.
+>
+> 1. **Every product event.** The client sent each event as `{"name": ...}`; the
+>    receiving end requires `{"event_name": ...}` and answered
+>    `400 event_name is required` to every batch. A 4xx is treated as permanent and
+>    dropped without retry, which is correct and is precisely why this made no backlog
+>    and no alarm: every event since the integration was switched on was thrown away,
+>    one log line at a time.
+> 2. **Every LLM span.** The client stamped `service_id` with the service NAME
+>    ("eduflow-api"). The receiving end reads `service_id` as a reference to a
+>    registered service, so the insert failed with
+>    `500 Insert failed (quarantined for replay)`. Found by bisecting the span field by
+>    field against the live endpoint: the identical span without `service_id` is
+>    accepted. The ingest key already identifies the tenant, so nothing is lost.
+>
+> **The old tests asserted both broken shapes**, which is how a subsystem that had never
+> delivered a single event kept a green suite. Corrected, and two tests now pin the real
+> contract. Same lesson as D-14.
+>
+> **Still to happen: a deploy.** The fix is in the code and cannot reach the school's
+> server without one, and production is currently running a different branch entirely
+> (see `branch-reconciliation-2026-08-04.md`). Until then the logs keep filling with the
+> same 400s and 500s.
 Surfaced while reading logs for D-38. The running backend repeatedly logs, at real time:
 `POST https://main.ddsqdblq9ge74.amplifyapp.com/api/otel → 500` and
 `POST .../api/ingest → 400` with `layaastat ingest rejected (permanent) status=400`

@@ -85,8 +85,16 @@ class LayaaMonitor:
         occurred_at: Optional[str] = None,
     ) -> None:
         """Queue a custom product event. Flushes immediately once ``flush_at`` is reached."""
+        # D-41 (2026-08-04): the field is ``event_name``, not ``name``. Sending ``name``
+        # made the ingest endpoint answer
+        #   400 {"error":"event[0]: event_name is required (non-empty string)"}
+        # for EVERY batch. The client treats a 4xx as permanent and drops the batch
+        # without retrying, which is correct behaviour and is exactly why this produced
+        # no backlog and no alarm: every product event since the integration was turned
+        # on was thrown away, quietly, one log line at a time. Verified against the live
+        # endpoint before and after.
         self._events.append({
-            "name": event_name,
+            "event_name": event_name,
             "insert_id": str(uuid.uuid4()),
             "timestamp": occurred_at or _now_iso(),
             "user_id": distinct_id,
@@ -98,9 +106,17 @@ class LayaaMonitor:
             await self.flush()
 
     async def span(self, span: dict) -> None:
-        """Queue a GenAI span. ``span_id`` must be present for server-side idempotency."""
-        enriched = {"service_id": self._service_name, **span}
-        self._spans.append(enriched)
+        """Queue a GenAI span. ``span_id`` must be present for server-side idempotency.
+
+        D-41 (2026-08-04): this used to stamp ``service_id`` with the service NAME
+        ("eduflow-api"). The receiving end treats ``service_id`` as a reference to a
+        registered service, so a name in that slot failed at the database with
+        ``500 {"error":"Insert failed (quarantined for replay)"}`` — for every span,
+        which is every LLM call the school makes. Bisected field by field against the
+        live endpoint: the identical span sent without ``service_id`` is accepted.
+        The ingest key already identifies the tenant, so nothing is lost by omitting it.
+        """
+        self._spans.append(dict(span))
         if len(self._spans) >= self._flush_at:
             await self.flush()
 

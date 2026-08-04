@@ -41,7 +41,7 @@ async def test_track_buffers_until_flush_then_sends_to_ingest():
     assert len(sender.calls) == 1
     path, body = sender.calls[0]
     assert path == "/api/ingest"
-    assert body["events"][0]["name"] == "fee_recorded"
+    assert body["events"][0]["event_name"] == "fee_recorded"
     assert body["events"][0]["user_id"] == "owner-1"
     # Idempotency key stamped per event.
     assert body["events"][0]["insert_id"]
@@ -65,7 +65,10 @@ async def test_span_goes_to_otel_endpoint():
     path, body = sender.calls[0]
     assert path == "/api/otel"
     assert body["spans"][0]["span_id"] == "s1"
-    assert body["spans"][0]["service_id"] == "eduflow-api"
+    # D-41: `service_id` must NOT be stamped. The receiving end reads it as a
+    # reference to a registered service, and a service NAME in that slot failed the
+    # insert for every span. This assertion used to require the broken behaviour.
+    assert "service_id" not in body["spans"][0]
 
 
 # ─── Client: retry / store-and-forward / permanent drop ──────────────────────
@@ -133,7 +136,7 @@ async def test_enabled_when_both_env_vars_set(monkeypatch):
     await layaastat.track_event("login", distinct_id="u1")
     await layaastat.flush()
     assert sender.calls[0][0] == "/api/ingest"
-    assert sender.calls[0][1]["events"][0]["name"] == "login"
+    assert sender.calls[0][1]["events"][0]["event_name"] == "login"
 
 
 async def test_only_url_set_stays_disabled(monkeypatch):
@@ -163,9 +166,44 @@ async def test_ai_metrics_forwarded_when_enabled(monkeypatch):
     await record_ai_metric(_FakeDb(), event="plan_executed", user_id="owner-1",
                            tool_name="record_fee_payment", status="committed")
     await layaastat.flush()
-    names = [e["name"] for c in sender.calls for e in c[1].get("events", [])]
+    names = [e["event_name"] for c in sender.calls for e in c[1].get("events", [])]
     assert "ai_plan_executed" in names
     # PII-free: only the safe fields are forwarded.
-    ev = next(e for c in sender.calls for e in c[1]["events"] if e["name"] == "ai_plan_executed")
+    ev = next(e for c in sender.calls for e in c[1]["events"] if e["event_name"] == "ai_plan_executed")
     assert ev["properties"]["tool_name"] == "record_fee_payment"
     assert ev["user_id"] == "owner-1"
+
+
+# ─── D-41 — the ingest contract, pinned ──────────────────────────────────────
+#
+# These two assertions are the whole of D-41. Both shapes were verified against the
+# LIVE endpoint on 2026-08-04 before and after the fix, not inferred from a document:
+#
+#   {"events":[{"name": ...}]}        -> 400 "event_name is required"
+#   {"events":[{"event_name": ...}]}  -> {"ingested":1}
+#   span with    "service_id"         -> 500 "Insert failed (quarantined for replay)"
+#   span without "service_id"         -> {"ingested":1}
+#
+# The old tests asserted the broken shapes, which is why a subsystem that had never
+# successfully delivered a single event still had a green suite. Same lesson as D-14.
+
+async def test_event_uses_event_name_not_name():
+    sender = _FakeSender()
+    m = LayaaMonitor(endpoint="https://dash.example", ingest_key="k", send_func=sender, flush_at=100)
+    await m.track("anything")
+    await m.flush()
+    event = sender.calls[0][1]["events"][0]
+    assert "event_name" in event, "the receiving end rejects a batch whose events carry `name`"
+    assert "name" not in event, "sending both is not a fix; the old key must be gone"
+
+
+async def test_span_carries_no_service_id():
+    sender = _FakeSender()
+    m = LayaaMonitor(endpoint="https://dash.example", ingest_key="k",
+                     service_name="eduflow-api", send_func=sender, flush_at=100)
+    await m.span({"trace_id": "t", "span_id": "s", "operation_name": "chat"})
+    await m.flush()
+    span = sender.calls[0][1]["spans"][0]
+    assert "service_id" not in span
+    # And the caller's own span is not mutated on the way through.
+    assert span["operation_name"] == "chat"
