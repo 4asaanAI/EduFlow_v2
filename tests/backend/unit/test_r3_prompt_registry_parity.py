@@ -80,7 +80,7 @@ async def test_get_announcements_registered_for_student():
 def test_accountant_resolves_to_accounts_tools():
     from ai.prompts import _resolve_tools, TOOL_RECORD_FEE_PAYMENT, TOOL_APPROVE_LEAVE
     tools = _resolve_tools("admin", "accountant")
-    assert TOOL_RECORD_FEE_PAYMENT in tools
+    assert TOOL_RECORD_FEE_PAYMENT not in tools  # Phase-1 AI writes are owner/principal only
     assert TOOL_APPROVE_LEAVE not in tools  # principal-only must not leak to accountant
 
 

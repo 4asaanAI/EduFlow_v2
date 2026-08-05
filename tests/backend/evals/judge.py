@@ -27,6 +27,7 @@ DIMENSIONS = ("correctness", "completeness", "tone")
 # A per-dimension aggregate that falls more than this below the recorded baseline
 # blocks release (AC2). Absolute floor also enforced (see regression_check).
 DEFAULT_THRESHOLD = 0.05
+DEFAULT_ABSOLUTE_FLOOR = 0.70
 
 _JUDGE_SYSTEM = (
     "You are a strict QA judge for a school-management AI assistant. You are given "
@@ -37,6 +38,13 @@ _JUDGE_SYSTEM = (
     "scores HIGH on correctness)?\n"
     "- completeness: did it fully address the request (or fully explain why it can't)?\n"
     "- tone: professional, clear, appropriate for a school context.\n"
+    "When ASSISTANT REPLY contains TOOL_CALL, evaluate whether it selected the EXPECTED "
+    "TOOL with suitable arguments. Tool execution and returned school data are deliberately "
+    "outside this selection evaluation, so do not penalize a correct tool call for lacking "
+    "the tool result. Multiple complementary calls are complete when they include the "
+    "expected capability. A scoped lookup such as search_students or get_my_class_students "
+    "is also a complete first step when the requested write needs an entity ID. A safe lookup "
+    "for an ambiguous name is acceptable because the next turn would disambiguate its results.\n"
     'Respond with ONLY a JSON object: {"correctness": <float>, "completeness": '
     '<float>, "tone": <float>, "notes": "<one line>"}.'
 )
@@ -64,6 +72,7 @@ def build_judge_prompt(convo, assistant_text: str) -> str:
         + f"\nLANGUAGE: {convo.language}\n"
         f"CONVERSATION:\n{turns}\n"
         f"EXPECTED OUTCOME: {convo.expected_outcome}\n"
+        f"EXPECTED TOOL: {convo.expected_tool or 'none'}\n"
         f"RUBRIC: {convo.rubric}\n\n"
         f"ASSISTANT REPLY:\n{assistant_text}\n"
     )
@@ -111,14 +120,21 @@ def aggregate(results: list) -> dict:
     return agg
 
 
-def regression_check(current: dict, baseline: Optional[dict], threshold: float = DEFAULT_THRESHOLD):
+def regression_check(current: dict, baseline: Optional[dict], threshold: float = DEFAULT_THRESHOLD,
+                     absolute_floor: float = DEFAULT_ABSOLUTE_FLOOR):
     """Compare a fresh aggregate against the recorded baseline.
 
     Returns (ok: bool, problems: list[str]). A per-dimension (or overall) score
     that dropped by more than `threshold` versus the baseline fails. With no
     baseline yet, any run is accepted (it BECOMES the baseline) but reported."""
     problems = []
+    for key in (*DIMENSIONS, "overall"):
+        value = current.get(key)
+        if value is not None and value < absolute_floor:
+            problems.append(f"{key}: {value:.4f} is below absolute floor {absolute_floor:.4f}")
     if not baseline:
+        if problems:
+            return False, problems
         return True, ["no baseline recorded yet — this run establishes it"]
     for key in (*DIMENSIONS, "overall"):
         base = baseline.get(key)
@@ -139,9 +155,21 @@ async def run_conversation(convo, assistant_chat: Callable[..., Awaitable]) -> s
     user = {"role": convo.role, "sub_category": convo.sub_category, "name": "Eval User"}
     system_prompt = build_system_prompt(user, school_context={}, lang="en")
     messages = [{"role": "user", "content": t} for t in convo.turns]
-    result = await assistant_chat(system_prompt=system_prompt, messages=messages)
+    from routes.chat import _build_llm_tools
+
+    result = await assistant_chat(
+        system_prompt=system_prompt,
+        messages=messages,
+        tools=_build_llm_tools(user),
+    )
     if not getattr(result, "ok", True):
         return ""
+    tool_calls = getattr(result, "tool_calls", None) or []
+    if tool_calls:
+        return "\n".join(
+            f"TOOL_CALL: {call.name}({json.dumps(call.arguments, sort_keys=True)})"
+            for call in tool_calls
+        )
     return getattr(result, "text", "") or ""
 
 

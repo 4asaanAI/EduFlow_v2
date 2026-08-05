@@ -197,6 +197,10 @@ async def test_attendance_per_record_failure_raises_under_session():
 
     class _Db:
         def __init__(self):
+            self.classes = FakeCollection([{"id": "c1", "schoolId": "aaryans-joya"}])
+            self.students = FakeCollection([
+                {"id": "s1", "class_id": "c1", "is_active": True, "schoolId": "aaryans-joya"}
+            ])
             self.student_attendance = _FailingAttendance()
             self.attendance_bulk_keys = FakeCollection()
             self.audit_logs = FakeCollection()
@@ -225,6 +229,10 @@ async def test_attendance_per_record_failure_reported_without_session():
 
     class _Db:
         def __init__(self):
+            self.classes = FakeCollection([{"id": "c1", "schoolId": "aaryans-joya"}])
+            self.students = FakeCollection([
+                {"id": "s1", "class_id": "c1", "is_active": True, "schoolId": "aaryans-joya"}
+            ])
             self.student_attendance = _FailingAttendance()
             self.attendance_bulk_keys = FakeCollection()
             self.audit_logs = FakeCollection()

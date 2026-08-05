@@ -20,6 +20,7 @@ import { API, apiFetch,
   sendFeeReminders,
   subscribeSSE,
 } from '../../lib/api';
+import FeeScheduleManager from './FeeScheduleManager';
 
 
 async function downloadReceipt(transactionId) {
@@ -533,7 +534,9 @@ export default function FeeCollection() {
         ))}
       </div>
 
-      <div className="fee-section-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, marginBottom: 18 }}>
+      <FeeScheduleManager currentUser={currentUser} onChargesGenerated={loadData} />
+
+      <div className="fee-section-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: 14, marginBottom: 18 }}>
         <section style={panelStyle}>
           <h2 style={panelTitle}><Save size={16} />Record payment</h2>
           <select value={payment.student_id} onChange={e => setPayment(prev => ({ ...prev, student_id: e.target.value }))} style={inputStyle}>
@@ -610,7 +613,7 @@ export default function FeeCollection() {
         </section>
       </div>
 
-      <div className="fee-section-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, marginBottom: 18 }}>
+      <div className="fee-section-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: 14, marginBottom: 18 }}>
         <section style={panelStyle}>
           <h2 style={panelTitle}><Percent size={16} />Discount type</h2>
           <input value={discountTypeForm.name} onChange={e => setDiscountTypeForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Discount name" style={inputStyle} />
@@ -748,7 +751,7 @@ export default function FeeCollection() {
             </div>
             <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 12 }}>{overdueEditTxn.student_name || overdueEditTxn.student_id} — {overdueEditTxn.fee_head || overdueEditTxn.fee_type}</div>
             {overdueActionError && <div style={alertStyle('var(--tool-hex-f87171)')}><AlertTriangle size={14} />{overdueActionError}</div>}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <div>
                 <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4 }}>Amount (₹)</div>
                 <input type="number" value={overdueEditForm.amount} onChange={e => setOverdueEditForm(p => ({ ...p, amount: e.target.value }))} style={inputStyle} />

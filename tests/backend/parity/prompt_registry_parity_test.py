@@ -188,6 +188,6 @@ def test_accountant_gets_accounts_not_principal_tools():
     through to principal (which would over-expose leave/attendance)."""
     from ai.prompts import _resolve_tools
     tools = {t["name"] for t in _resolve_tools("admin", "accountant")}
-    assert "record_fee_payment" in tools
+    assert "record_fee_payment" not in tools  # Phase-1 AI writes are owner/principal only
     assert "approve_leave" not in tools  # principal-only — must not leak
     assert "mark_attendance" not in tools

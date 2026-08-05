@@ -260,7 +260,7 @@ export default function AttendanceRecorder() {
         ))}
       </div>
 
-      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
+      <div className="responsive-table-region" style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
         {loading ? (
           <div style={{ padding: 36, color: 'var(--c-faint)', textAlign: 'center', fontSize: 13 }}>Loading attendance...</div>
         ) : records.length === 0 ? (
@@ -311,7 +311,7 @@ export default function AttendanceRecorder() {
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: 14, marginBottom: 16 }}>
         <section style={panelStyle}>
           <h2 style={panelTitle}><ShieldAlert size={16} />Correction reason</h2>
           <textarea value={correctionReason} onChange={e => setCorrectionReason(e.target.value)} data-testid="attendance-correction-reason"

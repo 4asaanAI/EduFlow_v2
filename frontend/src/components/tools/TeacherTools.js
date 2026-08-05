@@ -208,7 +208,7 @@ export function AssignmentGenerator() {
         <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
           <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingId ? 'Edit Assignment' : 'New Assignment'}</h3>
           <form onSubmit={handleSubmit}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Class" type="select" value={form.class_id} onChange={v => { f('class_id')(v); loadSubjects(v); }} options={classes.map(c => ({ value: c.id, label: `${c.name}-${c.section}` }))} required />
               <FormField label="Subject" type="select" value={form.subject_id} onChange={f('subject_id')} options={subjects.map(s => ({ value: s.id, label: s.name }))} />
               <FormField label="Title" value={form.title} onChange={f('title')} placeholder="Assignment title" required />
@@ -596,7 +596,7 @@ export function LeaveApplication() {
         <form onSubmit={handleApply}>
           <FormField label="Leave Type" type="select" value={form.leave_type} onChange={f('leave_type')}
             options={['casual', 'medical', 'earned', 'maternity', 'paternity', 'unpaid'].map(v => ({ value: v, label: v.charAt(0).toUpperCase() + v.slice(1) }))} />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <FormField label="Start Date" type="date" value={form.start_date} onChange={f('start_date')} required />
             <FormField label="End Date" type="date" value={form.end_date} onChange={f('end_date')} required />
           </div>
@@ -678,7 +678,7 @@ export function LessonPlanGenerator() {
         <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
           <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingId ? 'Edit Plan' : 'New Lesson Plan'}</h3>
           <form onSubmit={handleSubmit}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Class" type="select" value={form.class_id} onChange={f('class_id')} options={classes.map(c => ({ value: c.id, label: `${c.name}-${c.section}` }))} />
               <FormField label="Subject" type="select" value={form.subject_id} onChange={f('subject_id')} options={subjects.map(s => ({ value: s.id, label: s.name }))} />
               <FormField label="Week (Date)" type="date" value={form.week} onChange={f('week')} required />
@@ -767,7 +767,7 @@ export function WorksheetCreator() {
         <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
           <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingId ? 'Edit Worksheet' : 'New Worksheet'}</h3>
           <form onSubmit={handleSubmit}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Subject" type="select" value={form.subject_id} onChange={f('subject_id')} options={subjects.map(s => ({ value: s.id, label: s.name }))} />
               <FormField label="Type" type="select" value={form.type} onChange={f('type')} options={['practice', 'revision', 'homework'].map(v => ({ value: v, label: v }))} />
               <FormField label="Topic" value={form.topic} onChange={f('topic')} placeholder="Chapter/topic name" required />
@@ -887,7 +887,7 @@ export function ClassPerformanceAnalytics() {
         <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', fontSize: 13 }}>Loading...</div>
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18 }}>
+          <div className="responsive-stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18 }}>
             <StatCard value={students.length} label="STUDENTS" color="var(--tool-hex-4f8ff7)" />
             <StatCard value={results.length} label="RESULT ENTRIES" color="var(--tool-hex-a78bfa)" />
             <StatCard value={results.length ? `${avgMarks}/100` : 'N/A'} label="AVG MARKS" color="var(--tool-hex-34d399)" />
@@ -1061,7 +1061,7 @@ export function CurriculumTracker() {
         <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
           <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingId ? 'Edit Entry' : 'Add Topic'}</h3>
           <form onSubmit={handleSubmit}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
+            <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
               <FormField label="Class" type="select" value={form.class_id} onChange={f('class_id')} options={classes.map(c => ({ value: c.id, label: `${c.name}-${c.section}` }))} />
               <FormField label="Subject" type="select" value={form.subject_id} onChange={f('subject_id')} options={subjects.map(s => ({ value: s.id, label: s.name }))} />
               <FormField label="Topic" value={form.topic} onChange={f('topic')} placeholder="Chapter/topic" required />

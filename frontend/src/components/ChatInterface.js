@@ -198,7 +198,7 @@ function getQuickActionSuggestions(user) {
 function QuickActions({ onSend, isDark, user }) {
   const suggestions = getQuickActionSuggestions(user);
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, maxWidth: 500, margin: '0 auto' }}>
+    <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, maxWidth: 500, margin: '0 auto' }}>
       {suggestions.map((s, i) => (
         <button key={i} onClick={() => onSend(s)} style={{
           background: 'var(--color-surface)',

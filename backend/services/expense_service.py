@@ -24,6 +24,7 @@ from services.actor_context import ActorContext
 from services.audit_service import write_audit_doc
 from services.txn_context import session_kwargs as _txn_session_kwargs
 from tenant import scoped_query
+from services.accounting_period_service import AccountingPeriodClosedError, assert_posting_allowed
 
 
 class ExpenseValidationError(Exception):
@@ -90,6 +91,11 @@ async def create_expense(db, actor_ctx: ActorContext, params: dict, *, session=N
     except (TypeError, ValueError):
         raise ExpenseValidationError("amount must be a number")
 
+    posting_date = params.get("date") or actor_ctx.now().strftime("%Y-%m-%d")
+    try:
+        await assert_posting_allowed(db, actor_ctx.branch_id, posting_date)
+    except AccountingPeriodClosedError as exc:
+        raise ExpenseValidationError(str(exc))
     await _check_budget(db, actor_ctx, category, amount, session=session)
 
     expense = {
@@ -98,7 +104,7 @@ async def create_expense(db, actor_ctx: ActorContext, params: dict, *, session=N
         "category": category,
         "description": params.get("description", ""),
         "amount": amount,
-        "date": params.get("date") or actor_ctx.now().strftime("%Y-%m-%d"),
+        "date": posting_date,
         "vendor": params.get("vendor", ""),
         "approved_by": actor_ctx.user_id,
         "recorded_by": actor_ctx.user_id,
@@ -121,6 +127,12 @@ async def update_expense(db, actor_ctx: ActorContext, params: dict, *, session=N
     )
     if not existing:
         raise ExpenseNotFoundError(expense_id)
+    try:
+        await assert_posting_allowed(
+            db, actor_ctx.branch_id, params.get("date") or existing.get("date")
+        )
+    except AccountingPeriodClosedError as exc:
+        raise ExpenseValidationError(str(exc))
 
     changes = {k: v for k, v in params.items() if k in _MUTABLE_FIELDS and v is not None}
     if "amount" in changes:
@@ -158,6 +170,10 @@ async def delete_expense(db, actor_ctx: ActorContext, params: dict, *, session=N
     )
     if not existing:
         raise ExpenseNotFoundError(expense_id)
+    try:
+        await assert_posting_allowed(db, actor_ctx.branch_id, existing.get("date"))
+    except AccountingPeriodClosedError as exc:
+        raise ExpenseValidationError(str(exc))
     await db.expenses.delete_one(
         scoped_query({"id": expense_id}, branch_id=actor_ctx.branch_id), **_session_kwargs(session)
     )

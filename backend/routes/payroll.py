@@ -13,10 +13,15 @@ from pymongo.errors import DuplicateKeyError
 from database import get_db
 from middleware.auth import get_current_user, require_owner
 from services.payroll_service import (
+    PayrollNotFoundError,
+    PayrollValidationError,
+    build_payslip,
+    correct_disbursement,
     is_owner_or_accountant as _is_owner_or_accountant,
     disburse_salary,
     upsert_salary_structure,
 )
+from services.accounting_period_service import AccountingPeriodClosedError, assert_posting_allowed
 from tenant import scoped_query, get_school_id
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
@@ -96,6 +101,22 @@ async def list_disbursements(request: Request, month: str = None):
     return {"success": True, "data": results, "meta": {"count": len(results), "month": month}}
 
 
+@router.get("/my-disbursements")
+async def list_my_disbursements(request: Request):
+    user = get_current_user(request)
+    db = get_db()
+    bid = user.get("branch_id")
+    staff = await db.staff.find_one(
+        scoped_query({"user_id": user.get("id")}, branch_id=bid), {"_id": 0, "id": 1}
+    )
+    if not staff:
+        raise HTTPException(403, "Staff profile not found")
+    rows = await db.salary_disbursements.find(
+        scoped_query({"staff_id": staff["id"]}, branch_id=bid), {"_id": 0}
+    ).sort("month", -1).to_list(200)
+    return {"success": True, "data": rows, "meta": {"count": len(rows)}}
+
+
 @router.post("/disburse")
 async def create_disbursement(request: Request):
     """Record a salary disbursement. Owner or accountant. R12.5: delegates to payroll_service."""
@@ -106,6 +127,10 @@ async def create_disbursement(request: Request):
 
     staff_id = body.get("staff_id", "")
     month = body.get("month", datetime.now(timezone.utc).strftime("%Y-%m"))
+    try:
+        await assert_posting_allowed(db, bid, f"{month}-01")
+    except AccountingPeriodClosedError as exc:
+        raise HTTPException(409, str(exc))
     # Accept both canonical (base_salary/net_amount) and legacy (gross/net) field names.
     base_salary = float(body.get("base_salary") or body.get("gross") or 0)
     raw_deductions = body.get("deductions", {})
@@ -152,3 +177,61 @@ async def mark_disbursement_processed(
     if result.matched_count == 0:
         raise HTTPException(404, "Disbursement not found")
     return {"success": True}
+
+
+@router.get("/disbursements/{disbursement_id}/payslip")
+async def get_payslip(disbursement_id: str, request: Request):
+    """Return a structured payslip to finance roles or the matching staff account."""
+    user = get_current_user(request)
+    db = get_db()
+    bid = user.get("branch_id")
+    disbursement = await db.salary_disbursements.find_one(
+        scoped_query({"id": disbursement_id}, branch_id=bid), {"_id": 0}
+    )
+    if not disbursement:
+        raise HTTPException(404, "Disbursement not found")
+    if not _is_owner_or_accountant(user):
+        staff = await db.staff.find_one(
+            scoped_query({"id": disbursement.get("staff_id"), "user_id": user.get("id")}, branch_id=bid),
+            {"_id": 0, "id": 1},
+        )
+        if not staff:
+            raise HTTPException(403, "Forbidden")
+    return {"success": True, "data": await build_payslip(db, disbursement, branch_id=bid)}
+
+
+@router.get("/disbursements/{disbursement_id}/corrections")
+async def list_disbursement_corrections(disbursement_id: str, request: Request,
+                                        user: dict = Depends(require_owner)):
+    rows = await get_db().salary_disbursement_corrections.find(
+        scoped_query({"disbursement_id": disbursement_id}, branch_id=user.get("branch_id")),
+        {"_id": 0},
+    ).sort("revision", 1).to_list(100)
+    return {"success": True, "data": rows, "meta": {"count": len(rows)}}
+
+
+@router.patch("/disbursements/{disbursement_id}/correct")
+async def patch_disbursement_correction(disbursement_id: str, request: Request,
+                                        user: dict = Depends(require_owner)):
+    db = get_db()
+    bid = user.get("branch_id")
+    body = await request.json()
+    current = await db.salary_disbursements.find_one(
+        scoped_query({"id": disbursement_id}, branch_id=bid), {"_id": 0, "month": 1}
+    )
+    if not current:
+        raise HTTPException(404, "Disbursement not found")
+    try:
+        await assert_posting_allowed(db, bid, f"{current['month']}-01")
+        row = await correct_disbursement(
+            db, disbursement_id=disbursement_id,
+            changes=body.get("changes") or {}, reason=body.get("reason") or "",
+            corrected_by=user["id"], branch_id=bid,
+        )
+    except AccountingPeriodClosedError as exc:
+        raise HTTPException(409, str(exc))
+    except PayrollNotFoundError as exc:
+        raise HTTPException(404, str(exc))
+    except PayrollValidationError as exc:
+        raise HTTPException(400, str(exc))
+    return {"success": True, "data": row}

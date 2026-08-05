@@ -34,13 +34,22 @@ from services.fee_config_service import (
     FeeConfigValidationError,
     FeeConfigNotFoundError,
 )
+from services.fee_lifecycle_service import (
+    FeeLifecycleNotFoundError,
+    FeeLifecycleValidationError,
+    build_charge_preview,
+    generate_charges,
+    replace_installments,
+)
 from services.contact_log_service import log_contact_event, ContactLogValidationError
 from services.payroll_service import (
     is_owner_or_accountant as _svc_is_owner_or_accountant,
     disburse_salary,
     upsert_salary_structure,
 )
+from services.razorpay_service import create_school_fee_checkout
 from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, normalize_session_id, publish
+from ai.fee_metrics import fee_totals_from_txns
 from pymongo import ReturnDocument
 import asyncio
 import re
@@ -250,6 +259,75 @@ async def update_fee_structure(structure_id: str, request: Request, user: dict =
     return {"success": True}
 
 
+@router.get("/structures/{structure_id}/versions")
+async def list_fee_structure_versions(structure_id: str, request: Request,
+                                      user: dict = Depends(require_role("owner", "admin"))):
+    db = get_db()
+    structure = await db.fee_structures.find_one(_fee_query({"id": structure_id}), {"_id": 0})
+    if not structure:
+        raise HTTPException(404, "Fee structure not found")
+    revisions = await db.fee_structure_revisions.find(
+        _fee_query({"structure_id": structure_id}), {"_id": 0}
+    ).sort("version", -1).to_list(100)
+    current = {
+        "id": structure.get("id"),
+        "version": int(structure.get("version") or 1),
+        "snapshot": structure,
+        "reason": "current",
+    }
+    return {"success": True, "data": [current, *revisions], "meta": {"count": len(revisions) + 1}}
+
+
+@router.put("/structures/{structure_id}/installments")
+async def put_fee_installments(structure_id: str, request: Request,
+                               user: dict = Depends(require_owner)):
+    db = get_db()
+    body = await request.json()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await replace_installments(db, actor_ctx, structure_id, body.get("installments"))
+    except FeeLifecycleNotFoundError as exc:
+        raise HTTPException(404, str(exc))
+    except FeeLifecycleValidationError as exc:
+        raise HTTPException(400, str(exc))
+    return {"success": True, "data": result}
+
+
+@router.post("/structures/{structure_id}/charges/preview")
+async def preview_fee_charges(structure_id: str, request: Request,
+                              user: dict = Depends(require_role("owner", "admin"))):
+    db = get_db()
+    body = await request.json()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await build_charge_preview(
+            db, actor_ctx, structure_id, installment_codes=body.get("installment_codes")
+        )
+    except FeeLifecycleNotFoundError as exc:
+        raise HTTPException(404, str(exc))
+    except FeeLifecycleValidationError as exc:
+        raise HTTPException(400, str(exc))
+    return {"success": True, "data": result}
+
+
+@router.post("/structures/{structure_id}/charges/generate")
+async def create_fee_charges(structure_id: str, request: Request,
+                             user: dict = Depends(require_owner)):
+    db = get_db()
+    body = await request.json()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await generate_charges(
+            db, actor_ctx, structure_id, installment_codes=body.get("installment_codes")
+        )
+    except FeeLifecycleNotFoundError as exc:
+        raise HTTPException(404, str(exc))
+    except FeeLifecycleValidationError as exc:
+        raise HTTPException(400, str(exc))
+    await _publish_fee_update(db, "fee_charges_generated", result)
+    return {"success": True, "data": result}
+
+
 @router.get("/transactions")
 async def get_fee_transactions(request: Request, student_id: str = None, status: str = None, class_id: str = None, overdue_days: int = None, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
@@ -313,8 +391,9 @@ async def get_class_fee_summary(request: Request, user: dict = Depends(require_r
         if not s_ids:
             continue
         txns = [t for sid in s_ids for t in txns_by_student.get(sid, [])]
-        paid = sum(t["amount"] for t in txns if t.get("status") == "paid")
-        pending = sum(t["amount"] for t in txns if t.get("status") in ("pending", "overdue"))
+        totals = fee_totals_from_txns(txns)
+        paid = totals["collected"]
+        pending = totals["outstanding"]
         result.append({
             "class_id": cls["id"],
             "class_name": f"{cls['name']}-{cls['section']}",
@@ -340,20 +419,17 @@ async def get_my_fees(request: Request, user: dict = Depends(require_role("stude
     # NEW-07/T13: these rows ARE the response body, so the internal Mongo id must not
     # ride along. The project rule is "never expose _id in responses".
     txns = await db.fee_transactions.find(
-        scoped_query({"student_id": student["id"]}, branch_id=user.get("branch_id")),
+        scoped_query(
+            {"student_id": student["id"], "deleted": {"$ne": True}},
+            branch_id=user.get("branch_id"),
+        ),
         {"_id": 0},
     ).to_list(200)
 
-    # EC-15.2: Include paid_amount from partial-status transactions in total_paid
-    total_paid = (
-        sum(t.get("amount", 0) for t in txns if t.get("status") == "paid") +
-        sum(t.get("paid_amount", 0) for t in txns if t.get("status") == "partial")
-    )
+    totals = fee_totals_from_txns(txns)
+    total_paid = totals["collected"]
     total_pending = sum(t.get("amount", 0) for t in txns if t.get("status") == "pending")
-    outstanding = sum(
-        t.get("amount", 0) - t.get("paid_amount", 0)
-        for t in txns if t.get("status") == "partial"
-    ) + total_pending
+    outstanding = totals["outstanding"]
 
     last_payment = max(
         (t.get("paid_date") for t in txns if t.get("paid_date")),
@@ -370,6 +446,65 @@ async def get_my_fees(request: Request, user: dict = Depends(require_role("stude
             "last_payment_date": last_payment,
         },
     }
+
+
+@router.post("/online-checkout")
+async def create_online_fee_checkout(request: Request,
+                                     user: dict = Depends(require_role("student", "parent"))):
+    """Create a hosted Razorpay link for charges belonging to the caller's ward."""
+    if not (os.getenv("RAZORPAY_KEY_ID") and os.getenv("RAZORPAY_KEY_SECRET")):
+        raise HTTPException(503, "Online fee payment is not configured")
+    db = get_db()
+    body = await request.json()
+    transaction_ids = body.get("transaction_ids")
+    if not isinstance(transaction_ids, list) or not transaction_ids:
+        raise HTTPException(400, "transaction_ids is required")
+    callback_url = body.get("success_url")
+    if callback_url and not str(callback_url).startswith("https://"):
+        raise HTTPException(400, "success_url must use HTTPS")
+
+    bid = user.get("branch_id")
+    allowed_student_ids = set()
+    if user.get("role") == "student":
+        student = await db.students.find_one(
+            scoped_query({"user_id": user["id"]}, branch_id=bid), {"_id": 0, "id": 1}
+        )
+        if student:
+            allowed_student_ids.add(student["id"])
+    else:
+        guardians = await db.guardians.find(
+            scoped_query({"user_id": user["id"]}, branch_id=bid), {"_id": 0, "student_id": 1}
+        ).to_list(100)
+        allowed_student_ids = {row.get("student_id") for row in guardians if row.get("student_id")}
+    if not allowed_student_ids:
+        raise HTTPException(403, "Forbidden")
+
+    unique_ids = list(dict.fromkeys(transaction_ids))
+    selected = await db.fee_transactions.find(
+        scoped_query({"id": {"$in": unique_ids}}, branch_id=bid),
+        {"_id": 0, "id": 1, "student_id": 1},
+    ).to_list(len(unique_ids))
+    if len(selected) != len(unique_ids) or any(
+        row.get("student_id") not in allowed_student_ids for row in selected
+    ):
+        raise HTTPException(403, "Forbidden")
+    try:
+        checkout = await create_school_fee_checkout(
+            db,
+            school_id=get_school_id(),
+            branch_id=bid or "branch-joya",
+            user_id=user["id"],
+            transaction_ids=unique_ids,
+            success_url=callback_url,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"success": True, "data": {
+        "checkout_url": checkout.get("checkout_url"),
+        "checkout_id": checkout["id"],
+        "amount": checkout["amount"],
+        "currency": checkout["currency"],
+    }}
 
 
 @router.post("/transactions")
@@ -694,7 +829,25 @@ async def _discount_breakdown(db, student_id: str):
 
 @router.get("/discounts/{student_id}")
 async def get_student_discounts(student_id: str, request: Request, user: dict = Depends(require_role("owner", "admin", "teacher", "parent", "student"))):
-    return {"success": True, "data": await _discount_breakdown(get_db(), student_id)}
+    db = get_db()
+    if user.get("role") == "student":
+        own_student = await db.students.find_one(
+            scoped_query({"user_id": user["id"]}, branch_id=user.get("branch_id")),
+            {"_id": 0, "id": 1},
+        )
+        if not own_student or own_student.get("id") != student_id:
+            raise HTTPException(403, "Forbidden")
+    elif user.get("role") == "parent":
+        link = await db.guardians.find_one(
+            scoped_query(
+                {"user_id": user["id"], "student_id": student_id},
+                branch_id=user.get("branch_id"),
+            ),
+            {"_id": 0, "id": 1},
+        )
+        if not link:
+            raise HTTPException(403, "Forbidden")
+    return {"success": True, "data": await _discount_breakdown(db, student_id)}
 
 
 @router.get("/discount-summary")

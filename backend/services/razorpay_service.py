@@ -19,7 +19,8 @@ key on ``token_purchases`` (unique-indexed); ``razorpay_customer_id`` on ``token
 import json
 import logging
 import os
-from datetime import datetime, timezone
+import uuid
+from datetime import datetime, timedelta, timezone
 
 import razorpay
 
@@ -57,6 +58,197 @@ SUBSCRIPTION_PLANS: dict[str, dict] = {
         "popular": False,
     },
 }
+
+
+async def begin_webhook_event(event_id: str, event_type: str, event: dict) -> bool:
+    """Journal a verified event before handling; return False if already processed."""
+    db = get_raw_db()  # provider-wide infrastructure record, before tenant resolution
+    existing = await db.razorpay_webhook_inbox.find_one({"id": event_id})
+    if existing and existing.get("status") in {"processed", "ignored"}:
+        return False
+    now = datetime.now(timezone.utc).isoformat()
+    if existing:
+        retryable = {"id": event_id, "status": "failed"}
+        if existing.get("status") == "processing":
+            stale_before = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+            retryable = {"id": event_id, "status": "processing", "updated_at": {"$lt": stale_before}}
+        result = await db.razorpay_webhook_inbox.update_one(
+            retryable,
+            {"$set": {"status": "processing", "updated_at": now, "last_error": None}, "$inc": {"attempts": 1}},
+        )
+        return result.matched_count == 1
+    doc = {
+        "_id": event_id,
+        "id": event_id,
+        "event_type": event_type,
+        "event": event,
+        "status": "processing",
+        "attempts": 1,
+        "received_at": now,
+        "updated_at": now,
+        "last_error": None,
+    }
+    try:
+        await db.razorpay_webhook_inbox.insert_one(doc)
+    except DuplicateKeyError:
+        # Another worker owns the inserted processing lease.
+        return False
+    return True
+
+
+async def finish_webhook_event(event_id: str, *, error: str | None = None,
+                               outcome: str = "processed") -> None:
+    db = get_raw_db()  # provider-wide infrastructure record, before tenant resolution
+    now = datetime.now(timezone.utc).isoformat()
+    update = {
+        "status": "failed" if error else outcome,
+        "updated_at": now,
+        "last_error": error,
+    }
+    if not error and outcome == "processed":
+        update["processed_at"] = now
+    if not error and outcome == "ignored":
+        update["ignored_at"] = now
+    await db.razorpay_webhook_inbox.update_one({"id": event_id}, {"$set": update})
+
+
+async def create_school_fee_checkout(
+    db,
+    *,
+    school_id: str,
+    branch_id: str,
+    user_id: str,
+    transaction_ids: list[str],
+    success_url: str | None = None,
+) -> dict:
+    """Create an optional hosted payment link for already-authorized fee charges."""
+    if not transaction_ids:
+        raise ValueError("transaction_ids is required")
+    unique_ids = list(dict.fromkeys(transaction_ids))
+    rows = await db.fee_transactions.find(
+        {"id": {"$in": unique_ids}, "deleted": {"$ne": True}}, {"_id": 0}
+    ).to_list(len(unique_ids))
+    if len(rows) != len(unique_ids):
+        raise ValueError("One or more fee transactions were not found")
+    total = 0.0
+    for row in rows:
+        status = row.get("status")
+        amount = float(row.get("amount") or 0)
+        if status == "partial":
+            amount = max(amount - float(row.get("paid_amount") or 0), 0)
+        elif status not in {"pending", "overdue", "unpaid"}:
+            amount = 0
+        total += amount
+    if total <= 0:
+        raise ValueError("Selected transactions have no outstanding balance")
+
+    checkout_id = str(uuid.uuid4())
+    request_data = {
+        "amount": int(round(total * 100)),
+        "currency": "INR",
+        "description": f"EduFlow school fees ({len(rows)} charge{'s' if len(rows) != 1 else ''})",
+        "notes": {
+            "purpose": "school_fee",
+            "school_id": school_id,
+            "branch_id": branch_id,
+            "user_id": user_id,
+            "checkout_id": checkout_id,
+        },
+    }
+    if success_url:
+        request_data["callback_url"] = success_url
+        request_data["callback_method"] = "get"
+    link = _razorpay_client().payment_link.create(request_data)
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": checkout_id,
+        "schoolId": school_id,
+        "branch_id": branch_id,
+        "user_id": user_id,
+        "transaction_ids": unique_ids,
+        "amount": total,
+        "currency": "INR",
+        "status": "created",
+        "razorpay_reference_id": link.get("id"),
+        "checkout_url": link.get("short_url"),
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.school_fee_checkouts.insert_one({**doc, "_id": checkout_id})
+    return doc
+
+
+async def handle_school_fee_payment_link_paid(link: dict) -> None:
+    """Settle only the charges recorded on the matching checkout."""
+    if link.get("status") != "paid":
+        return
+    notes = link.get("notes") or {}
+    branch_id = notes.get("branch_id")
+    checkout_id = notes.get("checkout_id")
+    reference_id = link.get("id")
+    if not branch_id or not checkout_id or not reference_id:
+        raise ValueError("School-fee payment link is missing required notes")
+    raw_db = get_raw_db()
+    school_id = await _resolve_school_for_branch(raw_db, branch_id)
+    if not school_id:
+        raise ValueError("School-fee payment link branch cannot be resolved")
+    ctx_token = _school_id_var.set(school_id)
+    try:
+        db = get_db()
+        from services.txn_context import reset_current_session, set_current_session
+        session = await get_txn_session()
+        session_token = set_current_session(session)
+        try:
+            async with session:
+                async with session.start_transaction():
+                    checkout = await db.school_fee_checkouts.find_one(
+                        {"id": checkout_id}, session=session
+                    )
+                    if not checkout:
+                        raise ValueError("School-fee checkout was not found")
+                    if checkout.get("status") == "paid":
+                        return
+                    expected_paise = int(round(float(checkout.get("amount") or 0) * 100))
+                    paid_paise = link.get("amount_paid") or link.get("amount")
+                    if paid_paise is not None and int(paid_paise) != expected_paise:
+                        raise ValueError("School-fee payment amount does not match checkout")
+                    if link.get("currency") and link.get("currency") != checkout.get("currency", "INR"):
+                        raise ValueError("School-fee payment currency does not match checkout")
+                    if checkout.get("status") == "created":
+                        claimed = await db.school_fee_checkouts.update_one(
+                            {"id": checkout_id, "status": "created"},
+                            {"$set": {"status": "processing", "updated_at": datetime.now(timezone.utc).isoformat()}},
+                            session=session,
+                        )
+                        if claimed.matched_count == 0:
+                            raise ValueError("School-fee checkout is being processed")
+                    elif checkout.get("status") != "processing":
+                        raise ValueError("School-fee checkout is not payable")
+                    now = datetime.now(timezone.utc).isoformat()
+                    for transaction_id in checkout.get("transaction_ids", []):
+                        transaction = await db.fee_transactions.find_one(
+                            {"id": transaction_id}, {"_id": 0}, session=session
+                        )
+                        if not transaction or transaction.get("deleted") is True:
+                            raise ValueError("A checkout fee transaction no longer exists")
+                        await db.fee_transactions.update_one({"id": transaction_id}, {"$set": {
+                            "status": "paid",
+                            "paid_amount": float(transaction.get("amount") or 0),
+                            "paid_date": now[:10],
+                            "payment_mode": "online",
+                            "transaction_ref": reference_id,
+                            "updated_at": now,
+                        }}, session=session)
+                    await db.school_fee_checkouts.update_one(
+                        {"id": checkout_id, "status": "processing"}, {"$set": {
+                            "status": "paid", "paid_at": now, "updated_at": now,
+                            "razorpay_reference_id": reference_id,
+                        }}, session=session,
+                    )
+        finally:
+            reset_current_session(session_token)
+    finally:
+        _school_id_var.reset(ctx_token)
 
 # Number of billing cycles a monthly subscription runs before Razorpay stops it.
 SUBSCRIPTION_TOTAL_COUNT = 12

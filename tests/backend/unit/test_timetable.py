@@ -1,7 +1,7 @@
 from __future__ import annotations
 import pytest
 from middleware.auth import create_jwt
-from tests.backend.factories import make_staff
+from tests.backend.factories import make_class, make_staff, make_subject
 
 pytestmark = pytest.mark.asyncio
 
@@ -19,6 +19,12 @@ def _owner_h():
 def _admin_h():
     t = create_jwt({"user_id": "a1", "role": "admin", "name": "Admin"})
     return {"Authorization": f"Bearer {t}"}
+
+
+def _seed_timetable_references(fake_db, *, class_id="class-1", subject_id="subj-1", teacher_id="t1"):
+    fake_db.classes.docs = [make_class(id=class_id)]
+    fake_db.subjects.docs = [make_subject(id=subject_id, class_id=class_id)]
+    fake_db.staff.docs = [make_staff(id=teacher_id)] if teacher_id else []
 
 
 # --- GET /timetable/{class_id} ---
@@ -122,6 +128,7 @@ def test_get_timetable_unauthenticated_returns_401(client):
 def test_create_timetable_slot_owner(client, fake_db):
     """POST /api/academics/timetable creates a slot for owner role."""
     fake_db.timetable_slots.docs = []
+    _seed_timetable_references(fake_db)
     resp = client.post(
         "/api/academics/timetable",
         json={
@@ -145,6 +152,7 @@ def test_create_timetable_slot_owner(client, fake_db):
 def test_create_timetable_slot_admin(client, fake_db):
     """POST /api/academics/timetable creates a slot for admin role."""
     fake_db.timetable_slots.docs = []
+    _seed_timetable_references(fake_db, subject_id="subj-2", teacher_id="t2")
     resp = client.post(
         "/api/academics/timetable",
         json={
@@ -187,10 +195,75 @@ def test_create_timetable_unauthenticated_returns_401(client):
     assert resp.status_code == 401
 
 
+def test_create_timetable_rejects_teacher_double_booking(client, fake_db):
+    _seed_timetable_references(fake_db)
+    fake_db.timetable_slots.docs = [{
+        "id": "existing", "schoolId": "aaryans-joya", "class_id": "class-2",
+        "subject_id": "other", "teacher_id": "t1", "day_of_week": 0,
+        "period_number": 1, "room": "",
+    }]
+
+    resp = client.post("/api/academics/timetable", json={
+        "class_id": "class-1", "subject_id": "subj-1", "teacher_id": "t1",
+        "day_of_week": 0, "period_number": 1,
+    }, headers=_owner_h())
+
+    assert resp.status_code == 409
+    assert "Teacher" in resp.json()["detail"]
+    assert len(fake_db.timetable_slots.docs) == 1
+
+
+def test_create_timetable_rejects_room_double_booking(client, fake_db):
+    _seed_timetable_references(fake_db, teacher_id=None)
+    fake_db.timetable_slots.docs = [{
+        "id": "existing", "schoolId": "aaryans-joya", "class_id": "class-2",
+        "subject_id": "other", "teacher_id": "", "day_of_week": 2,
+        "period_number": 3, "room": "Science Lab",
+    }]
+
+    resp = client.post("/api/academics/timetable", json={
+        "class_id": "class-1", "subject_id": "subj-1", "teacher_id": "",
+        "day_of_week": 2, "period_number": 3, "room": "Science Lab",
+    }, headers=_owner_h())
+
+    assert resp.status_code == 409
+    assert "Room" in resp.json()["detail"]
+
+
+def test_create_timetable_rejects_subject_from_another_class(client, fake_db):
+    fake_db.classes.docs = [make_class(id="class-1")]
+    fake_db.subjects.docs = [make_subject(id="subj-1", class_id="class-2")]
+    fake_db.staff.docs = []
+    fake_db.timetable_slots.docs = []
+
+    resp = client.post("/api/academics/timetable", json={
+        "class_id": "class-1", "subject_id": "subj-1", "teacher_id": "",
+        "day_of_week": 1, "period_number": 2,
+    }, headers=_owner_h())
+
+    assert resp.status_code == 400
+    assert "Subject" in resp.json()["detail"]
+
+
+def test_create_timetable_rejects_backwards_time_range(client, fake_db):
+    _seed_timetable_references(fake_db, teacher_id=None)
+    fake_db.timetable_slots.docs = []
+
+    resp = client.post("/api/academics/timetable", json={
+        "class_id": "class-1", "subject_id": "subj-1", "teacher_id": "",
+        "day_of_week": 1, "period_number": 2,
+        "start_time": "10:00", "end_time": "09:00",
+    }, headers=_owner_h())
+
+    assert resp.status_code == 400
+    assert "end_time" in resp.json()["detail"]
+
+
 # --- PATCH /timetable/{slot_id} ---
 
 def test_patch_timetable_slot_owner(client, fake_db):
     """PATCH /api/academics/timetable/{slot_id} updates for owner."""
+    _seed_timetable_references(fake_db)
     fake_db.timetable_slots.docs = [
         {
             "id": "slot-patch",
@@ -223,6 +296,16 @@ def test_patch_timetable_slot_teacher_forbidden(client, fake_db):
     assert resp.status_code == 403
 
 
+def test_patch_unknown_timetable_slot_returns_404(client, fake_db):
+    fake_db.timetable_slots.docs = []
+    resp = client.patch(
+        "/api/academics/timetable/missing",
+        json={"room": "Room 3"},
+        headers=_owner_h(),
+    )
+    assert resp.status_code == 404
+
+
 # --- DELETE /timetable/{slot_id} ---
 
 def test_delete_timetable_slot_owner(client, fake_db):
@@ -249,21 +332,20 @@ def test_delete_timetable_slot_teacher_forbidden(client):
 
 
 # --- GET /timetable/availability ---
-# NOTE: FastAPI routes are matched in registration order. The dynamic route
-# GET /timetable/{class_id} is registered before GET /timetable/availability,
-# so "/timetable/availability" is captured by the class_id route with
-# class_id="availability". Tests here verify the actual runtime behaviour.
+# The static route must stay registered before /timetable/{class_id}.
 
 def test_get_availability_route_returns_200(client, fake_db):
     """GET /api/academics/timetable/availability returns 200 (auth required)."""
-    fake_db.timetable_slots.docs = []
-    fake_db.subjects.docs = []
+    fake_db.timetable_slots.docs = [
+        {"id": "t1-mon", "schoolId": "aaryans-joya", "teacher_id": "t1", "day_of_week": 0, "period_number": 1},
+        {"id": "t2-mon", "schoolId": "aaryans-joya", "teacher_id": "t2", "day_of_week": 0, "period_number": 2},
+    ]
     resp = client.get(
-        "/api/academics/timetable/availability",
+        "/api/academics/timetable/availability?teacher_id=t1&day_of_week=0",
         headers=_teacher_h(),
     )
-    # Route is shadowed by /{class_id} — still returns 200 with valid auth
     assert resp.status_code == 200
+    assert [row["id"] for row in resp.json()["data"]] == ["t1-mon"]
 
 
 def test_get_availability_unauthenticated_returns_401(client):
@@ -286,9 +368,8 @@ def test_get_timetable_for_class_with_no_slots(client, fake_db):
 def test_bulk_import_timetable_owner(client, fake_db):
     """PUT /api/academics/timetable/import succeeds for owner with valid entries."""
     fake_db.timetable_slots.docs = []
-    fake_db.classes.docs = [
-        {"id": "class-1", "schoolId": "aaryans-joya", "name": "Class 5", "section": "A"}
-    ]
+    fake_db.classes.docs = [make_class(id="class-1")]
+    fake_db.subjects.docs = [make_subject(id="subj-1", class_id="class-1")]
     fake_db.staff.docs = []
     resp = client.put(
         "/api/academics/timetable/import",

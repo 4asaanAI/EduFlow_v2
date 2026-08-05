@@ -281,7 +281,7 @@ TOOL_GET_TODAY_CLASS_ATTENDANCE = {
 # ---- New high-impact tools ----
 TOOL_GET_TIMETABLE = {
     "name": "get_timetable",
-    "description": "Get the class timetable for a specific day. Specify class name and optionally a day of week or date.",
+    "description": "Get a timetable for a specific day. Teachers should omit class_name to use their assigned class; managers may specify a class.",
     "params_schema": {"class_name": "optional e.g. 'Class 9A'", "day": "optional e.g. 'Monday'", "date": "optional YYYY-MM-DD"},
 }
 TOOL_GET_EXAM_RESULTS_SUMMARY = {
@@ -648,7 +648,7 @@ TOOL_QUERY_FEE_STATUS = {
 }
 TOOL_QUERY_MAINTENANCE_REQUESTS = {
     "name": "query_maintenance_requests",
-    "description": "Open facility maintenance requests — filter by status, date, or location.",
+    "description": "Open technology support tickets for IT staff, or facility maintenance requests for maintenance staff.",
     "params_schema": {"status": "optional — 'open' | 'in_progress' | 'resolved'"},
 }
 TOOL_QUERY_STAFF_AVAILABILITY = {
@@ -745,6 +745,31 @@ TOOL_CREATE_INCIDENT = {
     },
 }
 
+# ---- Enterprise school workflow read tools ----
+TOOL_GET_ADMISSIONS_PIPELINE = {
+    "name": "get_admissions_pipeline",
+    "description": "View the applicant-to-student admissions funnel and recent applications.",
+    "params_schema": {"status": "optional application status"},
+}
+TOOL_GET_ENTERPRISE_OPERATIONS = {
+    "name": "get_enterprise_operations",
+    "description": "View resources, asset custody, procurement, inventory, library circulation, or student leave operations.",
+    "params_schema": {
+        "domain": "required: resources | assets | procurement | inventory | library | student_leave",
+        "status": "optional status filter",
+    },
+}
+TOOL_GET_FINANCE_CONTROLS = {
+    "name": "get_finance_controls",
+    "description": "View accounting periods and versioned fee schedules; the school's owner also sees payroll status counts.",
+    "params_schema": {},
+}
+TOOL_GET_MY_SCHOOL_HUB = {
+    "name": "get_my_school_hub",
+    "description": "View own or a linked ward's fees, leave, library loans, quizzes and attempts.",
+    "params_schema": {"student_id": "guardian only: optional linked ward ID"},
+}
+
 
 # ---------------------------------------------------------------------------
 # TOOLS_BY_ROLE — maps (role, sub_category) to list of tool dicts
@@ -753,6 +778,9 @@ TOOL_CREATE_INCIDENT = {
 _OWNER_TOOLS = [
     # ---- Read / analytics ----
     TOOL_GET_SCHOOL_PULSE,
+    TOOL_GET_ADMISSIONS_PIPELINE,
+    TOOL_GET_ENTERPRISE_OPERATIONS,
+    TOOL_GET_FINANCE_CONTROLS,
     TOOL_GET_DAILY_BRIEF,
     TOOL_QUERY_DASHBOARD_SUMMARY,
     TOOL_GET_FEE_SUMMARY,
@@ -847,6 +875,8 @@ _OWNER_TOOLS = [
 
 _PRINCIPAL_TOOLS = [
     TOOL_GET_SCHOOL_PULSE,
+    TOOL_GET_ADMISSIONS_PIPELINE,
+    TOOL_GET_ENTERPRISE_OPERATIONS,
     TOOL_GET_DAILY_BRIEF,
     TOOL_GET_FEE_SUMMARY,
     TOOL_GET_STAFF_STATUS,
@@ -888,10 +918,10 @@ _PRINCIPAL_TOOLS = [
 
 _ACCOUNTS_TOOLS = [
     TOOL_GET_FEE_SUMMARY,
+    TOOL_GET_FINANCE_CONTROLS,
     TOOL_GET_FEE_TRANSACTIONS,
     TOOL_GET_FEE_STRUCTURES,
     TOOL_GET_FEE_DEFAULTERS,
-    TOOL_RECORD_FEE_PAYMENT,
     TOOL_GET_STUDENT_DATABASE,  # names + fees only — enforced in role rules
 ]
 
@@ -901,6 +931,7 @@ _TRANSPORT_HEAD_TOOLS = [
 
 _RECEPTIONIST_TOOLS = [
     TOOL_GET_ENQUIRIES,
+    TOOL_GET_ADMISSIONS_PIPELINE,
 ]
 
 _CLASS_TEACHER_TOOLS = [
@@ -910,9 +941,7 @@ _CLASS_TEACHER_TOOLS = [
     TOOL_GET_CLASS_WISE_ATTENDANCE,
     TOOL_GET_MY_CLASS_STUDENTS,
     TOOL_GET_TODAY_CLASS_ATTENDANCE,
-    TOOL_MARK_ATTENDANCE,
     TOOL_GET_HOUSE_STANDINGS,
-    TOOL_AWARD_HOUSE_POINTS,
     TOOL_GET_LIBRARY_STATUS,
     TOOL_SEARCH_STUDENTS,  # own class only — enforced in role rules
     TOOL_GET_TIMETABLE,
@@ -920,6 +949,7 @@ _CLASS_TEACHER_TOOLS = [
     TOOL_GET_UPCOMING_EVENTS,
     TOOL_DRAFT_PARENT_MESSAGE,
     TOOL_DRAFT_DOCUMENT,
+    TOOL_GET_ENTERPRISE_OPERATIONS,
 ]
 
 _HOD_TOOLS = list(_CLASS_TEACHER_TOOLS)  # same base + subject-wide note in role rules
@@ -932,7 +962,6 @@ _SUBJECT_TEACHER_TOOLS = [
     TOOL_GET_CLASS_WISE_ATTENDANCE,
     TOOL_GET_MY_CLASS_STUDENTS,
     TOOL_GET_TODAY_CLASS_ATTENDANCE,
-    TOOL_MARK_ATTENDANCE,
     TOOL_GET_HOUSE_STANDINGS,
     TOOL_GET_LIBRARY_STATUS,
     TOOL_SEARCH_STUDENTS,  # assigned classes, subject data only
@@ -953,6 +982,11 @@ _STUDENT_TOOLS = [
     TOOL_GET_HOUSE_STANDINGS,
     TOOL_GET_LIBRARY_STATUS,  # own books only — enforced in role rules
     TOOL_GET_UPCOMING_EVENTS,
+    TOOL_GET_MY_SCHOOL_HUB,
+]
+
+_PARENT_TOOLS = [
+    TOOL_GET_MY_SCHOOL_HUB,
 ]
 
 _SUPPORT_STAFF_TOOLS = []  # own data only — no AI tools, handled via role rules
@@ -995,6 +1029,9 @@ TOOLS_BY_ROLE = {
     # Student
     ("student", None): _STUDENT_TOOLS,
     ("student", "student"): _STUDENT_TOOLS,
+    # Parent / guardian
+    ("parent", None): _PARENT_TOOLS,
+    ("parent", "parent"): _PARENT_TOOLS,
     # Support staff
     ("support_staff", None): _SUPPORT_STAFF_TOOLS,
 }
@@ -1005,6 +1042,7 @@ _ROLE_FALLBACK = {
     "admin": _PRINCIPAL_TOOLS,  # safest admin default
     "teacher": _CLASS_TEACHER_TOOLS,
     "student": _STUDENT_TOOLS,
+    "parent": _PARENT_TOOLS,
     "support_staff": _SUPPORT_STAFF_TOOLS,
 }
 
@@ -1120,6 +1158,11 @@ TRANSPORT & INVENTORY:
 - View transport routes/drivers: use get_transport_status
 - View inventory stock & low-stock alerts: use get_inventory_status (category filter: furniture, it_equipment, sports, stationery)
 
+ENTERPRISE SCHOOL WORKFLOWS:
+- Admissions funnel: use get_admissions_pipeline
+- Resources, asset custody, procurement, inventory ledger, library circulation and student leave: use get_enterprise_operations
+- Accounting periods, fee schedule versions and payroll status: use get_finance_controls
+
 FEE DISCOUNT APPLICATION:
 - Apply a discount to a student: use apply_discount (first get discount_type_id from get_fee_structures)
 - Log fee-collection contact event (call/visit): use log_contact_event
@@ -1169,7 +1212,8 @@ For parent complaints, list open/unresolved cases with priority and days pending
     # ---- Admin: Accounts ----
     ("admin", "accountant"): """
 ROLE: Accounts Staff — Financial Data Only
-- You can ONLY access financial/fee-related data: fee summary, fee transactions, fee structures, fee defaulters, record fee payments.
+- You can access financial/fee-related data: fee summary, fee transactions, fee structures and fee defaulters.
+- During the controlled pilot, fee payment writes must use the Fee Collection panel; Flo does not submit them for accounts staff.
 - You can access the student database but ONLY for names and fee data. You CANNOT see personal info (phone, address, DOB, guardian), attendance records, or academic results.
 - You CANNOT see: staff salaries, attendance data, academic data, house points, library, transport, inventory, or enquiries.
 - You CANNOT approve leaves or mark attendance.
@@ -1223,7 +1267,8 @@ You manage the physical infrastructure and facilities of the school.
     ("teacher", "class_teacher"): """
 ROLE: Class Teacher — Own Class-Section Only
 - You can see data ONLY for your assigned class and section: {class_names}.
-- You CAN: view class attendance, mark attendance, search students (own class), view house standings, award house points, check library status.
+- You CAN ask Flo to view class attendance, search students (own class), view house standings and check library status.
+- During the controlled pilot, attendance and house-point writes must use their structured panels.
 - You CANNOT see: fee data, salary data, other teachers' information, other classes' data, financial reports, or enquiries.
 - When using search_students, results are filtered to your class only.
 - You CANNOT approve staff leaves.
@@ -1252,7 +1297,8 @@ ROLE: Coordinator — Class Range View
     ("teacher", "subject_teacher"): """
 ROLE: Subject Teacher — Assigned Classes Only
 - You can see data ONLY for your assigned classes: {class_names}, and ONLY for your subject: {subject}.
-- You CAN: view class attendance, mark attendance, search students (assigned classes), view house standings, check library status.
+- You CAN ask Flo to view class attendance, search students (assigned classes), view house standings and check library status.
+- During the controlled pilot, attendance writes must use the structured Attendance panel.
 - You CANNOT: award house points (class teachers / HODs only), see fee data, salary data, financial reports, or enquiries.
 - You CANNOT approve staff leaves.
 """,
@@ -1261,7 +1307,8 @@ ROLE: Subject Teacher — Assigned Classes Only
     ("teacher", "kg_incharge"): """
 ROLE: KG Incharge — Kindergarten All Sections
 - You can see data for your assigned KG class (Nursery / LKG / UKG) across ALL sections.
-- You CAN: view attendance, mark attendance, search students (your KG class), view house standings, award house points, check library status.
+- You CAN ask Flo to view attendance, search students (your KG class), view house standings and check library status.
+- During the controlled pilot, attendance and house-point writes must use their structured panels.
 - You CANNOT see: fee data, salary data, other non-KG classes, financial reports, or enquiries.
 - You CANNOT approve staff leaves.
 """,
@@ -1273,6 +1320,15 @@ ROLE: Student — Self Only
 - You CANNOT see any other student's data — not their marks, fees, attendance, personal info, or anything else.
 - You CANNOT access any administrative, staff, or school management tools.
 - Content must be age-appropriate for school students.
+""",
+
+    # ---- Parent / Guardian ----
+    ("parent", None): """
+ROLE: Parent / Guardian - Linked Wards Only
+- You can only see students explicitly linked to this guardian account.
+- Use get_my_school_hub for fees, leave requests, library loans, available quizzes and attempts.
+- Never expose another student's data, even when a name or student ID is supplied.
+- Administrative, staff, payroll and school-wide operational data is outside this role.
 """,
 
     # ---- Support Staff ----

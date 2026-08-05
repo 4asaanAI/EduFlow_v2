@@ -71,6 +71,58 @@ def test_bulk_results_all_valid_returns_success(client, fake_db):
     assert data.get("data", {}).get("saved") == 1
 
 
+def test_bulk_results_preserves_zero_and_stable_result_id(client, fake_db):
+    fake_db.exams.docs = [{"id": "exam-zero", "schoolId": "aaryans-joya", "max_marks": 100, "class_id": "cls-1"}]
+    fake_db.students.docs = [{"id": "s-zero", "schoolId": "aaryans-joya", "class_id": "cls-1", "name": "Student"}]
+    fake_db.exam_results.docs = [{
+        "id": "result-stable", "schoolId": "aaryans-joya", "exam_id": "exam-zero",
+        "student_id": "s-zero", "subject_id": None, "marks_obtained": 20,
+        "max_marks": 100, "published": False, "created_at": "2026-01-01T00:00:00",
+    }]
+
+    resp = client.post("/api/academics/results/bulk", json={"results": [{
+        "exam_id": "exam-zero", "student_id": "s-zero", "marks_obtained": 0,
+    }]}, headers=_owner_h())
+
+    assert resp.status_code == 200
+    stored = fake_db.exam_results.docs[0]
+    assert stored["id"] == "result-stable"
+    assert stored["marks_obtained"] == 0
+    assert stored["created_at"] == "2026-01-01T00:00:00"
+
+
+def test_bulk_results_rejects_unknown_student(client, fake_db):
+    fake_db.exams.docs = [{"id": "exam-unknown", "schoolId": "aaryans-joya", "class_id": "cls-1", "max_marks": 100}]
+    fake_db.students.docs = []
+    fake_db.exam_results.docs = []
+
+    resp = client.post("/api/academics/results/bulk", json={"results": [{
+        "exam_id": "exam-unknown", "student_id": "missing", "marks_obtained": 50,
+    }]}, headers=_owner_h())
+
+    assert resp.json()["success"] is False
+    assert resp.json()["errors"][0]["reason"] == "Student not found"
+    assert fake_db.exam_results.docs == []
+
+
+def test_bulk_results_locks_published_rows(client, fake_db):
+    fake_db.exams.docs = [{"id": "exam-pub", "schoolId": "aaryans-joya", "class_id": "cls-1", "max_marks": 100}]
+    fake_db.students.docs = [{"id": "s-pub", "schoolId": "aaryans-joya", "class_id": "cls-1"}]
+    fake_db.exam_results.docs = [{
+        "id": "result-pub", "schoolId": "aaryans-joya", "exam_id": "exam-pub",
+        "student_id": "s-pub", "subject_id": None, "marks_obtained": 70,
+        "max_marks": 100, "published": True, "is_published": True,
+    }]
+
+    resp = client.post("/api/academics/results/bulk", json={"results": [{
+        "exam_id": "exam-pub", "student_id": "s-pub", "marks_obtained": 90,
+    }]}, headers=_owner_h())
+
+    assert resp.json()["success"] is False
+    assert "correction workflow" in resp.json()["errors"][0]["reason"]
+    assert fake_db.exam_results.docs[0]["marks_obtained"] == 70
+
+
 def test_publish_result_endpoint_accessible_to_principal(client, fake_db):
     """Principal can publish exam results."""
     fake_db.exam_results.docs = [{"id": "res-1", "schoolId": "aaryans-joya", "is_published": False}]
@@ -84,6 +136,40 @@ def test_publish_result_not_found_returns_404(client, fake_db):
     fake_db.exam_results.docs = []
     resp = client.patch("/api/academics/results/nonexistent-result/publish", headers=_principal_h())
     assert resp.status_code == 404
+
+
+def test_principal_correction_preserves_history_and_publication(client, fake_db):
+    fake_db.exam_results.docs = [{
+        "id": "res-correct", "schoolId": "aaryans-joya", "marks_obtained": 62,
+        "max_marks": 100, "grade": "B", "remarks": "Initial", "published": True,
+        "is_published": True,
+    }]
+    fake_db.exam_result_corrections.docs = []
+
+    resp = client.patch("/api/academics/results/res-correct/correct", json={
+        "marks_obtained": 72, "reason": "Verified totaling error",
+    }, headers=_principal_h())
+
+    assert resp.status_code == 200
+    assert fake_db.exam_results.docs[0]["marks_obtained"] == 72
+    assert fake_db.exam_results.docs[0]["published"] is True
+    assert fake_db.exam_result_corrections.docs[0]["before"]["marks_obtained"] == 62
+    assert fake_db.exam_result_corrections.docs[0]["after"]["marks_obtained"] == 72
+
+
+def test_teacher_cannot_correct_published_result(client, fake_db):
+    fake_db.exam_results.docs = [{"id": "res-locked", "schoolId": "aaryans-joya", "published": True}]
+    resp = client.patch("/api/academics/results/res-locked/correct", json={
+        "marks_obtained": 70, "reason": "Verified correction",
+    }, headers=_teacher_h())
+    assert resp.status_code == 403
+
+
+def test_correct_result_unauthenticated_returns_401(client):
+    resp = client.patch("/api/academics/results/res-locked/correct", json={
+        "marks_obtained": 70, "reason": "Verified correction",
+    })
+    assert resp.status_code == 401
 
 
 def test_question_papers_have_school_id(client, fake_db):

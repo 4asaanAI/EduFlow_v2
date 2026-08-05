@@ -15,6 +15,7 @@ import copy
 import pytest
 
 from ai import tool_functions_v2
+from tests.backend.factories import make_student
 
 pytestmark = pytest.mark.asyncio
 
@@ -56,9 +57,19 @@ def _clear(fake_db):
 
 @pytest.fixture(autouse=True)
 def _clean(fake_db):
+    original_students = list(fake_db.students.docs)
+    fake_db.students.docs[:] = [
+        student for student in fake_db.students.docs
+        if student.get("id") not in {"student-1", "student-9"}
+    ]
+    fake_db.students.docs.extend([
+        make_student(id="student-1", class_id="class-1", name="First Student"),
+        make_student(id="student-9", class_id="class-1", name="Second Student"),
+    ])
     _clear(fake_db)
     yield
     _clear(fake_db)
+    fake_db.students.docs[:] = original_students
 
 
 async def test_ai_and_rest_produce_identical_blast_radius(client, auth_headers, fake_db, monkeypatch):

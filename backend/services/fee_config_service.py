@@ -24,6 +24,7 @@ from typing import Optional
 
 from services.actor_context import ActorContext
 from services.audit_service import write_audit_doc
+from services.fee_lifecycle_service import snapshot_fee_structure
 from services.txn_context import session_kwargs as _txn_session_kwargs
 from tenant import add_school_id, scoped_filter, scoped_query
 
@@ -99,6 +100,8 @@ async def create_fee_structure(db, actor_ctx: ActorContext, params: dict, *, ses
         "class_id": params.get("class_id", ""),
         "fee_heads": params.get("fee_heads", []),
         "academic_year": params.get("academic_year", ""),
+        "version": 1,
+        "status": params.get("status", "active"),
         "created_by": actor_ctx.user_id,
         # REST used datetime.now(timezone.utc).isoformat() — mirror it.
         "created_at": actor_ctx.now_utc().isoformat(),
@@ -127,6 +130,16 @@ async def update_fee_structure(db, actor_ctx: ActorContext, params: dict, *, ses
     if not structure_id:
         raise FeeConfigValidationError("structure_id is required")
     changes = {k: v for k, v in params.items() if k not in _IMMUTABLE_KEYS and k != "structure_id"}
+    existing = await db.fee_structures.find_one(
+        scoped_query({"id": structure_id}, branch_id=actor_ctx.branch_id),
+        {"_id": 0},
+        **_session_kwargs(session),
+    )
+    if not existing:
+        raise FeeConfigNotFoundError("Fee structure not found")
+    await snapshot_fee_structure(db, actor_ctx, existing, reason="structure_updated", session=session)
+    changes["version"] = int(existing.get("version") or 1) + 1
+    changes["updated_at"] = actor_ctx.now_utc().isoformat()
     result = await db.fee_structures.update_one(
         scoped_query({"id": structure_id}, branch_id=actor_ctx.branch_id),
         {"$set": changes},
@@ -138,7 +151,7 @@ async def update_fee_structure(db, actor_ctx: ActorContext, params: dict, *, ses
         db, actor_ctx,
         action="fee_structure_update",
         entity_id=structure_id,
-        changes=changes,
+        changes={k: v for k, v in changes.items() if k != "updated_at"},
         session=session,
     )
     return {"structure_id": structure_id}

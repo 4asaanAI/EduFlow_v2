@@ -47,6 +47,16 @@ const T = {
   // "receipts" so anyone searching for it still lands here.
   'fee-collection':        { id: 'fee-collection',        name: 'Fee Collection',      subtitle: 'Payments, receipts & export', icon: FileText, color: '#34d399' },
   'principal-daily':       { id: 'principal-daily',       name: 'Principal Daily',     subtitle: 'Absences & subs',       icon: CalendarDays,  color: '#fbbf24' },
+  'student-leave-manager': { id: 'student-leave-manager', name: 'Student Leave',       subtitle: 'Policy & approvals',    icon: CalendarDays,  color: '#22d3ee' },
+  'resource-calendar':     { id: 'resource-calendar',     name: 'Resource Calendar',    subtitle: 'Rooms, labs & equipment', icon: CalendarDays, color: '#f472b6' },
+  'asset-custody':         { id: 'asset-custody',         name: 'Asset Custody',        subtitle: 'Issue & return',         icon: Package,       color: '#22d3ee' },
+  'procurement-inventory': { id: 'procurement-inventory', name: 'Procurement',          subtitle: 'Orders & stock',        icon: Package,       color: '#fbbf24' },
+  'library-circulation':   { id: 'library-circulation',   name: 'Library',              subtitle: 'Catalog & loans',       icon: BookOpen,      color: '#a78bfa' },
+  'accounting-periods':    { id: 'accounting-periods',    name: 'Accounting Periods',   subtitle: 'Posting locks',         icon: CalendarDays,  color: '#f87171' },
+  'payroll-manager':       { id: 'payroll-manager',       name: 'Payroll & Payslips',   subtitle: 'Corrections & slips',   icon: FileText,      color: '#34d399' },
+  'my-payslips':           { id: 'my-payslips',           name: 'My Payslips',          subtitle: 'Salary records',        icon: FileText,      color: '#34d399' },
+  'quiz-manager':          { id: 'quiz-manager',          name: 'Quiz Manager',         subtitle: 'Author & publish',      icon: PenTool,       color: '#fbbf24' },
+  'guardian-portal':       { id: 'guardian-portal',       name: 'Guardian Portal',      subtitle: 'Wards, fees & academics', icon: Users,       color: '#4f8ff7' },
   'school-activities':     { id: 'school-activities',     name: 'School Activities',   subtitle: 'Houses, sports, awards', icon: Trophy,         color: '#f59e0b' },
 
   // Student tools
@@ -59,6 +69,7 @@ const T = {
   'study-planner':          { id: 'study-planner',          name: 'Study Planner',       subtitle: 'Plan your week',         icon: Target,        color: '#22d3ee' },
   'career-guidance':        { id: 'career-guidance',        name: 'Career Guidance',     subtitle: 'Future planning',        icon: Compass,       color: '#a78bfa' },
   'fee-status-viewer':      { id: 'fee-status-viewer',      name: 'My Fees',             subtitle: 'Payment status',         icon: IndianRupee,   color: '#4f8ff7' },
+  'student-leave-request':  { id: 'student-leave-request',  name: 'Student Leave',       subtitle: 'Request & track',        icon: CalendarDays,  color: '#34d399' },
   'ptm-summary-viewer':     { id: 'ptm-summary-viewer',     name: 'PTM Summary',         subtitle: 'Teacher notes',          icon: MessageSquare, color: '#34d399' },
 
   // Teacher-only tools
@@ -85,14 +96,15 @@ const TOOL_SETS = {
     'student-database','fee-tracker','attendance-recorder','certificate-generator',
     'circular-sender','enquiry-register','document-scanner','smart-fee-defaulter',
     'parent-message','student-transfer','id-card-generator',
-    'principal-daily','timetable-builder','asset-tracker','transport-manager','incident-tracker',
+    'principal-daily','timetable-builder','asset-tracker','transport-manager','incident-tracker','student-leave-manager',
+    'resource-calendar','asset-custody','procurement-inventory','library-circulation','quiz-manager',
     'school-activities','automated-report','custom-form-builder','attendance-alerts',
     'query-section','audit-log','what-ive-learned',
   ],
   // D-49: the accountant is one of the three profiles the server lets issue
   // certificates and ID cards (owner decision 2026-08-04, decision 2).
   admin_accountant: [
-    'student-database','fee-tracker','smart-fee-defaulter','fee-collection',
+    'student-database','fee-tracker','smart-fee-defaulter','fee-collection','accounting-periods','payroll-manager',
     'certificate-generator','id-card-generator',
     'custom-form-builder','raise-maintenance',
   ],
@@ -121,7 +133,7 @@ const TOOL_SETS = {
   student: [
     'ai-tutor', 'doubt-solver', 'homework-viewer', 'attendance-self-check',
     'result-viewer', 'practice-test', 'study-planner', 'career-guidance',
-    'fee-status-viewer', 'ptm-summary-viewer', 'form-submissions', 'raise-maintenance',
+    'fee-status-viewer', 'student-leave-request', 'library-circulation', 'ptm-summary-viewer', 'form-submissions', 'raise-maintenance',
   ],
 
   // Teacher
@@ -129,8 +141,9 @@ const TOOL_SETS = {
     'class-attendance-marker','assignment-generator','question-paper-creator',
     'report-card-builder','student-performance-viewer','leave-application',
     'lesson-plan-generator','worksheet-creator','class-performance-analytics',
-    'substitution-viewer','ptm-notes','curriculum-tracker','form-submissions','raise-maintenance',
+    'substitution-viewer','ptm-notes','curriculum-tracker','resource-calendar','library-circulation','quiz-manager','my-payslips','form-submissions','raise-maintenance',
   ],
+  parent: ['guardian-portal'],
 };
 
 // Sub-role display labels
@@ -146,14 +159,16 @@ const SUB_ROLE_LABELS = {
   class_teacher:  'Class Teacher',
   subject_teacher:'Subject Teacher',
   kg_incharge:    'KG In-charge',
+  parent:         'Guardian',
 };
 
 const OWNER_TOOLS = [
   'school-directory',
   'student-database','fee-tracker','attendance-recorder','certificate-generator',
   'circular-sender','enquiry-register','smart-fee-defaulter',
-  'parent-message','id-card-generator','timetable-builder','asset-tracker',
-  'transport-manager','incident-tracker','facility-requests',
+  'parent-message','id-card-generator','timetable-builder','asset-tracker','asset-custody',
+  'resource-calendar','procurement-inventory','library-circulation','student-leave-manager','quiz-manager',
+  'transport-manager','incident-tracker','facility-requests','accounting-periods','payroll-manager',
   'fee-collection','school-activities','audit-log','automated-report',
   'custom-form-builder','query-section','what-ive-learned','conversation-trace',
 ];

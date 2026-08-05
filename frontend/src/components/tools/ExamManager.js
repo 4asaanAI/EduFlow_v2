@@ -4,7 +4,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import {
   Plus, ChevronRight, ChevronLeft, Edit2, Trash2, BookOpen,
   Users, BarChart2, Calendar, CheckCircle, X, ClipboardList, AlertTriangle, Save, Eye,
-  ChevronUp, ChevronDown, ChevronsUpDown,
+  ChevronUp, ChevronDown, ChevronsUpDown, Lock,
 } from 'lucide-react';
 import { useColumnSort, SortableHeaderRow } from './ToolPage';
 import { API, apiFetch,
@@ -362,11 +362,18 @@ export default function ExamManager() {
     setSavingMarks(true);
     setSaveMsg('');
     const results = [];
+    const publishedKeys = new Set(
+      (sheet.results || [])
+        .filter(r => r.is_published || r.published)
+        .map(r => `${r.student_id}|${r.subject_id}`)
+    );
     for (const sub of sheet.subjects) {
       if (!sub.can_edit) continue;
       const max = Number(scheduleDraft[sub.id]?.max_marks) || sub.max_marks || 100;
       for (const st of sheet.students) {
-        const v = marksDraft[`${st.id}|${sub.id}`];
+        const key = `${st.id}|${sub.id}`;
+        if (publishedKeys.has(key)) continue;
+        const v = marksDraft[key];
         if (v === undefined || v === '') continue;
         results.push({
           exam_id: sheet.exam.id, student_id: st.id, subject_id: sub.id,
@@ -385,6 +392,36 @@ export default function ExamManager() {
       setSaveMsg('Network error');
     }
     setSavingMarks(false);
+  };
+
+  const canCorrectPublished = currentUser.role === 'owner'
+    || (currentUser.role === 'admin' && currentUser.sub_category === 'principal');
+
+  const handleCorrectPublished = async (result) => {
+    const entered = window.prompt('Corrected marks', String(result.marks_obtained ?? ''));
+    if (entered === null) return;
+    const reason = window.prompt('Reason for correction (required)');
+    if (reason === null) return;
+    if (reason.trim().length < 5) {
+      setSaveMsg('Correction reason must be at least 5 characters');
+      return;
+    }
+    try {
+      const response = await apiFetch(`${API}/academics/results/${result.id}/correct`, {
+        method: 'PATCH',
+        headers: { ..._authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ marks_obtained: Number(entered), reason: reason.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        setSaveMsg(data.detail || 'Correction failed');
+        return;
+      }
+      setSaveMsg('Published result corrected and revision history saved');
+      await loadSheet(sheet.exam.id, selectedClass.id);
+    } catch {
+      setSaveMsg('Network error');
+    }
   };
 
   const bg = isDark ? '#111' : '#f5f5f5';
@@ -711,7 +748,9 @@ export default function ExamManager() {
                               const max = Number(scheduleDraft[sub.id]?.max_marks) || sub.max_marks || 100;
                               const key = `${st.id}|${sub.id}`;
                               const draftVal = marksDraft[key];
-                              const editable = canEdit && sub.can_edit;
+                              const existing = resultMap[key];
+                              const published = Boolean(existing?.is_published || existing?.published);
+                              const editable = canEdit && sub.can_edit && !published;
                               const numeric = draftVal !== undefined && draftVal !== '' ? Number(draftVal) : null;
                               if (numeric !== null && !Number.isNaN(numeric)) { totalObtained += numeric; totalMax += max; hasAny = true; }
                               if (editable) {
@@ -726,7 +765,6 @@ export default function ExamManager() {
                                   </td>
                                 );
                               }
-                              const existing = resultMap[key];
                               if (!existing || existing.marks_obtained === null || existing.marks_obtained === undefined) {
                                 return <td key={sub.id} style={{ textAlign: 'center', padding: '9px 12px', color: 'var(--color-text-secondary)' }}>—</td>;
                               }
@@ -734,8 +772,22 @@ export default function ExamManager() {
                               const color = pct === null ? '#737373' : pct >= 75 ? '#34d399' : pct >= 50 ? '#fbbf24' : '#f87171';
                               return (
                                 <td key={sub.id} style={{ textAlign: 'center', padding: '9px 12px' }}>
-                                  <span style={{ fontWeight: 700, color }}>{existing.marks_obtained}</span>
+                                  <span title={published ? 'Published result. Use the correction workflow to change it.' : undefined} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 700, color }}>
+                                    {published && <Lock size={10} aria-label="Published result locked" />}
+                                    {existing.marks_obtained}
+                                  </span>
                                   <span style={{ color: 'var(--color-text-secondary)', fontSize: 11 }}>/{max}</span>
+                                  {published && canCorrectPublished && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCorrectPublished(existing)}
+                                      title="Correct published result"
+                                      aria-label={`Correct published result for ${st.name}, ${sub.name}`}
+                                      style={{ marginLeft: 5, padding: 2, border: 'none', background: 'transparent', color: 'var(--color-accent-blue)', cursor: 'pointer', verticalAlign: 'middle' }}
+                                    >
+                                      <Edit2 size={11} />
+                                    </button>
+                                  )}
                                 </td>
                               );
                             });
@@ -786,7 +838,7 @@ export default function ExamManager() {
               options={formSubjects.map(s => ({ value: s.id, label: s.name }))}
             />
           )}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <FormField label="Start Date" type="date" value={form.start_date} onChange={v => setForm(f => ({ ...f, start_date: v }))} />
             <FormField label="End Date" type="date" value={form.end_date} onChange={v => setForm(f => ({ ...f, end_date: v }))} />
           </div>

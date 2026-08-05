@@ -453,8 +453,19 @@ async def get_student(student_id: str, request: Request):
     # with read roles may view any. Combined gate not expressible as one Depends.
     if user["role"] == "student" and student.get("user_id") != user["id"]:
         raise HTTPException(403, "Forbidden")
-    if user["role"] not in READ_ROLES and user["role"] != "student":
+    if user["role"] not in READ_ROLES and user["role"] not in {"student", "parent"}:
         raise HTTPException(403, "Forbidden")
+    if user["role"] == "parent":
+        link = await db.guardians.find_one(
+            scoped_query({"student_id": student_id, "user_id": user["id"]}, branch_id=user.get("branch_id")),
+            {"_id": 0, "id": 1},
+        )
+        if not link:
+            raise HTTPException(403, "Forbidden")
+    if user["role"] == "teacher":
+        scope = await compute_teacher_scope(db, user, get_school_id())
+        if student.get("class_id") not in set(scope["all_class_ids"]):
+            raise HTTPException(403, "Forbidden")
 
     return {"success": True, "data": await _add_class_and_guardians(db, student, include_guardians=True)}
 
@@ -577,11 +588,23 @@ async def list_guardians(student_id: str, request: Request):
     user = get_user(request)
     # auth: students may view their own guardians; staff with read roles may
     # view any. Combined gate not expressible as one Depends.
-    if user["role"] not in READ_ROLES and user["role"] != "student":
+    if user["role"] not in READ_ROLES and user["role"] not in {"student", "parent"}:
         raise HTTPException(403, "Forbidden")
     student = await db.students.find_one(_student_query({"id": student_id}), {"_id": 0})
     if not student:
         raise HTTPException(404, "Student not found")
+    if user["role"] == "student" and student.get("user_id") != user["id"]:
+        raise HTTPException(403, "Forbidden")
+    if user["role"] == "parent":
+        link = await db.guardians.find_one(
+            scoped_query(
+                {"student_id": student_id, "user_id": user["id"]},
+                branch_id=user.get("branch_id"),
+            ),
+            {"_id": 0, "id": 1},
+        )
+        if not link:
+            raise HTTPException(403, "Forbidden")
     guardians = await db.guardians.find(
         scoped_filter({"student_id": student_id}, get_school_id()), {"_id": 0}  # branch-scope: intentional — scoped to one named person's own record, not to a branch
     ).to_list(10)

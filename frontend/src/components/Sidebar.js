@@ -33,9 +33,17 @@ const TOOLS_BY_ROLE = {
     { id: 'staff-tracker', name: 'Staff Tracker', subtitle: 'Profiles & roles', icon: UserCheck, color: '#4f8ff7' },
     { id: 'staff-attendance-tracker', name: 'Staff Attendance', subtitle: 'Attendance & leaves', icon: UserCheck, color: '#22d3ee' },
     { id: 'financial-reports', name: 'Financial Reports', subtitle: 'Revenue & expenses', icon: FileText, color: '#22d3ee' },
+    { id: 'accounting-periods', name: 'Accounting Periods', subtitle: 'Posting locks', icon: CalendarDays, color: '#f87171' },
+    { id: 'payroll-manager', name: 'Payroll & Payslips', subtitle: 'Corrections & slips', icon: FileText, color: '#34d399' },
     { id: 'announcement-broadcaster', name: 'Announcements', subtitle: 'Broadcast messages', icon: Megaphone, color: '#fbbf24' },
     { id: 'admission-funnel', name: 'Admission Funnel', subtitle: 'Enquiries & conversions', icon: UserPlus, color: '#4f8ff7' },
     { id: 'staff-leave-manager', name: 'Leave Manager', subtitle: 'Approve / reject', icon: CalendarDays, color: '#34d399' },
+    { id: 'student-leave-manager', name: 'Student Leave', subtitle: 'Policy & approvals', icon: CalendarDays, color: '#22d3ee' },
+    { id: 'resource-calendar', name: 'Resource Calendar', subtitle: 'Rooms, labs & equipment', icon: CalendarDays, color: '#f472b6' },
+    { id: 'asset-custody', name: 'Asset Custody', subtitle: 'Issue & return assets', icon: Package, color: '#22d3ee' },
+    { id: 'procurement-inventory', name: 'Procurement', subtitle: 'Orders & inventory', icon: Package, color: '#fbbf24' },
+    { id: 'library-circulation', name: 'Library', subtitle: 'Catalog & circulation', icon: BookOpen, color: '#a78bfa' },
+    { id: 'quiz-manager', name: 'Quiz Manager', subtitle: 'Author & publish', icon: PenTool, color: '#fbbf24' },
     { id: 'staff-performance', name: 'Staff Performance', subtitle: 'Overview & analytics', icon: BarChart2, color: '#fb923c' },
     { id: 'ai-health-report', name: 'AI Health Report', subtitle: 'Weekly auto-summary', icon: HeartPulse, color: '#f472b6' },
     { id: 'smart-alerts', name: 'Smart Alerts', subtitle: 'Exceptions & flags', icon: Bell, color: '#f87171' },
@@ -59,6 +67,8 @@ const TOOLS_BY_ROLE = {
     { id: 'student-database', name: 'Student Database', subtitle: 'Manage & search', icon: Users, color: '#4f8ff7' },
     { id: 'fee-tracker', name: 'Fee Tracker', subtitle: 'Reminders & dues', icon: IndianRupee, color: '#34d399' },
     { id: 'fee-collection', name: 'Fee Collection', subtitle: 'Payments, receipts & export', icon: FileText, color: '#34d399' },
+    { id: 'accounting-periods', name: 'Accounting Periods', subtitle: 'Posting locks', icon: CalendarDays, color: '#f87171' },
+    { id: 'payroll-manager', name: 'Payroll & Payslips', subtitle: 'Corrections & slips', icon: FileText, color: '#34d399' },
     { id: 'attendance-recorder', name: 'Attendance', subtitle: 'Mark & track', icon: ClipboardList, color: '#fb923c' },
     { id: 'principal-daily', name: 'Principal Daily', subtitle: 'Absences & substitutes', icon: CalendarDays, color: '#fbbf24' },
     { id: 'certificate-generator', name: 'Certificates', subtitle: 'TC, Bonafide, etc.', icon: Award, color: '#fbbf24' },
@@ -71,6 +81,11 @@ const TOOLS_BY_ROLE = {
     { id: 'id-card-generator', name: 'ID Cards', subtitle: 'Generate & print', icon: Printer, color: '#a78bfa' },
     { id: 'timetable-builder', name: 'Timetable', subtitle: 'Build & manage', icon: CalendarDays, color: '#f472b6' },
     { id: 'asset-tracker', name: 'Asset Tracker', subtitle: 'Inventory & items', icon: Package, color: '#22d3ee' },
+    { id: 'asset-custody', name: 'Asset Custody', subtitle: 'Issue & return', icon: Package, color: '#22d3ee' },
+    { id: 'resource-calendar', name: 'Resource Calendar', subtitle: 'Rooms & labs', icon: CalendarDays, color: '#f472b6' },
+    { id: 'procurement-inventory', name: 'Procurement', subtitle: 'Orders & stock', icon: Package, color: '#fbbf24' },
+    { id: 'library-circulation', name: 'Library', subtitle: 'Catalog & loans', icon: BookOpen, color: '#a78bfa' },
+    { id: 'quiz-manager', name: 'Quiz Manager', subtitle: 'Author & publish', icon: PenTool, color: '#fbbf24' },
     { id: 'transport-manager', name: 'Transport', subtitle: 'Routes & buses', icon: Truck, color: '#fb923c' },
     { id: 'transport-optimisation', name: 'Route Optimisation', subtitle: 'Geocode & cluster analysis', icon: Truck, color: '#22d3ee' },
     { id: 'facility-requests', name: 'Facility Requests', subtitle: 'Maintenance queue', icon: Wrench, color: '#fb923c' },
@@ -88,6 +103,7 @@ const TOOLS_BY_ROLE = {
     { id: 'staff-tracker', name: 'Staff Tracker', subtitle: 'Profiles & roles', icon: UserCheck, color: '#4f8ff7' },
     { id: 'staff-performance', name: 'Staff Performance', subtitle: 'Overview & analytics', icon: BarChart2, color: '#fb923c' },
     { id: 'staff-leave-manager', name: 'Leave Manager', subtitle: 'Approve / reject', icon: CalendarDays, color: '#34d399' },
+    { id: 'student-leave-manager', name: 'Student Leave', subtitle: 'Policy & approvals', icon: CalendarDays, color: '#22d3ee' },
     { id: 'smart-alerts', name: 'Smart Alerts', subtitle: 'Exceptions & flags', icon: Bell, color: '#f87171' },
     { id: 'exam-manager', name: 'Exams', subtitle: 'Schedule & results', icon: ClipboardList, color: '#a78bfa' },
     { id: 'query-section', name: 'Query & Support', subtitle: 'Tickets & issues', icon: LifeBuoy, color: '#22d3ee' },
@@ -96,9 +112,11 @@ const TOOLS_BY_ROLE = {
     { id: 'class-attendance-marker', name: 'Attendance', subtitle: 'Mark my class', icon: ClipboardList, color: '#fb923c' },
     { id: 'assignment-generator', name: 'Assignments', subtitle: 'Create & manage', icon: BookOpen, color: '#4f8ff7' },
     { id: 'question-paper-creator', name: 'Question Papers', subtitle: 'Create & export', icon: PenTool, color: '#34d399' },
+    { id: 'quiz-manager', name: 'Quiz Manager', subtitle: 'Author & publish', icon: PenTool, color: '#fbbf24' },
     { id: 'report-card-builder', name: 'Report Cards', subtitle: 'Enter & generate', icon: FileText, color: '#a78bfa' },
     { id: 'student-performance-viewer', name: 'Student Performance', subtitle: 'Marks & trends', icon: BarChart2, color: '#22d3ee' },
     { id: 'leave-application', name: 'Leave Application', subtitle: 'Apply for leave', icon: CalendarDays, color: '#fbbf24' },
+    { id: 'my-payslips', name: 'My Payslips', subtitle: 'Salary records', icon: FileText, color: '#34d399' },
     { id: 'lesson-plan-generator', name: 'Lesson Plans', subtitle: 'Plan chapters', icon: BookOpen, color: '#f472b6' },
     { id: 'worksheet-creator', name: 'Worksheets', subtitle: 'Practice sheets', icon: FilePlus, color: '#fb923c' },
     { id: 'class-performance-analytics', name: 'Class Analytics', subtitle: 'Trends & insights', icon: BarChart, color: '#a78bfa' },
@@ -107,6 +125,8 @@ const TOOLS_BY_ROLE = {
     { id: 'curriculum-tracker', name: 'Curriculum', subtitle: 'Progress tracking', icon: Target, color: '#4f8ff7' },
     { id: 'exam-manager', name: 'Exams', subtitle: 'Schedule & results', icon: ClipboardList, color: '#a78bfa' },
     { id: 'form-submissions', name: 'Forms', subtitle: 'Surveys & forms', icon: FileText, color: '#22d3ee' },
+    { id: 'resource-calendar', name: 'Resource Calendar', subtitle: 'Book rooms & labs', icon: CalendarDays, color: '#f472b6' },
+    { id: 'library-circulation', name: 'Library', subtitle: 'My loans & catalog', icon: BookOpen, color: '#a78bfa' },
     { id: 'raise-maintenance', name: 'Report an Issue', subtitle: 'Raise maintenance request', icon: Wrench, color: '#fb923c' },
   ],
   student: [
@@ -119,19 +139,24 @@ const TOOLS_BY_ROLE = {
     { id: 'study-planner', name: 'Study Planner', subtitle: 'Plan your week', icon: Target, color: '#22d3ee' },
     { id: 'career-guidance', name: 'Career Guidance', subtitle: 'Future planning', icon: Compass, color: '#a78bfa' },
     { id: 'fee-status-viewer', name: 'My Fees', subtitle: 'Payment status', icon: IndianRupee, color: '#4f8ff7' },
+    { id: 'student-leave-request', name: 'Student Leave', subtitle: 'Request & track', icon: CalendarDays, color: '#34d399' },
+    { id: 'library-circulation', name: 'Library', subtitle: 'My loans & catalog', icon: BookOpen, color: '#a78bfa' },
     { id: 'ptm-summary-viewer', name: 'PTM Summary', subtitle: 'Teacher notes', icon: MessageSquare, color: '#34d399' },
     { id: 'form-submissions', name: 'Forms', subtitle: 'Surveys & forms', icon: FileText, color: '#22d3ee' },
     { id: 'raise-maintenance', name: 'Report an Issue', subtitle: 'Raise maintenance request', icon: Wrench, color: '#fb923c' },
   ],
+  parent: [
+    { id: 'guardian-portal', name: 'Guardian Portal', subtitle: 'Wards, fees & academics', icon: Users, color: '#4f8ff7' },
+  ],
 };
 
-const ROLE_COLORS = { owner: '#fb923c', admin: '#4f8ff7', teacher: '#34d399', student: '#a78bfa' };
-const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', teacher: 'Teacher', student: 'Student' };
+const ROLE_COLORS = { owner: '#fb923c', admin: '#4f8ff7', teacher: '#34d399', student: '#a78bfa', parent: '#22d3ee' };
+const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', teacher: 'Teacher', student: 'Student', parent: 'Guardian' };
 
 const ADMIN_SUBCATEGORY_TOOLS = {
   // D-49: the accountant is one of the three profiles the server lets issue
   // certificates and ID cards (owner decision 2026-08-04, decision 2).
-  accountant: ['student-database', 'fee-tracker', 'smart-fee-defaulter', 'fee-collection', 'certificate-generator', 'id-card-generator', 'custom-form-builder', 'raise-maintenance'],
+  accountant: ['student-database', 'fee-tracker', 'smart-fee-defaulter', 'fee-collection', 'accounting-periods', 'payroll-manager', 'certificate-generator', 'id-card-generator', 'custom-form-builder', 'raise-maintenance'],
   transport_head: ['student-database', 'transport-manager', 'transport-optimisation', 'asset-tracker', 'custom-form-builder', 'raise-maintenance'],
   principal: [
     'school-directory',
@@ -144,6 +169,7 @@ const ADMIN_SUBCATEGORY_TOOLS = {
     'staff-performance', 'staff-leave-manager', 'incident-tracker', 'smart-alerts',
     'transport-manager', 'school-activities', 'document-scanner', 'audit-log',
     'facility-requests', 'raise-maintenance', 'custom-form-builder', 'query-section', 'exam-manager',
+    'student-leave-manager', 'resource-calendar', 'asset-custody', 'procurement-inventory', 'library-circulation', 'quiz-manager',
   ],
   // D-49: 'id-card-generator' removed — the server refuses a receptionist, so
   // offering the button only produced a refusal when they pressed it.
@@ -159,17 +185,17 @@ const TOOL_GROUPS = {
     top: ['school-pulse', 'school-directory'],
     groups: [
       { id: 'fee', name: 'Fee Summary', icon: IndianRupee, color: '#4f8ff7',
-        tools: ['fee-collection', 'fee-sync', 'financial-reports', 'expense-tracker', 'smart-fee-defaulter'] },
+        tools: ['fee-collection', 'fee-sync', 'financial-reports', 'accounting-periods', 'payroll-manager', 'expense-tracker', 'smart-fee-defaulter'] },
       { id: 'database', name: 'Database', icon: Database, color: '#22d3ee',
         tools: ['student-database', 'data-import', 'staff-tracker'] },
       { id: 'attendance', name: 'Attendance', icon: ClipboardList, color: '#a78bfa',
         tools: ['attendance-overview', 'staff-attendance-tracker', 'staff-performance', 'attendance-alerts'] },
       { id: 'internals', name: 'School Internals', icon: Megaphone, color: '#fbbf24',
-        tools: ['announcement-broadcaster', 'staff-leave-manager', 'custom-report-builder', 'board-report', 'school-activities', 'exam-manager', 'school-settings'] },
+        tools: ['announcement-broadcaster', 'admission-funnel', 'staff-leave-manager', 'student-leave-manager', 'quiz-manager', 'custom-report-builder', 'board-report', 'school-activities', 'exam-manager', 'school-settings'] },
       { id: 'ai', name: 'Smart AI', icon: Brain, color: '#f472b6',
         tools: ['ai-health-report', 'smart-alerts'] },
       { id: 'queries', name: 'Queries', icon: Wrench, color: '#fb923c',
-        tools: ['vendor-log', 'facility-requests', 'maintenance-schedule'] },
+        tools: ['resource-calendar', 'asset-custody', 'procurement-inventory', 'library-circulation', 'vendor-log', 'facility-requests', 'maintenance-schedule'] },
     ],
     bottom: ['audit-log', 'query-section'],
   },
@@ -181,11 +207,11 @@ const TOOL_GROUPS = {
       { id: 'attendance', name: 'Attendance', icon: ClipboardList, color: '#a78bfa',
         tools: ['attendance-recorder', 'attendance-overview'] },
       { id: 'staff', name: 'Staff', icon: UserCheck, color: '#34d399',
-        tools: ['staff-tracker', 'staff-performance', 'staff-leave-manager'] },
+        tools: ['staff-tracker', 'staff-performance', 'staff-leave-manager', 'student-leave-manager'] },
       { id: 'communication', name: 'Communication', icon: MessageSquare, color: '#fbbf24',
         tools: ['circular-sender', 'parent-message'] },
       { id: 'operations', name: 'Operations', icon: CalendarDays, color: '#f472b6',
-        tools: ['academic-structure', 'timetable-builder', 'transport-manager', 'school-activities', 'exam-manager', 'incident-tracker', 'smart-alerts'] },
+        tools: ['academic-structure', 'timetable-builder', 'resource-calendar', 'asset-custody', 'procurement-inventory', 'library-circulation', 'quiz-manager', 'transport-manager', 'school-activities', 'exam-manager', 'incident-tracker', 'smart-alerts'] },
       { id: 'facilities', name: 'Facilities', icon: Wrench, color: '#fb923c',
         tools: ['facility-requests', 'raise-maintenance', 'smart-fee-defaulter'] },
     ],
@@ -197,11 +223,11 @@ const TOOL_GROUPS = {
       { id: 'classroom', name: 'Classroom', icon: BookOpen, color: '#fb923c',
         tools: ['class-attendance-marker', 'assignment-generator', 'worksheet-creator', 'question-paper-creator'] },
       { id: 'academics', name: 'Academics', icon: BarChart2, color: '#4f8ff7',
-        tools: ['report-card-builder', 'student-performance-viewer', 'curriculum-tracker', 'class-performance-analytics'] },
+        tools: ['report-card-builder', 'student-performance-viewer', 'curriculum-tracker', 'class-performance-analytics', 'quiz-manager'] },
       { id: 'planning', name: 'Planning', icon: CalendarDays, color: '#a78bfa',
-        tools: ['lesson-plan-generator', 'substitution-viewer', 'ptm-notes', 'exam-manager'] },
+        tools: ['lesson-plan-generator', 'substitution-viewer', 'ptm-notes', 'resource-calendar', 'library-circulation', 'exam-manager'] },
       { id: 'personal', name: 'Personal', icon: User, color: '#34d399',
-        tools: ['leave-application'] },
+        tools: ['leave-application', 'my-payslips'] },
     ],
     bottom: ['form-submissions', 'raise-maintenance'],
   },
@@ -211,11 +237,16 @@ const TOOL_GROUPS = {
       { id: 'learning', name: 'Learning', icon: Brain, color: '#a78bfa',
         tools: ['ai-tutor', 'doubt-solver', 'homework-viewer', 'practice-test'] },
       { id: 'records', name: 'My Records', icon: FileText, color: '#4f8ff7',
-        tools: ['attendance-self-check', 'result-viewer', 'ptm-summary-viewer', 'fee-status-viewer'] },
+        tools: ['attendance-self-check', 'result-viewer', 'ptm-summary-viewer', 'fee-status-viewer', 'student-leave-request', 'library-circulation'] },
       { id: 'planning', name: 'Planning', icon: Target, color: '#22d3ee',
         tools: ['study-planner', 'career-guidance'] },
     ],
     bottom: ['form-submissions', 'raise-maintenance'],
+  },
+  parent: {
+    top: ['guardian-portal'],
+    groups: [],
+    bottom: [],
   },
 };
 
@@ -229,6 +260,7 @@ function getGroupConfig(user) {
   if (user.role === 'admin' && user.sub_category === 'principal') return TOOL_GROUPS.principal;
   if (user.role === 'teacher') return TOOL_GROUPS.teacher;
   if (user.role === 'student') return TOOL_GROUPS.student;
+  if (user.role === 'parent') return TOOL_GROUPS.parent;
   return null;
 }
 
@@ -523,14 +555,14 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
           .sidebar-wrapper {
             transform: ${sidebarOpen ? 'translateX(0)' : 'translateX(-100%)'};
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            position: fixed; left: 0; top: 0; z-index: 50; height: 100vh;
+            position: fixed; left: 0; top: 0; z-index: 60; height: 100vh;
             width: 280px !important; min-width: 280px !important;
           }
           .mobile-close { display: flex !important; }
           .sidebar-overlay {
             display: ${sidebarOpen ? 'block' : 'none'};
             position: fixed; inset: 0; background: rgba(0,0,0,0.45);
-            z-index: 49; backdrop-filter: blur(2px);
+            z-index: 59; backdrop-filter: blur(2px);
           }
         }
         @media (min-width: 769px) {
@@ -602,7 +634,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
                   : 'drop-shadow(0 2px 6px rgba(232,89,12,0.28))',
               }}
             />
-            <button onClick={() => setSidebarOpen(false)} className="mobile-close"
+            <button onClick={() => setSidebarOpen(false)} className="mobile-close" aria-label="Close menu"
               style={{ position: 'absolute', right: 0, background: 'var(--color-surface-raised)', border: 'none', cursor: 'pointer', color: muted, padding: '5px', borderRadius: 7, display: 'none', alignItems: 'center', justifyContent: 'center', transition: 'var(--transition-fast)' }}
               onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
               onMouseLeave={e => e.currentTarget.style.background = 'var(--color-surface-raised)'}>

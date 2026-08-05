@@ -12,6 +12,13 @@ from services.audit_service import write_audit_doc
 from services.actor_context import actor_ctx_from_user
 from services.substitution_service import initiate_substitution
 from services.teacher_scope_service import compute_teacher_scope, empty_scope
+from services.timetable_service import (
+    TimetableConflictError,
+    TimetableValidationError,
+    ensure_timetable_slot_available,
+    normalise_timetable_fields,
+    validate_timetable_slot,
+)
 from services.academic_structure_service import (
     create_subject as svc_create_subject,
     update_subject as svc_update_subject,
@@ -288,7 +295,32 @@ async def bulk_enter_results(request: Request, user: dict = Depends(require_role
     db = get_db()
     body = await request.json()
     results_data = body.get("results", [])
-    bid = user.get("branch_id")
+
+    if not isinstance(results_data, list) or not results_data:
+        raise HTTPException(400, "results array is required")
+
+    exam_map = await _map_by_id(db.exams, [row.get("exam_id") for row in results_data])
+    student_map = await _map_by_id(db.students, [row.get("student_id") for row in results_data])
+    subject_map = await _map_by_id(db.subjects, [row.get("subject_id") for row in results_data])
+    exam_subjects = await db.exam_subjects.find(
+        _academic_query({"exam_id": {"$in": list(exam_map)}}), {"_id": 0}
+    ).to_list(2000)
+    schedule_map = {(row.get("exam_id"), row.get("subject_id")): row for row in exam_subjects}
+    existing_rows = await db.exam_results.find(
+        _academic_query({
+            "exam_id": {"$in": list(exam_map)},
+            "student_id": {"$in": list(student_map)},
+        }),
+        {"_id": 0},
+    ).to_list(5000)
+    existing_map = {
+        (row.get("exam_id"), row.get("student_id"), row.get("subject_id")): row
+        for row in existing_rows
+    }
+    teacher_class_ids = None
+    if user.get("role") == "teacher":
+        teacher_scope = await compute_teacher_scope(db, user, get_school_id())
+        teacher_class_ids = set(teacher_scope["all_class_ids"])
 
     saved = 0
     errors = []
@@ -296,49 +328,76 @@ async def bulk_enter_results(request: Request, user: dict = Depends(require_role
     for i, r in enumerate(results_data):
         exam_id = r.get("exam_id")
         student_id = r.get("student_id")
-        marks = r.get("marks_obtained") or r.get("marks", 0)
+        subject_id = r.get("subject_id")
+        exam = exam_map.get(exam_id)
+        student = student_map.get(student_id)
+        subject = subject_map.get(subject_id) if subject_id else None
+        if not exam:
+            errors.append({"row": i + 1, "student_id": student_id, "reason": "Exam not found"})
+            continue
+        if not student:
+            errors.append({"row": i + 1, "student_id": student_id, "reason": "Student not found"})
+            continue
+        if exam.get("class_id") and student.get("class_id") != exam.get("class_id"):
+            errors.append({"row": i + 1, "student_id": student_id, "reason": "Student is not enrolled in the exam class"})
+            continue
+        if subject_id and (not subject or subject.get("class_id") != student.get("class_id")):
+            errors.append({"row": i + 1, "student_id": student_id, "reason": "Subject does not belong to the student's class"})
+            continue
+        if exam.get("subject_id") and subject_id != exam.get("subject_id"):
+            errors.append({"row": i + 1, "student_id": student_id, "reason": "Subject does not belong to this exam"})
+            continue
+        if teacher_class_ids is not None and student.get("class_id") not in teacher_class_ids:
+            errors.append({"row": i + 1, "student_id": student_id, "reason": "Teacher can only enter results for assigned classes"})
+            continue
+
+        marks_value = r["marks_obtained"] if "marks_obtained" in r else r.get("marks", 0)
 
         # Fetch exam to get max_marks
-        exam = await db.exams.find_one(scoped_query({"id": exam_id}, branch_id=bid))
-        max_marks = float((exam or {}).get("max_marks", r.get("max_marks", 100)) or 100)
-        if marks is not None:
-            marks = float(marks)
+        schedule = schedule_map.get((exam_id, subject_id), {})
+        try:
+            marks = float(marks_value)
+            max_marks = float(schedule.get("max_marks") or exam.get("max_marks") or r.get("max_marks") or 100)
+        except (TypeError, ValueError):
+            errors.append({"row": i + 1, "student_id": student_id, "reason": "Marks and max_marks must be numeric"})
+            continue
 
         # Validate marks ceiling — collect error, don't abort
-        if marks is not None and (marks < 0 or marks > max_marks):
+        if max_marks <= 0 or marks < 0 or marks > max_marks:
             errors.append({
                 "row": i + 1,
                 "student_id": student_id,
-                "reason": f"marks {marks} exceeds max_marks {max_marks}",
+                "reason": f"marks {marks} must be between 0 and max_marks {max_marks}",
             })
             continue  # Skip this row, continue processing others
 
-        student = await db.students.find_one(_academic_query({"id": student_id}), {"_id": 0})
-        try:
-            await _require_teacher_class_access(db, user, (student or {}).get("class_id"))
-        except HTTPException as exc:
-            errors.append({"row": i + 1, "student_id": student_id, "reason": exc.detail})
+        key = (exam_id, student_id, subject_id)
+        existing = existing_map.get(key)
+        if existing and (existing.get("is_published") or existing.get("published")):
+            errors.append({"row": i + 1, "student_id": student_id, "reason": "Published result requires the correction workflow"})
             continue
-
+        now = datetime.now().isoformat()
         doc = {
-            "id": str(uuid.uuid4()),
+            "id": existing.get("id") if existing else str(uuid.uuid4()),
             "exam_id": exam_id,
             "student_id": student_id,
-            "subject_id": r.get("subject_id"),
+            "subject_id": subject_id,
             "marks_obtained": marks,
             "max_marks": max_marks,
-            "grade": r.get("grade"),
-            "remarks": r.get("remarks", ""),
+            "grade": r.get("grade", (existing or {}).get("grade")),
+            "remarks": r.get("remarks", (existing or {}).get("remarks", "")),
             "is_published": False,  # Results require explicit publish (P14.6)
-            "published": bool(r.get("published")) if _can_manage_all(user) else False,
+            "published": False,
             "entered_by": user["id"],
-            "created_at": datetime.now().isoformat(),
+            "created_at": (existing or {}).get("created_at", now),
+            "updated_at": now,
         }
         await db.exam_results.update_one(
-            _academic_query({"exam_id": exam_id, "student_id": student_id, "subject_id": r.get("subject_id")}),
+            _academic_query({"exam_id": exam_id, "student_id": student_id, "subject_id": subject_id}),
             {"$set": {**doc, "schoolId": get_school_id()}, "$setOnInsert": {"_id": doc["id"]}},
             upsert=True,
         )
+        existing_map[key] = doc
         saved += 1
 
     if errors and saved == 0:
@@ -368,6 +427,107 @@ async def publish_result(result_id: str, request: Request,
     if result.matched_count == 0:
         raise HTTPException(404, "Result not found")
     return {"success": True}
+
+
+@router.patch("/results/{result_id}/correct")
+async def correct_published_result(result_id: str, request: Request,
+                                   user: dict = Depends(require_owner_or_principal)):
+    """Correct a published mark while preserving an immutable before/after record."""
+    from datetime import timezone
+    import math
+
+    db = get_db()
+    bid = user.get("branch_id")
+    existing = await db.exam_results.find_one(
+        scoped_query({"id": result_id}, branch_id=bid), {"_id": 0}
+    )
+    if not existing:
+        raise HTTPException(404, "Result not found")
+    if not (existing.get("is_published") or existing.get("published")):
+        raise HTTPException(409, "Only published results require the correction workflow")
+
+    body = await request.json()
+    reason = str(body.get("reason") or "").strip()
+    if len(reason) < 5:
+        raise HTTPException(400, "A correction reason of at least 5 characters is required")
+    try:
+        marks = float(body.get("marks_obtained", existing.get("marks_obtained")))
+        max_marks = float(existing.get("max_marks") or 100)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "marks_obtained must be numeric")
+    if not math.isfinite(marks) or not math.isfinite(max_marks) or marks < 0 or marks > max_marks:
+        raise HTTPException(400, f"marks_obtained must be between 0 and {max_marks}")
+
+    now = datetime.now(timezone.utc).isoformat()
+    revision = int(existing.get("revision") or 0) + 1
+    new_values = {
+        "marks_obtained": marks,
+        "grade": body.get("grade", existing.get("grade")),
+        "remarks": body.get("remarks", existing.get("remarks", "")),
+    }
+    correction = {
+        "id": str(uuid.uuid4()),
+        "result_id": result_id,
+        "revision": revision,
+        "reason": reason,
+        "before": {
+            "marks_obtained": existing.get("marks_obtained"),
+            "grade": existing.get("grade"),
+            "remarks": existing.get("remarks", ""),
+        },
+        "after": new_values,
+        "corrected_by": user["id"],
+        "corrected_at": now,
+        "branch_id": bid,
+    }
+    from database import get_txn_session
+    from services.txn_context import reset_current_session, set_current_session
+    session = await get_txn_session()
+    token = set_current_session(session)
+    try:
+        async with session:
+            async with session.start_transaction():
+                await db.exam_result_corrections.insert_one({
+                    **correction, "_id": correction["id"], "schoolId": get_school_id()
+                }, session=session)
+                revision_filter = {"revision": existing.get("revision")} if "revision" in existing else {
+                    "revision": {"$exists": False}
+                }
+                update_result = await db.exam_results.update_one(
+                    scoped_query({"id": result_id, **revision_filter}, branch_id=bid),
+                    {"$set": {
+                        **new_values,
+                        "revision": revision,
+                        "last_correction_reason": reason,
+                        "corrected_by": user["id"],
+                        "corrected_at": now,
+                    }},
+                    session=session,
+                )
+                if update_result.matched_count == 0:
+                    raise HTTPException(409, "Result changed; refresh before correcting it")
+    finally:
+        reset_current_session(token)
+    updated = await db.exam_results.find_one(
+        scoped_query({"id": result_id}, branch_id=bid), {"_id": 0}
+    )
+    return {"success": True, "data": {"result": updated, "correction": correction}}
+
+
+@router.get("/results/{result_id}/corrections")
+async def list_result_corrections(result_id: str, request: Request,
+                                  user: dict = Depends(require_owner_or_principal)):
+    db = get_db()
+    bid = user.get("branch_id")
+    result = await db.exam_results.find_one(
+        scoped_query({"id": result_id}, branch_id=bid), {"_id": 0, "id": 1}
+    )
+    if not result:
+        raise HTTPException(404, "Result not found")
+    rows = await db.exam_result_corrections.find(
+        scoped_query({"result_id": result_id}, branch_id=bid), {"_id": 0}
+    ).sort("revision", -1).to_list(100)
+    return {"success": True, "data": rows, "meta": {"count": len(rows)}}
 
 
 # --- Exam class sheet (auto-fetch subjects + students from Academic Structure) ---
@@ -456,10 +616,11 @@ async def get_exam_class_sheet(
         _academic_query({"exam_id": exam_id, "student_id": {"$in": student_ids}}), {"_id": 0},
     ).to_list(5000) if student_ids else []
     result_out = [{
-        "student_id": r.get("student_id"), "subject_id": r.get("subject_id"),
+        "id": r.get("id"), "student_id": r.get("student_id"), "subject_id": r.get("subject_id"),
         "marks_obtained": r.get("marks_obtained"), "max_marks": r.get("max_marks", 100),
         "grade": r.get("grade"), "remarks": r.get("remarks", ""),
         "is_published": bool(r.get("is_published") or r.get("published")),
+        "revision": int(r.get("revision") or 0),
     } for r in results]
 
     return {"success": True, "data": {
@@ -868,6 +1029,28 @@ async def delete_subject(subject_id: str, request: Request, user: dict = Depends
 
 
 # --- Timetable ---
+@router.get("/timetable/availability")
+async def teacher_availability(request: Request, teacher_id: str = None, date: str = None, day_of_week: int = None, user: dict = Depends(require_role("admin", "owner", "teacher"))):
+    """Check which periods a teacher is free on a given day."""
+    db = get_db()
+    query = {}
+    if teacher_id:
+        query["teacher_id"] = teacher_id
+    if day_of_week is not None:
+        if not 0 <= day_of_week <= 6:
+            raise HTTPException(400, "day_of_week must be from 0 to 6")
+        query["day_of_week"] = day_of_week
+    elif date:
+        from datetime import datetime as dt
+        try:
+            d = dt.fromisoformat(date)
+            query["day_of_week"] = d.weekday()  # 0=Monday
+        except ValueError:
+            raise HTTPException(400, "Invalid date format; use YYYY-MM-DD")
+    slots = await db.timetable_slots.find(query, {"_id": 0}).to_list(50)
+    return {"success": True, "data": slots}
+
+
 @router.get("/timetable/{class_id}")
 async def get_timetable(class_id: str, request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff"))):
     db = get_db()
@@ -886,20 +1069,23 @@ async def get_timetable(class_id: str, request: Request, user: dict = Depends(re
 async def add_timetable_slot(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
     body = await request.json()
-    slot = {
-        "id": str(uuid.uuid4()),
+    target = await db.timetable_slots.find_one({
         "class_id": body.get("class_id"),
-        "subject_id": body.get("subject_id"),
-        "teacher_id": body.get("teacher_id"),
         "day_of_week": body.get("day_of_week"),
         "period_number": body.get("period_number"),
-        "start_time": body.get("start_time"),
-        "end_time": body.get("end_time"),
-        "room": body.get("room", ""),
-    }
+    }, {"_id": 0, "id": 1})
+    try:
+        validated = await validate_timetable_slot(
+            db, body, exclude_slot_id=target.get("id") if target else None
+        )
+    except TimetableValidationError as exc:
+        raise HTTPException(400, str(exc))
+    except TimetableConflictError as exc:
+        raise HTTPException(409, str(exc))
+    slot = {"id": target.get("id") if target else str(uuid.uuid4()), **validated}
     await db.timetable_slots.update_one(
         {"class_id": slot["class_id"], "day_of_week": slot["day_of_week"], "period_number": slot["period_number"]},
-        {"$set": {**slot, "_id": slot["id"]}}, upsert=True
+        {"$set": slot, "$setOnInsert": {"_id": slot["id"]}}, upsert=True
     )
     return {"success": True, "data": slot}
 
@@ -908,7 +1094,22 @@ async def add_timetable_slot(request: Request, user: dict = Depends(require_role
 async def update_timetable_slot(slot_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
     body = await request.json()
-    await db.timetable_slots.update_one({"id": slot_id}, {"$set": body})
+    existing = await db.timetable_slots.find_one({"id": slot_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Timetable slot not found")
+    patch = {key: value for key, value in body.items() if key in {
+        "class_id", "subject_id", "teacher_id", "day_of_week", "period_number",
+        "start_time", "end_time", "room",
+    }}
+    if not patch:
+        raise HTTPException(400, "No timetable fields supplied")
+    try:
+        validated = await validate_timetable_slot(db, {**existing, **patch}, exclude_slot_id=slot_id)
+    except TimetableValidationError as exc:
+        raise HTTPException(400, str(exc))
+    except TimetableConflictError as exc:
+        raise HTTPException(409, str(exc))
+    await db.timetable_slots.update_one({"id": slot_id}, {"$set": validated})
     slot = await db.timetable_slots.find_one({"id": slot_id}, {"_id": 0})
     return {"success": True, "data": slot}
 
@@ -916,7 +1117,9 @@ async def update_timetable_slot(slot_id: str, request: Request, user: dict = Dep
 @router.delete("/timetable/{slot_id}")
 async def delete_timetable_slot(slot_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
     db = get_db()
-    await db.timetable_slots.delete_one({"id": slot_id})
+    result = await db.timetable_slots.delete_one({"id": slot_id})
+    if result.deleted_count == 0:
+        raise HTTPException(404, "Timetable slot not found")
     return {"success": True}
 
 
@@ -933,37 +1136,47 @@ async def bulk_import_timetable(request: Request, user: dict = Depends(require_r
     # a class lookup plus a teacher lookup on every imported row.
     valid_class_ids = set(await _map_by_id(db.classes, [e.get("class_id") for e in entries], {"_id": 0, "id": 1}))
     valid_teacher_ids = set(await _map_by_id(db.staff, [e.get("teacher_id") for e in entries], {"_id": 0, "id": 1}))
+    subject_docs = await db.subjects.find(
+        {"id": {"$in": [e.get("subject_id") for e in entries if e.get("subject_id")]}},
+        {"_id": 0, "id": 1, "class_id": 1},
+    ).to_list(len(entries))
+    valid_subject_classes = {(row.get("id"), row.get("class_id")) for row in subject_docs}
     for entry in entries:
-        class_id = entry.get("class_id")
-        day = entry.get("day_of_week")
-        period = entry.get("period_number")
-        if not class_id or day is None or period is None:
+        try:
+            slot = normalise_timetable_fields(entry)
+        except TimetableValidationError:
             skipped += 1
             continue
+        class_id = slot["class_id"]
+        day = slot["day_of_week"]
+        period = slot["period_number"]
         # Referential integrity: class must exist
         if class_id not in valid_class_ids:
             skipped += 1
             continue
+        if (slot["subject_id"], class_id) not in valid_subject_classes:
+            skipped += 1
+            continue
         # Teacher must exist if provided
-        teacher_id = entry.get("teacher_id")
+        teacher_id = slot["teacher_id"]
         if teacher_id and teacher_id not in valid_teacher_ids:
             skipped += 1
             continue
-        slot = {
-            "id": str(uuid.uuid4()),
-            "class_id": class_id,
-            "subject_id": entry.get("subject_id", ""),
-            "teacher_id": teacher_id or "",
-            "day_of_week": day,
-            "period_number": period,
-            "start_time": entry.get("start_time", ""),
-            "end_time": entry.get("end_time", ""),
-            "room": entry.get("room", ""),
-            "updated_at": datetime.now().isoformat(),
-        }
         # NEW-04/T7 audit: NOT an N+1 to batch away — this is the read-before-write of
         # an upsert loop and must see rows written earlier in this same import.
         existing = await db.timetable_slots.find_one({"class_id": class_id, "day_of_week": day, "period_number": period})
+        try:
+            await ensure_timetable_slot_available(
+                db, slot, exclude_slot_id=existing.get("id") if existing else None
+            )
+        except TimetableConflictError:
+            skipped += 1
+            continue
+        slot = {
+            "id": existing.get("id") if existing else str(uuid.uuid4()),
+            **slot,
+            "updated_at": datetime.now().isoformat(),
+        }
         if existing:
             await db.timetable_slots.update_one(
                 {"class_id": class_id, "day_of_week": day, "period_number": period},
@@ -974,26 +1187,6 @@ async def bulk_import_timetable(request: Request, user: dict = Depends(require_r
             await db.timetable_slots.insert_one({**slot, "_id": slot["id"]})
             created += 1
     return {"success": True, "data": {"created_count": created, "replaced_count": replaced, "skipped_count": skipped}}
-
-
-@router.get("/timetable/availability")
-async def teacher_availability(request: Request, teacher_id: str = None, date: str = None, day_of_week: int = None, user: dict = Depends(require_role("admin", "owner", "teacher"))):
-    """Check which periods a teacher is free on a given day."""
-    db = get_db()
-    query = {}
-    if teacher_id:
-        query["teacher_id"] = teacher_id
-    if day_of_week is not None:
-        query["day_of_week"] = day_of_week
-    elif date:
-        from datetime import datetime as dt
-        try:
-            d = dt.fromisoformat(date)
-            query["day_of_week"] = d.weekday()  # 0=Monday
-        except ValueError:
-            raise HTTPException(400, "Invalid date format; use YYYY-MM-DD")
-    slots = await db.timetable_slots.find(query, {"_id": 0}).to_list(50)
-    return {"success": True, "data": slots}
 
 
 # --- PTM Notes ---

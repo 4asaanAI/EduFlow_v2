@@ -212,7 +212,7 @@ export default function AcademicStructure() {
     >
       {error && <ErrorCard message={error} onRetry={() => setError(null)} />}
       {loading ? <LoadingCard message="Loading academic structure…" /> : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 320px) 1fr', gap: 16, alignItems: 'start' }}>
+        <div className="responsive-split-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 320px) 1fr', gap: 16, alignItems: 'start' }}>
           {/* Classes column */}
           <div style={card}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12, fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)' }}>

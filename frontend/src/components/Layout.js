@@ -49,17 +49,35 @@ const loadTool = async (rawToolId) => {
   if (toolId === 'school-directory') return (await import('./tools/SchoolDirectory')).default;
   if (toolId === 'school-activities') return (await import('./tools/SchoolActivities')).default;
   if (toolId === 'transport-optimisation') return (await import('./tools/TransportOptimisation')).default;
+  if (toolId === 'student-leave-manager') return (await import('./tools/StudentLeaveManager')).default;
+  if (toolId === 'student-leave-request') return (await import('./tools/StudentLeaveRequest')).default;
+  if (['resource-calendar', 'asset-custody', 'procurement-inventory', 'library-circulation'].includes(toolId)) {
+    const campus = await import('./tools/EnterpriseCampusTools');
+    const names = { 'resource-calendar': 'ResourceCalendar', 'asset-custody': 'AssetCustody', 'procurement-inventory': 'ProcurementInventory', 'library-circulation': 'LibraryCirculation' };
+    return campus[names[toolId]];
+  }
+  if (['accounting-periods', 'payroll-manager', 'my-payslips'].includes(toolId)) {
+    const finance = await import('./tools/FinanceControlTools');
+    const names = { 'accounting-periods': 'AccountingPeriods', 'payroll-manager': 'PayrollManager', 'my-payslips': 'MyPayslips' };
+    return finance[names[toolId]];
+  }
+  if (toolId === 'quiz-manager' || toolId === 'practice-test') {
+    const quizzes = await import('./tools/QuizTools');
+    return quizzes[toolId === 'quiz-manager' ? 'QuizManager' : 'PracticeTest'];
+  }
 
-  const OWNERS = ['school-pulse','fee-collection','fee-sync','student-strength','data-import','attendance-overview','staff-tracker','staff-attendance-tracker','financial-reports','announcement-broadcaster','admission-funnel','staff-leave-manager','staff-performance','ai-health-report','smart-alerts','expense-tracker','custom-report-builder','board-report','smart-fee-defaulter','attendance-alerts','reports-trends','platform-health-dashboard'];
-  const ADMINS = ['fee-tracker','certificate-generator','circular-sender','enquiry-register','document-scanner','smart-fee-defaulter','admission-pipeline','parent-message','student-transfer','id-card-generator','asset-tracker','transport-manager','automated-report','custom-form-builder','report-card-builder','student-performance-viewer','attendance-alerts','reports-trends','timetable-builder'];
-  const TEACHERS = ['class-attendance-marker','assignment-generator','question-paper-creator','report-card-builder','student-performance-viewer','leave-application','lesson-plan-generator','worksheet-creator','class-performance-analytics','substitution-viewer','ptm-notes','curriculum-tracker','form-submissions'];
-  const STUDENTS = ['ai-tutor','doubt-solver','homework-viewer','attendance-self-check','result-viewer','practice-test','study-planner','career-guidance','fee-status-viewer','ptm-summary-viewer','form-submissions'];
+  const OWNERS = ['school-pulse','fee-collection','fee-sync','student-strength','data-import','attendance-overview','staff-tracker','staff-attendance-tracker','financial-reports','accounting-periods','payroll-manager','announcement-broadcaster','admission-funnel','staff-leave-manager','student-leave-manager','resource-calendar','asset-custody','procurement-inventory','library-circulation','quiz-manager','staff-performance','ai-health-report','smart-alerts','expense-tracker','custom-report-builder','board-report','smart-fee-defaulter','attendance-alerts','reports-trends','platform-health-dashboard'];
+  const ADMINS = ['fee-tracker','certificate-generator','circular-sender','enquiry-register','document-scanner','smart-fee-defaulter','admission-pipeline','parent-message','student-transfer','id-card-generator','asset-tracker','asset-custody','resource-calendar','procurement-inventory','library-circulation','accounting-periods','payroll-manager','quiz-manager','transport-manager','automated-report','custom-form-builder','report-card-builder','student-performance-viewer','student-leave-manager','attendance-alerts','reports-trends','timetable-builder'];
+  const TEACHERS = ['class-attendance-marker','assignment-generator','question-paper-creator','report-card-builder','student-performance-viewer','leave-application','lesson-plan-generator','worksheet-creator','class-performance-analytics','substitution-viewer','ptm-notes','curriculum-tracker','resource-calendar','library-circulation','quiz-manager','my-payslips','form-submissions'];
+  const STUDENTS = ['ai-tutor','doubt-solver','homework-viewer','attendance-self-check','result-viewer','practice-test','study-planner','career-guidance','fee-status-viewer','student-leave-request','library-circulation','ptm-summary-viewer','form-submissions'];
+  const PARENTS = ['guardian-portal'];
 
   const toComp = (id) => id.split('-').map(w => w[0].toUpperCase() + w.slice(1)).join('');
   if (OWNERS.includes(toolId)) return (await import('./tools/OwnerTools'))[toComp(toolId)];
   if (ADMINS.includes(toolId)) return (await import('./tools/AdminTools'))[toComp(toolId)];
   if (TEACHERS.includes(toolId)) return (await import('./tools/TeacherTools'))[toComp(toolId)];
   if (STUDENTS.includes(toolId)) return (await import('./tools/StudentTools'))[toComp(toolId)];
+  if (PARENTS.includes(toolId)) return (await import('./tools/ParentTools'))[toComp(toolId)];
   return null;
 };
 
@@ -86,6 +104,7 @@ function ToolView({ toolId }) {
 }
 
 const TOOL_DASHBOARD_ROLES = ['admin', 'teacher', 'owner', 'student'];
+const MOBILE_BREAKPOINT = 768;
 
 export default function Layout() {
   const { currentUser } = useUser();
@@ -101,10 +120,25 @@ export default function Layout() {
   const [showProfile, setShowProfile] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showCmdPalette, setShowCmdPalette] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > MOBILE_BREAKPOINT);
   const previousUserIdRef = useRef(currentUser.id);
 
   const isToolDashboardRole = TOOL_DASHBOARD_ROLES.includes(currentUser.role);
+
+  // Keep the shell adaptive when a tablet rotates or a desktop window is narrowed.
+  // A phone starts with the drawer closed; desktop keeps the persistent sidebar.
+  useEffect(() => {
+    let wasMobile = window.innerWidth <= MOBILE_BREAKPOINT;
+    const syncSidebarToViewport = () => {
+      const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
+      if (isMobile !== wasMobile) {
+        setSidebarOpen(!isMobile);
+        wasMobile = isMobile;
+      }
+    };
+    window.addEventListener('resize', syncSidebarToViewport);
+    return () => window.removeEventListener('resize', syncSidebarToViewport);
+  }, []);
 
   const setActiveToolParam = useCallback((toolId, options = {}) => {
     setSearchParams((prev) => {
@@ -132,7 +166,6 @@ export default function Layout() {
    * uses in index.css. The two must agree, or the drawer closes at a width
    * where it is not a drawer.
    */
-  const MOBILE_BREAKPOINT = 768;
   const closeDrawerOnNavigate = useCallback(() => {
     if (window.innerWidth <= MOBILE_BREAKPOINT) setSidebarOpen(false);
   }, []);
@@ -274,6 +307,7 @@ export default function Layout() {
   useEffect(() => {
     const handleClick = (e) => {
       if (window.innerWidth <= MOBILE_BREAKPOINT && sidebarOpen) {
+        if (e.target.closest?.('[aria-label="Open menu"]')) return;
         const sidebar = document.querySelector('.sidebar-wrapper');
         if (sidebar && !sidebar.contains(e.target)) {
           setSidebarOpen(false);

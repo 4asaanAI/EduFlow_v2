@@ -9,7 +9,11 @@ from datetime import date, datetime
 from tenant import get_school_id, scoped_filter, scoped_query
 from services.audit_service import write_audit_doc
 from services.actor_context import actor_ctx_from_user
-from services.attendance_service import mark_attendance
+from services.attendance_service import (
+    AttendanceValidationError,
+    mark_attendance,
+    validate_attendance_batch,
+)
 from services.attendance_correction_service import (
     correct_attendance as correct_attendance_service,
     AttendanceCorrectionValidationError,
@@ -104,6 +108,19 @@ async def manual_student_attendance(request: Request):
         status=body["status"],
         marked_by=user["id"],
     )
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        await validate_attendance_batch(
+            db,
+            actor_ctx,
+            {
+                "class_id": body["class_id"],
+                "date": body["date"],
+                "records": [{"student_id": body["student_id"], "status": body["status"]}],
+            },
+        )
+    except AttendanceValidationError as exc:
+        raise HTTPException(400, str(exc))
     doc = {**_serialize(att), "_id": att.id, "source": "manual", "manual_reason": body["reason"], "schoolId": get_school_id()}
     try:
         await db.student_attendance.insert_one(doc)
@@ -178,7 +195,12 @@ async def mark_student_attendance(body: AttendanceBulkRequest, request: Request,
         "date": body.date,
         "records": [{"student_id": r.student_id, "status": r.status} for r in body.records],
     }
-    result = await mark_attendance(db, actor_ctx, params, idempotency_key=request.headers.get("Idempotency-Key"))
+    try:
+        result = await mark_attendance(
+            db, actor_ctx, params, idempotency_key=request.headers.get("Idempotency-Key")
+        )
+    except AttendanceValidationError as exc:
+        raise HTTPException(400, str(exc))
     if result.get("idempotent"):
         return {"success": True, "data": result["results"], "idempotent": True}
     return {"success": True, "data": result["results"]}

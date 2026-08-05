@@ -192,7 +192,7 @@ export function HomeworkViewer() {
           <button onClick={() => setSelectedAssignment(null)} style={{ background: 'none', border: 'none', color: 'var(--tool-hex-4f8ff7)', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: 0 }}>← Back to assignments</button>
         </div>
         <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 20 }}>
+          <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 20 }}>
             <div>
               <p style={{ fontSize: 10, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Subject</p>
               <p style={{ fontSize: 13, color: 'var(--c-text)', fontWeight: 500 }}>{a.subject_name || 'N/A'}</p>
@@ -221,12 +221,12 @@ export function HomeworkViewer() {
 
   return (
     <ToolPage title="Homework & Assignments" subtitle="View your pending assignments" loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16, maxWidth: 500 }}>
+      <div className="responsive-stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16, maxWidth: 500 }}>
         <StatCard value={assignments.length} label="TOTAL" color="var(--tool-hex-4f8ff7)" />
         <StatCard value={assignments.filter(a => a.due_date && a.due_date < today).length} label="OVERDUE" color="var(--tool-hex-f87171)" />
         <StatCard value={assignments.filter(a => !a.due_date || a.due_date >= today).length} label="UPCOMING" color="var(--tool-hex-34d399)" />
       </div>
-      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
+      <div className="responsive-table-region" style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <SortableHeaderRow
@@ -270,7 +270,7 @@ export function AttendanceSelfCheck() {
   useEffect(() => { import('../../lib/api').then(({ executeTool }) => executeTool('get_my_attendance', {}).then(r => { if (r.success) setData(r.data); setLoading(false); })); }, [currentUser]);
   return (
     <ToolPage title="My Attendance" subtitle="View your attendance record" loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16, maxWidth: 600 }}>
+      <div className="responsive-stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16, maxWidth: 600 }}>
         <StatCard value={data?.attendance_rate || '0%'} label="MY ATTENDANCE" color={parseFloat(data?.attendance_rate) >= 75 ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-f87171)'} />
         <StatCard value={data?.present || 0} label="PRESENT DAYS" color="var(--tool-hex-34d399)" />
         <StatCard value={data?.absent || 0} label="ABSENT DAYS" color="var(--tool-hex-f87171)" />
@@ -297,7 +297,7 @@ export function ResultViewer() {
   useEffect(() => { import('../../lib/api').then(({ executeTool }) => executeTool('get_my_results', {}).then(r => { if (r.success) setData(r.data); setLoading(false); })); }, [currentUser]);
   return (
     <ToolPage title="My Results" subtitle="View your exam marks & grades" loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16, maxWidth: 400 }}>
+      <div className="responsive-stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16, maxWidth: 400 }}>
         <StatCard value={data?.total_exams || 0} label="EXAMS" color="var(--tool-hex-4f8ff7)" />
         <StatCard value={data?.student_name || currentUser.name} label="STUDENT" color="var(--c-text)" />
       </div>
@@ -310,7 +310,7 @@ export function ResultViewer() {
 }
 
 // 6. Practice Test Generator
-export function PracticeTest() {
+function LegacyPracticeTest() {
   const { currentUser } = useUser();
   const [subjects, setSubjects] = useState([
     { name: 'Mathematics' },
@@ -572,7 +572,7 @@ export function StudyPlanner() {
     <ToolPage title="Study Planner" subtitle="Plan your weekly study schedule">
       <div style={{ maxWidth: 600 }}>
         <p style={{ color: 'var(--c-faint)', fontSize: 12, marginBottom: 16 }}>Set your study goals for each day of the week. Your plan is saved automatically.</p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+        <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
           {Object.keys(plan).filter(k => k !== 'user_id' && k !== 'updated_at').map(day => (
             <FormField key={day} label={day.charAt(0).toUpperCase() + day.slice(1)} value={plan[day] || ''} onChange={f(day)}
               placeholder={`e.g. Maths Chapter 5, Physics revision`} type="textarea" />
@@ -647,6 +647,8 @@ export function FeeStatusViewer() {
   const [transactions, setTransactions] = useState([]);
   const [feeSummary, setFeeSummary] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState('');
   useEffect(() => {
     apiFetch(`${API}/fees/my`, { headers: h() })
       .then(r => r.json())
@@ -659,10 +661,39 @@ export function FeeStatusViewer() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [currentUser]);
+
+  async function payOutstandingOnline() {
+    const transactionIds = transactions
+      .filter(item => ['pending', 'overdue', 'unpaid', 'partial'].includes(item.status))
+      .map(item => item.id)
+      .filter(Boolean);
+    if (!transactionIds.length) return;
+    setCheckoutLoading(true);
+    setCheckoutError('');
+    try {
+      const successUrl = window.location.protocol === 'https:'
+        ? `${window.location.origin}/dashboard?tool=fee-status`
+        : undefined;
+      const response = await apiFetch(`${API}/fees/online-checkout`, {
+        method: 'POST',
+        headers: { ...h(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transaction_ids: transactionIds, ...(successUrl ? { success_url: successUrl } : {}) }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.detail || 'Unable to start online payment');
+      window.open(body.data.checkout_url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      setCheckoutError(err.message);
+    } finally {
+      setCheckoutLoading(false);
+    }
+  }
+
+  const payableCount = transactions.filter(item => ['pending', 'overdue', 'unpaid', 'partial'].includes(item.status) && item.id).length;
   return (
     <ToolPage title="My Fee Status" subtitle="View your payment history" loading={loading}>
       {feeSummary && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16, maxWidth: 400 }}>
+        <div className="responsive-stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16, maxWidth: 400 }}>
           <div style={{ background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.3)', borderRadius: 8, padding: 12 }}>
             <p style={{ fontSize: 11, color: 'var(--tool-hex-34d399)', margin: '0 0 4px' }}>Total Paid</p>
             <p style={{ fontSize: 18, fontWeight: 700, color: 'var(--tool-hex-34d399)', margin: 0 }}>Rs. {Number(feeSummary.total_paid || 0).toLocaleString('en-IN')}</p>
@@ -673,6 +704,13 @@ export function FeeStatusViewer() {
           </div>
         </div>
       )}
+      {payableCount > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <ActionBtn label={checkoutLoading ? 'Opening secure checkout...' : 'Pay outstanding online'} onClick={payOutstandingOnline} disabled={checkoutLoading} />
+          <span style={{ color: 'var(--c-faint)', fontSize: 11 }}>{payableCount} unpaid charge{payableCount === 1 ? '' : 's'} selected</span>
+        </div>
+      )}
+      {checkoutError && <div role="alert" style={{ color: 'var(--tool-hex-f87171)', marginBottom: 12, fontSize: 12 }}>{checkoutError}</div>}
       <DataTable headers={['Fee Type', 'Amount', 'Due Date', 'Status']}
         rows={transactions.map(t => [t.fee_type, t.amount, t.due_date || 'N/A', <Badge text={t.status} color={{ paid: 'green', pending: 'yellow', overdue: 'red' }[t.status] || 'gray'} />])}
         emptyMsg="No fee records"
@@ -785,7 +823,7 @@ export function FormSubmissions() {
             <p>No forms available at the moment</p>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(280px, 100%), 1fr))', gap: 12 }}>
             {forms.map(form => (
               <div key={form.id} onClick={() => handleSelectForm(form)} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 16, cursor: 'pointer', transition: 'all 0.2s', transform: 'scale(1)' }} onMouseOver={e => e.currentTarget.style.transform = 'scale(1.02)'} onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}>
                 <h4 style={{ color: 'var(--c-text)', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{form.title}</h4>

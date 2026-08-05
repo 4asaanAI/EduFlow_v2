@@ -212,7 +212,7 @@ function ActionDetails({ params, isDark }) {
   if (entries.length === 0) return null;
 
   return (
-    <div style={{
+    <div className="responsive-form-grid" style={{
       display: 'grid',
       gridTemplateColumns: 'minmax(92px, 0.45fr) minmax(0, 1fr)',
       gap: '6px 10px',

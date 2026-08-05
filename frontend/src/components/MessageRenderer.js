@@ -198,7 +198,7 @@ function StatGrid({ stats }) {
     default: { bg: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', text: 'var(--text-primary)', border: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' },
   };
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(stats.length, 4)}, 1fr)`, gap: 10, margin: '14px 0' }}>
+    <div className="responsive-stat-grid" style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(stats.length, 4)}, 1fr)`, gap: 10, margin: '14px 0' }}>
       {stats.map((stat, i) => {
         const c = colorMap[stat.color] || colorMap.default;
         return (

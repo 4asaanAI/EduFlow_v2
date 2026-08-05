@@ -55,6 +55,31 @@ def make_staff(role: str = "teacher", sub_category: str | None = None, branch_id
     )
 
 
+def make_class(branch_id: str = DEFAULT_BRANCH_ID, **kwargs) -> dict:
+    return _with_defaults(
+        {
+            "name": "Class 5",
+            "section": "A",
+            "academic_year": "2026-27",
+            "is_active": True,
+        },
+        branch_id=branch_id,
+        **kwargs,
+    )
+
+
+def make_subject(class_id: str = "cls-1", branch_id: str = DEFAULT_BRANCH_ID, **kwargs) -> dict:
+    return _with_defaults(
+        {
+            "name": "Mathematics",
+            "class_id": class_id,
+            "is_active": True,
+        },
+        branch_id=branch_id,
+        **kwargs,
+    )
+
+
 def make_fee_transaction(student_id: str = "stu-1", amount: float = 5000, **kwargs) -> dict:
     return _with_defaults(
         {

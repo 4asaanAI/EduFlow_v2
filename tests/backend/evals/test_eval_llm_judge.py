@@ -36,8 +36,8 @@ async def test_golden_corpus_quality_no_regression():
 
     client = LLMClient()
 
-    async def assistant_chat(system_prompt, messages):
-        return await client.chat(system_prompt=system_prompt, messages=messages)
+    async def assistant_chat(system_prompt, messages, tools=None):
+        return await client.chat(system_prompt=system_prompt, messages=messages, tools=tools)
 
     async def judge_chat(system_prompt, messages):
         return await client.chat(system_prompt=system_prompt, messages=messages)
@@ -56,7 +56,10 @@ async def test_golden_corpus_quality_no_regression():
     # the baseline. Per-conversation detail is kept for the trace viewer (R11.5).
     payload = {
         "aggregate": report.aggregate,
-        "results": [{"id": r.id, "scores": r.scores, "error": r.error} for r in report.results],
+        "results": [
+            {"id": r.id, "scores": r.scores, "error": r.error, "assistant_text": r.assistant_text}
+            for r in report.results
+        ],
     }
     if baseline is None:
         with open(SCORES_BASELINE_PATH, "w", encoding="utf-8") as fh:

@@ -16,7 +16,7 @@ from ai.fee_metrics import DEFAULTER_STATUSES, student_outstanding_from_txns
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
 from services.actor_context import actor_ctx_from_user
-from services.attendance_service import mark_attendance
+from services.attendance_service import AttendanceValidationError, mark_attendance
 from services.fees_service import (
     record_payment,
     correct_transaction as svc_correct_fee_transaction,
@@ -2109,7 +2109,10 @@ async def tool_mark_attendance(params: dict, user: dict, scope: dict = None) -> 
         "date": target_date,
         "records": [{"student_id": item["student_id"], "status": item["status"]} for item in params["attendance"]],
     }
-    result = await mark_attendance(db, actor_ctx, service_params)
+    try:
+        result = await mark_attendance(db, actor_ctx, service_params)
+    except AttendanceValidationError as exc:
+        return _failed(str(exc))
     return {"success": True, "data": result["results"], "message": "Attendance marked."}
 
 
@@ -2180,6 +2183,11 @@ async def tool_query_maintenance_requests(params: dict, user: dict, scope: dict 
     query: dict = {}
     if params.get("status"):
         query["status"] = params["status"]
+    if user.get("role") == "admin" and user.get("sub_category") == "it_tech":
+        items = await db.tech_requests.find(
+            scoped_query(query, branch_id=bid), {"_id": 0}
+        ).sort("created_at", -1).to_list(100)
+        return _ok(items, 0, "Technology support requests ready.")
     if _is_maintenance(user):
         query["logged_by"] = user.get("id")
     items = await db.facility_requests.find(scoped_query(query, branch_id=bid), {"_id": 0}).sort("created_at", -1).to_list(100)
@@ -3473,6 +3481,130 @@ async def tool_draft_document(params: dict, user: dict, scope: dict = None) -> d
     }
 
 
+def _enterprise_env(data, *, count: int | None = None, message: str = "") -> dict:
+    """Stable envelope for the enterprise workflow read tools."""
+    if count is None:
+        count = len(data) if isinstance(data, list) else (1 if data else 0)
+    return {"success": True, "denied": False, "data": data, "meta": {"count": count}, "message": message}
+
+
+async def tool_get_admissions_pipeline(params: dict, user: dict, scope: dict = None) -> dict:
+    """Admissions lifecycle summary for authorized school staff."""
+    db = get_db()
+    query = {}
+    if params.get("status"):
+        query["status"] = params["status"]
+    query = scoped_query(query, branch_id=_branch_id(user, scope))
+    applications = await db.admission_applications.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
+    counts: dict[str, int] = {}
+    for item in applications:
+        status = item.get("status", "unknown")
+        counts[status] = counts.get(status, 0) + 1
+    recent = [{
+        "id": item.get("id"),
+        "applicant_name": item.get("applicant_name"),
+        "class_applying": item.get("class_applying"),
+        "status": item.get("status"),
+        "phone": _mask_phone(item.get("phone", "")),
+        "created_at": item.get("created_at"),
+    } for item in applications[:25]]
+    return _enterprise_env({"funnel": counts, "applications": recent}, count=len(applications))
+
+
+async def tool_get_enterprise_operations(params: dict, user: dict, scope: dict = None) -> dict:
+    """Read-only operational hub behind Flo and the deterministic panels."""
+    domain = str(params.get("domain") or "resources").strip().lower()
+    role = user.get("role")
+    allowed = {"resources", "assets", "procurement", "inventory", "library", "student_leave"}
+    teacher_allowed = {"library", "student_leave"}
+    if domain not in allowed or (role == "teacher" and domain not in teacher_allowed):
+        return {"success": False, "denied": True, "data": None, "meta": {"count": 0}, "message": "That operations domain is outside your access scope."}
+
+    db = get_db()
+    bid = _branch_id(user, scope)
+    collection_map = {
+        "resources": (db.resource_bookings, "start_at"),
+        "assets": (db.asset_custody, "checked_out_at"),
+        "procurement": (db.purchase_requisitions, "created_at"),
+        "inventory": (db.inventory_items, "name"),
+        "library": (db.library_loans, "issued_at"),
+        "student_leave": (db.student_leave_requests, "created_at"),
+    }
+    collection, sort_field = collection_map[domain]
+    query = {}
+    if params.get("status"):
+        query["status"] = params["status"]
+    if role == "teacher" and domain == "student_leave":
+        class_ids = _scope_class_ids(scope)
+        if class_ids is not None:
+            query["class_id"] = {"$in": class_ids}
+    rows = await collection.find(scoped_query(query, branch_id=bid), {"_id": 0}).sort(sort_field, -1).to_list(100)
+    counts: dict[str, int] = {}
+    for row in rows:
+        status = row.get("status") or ("active" if row.get("is_active", True) else "inactive")
+        counts[str(status)] = counts.get(str(status), 0) + 1
+    return _enterprise_env({"domain": domain, "status_counts": counts, "items": rows[:50]}, count=len(rows))
+
+
+async def tool_get_finance_controls(params: dict, user: dict, scope: dict = None) -> dict:
+    """Accounting-period, fee-schedule and payroll control-plane summary."""
+    db = get_db()
+    bid = _branch_id(user, scope)
+    periods = await db.accounting_periods.find(scoped_query({}, branch_id=bid), {"_id": 0}).sort("start_date", -1).to_list(50)
+    structures = await db.fee_structures.find(scoped_query({}, branch_id=bid), {"_id": 0, "installments": 1}).to_list(500)
+    versions = await db.fee_structure_revisions.find(scoped_query({}, branch_id=bid), {"_id": 0}).to_list(500)
+    data = {
+        "periods": periods,
+        "fee_schedule": {
+            "installment_count": sum(len(row.get("installments") or []) for row in structures),
+            "version_count": len(versions),
+        },
+    }
+    if user.get("role") == "owner":
+        payroll = await db.salary_disbursements.find(scoped_query({}, branch_id=bid), {"_id": 0, "status": 1}).to_list(1000)
+        payroll_counts: dict[str, int] = {}
+        for row in payroll:
+            status = row.get("status", "unknown")
+            payroll_counts[status] = payroll_counts.get(status, 0) + 1
+        data["payroll_status_counts"] = payroll_counts
+    return _enterprise_env(data)
+
+
+async def tool_get_my_school_hub(params: dict, user: dict, scope: dict = None) -> dict:
+    """Self/ward-scoped leave, library, quiz and fee overview."""
+    db = get_db()
+    bid = _branch_id(user, scope)
+    if user.get("role") == "student":
+        student = await db.students.find_one(scoped_query({"user_id": user["id"]}, branch_id=bid), {"_id": 0})
+    else:
+        requested_id = params.get("student_id")
+        link_query = {"user_id": user["id"]}
+        if requested_id:
+            link_query["student_id"] = requested_id
+        link = await db.guardians.find_one(scoped_query(link_query, branch_id=bid), {"_id": 0})
+        student = None
+        if link:
+            student = await db.students.find_one(scoped_query({"id": link.get("student_id")}, branch_id=bid), {"_id": 0})
+    if not student:
+        return {"success": False, "denied": True, "data": None, "meta": {"count": 0}, "message": "No linked student record was found."}
+
+    sid = student["id"]
+    leaves = await db.student_leave_requests.find(scoped_query({"student_id": sid}, branch_id=bid), {"_id": 0}).sort("created_at", -1).to_list(25)
+    loans = await db.library_loans.find(scoped_query({"borrower_type": "student", "borrower_id": sid}, branch_id=bid), {"_id": 0}).sort("issued_at", -1).to_list(25)
+    fees = await db.fee_transactions.find(scoped_query({"student_id": sid, "deleted": {"$ne": True}}, branch_id=bid), {"_id": 0}).to_list(500)
+    quizzes = await db.quizzes.find(scoped_query({"class_id": student.get("class_id"), "status": "published"}, branch_id=bid), {"_id": 0, "questions": 0}).to_list(100)
+    attempts = await db.quiz_attempts.find(scoped_query({"student_id": sid}, branch_id=bid), {"_id": 0, "answers": 0, "question_order": 0}).sort("started_at", -1).to_list(100)
+    outstanding = student_outstanding_from_txns(fees).get(sid, {"owed": 0.0, "oldest_due": ""})
+    return _enterprise_env({
+        "student": {"id": sid, "name": student.get("name"), "class_id": student.get("class_id")},
+        "fee_outstanding": outstanding,
+        "leave_requests": leaves,
+        "library_loans": loans,
+        "available_quizzes": quizzes,
+        "quiz_attempts": attempts,
+    })
+
+
 # =========================================================================
 #  COMBINED TOOL_REGISTRY
 # =========================================================================
@@ -3511,6 +3643,44 @@ TOOL_REGISTRY = {
         "roles": ["owner", "admin"],
         "description": "Full school dashboard: attendance, fees, staff, alerts.",
         "params_schema": {},
+    },
+    "get_admissions_pipeline": {
+        "fn": tool_get_admissions_pipeline,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "receptionist"],
+        "dispatch_type": "read",
+        "description": "Applicant-to-student admissions funnel and recent applications.",
+        "params_schema": {
+            "status": {"type": "string", "description": "Optional application status filter"},
+        },
+    },
+    "get_enterprise_operations": {
+        "fn": tool_get_enterprise_operations,
+        "roles": ["owner", "admin", "teacher"],
+        "sub_categories": ["principal"],
+        "dispatch_type": "read",
+        "description": "Operational status for resources, assets, procurement, inventory, library, or student leave.",
+        "params_schema": {
+            "domain": {"type": "string", "description": "resources, assets, procurement, inventory, library, or student_leave"},
+            "status": {"type": "string", "description": "Optional status filter"},
+        },
+    },
+    "get_finance_controls": {
+        "fn": tool_get_finance_controls,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["accountant"],
+        "dispatch_type": "read",
+        "description": "Accounting periods, versioned fee schedules, and owner-only payroll status counts.",
+        "params_schema": {},
+    },
+    "get_my_school_hub": {
+        "fn": tool_get_my_school_hub,
+        "roles": ["student", "parent"],
+        "dispatch_type": "read",
+        "description": "Own or linked ward's fees, leave, library circulation, quizzes, and attempts.",
+        "params_schema": {
+            "student_id": {"type": "string", "description": "Guardian only: linked ward ID; defaults to first linked ward"},
+        },
     },
     "get_daily_brief": {
         "fn": tool_get_daily_brief,
@@ -4278,7 +4448,7 @@ TOOL_REGISTRY = {
         # R3.2: IT-tech support reads the same ticket queue (read-only), matching the
         # prompt that advertises this tool to both maintenance and it_tech admins.
         "sub_categories": ["maintenance", "it_tech"],
-        "description": "Open facility requests by status, date, or location.",
+        "description": "Open technology support tickets for IT staff, or facility requests for maintenance staff, filterable by status.",
         "params_schema": {
             "status": {"type": "string", "description": "Optional status"},
         },
@@ -4318,7 +4488,7 @@ TOOL_REGISTRY = {
     "get_timetable": {
         "fn": tool_get_timetable,
         "roles": ["owner", "admin", "teacher"],
-        "description": "Get the class timetable for a specific day. Specify class name and optionally a day of week or date.",
+        "description": "Get a timetable for a specific day. Teachers should omit class_name to use their assigned class; managers may specify a class.",
         "params_schema": {
             "class_name": {"type": "string", "description": "class name (e.g. 'Class 9A')"},
             "day": {"type": "string", "description": "day of week (Monday/Tuesday/etc.) or leave blank for today"},

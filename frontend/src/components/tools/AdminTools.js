@@ -8,6 +8,7 @@ import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, LineChartWidget, useColumnSort, SortableHeaderRow } from './ToolPage';
 import { Search, Plus, CheckCircle, XCircle, Save, RefreshCw, X, FileDown, MessageSquare, Edit3, Trash2 } from 'lucide-react';
 import FullStudentDatabase from './StudentDatabase';
+import AdmissionsWorkflow from './AdmissionsWorkflow';
 
 function h() { return getAuthHeaders(); }
 const tint = (color, amount) => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
@@ -309,7 +310,7 @@ export function FeeTracker() {
             </div>
             <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 12 }}>{editTxn.student_name} — {editTxn.fee_type} — {editTxn.fee_period}</div>
             {actionError && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 10 }}>{actionError}</div>}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <div>
                 <div style={{ fontSize: 11, color: 'var(--c-muted)', marginBottom: 4 }}>Amount (₹)</div>
                 <input type="number" value={editForm.amount} onChange={e => setEditForm(p => ({ ...p, amount: e.target.value }))} style={ftInputStyle} />
@@ -754,7 +755,7 @@ export function CertificateGenerator() {
 
   return (
     <ToolPage title="Certificate Generator" subtitle="Generate & download TC, Bonafide, Character certificates" loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'min(340px, 100%) 1fr', gap: 20 }}>
+      <div className="responsive-split-grid" style={{ display: 'grid', gridTemplateColumns: 'min(340px, 100%) 1fr', gap: 20 }}>
         {/* Generator form */}
         <div>
           <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
@@ -789,7 +790,7 @@ export function CertificateGenerator() {
         </div>
 
         {/* History */}
-        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
+        <div className="responsive-table-region" style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, overflow: 'hidden' }}>
           <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--c-border)', fontSize: 11, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase' }}>
             Generated Certificates ({certs.length})
           </div>
@@ -1147,6 +1148,7 @@ export function EnquiryRegister() {
         ])}
         emptyMsg="No enquiries yet"
       />
+      <AdmissionsWorkflow compact />
     </ToolPage>
   );
 }
@@ -2458,7 +2460,7 @@ export function TransportManager() {
 
       {viewMode === 'assignments' && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 16 }}>
+          <div className="responsive-split-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 16 }}>
             <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 12 }}>
               <h4 style={{ color: 'var(--c-muted)', fontSize: 11, fontWeight: 600, marginBottom: 10, textTransform: 'uppercase' }}>Routes</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -2474,7 +2476,7 @@ export function TransportManager() {
                 <div>
                   <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 14, marginBottom: 12 }}>
                     <h4 style={{ color: 'var(--c-text)', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{selectedRoute.route_name}</h4>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 11 }}>
+                    <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 11 }}>
                       <div><span style={{ color: 'var(--c-muted)' }}>Route:</span> {selectedRoute.start_point} → {selectedRoute.end_point}</div>
                       <div><span style={{ color: 'var(--c-muted)' }}>Driver:</span> {selectedRoute.driver_name || 'N/A'}</div>
                       <div><span style={{ color: 'var(--c-muted)' }}>Vehicle:</span> {selectedRoute.vehicle_no || 'N/A'}</div>
@@ -2818,4 +2820,3 @@ export function StudentPerformanceViewer() {
 
 // Re-export AttendanceAlerts from OwnerTools so admin can use it
 export { AttendanceAlerts } from './OwnerTools';
-

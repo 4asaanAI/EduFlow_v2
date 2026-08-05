@@ -311,7 +311,7 @@ function StudentProfileModal({ classes, initialStudent, onClose, onSaved }) {
 
           {/* ── Personal Tab ── */}
           {activeTab === 'personal' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <div style={{ gridColumn: '1 / -1' }}>
                 <Field label="Full Name *">
                   <input value={personal.name} onChange={setP('name')} style={inputStyle} placeholder="Student's full name" />
@@ -368,7 +368,7 @@ function StudentProfileModal({ classes, initialStudent, onClose, onSaved }) {
                   <PhotoUploader src={father.photo_url} onFile={handleFatherPhoto} size={56} label="Father photo" />
                   <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text)' }}>Father's Details</div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <Field label="Full Name">
                     <input value={father.name} onChange={setF('name')} style={inputStyle} placeholder="Father's name" />
                   </Field>
@@ -390,7 +390,7 @@ function StudentProfileModal({ classes, initialStudent, onClose, onSaved }) {
                   <PhotoUploader src={mother.photo_url} onFile={handleMotherPhoto} size={56} label="Mother photo" />
                   <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text)' }}>Mother's Details</div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <Field label="Full Name">
                     <input value={mother.name} onChange={setMo('name')} style={inputStyle} placeholder="Mother's name" />
                   </Field>
@@ -410,7 +410,7 @@ function StudentProfileModal({ classes, initialStudent, onClose, onSaved }) {
 
           {/* ── Medical Tab ── */}
           {activeTab === 'medical' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <Field label="Blood Group">
                 <select value={medical.blood_group} onChange={setM('blood_group')} style={inputStyle}>
                   <option value="">Unknown</option>

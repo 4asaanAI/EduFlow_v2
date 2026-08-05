@@ -209,13 +209,13 @@ function PersonalTab({ profile, onSave, isDark }) {
   return (
     <div>
       <SectionHeading label="Contact" isDark={isDark} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <FormInput v={form.phone} label="Phone" placeholder="Mobile number" icon={Phone} onChange={set('phone')} isDark={isDark} />
         <FormInput v={form.email} label="Email" placeholder="Personal email" icon={Mail} type="email" onChange={set('email')} isDark={isDark} />
       </div>
 
       <SectionHeading label="Personal Details" isDark={isDark} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+      <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
         <FormInput v={form.dob} label="Date of Birth" icon={Calendar} type="date" onChange={set('dob')} isDark={isDark} />
         <FormSelect v={form.gender} label="Gender" icon={User} options={GENDERS} onChange={set('gender')} isDark={isDark} />
       </div>
@@ -268,7 +268,7 @@ function MedicalTab({ profile, onSave, isDark }) {
   return (
     <div>
       <SectionHeading label="Vitals" isDark={isDark} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+      <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
         <FormSelect v={form.blood_group} label="Blood Group" icon={Droplets} options={BLOOD_GROUPS} onChange={set('blood_group')} isDark={isDark} />
         <FormInput v={form.height_cm} label="Height (cm)" placeholder="165" icon={Ruler} type="number" onChange={set('height_cm')} isDark={isDark} />
         <FormInput v={form.weight_kg} label="Weight (kg)" placeholder="55" icon={Weight} type="number" onChange={set('weight_kg')} isDark={isDark} />
@@ -351,7 +351,7 @@ function GuardianCard({ guardian, onSave, isDark }) {
       {/* Inline edit form */}
       {editing && (
         <div style={{ borderTop: `1px solid ${t.border}`, padding: '16px 16px 14px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
             <FormInput v={form.name} label="Full Name" placeholder="Guardian's name" icon={User} onChange={set('name')} isDark={isDark} />
             <FormInput v={form.occupation} label="Occupation" placeholder="e.g. Business" icon={Briefcase} onChange={set('occupation')} isDark={isDark} />
             <FormInput v={form.phone} label="Phone" placeholder="Contact number" icon={Phone} onChange={set('phone')} isDark={isDark} />
@@ -455,7 +455,7 @@ export default function StudentProfileEditor({ isDark, currentUser, onClose }) {
             <span style={{ fontSize: 12, color: t.textMuted }}>Loading…</span>
           </div>
         ) : profile ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 0 }}>
+          <div className="responsive-stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 0 }}>
             {[
               { label: 'Admission', value: profile.admission_number },
               { label: 'Roll No',   value: profile.roll_number },

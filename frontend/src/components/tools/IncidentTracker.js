@@ -153,7 +153,7 @@ export default function IncidentTracker() {
           <form onSubmit={createIncident}>
             <FormField label="Description" value={form.description} onChange={fi('description')} placeholder="What happened?" required />
             <FormField label="Involved Parties" value={form.involved_parties} onChange={fi('involved_parties')} placeholder="Names or groups involved" />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Severity" type="select" value={form.severity} onChange={fi('severity')}
                 options={[{ value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High (owner notified)' }]} />
               <FormField label="Category" type="select" value={form.category} onChange={fi('category')}

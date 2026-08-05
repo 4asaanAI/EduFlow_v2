@@ -4,6 +4,7 @@ import re
 from fastapi import APIRouter, Request
 from database import get_db
 from middleware.auth import get_current_user
+from services.teacher_scope_service import compute_teacher_scope
 from tenant import get_school_id, scoped_filter
 
 router = APIRouter(prefix="/api/search", tags=["search"])
@@ -117,9 +118,9 @@ async def search(request: Request, q: str = "", type: str = "all"):
                 student_query["$or"].append({"id": {"$in": guardian_student_ids}})
         # Teacher: only see their own class students
         if role == "teacher":
-            import os
+            scope = await compute_teacher_scope(db, user, get_school_id())
+            student_query["class_id"] = {"$in": scope["all_class_ids"]}
             # Get teacher's classes (via user_id → staff → class_teacher_id)
-            pass  # For now show all (scope later with real auth)
         students = await db.students.find(scoped_filter(student_query, get_school_id()), {"_id": 0, "id": 1, "name": 1, "admission_number": 1, "class_id": 1}).to_list(10)  # branch-scope: intentional — search spans the school; it is a lookup tool, and narrowing it would silently hide people
         # NEW-04/T7: batched (was one class find_one per search hit).
         hit_class_ids = sorted({s.get("class_id") for s in students if s.get("class_id")})

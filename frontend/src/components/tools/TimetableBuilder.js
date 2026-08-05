@@ -66,6 +66,17 @@ export default function TimetableBuilder() {
 
   useEffect(() => { loadTimetable(selectedClass); }, [selectedClass, loadTimetable]);
 
+  useEffect(() => {
+    if (!selectedClass) {
+      setSubjects([]);
+      return;
+    }
+    apiFetch(`${API}/academics/subjects?class_id=${encodeURIComponent(selectedClass)}`, { headers: h() })
+      .then(r => r.json())
+      .then(data => setSubjects(data.success ? (data.data || []) : []))
+      .catch(() => setSubjects([]));
+  }, [selectedClass]);
+
   const getSlot = (day, period) => slots.find(s => s.day_of_week === day && s.period_number === period);
 
   const openEdit = (day, period) => {
@@ -92,18 +103,25 @@ export default function TimetableBuilder() {
         period_number: editSlot.period,
         ...editForm,
       };
+      let response;
       if (editSlot.id) {
-        await apiFetch(`${API}/academics/timetable/${editSlot.id}`, {
+        response = await apiFetch(`${API}/academics/timetable/${editSlot.id}`, {
           method: 'PATCH',
           headers: { ...h(), 'Content-Type': 'application/json' },
           body: JSON.stringify(editForm),
         });
       } else {
-        await apiFetch(`${API}/academics/timetable`, {
+        response = await apiFetch(`${API}/academics/timetable`, {
           method: 'POST',
           headers: { ...h(), 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
+      }
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        setError(result.detail || 'Failed to save timetable slot');
+        setSaving(false);
+        return;
       }
       setEditSlot(null);
       loadTimetable(selectedClass);
@@ -235,9 +253,10 @@ export default function TimetableBuilder() {
                 </div>
                 <FormField
                   label="Subject"
+                  type="select"
                   value={editForm.subject_id}
                   onChange={v => setEditForm(p => ({ ...p, subject_id: v }))}
-                  placeholder="Subject name or ID"
+                  options={[{ value: '', label: 'Select subject...' }, ...subjects.map(s => ({ value: s.id, label: s.name }))]}
                 />
                 <FormField
                   label="Teacher"
@@ -246,7 +265,7 @@ export default function TimetableBuilder() {
                   onChange={v => setEditForm(p => ({ ...p, teacher_id: v }))}
                   options={[{ value: '', label: 'Select teacher...' }, ...staff.map(s => ({ value: s.id, label: s.name }))]}
                 />
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   <FormField label="Start Time" type="time" value={editForm.start_time} onChange={v => setEditForm(p => ({ ...p, start_time: v }))} />
                   <FormField label="End Time" type="time" value={editForm.end_time} onChange={v => setEditForm(p => ({ ...p, end_time: v }))} />
                 </div>

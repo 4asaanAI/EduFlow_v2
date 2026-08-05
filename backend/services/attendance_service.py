@@ -15,14 +15,70 @@ from services.txn_context import session_kwargs as _txn_session_kwargs
 
 import logging
 import uuid
+from datetime import datetime
 from typing import Optional
 
 from models.schemas import StudentAttendance
 from services.actor_context import ActorContext
 from services.audit_service import write_audit_doc
-from tenant import scoped_filter
+from tenant import scoped_filter, scoped_query
 
 logger = logging.getLogger(__name__)
+VALID_STATUSES = {"present", "absent", "late", "holiday"}
+
+
+class AttendanceValidationError(Exception):
+    """The requested attendance batch violates a domain invariant."""
+
+
+async def validate_attendance_batch(db, actor_ctx: ActorContext, params: dict) -> None:
+    class_id = params.get("class_id")
+    target_date = params.get("date")
+    records = params.get("records") or []
+    if not class_id:
+        raise AttendanceValidationError("class_id is required")
+    try:
+        datetime.strptime(str(target_date), "%Y-%m-%d")
+    except (TypeError, ValueError):
+        raise AttendanceValidationError("date must be in YYYY-MM-DD format")
+
+    class_doc = await db.classes.find_one(
+        scoped_query({"id": class_id}, branch_id=actor_ctx.branch_id),
+        {"_id": 0, "id": 1},
+    )
+    if not class_doc:
+        raise AttendanceValidationError("class not found")
+
+    student_ids = []
+    for record in records:
+        student_id = record.get("student_id")
+        status = record.get("status")
+        if not student_id:
+            raise AttendanceValidationError("every attendance record needs a student_id")
+        if status not in VALID_STATUSES:
+            raise AttendanceValidationError(
+                f"invalid attendance status '{status}' — must be one of {sorted(VALID_STATUSES)}"
+            )
+        student_ids.append(student_id)
+
+    if len(student_ids) != len(set(student_ids)):
+        raise AttendanceValidationError("a student may appear only once in an attendance batch")
+    if not student_ids:
+        return
+
+    members = await db.students.find(
+        scoped_query(
+            {"id": {"$in": student_ids}, "class_id": class_id, "is_active": {"$ne": False}},
+            branch_id=actor_ctx.branch_id,
+        ),
+        {"_id": 0, "id": 1},
+    ).to_list(len(student_ids))
+    member_ids = {student["id"] for student in members}
+    invalid_ids = sorted(set(student_ids) - member_ids)
+    if invalid_ids:
+        raise AttendanceValidationError(
+            "students do not belong to the selected class: " + ", ".join(invalid_ids)
+        )
 
 
 def _session_kwargs(session) -> dict:
@@ -61,6 +117,8 @@ async def mark_attendance(
         )
         if existing:
             return {"results": existing.get("response", []), "idempotent": True}
+
+    await validate_attendance_batch(db, actor_ctx, params)
 
     results = []
     for record in records:

@@ -190,7 +190,7 @@ function GeocodeTab() {
 
           <div style={{ borderTop: '1px solid var(--c-border)', paddingTop: 14 }}>
             <div style={{ ...sectionTitle, marginBottom: 14 }}>Assign coordinates to:</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <div>
                 <label style={label}>Student (Admission No.)</label>
                 <div style={{ display: 'flex', gap: 6 }}>

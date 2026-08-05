@@ -56,6 +56,12 @@ from routes.payroll import router as payroll_router
 from routes.reports import router as reports_router
 from routes.federation import router as federation_router
 from routes.learning import router as learning_router
+from routes.admissions import router as admissions_router
+from routes.student_leave import router as student_leave_router
+from routes.campus import router as campus_router
+from routes.accounting import router as accounting_router
+from routes.guardian import router as guardian_router
+from routes.quizzes import router as quizzes_router
 from services.idempotency import (
     get_replay_response,
     record_key,
@@ -252,6 +258,12 @@ app.include_router(payroll_router)
 app.include_router(reports_router)
 app.include_router(federation_router)
 app.include_router(learning_router)
+app.include_router(admissions_router)
+app.include_router(student_leave_router)
+app.include_router(campus_router)
+app.include_router(accounting_router)
+app.include_router(guardian_router)
+app.include_router(quizzes_router)
 
 
 async def _layaastat_heartbeat_loop():

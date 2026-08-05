@@ -81,6 +81,9 @@ def token_db(monkeypatch):
             "token_balances": FakeCollection(),
             "token_usage": FakeCollection(),
             "token_purchases": FakeCollection(),
+            "razorpay_webhook_inbox": FakeCollection(),
+            "school_fee_checkouts": FakeCollection(),
+            "fee_transactions": FakeCollection(),
             "branches": FakeCollection([{"id": "branch-a", "schoolId": "school-a"}]),
         },
     )()
@@ -108,10 +111,16 @@ def autouse_clean(token_db):
     token_db.token_balances.docs[:] = []
     token_db.token_purchases.docs[:] = []
     token_db.token_usage.docs[:] = []
+    token_db.razorpay_webhook_inbox.docs[:] = []
+    token_db.school_fee_checkouts.docs[:] = []
+    token_db.fee_transactions.docs[:] = []
     yield
     token_db.token_balances.docs[:] = []
     token_db.token_purchases.docs[:] = []
     token_db.token_usage.docs[:] = []
+    token_db.razorpay_webhook_inbox.docs[:] = []
+    token_db.school_fee_checkouts.docs[:] = []
+    token_db.fee_transactions.docs[:] = []
 
 
 # ─── AC1: Razorpay one-time payment link ──────────────────────────────────────
@@ -251,6 +260,41 @@ async def test_webhook_payment_link_not_paid_skipped(token_db, monkeypatch):
     assert len(token_db.token_purchases.docs) == 0
 
 
+def test_school_fee_webhook_settles_checkout_without_token_credit(token_db, monkeypatch):
+    token_db.school_fee_checkouts.docs[:] = [{
+        "id": "checkout-school-1", "schoolId": "school-a", "branch_id": "branch-a",
+        "transaction_ids": ["fee-1"], "status": "created", "amount": 500,
+    }]
+    token_db.fee_transactions.docs[:] = [{
+        "id": "fee-1", "schoolId": "school-a", "branch_id": "branch-a",
+        "student_id": "student-1", "amount": 500, "status": "pending",
+    }]
+    event = {
+        "id": "evt-school-fee",
+        "event": "payment_link.paid",
+        "payload": {"payment_link": {"entity": {
+            "id": "plink-school-1", "status": "paid",
+            "notes": {"purpose": "school_fee", "branch_id": "branch-a", "checkout_id": "checkout-school-1"},
+        }}},
+    }
+    import routes.tokens as tok_routes
+    monkeypatch.setattr(tok_routes, "verify_webhook", lambda body, sig: event)
+    from fastapi import FastAPI
+    mini = FastAPI()
+    mini.include_router(tok_routes.router)
+    client = TestClient(mini, raise_server_exceptions=False)
+
+    response = client.post(
+        "/api/tokens/webhook", content=b'{}', headers={"x-razorpay-signature": "valid"}
+    )
+
+    assert response.status_code == 200
+    assert token_db.fee_transactions.docs[0]["status"] == "paid"
+    assert token_db.fee_transactions.docs[0]["transaction_ref"] == "plink-school-1"
+    assert token_db.school_fee_checkouts.docs[0]["status"] == "paid"
+    assert token_db.token_purchases.docs == []
+
+
 # ─── AC3: Webhook route — invalid signature ───────────────────────────────────
 
 def test_webhook_invalid_signature_400(token_db, monkeypatch):
@@ -271,6 +315,7 @@ def test_webhook_invalid_signature_400(token_db, monkeypatch):
         headers={"x-razorpay-signature": "bad_sig", "Content-Type": "application/json"},
     )
     assert resp.status_code == 400
+    assert token_db.razorpay_webhook_inbox.docs == []
 
 
 # ─── AC3: Webhook handler — subscription.activated ────────────────────────────
@@ -368,6 +413,62 @@ def test_webhook_unknown_event_returns_200(token_db, monkeypatch):
         headers={"x-razorpay-signature": "valid_sig", "Content-Type": "application/json"},
     )
     assert resp.status_code == 200
+    assert resp.json()["handled"] is False
+    assert token_db.razorpay_webhook_inbox.docs[0]["status"] == "ignored"
+
+
+def test_webhook_handler_failure_is_journaled_and_retryable(token_db, monkeypatch):
+    import routes.tokens as tok_routes
+
+    event = {
+        "id": "evt-retry-1",
+        "event": "subscription.cancelled",
+        "payload": {"subscription": {"entity": {"id": "sub-1"}}},
+    }
+    monkeypatch.setattr(tok_routes, "verify_webhook", lambda body, sig: event)
+
+    async def fail(_entity):
+        raise RuntimeError("temporary database failure")
+
+    monkeypatch.setattr(tok_routes, "handle_subscription_cancelled", fail)
+    from fastapi import FastAPI
+    mini = FastAPI()
+    mini.include_router(tok_routes.router)
+    client = TestClient(mini, raise_server_exceptions=False)
+
+    failed = client.post(
+        "/api/tokens/webhook", content=b'{}',
+        headers={"x-razorpay-signature": "valid", "Content-Type": "application/json"},
+    )
+
+    assert failed.status_code == 500
+    assert token_db.razorpay_webhook_inbox.docs[0]["status"] == "failed"
+    assert token_db.razorpay_webhook_inbox.docs[0]["last_error"] == "handler_failed"
+
+
+def test_processed_webhook_delivery_does_not_run_handler_twice(token_db, monkeypatch):
+    import routes.tokens as tok_routes
+
+    event = {"id": "evt-once", "event": "subscription.cancelled", "payload": {"subscription": {"entity": {}}}}
+    monkeypatch.setattr(tok_routes, "verify_webhook", lambda body, sig: event)
+    calls = {"count": 0}
+
+    async def handled(_entity):
+        calls["count"] += 1
+
+    monkeypatch.setattr(tok_routes, "handle_subscription_cancelled", handled)
+    from fastapi import FastAPI
+    mini = FastAPI()
+    mini.include_router(tok_routes.router)
+    client = TestClient(mini, raise_server_exceptions=False)
+
+    first = client.post("/api/tokens/webhook", content=b'{}', headers={"x-razorpay-signature": "valid"})
+    second = client.post("/api/tokens/webhook", content=b'{}', headers={"x-razorpay-signature": "valid"})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["duplicate"] is True
+    assert calls["count"] == 1
 
 
 # ─── AC3: Webhook route — no JWT auth required ────────────────────────────────

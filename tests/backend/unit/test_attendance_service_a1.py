@@ -14,6 +14,7 @@ import pytest
 
 from services.actor_context import ActorContext, actor_ctx_from_user
 from services.attendance_service import mark_attendance
+from tests.backend.factories import make_student
 
 pytestmark = pytest.mark.asyncio
 
@@ -25,9 +26,21 @@ _TOUCHED = ("student_attendance", "audit_logs", "attendance_bulk_keys", "idempot
 
 @pytest.fixture(autouse=True)
 def _clean(fake_db):
+    original_students = list(fake_db.students.docs)
+    # The shared fake DB is session-scoped. Replace both IDs so earlier tests cannot
+    # leave a duplicate student in another class and make this file order-dependent.
+    fake_db.students.docs[:] = [
+        student for student in fake_db.students.docs
+        if student.get("id") not in {"student-1", "student-9"}
+    ]
+    fake_db.students.docs.extend([
+        make_student(id="student-1", class_id="class-1", name="First Student"),
+        make_student(id="student-9", class_id="class-1", name="Second Student"),
+    ])
     for col in _TOUCHED:
         getattr(fake_db, col).docs[:] = []
     yield
+    fake_db.students.docs[:] = original_students
     for col in _TOUCHED:
         getattr(fake_db, col).docs[:] = []
 

@@ -24,6 +24,7 @@ from typing import Awaitable, Callable, Optional
 from models.schemas import FeeTransaction
 from services.actor_context import ActorContext
 from services.audit_service import write_audit_doc
+from services.accounting_period_service import AccountingPeriodClosedError, assert_posting_allowed
 from tenant import scoped_filter
 
 
@@ -90,7 +91,6 @@ async def record_payment(
     for field in ("student_id", "amount", "payment_mode", "fee_period"):
         if params.get(field) in (None, ""):
             raise FeeValidationError(f"{field} is required")
-
     receipt = f"RCP{now.strftime('%Y%m%d')}{uuid.uuid4().hex[:6].upper()}"
     # D-review fix: non-numeric amount/paid_amount must be a 400 (domain error), not an
     # uncaught ValueError → opaque 500. Also handles whitespace-only paid_amount.
@@ -100,6 +100,10 @@ async def record_payment(
         paid_amount = float(_paid_raw) if (_paid_raw is not None and str(_paid_raw).strip() != "") else amount
     except (TypeError, ValueError):
         raise FeeValidationError("amount and paid_amount must be numeric")
+    try:
+        await assert_posting_allowed(db, actor_ctx.branch_id, now.strftime("%Y-%m-%d"))
+    except AccountingPeriodClosedError as exc:
+        raise FeeValidationError(str(exc))
     if params.get("status"):
         status = params["status"]
     elif paid_amount < amount:
@@ -209,6 +213,12 @@ async def correct_transaction(
         raise FeeTransactionNotFoundError(transaction_id)
     if _is_accountant(actor_ctx) and original.get("created_by") != actor_ctx.user_id:
         raise FeeAuthorizationError("Accountant can only correct their own transactions")
+    try:
+        await assert_posting_allowed(
+            db, bid, params.get("paid_date") or original.get("paid_date") or actor_ctx.now().strftime("%Y-%m-%d")
+        )
+    except AccountingPeriodClosedError as exc:
+        raise FeeValidationError(str(exc))
 
     changes = {k: v for k, v in params.items() if k in _CORRECTABLE_FIELDS}
     if not changes:
@@ -298,6 +308,12 @@ async def delete_transaction(
         raise FeeTransactionNotFoundError(transaction_id)
     if _is_accountant(actor_ctx) and original.get("created_by") != actor_ctx.user_id:
         raise FeeAuthorizationError("Accountant can only delete their own transactions")
+    try:
+        await assert_posting_allowed(
+            db, bid, original.get("paid_date") or actor_ctx.now().strftime("%Y-%m-%d")
+        )
+    except AccountingPeriodClosedError as exc:
+        raise FeeValidationError(str(exc))
 
     now = actor_ctx.now_utc_iso()
     await db.fee_transactions.update_one(

@@ -58,6 +58,7 @@ MIGRATIONS = [
     ("025_ai_write_idempotency_index", "AI Layer Hardening D.4: unique index on ai_write_idempotency.idempotency_key for exactly-once AI plan execution (AD6)"),
     ("026_ai_memory_skills", "AI Layer Hardening Epic G: ai_memories + ai_skills indexes ((schoolId,user_id) isolation + expire_at TTL retention)"),
     ("027_upgrade_role_token_limits_to_1m", "Upgrade owner/admin/teacher/student/principal AI token limits to 1,000,000 per month (2026-07-10)"),
+    ("028_enterprise_school_workflows", "Add non-destructive indexes for enterprise fee, admissions, leave, campus, payroll, guardian, and quiz workflows"),
 ]
 
 

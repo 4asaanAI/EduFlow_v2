@@ -23,6 +23,31 @@ OUTSTANDING_STATUSES = ("overdue", "pending", "unpaid")
 DEFAULTER_STATUSES = ("overdue", "pending", "unpaid", "partial")
 
 
+def fee_totals_from_txns(txns: list) -> dict:
+    """Canonical collected/outstanding totals for an in-memory transaction list."""
+    collected = 0.0
+    outstanding = 0.0
+    for txn in txns:
+        if txn.get("deleted") is True:
+            continue
+        status = txn.get("status", "")
+        amount = float(txn.get("amount") or 0)
+        if status == "paid":
+            collected += amount
+        elif status == "partial":
+            paid_amount = float(txn.get("paid_amount") or 0)
+            collected += paid_amount
+            outstanding += max(0.0, amount - paid_amount)
+        elif status in OUTSTANDING_STATUSES:
+            outstanding += amount
+    total = collected + outstanding
+    return {
+        "collected": collected,
+        "outstanding": outstanding,
+        "collection_rate": round(collected / total * 100, 1) if total > 0 else 0.0,
+    }
+
+
 async def compute_fee_totals(db, match: dict) -> dict:
     """Canonical collected / outstanding / collection_rate for a fee_transactions filter.
 

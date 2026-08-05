@@ -114,6 +114,12 @@ try:
     import routes.queries as queries_routes
     import routes.sms as sms_routes
     import routes.learning as learning_routes
+    import routes.admissions as admissions_routes
+    import routes.student_leave as student_leave_routes
+    import routes.campus as campus_routes
+    import routes.accounting as accounting_routes
+    import routes.guardian as guardian_routes
+    import routes.quizzes as quizzes_routes
     # UI Sweep Epic 4: `routes.tools` was never wired into the harness, so the
     # endpoint behind every tool screen had no tests at all — which is how a double
     # result envelope survived a whole initiative. It is registered here so it can be.
@@ -316,6 +322,14 @@ class FakeCollection:
         self._enforce_unique(doc)
         self.docs.append(doc)
         return type("Result", (), {"inserted_id": doc.get("_id")})()
+
+    async def insert_many(self, docs, **kwargs):
+        inserted_ids = []
+        for doc in docs:
+            self._enforce_unique(doc)
+            self.docs.append(doc)
+            inserted_ids.append(doc.get("_id") or doc.get("id"))
+        return type("Result", (), {"inserted_ids": inserted_ids})()
 
     def _enforce_unique(self, doc):
         for spec in self.indexes.values():
@@ -565,7 +579,22 @@ class FakeDb:
         self.expense_budgets = FakeCollection()
         self.visitor_log = FakeCollection()
         self.assets = FakeCollection()
+        self.resources = FakeCollection()
+        self.resource_bookings = FakeCollection()
+        self.asset_custody = FakeCollection()
+        self.inventory_items = FakeCollection()
+        self.stock_movements = FakeCollection()
+        self.purchase_requisitions = FakeCollection()
+        self.purchase_orders = FakeCollection()
+        self.library_titles = FakeCollection()
+        self.library_loans = FakeCollection()
+        self.quizzes = FakeCollection()
+        self.quiz_attempts = FakeCollection()
         self.enquiries = FakeCollection()
+        self.admission_applications = FakeCollection()
+        self.student_leave_policies = FakeCollection()
+        self.student_leave_requests = FakeCollection()
+        self.student_leave_days = FakeCollection()
         self.student_attendance = FakeCollection()
         self.staff_attendance = FakeCollection()
         self.attendance_corrections = FakeCollection()
@@ -576,6 +605,8 @@ class FakeDb:
         self.fee_transaction_corrections = FakeCollection()
         self.fee_contact_logs = FakeCollection()
         self.fee_structures = FakeCollection()
+        self.fee_structure_revisions = FakeCollection()
+        self.school_fee_checkouts = FakeCollection()
         self.fee_discount_types = FakeCollection()
         self.fee_discounts = FakeCollection()
         self.pending_discount_approvals = FakeCollection()
@@ -584,6 +615,8 @@ class FakeDb:
         self.receipt_counters = FakeCollection()
         self.salary_structures = FakeCollection()
         self.salary_disbursements = FakeCollection()
+        self.salary_disbursement_corrections = FakeCollection()
+        self.accounting_periods = FakeCollection()
         self.facility_requests = FakeCollection()
         self.tech_requests = FakeCollection()
         self.queries = FakeCollection()
@@ -599,6 +632,7 @@ class FakeDb:
         self.token_usage = FakeCollection()
         self.token_limits = FakeCollection()
         self.token_purchases = FakeCollection()
+        self.razorpay_webhook_inbox = FakeCollection()
         self.confirm_tokens = FakeCollection()
         self.ai_dispatch_audit_log = FakeCollection()
         self.idempotency_keys = FakeCollection()
@@ -609,6 +643,7 @@ class FakeDb:
         self.conversations = FakeCollection()
         self.announcements = FakeCollection()
         self.exam_results = FakeCollection()
+        self.exam_result_corrections = FakeCollection()
         self.exams = FakeCollection()
         self.exam_subjects = FakeCollection()
         self.assignments = FakeCollection()
@@ -683,6 +718,12 @@ if APP_AVAILABLE:
     queries_routes.get_db = lambda: _fake_db
     sms_routes.get_db = lambda: _fake_db
     learning_routes.get_db = lambda: _fake_db
+    admissions_routes.get_db = lambda: _fake_db
+    student_leave_routes.get_db = lambda: _fake_db
+    campus_routes.get_db = lambda: _fake_db
+    accounting_routes.get_db = lambda: _fake_db
+    guardian_routes.get_db = lambda: _fake_db
+    quizzes_routes.get_db = lambda: _fake_db
     tools_routes.get_db = lambda: _fake_db
     tool_functions_v1.get_db = lambda: _fake_db
     tool_functions_v2_mod.get_db = lambda: _fake_db

@@ -13,6 +13,7 @@ Endpoints:
   POST /api/tokens/webhook                  — Razorpay webhook receiver (no JWT auth)
 """
 
+import hashlib
 import logging
 import os
 
@@ -22,12 +23,15 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from middleware.auth import get_current_user, require_owner, require_role
 from services.razorpay_service import (
     SUBSCRIPTION_PLANS,
+    begin_webhook_event,
     create_checkout_session,
     create_subscription_session,
     handle_payment_link_paid,
+    handle_school_fee_payment_link_paid,
     handle_subscription_activated,
     handle_subscription_cancelled,
     handle_subscription_charged,
+    finish_webhook_event,
     verify_webhook,
 )
 from services.token_service import (
@@ -254,13 +258,22 @@ async def razorpay_webhook(request: Request):
 
     event_type = event.get("event")
     payload = event.get("payload") or {}
+    event_id = event.get("id") or f"sha256:{hashlib.sha256(raw_body).hexdigest()}"
+    should_process = await begin_webhook_event(event_id, event_type or "unknown", event)
+    if not should_process:
+        return {"received": True, "duplicate": True}
 
     def _entity(key: str) -> dict:
         return (payload.get(key) or {}).get("entity") or {}
 
+    handled = True
     try:
         if event_type == "payment_link.paid":
-            await handle_payment_link_paid(_entity("payment_link"))
+            payment_link = _entity("payment_link")
+            if (payment_link.get("notes") or {}).get("purpose") == "school_fee":
+                await handle_school_fee_payment_link_paid(payment_link)
+            else:
+                await handle_payment_link_paid(payment_link)
         elif event_type == "subscription.activated":
             await handle_subscription_activated(_entity("subscription"))
         elif event_type == "subscription.charged":
@@ -268,6 +281,7 @@ async def razorpay_webhook(request: Request):
         elif event_type == "subscription.cancelled":
             await handle_subscription_cancelled(_entity("subscription"))
         else:
+            handled = False
             logger.info("razorpay_webhook_unhandled_event", extra={"event_type": event_type})
     except Exception:
         logger.error(
@@ -276,6 +290,8 @@ async def razorpay_webhook(request: Request):
             exc_info=True,
         )
         # Return 200 to prevent a Razorpay retry storm — log the error for investigation.
-        return {"received": True, "error": "handler_failed"}
+        await finish_webhook_event(event_id, error="handler_failed")
+        raise HTTPException(status_code=500, detail="Webhook processing failed; retry required.")
 
-    return {"received": True}
+    await finish_webhook_event(event_id, outcome="processed" if handled else "ignored")
+    return {"received": True, "handled": handled}

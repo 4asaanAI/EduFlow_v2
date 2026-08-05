@@ -8,6 +8,7 @@
  */
 
 const { defineConfig, devices } = require('@playwright/test');
+const isWindows = process.platform === 'win32';
 
 /** @type {import('@playwright/test').PlaywrightTestConfig} */
 const config = defineConfig({
@@ -55,6 +56,7 @@ const config = defineConfig({
     {
       name: 'chromium',
       testMatch: /e2e\/.*\.spec\.js/,
+      testIgnore: /e2e\/responsive\.spec\.js/,
       use: {
         ...devices['Desktop Chrome'],
         storageState: 'tests/support/fixtures/.auth/admin.json',
@@ -66,8 +68,21 @@ const config = defineConfig({
     {
       name: 'firefox',
       testMatch: /e2e\/.*\.spec\.js/,
+      testIgnore: /e2e\/responsive\.spec\.js/,
       use: {
         ...devices['Desktop Firefox'],
+        storageState: 'tests/support/fixtures/.auth/admin.json',
+      },
+      dependencies: ['setup'],
+    },
+
+    // Six-width layout contract. Kept in its own project so normal functional
+    // scenarios are not multiplied across every phone/tablet width.
+    {
+      name: 'responsive-chromium',
+      testMatch: /e2e\/responsive\.spec\.js/,
+      use: {
+        ...devices['Desktop Chrome'],
         storageState: 'tests/support/fixtures/.auth/admin.json',
       },
       dependencies: ['setup'],
@@ -88,13 +103,15 @@ const config = defineConfig({
   // ─── Dev server (optional local auto-start) ─────────────────────────────
   webServer: [
     {
-      command: 'python3 tests/support/e2e_backend.py',
+      command: isWindows ? 'python tests/support/e2e_backend.py' : 'python3 tests/support/e2e_backend.py',
       url: 'http://localhost:8000/api/auth/refresh',
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },
     {
-      command: 'cd frontend && PORT=3000 BROWSER=none REACT_APP_BACKEND_URL=http://localhost:8000 npm start',
+      command: isWindows
+        ? 'cd frontend && set PORT=3000&& set BROWSER=none&& set REACT_APP_BACKEND_URL=http://localhost:8000&& npm start'
+        : 'cd frontend && PORT=3000 BROWSER=none REACT_APP_BACKEND_URL=http://localhost:8000 npm start',
       url: 'http://localhost:3000',
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

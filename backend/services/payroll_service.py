@@ -14,6 +14,15 @@ import uuid
 from datetime import datetime, timezone
 
 from pymongo.errors import DuplicateKeyError
+from tenant import scoped_query
+
+
+class PayrollValidationError(Exception):
+    pass
+
+
+class PayrollNotFoundError(Exception):
+    pass
 
 
 def _now_iso() -> str:
@@ -129,3 +138,90 @@ async def upsert_salary_structure(
         upsert=True,
     )
     return {k: v for k, v in doc.items() if k != "_id"}
+
+
+async def build_payslip(db, disbursement: dict, *, branch_id: str | None) -> dict:
+    staff = await db.staff.find_one(
+        scoped_query({"id": disbursement.get("staff_id")}, branch_id=branch_id), {"_id": 0}
+    )
+    structure = await db.salary_structures.find_one(
+        scoped_query({"staff_id": disbursement.get("staff_id")}, branch_id=branch_id), {"_id": 0}
+    )
+    return {
+        "payslip_number": disbursement.get("payslip_number") or f"PAY-{disbursement.get('month')}-{disbursement.get('id', '')[:8].upper()}",
+        "disbursement_id": disbursement.get("id"),
+        "month": disbursement.get("month"),
+        "staff": {
+            "id": disbursement.get("staff_id"), "name": (staff or {}).get("name"),
+            "employee_id": (staff or {}).get("employee_id"),
+            "department": (staff or {}).get("department"),
+        },
+        "earnings": {
+            "base_salary": float(disbursement.get("base_salary") or 0),
+            "allowances": disbursement.get("allowance_breakdown") or (structure or {}).get("allowances") or {},
+            "allowances_total": float(disbursement.get("allowances") or 0),
+        },
+        "deductions": {
+            "breakdown": disbursement.get("deduction_breakdown") or (structure or {}).get("deductions") or {},
+            "total": float(disbursement.get("deductions") or 0),
+        },
+        "net_amount": float(disbursement.get("net_amount") or 0),
+        "payment_mode": disbursement.get("payment_mode"),
+        "reference": disbursement.get("reference"),
+        "status": disbursement.get("status"),
+        "paid_at": disbursement.get("paid_at"),
+        "revision": int(disbursement.get("revision") or 0),
+        "issued_at": _now_iso(),
+    }
+
+
+async def correct_disbursement(db, *, disbursement_id: str, changes: dict,
+                               reason: str, corrected_by: str,
+                               branch_id: str | None) -> dict:
+    if not str(reason or "").strip():
+        raise PayrollValidationError("reason is required")
+    original = await db.salary_disbursements.find_one(
+        scoped_query({"id": disbursement_id}, branch_id=branch_id), {"_id": 0}
+    )
+    if not original:
+        raise PayrollNotFoundError("Disbursement not found")
+    allowed = {"base_salary", "allowances", "deductions", "payment_mode", "reference", "status"}
+    update = {key: value for key, value in changes.items() if key in allowed}
+    if not update:
+        raise PayrollValidationError("At least one correctable field is required")
+    for key in ("base_salary", "allowances", "deductions"):
+        if key in update:
+            try:
+                update[key] = float(update[key])
+            except (TypeError, ValueError):
+                raise PayrollValidationError(f"{key} must be a number")
+            if update[key] < 0:
+                raise PayrollValidationError(f"{key} cannot be negative")
+    if "status" in update and update["status"] not in {"pending", "paid", "processed", "reversed"}:
+        raise PayrollValidationError("Invalid payroll status")
+    base = float(update.get("base_salary", original.get("base_salary") or 0))
+    allowances = float(update.get("allowances", original.get("allowances") or 0))
+    deductions = float(update.get("deductions", original.get("deductions") or 0))
+    update["net_amount"] = max(base + allowances - deductions, 0)
+    update["revision"] = int(original.get("revision") or 0) + 1
+    update["corrected_at"] = _now_iso()
+    update["corrected_by"] = corrected_by
+    correction_id = str(uuid.uuid4())
+    correction = {
+        "_id": correction_id, "id": correction_id,
+        "schoolId": original.get("schoolId"), "branch_id": branch_id,
+        "disbursement_id": disbursement_id, "revision": update["revision"],
+        "before": {key: original.get(key) for key in [*allowed, "net_amount", "revision"]},
+        "changes": {key: value for key, value in update.items() if key not in {"corrected_at", "corrected_by"}},
+        "reason": reason.strip(), "corrected_by": corrected_by,
+        "created_at": _now_iso(),
+    }
+    await db.salary_disbursement_corrections.insert_one(correction)
+    result = await db.salary_disbursements.update_one(
+        scoped_query({"id": disbursement_id, "revision": original.get("revision", {"$exists": False})}, branch_id=branch_id),
+        {"$set": update},
+    )
+    if result.matched_count == 0:
+        await db.salary_disbursement_corrections.delete_one({"id": correction_id})
+        raise PayrollValidationError("Disbursement changed; refresh and retry")
+    return {**original, **update, "correction_id": correction_id}

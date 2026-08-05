@@ -97,19 +97,19 @@ export default function SchoolPulse() {
         </div>
 
         {/* Top stats */}
-        <div className="pulse-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+        <div className="pulse-stats responsive-stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
           <StatCard value={summary.total_students || 0} label="Enrolled Students" color="var(--color-accent-blue)" />
           <StatCard value={summary.attendance_rate || 'N/A'} label="Today's Attendance" color="var(--color-success)" />
           <StatCard value={data?.fee_stats?.paid || '₹0'} label="Fees Collected" color="var(--color-accent-blue)" sublabel={data?.fee_stats?.collection_rate ? `${data.fee_stats.collection_rate} collected` : undefined} />
           <StatCard value={data?.fee_stats?.overdue || '₹0'} label="Overdue Fees" color="var(--color-danger)" />
         </div>
 
-        <div className="pulse-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, maxWidth: 1000 }}>
+        <div className="pulse-grid responsive-split-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, maxWidth: 1000 }}>
 
           {/* Quick Actions */}
           <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 20, boxShadow: 'var(--shadow-sm)' }}>
             <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 600, color: 'var(--c-text)', marginBottom: 16, marginTop: 0 }}>Quick Actions</h3>
-            <div className="pulse-actions" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div className="pulse-actions responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               {[
                 { icon: Users, label: "Mark Today's Attendance", color: '#4f8ff7' },
                 { icon: IndianRupee, label: 'Send Fee Reminders', color: '#10b981' },
@@ -158,7 +158,7 @@ export default function SchoolPulse() {
           {/* Today's Snapshot */}
           <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 20, boxShadow: 'var(--shadow-sm)' }}>
             <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 600, color: 'var(--c-text)', marginBottom: 16, marginTop: 0 }}>Today's Snapshot</h3>
-            <div className="pulse-inner-stats" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+            <div className="pulse-inner-stats responsive-stat-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
               <StatCard value={summary.total_staff || 0} label="Total Staff" color="var(--c-text)" />
               <StatCard value={(data?.staff_absent_today?.length || 0)} label="Staff Absent" color="var(--color-danger)" />
               <StatCard value={(data?.pending_leave_requests?.length || 0)} label="Leave Requests" color="#fbbf24" />

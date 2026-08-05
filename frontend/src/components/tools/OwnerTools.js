@@ -5,6 +5,7 @@ import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, useToolData, LineChartWidget, BarChartWidget, PieChartWidget } from './ToolPage';
 import { EmptyState } from '../ui/primitives';
 import { Activity, CheckCircle, XCircle, AlertTriangle, Plus, RefreshCw, Save, TrendingUp, Users, FileText, Send, Download, Upload, Zap, Database, Cloud, BookOpen, User, CreditCard, Calendar, Wrench, Monitor, ShieldAlert, UserCheck, ClipboardList } from 'lucide-react';
+import AdmissionsWorkflow from './AdmissionsWorkflow';
 
 function h() { return getAuthHeaders(); }
 function money(value) { return `Rs ${Number(value || 0).toLocaleString('en-IN')}`; }
@@ -130,7 +131,7 @@ export function SchoolPulse() {
 
   return (
     <ToolPage title="School Pulse" subtitle="Today's complete overview" onRefresh={load} loading={loading}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: 20 }}>
         <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
           <StatCard value={money(feeStats.total_collected || data?.fee_stats?.paid || 0)} label="FEE COLLECTED" color="var(--tool-hex-34d399)" />
           <StatCard value={money(feeStats.total_outstanding || data?.fee_stats?.overdue || 0)} label="FEE OVERDUE" color="var(--tool-hex-f87171)" />
@@ -562,7 +563,7 @@ export function DataImport() {
     <ToolPage title="Data Import" subtitle="Validate and import student records">
       <div style={{ maxWidth: 980 }}>
         <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 14, padding: 18, marginBottom: 16 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 1fr) auto auto', gap: 10, alignItems: 'center' }}>
+          <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 1fr) auto auto', gap: 10, alignItems: 'center' }}>
             <input
               type="file"
               accept=".csv,.xlsx"
@@ -1155,6 +1156,7 @@ export function AdmissionFunnel() {
         rows={(data?.enquiries || []).map(e => [e.student_name, e.parent_name, e.class_applying, <Badge text={e.status} color={e.status === 'enrolled' ? 'green' : e.status === 'lost' ? 'red' : 'blue'} />, e.source])}
         emptyMsg="No enquiries yet"
       />
+      <AdmissionsWorkflow />
     </ToolPage>
   );
 }

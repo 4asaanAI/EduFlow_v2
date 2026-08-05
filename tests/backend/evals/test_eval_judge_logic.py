@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from ai.llm_client import ToolCall
 from tests.backend.evals import judge
 from tests.backend.evals.judge import (
     DIMENSIONS, parse_judge_scores, aggregate, regression_check, EvalResult, run_eval,
@@ -71,6 +72,13 @@ def test_regression_no_baseline_accepts_and_reports():
     assert ok is True and notes
 
 
+def test_regression_rejects_first_baseline_below_absolute_floor():
+    current = {"correctness": 0.9, "completeness": 0.65, "tone": 0.9, "overall": 0.82}
+    ok, problems = regression_check(current, baseline=None)
+    assert ok is False
+    assert any("completeness" in problem for problem in problems)
+
+
 def test_regression_blocks_on_drop_beyond_threshold():
     baseline = {"correctness": 0.9, "completeness": 0.9, "tone": 0.9, "overall": 0.9}
     current = {"correctness": 0.9, "completeness": 0.9, "tone": 0.70, "overall": 0.83}
@@ -89,18 +97,20 @@ def test_regression_allows_within_threshold_and_improvements():
 # ── run_eval orchestration with FAKE assistant + judge (no network) ──────────────
 
 class _FakeResult:
-    def __init__(self, text, ok=True):
+    def __init__(self, text, ok=True, tool_calls=None):
         self.text = text
         self.ok = ok
         self.tokens = 1
+        self.tool_calls = tool_calls
 
 
 async def test_run_eval_end_to_end_with_fakes():
     convos = load_corpus()[:5]
 
-    async def fake_assistant(system_prompt, messages):
+    async def fake_assistant(system_prompt, messages, tools=None):
         # A plausible non-empty reply so the judge stage runs.
         assert "user" in messages[0]["role"]
+        assert tools
         return _FakeResult("Here is the information you asked for.")
 
     async def fake_judge(system_prompt, messages):
@@ -116,7 +126,7 @@ async def test_run_eval_end_to_end_with_fakes():
 async def test_run_eval_records_empty_assistant_reply_as_error():
     convos = load_corpus()[:2]
 
-    async def empty_assistant(system_prompt, messages):
+    async def empty_assistant(system_prompt, messages, tools=None):
         return _FakeResult("", ok=False)  # the incident class: no reply
 
     async def fake_judge(system_prompt, messages):
@@ -125,3 +135,18 @@ async def test_run_eval_records_empty_assistant_reply_as_error():
     report = await run_eval(convos, empty_assistant, fake_judge)
     assert all(r.error for r in report.results)
     assert report.aggregate["overall"] == 0.0  # silent turns score zero
+
+
+async def test_run_eval_scores_native_tool_call_instead_of_empty_reply():
+    convos = load_corpus()[:1]
+
+    async def tool_assistant(system_prompt, messages, tools=None):
+        return _FakeResult("", tool_calls=[ToolCall(id="call-1", name="get_fee_summary")])
+
+    async def fake_judge(system_prompt, messages):
+        assert "TOOL_CALL: get_fee_summary({})" in messages[0]["content"]
+        return _FakeResult('{"correctness": 1, "completeness": 1, "tone": 1}')
+
+    report = await run_eval(convos, tool_assistant, fake_judge)
+    assert report.results[0].error is None
+    assert report.aggregate["overall"] == 1.0

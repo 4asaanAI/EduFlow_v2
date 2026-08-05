@@ -329,7 +329,7 @@ export default function PrincipalDailyOps() {
       </div>
 
       {/* Two-column: leaves + certs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: 20, marginBottom: 24 }}>
         {/* Leave Approvals */}
         <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: '16px 18px' }}>
           <SectionHeader title="Leave Approvals" count={leaves.length} color="#a78bfa" icon={ClipboardList} />
@@ -408,7 +408,7 @@ export default function PrincipalDailyOps() {
       </div>
 
       {/* Bottom row: Attendance + Lesson Plans */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))', gap: 20 }}>
         {/* Class Attendance */}
         <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: '16px 18px' }}>
           <SectionHeader title="Today's Attendance" color="#34d399" icon={Users} />

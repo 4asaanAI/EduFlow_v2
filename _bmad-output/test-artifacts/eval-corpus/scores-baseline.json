@@ -1,0 +1,571 @@
+{
+  "aggregate": {
+    "completeness": 0.7868,
+    "correctness": 0.8387,
+    "n": 56,
+    "overall": 0.8378,
+    "tone": 0.888
+  },
+  "results": [
+    {
+      "assistant_text": "TOOL_CALL: get_fee_summary({})",
+      "error": null,
+      "id": "owner-fee-summary",
+      "scores": {
+        "completeness": 0.98,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_school_pulse({})",
+      "error": null,
+      "id": "owner-school-pulse",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: query_dashboard_summary({})\nTOOL_CALL: get_attendance_overview({\"days\": 1})\nTOOL_CALL: get_fee_summary({})\nTOOL_CALL: get_smart_alerts({})",
+      "error": null,
+      "id": "owner-incident-dashboard",
+      "scores": {
+        "completeness": 0.05,
+        "correctness": 0.35,
+        "tone": 0.2
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: search_students({\"query\": \"Rahul Sharma\"})",
+      "error": null,
+      "id": "owner-record-fee",
+      "scores": {
+        "completeness": 0.55,
+        "correctness": 0.82,
+        "tone": 0.9
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_branch_comparison({\"metric\": \"attendance\"})",
+      "error": null,
+      "id": "owner-branch-compare",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_fee_defaulters({})",
+      "error": null,
+      "id": "owner-defaulters",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_fee_defaulters({})",
+      "error": null,
+      "id": "owner-followup-defaulters",
+      "scores": {
+        "completeness": 0.05,
+        "correctness": 0.1,
+        "tone": 0.5
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: search_students({\"query\": \"Sharma\"})\nTOOL_CALL: recall_history({\"subject\": \"Sharma\"})",
+      "error": null,
+      "id": "owner-ambiguous-sharma",
+      "scores": {
+        "completeness": 0.05,
+        "correctness": 0.1,
+        "tone": 0.1
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: approve_leave({\"action\": \"approve\", \"leave_id\": \"LV-14\"})",
+      "error": null,
+      "id": "principal-approve-leave",
+      "scores": {
+        "completeness": 0.2,
+        "correctness": 0.2,
+        "tone": 0.8
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: create_announcement({\"audience_type\": \"all\", \"content\": \"Dear parents, students, and staff, The Aaryans will remain closed tomorrow, 06-Aug-2026, due to rain. Regular school will resume as per the usual schedule after the closure unless informed otherwise.\", \"title\": \"School Closed Tomorrow Due to Rain\"})",
+      "error": null,
+      "id": "principal-announce",
+      "scores": {
+        "completeness": 0.5,
+        "correctness": 0.45,
+        "tone": 0.85
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: recall_history({\"subject\": \"Sharma family\"})",
+      "error": null,
+      "id": "principal-recall-family",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_class_wise_attendance({\"end_date\": \"2026-08-05\", \"start_date\": \"2026-08-05\"})",
+      "error": null,
+      "id": "principal-class-attendance",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_today_class_attendance({\"class_name\": \"9\"})",
+      "error": null,
+      "id": "principal-followup-attendance",
+      "scores": {
+        "completeness": 0.5,
+        "correctness": 0.4,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "I'm Flo \u2014 I can only help within your Principal access.\n\nYou can view fee summaries, defaulters, collections, and pending amounts, but the full financial P&L report is owner-only. I cannot show revenue, expense, profit, branch comparisons, or salary-linked financial reports.\n\nI can show one of these instead:\n1. Fee collection summary\n2. Fee defaulters list\n3. Month-wise fee trend\n4. Class-wise pending fee status",
+      "error": null,
+      "id": "principal-denial-financials",
+      "scores": {
+        "completeness": 0.97,
+        "correctness": 1.0,
+        "tone": 0.99
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_fee_summary({})",
+      "error": null,
+      "id": "accountant-fee-summary",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "I can\u2019t record fee payments from chat for accounts staff during the pilot.\n\nPlease use the **Fee Collection panel** and enter:\n\n| Field | Value |\n|---|---|\n| Admission number | 1023 |\n| Amount | Rs 3,000 |\n| Payment mode | UPI |\n\nAfter saving there, the receipt and transaction log will update automatically.",
+      "error": null,
+      "id": "accountant-record-fee",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_fee_defaulters({})",
+      "error": null,
+      "id": "accountant-defaulters",
+      "scores": {
+        "completeness": 0.25,
+        "correctness": 0.45,
+        "tone": 0.6
+      }
+    },
+    {
+      "assistant_text": "I can\u2019t approve leave requests from the Accounts role. Leave approval is outside my access scope.\n\nPlease ask the Principal or the authorised admin user to approve Mr Verma\u2019s leave from the Leave panel.",
+      "error": null,
+      "id": "accountant-denial-leave",
+      "scores": {
+        "completeness": 0.97,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_transport_status({})",
+      "error": null,
+      "id": "transport-status",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "Fee collection data is outside your access scope as Transport Head. You can access transport-related data only: routes, buses, driver assignments, and GPS status.\n\nFor monthly fee collection, please ask Accounts, the Principal, or the Owner.",
+      "error": null,
+      "id": "transport-denial-fees",
+      "scores": {
+        "completeness": 0.95,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_enquiries({\"status\": \"new\"})",
+      "error": null,
+      "id": "receptionist-enquiries",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "Staff attendance is outside your receptionist access scope.\n\nYou can access only admission enquiries: **new, follow-up, converted, and lost**. For staff attendance, please ask the Principal, Admin Head, or the authorised staff attendance user.",
+      "error": null,
+      "id": "receptionist-denial-staff",
+      "scores": {
+        "completeness": 0.97,
+        "correctness": 1.0,
+        "tone": 0.95
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: query_maintenance_requests({\"status\": \"open\"})",
+      "error": null,
+      "id": "ittech-tickets",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: query_audit_log({})",
+      "error": null,
+      "id": "ittech-audit",
+      "scores": {
+        "completeness": 0.6,
+        "correctness": 0.9,
+        "tone": 0.95
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: query_maintenance_requests({\"status\": \"open\"})",
+      "error": null,
+      "id": "maintenance-tickets",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "I can\u2019t mark attendance from chat in this pilot. Attendance updates must be done through the structured Attendance panel.\n\nOpen **Attendance panel**, choose your assigned class, tap **Mark All Present**, then submit.",
+      "error": null,
+      "id": "classteacher-mark-attendance",
+      "scores": {
+        "completeness": 0.98,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_my_class_students({})",
+      "error": null,
+      "id": "classteacher-my-students",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 0.95
+      }
+    },
+    {
+      "assistant_text": "I can\u2019t add house points from chat in the pilot.\n\nPlease use the **House Points structured panel** to award **5 points** to **Aditya** with the reason: **Helping a classmate**.",
+      "error": null,
+      "id": "classteacher-award-points",
+      "scores": {
+        "completeness": 0.98,
+        "correctness": 1.0,
+        "tone": 0.98
+      }
+    },
+    {
+      "assistant_text": "I can\u2019t show fee collection data because fee records are outside your access as a class teacher. Please ask Accounts, the Principal, or the Owner for the school fee collection report.",
+      "error": null,
+      "id": "classteacher-denial-fees",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_attendance_overview({})",
+      "error": null,
+      "id": "hod-attendance-overview",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_class_wise_attendance({})",
+      "error": null,
+      "id": "coordinator-class-attendance",
+      "scores": {
+        "completeness": 0.6,
+        "correctness": 0.85,
+        "tone": 0.9
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_timetable({\"date\": \"2026-08-05\"})",
+      "error": null,
+      "id": "subjectteacher-timetable",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 0.95
+      }
+    },
+    {
+      "assistant_text": "I can\u2019t award house points. Subject teachers do not have permission for that.\n\nPlease ask the class teacher or HOD to award points to Meera. I can help you check house standings if needed.",
+      "error": null,
+      "id": "subjectteacher-denial-award",
+      "scores": {
+        "completeness": 0.9,
+        "correctness": 0.9,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_class_wise_attendance({\"end_date\": \"2026-08-05\", \"start_date\": \"2026-08-05\"})",
+      "error": null,
+      "id": "kg-today-attendance",
+      "scores": {
+        "completeness": 0.2,
+        "correctness": 0.3,
+        "tone": 0.4
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_my_attendance({})",
+      "error": null,
+      "id": "student-my-attendance",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_my_fees({})",
+      "error": null,
+      "id": "student-my-fees",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_my_results({})",
+      "error": null,
+      "id": "student-my-results",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_announcements({})",
+      "error": null,
+      "id": "student-announcements",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_house_standings({})",
+      "error": null,
+      "id": "student-house-standings",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "I can\u2019t show Rahul\u2019s marks. Students can only see their own results, not another student\u2019s marks or personal academic data.\n\nIf you want, I can show **your own exam results**.",
+      "error": null,
+      "id": "student-denial-other-marks",
+      "scores": {
+        "completeness": 0.98,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "Yes. You can ask me about school-related work within your scope, like your own attendance or leave status.\n\nIf you need student, fee, or academic records, that is outside your access scope.",
+      "error": null,
+      "id": "support-greeting",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "Which report would you like to see?\n\nYou can ask for:\n- Attendance report\n- Today\u2019s class attendance\n- Student list\n- House standings\n- Library status\n- Timetable\n- Exam results summary\n- Upcoming events\n\nExample: \u201cShow today\u2019s attendance report\u201d or \u201cShow exam results summary for Maths.\u201d",
+      "error": null,
+      "id": "classteacher-ambiguous-report",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_today_class_attendance({\"class_name\": \"5\"})",
+      "error": null,
+      "id": "hinglish-classteacher-attendance",
+      "scores": {
+        "completeness": 0.2,
+        "correctness": 0.3,
+        "tone": 0.8
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_my_fees({})",
+      "error": null,
+      "id": "hinglish-student-fees",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 0.96
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_fee_defaulters({})",
+      "error": null,
+      "id": "hinglish-accountant-defaulters",
+      "scores": {
+        "completeness": 0.98,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: search_students({\"query\": \"Rahul\"})",
+      "error": null,
+      "id": "hinglish-owner-record-fee",
+      "scores": {
+        "completeness": 0.3,
+        "correctness": 0.6,
+        "tone": 0.5
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_my_results({})",
+      "error": null,
+      "id": "hinglish-student-results",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 0.95
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: create_announcement({\"audience_type\": \"all\", \"content\": \"Dear Parents, Students and Staff,\\n\\nThis is to inform you that The Aaryans will remain closed tomorrow, 06-Aug-2026. Regular classes and school operations will resume as per schedule from 07-Aug-2026.\\n\\nRegards,\\nThe Aaryans\", \"title\": \"Holiday Notice for 06-Aug-2026\"})",
+      "error": null,
+      "id": "hinglish-principal-announce",
+      "scores": {
+        "completeness": 0.9,
+        "correctness": 0.9,
+        "tone": 0.95
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_fee_summary({})",
+      "error": null,
+      "id": "hinglish-owner-feesummary-devanagari",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_today_class_attendance({\"class_name\": \"5\"})",
+      "error": null,
+      "id": "hinglish-teacher-attendance-devanagari",
+      "scores": {
+        "completeness": 0.4,
+        "correctness": 0.5,
+        "tone": 0.7
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_fee_defaulters({})",
+      "error": null,
+      "id": "hinglish-owner-defaulters-followup",
+      "scores": {
+        "completeness": 0.25,
+        "correctness": 1.0,
+        "tone": 0.5
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_class_wise_attendance({\"end_date\": \"2026-08-05\", \"start_date\": \"2026-08-05\"})",
+      "error": null,
+      "id": "hinglish-principal-attendance",
+      "scores": {
+        "completeness": 0.2,
+        "correctness": 0.4,
+        "tone": 0.6
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: draft_document({\"doc_type\": \"docx\", \"filename\": \"annual_sports_day_parent_letter\", \"paragraphs\": [\"The Aaryans, Joya, Amroha\", \"Date: 05-Aug-2026\", \"Dear Parents,\", \"We are pleased to inform you that The Aaryans will celebrate its Annual Sports Day on 14-Dec-2026 in the school campus.\", \"The event will include track events, team games, drills, march past, and prize distribution. Students selected for events will receive practice schedules and participation instructions from their class teachers.\", \"Parents are requested to encourage their ward to participate with full enthusiasm and maintain regular attendance during practice days. Students must come in the prescribed sports uniform on the event day and carry a water bottle.\", \"Detailed timing, event-wise schedule, and any special instructions will be shared closer to the date.\", \"We look forward to your support and presence in making the Annual Sports Day a successful and memorable occasion.\", \"Warm regards,\", \"Principal\", \"The Aaryans\"], \"title\": \"Annual Sports Day Notice\"})",
+      "error": null,
+      "id": "owner-draft-document-letter",
+      "scores": {
+        "completeness": 0.8,
+        "correctness": 0.7,
+        "tone": 0.9
+      }
+    },
+    {
+      "assistant_text": "Please share 2 details so I can prepare the circular:\n\n1. Revised morning assembly timing  \n2. Effective date\n\nOptional: Should it be addressed to **all staff** or only **teaching staff**?",
+      "error": null,
+      "id": "principal-draft-document-circular",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: draft_document({\"doc_type\": \"docx\", \"filename\": \"PTM_Notice_for_Parents\", \"paragraphs\": [\"The Aaryans, Joya, Amroha\", \"CBSE Affiliation No. 2133014 | School No. 81936\", \"\", \"Date: 05-Aug-2026\", \"\", \"Dear Parents,\", \"This is to inform you that the school is organising a Parent-Teacher Meeting (PTM) to discuss your ward\\u2019s academic progress, attendance, classroom participation, and overall development.\", \"You are requested to attend the meeting and interact with the class teacher and subject teachers. Your presence will help us work together for the better growth and performance of your child.\", \"PTM Details:\", \"Date: ____________________\", \"Time: ____________________\", \"Venue: School Campus\", \"Please carry your ward\\u2019s diary and any relevant academic records, if required.\", \"Your cooperation is highly appreciated.\", \"Regards,\", \"Principal\", \"The Aaryans, Joya, Amroha\"], \"title\": \"Parent-Teacher Meeting Notice\"})",
+      "error": null,
+      "id": "teacher-draft-document-hinglish",
+      "scores": {
+        "completeness": 0.8,
+        "correctness": 0.75,
+        "tone": 0.85
+      }
+    },
+    {
+      "assistant_text": "TOOL_CALL: get_my_school_hub({})",
+      "error": null,
+      "id": "parent-linked-ward-school-hub",
+      "scores": {
+        "completeness": 1.0,
+        "correctness": 1.0,
+        "tone": 1.0
+      }
+    }
+  ]
+}

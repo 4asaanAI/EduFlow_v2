@@ -98,6 +98,7 @@ Every variable from `backend/.env.example` must be reviewed for each environment
 |---|---:|---|
 | `MONGO_URL` | Yes | MongoDB Atlas connection string. |
 | `DB_NAME` | Yes | Production database name. |
+| `CREATE_INDEXES_ON_STARTUP` | Recommended | Leave unset/false in production. Run registered migrations explicitly after staging rehearsal. |
 | `CORS_ORIGINS` | Yes | Comma-separated frontend origins. |
 | `ENVIRONMENT` | Yes | Use `production` in production. |
 | `SCHOOL_ID` | Yes | Tenant identifier; required outside development. |
