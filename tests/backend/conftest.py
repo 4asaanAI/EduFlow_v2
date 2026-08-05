@@ -120,6 +120,7 @@ try:
     import routes.accounting as accounting_routes
     import routes.guardian as guardian_routes
     import routes.quizzes as quizzes_routes
+    import routes.commercial as commercial_routes
     # UI Sweep Epic 4: `routes.tools` was never wired into the harness, so the
     # endpoint behind every tool screen had no tests at all — which is how a double
     # result envelope survived a whole initiative. It is registered here so it can be.
@@ -583,11 +584,14 @@ class FakeDb:
         self.resource_bookings = FakeCollection()
         self.asset_custody = FakeCollection()
         self.inventory_items = FakeCollection()
+        self.inventory = FakeCollection()
         self.stock_movements = FakeCollection()
         self.purchase_requisitions = FakeCollection()
         self.purchase_orders = FakeCollection()
         self.library_titles = FakeCollection()
         self.library_loans = FakeCollection()
+        self.library_books = FakeCollection()
+        self.library_transactions = FakeCollection()
         self.quizzes = FakeCollection()
         self.quiz_attempts = FakeCollection()
         self.enquiries = FakeCollection()
@@ -617,6 +621,18 @@ class FakeDb:
         self.salary_disbursements = FakeCollection()
         self.salary_disbursement_corrections = FakeCollection()
         self.accounting_periods = FakeCollection()
+        self.accounting_period_locks = FakeCollection()
+        self.legal_entities = FakeCollection()
+        self.commercial_sequences = FakeCollection()
+        self.crm_activities = FakeCollection()
+        self.crm_contact_keys = FakeCollection()
+        self.crm_opportunities = FakeCollection()
+        self.commercial_products = FakeCollection()
+        self.pos_shifts = FakeCollection()
+        self.retail_sales = FakeCollection()
+        self.retail_returns = FakeCollection()
+        self.retail_idempotency = FakeCollection()
+        self.retail_return_idempotency = FakeCollection()
         self.facility_requests = FakeCollection()
         self.tech_requests = FakeCollection()
         self.queries = FakeCollection()
@@ -724,6 +740,7 @@ if APP_AVAILABLE:
     accounting_routes.get_db = lambda: _fake_db
     guardian_routes.get_db = lambda: _fake_db
     quizzes_routes.get_db = lambda: _fake_db
+    commercial_routes.get_db = lambda: _fake_db
     tools_routes.get_db = lambda: _fake_db
     tool_functions_v1.get_db = lambda: _fake_db
     tool_functions_v2_mod.get_db = lambda: _fake_db

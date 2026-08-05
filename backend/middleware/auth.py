@@ -279,6 +279,26 @@ def require_owner_or_principal(request: Request):
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
+def require_owner_or_admin_subcategories(*sub_categories: str):
+    """Factory for owner or one of several explicitly named admin profiles."""
+    if not sub_categories:
+        raise ValueError("require_owner_or_admin_subcategories() requires sub-categories")
+
+    def dependency(request: Request):
+        user = get_current_user(request)
+        if user.get("role") == "owner":
+            return user
+        if user.get("role") == "admin" and user.get("sub_category") in sub_categories:
+            return user
+        logger.info(
+            "owner/admin-subcategory gate failed: role=%s sub=%s required=%s path=%s",
+            user.get("role"), user.get("sub_category"), sub_categories, request.url.path,
+        )
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    return dependency
+
+
 def require_owner_principal_or_management(request: Request):
     """Owner, admin+principal, or admin+management.
 

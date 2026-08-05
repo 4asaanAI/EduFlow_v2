@@ -7,7 +7,10 @@ backend/migrations/ but forgotten in the runner's MIGRATIONS list.
 
 import os
 import re
+import importlib
 from pathlib import Path
+
+import pytest
 
 MIGRATIONS_DIR = Path(__file__).parent.parent.parent / "backend" / "migrations"
 RUN_ALL_PATH = MIGRATIONS_DIR / "run_all.py"
@@ -65,3 +68,31 @@ def test_run_all_has_correct_order():
     assert numbers == expected, (
         f"Migration numbers have gaps. Found: {numbers}, expected consecutive: {expected}"
     )
+
+
+@pytest.mark.asyncio
+async def test_commercial_migration_is_repeatable_and_index_only():
+    migration = importlib.import_module("backend.migrations.029_commercial_operations")
+    calls = []
+
+    class Collection:
+        def __init__(self, name):
+            self.name = name
+
+        async def create_index(self, *args, **kwargs):
+            calls.append((self.name, args, kwargs))
+
+        def __getattr__(self, operation):
+            if operation in {"insert_one", "insert_many", "update_one", "update_many", "delete_one", "delete_many"}:
+                raise AssertionError(f"Migration 029 attempted data mutation: {self.name}.{operation}")
+            raise AttributeError(operation)
+
+    class Database:
+        def __getattr__(self, name):
+            return Collection(name)
+
+    await migration.migrate(Database())
+    once = list(calls)
+    await migration.migrate(Database())
+    assert once
+    assert calls == once + once

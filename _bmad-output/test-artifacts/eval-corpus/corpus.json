@@ -74,9 +74,9 @@
       "turns": [
         "Compare attendance across our branches."
       ],
-      "expected_tool": "get_branch_comparison",
-      "expected_outcome": "answer",
-      "rubric": "Cross-branch comparison; owner-only capability."
+      "expected_tool": null,
+      "expected_outcome": "chat",
+      "rubric": "Explains plainly that this deployment serves the Joya branch only and does not invent a cross-branch comparison."
     },
     {
       "id": "owner-defaulters",

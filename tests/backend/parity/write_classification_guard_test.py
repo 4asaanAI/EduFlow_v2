@@ -40,6 +40,9 @@ READ_ONLY_ALLOWLIST = frozenset({
     "get_branch_comparison",
     "get_class_list",
     "get_class_wise_attendance",
+    # Read-only adapter over commercial_service reporting. It lists scoped CRM,
+    # retail, and entity summaries and exposes no mutation path.
+    "get_commercial_operations",
     "get_daily_brief",
     "get_announcements",
     "get_admissions_pipeline",

@@ -16,6 +16,23 @@ from ai.fee_metrics import DEFAULTER_STATUSES, student_outstanding_from_txns
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
 from services.actor_context import actor_ctx_from_user
+from services.commercial_service import (
+    CommercialConflictError,
+    CommercialNotFoundError,
+    CommercialValidationError,
+    commercial_summary,
+    close_shift as svc_close_pos_shift,
+    create_crm_lead as svc_create_crm_lead,
+    create_entity as svc_create_legal_entity,
+    create_product as svc_create_retail_product,
+    create_return as svc_create_pos_return,
+    create_sale as svc_create_pos_sale,
+    crm_pipeline,
+    list_entities,
+    open_shift as svc_open_pos_shift,
+    set_default_entity as svc_set_default_legal_entity,
+    update_crm_lead as svc_update_crm_lead,
+)
 from services.attendance_service import AttendanceValidationError, mark_attendance
 from services.fees_service import (
     record_payment,
@@ -3511,6 +3528,152 @@ async def tool_get_admissions_pipeline(params: dict, user: dict, scope: dict = N
     return _enterprise_env({"funnel": counts, "applications": recent}, count=len(applications))
 
 
+async def tool_get_commercial_operations(params: dict, user: dict, scope: dict = None) -> dict:
+    """Read-only commercial hub with service-level entity and branch scoping."""
+    domain = str(params.get("domain") or "overview").strip().lower()
+    if domain not in {"overview", "crm", "retail", "entities", "consolidated"}:
+        return {"success": False, "denied": False, "data": {}, "meta": {"count": 0},
+                "message": "domain must be overview, crm, retail, entities, or consolidated"}
+    if user.get("role") == "admin" and user.get("sub_category") == "accountant" and domain in {"overview", "crm"}:
+        return {"success": False, "denied": True, "data": {}, "meta": {"count": 0},
+                "message": "Accounts staff can view campus retail totals and legal-entity structure, not admissions CRM."}
+    if domain == "consolidated" and user.get("role") != "owner":
+        return {"success": False, "denied": True, "data": {}, "meta": {"count": 0},
+                "message": "Only the school's owner can view consolidated legal-entity reporting."}
+    db = get_db()
+    actor = actor_ctx_from_user(user, branch_id=_branch_id(user, scope) or "branch-joya")
+    entity_id = params.get("entity_id")
+    try:
+        if domain == "crm":
+            data = await crm_pipeline(db, actor, entity_id)
+        elif domain == "entities":
+            rows = await list_entities(db, actor)
+            data = [{key: row.get(key) for key in (
+                "id", "name", "code", "entity_type", "parent_entity_id",
+                "currency", "is_group", "is_default", "is_active",
+            )} for row in rows]
+        elif domain == "consolidated":
+            data = await commercial_summary(db, actor, consolidated=True)
+        elif domain == "retail":
+            data = await commercial_summary(db, actor, entity_id)
+        else:
+            data = {
+                "crm": await crm_pipeline(db, actor, entity_id),
+                "retail": await commercial_summary(db, actor, entity_id),
+            }
+    except CommercialNotFoundError as exc:
+        return {"success": False, "denied": False, "data": {}, "meta": {"count": 0}, "message": str(exc)}
+    except (CommercialConflictError, CommercialValidationError) as exc:
+        return {"success": False, "denied": False, "data": {}, "meta": {"count": 0}, "message": str(exc)}
+    return _enterprise_env(data, count=len(data) if isinstance(data, list) else 1)
+
+
+async def tool_create_crm_lead(params: dict, user: dict, scope: dict = None) -> dict:
+    if not params.get("student_name"):
+        return _failed("student_name is required.")
+    actor = actor_ctx_from_user(user, branch_id=_branch_id(user, scope) or "branch-joya")
+    try:
+        row = await svc_create_crm_lead(get_db(), actor, params)
+    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError,
+            EnquiryValidationError, EnquiryConflictError, EnquiryNotFoundError) as exc:
+        return _failed(str(exc))
+    return {"success": True, "data": row, "message": "CRM lead created."}
+
+
+async def tool_update_crm_lead(params: dict, user: dict, scope: dict = None) -> dict:
+    enquiry_id = params.get("enquiry_id")
+    if not enquiry_id:
+        return _failed("enquiry_id is required.")
+    actor = actor_ctx_from_user(user, branch_id=_branch_id(user, scope) or "branch-joya")
+    try:
+        row = await svc_update_crm_lead(
+            get_db(), actor, enquiry_id, {key: value for key, value in params.items() if key != "enquiry_id"}
+        )
+    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError,
+            EnquiryValidationError, EnquiryConflictError, EnquiryNotFoundError) as exc:
+        return _failed(str(exc))
+    return {"success": True, "data": row, "message": "CRM lead updated."}
+
+
+def _commercial_actor(user: dict, scope: dict | None):
+    return actor_ctx_from_user(user, branch_id=_branch_id(user, scope) or "branch-joya")
+
+
+async def tool_create_legal_entity(params: dict, user: dict, scope: dict = None) -> dict:
+    try:
+        row = await svc_create_legal_entity(get_db(), _commercial_actor(user, scope), params)
+    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
+        return _failed(str(exc))
+    return {"success": True, "data": row, "message": "Legal entity created."}
+
+
+async def tool_set_default_legal_entity(params: dict, user: dict, scope: dict = None) -> dict:
+    if not params.get("entity_id"):
+        return _failed("entity_id is required.")
+    try:
+        row = await svc_set_default_legal_entity(
+            get_db(), _commercial_actor(user, scope), params["entity_id"]
+        )
+    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
+        return _failed(str(exc))
+    return {"success": True, "data": row, "message": "Default legal entity updated."}
+
+
+async def tool_create_retail_product(params: dict, user: dict, scope: dict = None) -> dict:
+    try:
+        row = await svc_create_retail_product(get_db(), _commercial_actor(user, scope), params)
+    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
+        return _failed(str(exc))
+    return {"success": True, "data": row, "message": "Retail product created."}
+
+
+async def tool_open_pos_shift(params: dict, user: dict, scope: dict = None) -> dict:
+    try:
+        row = await svc_open_pos_shift(get_db(), _commercial_actor(user, scope), params)
+    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
+        return _failed(str(exc))
+    return {"success": True, "data": row, "message": "POS shift opened."}
+
+
+async def tool_close_pos_shift(params: dict, user: dict, scope: dict = None) -> dict:
+    if not params.get("shift_id"):
+        return _failed("shift_id is required.")
+    try:
+        row = await svc_close_pos_shift(
+            get_db(), _commercial_actor(user, scope), params["shift_id"], params
+        )
+    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
+        return _failed(str(exc))
+    return {"success": True, "data": row, "message": "POS shift closed."}
+
+
+async def tool_post_pos_sale(params: dict, user: dict, scope: dict = None) -> dict:
+    key = str(params.get("idempotency_key") or f"flo-sale-{uuid.uuid4()}")
+    payload = {k: v for k, v in params.items() if k != "idempotency_key"}
+    try:
+        row = await svc_create_pos_sale(
+            get_db(), _commercial_actor(user, scope), payload, idempotency_key=key
+        )
+    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
+        return _failed(str(exc))
+    return {"success": True, "data": row, "message": "POS sale posted."}
+
+
+async def tool_post_pos_return(params: dict, user: dict, scope: dict = None) -> dict:
+    if not params.get("sale_id"):
+        return _failed("sale_id is required.")
+    key = str(params.get("idempotency_key") or f"flo-return-{uuid.uuid4()}")
+    payload = {k: v for k, v in params.items() if k not in {"sale_id", "idempotency_key"}}
+    try:
+        row = await svc_create_pos_return(
+            get_db(), _commercial_actor(user, scope), params["sale_id"], payload,
+            idempotency_key=key,
+        )
+    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
+        return _failed(str(exc))
+    return {"success": True, "data": row, "message": "POS return posted."}
+
+
 async def tool_get_enterprise_operations(params: dict, user: dict, scope: dict = None) -> dict:
     """Read-only operational hub behind Flo and the deterministic panels."""
     domain = str(params.get("domain") or "resources").strip().lower()
@@ -3672,6 +3835,126 @@ TOOL_REGISTRY = {
         "dispatch_type": "read",
         "description": "Accounting periods, versioned fee schedules, and owner-only payroll status counts.",
         "params_schema": {},
+    },
+    "get_commercial_operations": {
+        "fn": tool_get_commercial_operations,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "accountant"],
+        "dispatch_type": "read",
+        "description": "School CRM pipeline, campus retail totals, legal entities, and owner-only consolidation.",
+        "params_schema": {
+            "domain": {"type": "string", "description": "overview, crm, retail, entities, or consolidated"},
+            "entity_id": {"type": "string", "description": "Optional legal entity ID"},
+        },
+    },
+    "create_crm_lead": {
+        "fn": tool_create_crm_lead,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "description": "Create a scoped admissions CRM lead.",
+        "params_schema": {
+            "student_name": {"type": "string", "description": "Applicant/student name (required)"},
+            "parent_name": {"type": "string", "description": "Parent or guardian name"},
+            "phone": {"type": "string", "description": "Contact phone"},
+            "email": {"type": "string", "description": "Contact email"},
+            "class_applying": {"type": "string", "description": "Class applying for"},
+            "source": {"type": "string", "description": "Lead source"},
+            "entity_id": {"type": "string", "description": "Operating legal entity ID"},
+            "next_follow_up": {"type": "string", "description": "Next follow-up YYYY-MM-DD"},
+        },
+    },
+    "update_crm_lead": {
+        "fn": tool_update_crm_lead,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "description": "Update a CRM lead stage, follow-up, value, or probability.",
+        "params_schema": {
+            "enquiry_id": {"type": "string", "description": "CRM enquiry ID (required)"},
+            "status": {"type": "string", "description": "New CRM stage"},
+            "next_follow_up": {"type": "string", "description": "Next follow-up YYYY-MM-DD"},
+            "probability": {"type": "integer", "description": "Probability from 0 to 100"},
+            "estimated_value": {"type": "number", "description": "Estimated value in rupees"},
+            "lost_reason": {"type": "string", "description": "Required when marking lost"},
+        },
+    },
+    "create_legal_entity": {
+        "fn": tool_create_legal_entity, "roles": ["owner"], "dispatch_type": "write",
+        "requires_confirmation": True, "description": "Create a school operating or group legal entity.",
+        "params_schema": {
+            "name": {"type": "string", "description": "Legal name (required)"},
+            "code": {"type": "string", "description": "Unique code (required)"},
+            "entity_type": {"type": "string", "description": "school, trust, company, or group"},
+            "parent_entity_id": {"type": "string", "description": "Optional parent group ID"},
+        },
+    },
+    "set_default_legal_entity": {
+        "fn": tool_set_default_legal_entity, "roles": ["owner"], "dispatch_type": "write",
+        "requires_confirmation": True, "description": "Set the default operating legal entity.",
+        "params_schema": {"entity_id": {"type": "string", "description": "Legal entity ID (required)"}},
+    },
+    "create_retail_product": {
+        "fn": tool_create_retail_product, "roles": ["owner", "admin"],
+        "sub_categories": ["principal"], "dispatch_type": "write", "requires_confirmation": True,
+        "description": "Map an inventory item into the campus retail catalog.",
+        "params_schema": {
+            "entity_id": {"type": "string", "description": "Operating entity ID"},
+            "inventory_item_id": {"type": "string", "description": "Inventory item ID (required)"},
+            "sku": {"type": "string", "description": "Retail SKU (required)"},
+            "name": {"type": "string", "description": "Product name (required)"},
+            "unit_price": {"type": "number", "description": "Price in rupees (required)"},
+            "tax_rate_percent": {"type": "number", "description": "Tax percent"},
+        },
+    },
+    "open_pos_shift": {
+        "fn": tool_open_pos_shift, "roles": ["owner", "admin"],
+        "sub_categories": ["principal"], "dispatch_type": "write", "requires_confirmation": True,
+        "description": "Open a campus POS cashier shift.",
+        "params_schema": {
+            "entity_id": {"type": "string", "description": "Operating entity ID"},
+            "register_name": {"type": "string", "description": "Register name (required)"},
+            "opening_cash": {"type": "number", "description": "Opening cash in rupees"},
+        },
+    },
+    "close_pos_shift": {
+        "fn": tool_close_pos_shift, "roles": ["owner", "admin"],
+        "sub_categories": ["principal"], "dispatch_type": "write", "requires_confirmation": True,
+        "description": "Close and reconcile a campus POS shift.",
+        "params_schema": {
+            "shift_id": {"type": "string", "description": "Open shift ID (required)"},
+            "counted_cash": {"type": "number", "description": "Counted cash in rupees (required)"},
+            "variance_reason": {"type": "string", "description": "Reason when cash differs"},
+        },
+    },
+    "post_pos_sale": {
+        "fn": tool_post_pos_sale, "roles": ["owner", "admin"],
+        "sub_categories": ["principal"], "dispatch_type": "write", "requires_confirmation": True,
+        "description": "Post an immutable multi-line campus retail sale.",
+        "params_schema": {
+            "entity_id": {"type": "string", "description": "Operating entity ID"},
+            "shift_id": {"type": "string", "description": "Open shift ID (required)"},
+            "lines": {"type": "array", "description": "Product ID and quantity lines (required)"},
+            "payments": {"type": "array", "description": "Split payments matching the exact total (required)"},
+            "customer_name": {"type": "string", "description": "Walk-in customer name"},
+            "idempotency_key": {"type": "string", "description": "Optional retry key"},
+        },
+    },
+    "post_pos_return": {
+        "fn": tool_post_pos_return, "roles": ["owner", "admin"],
+        "sub_categories": ["principal"], "dispatch_type": "write", "requires_confirmation": True,
+        "description": "Post an immutable return linked to a campus retail sale.",
+        "params_schema": {
+            "sale_id": {"type": "string", "description": "Original sale ID (required)"},
+            "entity_id": {"type": "string", "description": "Operating entity ID"},
+            "shift_id": {"type": "string", "description": "Open shift ID (required)"},
+            "lines": {"type": "array", "description": "Returned product ID and quantity lines (required)"},
+            "reason": {"type": "string", "description": "Return reason (required)"},
+            "payments": {"type": "array", "description": "Optional refund split; defaults to original modes"},
+            "idempotency_key": {"type": "string", "description": "Optional retry key"},
+        },
     },
     "get_my_school_hub": {
         "fn": tool_get_my_school_hub,

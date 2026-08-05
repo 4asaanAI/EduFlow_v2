@@ -101,10 +101,10 @@ def test_turn_writes_a_trace_row_end_to_end(client, fake_db, monkeypatch):
     import services.token_service as _ts
     monkeypatch.setattr(_ts, "get_db", lambda: fake_db, raising=False)
 
-    async def _ctx(role, uid):
+    async def _ctx(role, uid, branch_id=None):
         return {"school_name": "S"}
     monkeypatch.setattr(chat, "build_school_context", _ctx, raising=False)
-    monkeypatch.setattr(chat, "build_system_prompt", lambda u, c, l: "sys", raising=False)
+    monkeypatch.setattr(chat, "build_system_prompt", lambda u, c, l, **kwargs: "sys", raising=False)
     monkeypatch.setattr(chat, "detect_language", lambda t: "en", raising=False)
 
     async def fake_chat(*a, **k):

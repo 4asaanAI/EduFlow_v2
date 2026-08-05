@@ -13,9 +13,24 @@ import {
   LifeBuoy, Database, RefreshCw, Wrench, Monitor, AlertTriangle, ScrollText, Trophy,
   Search,
 } from 'lucide-react';
+import { MANAGEMENT_HUBS, MANAGEMENT_HUB_IDS } from '../lib/managementHubs';
+
+const HUB_ICON_BY_ID = {
+  'overview-hub': Activity,
+  'school-database-hub': Database,
+  'finance-commercial-hub': IndianRupee,
+  'admissions-communication-hub': UserPlus,
+  'academics-activities-hub': BookOpen,
+  'people-operations-hub': Users,
+  'campus-library-hub': Package,
+  'transport-hub': Truck,
+  'governance-ai-hub': ScrollText,
+};
+const HUB_TOOLS = MANAGEMENT_HUBS.map(hub => ({ ...hub, icon: HUB_ICON_BY_ID[hub.id] }));
 
 const TOOLS_BY_ROLE = {
   owner: [
+    ...HUB_TOOLS,
     { id: 'school-pulse', name: 'School Pulse', subtitle: "Today's overview", icon: Activity, color: '#fb923c' },
     // Epic 7 — find any person (students + staff). Owner + Principal only; the
     // principal pool below is built from this owner list, so this one definition
@@ -35,6 +50,7 @@ const TOOLS_BY_ROLE = {
     { id: 'financial-reports', name: 'Financial Reports', subtitle: 'Revenue & expenses', icon: FileText, color: '#22d3ee' },
     { id: 'accounting-periods', name: 'Accounting Periods', subtitle: 'Posting locks', icon: CalendarDays, color: '#f87171' },
     { id: 'payroll-manager', name: 'Payroll & Payslips', subtitle: 'Corrections & slips', icon: FileText, color: '#34d399' },
+    { id: 'commercial-operations', name: 'Commercial Operations', subtitle: 'CRM, entities & campus sales', icon: IndianRupee, color: '#34d399' },
     { id: 'announcement-broadcaster', name: 'Announcements', subtitle: 'Broadcast messages', icon: Megaphone, color: '#fbbf24' },
     { id: 'admission-funnel', name: 'Admission Funnel', subtitle: 'Enquiries & conversions', icon: UserPlus, color: '#4f8ff7' },
     { id: 'staff-leave-manager', name: 'Leave Manager', subtitle: 'Approve / reject', icon: CalendarDays, color: '#34d399' },
@@ -63,12 +79,14 @@ const TOOLS_BY_ROLE = {
     { id: 'school-settings', name: 'School Settings', subtitle: 'Identity & profile', icon: Settings, color: '#737373' },
   ],
   admin: [
+    ...HUB_TOOLS,
     { id: 'academic-structure', name: 'Academic Structure', subtitle: 'Classes, subjects & teachers', icon: BookOpen, color: '#4f8ff7' },
     { id: 'student-database', name: 'Student Database', subtitle: 'Manage & search', icon: Users, color: '#4f8ff7' },
     { id: 'fee-tracker', name: 'Fee Tracker', subtitle: 'Reminders & dues', icon: IndianRupee, color: '#34d399' },
     { id: 'fee-collection', name: 'Fee Collection', subtitle: 'Payments, receipts & export', icon: FileText, color: '#34d399' },
     { id: 'accounting-periods', name: 'Accounting Periods', subtitle: 'Posting locks', icon: CalendarDays, color: '#f87171' },
     { id: 'payroll-manager', name: 'Payroll & Payslips', subtitle: 'Corrections & slips', icon: FileText, color: '#34d399' },
+    { id: 'commercial-operations', name: 'Commercial Operations', subtitle: 'CRM, entities & campus sales', icon: IndianRupee, color: '#34d399' },
     { id: 'attendance-recorder', name: 'Attendance', subtitle: 'Mark & track', icon: ClipboardList, color: '#fb923c' },
     { id: 'principal-daily', name: 'Principal Daily', subtitle: 'Absences & substitutes', icon: CalendarDays, color: '#fbbf24' },
     { id: 'certificate-generator', name: 'Certificates', subtitle: 'TC, Bonafide, etc.', icon: Award, color: '#fbbf24' },
@@ -156,7 +174,7 @@ const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', teacher: 'Teacher', studen
 const ADMIN_SUBCATEGORY_TOOLS = {
   // D-49: the accountant is one of the three profiles the server lets issue
   // certificates and ID cards (owner decision 2026-08-04, decision 2).
-  accountant: ['student-database', 'fee-tracker', 'smart-fee-defaulter', 'fee-collection', 'accounting-periods', 'payroll-manager', 'certificate-generator', 'id-card-generator', 'custom-form-builder', 'raise-maintenance'],
+  accountant: ['student-database', 'fee-tracker', 'smart-fee-defaulter', 'fee-collection', 'accounting-periods', 'payroll-manager', 'commercial-operations', 'certificate-generator', 'id-card-generator', 'custom-form-builder', 'raise-maintenance'],
   transport_head: ['student-database', 'transport-manager', 'transport-optimisation', 'asset-tracker', 'custom-form-builder', 'raise-maintenance'],
   principal: [
     'school-directory',
@@ -173,7 +191,7 @@ const ADMIN_SUBCATEGORY_TOOLS = {
   ],
   // D-49: 'id-card-generator' removed — the server refuses a receptionist, so
   // offering the button only produced a refusal when they pressed it.
-  receptionist: ['student-database', 'enquiry-register', 'parent-message', 'student-transfer', 'asset-tracker', 'incident-tracker', 'raise-maintenance', 'custom-form-builder'],
+  receptionist: ['student-database', 'enquiry-register', 'commercial-operations', 'parent-message', 'student-transfer', 'asset-tracker', 'incident-tracker', 'raise-maintenance', 'custom-form-builder'],
   it_tech: ['tech-issues', 'raise-maintenance', 'custom-form-builder', 'query-section'],
   maintenance: ['maintenance-schedule', 'vendor-log', 'raise-maintenance'],
   management: ['academic-structure', 'timetable-builder', 'exam-manager', 'raise-maintenance', 'audit-log', 'query-section'],
@@ -182,40 +200,14 @@ const ADMIN_SUBCATEGORY_TOOLS = {
 // ─── Grouped navigation config per role ──────────────────────────────────────
 const TOOL_GROUPS = {
   owner: {
-    top: ['school-pulse', 'school-directory'],
-    groups: [
-      { id: 'fee', name: 'Fee Summary', icon: IndianRupee, color: '#4f8ff7',
-        tools: ['fee-collection', 'fee-sync', 'financial-reports', 'accounting-periods', 'payroll-manager', 'expense-tracker', 'smart-fee-defaulter'] },
-      { id: 'database', name: 'Database', icon: Database, color: '#22d3ee',
-        tools: ['student-database', 'data-import', 'staff-tracker'] },
-      { id: 'attendance', name: 'Attendance', icon: ClipboardList, color: '#a78bfa',
-        tools: ['attendance-overview', 'staff-attendance-tracker', 'staff-performance', 'attendance-alerts'] },
-      { id: 'internals', name: 'School Internals', icon: Megaphone, color: '#fbbf24',
-        tools: ['announcement-broadcaster', 'admission-funnel', 'staff-leave-manager', 'student-leave-manager', 'quiz-manager', 'custom-report-builder', 'board-report', 'school-activities', 'exam-manager', 'school-settings'] },
-      { id: 'ai', name: 'Smart AI', icon: Brain, color: '#f472b6',
-        tools: ['ai-health-report', 'smart-alerts'] },
-      { id: 'queries', name: 'Queries', icon: Wrench, color: '#fb923c',
-        tools: ['resource-calendar', 'asset-custody', 'procurement-inventory', 'library-circulation', 'vendor-log', 'facility-requests', 'maintenance-schedule'] },
-    ],
-    bottom: ['audit-log', 'query-section'],
+    top: MANAGEMENT_HUBS.map(hub => hub.id),
+    groups: [],
+    bottom: [],
   },
   principal: {
-    top: ['principal-daily', 'school-directory'],
-    groups: [
-      { id: 'students', name: 'Students', icon: Users, color: '#4f8ff7',
-        tools: ['student-database', 'certificate-generator', 'enquiry-register', 'document-scanner', 'id-card-generator'] },
-      { id: 'attendance', name: 'Attendance', icon: ClipboardList, color: '#a78bfa',
-        tools: ['attendance-recorder', 'attendance-overview'] },
-      { id: 'staff', name: 'Staff', icon: UserCheck, color: '#34d399',
-        tools: ['staff-tracker', 'staff-performance', 'staff-leave-manager', 'student-leave-manager'] },
-      { id: 'communication', name: 'Communication', icon: MessageSquare, color: '#fbbf24',
-        tools: ['circular-sender', 'parent-message'] },
-      { id: 'operations', name: 'Operations', icon: CalendarDays, color: '#f472b6',
-        tools: ['academic-structure', 'timetable-builder', 'resource-calendar', 'asset-custody', 'procurement-inventory', 'library-circulation', 'quiz-manager', 'transport-manager', 'school-activities', 'exam-manager', 'incident-tracker', 'smart-alerts'] },
-      { id: 'facilities', name: 'Facilities', icon: Wrench, color: '#fb923c',
-        tools: ['facility-requests', 'raise-maintenance', 'smart-fee-defaulter'] },
-    ],
-    bottom: ['audit-log', 'query-section'],
+    top: MANAGEMENT_HUBS.map(hub => hub.id),
+    groups: [],
+    bottom: [],
   },
   teacher: {
     top: [],
@@ -272,10 +264,11 @@ function getSidebarTools(user) {
   const tools = filterToolsForUser(user, TOOLS_BY_ROLE[user.role] || []);
   if (user.role !== 'admin') return tools;
   const allowed = ADMIN_SUBCATEGORY_TOOLS[user.sub_category];
-  if (!allowed) return tools;
+  if (!allowed) return tools.filter(tool => !MANAGEMENT_HUB_IDS.includes(tool.id));
   const ownerTools = user.sub_category === 'principal' ? (TOOLS_BY_ROLE.owner || []) : [];
   const allTools = [...new Map([...tools, ...ownerTools].filter(t => t?.id).map(t => [t.id, t])).values()];
-  return allowed.map(id => allTools.find(tool => tool.id === id)).filter(Boolean);
+  const resolved = allowed.map(id => allTools.find(tool => tool.id === id)).filter(Boolean);
+  return user.sub_category === 'principal' ? [...HUB_TOOLS, ...resolved] : resolved;
 }
 
 function timeAgo(iso) {

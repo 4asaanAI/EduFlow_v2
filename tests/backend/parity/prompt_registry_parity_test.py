@@ -59,6 +59,9 @@ UNADVERTISED_OK = frozenset({
     "delete_visitor", "get_fee_sync_status", "log_visitor", "mark_staff_attendance",
     "reopen_query_ticket", "resolve_query_ticket", "trigger_fee_sync",
     "update_asset", "update_expense", "update_transport_route",
+    # Retained for a future explicitly approved multi-branch activation, but not
+    # offered to Flo in today's single-branch deployment.
+    "create_branch", "update_branch", "delete_branch", "get_branch_comparison",
 })
 
 # Tools that MUST be advertised to every variant authorized for them (closes L5:

@@ -58,13 +58,15 @@ def _session_kwargs(session) -> dict:
     return _txn_session_kwargs(session)
 
 
-async def create_enquiry(db, actor_ctx: ActorContext, params: dict, *, session=None) -> dict:
+async def create_enquiry(db, actor_ctx: ActorContext, params: dict, *, session=None,
+                         extra_fields: dict | None = None) -> dict:
     """Create an admission enquiry. params: {student_name, parent_name?, phone?, class_applying?, source?}"""
     if not params.get("student_name"):
         raise EnquiryValidationError("student_name is required")
     enquiry = {
         "id": str(uuid.uuid4()),
         "schoolId": actor_ctx.school_id,
+        "branch_id": actor_ctx.branch_id,
         "student_name": params.get("student_name"),
         "parent_name": params.get("parent_name"),
         "phone": params.get("phone"),
@@ -73,12 +75,14 @@ async def create_enquiry(db, actor_ctx: ActorContext, params: dict, *, session=N
         "source": params.get("source", "walk_in"),
         "assigned_to": actor_ctx.user_id,
         "created_at": actor_ctx.now_iso(),
+        **(extra_fields or {}),
     }
     await db.enquiries.insert_one({**enquiry, "_id": enquiry["id"]}, **_session_kwargs(session))
     return {"enquiry": enquiry}
 
 
-async def update_enquiry(db, actor_ctx: ActorContext, params: dict, *, session=None) -> dict:
+async def update_enquiry(db, actor_ctx: ActorContext, params: dict, *, session=None,
+                         extra_fields: dict | None = None) -> dict:
     """Update an enquiry / advance its pipeline stage.
 
     params: {enquiry_id, status?, assigned_to?, source?, class_applying?, phone?, parent_name?, note?}
@@ -94,6 +98,7 @@ async def update_enquiry(db, actor_ctx: ActorContext, params: dict, *, session=N
         raise EnquiryNotFoundError(enquiry_id)
 
     update = {k: v for k, v in params.items() if k in _MUTABLE_FIELDS and v is not None}
+    update.update(extra_fields or {})
     new_status = update.get("status")
     if new_status and new_status != existing.get("status"):
         current = existing.get("status", "new")

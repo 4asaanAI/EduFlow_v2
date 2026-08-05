@@ -250,7 +250,7 @@ def test_context_builder_projects_the_fields_the_prompt_needs():
 
     from ai import context_builder
 
-    src = inspect.getsource(context_builder.build_school_context)
+    src = inspect.getsource(context_builder._build_school_context)
     projection_start = src.index("db.school_settings.find_one")
     projection = src[projection_start:projection_start + 500]
     for field in ("principal", "board", "city", "phone", "email", "website",

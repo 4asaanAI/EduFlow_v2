@@ -101,9 +101,11 @@ test('tool selection updates URL search param', async () => {
   expect(await screen.findByTestId('attendance-recorder-tool')).toBeInTheDocument();
   expect(screen.getByTestId('location-search')).toHaveTextContent('tool=attendance-recorder');
 
-  // Fee Sync lives inside the owner sidebar's collapsed "Fee Summary" group.
-  fireEvent.click(screen.getByText('Fee Summary'));
-  fireEvent.click(await screen.findByTestId('tool-btn-fee-sync'));
+  // Owner navigation is intentionally compact: open the Finance hub, then the
+  // existing Fee Sync deep screen. The old URL remains the canonical destination.
+  fireEvent.click(await screen.findByTestId('tool-btn-finance-commercial-hub'));
+  expect(await screen.findByTestId('management-hub-finance-commercial-hub')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Open Fee Sync' }));
 
   // The address bar follows the selection — this is what D-44's deep linking
   // is going to build on, so it has to be nailed down.

@@ -217,6 +217,15 @@ WRITE_TOOL_REQUIRED_PARAMS = {
     "create_expense": ("category", "amount"),
     "create_enquiry": ("student_name",),
     "update_enquiry_status": ("enquiry_id", "status"),
+    "create_crm_lead": ("student_name",),
+    "update_crm_lead": ("enquiry_id",),
+    "create_legal_entity": ("name", "code"),
+    "set_default_legal_entity": ("entity_id",),
+    "create_retail_product": ("inventory_item_id", "sku", "name", "unit_price"),
+    "open_pos_shift": ("register_name",),
+    "close_pos_shift": ("shift_id", "counted_cash"),
+    "post_pos_sale": ("shift_id", "lines", "payments"),
+    "post_pos_return": ("sale_id", "shift_id", "lines", "reason"),
     "create_incident": ("description",),
     # Owner coverage gap-close — expenses edit/delete, staff attendance, fee txn, fee sync
     "update_expense": ("expense_id",),
@@ -303,6 +312,16 @@ WRITE_TOOL_PARAM_LABELS = {
     "expense_id": "expense",
     # NOTE: "student_name" is defined once above ("student") — do not redefine.
     "enquiry_id": "enquiry",
+    "entity_id": "legal entity",
+    "inventory_item_id": "inventory item",
+    "sku": "SKU",
+    "unit_price": "unit price",
+    "register_name": "register name",
+    "shift_id": "POS shift",
+    "counted_cash": "counted cash",
+    "lines": "sale lines",
+    "payments": "payments",
+    "sale_id": "sale",
     "description": "description",
     "transaction_id": "fee transaction",
     # Wave 2
@@ -1984,8 +2003,11 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
     # ── Phase 4: Build context + system prompt ────────────────────────────
     recalled_memories: list = []  # R10.4 AC2: recalled-memory disclosure (Data used)
     try:
-        school_context = await build_school_context(user["role"], user["id"])
-        system_prompt = build_system_prompt(user, school_context, lang)
+        school_context = await build_school_context(user["role"], user["id"], user.get("branch_id"))
+        system_prompt = build_system_prompt(
+            user, school_context, lang,
+            school_settings=school_context.get("_school_settings") or {},
+        )
 
         # Epic G (G.3): inject recalled memories/skills for Owner/Principal. Hybrid
         # recall degrades to keyword-only when the vector store is unavailable.

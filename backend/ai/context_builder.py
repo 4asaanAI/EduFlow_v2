@@ -1,19 +1,22 @@
 from __future__ import annotations
 
+from contextvars import ContextVar
 from datetime import datetime, date
 from database import get_db
 from tenant import get_school_id, scoped_filter, scoped_query
 from ai.fee_metrics import DEFAULTER_STATUSES, compute_fee_totals
 
-# SCOPING NOTE: context_builder deliberately uses school-wide scope (no branch_id filter).
-# Context gives the AI "awareness" of the whole school — staff may ask about any branch.
-# Branch isolation is enforced at the TOOL EXECUTION layer (tool_functions_v2.py),
-# not at the context-building layer. Do not add branch_id filters here without
-# revisiting the architecture decision in _bmad-output/parts/multi-tenancy/architecture.md §5.
+# Flo's ambient context follows the active branch. EduFlow serves Joya only today,
+# but this prevents future branch data entering the prompt before tool authorization.
+
+
+_active_branch: ContextVar[str | None] = ContextVar("flo_context_branch", default=None)
 
 
 def _tenant_query(query: dict | None = None) -> dict:
-    return scoped_filter(query or {}, get_school_id())  # branch-scope: intentional — school-wide AI context
+    school_query = scoped_filter(query or {}, get_school_id())
+    branch_id = _active_branch.get()
+    return scoped_query(school_query, branch_id=branch_id) if branch_id else school_query
 
 
 def _tenant_match(query: dict | None = None) -> dict:
@@ -90,9 +93,37 @@ async def _get_active_alerts(db, today: str) -> int:
 
 async def _get_library_stats(db) -> dict:
     """Return library statistics: total books, books issued, overdue returns."""
-    total_books = await db.library_books.count_documents(_tenant_query())
-    books_issued = await db.library_transactions.count_documents(_tenant_query({"status": "issued"}))
-    overdue_returns = await db.library_transactions.count_documents(_tenant_query({"status": "overdue"}))
+    title_collection = getattr(db, "library_titles", None)
+    titles = await title_collection.find(
+        _tenant_query({"is_active": True}),
+        {"_id": 0, "id": 1, "isbn": 1, "accession_number": 1, "title": 1, "copies_total": 1},
+    ).to_list(5000) if title_collection is not None else []
+    legacy_title_collection = getattr(db, "library_books", None)
+    legacy_titles = await legacy_title_collection.find(
+        _tenant_query(), {"_id": 0, "id": 1, "isbn": 1, "accession_number": 1, "title": 1, "copies_total": 1}
+    ).to_list(10000) if legacy_title_collection is not None else []
+    def title_key(row):
+        return row.get("isbn") or row.get("accession_number") or row.get("id") or row.get("title")
+    modern_keys = {title_key(row) for row in titles if title_key(row)}
+    legacy_only = [row for row in legacy_titles if title_key(row) not in modern_keys]
+    total_books = sum(int(row.get("copies_total") or 1) for row in [*titles, *legacy_only])
+    loan_collection = getattr(db, "library_loans", None)
+    loans = await loan_collection.find(
+        _tenant_query({"status": "issued"}), {"_id": 0, "id": 1, "due_at": 1}
+    ).to_list(10000) if loan_collection is not None else []
+    legacy_loan_collection = getattr(db, "library_transactions", None)
+    legacy_loans = await legacy_loan_collection.find(
+        _tenant_query({"status": {"$in": ["issued", "overdue"]}}), {"_id": 0, "id": 1, "due_date": 1, "status": 1}
+    ).to_list(10000) if legacy_loan_collection is not None else []
+    loan_ids = {row.get("id") for row in loans if row.get("id")}
+    legacy_only_loans = [row for row in legacy_loans if not row.get("id") or row.get("id") not in loan_ids]
+    books_issued = len(loans) + len(legacy_only_loans)
+    today = date.today().isoformat()
+    overdue_returns = sum(1 for row in loans if str(row.get("due_at") or "")[:10] < today)
+    overdue_returns += sum(
+        1 for row in legacy_only_loans
+        if row.get("status") == "overdue" or (row.get("due_date") and str(row["due_date"])[:10] < today)
+    )
     return {
         "total_books": total_books,
         "books_issued": books_issued,
@@ -121,9 +152,25 @@ async def _get_transport_stats(db, today: str) -> dict:
 
 async def _get_inventory_alerts(db) -> int:
     """Return count of inventory items below reorder level."""
-    return await db.inventory.count_documents(_tenant_query({
-        "$expr": {"$lte": ["$quantity", "$reorder_level"]}
-    }))
+    item_collection = getattr(db, "inventory_items", None)
+    items = await item_collection.find(
+        _tenant_query({"is_active": True}),
+        {"_id": 0, "id": 1, "sku": 1, "name": 1, "on_hand": 1, "quantity": 1,
+         "reorder_level": 1, "min_stock": 1},
+    ).to_list(10000) if item_collection is not None else []
+    legacy_collection = getattr(db, "inventory", None)
+    legacy = await legacy_collection.find(
+        _tenant_query(), {"_id": 0, "id": 1, "sku": 1, "name": 1, "quantity": 1, "reorder_level": 1}
+    ).to_list(10000) if legacy_collection is not None else []
+    def item_key(row):
+        return row.get("sku") or row.get("id") or row.get("name")
+    modern_keys = {item_key(row) for row in items if item_key(row)}
+    combined = [*items, *[row for row in legacy if item_key(row) not in modern_keys]]
+    return sum(
+        1 for item in combined
+        if float(item.get("on_hand", item.get("quantity", 0)) or 0)
+        <= float(item.get("reorder_level", item.get("min_stock", 0)) or 0)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -518,7 +565,15 @@ async def _build_student_context(db, today: str, user_id: str) -> dict:
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
-async def build_school_context(role: str, user_id: str) -> dict:
+async def build_school_context(role: str, user_id: str, branch_id: str | None = None) -> dict:
+    token = _active_branch.set(branch_id)
+    try:
+        return await _build_school_context(role, user_id)
+    finally:
+        _active_branch.reset(token)
+
+
+async def _build_school_context(role: str, user_id: str) -> dict:
     db = get_db()
     today = date.today().strftime("%Y-%m-%d")
 
@@ -538,7 +593,7 @@ async def build_school_context(role: str, user_id: str) -> dict:
     settings = settings or {}
 
     # Fetch current academic year name
-    ay_doc = await db.academic_years.find_one({"is_current": True}, {"_id": 0, "name": 1})
+    ay_doc = await db.academic_years.find_one(_tenant_query({"is_current": True}), {"_id": 0, "name": 1})
     academic_year = (ay_doc or {}).get("name", "2025-26")
 
     # Determine sub_category for scoped context

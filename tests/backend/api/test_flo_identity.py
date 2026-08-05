@@ -88,11 +88,11 @@ def test_no_user_facing_screen_still_calls_it_eduflow_ai():
 
 
 def test_flo_is_told_how_to_write():
-    """Adapted from the `stop-slop` skill, adopted 2026-07-22."""
+    """The stop-slop adaptation is an immutable built-in habit on every turn."""
     prompt = _prompt()
-    assert "HOW YOU WRITE:" in prompt
+    assert "BUILT-IN HABIT /stop-slop" in prompt
     assert "Answer first" in prompt
-    assert "Name the actor" in prompt
+    assert "Name the actor and concrete result" in prompt
 
 
 def test_flo_is_told_not_to_use_long_dashes():
@@ -100,7 +100,7 @@ def test_flo_is_told_not_to_use_long_dashes():
     I help...": the long dash is an AI tell. The first version of these rules left
     that out as marginal; that judgement was wrong."""
     prompt = _prompt()
-    assert "NEVER use the em-dash" in prompt
+    assert "Never use the em-dash" in prompt
     assert "—" in prompt, "the rule must show the actual em-dash character"
     assert "–" in prompt, "the rule must show the actual en-dash character"
 
@@ -109,13 +109,35 @@ def test_the_hyphen_is_explicitly_still_allowed():
     """A sloppy 'no dashes' rule would break '5-A', 'class-teacher' and '3+ days'
     across every reply. The rule names the characters it bans."""
     prompt = _prompt()
-    assert 'The ordinary hyphen "-" is FINE' in prompt
-    assert "5-A" in prompt
+    assert "The ordinary hyphen is valid" in prompt
+    assert "class labels" in prompt
 
 
 def test_flo_is_told_not_to_open_with_a_greeting():
     prompt = _prompt()
     assert "Do not open with a greeting" in prompt
+
+
+@pytest.mark.parametrize("user", [
+    {"role": "owner", "name": "Owner"},
+    {"role": "admin", "sub_category": "principal", "name": "Principal"},
+    {"role": "admin", "sub_category": "accountant", "name": "Accountant"},
+    {"role": "teacher", "name": "Teacher"},
+    {"role": "student", "name": "Student"},
+    {"role": "parent", "name": "Parent"},
+])
+def test_stop_slop_habit_applies_to_every_role(user):
+    prompt = _prompt(user=user)
+    assert prompt.count("BUILT-IN HABIT /stop-slop") == 1
+    assert "Follow this habit automatically" in prompt
+
+
+def test_stop_slop_is_code_backed_not_a_deletable_school_memory():
+    from ai.builtin_skills import ALWAYS_ON_SKILLS, STOP_SLOP
+
+    assert STOP_SLOP in ALWAYS_ON_SKILLS
+    assert STOP_SLOP.slug == "stop-slop"
+    assert STOP_SLOP.__dataclass_params__.frozen is True
 
 
 def test_the_style_rules_do_not_cancel_the_product_rules():

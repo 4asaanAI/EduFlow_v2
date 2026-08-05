@@ -11,9 +11,15 @@ import ProfileModal from './ProfileModal';
 import SettingsModal from './SettingsModal';
 import CommandPalette from './CommandPalette';
 import { resolveToolId } from '../lib/toolAliases';
+import { MANAGEMENT_HUB_IDS } from '../lib/managementHubs';
 
 const loadTool = async (rawToolId) => {
   const toolId = resolveToolId(rawToolId);
+  if (MANAGEMENT_HUB_IDS.includes(toolId)) {
+    const ManagementHub = (await import('./tools/ManagementHub')).default;
+    return () => <ManagementHub hubId={toolId} />;
+  }
+  if (toolId === 'commercial-operations') return (await import('./tools/CommercialOperations')).default;
   // Phase 3 dedicated tool panels — loaded directly
   if (toolId === 'facility-requests') return (await import('./tools/MaintenanceTools')).MaintenanceFacilityTracker;
   if (toolId === 'tech-issues') return (await import('./tools/MaintenanceTools')).ITTechIssueTracker;

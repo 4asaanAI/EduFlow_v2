@@ -35,10 +35,10 @@ def _wire_chat_deps(fake_db, monkeypatch):
     import services.token_service as _ts
     monkeypatch.setattr(_ts, "get_db", lambda: fake_db, raising=False)
 
-    async def _fake_context(role, uid):
+    async def _fake_context(role, uid, branch_id=None):
         return {"school_name": "Test School"}
     monkeypatch.setattr(chat, "build_school_context", _fake_context, raising=False)
-    monkeypatch.setattr(chat, "build_system_prompt", lambda user, ctx, lang: "system", raising=False)
+    monkeypatch.setattr(chat, "build_system_prompt", lambda user, ctx, lang, **kwargs: "system", raising=False)
     monkeypatch.setattr(chat, "detect_language", lambda text: "en", raising=False)
     yield
 

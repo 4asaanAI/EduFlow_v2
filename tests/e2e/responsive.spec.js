@@ -25,3 +25,23 @@ test('authenticated shell remains usable without document overflow at target wid
     }
   }
 });
+
+test('management hubs and commercial workspace adapt across target widths', async ({ page }) => {
+  await page.goto('/dashboard?tool=finance-commercial-hub');
+  await expect(page.getByTestId('management-hub-finance-commercial-hub')).toBeVisible();
+
+  for (const width of WIDTHS) {
+    await page.setViewportSize({ width, height: width <= 390 ? 720 : 900 });
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow, `finance hub overflow at ${width}px`).toBeLessThanOrEqual(1);
+    await expect(page.getByRole('button', { name: 'Open Commercial Operations' })).toBeVisible();
+  }
+
+  await page.getByRole('button', { name: 'Open Commercial Operations' }).click();
+  await expect(page.getByText('Commercial Operations', { exact: true })).toBeVisible();
+  for (const width of WIDTHS) {
+    await page.setViewportSize({ width, height: width <= 390 ? 720 : 900 });
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow, `commercial workspace overflow at ${width}px`).toBeLessThanOrEqual(1);
+  }
+});

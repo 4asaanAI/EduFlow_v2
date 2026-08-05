@@ -9,9 +9,13 @@ import {
   ScrollText, Shield, Trophy, Brain, HelpCircle, Compass,
 } from 'lucide-react';
 import { filterToolsForUser } from '../lib/toolPermissions';
+import { MANAGEMENT_HUBS, MANAGEMENT_HUB_IDS } from '../lib/managementHubs';
 
 // ─── All tool definitions ──────────────────────────────────────────────────────
 const T = {
+  ...Object.fromEntries(MANAGEMENT_HUBS.map(hub => [hub.id, {
+    id: hub.id, name: hub.name, subtitle: hub.subtitle, icon: Compass, color: hub.color,
+  }])),
   // Epic 7 — find any person (students + staff) in one place. Owner + Principal
   // only; it lives in their tool sets and reads the existing endpoints.
   'school-directory':      { id: 'school-directory',      name: 'School Directory',    subtitle: 'Find any person',       icon: Compass,       color: '#4f8ff7' },
@@ -184,9 +188,10 @@ function getTools(user) {
   // would otherwise hand Certificates and ID Cards to any admin the sets forgot.
   const resolve = (ids) => filterToolsForUser(user, ids).map(id => T[id]).filter(Boolean);
   if (user.role === 'owner') {
-    return resolve(OWNER_TOOLS);
+    return resolve(MANAGEMENT_HUB_IDS);
   }
   if (user.role === 'admin') {
+    if (user.sub_category === 'principal') return resolve(MANAGEMENT_HUB_IDS);
     const key = `admin_${user.sub_category || 'principal'}`;
     return resolve(TOOL_SETS[key] || TOOL_SETS.admin_principal);
   }

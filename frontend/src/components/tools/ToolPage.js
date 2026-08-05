@@ -432,6 +432,7 @@ export function ComingSoon({ toolName }) {
 }
 
 export function FormField({ label, type = 'text', value, onChange, placeholder, options, required }) {
+  const fieldId = React.useId();
   const { isDark } = useTheme();
   const bg = isDark ? 'var(--color-surface-raised)' : 'var(--color-surface-raised)';
   const border = isDark ? 'var(--color-border-strong)' : 'var(--color-border)';
@@ -444,16 +445,16 @@ export function FormField({ label, type = 'text', value, onChange, placeholder, 
   };
   return (
     <div style={{ marginBottom: 14 }}>
-      <label style={{ display: 'block', fontSize: 12, color: muted, marginBottom: 6, fontWeight: 600 }}>{label}{required && ' *'}</label>
+      <label htmlFor={fieldId} style={{ display: 'block', fontSize: 12, color: muted, marginBottom: 6, fontWeight: 600 }}>{label}{required && ' *'}</label>
       {type === 'select' ? (
-        <select value={value} onChange={e => onChange(e.target.value)} style={{ ...style, cursor: 'pointer' }}>
+        <select id={fieldId} aria-label={label} value={value} onChange={e => onChange(e.target.value)} style={{ ...style, cursor: 'pointer' }}>
           <option value="">Select...</option>
           {(options || []).map(o => <option key={o.value || o} value={o.value || o}>{o.label || o}</option>)}
         </select>
       ) : type === 'textarea' ? (
-        <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={3} style={{ ...style, resize: 'vertical' }} />
+        <textarea id={fieldId} aria-label={label} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={3} style={{ ...style, resize: 'vertical' }} />
       ) : (
-        <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={style}
+        <input id={fieldId} aria-label={label} type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={style}
           onFocus={e => e.target.style.borderColor = 'var(--color-accent-blue)'}
           onBlur={e => e.target.style.borderColor = border} />
       )}
