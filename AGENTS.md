@@ -158,6 +158,24 @@ Every hit must EITHER have a `# branch-scope: intentional — <reason>` comment 
 - New indexes go in `database.py → _create_indexes()` only
 - New migrations: add to `backend/migrations/` AND update `backend/migrations/run_all.py` in the same PR
 
+### ⛔ NEVER run `run_all.py` against the live school database
+
+Run migrations **one at a time**, after reading what that specific file does.
+
+On 2026-08-06 the `_migrations` tracking collection was empty while the work behind those
+migrations had long since been done, so the runner reported **0 of 29 applied** and would have
+executed all of them against 1,802 real students. Six insert convincing fake data into what they
+assume is a fresh demo school: bus routes with real Joya stop names (004), NCERT books (005),
+vendors (006), discounts plus a profile per student (007), events (008), expenses billed to
+UPPCL (009). `002` reassigns houses to students who already have them.
+
+Tracking now holds 28 of 29, each with a category and evidence, and
+`marked_without_running: true` where nothing was executed. Only `012_migrate_uploads_to_s3` is
+still pending; its docstring says to rehearse against a copy of production first.
+
+Note `_create_indexes()` is deliberately disabled in production, so migrations are the only path
+for indexes. That makes the runner tempting. Do not use it.
+
 ### Notification utility (canonical — set in Part 5)
 ```python
 # ✅ CANONICAL (Part 5 ✅ shipped) — ALL notification writes use:
@@ -289,7 +307,7 @@ backend/
 ├── ai/                # tool_functions_v2.py (active), context_builder.py, llm_client.py
 ├── services/          # s3_storage, sse, email_service, token_service, confirm_tokens
 │                      # notification_service.py ✅ (Part 5)
-└── migrations/        # 018 scripts, run via run_all.py
+└── migrations/        # 29 scripts. Run ONE AT A TIME — never run_all.py on prod (see above)
 
 frontend/src/
 ├── lib/api.js         # ALL API calls — single source of truth
