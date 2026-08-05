@@ -1,0 +1,18 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ResizeLayaaOSAndCockRoachOnly",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:StopInstances",
+        "ec2:StartInstances",
+        "ec2:ModifyInstanceAttribute"
+      ],
+      "Resource": [
+        "arn:aws:ec2:ap-south-1:210447603820:instance/i-0113f3f46db7b82be",
+        "arn:aws:ec2:ap-south-1:210447603820:instance/i-064198fc6a7926033"
+      ]
+    }
+  ]
+}

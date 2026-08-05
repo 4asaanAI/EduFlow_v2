@@ -1,0 +1,35 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CostBillingCreditsRead",
+      "Effect": "Allow",
+      "Action": [
+        "ce:Get*",
+        "ce:Describe*",
+        "ce:List*",
+        "billing:Get*",
+        "billing:List*",
+        "freetier:Get*",
+        "invoicing:List*",
+        "cur:Describe*",
+        "payments:List*",
+        "budgets:ViewBudget",
+        "budgets:Describe*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "BedrockDiscoveryNoInvoke",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:List*",
+        "bedrock:Get*",
+        "pricing:Get*",
+        "pricing:Describe*",
+        "pricing:List*"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
