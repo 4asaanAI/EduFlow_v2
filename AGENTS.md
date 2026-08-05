@@ -1,8 +1,23 @@
 # EduFlow — Codex Project Context
 
 **Model:** Codex Sonnet 4.6 (1M context)
-**Last updated:** 2026-06-07
+**Last updated:** 2026-08-05
 **Working agent:** any capable coding model (Anthropic Sonnet/Opus or other providers) — execution protocols are written model-agnostically
+
+> ## SHIPPED: Enterprise Commercial Operations (2026-08-05)
+>
+> Commit `3d989e1` is merged to `origin/main`. EduFlow now has lightweight legal-entity
+> ownership/reporting, admissions CRM activities and opportunities, campus POS/retail with
+> shifts, split payments and returns, entity-aware accounting-period controls, confirmed Flo
+> write tools backed by the same domain services as REST, a permanent built-in `/stop-slop`
+> communication habit, hardened prompt/KB context, and nine responsive owner/principal
+> management hubs. Branding, theme, legacy records, the single active Joya branch, and current
+> deep links were preserved. Hostel and full ERPNext/Frappe framework complexity remain out of
+> scope. Source of truth: `_bmad-output/implementation-artifacts/spec-enterprise-commercial-operations.md`.
+> Release gate: backend 2,163 passed / 0 failed / 15 credentialed deselected; frontend 439
+> passed; responsive Chromium 3 passed; production build passed. No live school database was
+> read or modified. The code is pushed, but backend deployment is not verified: the configured
+> AWS identity can see no Elastic Beanstalk application or environment in any enabled region.
 
 ---
 
