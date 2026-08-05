@@ -14,6 +14,7 @@ from services.accounting_period_service import (
 )
 from services.actor_context import actor_ctx_from_user
 from services.txn_context import reset_current_session, set_current_session
+from school_identity import default_branch_id
 from tenant import get_school_id, scoped_query
 
 
@@ -22,7 +23,7 @@ router = APIRouter(prefix="/api/accounting", tags=["accounting"])
 
 def _actor(user: dict):
     return actor_ctx_from_user(
-        user, school_id=get_school_id(), branch_id=user.get("branch_id") or "branch-joya"
+        user, school_id=get_school_id(), branch_id=user.get("branch_id") or default_branch_id()
     )
 
 
@@ -44,7 +45,7 @@ async def list_periods(request: Request,
     if user.get("role") != "owner" and user.get("sub_category") != "accountant":
         raise HTTPException(403, "Only the school owner or accountant can view accounting periods")
     db = get_db()
-    branch_id = user.get("branch_id") or "branch-joya"
+    branch_id = user.get("branch_id") or default_branch_id()
     query = {}
     if entity_id:
         entity = await db.legal_entities.find_one(

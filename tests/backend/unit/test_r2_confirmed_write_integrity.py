@@ -19,9 +19,6 @@ from ai.plan_executor import StepExecutionError
 from ai.plan_schema import Plan, Step, WRITE, single_write_plan
 from tests.backend.conftest import FakeCollection
 
-pytestmark = pytest.mark.asyncio
-
-
 class _FakeDb:
     def __init__(self):
         self.ai_write_idempotency = FakeCollection()

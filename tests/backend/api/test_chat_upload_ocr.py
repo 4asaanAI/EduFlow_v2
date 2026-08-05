@@ -13,8 +13,6 @@ import pytest
 from middleware.auth import create_jwt
 from routes.chat_upload import may_read_images
 
-pytestmark = pytest.mark.asyncio
-
 PNG_1PX = (
     b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06"
     b"\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05"

@@ -8,8 +8,6 @@ from services import ai_action_policy
 from services.ai_action_policy import is_action_authorized_phase1, is_action_tool
 from routes.chat import _is_tool_authorized
 
-pytestmark = pytest.mark.asyncio
-
 OWNER = {"id": "o1", "role": "owner"}
 PRINCIPAL = {"id": "p1", "role": "admin", "sub_category": "principal"}
 ACCOUNTANT = {"id": "a1", "role": "admin", "sub_category": "accountant"}

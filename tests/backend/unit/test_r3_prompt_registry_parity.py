@@ -13,9 +13,6 @@ from datetime import datetime, timedelta
 
 from tests.backend.conftest import FakeCollection
 
-pytestmark = pytest.mark.asyncio
-
-
 # ── R3.3 (H2): get_announcements is real, student-safe, published-only ─────────
 
 def _ann(**kw):

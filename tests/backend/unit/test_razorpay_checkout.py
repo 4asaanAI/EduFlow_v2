@@ -19,8 +19,6 @@ os.environ.setdefault("RAZORPAY_PLAN_MONTHLY_STARTER", "plan_test_starter")
 os.environ.setdefault("RAZORPAY_PLAN_MONTHLY_GROWTH", "plan_test_growth")
 os.environ.setdefault("RAZORPAY_PLAN_MONTHLY_ENTERPRISE", "plan_test_enterprise")
 
-pytestmark = pytest.mark.asyncio
-
 import razorpay
 from fastapi.testclient import TestClient
 from middleware.auth import create_jwt

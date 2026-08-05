@@ -7,9 +7,6 @@ from datetime import datetime
 import pytest
 from middleware.auth import hash_password, create_jwt
 
-pytestmark = pytest.mark.asyncio
-
-
 @pytest.fixture(autouse=True)
 def _clean(fake_db):
     fake_db.student_attendance.docs[:] = []

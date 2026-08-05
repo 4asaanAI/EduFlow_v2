@@ -18,8 +18,6 @@ import pytest
 
 from middleware.auth import create_jwt
 
-pytestmark = pytest.mark.asyncio
-
 TOOL_URL = "/api/tools/{}/execute"
 
 

@@ -14,8 +14,6 @@ import re
 
 import pytest
 
-pytestmark = pytest.mark.asyncio
-
 REPO = pathlib.Path(__file__).resolve().parents[3]
 
 

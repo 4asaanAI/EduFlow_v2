@@ -1,19 +1,23 @@
-# Backend Test Baseline — RESOLVED
+# Backend Test Baseline — RESOLVED (HISTORICAL RECORD, 2026-07-08)
+
+> **Read this first.** This file is a closed post-mortem of a July 2026 triage, kept
+> for the reasoning it records. **It is not the current baseline and its numbers are
+> not a target.** There is no standing list of known failures: the bar is **ZERO
+> failures**, in every suite, always. Nothing below may be quoted as "the suite should
+> show N" — that is exactly the D-51/D-56 mistake. For how to run the suites today see
+> `CLAUDE.md` → Running Tests.
 
 **Original record:** 2026-07-08 (39 failures noted on Python 3.12 / Windows)
 **Triaged & resolved:** 2026-07-08 (Python 3.14 / macOS)
 **Command:** `python -m pytest tests/backend -q`
 
-## Current status
+## Status at the time this was written (2026-07-08 — since superseded many times)
 
-```
-1278 passed, 0 failed, 0 skipped, 12 deselected (mongo_real)
-```
-
-The suite is **fully green with zero skips.** Every failure documented in the
-original baseline has been resolved — either by building the genuinely-missing
-feature, by correcting a stale test, or by fixing a real (small) code bug. There
-is no longer a standing list of "known failures."
+The suite was fully green with zero skips. Every failure documented in the original
+baseline was resolved: by building the genuinely-missing feature, by correcting a stale
+test, or by fixing a real (small) code bug. The pass count recorded here originally
+(1278) has been removed, because it was being copied forward as though it still meant
+something.
 
 ## How the 34 reproduced failures were resolved
 

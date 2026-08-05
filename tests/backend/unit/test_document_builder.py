@@ -20,9 +20,6 @@ from services.document_builder import (
     safe_filename,
 )
 
-pytestmark = pytest.mark.asyncio
-
-
 # ── The files are real files ────────────────────────────────────────────────────
 
 def test_xlsx_opens_as_a_workbook_with_the_data_in_it():

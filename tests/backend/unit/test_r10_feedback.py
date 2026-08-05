@@ -11,8 +11,6 @@ import pytest
 
 from tests.backend.conftest import FakeDb
 
-pytestmark = pytest.mark.asyncio
-
 OWNER = {"id": "owner-1", "role": "owner", "name": "T", "branch_id": "branch-a"}
 
 

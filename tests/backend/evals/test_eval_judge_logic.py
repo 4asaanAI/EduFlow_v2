@@ -16,9 +16,6 @@ from tests.backend.evals.judge import (
 )
 from tests.backend.evals.corpus import load_corpus
 
-pytestmark = pytest.mark.asyncio
-
-
 # ── parse_judge_scores ─────────────────────────────────────────────────────────
 
 def test_parse_bare_json():

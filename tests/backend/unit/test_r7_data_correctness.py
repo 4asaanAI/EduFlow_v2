@@ -5,9 +5,6 @@ from datetime import date, timedelta
 
 from tests.backend.conftest import FakeCollection
 
-pytestmark = pytest.mark.asyncio
-
-
 # ---------------------------------------------------------------------------
 # R7.1 — shared fee-outstanding helper (M5)
 # ---------------------------------------------------------------------------

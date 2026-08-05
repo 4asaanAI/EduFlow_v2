@@ -487,6 +487,11 @@ async def _create_indexes():
         [("schoolId", 1), ("branch_id", 1), ("entity_id", 1), ("kind", 1), ("year", 1)], unique=True
     )
     await db.crm_activities.create_index([("enquiry_id", 1), ("occurred_at", -1)])
+    # tenant-scope: intentional — `contact_hash` is a SHA-256 of
+    # "{schoolId}:{branch_id}:{kind}:{value}" (see commercial_service._reserve_crm_contacts),
+    # so the digest already carries the tenant and two schools sharing a parent's phone
+    # cannot collide. Verified 2026-08-05 (audit A-1); a compound prefix here would be
+    # weaker, not stronger, and rebuilding a live unique index buys nothing.
     await db.crm_contact_keys.create_index("contact_hash", unique=True)
     await db.crm_opportunities.create_index([("entity_id", 1), ("stage", 1), ("updated_at", -1)])
     await db.commercial_products.create_index(

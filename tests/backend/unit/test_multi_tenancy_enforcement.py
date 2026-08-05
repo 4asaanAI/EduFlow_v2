@@ -13,8 +13,6 @@ sys.path.insert(0, os.path.join(ROOT, "backend"))
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-key-not-for-production")
 
-pytestmark = pytest.mark.asyncio
-
 from tests.backend.conftest import APP_AVAILABLE, FakeCollection  # noqa: E402
 
 if not APP_AVAILABLE:

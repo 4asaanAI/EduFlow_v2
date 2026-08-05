@@ -16,9 +16,6 @@ import pytest
 from ai.tool_functions_v2 import TOOL_REGISTRY, WRITE_TOOL_NAMES
 from tests.backend.conftest import FakeCollection
 
-pytestmark = pytest.mark.asyncio
-
-
 class _PermissiveDb:
     """Returns an empty FakeCollection for ANY collection name accessed."""
 

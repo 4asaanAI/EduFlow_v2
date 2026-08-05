@@ -24,9 +24,6 @@ import pytest
 
 from tests.backend.conftest import FakeCollection, FakeDb
 
-pytestmark = pytest.mark.asyncio
-
-
 def _make_db(**overrides):
     db = FakeDb()
     for attr, docs in overrides.items():

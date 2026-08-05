@@ -16,8 +16,6 @@ from services.announcement_service import (
 )
 from ai import tool_functions_v2
 
-pytestmark = pytest.mark.asyncio
-
 OWNER = {"id": "o1", "role": "owner", "name": "Owner"}
 PRINCIPAL = {"id": "p1", "role": "admin", "sub_category": "principal", "name": "Principal"}
 RECEPTION = {"id": "r1", "role": "admin", "sub_category": "reception", "name": "Reception"}

@@ -31,6 +31,7 @@ from services.commercial_service import (
     update_crm_lead,
     update_opportunity,
 )
+from school_identity import default_branch_id
 from services.enquiry_service import EnquiryConflictError, EnquiryNotFoundError, EnquiryValidationError
 from services.txn_context import reset_current_session, set_current_session
 from tenant import get_school_id, scoped_query
@@ -49,8 +50,10 @@ require_retail_configurator = require_owner_or_admin_subcategories("principal", 
 def _actor(user: dict):
     # This deployment intentionally serves one branch. School-level owner tokens
     # may omit branch_id, but commercial postings must never persist unscoped.
+    # The fallback lives in school_identity so there is one line to change when a
+    # second branch is onboarded (audit A-4, 2026-08-05).
     return actor_ctx_from_user(
-        user, school_id=get_school_id(), branch_id=user.get("branch_id") or "branch-joya"
+        user, school_id=get_school_id(), branch_id=user.get("branch_id") or default_branch_id()
     )
 
 
@@ -201,8 +204,11 @@ async def get_crm_opportunities(request: Request, entity_id: str | None = None,
 async def patch_crm_opportunity(opportunity_id: str, request: Request,
                                 user: dict = Depends(require_opportunity_editor)):
     try:
-        row = await update_opportunity(get_db(), _actor(user), opportunity_id, await _body(request))
-    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
+        # Audit A-3 (2026-08-05): this was the one write in the file that ran outside
+        # a transaction, so a stage change that also wrote an audit row could half-land.
+        row = await _transactional_call(user, update_opportunity, opportunity_id, await _body(request))
+    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError,
+            TransactionUnavailableError) as exc:
         raise _error(exc)
     return {"success": True, "data": row}
 

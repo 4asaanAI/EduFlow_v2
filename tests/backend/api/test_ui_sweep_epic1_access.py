@@ -18,8 +18,6 @@ from middleware.auth import SUB_CATEGORIES_BY_ROLE, VALID_SUB_CATEGORIES, create
 from services import staff_service
 from services.actor_context import actor_ctx_from_user
 
-pytestmark = pytest.mark.asyncio
-
 SCHOOL = "aaryans-joya"
 OWNER = {"id": "own-1", "role": "owner", "name": "Owner"}
 PRINCIPAL = {"id": "prin-1", "role": "admin", "sub_category": "principal", "name": "P"}

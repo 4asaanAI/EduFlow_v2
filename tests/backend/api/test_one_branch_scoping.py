@@ -21,9 +21,6 @@ import pytest
 
 from middleware.auth import create_jwt
 
-pytestmark = pytest.mark.asyncio
-
-
 def _bearer(payload: dict) -> dict:
     return {"Authorization": f"Bearer {create_jwt(payload)}"}
 

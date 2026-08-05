@@ -13,9 +13,6 @@ import pytest
 
 from ai.redaction import redact_for_llm, contains_unredacted_pii, REDACTED
 
-pytestmark = pytest.mark.asyncio
-
-
 _STUDENT = {
     "id": "stu-1",
     "name": "Aarav Sharma",

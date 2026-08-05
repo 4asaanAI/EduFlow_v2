@@ -4,8 +4,6 @@ from middleware.auth import create_jwt
 from tests.backend.conftest import FakeCollection
 from tests.backend.factories import make_fee_transaction
 
-pytestmark = pytest.mark.asyncio
-
 def _student_h(user_id="u-stu"):
     t = create_jwt({"user_id": user_id, "role": "student", "name": "Student"})
     return {"Authorization": f"Bearer {t}"}

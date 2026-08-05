@@ -10,7 +10,9 @@ import json
 import time, re
 import uuid
 import logging
+from pymongo.errors import DuplicateKeyError
 from ai.redaction import _mask_phone  # canonical phone mask (first-2 + last-3)
+from school_identity import default_branch_id
 from tenant import add_school_id, get_school_id, scoped_filter, scoped_query
 from ai.fee_metrics import DEFAULTER_STATUSES, student_outstanding_from_txns
 from services.audit_service import write_audit_doc
@@ -30,6 +32,7 @@ from services.commercial_service import (
     crm_pipeline,
     list_entities,
     open_shift as svc_open_pos_shift,
+    replay_retail_request,
     set_default_entity as svc_set_default_legal_entity,
     update_crm_lead as svc_update_crm_lead,
 )
@@ -3541,7 +3544,7 @@ async def tool_get_commercial_operations(params: dict, user: dict, scope: dict =
         return {"success": False, "denied": True, "data": {}, "meta": {"count": 0},
                 "message": "Only the school's owner can view consolidated legal-entity reporting."}
     db = get_db()
-    actor = actor_ctx_from_user(user, branch_id=_branch_id(user, scope) or "branch-joya")
+    actor = actor_ctx_from_user(user, branch_id=_branch_id(user, scope) or default_branch_id())
     entity_id = params.get("entity_id")
     try:
         if domain == "crm":
@@ -3571,7 +3574,7 @@ async def tool_get_commercial_operations(params: dict, user: dict, scope: dict =
 async def tool_create_crm_lead(params: dict, user: dict, scope: dict = None) -> dict:
     if not params.get("student_name"):
         return _failed("student_name is required.")
-    actor = actor_ctx_from_user(user, branch_id=_branch_id(user, scope) or "branch-joya")
+    actor = actor_ctx_from_user(user, branch_id=_branch_id(user, scope) or default_branch_id())
     try:
         row = await svc_create_crm_lead(get_db(), actor, params)
     except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError,
@@ -3584,7 +3587,7 @@ async def tool_update_crm_lead(params: dict, user: dict, scope: dict = None) -> 
     enquiry_id = params.get("enquiry_id")
     if not enquiry_id:
         return _failed("enquiry_id is required.")
-    actor = actor_ctx_from_user(user, branch_id=_branch_id(user, scope) or "branch-joya")
+    actor = actor_ctx_from_user(user, branch_id=_branch_id(user, scope) or default_branch_id())
     try:
         row = await svc_update_crm_lead(
             get_db(), actor, enquiry_id, {key: value for key, value in params.items() if key != "enquiry_id"}
@@ -3596,7 +3599,7 @@ async def tool_update_crm_lead(params: dict, user: dict, scope: dict = None) -> 
 
 
 def _commercial_actor(user: dict, scope: dict | None):
-    return actor_ctx_from_user(user, branch_id=_branch_id(user, scope) or "branch-joya")
+    return actor_ctx_from_user(user, branch_id=_branch_id(user, scope) or default_branch_id())
 
 
 async def tool_create_legal_entity(params: dict, user: dict, scope: dict = None) -> dict:
@@ -3648,12 +3651,22 @@ async def tool_close_pos_shift(params: dict, user: dict, scope: dict = None) -> 
 
 
 async def tool_post_pos_sale(params: dict, user: dict, scope: dict = None) -> dict:
+    # The generated default is safe because a confirmed write reaches this tool exactly
+    # once: the confirm token is single-use and a replay is refused with 409 before
+    # dispatch. The key still matters when the model supplies one, so a reused key
+    # replays the original sale instead of surfacing a raw database error in chat
+    # (audit A-2, 2026-08-05 — this mirrors routes/commercial.py's handling).
     key = str(params.get("idempotency_key") or f"flo-sale-{uuid.uuid4()}")
     payload = {k: v for k, v in params.items() if k != "idempotency_key"}
+    actor = _commercial_actor(user, scope)
     try:
-        row = await svc_create_pos_sale(
-            get_db(), _commercial_actor(user, scope), payload, idempotency_key=key
-        )
+        row = await svc_create_pos_sale(get_db(), actor, payload, idempotency_key=key)
+    except DuplicateKeyError:
+        try:
+            row = await replay_retail_request(get_db(), actor, key, payload)
+        except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
+            return _failed(str(exc))
+        return {"success": True, "data": row, "message": "That sale was already posted; showing it."}
     except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
         return _failed(str(exc))
     return {"success": True, "data": row, "message": "POS sale posted."}
@@ -3662,13 +3675,20 @@ async def tool_post_pos_sale(params: dict, user: dict, scope: dict = None) -> di
 async def tool_post_pos_return(params: dict, user: dict, scope: dict = None) -> dict:
     if not params.get("sale_id"):
         return _failed("sale_id is required.")
+    # Same contract as tool_post_pos_sale above.
     key = str(params.get("idempotency_key") or f"flo-return-{uuid.uuid4()}")
     payload = {k: v for k, v in params.items() if k not in {"sale_id", "idempotency_key"}}
+    actor = _commercial_actor(user, scope)
     try:
         row = await svc_create_pos_return(
-            get_db(), _commercial_actor(user, scope), params["sale_id"], payload,
-            idempotency_key=key,
+            get_db(), actor, params["sale_id"], payload, idempotency_key=key,
         )
+    except DuplicateKeyError:
+        try:
+            row = await replay_retail_request(get_db(), actor, key, payload, sale_id=params["sale_id"])
+        except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
+            return _failed(str(exc))
+        return {"success": True, "data": row, "message": "That return was already posted; showing it."}
     except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
         return _failed(str(exc))
     return {"success": True, "data": row, "message": "POS return posted."}

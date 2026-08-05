@@ -12,8 +12,6 @@ import pytest
 
 from middleware.auth import create_jwt
 
-pytestmark = pytest.mark.asyncio
-
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 

@@ -17,8 +17,6 @@ import pytest
 
 from ai import tool_functions_v2
 
-pytestmark = pytest.mark.asyncio
-
 # student_id/entity_id/record_id are foreign-key references to the volatile
 # student UUID (re-generated each run) — mask them like ids.
 _VOLATILE = {"id", "_id", "student_id", "entity_id", "record_id",

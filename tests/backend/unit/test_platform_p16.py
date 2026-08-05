@@ -1,8 +1,6 @@
 from __future__ import annotations
 import pytest
 
-pytestmark = pytest.mark.asyncio
-
 def test_401_response_has_www_authenticate_header(client):
     """Unauthenticated requests return WWW-Authenticate: Bearer header."""
     resp = client.get("/api/students/")

@@ -15,8 +15,6 @@ import pytest
 
 from ai import tool_functions_v2
 
-pytestmark = pytest.mark.asyncio
-
 _VOLATILE = {"id", "_id", "entity_id", "record_id", "structure_id",
              "discount_type_id", "created_at", "updated_at", "timestamp"}
 OWNER_USER = {"id": "admin-1", "role": "owner", "name": "Admin User"}

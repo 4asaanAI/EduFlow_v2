@@ -14,9 +14,6 @@ from ai.plan_schema import plan_from_steps, WRITE, READ
 from tests.backend.conftest import FakeCollection
 from routes import chat
 
-pytestmark = pytest.mark.asyncio
-
-
 class _FakeDb:
     def __init__(self):
         self.ai_write_idempotency = FakeCollection()

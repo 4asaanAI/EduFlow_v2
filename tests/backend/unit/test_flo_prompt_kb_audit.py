@@ -4,9 +4,6 @@ import json
 
 import pytest
 
-pytestmark = pytest.mark.asyncio
-
-
 @pytest.mark.parametrize("user", [
     {"role": "owner", "name": "Owner"},
     {"role": "admin", "sub_category": "principal", "name": "Principal"},

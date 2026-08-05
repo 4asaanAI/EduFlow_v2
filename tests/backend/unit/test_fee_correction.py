@@ -3,9 +3,6 @@ import pytest
 from middleware.auth import create_jwt
 from tests.backend.factories import make_fee_transaction
 
-pytestmark = pytest.mark.asyncio
-
-
 def _accountant_headers(user_id="acct-1"):
     t = create_jwt({"user_id": user_id, "role": "admin", "name": "Acct", "sub_category": "accounts"})
     return {"Authorization": f"Bearer {t}"}

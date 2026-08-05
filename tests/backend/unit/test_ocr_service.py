@@ -16,8 +16,6 @@ import pytest
 from services import ocr_service
 from services.ocr_service import MAX_IMAGE_BYTES, OcrResult, extract_text, ocr_available, sniff_image_type
 
-pytestmark = pytest.mark.asyncio
-
 PNG_1PX = (
     b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06"
     b"\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05"

@@ -27,8 +27,6 @@ from ai.tool_invoker import (
     tool_accepts_scope,
 )
 
-pytestmark = pytest.mark.asyncio
-
 BACKEND = Path(__file__).resolve().parents[3] / "backend"
 
 OWNER = {"id": "d25-owner", "role": "owner", "name": "Owner"}

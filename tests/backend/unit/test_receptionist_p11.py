@@ -3,9 +3,6 @@ import pytest
 from middleware.auth import create_jwt
 from tests.backend.conftest import FakeCollection
 
-pytestmark = pytest.mark.asyncio
-
-
 def _receptionist_h():
     t = create_jwt({"user_id": "r1", "role": "admin", "name": "R", "sub_category": "receptionist"})
     return {"Authorization": f"Bearer {t}"}

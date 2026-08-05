@@ -8,6 +8,12 @@ from jose import JWTError, jwt
 
 from database import get_raw_db
 
+# tenant-scope: intentional — LayaaStat federation is a provider-level read across the
+# whole deployment, which is why it uses get_raw_db() rather than the scoped db. The
+# payloads are metadata only (tenant names, event counts, incident severity/status);
+# no student, staff, fee or conversation content leaves through here. If a second school
+# is ever hosted in this database, these three reads must gain a school filter first.
+# Re-confirmed 2026-08-05 (audit A-6).
 _PRODUCT_ID = "ebf33922-9d96-46f8-9f18-c7d9849d0e7b"
 
 router = APIRouter(prefix="/api/federation", tags=["federation"])
@@ -36,8 +42,15 @@ async def require_federation_auth(request: Request) -> dict:
             algorithms=[_ALGORITHM],
             audience=_AUDIENCE,
             issuer=_ISSUER,
+            # Audit A-5 (2026-08-05): python-jose only checks `exp` when the claim is
+            # present, so a token minted without one read this school's incident and
+            # cost metadata forever. Require it; LayaaStat's minter sets it.
+            options={"require_exp": True, "verify_exp": True},
         )
     except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    if "exp" not in payload:
+        # Belt and braces: older jose builds accept `require_exp` without enforcing it.
         raise HTTPException(status_code=401, detail="Invalid token")
     if payload.get("role") != "federation_reader":
         raise HTTPException(status_code=403, detail="Wrong role")

@@ -15,8 +15,6 @@ import pytest
 
 from middleware.auth import create_jwt
 
-pytestmark = pytest.mark.asyncio
-
 SCHOOL = "aaryans-joya"
 
 

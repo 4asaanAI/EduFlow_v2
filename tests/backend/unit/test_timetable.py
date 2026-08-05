@@ -3,9 +3,6 @@ import pytest
 from middleware.auth import create_jwt
 from tests.backend.factories import make_class, make_staff, make_subject
 
-pytestmark = pytest.mark.asyncio
-
-
 def _teacher_h():
     t = create_jwt({"user_id": "t1", "role": "teacher", "name": "Teacher"})
     return {"Authorization": f"Bearer {t}"}

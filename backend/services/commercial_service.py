@@ -490,8 +490,11 @@ async def create_opportunity(db, actor: ActorContext, enquiry_id: str, params: d
     return _public(doc)
 
 
-async def update_opportunity(db, actor: ActorContext, opportunity_id: str, params: dict) -> dict:
-    existing = await db.crm_opportunities.find_one(_scope(actor, {"id": opportunity_id}), {"_id": 0})
+async def update_opportunity(db, actor: ActorContext, opportunity_id: str, params: dict,
+                             *, session=None) -> dict:
+    kwargs = session_kwargs(session)
+    existing = await db.crm_opportunities.find_one(_scope(actor, {"id": opportunity_id}), {"_id": 0},
+                                                   **kwargs)
     if not existing:
         raise CommercialNotFoundError("CRM opportunity not found")
     stage = _clean(params.get("stage") or existing.get("stage")).lower()
@@ -513,7 +516,8 @@ async def update_opportunity(db, actor: ActorContext, opportunity_id: str, param
         update["probability"] = 0
         update["closed_at"] = actor.now_iso()
     update["updated_at"] = actor.now_iso()
-    await db.crm_opportunities.update_one(_scope(actor, {"id": opportunity_id}), {"$set": update})
+    await db.crm_opportunities.update_one(_scope(actor, {"id": opportunity_id}), {"$set": update},
+                                          **kwargs)
     await _audit(db, actor, "crm_opportunity_update", "crm_opportunities", opportunity_id, update,
                  _clean(params.get("lost_reason")))
     return {**existing, **update}
@@ -743,11 +747,18 @@ async def create_sale(db, actor: ActorContext, params: dict, *, idempotency_key:
         }
     lines = []
     subtotal = tax_total = 0
-    for index, raw in enumerate(grouped_lines.values()):
-        product = await db.commercial_products.find_one(
-            _scope(actor, {"id": _required(raw, "product_id"), "entity_id": entity["id"], "is_active": True}),
+    # Audit A-7 (2026-08-05): one batched read for the whole cart instead of a query
+    # per line, per CLAUDE.md's no-loop-queries rule.
+    product_ids = [_required(raw, "product_id") for raw in grouped_lines.values()]
+    products_by_id = {
+        row["id"]: row
+        for row in await db.commercial_products.find(
+            _scope(actor, {"id": {"$in": product_ids}, "entity_id": entity["id"], "is_active": True}),
             {"_id": 0}, **session_kwargs(session),
-        )
+        ).to_list(len(product_ids))
+    }
+    for index, raw in enumerate(grouped_lines.values()):
+        product = products_by_id.get(_required(raw, "product_id"))
         if not product:
             raise CommercialNotFoundError(f"Product not found at lines[{index}]")
         quantity = _positive_int(raw.get("quantity"), f"lines[{index}].quantity")

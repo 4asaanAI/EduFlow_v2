@@ -6,9 +6,6 @@ from fastapi import HTTPException
 from middleware.auth import decode_jwt, hash_password
 from backend.routes import auth as auth_module
 
-pytestmark = pytest.mark.asyncio
-
-
 # ─── Minimal fakes (isolated from global fake_db) ────────────────────────────
 
 class _FakeCollection:

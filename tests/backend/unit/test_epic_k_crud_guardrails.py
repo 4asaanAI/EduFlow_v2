@@ -17,8 +17,6 @@ from routes.chat import _is_tool_authorized
 from services.actor_context import actor_ctx_from_user
 from services import fee_config_service, academic_structure_service, org_config_service
 
-pytestmark = pytest.mark.asyncio
-
 OWNER = {"id": "o1", "role": "owner", "name": "Owner"}
 PRINCIPAL = {"id": "p1", "role": "admin", "sub_category": "principal", "name": "Principal"}
 ACCOUNTANT = {"id": "a1", "role": "admin", "sub_category": "accountant", "name": "Acct"}

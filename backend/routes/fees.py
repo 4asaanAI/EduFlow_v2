@@ -7,6 +7,7 @@ from models.schemas import FeeTransaction
 from middleware.auth import get_current_user, require_role, require_owner
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from school_identity import default_branch_id
 from tenant import get_school_id, scoped_filter, scoped_query, add_school_id
 from services.audit_service import write_audit_doc
 from services.notification_service import fan_out_notifications
@@ -492,7 +493,7 @@ async def create_online_fee_checkout(request: Request,
         checkout = await create_school_fee_checkout(
             db,
             school_id=get_school_id(),
-            branch_id=bid or "branch-joya",
+            branch_id=bid or default_branch_id(),
             user_id=user["id"],
             transaction_ids=unique_ids,
             success_url=callback_url,

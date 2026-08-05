@@ -85,9 +85,10 @@ School staff (owner, principal, teachers, accountants, etc.) manage attendance, 
 
 > **These are historical per-part figures, not a baseline.** They record how many tests each
 > part added at the time it shipped; they are not the size of the suite today and must never
-> be copied into a "the suite should show N" instruction (D-51/D-56). The current measured
-> numbers live in **Running Tests** below: backend 2012 passed / 0 failed / 14 deselected,
-> frontend 286 passed / 0 failed, both measured 2026-08-04. The bar is the FAILURE count.
+> be copied into a "the suite should show N" instruction (D-51/D-56). **The bar is the FAILURE
+> count and it is ZERO.** Deliberately no pass count is recorded here: every one written down
+> has gone stale within days and then been copied forward as a target. Run the commands in
+> **Running Tests** below and read the number they print.
 
 **Epic files for all parts:** `_bmad-output/planning-artifacts/epic-part*.md`
 
@@ -217,7 +218,11 @@ import { Button } from '@/components/ui/button'  // not ../../components/...
 ```python
 from __future__ import annotations
 import pytest
-pytestmark = pytest.mark.asyncio  # ← CRITICAL RULE — goes in EVERY async test file
+# NO module-level `pytestmark = pytest.mark.asyncio`. `pytest.ini` sets
+# `asyncio_mode = auto`, so async tests are marked automatically; adding it by hand
+# also lands it on the SYNC tests in the same file and pytest warns once per test
+# (611 warnings before the 2026-08-05 audit, A-8). Tier markers still go here,
+# e.g. `pytestmark = [pytest.mark.mongo_real]`.
 ```
 
 ### FakeCursor pattern (async iteration support)
@@ -355,13 +360,13 @@ Sprint-status keys: `hotfix-1-file-serve-unauthenticated`, `hotfix-2-fee-collect
 # Backend (from repo root). The number that matters is the FAILURE count, not the pass
 # count — the pass count grows every epic, and a pinned pass count goes stale and then
 # gets copied forward as if it were a target (D-51, D-56). The bar is ZERO failures.
-# Measured 2026-08-04: 2012 passed / 0 failed / 14 deselected. The 14 deselected are the
-# credentialed mongo_real + llm_eval tiers and are normal.
+# Do not record a pass count here; it goes stale in days. A dozen or so deselected tests
+# are normal — they are the credentialed mongo_real + llm_eval tiers.
 # Pin the DB first, or a fail-closed guard in conftest.py stops the run (D-04):
 #   MONGO_URL=mongodb://127.0.0.1:27099/eduflow_test DB_NAME=eduflow_test
 python -m pytest tests/backend/ -q
 
-# Frontend unit tests — measured 2026-08-04: 286 passed / 0 failed.
+# Frontend unit tests — the bar is 0 failed. No pass count is pinned here (see above).
 cd frontend && CI=true npx craco test --watchAll=false
 
 # Frontend production build — `react-hooks/exhaustive-deps` is an ERROR here on
@@ -386,7 +391,8 @@ cd frontend && yarn start
 2. Read the relevant epic file in `_bmad-output/planning-artifacts/epic-part{N}-*.md`
 3. Run `python -m pytest tests/backend/ -x -q` to confirm baseline
 4. Check the specific route file + its test file before writing new code
-5. Every new test file needs: `from __future__ import annotations` + `pytestmark = pytest.mark.asyncio`
+5. Every new test file needs `from __future__ import annotations`. It does NOT need
+   `pytestmark = pytest.mark.asyncio` — `asyncio_mode = auto` handles that (audit A-8)
 6. Every new endpoint needs: unauthenticated test + wrong-role test (security convention)
 7. Role-vertical stories (Parts 9-13): run `grep -n "scoped_filter(" backend/routes/<file>.py` and audit every hit
 

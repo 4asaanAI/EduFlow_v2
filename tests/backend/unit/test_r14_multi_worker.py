@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-pytestmark = pytest.mark.asyncio
-
-
 # ---------------------------------------------------------------------------
 # R14.1 — SSE startup guard: refuses multi-worker without shared broker
 # ---------------------------------------------------------------------------

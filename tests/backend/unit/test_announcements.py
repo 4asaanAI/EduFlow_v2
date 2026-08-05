@@ -2,9 +2,6 @@ from __future__ import annotations
 import pytest
 from middleware.auth import create_jwt
 
-pytestmark = pytest.mark.asyncio
-
-
 def _principal_headers():
     t = create_jwt({"user_id": "p1", "role": "admin", "name": "Principal", "sub_category": "principal"})
     return {"Authorization": f"Bearer {t}"}

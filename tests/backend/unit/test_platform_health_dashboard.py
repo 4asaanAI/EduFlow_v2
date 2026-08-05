@@ -14,8 +14,6 @@ sys.path.insert(0, os.path.join(ROOT, "backend"))
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-key-not-for-production")
 
-pytestmark = pytest.mark.asyncio
-
 from fastapi.testclient import TestClient
 from middleware.auth import create_jwt
 from tests.backend.conftest import FakeCollection, APP_AVAILABLE

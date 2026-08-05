@@ -10,8 +10,6 @@ from __future__ import annotations
 
 import pytest
 
-pytestmark = pytest.mark.asyncio
-
 from services.actor_context import actor_ctx_from_user
 from services.memory import policy
 from services.memory import can_capture_memories, can_recall_memories, is_memory_subject

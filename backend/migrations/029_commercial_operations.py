@@ -21,6 +21,8 @@ async def migrate(db=None):
         [("schoolId", 1), ("branch_id", 1), ("entity_id", 1), ("kind", 1), ("year", 1)], unique=True
     )
     await db.crm_activities.create_index([("enquiry_id", 1), ("occurred_at", -1)])
+    # tenant-scope: intentional — the hash embeds schoolId and branch_id, so this
+    # global unique index cannot collide across tenants (audit A-1, 2026-08-05).
     await db.crm_contact_keys.create_index("contact_hash", unique=True)
     await db.crm_opportunities.create_index([("entity_id", 1), ("stage", 1), ("updated_at", -1)])
     await db.commercial_products.create_index(

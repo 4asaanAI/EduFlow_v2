@@ -11,9 +11,6 @@ Verifies:
 import pytest
 from middleware.auth import create_jwt
 
-pytestmark = pytest.mark.asyncio
-
-
 def _owner_headers() -> dict:
     payload = {"user_id": "export-owner-1", "role": "owner", "name": "Export Owner"}
     return {"Authorization": f"Bearer {create_jwt(payload)}"}

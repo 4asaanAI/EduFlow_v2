@@ -20,9 +20,6 @@ from services.confirm_tokens import (
     PLAN_SCHEMA_VERSION,
 )
 
-pytestmark = pytest.mark.asyncio
-
-
 _PLAN = [
     {"idx": 0, "tool": "approve_leave", "kind": "write",
      "params": {"leave_id": "lv-1", "action": "approve"},

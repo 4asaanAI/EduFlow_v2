@@ -61,6 +61,18 @@ _ENV_OVERRIDABLE = {
     "state": "SCHOOL_STATE",
 }
 
+# The one branch this deployment serves. A school-level owner token may carry no
+# `branch_id`, but a posting must never persist unscoped, so callers fall back to
+# this. It was written as a bare "branch-joya" literal in three places (the
+# commercial routes and two AI tool helpers); when a second branch is onboarded
+# there must be exactly one line to reconsider, not three to find.
+DEFAULT_BRANCH_ID = "branch-joya"
+
+
+def default_branch_id() -> str:
+    """The branch a posting belongs to when the caller's token does not say."""
+    return os.environ.get("DEFAULT_BRANCH_ID", DEFAULT_BRANCH_ID)
+
 
 def default_school_identity() -> Dict[str, str]:
     """The verified identity, with the four historically env-configurable overrides."""

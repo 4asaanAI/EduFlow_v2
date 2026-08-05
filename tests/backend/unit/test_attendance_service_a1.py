@@ -16,8 +16,6 @@ from services.actor_context import ActorContext, actor_ctx_from_user
 from services.attendance_service import mark_attendance
 from tests.backend.factories import make_student
 
-pytestmark = pytest.mark.asyncio
-
 OWNER_HEADERS = None  # set via auth_headers fixture in REST tests
 
 

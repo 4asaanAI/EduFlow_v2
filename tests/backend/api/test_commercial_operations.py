@@ -4,9 +4,6 @@ import pytest
 
 from middleware.auth import create_jwt
 
-pytestmark = pytest.mark.asyncio
-
-
 def _headers(user_id: str, role: str, sub_category: str | None = None, branch_id: str = "branch-a"):
     payload = {"user_id": user_id, "role": role, "name": user_id, "branch_id": branch_id}
     if sub_category:

@@ -8,9 +8,6 @@ from __future__ import annotations
 import pytest
 from middleware.auth import create_jwt
 
-pytestmark = pytest.mark.asyncio
-
-
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _bearer(payload: dict) -> dict:

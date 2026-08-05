@@ -5,9 +5,6 @@ import pytest
 from middleware.auth import create_jwt
 from tests.backend.factories import make_class, make_student
 
-pytestmark = pytest.mark.asyncio
-
-
 def _owner_h():
     token = create_jwt({"user_id": "owner-fees", "role": "owner", "name": "School Owner", "branch_id": "branch-a"})
     return {"Authorization": f"Bearer {token}"}

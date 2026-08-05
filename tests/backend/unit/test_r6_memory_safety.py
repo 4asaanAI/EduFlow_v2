@@ -11,8 +11,6 @@ import time
 
 import pytest
 
-pytestmark = pytest.mark.asyncio
-
 from services.actor_context import actor_ctx_from_user
 from services.memory import store as memory_store
 from services.memory import chat_integration
