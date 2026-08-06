@@ -136,7 +136,7 @@ carries a hyperlink before writing it off. `openpyxl` needs `data_only=True` *wi
 Counts: **1,427** student photos, **13** teacher photos (both as hyperlinks); parent photos
 are relative paths in the cell value instead (see C2). All verified reachable.
 
-### D2. 🔴 The photographs live on the previous vendor's CDN, and they are public
+### D2. 🟡 Photographs COPIED to the school's own S3 (2026-08-06) — serving still to switch
 Every photo URL points at `cdn.vedmarg.com` — the school's *previous* software vendor — and
 opens with **no authentication at all**. Two separate problems:
 
@@ -171,6 +171,29 @@ which is under ₹0.20 a month of S3 storage. The blocker is purely a one-time I
 ```
 Note it grants no delete, which keeps it consistent with D-34 (tightening this user, not
 loosening it).
+
+**COPIED 2026-08-06.** All **1,692** images (1,423 student, 13 staff, 256 parent) now sit in
+`eduflow-files-ap-south-1-210447603820/aaryans-joya/uploads/`. Zero left behind. Three failed
+on the first pass with transient network timeouts — re-checked individually, all three URLs
+returned HTTP 200, and a re-run copied them, which is the resumable-by-design property paying
+off a second time. Spot-checked 6 objects straight out of S3 by their magic bytes: all real
+JPEG/PNG.
+
+**Correct the size estimate on the record: the set is 212 MB, not the ~80 MB estimated from
+a 45 KB average.** Real average is ~126 KB. Still trivial money (well under ₹1/month), and it
+does not change the recommendation against a second bucket or against putting images in
+MongoDB — if anything 212 MB makes the MongoDB option worse, being ~15x the whole database.
+
+**WHAT IS STILL OPEN — the privacy half.** `photo_url` still points at `cdn.vedmarg.com`, so
+the pictures are still SERVED from the public link. The continuity risk is closed (we hold
+our own copies); the exposure is not. Switching needs a `file_uploads` record per image so
+`routes/upload.py:serve_file` can authorise and presign it. **Do not mistake "copied" for
+"done".**
+
+**IAM NOTE:** full S3 access was granted to `claude-hosting` to unblock this, not the scoped
+policy above. Verified: that key can currently read the CockRoach database backups and the
+CloudTrail audit logs. Abhimanyu has parked the tightening deliberately — it is not
+forgotten, and the scoped policy in `docs/` is ready to paste.
 
 ---
 
