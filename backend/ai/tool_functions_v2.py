@@ -2393,12 +2393,39 @@ async def tool_get_enrolment_summary(params: dict, user: dict, scope: dict = Non
 
 
 async def tool_query_audit_log(params: dict, user: dict, scope: dict = None) -> dict:
+    """The action log, behind the SAME gate as the screen and the web address.
+
+    The 2026-08-06 owner request restricted the action log to the owner and the
+    principal. That was applied to `routes/audit.py`, to the menu (`Sidebar.js`) and to
+    the per-tool allow-list (`toolPermissions.js`) — but NOT here, so an `it_tech` or
+    `management` admin who could no longer see the log on screen could still ask Flo
+    for it. That is the same half-applied-rule defect the original request was about,
+    surviving in the one place nobody looked.
+
+    `AUDIT_READER_SUB_CATEGORIES` is imported rather than restated so the two cannot
+    drift again: one list, two callers.
+    """
+    from routes.audit import AUDIT_READER_SUB_CATEGORIES
+
+    role = user.get("role")
+    if role == "admin":
+        allowed = user.get("sub_category", "") in AUDIT_READER_SUB_CATEGORIES
+    else:
+        allowed = role == "owner"
+    if not allowed:
+        # `_denied`, not `_failed` or an empty list: the person must hear "you do not
+        # have access to this" rather than "there is nothing there", which would be a
+        # confident wrong answer (R4.3/M2).
+        return _denied("The action log is only available to the school's owner and principal.")
+
     db = get_db()
     bid = _branch_id(user, scope)
     base: dict = {}
     if params.get("collection"):
         base["collection"] = params["collection"]
-    if user.get("role") != "owner":
+    # The principal sees the school's log; this branch remains for the grandfathered
+    # legacy admins with no sub_category, who see only what they did themselves.
+    if role != "owner" and user.get("sub_category") != "principal":
         base["changed_by"] = user.get("id")
     query = scoped_query(base, branch_id=bid)
     items = await db.audit_logs.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
@@ -4961,8 +4988,13 @@ TOOL_REGISTRY = {
     },
     "query_audit_log": {
         "fn": tool_query_audit_log,
-        "roles": ["owner", "admin", "teacher", "student"],
-        "description": "Scoped audit log entries per role.",
+        # Owner and principal only (owner request, 2026-08-06). `admin` stays in this
+        # list because the sub_category check that narrows it lives in the tool itself,
+        # sharing routes/audit.py's AUDIT_READER_SUB_CATEGORIES. Teacher and student
+        # were removed: the log is not theirs to read, and offering it only to refuse
+        # is worse than not offering it.
+        "roles": ["owner", "admin"],
+        "description": "The school's action log. Owner and principal only.",
         "params_schema": {
             "collection": {"type": "string", "description": "Optional collection filter"},
         },

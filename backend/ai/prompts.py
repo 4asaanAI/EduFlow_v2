@@ -310,7 +310,16 @@ TOOL_DRAFT_DOCUMENT = {
         "someone wants a circular, notice, letter, fee sheet, report, template or "
         "presentation as a FILE they can print, sign, email or share — not as chat text. "
         "Put prose in `paragraphs` and any table in `headers` + `rows`. You already have "
-        "the content; this only formats and stores it."
+        "the content; this only formats and stores it. "
+        "Word, PDF, PowerPoint, Markdown and text come out on the school's own "
+        "letterhead (crest, name, CBSE affiliation line, address footer, page numbers) "
+        "automatically — never write the school's name and address into `paragraphs` "
+        "yourself or it will appear twice. Spreadsheets (xlsx, csv) are deliberately "
+        "plain, so the first row is the column headings and formulas and imports still "
+        "line up. "
+        "Hindi and other Devanagari text works in EVERY format including PDF, so write "
+        "in Hindi whenever the person asked in Hindi or the document is for parents who "
+        "read Hindi."
     ),
     "params_schema": {
         "doc_type": "required — docx|xlsx|pptx|pdf|csv|md|txt",
@@ -652,7 +661,7 @@ TOOL_GET_ENROLMENT_SUMMARY = {
 }
 TOOL_QUERY_AUDIT_LOG = {
     "name": "query_audit_log",
-    "description": "View system audit log — who did what, when (role-scoped; excludes financial & personal fee data).",
+    "description": "The school's action log: who did what and when. OWNER AND PRINCIPAL ONLY (owner request, 2026-08-06). Excludes financial and personal fee data.",
     "params_schema": {"collection": "optional — filter by collection e.g. 'students', 'staff', 'fees'"},
 }
 TOOL_RECALL_HISTORY = {
@@ -1013,6 +1022,12 @@ _PRINCIPAL_TOOLS = [
     # L5: the registry authorizes recall_history for principals — advertise it so the
     # capability the principal is allowed to use is actually offered.
     TOOL_RECALL_HISTORY,
+    # Same reasoning, found 2026-08-07. The 2026-08-06 request made the action log
+    # "owner and principal only", and the principal duly has it on screen and is
+    # allowed it by routes/audit.py — but Flo never offered it to them. The drift ran
+    # in BOTH directions: it_tech was offered a log it could no longer open, and the
+    # principal was not offered one they could.
+    TOOL_QUERY_AUDIT_LOG,
 ]
 
 _ACCOUNTS_TOOLS = [
@@ -1099,7 +1114,11 @@ _SUPPORT_STAFF_TOOLS = []  # own data only — no AI tools, handled via role rul
 # is registry-restricted to owner). The single canonical definitions are reused below.
 _IT_TECH_TOOLS = [
     TOOL_QUERY_MAINTENANCE_REQUESTS,
-    TOOL_QUERY_AUDIT_LOG,
+    # TOOL_QUERY_AUDIT_LOG removed 2026-08-07. The owner request of 2026-08-06 cut the
+    # action log down to owner + principal, and that was applied to the route, the menu
+    # and the per-tool allow-list but NOT to Flo — so an it_tech admin who had lost the
+    # screen could still ask Flo for it. Offering a tool that will refuse is worse than
+    # not offering it.
 ]
 
 # Maintenance admins READ facility requests via AI; marking a request complete and the
@@ -1137,9 +1156,17 @@ TOOLS_BY_ROLE = {
 }
 
 # Fallback lookup by role only (ignores sub_category)
+# An admin sub_category with no list of its own (e.g. `management`) falls back to the
+# principal's set. That is a reasonable default for most tools, but it must NOT hand
+# out the principal's owner-and-principal-only ones: `management` lost the action log
+# on 2026-08-06 and would otherwise pick it straight back up through this door. The
+# tool itself still refuses them, so this is about not ADVERTISING a refusal — being
+# invited to ask and then told no is worse than never being offered.
+_ADMIN_FALLBACK_TOOLS = [t for t in _PRINCIPAL_TOOLS if t is not TOOL_QUERY_AUDIT_LOG]
+
 _ROLE_FALLBACK = {
     "owner": _OWNER_TOOLS,
-    "admin": _PRINCIPAL_TOOLS,  # safest admin default
+    "admin": _ADMIN_FALLBACK_TOOLS,  # safest admin default, minus principal-only tools
     "teacher": _CLASS_TEACHER_TOOLS,
     "student": _STUDENT_TOOLS,
     "parent": _PARENT_TOOLS,
@@ -1346,7 +1373,7 @@ ROLE: IT & Tech Support
 You assist with technology and platform issues.
 - You can view tech support tickets (open, in-progress, resolved) and update their status
 - You can check system health indicators (DB status, AI status, S3 connectivity)
-- You can view audit logs (excluding financial transactions and personal fee data)
+- You CANNOT view the action log. It is the owner's and the principal's only (owner request, 2026-08-06). Say so plainly if asked, and offer to escalate.
 - You can manage user access issues (e.g., login problems, password resets for non-owner accounts)
 - You can view import/export logs and data sync status
 - Salary, personal fee, and medical data is NOT accessible to you
@@ -1704,6 +1731,26 @@ The download button fetches a fresh, secure link from the server when the person
 it, so you must NEVER write a download URL yourself and never paste a link into your
 sentence — the block IS the download. Say one short line about what you made, then let
 the block do the rest.
+
+WHAT THE FILE ALREADY HAS, so you do not repeat it (2026-08-07):
+- Word, PDF, PowerPoint, Markdown and text carry the school's LETTERHEAD automatically:
+  the crest, the school's name, its board affiliation line, the address and contact
+  footer, the pale background wordmark, and page numbers on every page. Do NOT put the
+  school's name, address, phone or a school-name heading into `paragraphs` — the
+  letterhead already carries them and they would print twice.
+- Spreadsheets (xlsx and csv) are deliberately PLAIN. Row one is the column headings so
+  formulas, filters and imports into other systems still line up. If someone asks why
+  the spreadsheet has no letterhead, that is the reason, and it is on purpose.
+- HINDI WORKS EVERYWHERE NOW, including PDF. This used to be broken: Devanagari came out
+  as question marks in PDFs only. It is fixed. So if the person wrote to you in Hindi, or
+  the document is a circular for parents, write it in Hindi without hesitating and
+  without warning them about the format.
+- Every file the person can read (not spreadsheets) also has a "Read and edit" button
+  beside Download. They can correct a sentence on screen and download the corrected copy.
+  The corrected version is NOT saved back to the school's records — the copy the school
+  holds stays as you made it. If someone asks to change a document, you can either make a
+  fresh one or tell them to tap "Read and edit" and fix it themselves; both are fine, so
+  offer whichever is less work for them.
 """
 
 

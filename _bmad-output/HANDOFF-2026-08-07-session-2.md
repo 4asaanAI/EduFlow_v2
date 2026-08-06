@@ -164,6 +164,71 @@ The four numbers that control the watermark are named constants at the top of
 
 ---
 
+## 5. What Flo was told, and one real gap it uncovered (2026-08-07)
+
+Abhimanyu asked for Flo's knowledge to be brought up to date too, not just the vault.
+
+**Documents.** Flo now knows the letterhead is applied automatically (so it must NOT write
+the school's name and address into the body, or they print twice), that spreadsheets are
+plain on purpose, that **Hindi works in PDFs now** where it used to become question marks,
+and that a person can read and correct a document but the correction is not saved back.
+Pinned by `tests/backend/unit/test_flo_knows_about_documents.py`. These are prompt-content
+tests and they are worth it: the defect class they guard is the prompt and the code
+disagreeing, which is what the R3 epic and D-13 were both about.
+
+**One hard-coded word caused a real failure.** The first version of that guidance wrote
+"THE AARYANS" and "The Aaryans" literally into a shared prompt, which broke
+`test_assistant_identity_follows_the_stored_record` — a multi-tenancy guard checking that a
+second school deploying this code never sees The Aaryans' name in its own assistant. The
+test was right; the wording is now generic.
+
+### The action-log rule was half-applied, and Flo was the missing door
+
+Found while checking what else Flo might be wrong about. The 2026-08-06 request cut the
+action log down to owner and principal. That reached `routes/audit.py`, `Sidebar.js` and
+`toolPermissions.js` — but not the assistant. **The drift ran in both directions**, which is
+why it survived a review:
+
+- `it_tech` was still offered the log by Flo, and Flo's own role rules told them they could
+  read it, when the screen had been taken away.
+- The **principal**, who is allowed the log and has it on screen, was never offered it by
+  Flo at all.
+- The registry authorised `teacher` and `student` too.
+- A fourth door opened while fixing it: `management` has no tool list of its own and falls
+  back to the principal's, so it inherited the log the moment it was added there. The
+  fallback list now excludes principal-only tools.
+
+Flo's tool imports the route's own `AUDIT_READER_SUB_CATEGORIES` rather than restating it,
+so there is one list and two callers. A refusal returns `_denied`, not an empty result: "you
+do not have access" rather than "there is nothing there", which would be a confident wrong
+answer about the school's own records. Pinned by
+`tests/backend/unit/test_flo_audit_log_access.py`, including a test that fails if anyone
+re-states the sub-categories instead of importing them.
+
+The eval corpus case `ittech-audit` expected an answer and now expects a denial. It was
+encoding the old rule.
+
+**A rule enforced on three of four doors is not enforced.** Worth remembering next time a
+permission is narrowed: the screens, the web address, the menu allow-list and Flo are four
+separate doors, and Flo is the one nobody checks.
+
+## The memory vault
+
+Updated and pushed (`claude-memory-vault@9705f59`). Three stale claims corrected, each
+checked against the running system rather than the repo:
+
+- It said **production runs `origin/local_testing`**. It does not, and has not for some
+  time: the last four EB versions are all `eduflow-main-*` built from `main`. That line
+  would have sent a future deploy at the wrong branch.
+- The **certificate and ID-card permission gap is now closed**. The fix had existed since
+  2026-08-04 and had simply never been deployed. It went out today, and both endpoints
+  answer 401 unauthenticated on the live front door. The lesson in that entry stands: a fix
+  that is merged and undeployed protects nobody.
+- The `run_all.py` root cause is closed (`CLAUDE.md` no longer tells anyone to run it), and
+  the pending list is two migrations now, not one.
+
+---
+
 ## SHIPPED AND DEPLOYED — 2026-08-06
 
 Abhimanyu gave an explicit go-ahead to push and deploy, so the standing "flag, do not
