@@ -947,6 +947,52 @@ img, video, canvas, svg { max-width: 100%; }
     font-size: var(--text-base);
   }
 
+  /* ── The iOS zoom floor, enforced over inline styles (owner report, 2026-08-06)
+     ─────────────────────────────────────────────────────────────────────────────
+     The rule above was ALREADY meant to do this and could not, which is why the
+     platform still zoomed on an iPhone 15 Pro. Safari force-zooms the page when a
+     field smaller than 16px takes focus, and it does NOT zoom back out afterwards
+     — so one tap on one box left the whole site magnified, with the menu and the
+     profile picture pushed off the screen edges. That is a single defect showing
+     up as two complaints ("it opens zoomed in" and "it zooms when I tap a field").
+
+     Why the rule above loses: this codebase styles with React inline `style={{}}`,
+     and an inline style beats ANY plain stylesheet selector no matter how specific
+     or how deeply nested in media queries. Thirteen shared style objects hard-code
+     13px (AttendanceRecorder, StaffTracker, StudentDatabase, ExamManager,
+     FeeCollection, TransportOptimisation, SchoolDirectory, SearchablePicker,
+     QuerySection, AdminTools at 12px, ChangePassword at 15px, and others). Only
+     `!important` outranks an inline style, so this is not belt-and-braces — it is
+     the only mechanism that works from a stylesheet.
+
+     Fixed HERE rather than in those thirteen files on purpose: an inline style
+     cannot carry a media query, so raising them at source would push every desktop
+     form to 16px and redesign screens nobody complained about. This keeps the
+     desktop sizes exactly as they are and lifts the floor only where the zoom
+     happens. It also covers the next field somebody writes at 13px.
+
+     NOT done, deliberately: `maximum-scale=1` / `user-scalable=no` on the viewport
+     tag. That is the usual one-line "fix" and it is wrong twice over — Abhimanyu
+     asked that pinch-zoom still work when the user chooses it, and taking zoom away
+     from people who need it to read is an accessibility failure. Removing the CAUSE
+     leaves deliberate zoom untouched.
+
+     Checkbox, radio and range are excluded: they carry no text, never trigger the
+     zoom, and font-size changes their box metrics in some browsers.
+
+     This does NOT redesign anything. The rule directly above already declared that
+     every control sits at 16px below 768px; it simply never took effect where an
+     inline style existed. So a field is only ever moved TO the size this stylesheet
+     already asked for. Verified in Chrome at both widths rather than reasoned about:
+     at 390px every text field (including date, email and search) computes to 16px
+     while checkbox and radio stay untouched, and at 1200px every inline 12px/13px
+     field is still exactly 12px/13px — the desktop is not touched at all. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: max(16px, var(--text-base)) !important;
+  }
+
   /* The small print rises WITH its control, not independently of it. */
   label, .field-label, .tool-label { font-size: var(--text-sm); }
   table th { font-size: var(--text-xs); }

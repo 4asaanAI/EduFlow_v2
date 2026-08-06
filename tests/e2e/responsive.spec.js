@@ -54,6 +54,61 @@ async function overhangingElements(page) {
   });
 }
 
+/**
+ * No field may be smaller than 16px on a phone.
+ *
+ * Owner report, 2026-08-06 (iPhone 15 Pro): the platform opened already magnified,
+ * with the menu and profile picture cut off the screen edges, and tapping any entry
+ * box magnified it further — neither one asked for. Both are the SAME defect. Safari
+ * force-zooms the page whenever a field under 16px takes focus, and it never zooms
+ * back out, so one tap left the whole site stuck magnified for the rest of the visit.
+ *
+ * The 16px floor was already written in `index.css` and could not take effect: this
+ * codebase styles with React inline `style={{}}`, and an inline style outranks any
+ * plain stylesheet rule, so thirteen shared style objects at 12-15px silently won.
+ *
+ * COMPUTED size is what is asserted, deliberately. Reading the CSS file would have
+ * reported the floor as present and correct throughout the period it was being
+ * overridden — the exact reason this went unnoticed.
+ */
+async function undersizedFields(page) {
+  return page.evaluate(() => {
+    const SKIP = new Set(['checkbox', 'radio', 'range', 'submit', 'button', 'reset', 'hidden', 'color', 'file']);
+    const offenders = [];
+    for (const el of document.querySelectorAll('input, select, textarea')) {
+      if (el.tagName === 'INPUT' && SKIP.has((el.type || 'text').toLowerCase())) continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) continue;   // not on screen
+      const size = parseFloat(window.getComputedStyle(el).fontSize);
+      if (size < 16) {
+        const id = el.getAttribute('data-testid') || el.getAttribute('name') || el.getAttribute('placeholder') || '(unnamed)';
+        offenders.push(`${el.tagName.toLowerCase()}[${id}] ${size}px`);
+      }
+    }
+    return offenders.slice(0, 8);
+  });
+}
+
+test('the page never forbids the user from zooming themselves', async ({ page }) => {
+  // The usual one-line "fix" for zoom-on-focus is `maximum-scale=1, user-scalable=no`.
+  // It is banned here on two grounds: Abhimanyu asked that pinch-zoom keep working
+  // when the user chooses it, and taking zoom away from people who need it to read is
+  // an accessibility failure. The zoom is stopped by removing its cause instead.
+  await page.goto('/login');
+  const viewport = await page.locator('meta[name="viewport"]').getAttribute('content');
+  expect(viewport, 'viewport meta tag is missing').toBeTruthy();
+  expect(viewport, 'the user must not be blocked from zooming').not.toMatch(/user-scalable\s*=\s*(no|0)/i);
+  expect(viewport, 'a maximum-scale of 1 blocks the user from zooming').not.toMatch(/maximum-scale\s*=\s*1(\.0)?\b/i);
+});
+
+test('no field on the sign-in screen triggers an iOS zoom', async ({ page }) => {
+  // Checked separately because it is the one screen every user meets before any
+  // session exists, and the role sweep below signs in first.
+  await page.setViewportSize(PHONE);
+  await page.goto('/login');
+  expect(await undersizedFields(page), 'sign-in fields under 16px will zoom on an iPhone').toEqual([]);
+});
+
 test('authenticated shell remains usable without document overflow at target widths', async ({ page }) => {
   await page.goto('/dashboard');
   await expect(page.getByTestId('app-layout')).toBeVisible();
@@ -135,6 +190,7 @@ for (const role of ROLES) {
 
         expect(await documentOverflow(page), `${role} / ${toolId}: page scrolls sideways`).toBeLessThanOrEqual(1);
         expect(await overhangingElements(page), `${role} / ${toolId}: content overhangs the screen edge`).toEqual([]);
+        expect(await undersizedFields(page), `${role} / ${toolId}: fields under 16px will zoom the page on an iPhone`).toEqual([]);
       }
     } finally {
       await context.close();
