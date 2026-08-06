@@ -60,6 +60,7 @@ MIGRATIONS = [
     ("027_upgrade_role_token_limits_to_1m", "Upgrade owner/admin/teacher/student/principal AI token limits to 1,000,000 per month (2026-07-10)"),
     ("028_enterprise_school_workflows", "Add non-destructive indexes for enterprise fee, admissions, leave, campus, payroll, guardian, and quiz workflows"),
     ("029_commercial_operations", "Add index-only CRM, campus retail, and legal-entity controls"),
+    ("030_profile_notes_index", "Index-only: the (schoolId, author_id, subject_type, subject_id, created_at) index behind private profile notes (owner request 4, 2026-08-06)"),
 ]
 
 
