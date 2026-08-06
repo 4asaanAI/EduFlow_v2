@@ -1108,15 +1108,21 @@ async def tool_get_house_details(params: dict, user: dict, scope: dict = None) -
     # Members
     # NEW-05/T6: four houses across 1,802 students sits right at the old cap, so the
     # member list is capped explicitly and `member_count` reports the TRUE total.
-    members_raw, members_total = await _find_capped(
-        db.students, {"house_id": house["id"], "is_active": True}
-    )
+    #
+    # 2026-08-06: this used to filter students on `house_id`, which NO student record
+    # has — the student side of the link is `house`, holding the house NAME ("Atulya"),
+    # written by student_service and rendered by StudentDatabase.js. So every house
+    # reported zero members no matter how many children were in it. Found while
+    # restoring the 1,204 house assignments the owner reported as missing; the empty
+    # member list would have made that restore look like it had not worked.
+    member_filter = {"house": house.get("name"), "is_active": True}
+    members_raw, members_total = await _find_capped(db.students, member_filter)
     members = [{"name": m.get("name", ""), "class": m.get("class_id", ""), "role": m.get("house_role", "member")} for m in members_raw]
     # NEW-05/T6: captains are asked for BY ROLE, never sliced out of the capped member
     # page — a captain sitting past row 500 would otherwise vanish while member_count
     # confidently reported the full roll. There are at most a handful per house.
     captains_raw = await db.students.find({
-        "house_id": house["id"], "is_active": True,
+        **member_filter,
         "house_role": {"$in": ["captain", "vice_captain"]},
     }).to_list(50)
     captains = [{"name": c.get("name", ""), "class": c.get("class_id", ""),

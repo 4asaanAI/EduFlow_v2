@@ -480,6 +480,187 @@ document types. All captured from the school's Masters screens, none added yet.
 
 ---
 
+## L. Evening session, 2026-08-06 — houses, staff attendance, leads, photo serving
+
+### L1. ✅ THE MISSING HOUSES WERE FOUND — 1,204 students restored
+The owner reported every student showing "no house". The four real houses (Agamya, Agrim,
+Aprajit, Atulya) existed; not one student was linked to one.
+
+**The data was in `aaryans_database/DETAINEES LIST 2025-26.xlsx` all along.** The file
+NAME is why it was missed: besides a detainees sheet it carries a `StudentData` master
+sheet and one sheet per class, and **64 of those sheets have a `HOUSE` column**.
+
+Two near-misses worth recording:
+- The obvious source, the main student export's `HouseBlock` column, is empty for all
+  1,878 rows. Correct to rule out — but ruling it out is not the same as concluding the
+  data does not exist.
+- **`migrations/002_add_houses.py` must NEVER be run here.** It creates four DIFFERENT
+  houses (Shivaji/Tagore/Raman/Kalam) and assigns them **round-robin by cursor order** —
+  it would have invented a house for all 1,872 children and made the bug look fixed.
+
+Quality of the source: the class sheets and the master sheet agree on **every single
+admission number — 0 conflicts across 1,362 students**, and the split is even
+(Atulya 348, Aprajit 341, Agrim 340, Agamya 333). That is a real allocation.
+
+**Loaded:** 1,204 matched a student on the platform; 0 overwrites; 158 belong to
+admission numbers not on the platform. 668 students still have no house.
+
+**Resolved by the owner, same evening:** Nursery, LKG and UKG are **not assigned houses by
+the school**. That is not missing data — it is correct, and those children should show no
+house. **Class 1 remains open** and the owner will confirm; recorded in the questions file.
+So of the 668 without a house, only the Class 1 cohort is a genuine unknown.
+
+### L2. ✅ A house could have no members even after the load — code bug, fixed
+`tool_get_house_details` looked up members with `{"house_id": ...}`. **No student record
+has a `house_id` field** — the student side is `house`, holding the NAME. So "who is in
+Atulya?" answered zero regardless of the data. Fixed to query `house`.
+
+The unit-test fixture set `house_id` too, which is why this survived: the test and the
+code agreed on a field that does not exist in the database. Fixture corrected.
+
+### L3. ✅ Staff attendance loaded — 7,729 records, 1 Apr to 1 Aug 2026
+From the four `Staff attendance*.pdf` exports (265 pages). Three properties of that
+export had to be handled or the load would have been silently wrong:
+1. **A day's block spans ~3 pages and the `Date :` header appears once**, often mid-page.
+   Reading per page dropped ~90% of rows.
+2. **The exporter wraps text INSIDE a cell, mid-word** (`Abse⏎nt`, `admin_offic⏎e`).
+   Fragments must be joined with NO separator — joining with a space corrupts every
+   status and role value. Which then means a wrapped date arrives as `02 Apr,2026`, so
+   the date pattern must not require the space.
+3. **Consecutive files overlap by one day.** 01 May, 01 Jun and 01 Jul appear twice; the
+   252 duplicate rows were verified to agree exactly before being de-duplicated.
+
+The parse is self-checking: each day restarts its row numbering at 1, so a missed day
+boundary shows up as a restart with no new date. The loader aborts unless that is zero.
+
+**Matching is by NAME, not phone.** Many staff share the school's switchboard number
+(8126965555), so a phone match is not identifying — phone is used only to confirm.
+Result: 87 of 88 people resolved to exactly one record, 0 ambiguous. Two named
+exceptions, both documented in the script: one person's row carries his designation
+("SHIVAM KUMAR ACCOUNTANT"), and "THE AARYANS JOYA" is the school's own ERP login, not a
+person, so it is excluded rather than given a 111-day attendance record.
+
+**1,807 "pending" rows were deliberately NOT stored** — see L3a for exactly what they are.
+
+### L3a. 🔴 What "pending" actually is, and the staff it exposes
+Asked by the owner, 2026-08-06. The three states are cleanly separable in the data:
+
+| State | Rows | Punch time? | Mode | Meaning |
+|---|---|---|---|---|
+| Present | 5,067 | **always** | Finger Print 4,975 / ERP 76 / Face 16 | the finger was on the scanner |
+| Absent | 2,662 | never | **always ERP** | a human marked them absent in the software |
+| **Pending** | **1,807** | never | **always blank** | **nothing happened at all** |
+
+So pending is not "not yet decided" in any human sense: the device recorded nothing AND
+nobody entered anything. That is 18.9% of all rows. Storing it as absence would have put
+1,807 unexplained absences against real staff, and those feed leave balances and payroll —
+which is why the loader drops them by design rather than by omission.
+
+**What it exposes.** 11 people are pending on >80% of their days and **10 of those 11 are
+the 12 teachers added today**; 4 staff have **no fingerprint punch at all** across four
+months. The likeliest explanation is that they were never enrolled on the attendance
+device — meaning their attendance is effectively not being captured. Per-person counts in
+`aaryans_database/_attendance_pending_heavy.txt` (gitignored — staff names).
+
+**What is needed:** the school confirms whether those staff are registered on the device.
+
+### L4. ✅ 12 new teachers added; the attendance gap closed itself
+Adding the 12 (owner correction 5, with Yachika de-duplicated per correction 4) took the
+staff list 98 → 110 and took the attendance names that matched **from 74 of 88 to all
+88**. No logins were created — the export has no credentials.
+
+### L5. ✅ 101 enquiry leads loaded
+From `Leads-06-08-2026-16-55.xlsx`. The platform had zero enquiries, so nothing could
+collide. The file's rich parent detail (both parents' names, occupations, previous
+school, address) is kept on the enquiry document rather than discarded.
+
+**Not done deliberately:** 53 lead names also match an enrolled child's name. None were
+linked or merged — a name is not an identity. 5 share a name with the 30 rejected
+applicants and were loaded ACTIVE as the school's own file has them, and reported.
+
+### L6. 🔴 THE LEDGER REPORT IS NOT WHAT K2 EXPECTED — it cannot build a fee ledger
+`Ledger-Report-06-08-2026-01-03.xlsx` has arrived. **K2's assumption was wrong.**
+
+It is 69,572 rows of a running school-level account: `Session, Transaction ID, Type
+(cr/dr), Amount, Current Amount, Created By, Creation Date`. Covering 2024-25, 2025-26
+and 2026-27, 29 Mar 2024 → 6 Aug 2026.
+
+**There is NO student identifier and NO payment mode in it.** So it cannot post a single
+payment to a single child's account, which is exactly what a fee ledger has to do. The
+hope that this file would unblock the ledger is closed — it does not.
+
+### L7. 🔴 The transport reports do NOT reconcile — a second, independent ₹9 lakh gap
+The owner asked for the two new transport fee reports to be read and reconciled. They do
+not reconcile.
+
+| Source | Transport billed | Transport paid |
+|---|---|---|
+| The per-student fee report (1,468 students charged) | **₹1,61,23,170** | ₹52,90,380 |
+| The school's own transport summary (51 route blocks) | **₹1,52,20,280** | ₹53,33,290 |
+| **Gap** | **₹9,02,890** | ₹42,910 |
+
+This matters more than its size: K5 found the school's reports disagreeing by ₹81 lakh on
+the nine non-transport fee heads, and the natural hope was that the missing transport
+block explained it. It does not — **transport disagrees separately, on its own.** Two
+independent disagreements point at a reporting problem in the source system, not a single
+missing piece. **The fee ledger stays paused, and this strengthens the reason.**
+
+### L8. ✅ Photographs now served from the school's own bucket, not the vendor's CDN
+This was the highest-priority open item (D2's "privacy half"). It is closed.
+
+**The trap that had blocked it:** the obvious fix — repointing `photo_url` at
+`/api/uploads/serve/...` — does not work. Screens render photographs with a plain
+`<img src=...>`, and an `<img>` tag cannot send an `Authorization` header. Doing that
+would have replaced 1,423 working photographs with broken images. (The platform's own
+guardian-photo upload already writes that URL shape, so that path was already broken —
+this fixes it too.)
+
+**What was done instead** (`backend/services/photo_url_service.py`): the record keeps its
+history, and the API answers with a freshly signed, short-lived S3 link at read time. A
+signed link carries its own credential in the query string, so `<img src=...>` works with
+**no frontend change**, the link expires on its own, and the public `cdn.vedmarg.com`
+address never leaves the server. A vendor URL is never returned as a fallback — a missing
+key yields no photograph, which is the entire point.
+
+Guardian rows had no S3 key (the keys were written to the child's record), so 255 were
+backfilled first — otherwise switching would have blanked the 255 parent photos that
+currently work. Verified: signed links for student, staff and guardian photos all return
+real JPEGs from our own bucket. 9 regression tests added.
+
+**Still true:** the images remain public *on the vendor's CDN*. That is the vendor's
+infrastructure and outside our control. What has changed is that EduFlow no longer hands
+anyone that address.
+
+### L9. ⚪ Bug A2 (parent photos) was a MISDIAGNOSIS — there is no frontend fault
+The handoff recorded this as frontend work. It is not. The profile screen renders
+`guardian.photo_url` correctly, the API returns it, and the vendor CDN was serving the
+images (verified HTTP 200).
+
+**The real position: only 129 of 1,876 children — 7% — have any parent photograph in the
+school's data at all.** 255 guardian records carry one, and they resolve to 129 children,
+every one of which exists. Anyone opening a handful of profiles would almost certainly
+see none, because 93% genuinely have none. **What is needed:** parent photographs for the
+other children, if the school wants them shown. No code change will conjure them.
+
+### L10. ⚪ The academic year record is named inconsistently
+The academic year with id `ay-2025-26` is **named "2026-27"** and is the current year;
+`ay-2024-25` is named "2024-25". Every one of the 1,872 students sits on `ay-2025-26`.
+Harmless today because only one year is in use, but the id and the name disagree, and
+anything reading the name will report the wrong session. Recorded, not changed — renaming
+a live academic year is not a data-load decision.
+
+### L11. ⚪ 8 test records under the principal's name are on the roll
+The owner identified 8 student records in NUR D as carrying **the principal's name**,
+entered as test accounts by mistake on the old system. They arrived through the school's
+own export with real admission numbers, so they were not deleted. **They are counted in
+the Nursery roll today.** Awaiting confirmation to move them off the roll (moved, not
+destroyed).
+
+*The name and the 8 admission numbers are in the gitignored questions file, §10 — this
+file records no name or number, including a member of staff's.*
+
+---
+
 ## Change log
 
 - **2026-08-06** — file opened. Students loaded (1,802 → 1,872; 1,765 enriched). Sections A,
@@ -492,3 +673,9 @@ document types. All captured from the school's Masters screens, none added yet.
   numbers with no student on the platform (the passed-out group, anomaly A3) and were not
   used. 446 students have no photograph in the file and were left blank (B3). Parent photos
   remain unwritten (C2) and the CDN dependency stands (D2) — both still open.
+- **2026-08-06, evening** — section L added. Houses found and restored (1,204 students);
+  staff attendance loaded (7,729 records, Apr–Aug); 12 teachers added; 101 enquiry leads
+  loaded; owner corrections 3, 7 and 8 applied; photographs switched to signed serving
+  from the school's own bucket. The ledger report turned out **not** to be a per-student
+  transaction list (L6) and the transport reports were found **not** to reconcile (L7),
+  so the fee ledger remains paused. Backend suite: 2,373 passed / 0 failed.

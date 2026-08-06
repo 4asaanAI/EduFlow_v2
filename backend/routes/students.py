@@ -13,6 +13,7 @@ from models.schemas import StudentCreate
 from services.actor_context import actor_ctx_from_user
 from services.audit_service import write_audit_doc
 from services import enrolment_status
+from services import photo_url_service
 from services.student_service import (
     create_student as create_student_service,
     set_enrolment_state as set_enrolment_state_service,
@@ -110,7 +111,14 @@ async def _add_class_and_guardians(db, student: dict, include_guardians: bool = 
             scoped_filter({"student_id": student["id"]}, get_school_id()),  # branch-scope: intentional — scoped to one named person's own record, not to a branch
             {"_id": 0},
         ).to_list(10)
+        # A guardian's photograph is served the same way as everyone else's — signed,
+        # from our own bucket. Guardian rows carry no S3 key of their own, but the copy
+        # of the same image on the child's record does, so the parent fields are
+        # resolved on the student below and the guardian falls back to no photo rather
+        # than to the vendor's public link.
+        photo_url_service.apply_many(guardians, fields=("photo_url",))
         student["guardians"] = guardians
+    photo_url_service.apply(student)
     return student
 
 
@@ -380,8 +388,10 @@ async def list_students(
         state = enrolment_status.normalise(student)
         student["enrolment_state"] = state
         student["enrolment_label"] = enrolment_status.STATE_LABELS.get(state, state)
-        if student.get("photo_url") and student["photo_url"].startswith("s3://"):
-            student["photo_url"] = None
+    # Photographs are answered as freshly signed links to the school's own bucket. This
+    # also absorbs the old `s3://` guard that used to sit here: a raw bucket URI is one
+    # of the shapes photo_url_service refuses to hand to a browser.
+    photo_url_service.apply_many(students)
 
     return {"success": True, "data": students, "meta": {"page": page, "total": total, "per_page": per_page, "sort": sort}}
 
