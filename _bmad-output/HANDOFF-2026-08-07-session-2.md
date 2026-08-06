@@ -7,8 +7,8 @@ This note covers only what changed today.
 in the account, the backend is on the only slot). Never run `backend/migrations/run_all.py`
 against production. No agent writes to the live school database.
 
-**Still nothing is committed and nothing is pushed.** The older unpushed commit `642347f`
-goes out with everything else, as one push at the end.
+**Everything in this note is committed, pushed and deployed** as `66a9b5b`, which also
+carried the older unpushed `642347f`. See "SHIPPED AND DEPLOYED" below.
 
 ---
 
@@ -124,16 +124,18 @@ That is **not** a second source of truth for the address. The identity fields st
 values the product shows on screen; `LETTERHEAD` is how those same details are printed on
 the school's paper. Both live in one file.
 
-**All seven formats, not just two.** Abhimanyu's instruction was "each and every type of
-document as being the template and branding of the school", so Excel (sheet rows plus the
-print header and footer), PowerPoint (name and logo along the foot of every slide),
-Markdown, plain text and CSV all carry it too. The test is parametrised over the whole of
-`SUPPORTED_TYPES` rather than a hand-written list, so a format added later fails until it
-is branded as well.
+**Every format a person reads, but NOT spreadsheets.** Abhimanyu first asked for "each
+and every type of document", then, having seen it: "remove the branding from excel/csv
+file type". So PDF, Word, PowerPoint, Markdown and plain text carry it; **xlsx and csv
+never do**, and that is enforced by `UNBRANDED_TYPES` rather than by a default, so a
+caller passing `letterhead=True` still gets a clean sheet.
 
-One trade-off to know about: a **CSV now has three branding rows before the column
-names**, which matters if another program is reading the file. `build_document(...,
-letterhead=False)` turns it off, and anything machine-readable should pass it.
+The reason is worth keeping: a spreadsheet is data. Branding rows above the column
+headings shift every row down, so a formula, a filter or an import into another system
+starts on the wrong line. The gain was cosmetic and the cost was real.
+
+The branded test is derived from `SUPPORTED_TYPES` minus `UNBRANDED_TYPES` rather than a
+hand-written list, so a format added later fails until it is branded as well.
 
 **Four bugs found and fixed while building this**, all worth remembering because each was
 invisible until something was actually looked at:
@@ -162,9 +164,38 @@ The four numbers that control the watermark are named constants at the top of
 
 ---
 
-## Backend changes waiting on a deploy — FLAG THESE, DO NOT DEPLOY
+## SHIPPED AND DEPLOYED — 2026-08-06
 
-**Six now, not four.** An agent must not run the Elastic Beanstalk deploy.
+Abhimanyu gave an explicit go-ahead to push and deploy, so the standing "flag, do not
+deploy" rule was lifted for this one release by his instruction.
+
+- **Commit:** `66a9b5b` on `main`, which also carried the older unpushed `642347f`.
+- **Website:** Amplify job **121**, SUCCEED, for this exact commit.
+- **Backend:** EB version `eduflow-main-20260806-66a9b5b` on `Eduflow-env-1`, Ready and
+  **Green**.
+- **Rollback target:** `eduflow-main-20260806-3a02b20`.
+- **Verified against the running system**, not status pages: health reads `ready` with db,
+  ai, s3 and sms all ok, and the new endpoints answer **401** rather than 404, which proves
+  the new code is live and still properly guarded.
+
+### The one thing that went wrong, so it does not cost anyone an hour again
+
+The first deploy attempt **failed instantly** with an S3 `DeleteObject` denial. Cause: it
+ran as the `Claude` IAM user. **EB deploys must run as `claude-hosting`** (keys in `.env`
+as `AWS_ACCESS_KEY_ID_HOSTING` / `AWS_SECRET_ACCESS_KEY_HOSTING`), which holds
+`AdministratorAccess-AWSElasticBeanstalk`. Re-running with that identity worked first time
+and took about 70 seconds.
+
+Worth knowing: the failure happened **before the running app was touched**, so the school
+stayed up throughout, which was confirmed by hitting the health endpoint while the
+environment still showed Red.
+
+---
+
+## The backend changes that were waiting, now all live
+
+All six went out in the deploy above. Listed here as the record of what changed on the
+server, not as outstanding work.
 
 1. The one-hour sign-out (refresh cookie SameSite, `services/auth_tokens.py`).
 2. Flo reading photos (the fallback when the free reader is absent).
@@ -180,8 +211,8 @@ The four numbers that control the watermark are named constants at the top of
 6. **New: the document content endpoint** (`GET /api/uploads/content/{file_id}`). Until
    it is deployed, the "Read and edit" button on the website will fail on the live site.
 
-The website and the backend must go out **together**, or the new screens call endpoints
-that answer 404.
+The website and the backend went out together, so no screen was ever calling an endpoint
+that did not exist yet.
 
 ---
 
@@ -210,8 +241,10 @@ different: it starts its own local double on port 8000 and is safe.
 
 ## What is left
 
-- Nothing is committed or pushed. That is the next action, as **one push**.
-- The deploy of the six backend changes, by a person, not an agent.
+- **Nothing outstanding from the owner's twenty items.** All shipped and deployed.
+- The one new index for `profile_notes` still has no migration. `_create_indexes()` does
+  not run in production by design, so it reaches the school only through a migration
+  written later. The collection is small, so this is not urgent, but do not forget it.
 - Optional, offered and not taken today: letting Flo write its own document layout
   rather than filling a fixed template. That is the next step up in document quality
   and now sits on top of working fonts and a working letterhead.
