@@ -19,17 +19,18 @@ this file. Counts, classes and field names only. That is deliberate — this fil
 
 ## A. Students who could not be matched or loaded
 
-### A1. 🔴 30 active students have NO admission number
-They have names and are marked Active, but the matching rule is admission-number-only,
-because matching on a name writes one child's details onto another child. Left completely
-alone — not created, not matched.
+### A1. ⚪ 30 "students" have no admission number — because they have not been admitted
+**Explained by Abhimanyu, 2026-08-06: these have only ENQUIRED and REGISTERED. They have
+not taken admission, which is exactly why they have no admission number.** So this is not a
+data fault and nothing is missing. They are deliberately NOT on the platform.
 
-By class: 2nd A (5), 7th A (4), 1st A (2), 3rd A (2), 6th A (2), NUR A (2), and one each in
-11th Science A, 2nd C, 3rd D, 5th A, 5th C, 6th B, 6th C, 7th C, 8th A, 9th A, LKG A, LKG D,
-UKG A.
+**Action when it comes:** if and when any of them actually take admission, they will get an
+admission number and can be loaded normally. Abhimanyu will say when. Until then, leave them
+out — putting an un-admitted child on class lists and head counts would overstate the roll.
 
-**What is needed:** the school adds admission numbers to these 30 in their own system and
-re-exports. They then load with no further work.
+They sit in: 2nd A (5), 7th A (4), 1st A (2), 3rd A (2), 6th A (2), NUR A (2), and one each
+in 11th Science A, 2nd C, 3rd D, 5th A, 5th C, 6th B, 6th C, 7th C, 8th A, 9th A, LKG A,
+LKG D, UKG A — i.e. the class they have enquired FOR, not a class they are sitting in.
 
 ### A2. ⚪ 28 students are on the platform but absent from the export
 Presumed left or passed out. **Not deleted** — the rule is that the platform is never
@@ -72,7 +73,7 @@ gender in the file, 849 no date of birth, 173 no admission date, 451 no photogra
 
 ## C. Columns with real data and nowhere to put it
 
-### C1. 🔴 ~71 columns have no field in EduFlow at all
+### C1. ✅ ~71 columns had no field in EduFlow — LOADED 2026-08-06
 The export is 122 columns. 38 are entirely blank. Of the 84 carrying data, only 13 have a
 home in the student record. The other **71 cannot be stored without extending the schema**:
 Aadhaar (student, mother, father, guardian), caste / category / religion / nationality,
@@ -82,15 +83,41 @@ scholarship id and password, domicile / income / caste / DOB application numbers
 govt student and family ids, biometric code, height, weight, disability and RTE/BPL flags,
 last school attended.
 
-**What is needed:** decide which of these the school actually uses, then build fields for
-those. Loading all 71 unconditionally would bloat the record with data nobody reads.
+**Done.** Abhimanyu asked for all 71 to be added and populated. `scripts/import_aaryans_extra_fields_2026_08_06.py`
+loaded them into **1,844 students**. No model change was needed for them to be READABLE —
+the students routes return raw Mongo documents rather than a `response_model`, so new keys
+flow straight through the API.
+
+Four names were changed by hand because the automatic snake_case was wrong or dangerous:
+- **`CreatedAt` → `source_created_at`, never `created_at`.** Every student already has
+  `created_at` meaning "when this record was made on EduFlow". Writing the school's export
+  date over it would have destroyed our own audit metadata on 1,878 records with nothing to
+  restore it from. Verified after the load: every `created_at` is still 2026 (ours), and the
+  school's timestamps sit separately.
+- `SID` → `source_sid` (automatic gives the unreadable `s_i_d`), `Username` →
+  `source_username`, `LastActive` → `source_last_active`. These identify the school's
+  PREVIOUS system, and the prefix stops anyone reading `username` as a login here.
+- `Type` → `admission_type` (its values are `new`/`old`).
+
+**Fees were nested under `fee_snapshot`, not written as loose fields** — deliberate, so that
+money does not live in two places under similar names once the real ledger is built. It is a
+point-in-time copy of what the export said on 6 Aug 2026 and must never be totalled as the
+ledger.
+
+**Still to do:** these fields are readable but not yet EDITABLE — `UPDATABLE_FIELDS` in
+`student_service.py` and the UI forms have not been extended. And `source_created_at` holds
+the source system's `DD Mon, YYYY HH:MM:SS` text verbatim rather than an ISO date.
 
 ### C2. 🔴 Parent photographs have nowhere to go
 127 mother photos, 128 father photos, 1 guardian photo. The `guardians` collection has no
 photo field (`id, schoolId, student_id, name, relation, phone, whatsapp_phone, is_primary`).
 The paths are valid — verified HTTP 200 image/jpeg when prefixed with `https://cdn.vedmarg.com/`.
 
-**What is needed:** add a photo field to the guardian record, then load these 256.
+**Partly closed 2026-08-06.** The paths are now stored on the STUDENT record as
+`mother_photo` / `father_photo` / `guardian_photo` (absolute URLs), so the data is no longer
+lost. The `guardians` collection still has no photo field, so the photo sits beside the child
+rather than beside the parent. **What is still needed:** a photo field on the guardian record
+if parent photos should show on the parent's own profile.
 
 ---
 
@@ -124,8 +151,26 @@ bucket under `{school_id}/uploads/...`, served through the authenticated route, 
 the records at those. Until that is done, the stored URLs are a dependency on someone else's
 infrastructure.
 
-**What is needed:** approval to do the migration (it is a bulk download + upload, plus a
-rewrite of the stored URLs).
+**Approved by Abhimanyu 2026-08-06 — and then BLOCKED on permissions.** Neither AWS identity
+available here can write to the bucket the app already uses
+(`eduflow-files-ap-south-1-210447603820`): both `user/Claude` and `user/claude-hosting` are
+refused `s3:ListBucket`, `s3:PutObject` and `s3:DeleteObject` on it.
+
+**Do NOT solve this by creating a second bucket.** The app's serve route and its key
+convention (`{school_id}/uploads/...`) already point at the existing one; a second bucket
+fragments storage, needs new configuration on the server, and buys nothing. **Cost is not the
+reason to hesitate either** — the whole set is roughly 1,700 images at ~45 KB, about **80 MB**,
+which is under ₹0.20 a month of S3 storage. The blocker is purely a one-time IAM grant.
+
+**What is needed:** add this to the `claude-hosting` user, scoped to the school's prefix only:
+```json
+{"Effect":"Allow",
+ "Action":["s3:PutObject","s3:GetObject","s3:ListBucket"],
+ "Resource":["arn:aws:s3:::eduflow-files-ap-south-1-210447603820",
+             "arn:aws:s3:::eduflow-files-ap-south-1-210447603820/aaryans-joya/*"]}
+```
+Note it grants no delete, which keeps it consistent with D-34 (tightening this user, not
+loosening it).
 
 ---
 
@@ -160,11 +205,12 @@ platform was not changed, because status changes are a separate decision from da
 
 ## F. Fees
 
-### F1. 🔴 The fee-structure export is empty
+### F1. ⚪ The fee-structure export is empty — set aside by decision
 `Fees-Structure-06-08-2026-12-46.xlsx` contains a header row and a single `Total` row of
 zeros. No fee heads, no amounts. Either the export failed or it needs different parameters.
 
-**What is needed:** the school re-runs that export.
+**Closed by decision, 2026-08-06.** Abhimanyu: leave the empty structure export alone and
+use the per-student fee report instead. No re-export needed.
 
 ### F2. 🟡 The two fee files agree with each other — the source is trustworthy
 Cross-checked the per-student fee report against the fee columns inside the student export,
@@ -219,6 +265,66 @@ against the platform's records.
 Of 40 columns: joining date, designation (76 of 78 blank), qualification (77 blank),
 department, experience, bank details, PAN and Aadhaar are all blank or near-blank. The file
 usefully carries name, contact, gender, class-teacher assignment (46) and status only.
+
+---
+
+## H. Office staff — on the platform NOWHERE, and not in any spreadsheet
+
+### H1. 🔴 10 office staff exist only in a photograph
+From `aaryans_database/adminstaff.jpg` (added 2026-08-06). **None of these 10 is in the
+teachers export, and none is on the platform.** The teachers export covers TEACHING staff
+only, so the whole office is missing from EduFlow.
+
+| Department | People |
+|---|---|
+| Admin office | Sakshi Gupta, Lalit Thomas, Sameer |
+| Care taker | Sachin Sharma |
+| Account office | Sonu (Accountant), Sachin Yadav (Asst.), Shivam Kumar (Asst.) |
+| Reception | Asniya, Samiya Ansari |
+| Social media | Vipin Kumar |
+
+**Two problems before these can be created.**
+1. **The photograph may be cut off.** "Social media / Vipin Kumar" is the last visible row
+   and the image ends there. There may be more staff below the crop.
+2. **Name and designation is all there is.** No phone, no email, no joining date, no staff
+   id. A staff record built from that has no way to sign in and no way to be contacted —
+   and `Staff` wants `user_id` and `staff_type`. Creating ten hollow records that then need
+   editing by hand is worse than waiting for the detail.
+
+These matter more than they look: the account office and reception map onto real EduFlow
+roles (`accountant`, `receptionist`) that gate what a person can see and do.
+
+**What is needed:** the full office list with contact details — ideally exported the same
+way the teachers were — plus confirmation that the photo is not truncated.
+
+*(`more staff info.txt` in the same folder was checked and does NOT cover these — it is a
+subject-and-class teaching allocation from July, all teachers.)*
+
+---
+
+## I. On the platform but not in ANY spreadsheet — the separate list Abhimanyu asked for
+
+Nothing here has been deleted or changed. This is the "we hold it, the school's files do
+not mention it" list, kept apart on purpose so it is never confused with data that failed
+to load.
+
+### I1. ⚪ 28 students
+All 28 are still marked **active** on the platform. By class: 11th A (10), 11th B (5),
+6th A (2), 2nd B (2), NUR C (2), and one each in 10th A, 10th B, 12th A, 1st B, 1st C,
+2nd E, NUR B.
+
+The 11th concentration (15 of 28) looks like students who left after 11th rather than a
+data fault.
+
+### I2. ⚪ 23 staff
+22 teachers and 1 admin, all currently active. By sub-category: 11 subject teachers,
+11 class teachers, 1 with none set.
+
+The teachers export lists 78 people; the platform holds 89. **A shorter file is not
+evidence that 23 people left**, which is why nothing was removed.
+
+**What is needed for both:** the school confirms who has genuinely left. Only then should
+anything be deactivated — and deactivated, not deleted, so history survives.
 
 ---
 
