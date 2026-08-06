@@ -7,9 +7,13 @@ they are questions about real children and real staff, not about the software.
 Nothing below is broken, and nothing has been deleted. Each item is simply waiting for
 someone at the school to confirm what is true, so we do not guess.
 
-**Please reply against the numbers.** Where a list of names would help, tell us and we will
-send it separately and securely — we have deliberately kept children's names out of this
-document.
+**Please reply against the numbers.**
+
+**The exact records are in a companion file:** `QUESTIONS-DETAIL-with-names-2026-08-06.md`,
+which lists every child, teacher and admission number behind each question so your office can
+look them up directly. It is kept **separate from this document and out of our code
+repository on purpose**, because it contains pupil names — please handle it as you would any
+pupil list. This document stays name-free so it can be forwarded freely.
 
 ---
 
