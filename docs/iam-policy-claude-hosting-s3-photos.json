@@ -1,0 +1,28 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListOnlyTheSchoolsOwnFolder",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::eduflow-files-ap-south-1-210447603820",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "aaryans-joya/*",
+            "aaryans-joya"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "UploadAndReadPhotosNoDelete",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject"
+      ],
+      "Resource": "arn:aws:s3:::eduflow-files-ap-south-1-210447603820/aaryans-joya/*"
+    }
+  ]
+}
