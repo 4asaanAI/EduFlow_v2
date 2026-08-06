@@ -234,10 +234,12 @@ checked against the running system rather than the repo:
 Abhimanyu gave an explicit go-ahead to push and deploy, so the standing "flag, do not
 deploy" rule was lifted for this one release by his instruction.
 
-- **Commit:** `66a9b5b` on `main`, which also carried the older unpushed `642347f`.
+- **Commits:** `66a9b5b` (which also carried the older unpushed `642347f`), then
+  `4ab9612`, `8252b84` and `5f14f80`. `main` ends the session at `5f14f80`.
 - **Website:** Amplify job **121**, SUCCEED, for this exact commit.
-- **Backend:** EB version `eduflow-main-20260806-66a9b5b` on `Eduflow-env-1`, Ready and
-  **Green**.
+- **Backend:** three deploys during the day, ending at EB version
+  `eduflow-main-20260806-5f14f80` on `Eduflow-env-1`, Ready and **Green**
+  (`66a9b5b` → `4ab9612` → `5f14f80`).
 - **Rollback target:** `eduflow-main-20260806-3a02b20`.
 - **Verified against the running system**, not status pages: health reads `ready` with db,
   ai, s3 and sms all ok, and the new endpoints answer **401** rather than 404, which proves
