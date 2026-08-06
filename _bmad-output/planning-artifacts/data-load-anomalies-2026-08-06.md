@@ -328,6 +328,80 @@ anything be deactivated — and deactivated, not deleted, so history survives.
 
 ---
 
+## J. Verified twice — 2026-08-06
+
+Abhimanyu asked for everything on the platform, and everything about to go on it, to be
+cross-checked twice. Re-run against the LIVE database after all three loaders:
+
+| Check | Result |
+|---|---|
+| Students | 1,872 |
+| Duplicate admission numbers | **0** |
+| `class_id` pointing at a class that does not exist | **0** |
+| Missing schoolId / branch_id / academic_year_id | **0** |
+| Blank name | **0** |
+| `created_at` overwritten by the school's date | **0** (all still ours) |
+| gender re-compared against the sheet | 1,671 compared, **0 mismatched** |
+| date of birth re-compared | 1,056 compared, **0 mismatched** |
+| admission date re-compared | 1,773 compared, **0 mismatched** |
+| photo_url still holding the literal "View" | **0** |
+| fee_snapshot leaked into top-level fields | **0** |
+
+### J1. ⚪ 9 newly-created students have no guardian record
+All 9 were created today. **8 have no father name, no mother name and no phone in the
+export at all**; the 9th has both parents' names but no phone number. The loader creates a
+guardian only when a name AND a phone both exist, so that it never invents a contact for a
+family. Correct behaviour, recorded so the gap is visible: NUR D (8), 11th C (1).
+
+**What is needed:** the school supplies parent contacts for those 9.
+
+### J2. ⚪ The school's own class totals independently confirm the load
+The class list screenshots from the school's system (2026-08-06) agree with EduFlow after
+the load — 2nd = 220, 3rd = 160, 6th = 147, 10th = 101, and so on. Two systems arriving at
+the same number by different routes is the strongest check available.
+
+Those screenshots also show **sections that exist but hold no students** (LKG E/F, UKG E/F,
+1st D/E/F, 4th C, 12th Science B). EduFlow does not have all of these. Not urgent — an empty
+section changes no head count — but the school's structure is the authority.
+
+---
+
+## K. Fee ledger — computed, NOT yet written (2026-08-06)
+
+Totals derived from `Students-Fees-Structure-Report`, cross-checked before any build:
+
+| | Amount |
+|---|---|
+| Billed | ₹9,60,99,750 |
+| Paid | ₹3,51,23,648 |
+| **Outstanding** | **₹5,66,60,510** |
+| Discount | ₹51,03,942 |
+
+**The file reconciles with itself: 2,003 of 2,004 students satisfy
+`fees + fine − discount − paid = balance` exactly.** One row is out by ₹990.
+
+### K1. 🔴 ₹69.8 lakh of outstanding balance belongs to 136 students who are not on the platform
+Real money, currently invisible to EduFlow. Includes the 4 passed-out and a spread across
+live classes.
+
+### K2. 🔴 Build from the LEDGER report, not from these totals
+The Google Drive folder "Vedmarg Data" holds `Ledger-Report-06-08-2026-01-03.xlsx` (3.9 MB),
+which is almost certainly the actual transaction list — individual payments with dates and
+payment modes. Building from the summary file instead would produce a ledger with **no
+payment dates and no payment modes**, which is exactly what the school asked to have.
+Waiting on that file being placed in `aaryans_database/`.
+
+### K3. ⚪ 10 payment modes to create
+Cash, PhonePe, GooglePay, IMPS, Bank Transfer, Cheque, Payment Gateway, UPI, Net Banking,
+NEFT. From the school's own Masters screen.
+
+### K4. ⚪ Other master lists still to add
+Education mediums (hindi, english, sanskrit); reservation categories (general, obc, sbc, sc,
+st, ews); religions (hindu, muslim, christian, sikh, buddhist, jain, dawoodi bohra); and 16
+document types. All captured from the school's Masters screens, none added yet.
+
+---
+
 ## Change log
 
 - **2026-08-06** — file opened. Students loaded (1,802 → 1,872; 1,765 enriched). Sections A,
