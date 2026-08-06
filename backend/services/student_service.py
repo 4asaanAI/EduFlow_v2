@@ -35,6 +35,41 @@ UPDATABLE_FIELDS = {
     "address",
     "house", "photo_url", "uses_transport", "bus_route", "route_zone_id", "status",
 }
+
+# The 71 columns carried over from the school's previous system on 2026-08-06
+# (`scripts/import_aaryans_extra_fields_2026_08_06.py`). Readable from the moment they
+# were loaded, because the students routes return raw documents; this makes them
+# EDITABLE too, so the office can correct an Aadhaar number or a category without a
+# developer.
+#
+# What is deliberately NOT in here, and must stay out:
+#   * id / schoolId / branch_id / academic_year_id / created_at — identity and audit
+#     metadata. `created_at` especially: it means "when this record was made on
+#     EduFlow", and the load had to rename the school's own column to
+#     `source_created_at` to avoid destroying it. Making it editable would reopen that.
+#   * source_sid / source_username / source_last_active — identifiers belonging to the
+#     PREVIOUS system. They are a historical trail; editing them makes them a lie.
+#   * fee_snapshot — a dated copy of what the school's export said, not the fee ledger.
+#     It must not drift into a second, editable version of what a family owes.
+#   * *_s3_key / *_s3_bytes — set by the photo migration, not by a person.
+#   * is_active — REMOVED after review. It is derived from `status`; if both were
+#     editable they could disagree, and a child who is status=active but
+#     is_active=False disappears from every list while looking fine on their profile.
+EXTRA_SOURCE_FIELDS = {
+    "aadhaar_no", "account_holder", "admission_date", "admission_type",
+    "attended_class", "attended_school", "bank_account_no", "bank_branch",
+    "bank_ifsc", "bank_name", "category", "city",
+    "country", "dob_application_no", "dropout", "enrolled_class",
+    "enrolled_session", "father_aadhaar_no", "father_mobile", "father_name",
+    "father_photo", "has_disability", "is_bpl_student",
+    "is_rte_student", "last_session", "mother_aadhaar_no", "mother_mobile",
+    "mother_name", "mother_photo", "nationality", "phone",
+    "pincode", "registration_no", "remark", "route_id",
+    "school_affiliated", "sr_no", "state", "tc_date",
+    "tc_no", "transport_opted", "whatsapp",
+}
+
+UPDATABLE_FIELDS = UPDATABLE_FIELDS | EXTRA_SOURCE_FIELDS
 TRANSPORT_HEAD_FIELDS = {"route_zone_id", "uses_transport", "bus_route"}
 
 
