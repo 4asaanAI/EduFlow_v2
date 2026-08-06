@@ -99,6 +99,27 @@ def norm_gender(v):
     return None
 
 
+def same_text(a, b):
+    """True when two free-text values differ only in whitespace or case.
+
+    Owner correction 6 (2026-08-06): the "records where your file differs" list was
+    reporting entries whose information was plainly identical. 16 of the 24 reported
+    differences were nothing but whitespace — the platform stores addresses with a LINE
+    BREAK inside them (they were captured from a wrapped form field), so
+    "…RAJNAGAR. IKONDA\\nROAD NARAN" was being compared raw against
+    "…RAJNAGAR. IKONDA ROAD NARAN" and called a disagreement.
+
+    This is the same fault `norm_name` already guards against for names; it simply was
+    never applied to addresses. Collapsing whitespace before comparing leaves 8 real
+    differences (6 phone numbers, 1 roll number, 1 address) out of the 24.
+
+    Comparison only — the stored values are not rewritten by this.
+    """
+    na = re.sub(r"\s+", " ", str(a if a is not None else "")).strip().upper()
+    nb = re.sub(r"\s+", " ", str(b if b is not None else "")).strip().upper()
+    return na == nb
+
+
 def norm_name(v):
     """For REPORTING mismatches only. Never used to match records."""
     s = (txt(v) or "").upper()
@@ -210,7 +231,7 @@ for a in matched:
                 changes[f"{f}: blank on platform, available from the 2025-26 workbook"] += 1
                 if len(fill_examples[f]) < 5:
                     fill_examples[f].append((a, exp["name"], old[f]))
-            elif old.get(f) and has_live and str(liv.get(f)) != str(old[f]):
+            elif old.get(f) and has_live and not same_text(liv.get(f), old[f]):
                 changes[f"{f}: platform and workbook disagree — leave alone, do not overwrite"] += 1
 
 live_labels = {(str(c.get("name")), str(c.get("section"))) for c in classes.values()}

@@ -19,6 +19,7 @@ from services.leave_service import (
     LeaveConflictError,
 )
 from services import enrolment_status
+from services import photo_url_service
 from services.staff_service import (
     create_staff as create_staff_service,
     update_staff as update_staff_service,
@@ -281,6 +282,8 @@ async def list_staff(
         state = enrolment_status.normalise(member)
         member["enrolment_state"] = state
         member["enrolment_label"] = enrolment_status.STATE_LABELS.get(state, state)
+    # Staff photographs are served signed from the school's own bucket, same as students.
+    photo_url_service.apply_many(staff, fields=("photo_url",))
     return {"success": True, "data": staff, "meta": {"page": page, "per_page": per_page, "total": total, "sort": sort}}
 
 

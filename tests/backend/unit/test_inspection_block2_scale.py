@@ -55,7 +55,13 @@ def _student(sid, name, cls="c1", house=None):
     doc = {"id": sid, "schoolId": SCHOOL, "name": name, "class_id": cls,
            "is_active": True, "status": "active", "roll_number": sid}
     if house:
-        doc["house_id"] = house
+        # 2026-08-06: this fixture used to set `house_id`, which NO student record
+        # actually has — the student side of the house link is `house`, holding the
+        # house NAME ("Atulya"), written by student_service and rendered by
+        # StudentDatabase.js. The fixture matching the code's mistake is why the
+        # "house has no members" bug survived: both sides agreed on a field that does
+        # not exist in the database. `house` here is therefore a house NAME.
+        doc["house"] = house
     return doc
 
 
@@ -104,7 +110,7 @@ async def test_house_details_member_count_is_the_true_total(monkeypatch):
     import ai.tool_functions_v2 as v2
 
     db = _db(
-        students=_many_students(720, house="h1"),
+        students=_many_students(720, house="Ganga"),
         classes=[CLASS_C1],
         houses=[{"id": "h1", "schoolId": SCHOOL, "name": "Ganga", "color": "blue"}],
     )
@@ -124,7 +130,7 @@ async def test_house_captain_past_the_page_is_still_found(monkeypatch):
     claimed 720. They are now asked for by role."""
     import ai.tool_functions_v2 as v2
 
-    students = _many_students(720, house="h1")
+    students = _many_students(720, house="Ganga")
     students[600]["house_role"] = "captain"
     students[600]["name"] = "Late Roll Captain"
     db = _db(
