@@ -107,7 +107,7 @@ class LLMClient:
     def __init__(self):
         self.api_key = get_azure_key()
         self.endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
-        self.deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-5.3-chat")
+        self.deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-5.6-luna")
         self.api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2026-03-03")
 
         if self.api_key and self.endpoint and OpenAI:

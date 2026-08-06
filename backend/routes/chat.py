@@ -1833,6 +1833,25 @@ def _user_content(text: str, image_data: str | None):
     ]
 
 
+def _reattach_image(messages: list, user_text: str, image_data: str | None) -> list:
+    """Put the attached photograph back on the current turn.
+
+    Phase 1 saves the user's message to the database as plain text, and Phase 5
+    rebuilds the entire history from those stored rows — so by the time a request is
+    assembled, `image_data` has been dropped and the model would receive only the
+    words. Every path that calls the model with an attachment must re-attach it, or
+    the image silently never arrives.
+
+    Kept as a named function rather than inline branch logic because it was the
+    inline version that got missed: the two tool-calling paths rebuilt the last turn
+    correctly and the ordinary no-tool path did not, which made a photo sent with a
+    plain question — the commonest case — the one that never reached the model.
+    """
+    if not image_data or not messages:
+        return messages
+    return messages[:-1] + [{"role": "user", "content": _user_content(user_text, image_data)}]
+
+
 # R9.4 (X8) AC3: chat `image_data` re-enters POST /chat as a client-supplied base64
 # data URL — validate its format and decoded size server-side (the upload endpoint's
 # checks don't apply to a value posted directly to /chat).
@@ -2274,7 +2293,9 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                 {"role": "user", "content": tool_result_msg},
             ]
         else:
-            messages_for_llm_final = messages_for_llm
+            # A photo sent with an ordinary question needs no tool, so this is the
+            # commonest attachment path — and it was the one that dropped the image.
+            messages_for_llm_final = _reattach_image(messages_for_llm, user_text, image_data)
 
         # R11.2: advertise the caller's authorized tools via native function
         # calling — the model returns structured tool_calls (or a final answer),

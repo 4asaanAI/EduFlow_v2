@@ -463,7 +463,10 @@ CORS_ORIGINS=http://localhost:3000
 ENVIRONMENT=development        # development | staging | production
 AZURE_OPENAI_ENDPOINT=...
 AZURE_OPENAI_API_KEY=...        # preferred (SDK-native); AZURE_OPENAI_KEY also accepted (R9.1)
-AZURE_OPENAI_DEPLOYMENT=gpt-5.3-chat   # Azure deployment name (default in llm_client.py)
+AZURE_OPENAI_DEPLOYMENT=gpt-5.6-luna   # Azure deployment name — this is a Beanstalk env var,
+# not a code constant. It was "Odin" through 2026-08-06, switched to gpt-5.6-luna same day.
+# Always confirm the LIVE value via `aws elasticbeanstalk describe-configuration-settings`
+# before trusting this file or llm_client.py's fallback default — both have drifted before.
 # Non-dev: a missing Azure key OR endpoint raises ValueError at startup (fail-loud, like SCHOOL_ID)
 S3_BUCKET=...
 AWS_REGION=ap-south-1
