@@ -11,8 +11,10 @@ from services.incident_service import (
     assign_followup as svc_assign_followup,
     create_incident as svc_create_incident,
     update_incident_status as svc_update_incident_status,
+    delete_incident as svc_delete_incident,
     IncidentValidationError,
     IncidentNotFoundError,
+    IncidentConflictError,
 )
 from services.expense_service import (
     create_expense as svc_create_expense,
@@ -62,6 +64,7 @@ from services.certificate_service import (
     create_certificate as svc_create_certificate,
     approve_certificate as svc_approve_certificate,
     reject_certificate as svc_reject_certificate,
+    delete_certificate as svc_delete_certificate,
     CertificateValidationError,
     CertificateNotFoundError,
     CertificateStateError,
@@ -441,6 +444,26 @@ async def reject_cert(cert_id: str, request: Request, user: dict = Depends(requi
     return {"success": True, "data": result["certificate"]}
 
 
+@router.delete("/certificates/{cert_id}")
+async def delete_cert(cert_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
+    """Delete a certificate raised in error. Refused once it has been issued.
+
+    Owner instruction 2026-08-07 — parity reference for the AI `delete_certificate`
+    tool, which calls the same service.
+    """
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_delete_certificate(db, actor_ctx, {"cert_id": cert_id})
+    except CertificateNotFoundError:
+        raise HTTPException(404, "Certificate not found")
+    except CertificateStateError as e:
+        raise HTTPException(422, str(e))
+    except CertificateValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result}
+
+
 # --- Expenses ---
 @router.get("/expenses/summary")
 async def expense_summary(request: Request):
@@ -610,6 +633,26 @@ async def update_incident(incident_id: str, request: Request, user: dict = Depen
     except IncidentValidationError as e:
         raise HTTPException(400, str(e))
     return {"success": True}
+
+
+@router.delete("/incidents/{incident_id}")
+async def delete_incident(incident_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
+    """Delete an incident logged in error. Refused once it has been resolved.
+
+    Owner instruction 2026-08-07 — parity reference for the AI `delete_incident` tool,
+    which calls the same service.
+    """
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_delete_incident(db, actor_ctx, {"incident_id": incident_id})
+    except IncidentNotFoundError:
+        raise HTTPException(404, "Incident not found")
+    except IncidentConflictError as e:
+        raise HTTPException(409, str(e))
+    except IncidentValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result}
 
 
 # --- Visitors ---

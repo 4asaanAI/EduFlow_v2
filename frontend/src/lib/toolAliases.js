@@ -19,6 +19,12 @@
  */
 export const TOOL_ALIASES = {
   'fee-receipts': 'fee-collection',
+  // D-44 cluster D, done 2026-08-07. The school's owner reported "two views of the
+  // student database for some reason": `school-directory` listed every student
+  // read-only, `student-database` listed the same students with the buttons that
+  // actually do something. They are one screen now — `student-database`, retitled
+  // "School Directory", with the Directory's Staff tab folded in.
+  'school-directory': 'student-database',
 };
 
 /** Canonical id for a tool name, or the name unchanged if it is already canonical. */

@@ -140,8 +140,30 @@ except (ImportError, TypeError) as e:
 
 
 def _get_nested(doc, key):
+    """Follow a dotted path, stepping into lists the way MongoDB does.
+
+    Mongo matches `{"lines.product_id": "p1"}` against a document whose `lines` is an
+    ARRAY of sub-documents, by testing every element. Before 2026-08-07 this returned
+    None the moment a path crossed a list, so any query of that shape silently matched
+    nothing here while matching correctly in production — which is exactly backwards
+    for a test double, because it turns a working guard into a test failure and a
+    broken one into a pass. Found while proving that deleting a shop product is refused
+    once it appears on a sale (`lines.product_id`).
+
+    A list-valued step yields a list of the values found, which `_matches` then treats
+    as "any element matches" — Mongo's own semantics.
+    """
     value = doc
     for part in key.split("."):
+        if isinstance(value, list):
+            collected = [
+                item.get(part) for item in value
+                if isinstance(item, dict) and part in item
+            ]
+            if not collected:
+                return None
+            value = collected
+            continue
         if not isinstance(value, dict):
             return None
         value = value.get(part)
@@ -243,6 +265,12 @@ def _matches(doc, query):
                         return False
                 if op == "$options":
                     continue
+            continue
+        # A path that crossed a list yields every value found along it, and Mongo
+        # matches when ANY of them equals the expected value (2026-08-07).
+        if isinstance(actual, list) and not isinstance(expected, list):
+            if expected not in actual:
+                return False
             continue
         if actual != expected:
             return False

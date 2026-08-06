@@ -126,6 +126,20 @@ def _auth_user_filter(user_id: str) -> dict:
     }
 
 
+# Titles carry no identity: "DR PERMENDRA KUMAR" should badge as PK, not DP. Kept in
+# step with frontend/src/lib/initials.js, which does the same for anything already
+# holding an older token.
+_NAME_TITLES = {"dr", "mr", "mrs", "ms", "miss", "prof", "smt", "shri", "sh"}
+
+
+def _initials_from_name(name: str) -> str:
+    words = [
+        w for w in (name or "").split()
+        if w and w.rstrip(".").lower() not in _NAME_TITLES
+    ]
+    return "".join(w[0] for w in words)[:2].upper()
+
+
 def _jwt_payload_from_auth(auth: dict) -> tuple[dict, dict]:
     user_info = auth.get("user_info", {})
     user_id = user_info.get("id") or auth.get("id") or auth.get("user_id") or str(auth.get("_id", ""))
@@ -136,7 +150,12 @@ def _jwt_payload_from_auth(auth: dict) -> tuple[dict, dict]:
         "user_id": user_id,
         "role": role,
         "name": user_info.get("name", ""),
-        "initials": user_info.get("initials", ""),
+        # Owner report 2026-08-07: derived from the name, not read from the account.
+        # Seven accounts still stored the initials of the placeholder name they were
+        # created under (the principal's read "PS" next to "ADESH SINGH"), because
+        # renaming a person never refreshed the stored field. The name is what is
+        # kept correct, so the badge follows it and cannot drift again.
+        "initials": _initials_from_name(user_info.get("name", "")) or user_info.get("initials", ""),
     }
     if user_info.get("sub_category"):
         jwt_payload["sub_category"] = user_info["sub_category"]

@@ -12,6 +12,7 @@ import uuid
 import logging
 from pymongo.errors import DuplicateKeyError
 from ai.redaction import _mask_phone  # canonical phone mask (first-2 + last-3)
+from ai.class_resolver import describe_no_match, find_classes, resolve_class
 from school_identity import default_branch_id
 from tenant import add_school_id, get_school_id, scoped_filter, scoped_query
 from ai.fee_metrics import DEFAULTER_STATUSES, student_outstanding_from_txns
@@ -31,6 +32,9 @@ from services.commercial_service import (
     create_return as svc_create_pos_return,
     create_sale as svc_create_pos_sale,
     crm_pipeline,
+    delete_crm_lead as svc_delete_crm_lead,
+    delete_legal_entity as svc_delete_legal_entity,
+    delete_product as svc_delete_retail_product,
     list_entities,
     open_shift as svc_open_pos_shift,
     replay_retail_request,
@@ -75,6 +79,7 @@ from services.student_service import (
     create_student as svc_create_student,
     update_student as svc_update_student,
     set_student_status as svc_set_student_status,
+    delete_student as svc_delete_student,
     upsert_guardians as svc_upsert_guardians,
     StudentValidationError,
     StudentNotFoundError,
@@ -85,6 +90,7 @@ from services.student_service import (
 from services.staff_service import (
     create_staff as svc_create_staff,
     update_staff as svc_update_staff,
+    delete_staff as svc_delete_staff,
     StaffValidationError,
     StaffNotFoundError,
     StaffAuthorizationError,
@@ -96,6 +102,8 @@ from services.fee_config_service import (
     create_discount_type as svc_create_discount_type,
     update_discount_type as svc_update_discount_type,
     delete_discount_type as svc_delete_discount_type,
+    delete_fee_structure as svc_delete_fee_structure,
+    FeeConfigConflictError,
     FeeConfigValidationError,
     FeeConfigNotFoundError,
 )
@@ -127,9 +135,11 @@ from services.incident_service import (
     create_incident as svc_create_incident,
     update_incident_status as svc_update_incident_status,
     confirm_resolution as svc_confirm_resolution,
+    delete_incident as svc_delete_incident,
     IncidentValidationError,
     IncidentNotFoundError,
     IncidentAmbiguousError,
+    IncidentConflictError,
 )
 from services.expense_service import (
     create_expense as svc_create_expense,
@@ -170,6 +180,7 @@ from services.certificate_service import (
     create_certificate as svc_create_certificate,
     approve_certificate as svc_approve_certificate,
     reject_certificate as svc_reject_certificate,
+    delete_certificate as svc_delete_certificate,
     CertificateValidationError,
     CertificateNotFoundError,
     CertificateStateError,
@@ -425,21 +436,29 @@ async def tool_get_student_database(params: dict, user: dict, scope: dict = None
             {"admission_number": {"$regex": safe_search, "$options": "i"}},
         ]
 
-    # If a specific class filter is supplied by the user (and scope allows it)
+    # If a specific class filter is supplied by the user (and scope allows it).
+    # Owner report 2026-08-07: this used to regex the `name` field alone, so "4-C"
+    # — the form every screen displays — matched nothing, and the filter was then
+    # SILENTLY DROPPED, answering about the whole school. A miss now says so.
     if params.get("class_name"):
-        cls = await db.classes.find_one({"name": {"$regex": re.escape(params["class_name"]), "$options": "i"}})
-        if cls:
-            # Only apply if scope allows this class
-            if _scope_class_ids(scope) is not None:
-                if cls["id"] in _scope_class_ids(scope):
-                    query["class_id"] = cls["id"]
-                else:
-                    return _denied(
-                        "You do not have access to this class.",
-                        (time.time() - t0) * 1000,
-                    )
-            else:
-                query["class_id"] = cls["id"]
+        class_scope = scoped_query({}, branch_id=_branch_id(user, scope))
+        matched = await find_classes(db, params["class_name"], class_scope)
+        if not matched:
+            all_classes = await db.classes.find(class_scope, {"_id": 0}).to_list(200)
+            return _empty_result(
+                describe_no_match(params["class_name"], all_classes),
+                (time.time() - t0) * 1000,
+            )
+        matched_ids = [c["id"] for c in matched]
+        if _scope_class_ids(scope) is not None:
+            allowed = [cid for cid in matched_ids if cid in _scope_class_ids(scope)]
+            if not allowed:
+                return _denied(
+                    "You do not have access to this class.",
+                    (time.time() - t0) * 1000,
+                )
+            matched_ids = allowed
+        query["class_id"] = matched_ids[0] if len(matched_ids) == 1 else {"$in": matched_ids}
 
     students, total = await _find_capped(db.students, query)
 
@@ -974,10 +993,18 @@ async def tool_get_today_class_attendance(params: dict, user: dict, scope: dict 
 
     # Determine class_id
     class_id = params.get("class_id")
+    class_scope = scoped_query({}, branch_id=_branch_id(user, scope))
     if not class_id and params.get("class_name"):
-        cls = await db.classes.find_one({"name": {"$regex": re.escape(params["class_name"]), "$options": "i"}})
-        if cls:
-            class_id = cls["id"]
+        # Attendance is for ONE class, so an ambiguous label ("4th", three sections)
+        # must not silently pick a section — resolve_class returns None for that.
+        cls = await resolve_class(db, params["class_name"], class_scope)
+        if not cls:
+            all_classes = await db.classes.find(class_scope, {"_id": 0}).to_list(200)
+            return _empty_result(
+                describe_no_match(params["class_name"], all_classes),
+                (time.time() - t0) * 1000,
+            )
+        class_id = cls["id"]
 
     # If teacher scope and no class_id provided, use first assigned class
     if not class_id and _scope_class_ids(scope):
@@ -2118,11 +2145,14 @@ async def tool_mark_attendance(params: dict, user: dict, scope: dict = None) -> 
     if not class_id and params.get("class_name"):
         # R5.2 (H4): branch-scope the class name lookup so a branch-bound user
         # cannot resolve (and then mark attendance against) another branch's class.
-        cls = await db.classes.find_one(scoped_query(
-            {"name": {"$regex": re.escape(params["class_name"]), "$options": "i"}},
-            branch_id=bid,
-        ), {"_id": 0})
-        class_id = (cls or {}).get("id")
+        # This WRITES attendance, so an ambiguous label must resolve to nothing
+        # rather than to a guessed section.
+        class_scope = scoped_query({}, branch_id=bid)
+        cls = await resolve_class(db, params["class_name"], class_scope)
+        if not cls:
+            all_classes = await db.classes.find(class_scope, {"_id": 0}).to_list(200)
+            return _empty_result(describe_no_match(params["class_name"], all_classes))
+        class_id = cls["id"]
     if not class_id:
         return _empty_result("Class not found.")
     # R5.2 defense-in-depth: whether class_id was supplied directly or resolved
@@ -2458,9 +2488,7 @@ async def tool_get_timetable(params: dict, user: dict, scope: dict = None) -> di
 
     # Find the class
     if class_name:
-        cls = await db.classes.find_one(scoped_query(
-            {"name": {"$regex": re.escape(class_name), "$options": "i"}}, branch_id=bid
-        ))
+        cls = await resolve_class(db, class_name, scoped_query({}, branch_id=bid))
     elif _scope_class_ids(scope):
         # Teacher: first assigned class
         class_ids = _scope_class_ids(scope)
@@ -2523,11 +2551,12 @@ async def tool_get_exam_results_summary(params: dict, user: dict, scope: dict = 
     # Apply class filter via scope
     class_ids = _scope_class_ids(scope) if _scope_class_ids(scope) else None
     if class_name:
-        cls = await db.classes.find_one(scoped_query(
-            {"name": {"$regex": re.escape(class_name), "$options": "i"}}, branch_id=bid
-        ))
-        if cls:
-            exam_query["class_id"] = cls["id"]
+        # Results may legitimately be asked for a whole grade ("class 4 results"),
+        # so every section the label names is included rather than just one.
+        matched = await find_classes(db, class_name, scoped_query({}, branch_id=bid))
+        if matched:
+            matched_ids = [c["id"] for c in matched]
+            exam_query["class_id"] = matched_ids[0] if len(matched_ids) == 1 else {"$in": matched_ids}
     elif class_ids:
         exam_query["class_id"] = {"$in": class_ids}
 
@@ -3984,6 +4013,171 @@ async def tool_get_my_school_hub(params: dict, user: dict, scope: dict = None) -
 
 
 # =========================================================================
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Deletes added on the owner's instruction, 2026-08-07
+#
+#  Flo could create nine kinds of record and remove none of them. Each of these
+#  is a thin adapter over the same domain service its REST route calls, so the
+#  two doors cannot drift (parity gate F.6). Every one is registered as
+#  destructive, which puts the F.10 two-step confirmation in front of it.
+# ══════════════════════════════════════════════════════════════════════════
+
+
+async def tool_delete_student(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over student_service.delete_student — takes the child OFF THE ROLL,
+    # reversibly. Permanent erasure is deliberately not reachable from chat.
+    if not params.get("student_id"):
+        return {"success": False, "message": "student_id is required (use search_students to find it)."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_delete_student(db, actor_ctx, params)
+    except StudentNotFoundError:
+        return _empty_result("Student not found.")
+    except StudentValidationError as e:
+        return {"success": False, "message": str(e)}
+    student = result.get("student") or {}
+    if result.get("noop"):
+        return {"success": True, "data": student, "message": "That student had already left the school."}
+    return {"success": True, "data": student,
+            "message": f"{student.get('name', 'The student')} is recorded as having left the school. "
+                       "They can be put back on the roll from the Student Database screen."}
+
+
+async def tool_delete_staff(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over staff_service.delete_staff — deactivates, closes the login and
+    # revokes live sessions. Reversible from the screen.
+    if not params.get("staff_id"):
+        return {"success": False, "message": "staff_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_delete_staff(db, actor_ctx, params)
+    except StaffNotFoundError:
+        return _empty_result("Staff member not found.")
+    except StaffAuthorizationError:
+        return {"success": False, "message": "That account cannot be deactivated."}
+    except StaffValidationError as e:
+        return {"success": False, "message": str(e)}
+    staff = result.get("staff") or {}
+    if result.get("noop"):
+        return {"success": True, "data": staff, "message": "That colleague had already left."}
+    return {"success": True, "data": staff,
+            "message": f"{staff.get('name', 'The staff member')} is recorded as having left, and their login is closed."}
+
+
+async def tool_delete_fee_structure(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over fee_config_service.delete_fee_structure.
+    if not params.get("structure_id"):
+        return {"success": False, "message": "structure_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_delete_fee_structure(db, actor_ctx, params)
+    except FeeConfigNotFoundError:
+        return _empty_result("Fee structure not found.")
+    except FeeConfigConflictError as e:
+        return {"success": False, "message": str(e)}
+    except FeeConfigValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "Fee structure deleted."}
+
+
+async def tool_delete_incident(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over incident_service.delete_incident.
+    if not params.get("incident_id"):
+        return {"success": False, "message": "incident_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_delete_incident(db, actor_ctx, params)
+    except IncidentNotFoundError:
+        return _empty_result("Incident not found.")
+    except IncidentConflictError as e:
+        return {"success": False, "message": str(e)}
+    except IncidentValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "Incident deleted."}
+
+
+async def tool_delete_certificate(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over certificate_service.delete_certificate.
+    if not params.get("cert_id"):
+        return {"success": False, "message": "cert_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_delete_certificate(db, actor_ctx, params)
+    except CertificateNotFoundError:
+        return _empty_result("Certificate not found.")
+    except CertificateStateError as e:
+        return {"success": False, "message": str(e)}
+    except CertificateValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "Certificate deleted."}
+
+
+async def tool_delete_enquiry(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over commercial_service.delete_crm_lead.
+    if not params.get("enquiry_id"):
+        return {"success": False, "message": "enquiry_id is required."}
+    db = get_db()
+    # Same actor construction as the REST route: commercial postings must never be
+    # written unscoped, so an owner token with no branch falls back to the default
+    # branch (audit A-4). Without this the audit rows differ between the two doors.
+    actor_ctx = _commercial_actor(user, scope)
+    try:
+        result = await svc_delete_crm_lead(db, actor_ctx, params)
+    except CommercialNotFoundError:
+        return _empty_result("Enquiry not found.")
+    except CommercialConflictError as e:
+        return {"success": False, "message": str(e)}
+    except CommercialValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "Enquiry deleted."}
+
+
+async def tool_delete_legal_entity(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over commercial_service.delete_legal_entity.
+    if not params.get("entity_id"):
+        return {"success": False, "message": "entity_id is required."}
+    db = get_db()
+    # Same actor construction as the REST route: commercial postings must never be
+    # written unscoped, so an owner token with no branch falls back to the default
+    # branch (audit A-4). Without this the audit rows differ between the two doors.
+    actor_ctx = _commercial_actor(user, scope)
+    try:
+        result = await svc_delete_legal_entity(db, actor_ctx, params)
+    except CommercialNotFoundError:
+        return _empty_result("Legal entity not found.")
+    except CommercialConflictError as e:
+        return {"success": False, "message": str(e)}
+    except CommercialValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "Legal entity deleted."}
+
+
+async def tool_delete_retail_product(params: dict, user: dict, scope: dict = None) -> dict:
+    # Thin adapter over commercial_service.delete_product.
+    if not params.get("product_id"):
+        return {"success": False, "message": "product_id is required."}
+    db = get_db()
+    # Same actor construction as the REST route: commercial postings must never be
+    # written unscoped, so an owner token with no branch falls back to the default
+    # branch (audit A-4). Without this the audit rows differ between the two doors.
+    actor_ctx = _commercial_actor(user, scope)
+    try:
+        result = await svc_delete_retail_product(db, actor_ctx, params)
+    except CommercialNotFoundError:
+        return _empty_result("Shop product not found.")
+    except CommercialConflictError as e:
+        return {"success": False, "message": str(e)}
+    except CommercialValidationError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result, "message": "Shop product deleted."}
+
+
 #  COMBINED TOOL_REGISTRY
 # =========================================================================
 
@@ -5471,6 +5665,142 @@ TOOL_REGISTRY = {
         "destructive": True,
         "params_schema": {
             "announcement_id": {"type": "string", "description": "Announcement ID to delete (required)"},
+        },
+    },
+    # ── Deletes added on the owner's instruction, 2026-08-07 ─────────────────
+    # Flo could create these records and remove none of them. All destructive, so the
+    # F.10 two-step confirmation stands in front of each. `delete_enquiry` covers the
+    # records made by BOTH `create_enquiry` and `create_crm_lead` — one collection.
+    "delete_student": {
+        "fn": tool_delete_student,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": (
+            "Record that a student has left the school, taking them off the roll and off "
+            "every screen. Reversible from the Student Database. Destructive — requires a "
+            "second confirmation. This does NOT permanently erase the child's record; "
+            "erasure is done on the screen, by a person, with a written reason."
+        ),
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "student_id": {"type": "string", "description": "Student ID to take off the roll (required)"},
+            "reason": {"type": "string", "description": "Why they are leaving, for the record"},
+        },
+    },
+    "delete_staff": {
+        "fn": tool_delete_staff,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": (
+            "Record that a member of staff has left, closing their login and ending any "
+            "open session. Reversible from the staff screen. Destructive — requires a "
+            "second confirmation."
+        ),
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "staff_id": {"type": "string", "description": "Staff ID to take off the roll (required)"},
+            "reason": {"type": "string", "description": "Why they are leaving, for the record"},
+        },
+    },
+    "delete_fee_structure": {
+        "fn": tool_delete_fee_structure,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "accountant"],
+        "description": (
+            "Permanently delete a fee structure. Destructive — requires a second "
+            "confirmation. Blocked once any charge has been raised against it."
+        ),
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "structure_id": {"type": "string", "description": "Fee structure ID to delete (required)"},
+        },
+    },
+    "delete_incident": {
+        "fn": tool_delete_incident,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": (
+            "Permanently delete an incident logged in error. Destructive — requires a "
+            "second confirmation. Blocked once the incident has been resolved, because a "
+            "resolved incident is part of the school's safeguarding record."
+        ),
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "incident_id": {"type": "string", "description": "Incident ID to delete (required)"},
+            "reason": {"type": "string", "description": "Why it is being deleted"},
+        },
+    },
+    "delete_certificate": {
+        "fn": tool_delete_certificate,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": (
+            "Permanently delete a certificate raised in error. Destructive — requires a "
+            "second confirmation. Blocked once the certificate has been issued, because "
+            "the family may be holding the printed copy."
+        ),
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "cert_id": {"type": "string", "description": "Certificate ID to delete (required)"},
+            "reason": {"type": "string", "description": "Why it is being deleted"},
+        },
+    },
+    "delete_enquiry": {
+        "fn": tool_delete_enquiry,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "admission", "receptionist"],
+        "description": (
+            "Permanently delete an admission enquiry entered in error, freeing the phone "
+            "and email so the family can be entered again. Destructive — requires a "
+            "second confirmation. Blocked once the enquiry has become an application or "
+            "an enrolled student."
+        ),
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "enquiry_id": {"type": "string", "description": "Enquiry ID to delete (required)"},
+            "reason": {"type": "string", "description": "Why it is being deleted"},
+        },
+    },
+    "delete_legal_entity": {
+        "fn": tool_delete_legal_entity,
+        "roles": ["owner"],
+        "description": (
+            "Permanently delete a legal entity. Destructive — requires a second "
+            "confirmation. Blocked while it is the operating default or while any sale, "
+            "enquiry, product or till shift is booked to it."
+        ),
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "entity_id": {"type": "string", "description": "Legal entity ID to delete (required)"},
+        },
+    },
+    "delete_retail_product": {
+        "fn": tool_delete_retail_product,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "accountant"],
+        "description": (
+            "Permanently delete a shop product. Destructive — requires a second "
+            "confirmation. Blocked once it appears on any sale; retire it instead."
+        ),
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "params_schema": {
+            "product_id": {"type": "string", "description": "Shop product ID to delete (required)"},
         },
     },
 }

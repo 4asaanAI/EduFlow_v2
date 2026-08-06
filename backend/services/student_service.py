@@ -475,3 +475,41 @@ async def upsert_guardians(
         changes={"count": len(saved)}, session=session,
     )
     return {"guardians": saved}
+
+
+async def delete_student(
+    db,
+    actor_ctx: ActorContext,
+    params: dict,
+    *,
+    session=None,
+    idempotency_key: Optional[str] = None,
+) -> dict:
+    """Take a student off the roll — the shared path behind `DELETE /api/students/{id}`
+    and the AI `delete_student` tool.
+
+    Owner instruction 2026-08-07 — Flo could add a student but had no way to remove one.
+
+    **This does not destroy anything.** It records that the child has left, exactly as
+    the delete button on the screen always did, and `set_enrolment_state` puts them back.
+    Permanent erasure is a different act with a different door: it demands a written
+    reason, anonymises attendance history and purges notes, and stays on the screen,
+    owner or principal only, where a person is looking at the record they are erasing.
+    Chat is not the place to destroy a child's record beyond recovery.
+
+    params: ``{student_id, reason?}``
+    returns: ``{"student": <doc>, "noop": bool, "previous_state": str}``
+    """
+    if not params.get("student_id"):
+        raise StudentValidationError("student_id is required")
+    return await set_enrolment_state(
+        db,
+        actor_ctx,
+        {
+            "student_id": params["student_id"],
+            "state": enrolment_status.TC_ISSUED,
+            "reason": params.get("reason"),
+        },
+        session=session,
+        idempotency_key=idempotency_key,
+    )

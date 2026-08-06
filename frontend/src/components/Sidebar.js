@@ -34,14 +34,13 @@ const TOOLS_BY_ROLE = {
     // Epic 7 — find any person (students + staff). Owner + Principal only; the
     // principal pool below is built from this owner list, so this one definition
     // serves both. Rendered via TOOL_GROUPS (top strip) for each.
-    { id: 'school-directory', name: 'School Directory', subtitle: 'Find any person', icon: Compass, color: '#4f8ff7' },
     // D-44 part 2: this list also carried a 'fee-receipts' row further down, which
     // loaded this exact same screen — the owner's own menu offered one screen twice.
     // The duplicate row is gone; the subtitle now names receipts so nothing is lost
     // from what a person scanning this list is looking for.
     { id: 'fee-collection', name: 'Fee Collection', subtitle: 'Payments, receipts & export', icon: IndianRupee, color: '#4f8ff7' },
     { id: 'fee-sync', name: 'Fee Sync', subtitle: 'External API conflicts', icon: RefreshCw, color: '#6366f1' },
-    { id: 'student-database', name: 'Student Database', subtitle: 'Strength, manage & search', icon: Users, color: '#4f8ff7' },
+    { id: 'student-database', name: 'School Directory', subtitle: 'Students, staff & strength', icon: Users, color: '#4f8ff7' },
     { id: 'data-import', name: 'Data Import', subtitle: 'Validate & seed students', icon: Database, color: '#22d3ee' },
     { id: 'attendance-overview', name: 'Attendance Overview', subtitle: 'Trends & patterns', icon: ClipboardList, color: '#a78bfa' },
     { id: 'staff-tracker', name: 'Staff Tracker', subtitle: 'Profiles & roles', icon: UserCheck, color: '#4f8ff7' },
@@ -80,7 +79,7 @@ const TOOLS_BY_ROLE = {
   admin: [
     ...HUB_TOOLS,
     { id: 'academic-structure', name: 'Academic Structure', subtitle: 'Classes, subjects & teachers', icon: BookOpen, color: '#4f8ff7' },
-    { id: 'student-database', name: 'Student Database', subtitle: 'Manage & search', icon: Users, color: '#4f8ff7' },
+    { id: 'student-database', name: 'School Directory', subtitle: 'Students, staff & strength', icon: Users, color: '#4f8ff7' },
     { id: 'fee-tracker', name: 'Fee Tracker', subtitle: 'Reminders & dues', icon: IndianRupee, color: '#34d399' },
     { id: 'fee-collection', name: 'Fee Collection', subtitle: 'Payments, receipts & export', icon: FileText, color: '#34d399' },
     { id: 'accounting-periods', name: 'Accounting Periods', subtitle: 'Posting locks', icon: CalendarDays, color: '#f87171' },
@@ -176,7 +175,6 @@ const ADMIN_SUBCATEGORY_TOOLS = {
   accountant: ['student-database', 'fee-tracker', 'smart-fee-defaulter', 'fee-collection', 'accounting-periods', 'payroll-manager', 'commercial-operations', 'certificate-generator', 'id-card-generator', 'custom-form-builder', 'raise-maintenance'],
   transport_head: ['student-database', 'transport-manager', 'transport-optimisation', 'asset-tracker', 'custom-form-builder', 'raise-maintenance'],
   principal: [
-    'school-directory',
     'academic-structure', 'student-database', 'attendance-recorder', 'attendance-overview', 'principal-daily',
     // D-49: the principal may issue both document types on the server, and the
     // grouped navigation below already lists ID Cards under Students — it just never

@@ -37,6 +37,14 @@ class FeeConfigNotFoundError(Exception):
     """Target structure / discount type does not exist (in scope) → HTTP 404."""
 
 
+class FeeConfigConflictError(Exception):
+    """The record is still in use and must not be removed → HTTP 409.
+
+    Added 2026-08-07 with `delete_fee_structure`, matching the conflict errors the
+    class and house deletes already raise when something still points at the record.
+    """
+
+
 # Discount-type fields the update path may change (mirrors the pre-extraction
 # REST whitelist in routes/fees.py:update_discount_type).
 DISCOUNT_TYPE_UPDATABLE_FIELDS = {"name", "is_active", "reason_note"}
@@ -264,3 +272,48 @@ async def delete_discount_type(db, actor_ctx: ActorContext, params: dict, *, ses
         session=session,
     )
     return {"deleted": True, "discount_type_id": discount_type_id}
+
+
+async def delete_fee_structure(db, actor_ctx: ActorContext, params: dict, *, session=None) -> dict:
+    """Delete a fee structure. Blocked once money has been charged against it.
+
+    Owner instruction 2026-08-07 — Flo could create and edit a fee structure but never
+    remove one, so a structure entered by mistake stayed on the list for good.
+
+    Once charges exist, the structure is the record of what each family was asked to
+    pay; deleting it would leave those bills describing nothing. Retire it by setting
+    its status instead, which `update_fee_structure` already does.
+
+    params: ``{structure_id}``
+    returns: ``{"deleted": True, "structure_id": <id>}``
+    """
+    school_id = actor_ctx.school_id
+    structure_id = params.get("structure_id")
+    if not structure_id:
+        raise FeeConfigValidationError("structure_id is required")
+    existing = await db.fee_structures.find_one(
+        scoped_filter({"id": structure_id}, school_id), {"_id": 0}, **_session_kwargs(session)
+    )
+    if not existing:
+        raise FeeConfigNotFoundError("Fee structure not found")
+
+    charged = await db.fee_transactions.count_documents(
+        scoped_filter({"structure_id": structure_id}, school_id), **_session_kwargs(session)
+    )
+    if charged:
+        raise FeeConfigConflictError(
+            f"Cannot delete a fee structure with {charged} charge(s) already raised against it — "
+            "set its status to inactive instead"
+        )
+
+    await db.fee_structures.delete_one(
+        scoped_filter({"id": structure_id}, school_id), **_session_kwargs(session)
+    )
+    await _audit_fee_config(
+        db, actor_ctx,
+        action="fee_structure_delete",
+        entity_id=structure_id,
+        changes={"deleted": existing},
+        session=session,
+    )
+    return {"deleted": True, "structure_id": structure_id}

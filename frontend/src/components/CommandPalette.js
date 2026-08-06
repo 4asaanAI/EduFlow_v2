@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useUser } from '../contexts/UserContext';
 import {
   Activity, AlertTriangle, Award, BarChart2, Bell, BookOpen, CalendarDays,
-  ClipboardList, Command, Compass, Database, FileCheck, FilePlus, FileText, IndianRupee,
+  ClipboardList, Command, Database, FileCheck, FilePlus, FileText, IndianRupee,
   LifeBuoy, Megaphone, MessageSquare, Monitor, Package, PenTool, Printer, RefreshCw,
   ScrollText, Settings, Shield, Target, Trash2, Truck, Trophy, Users, UserCheck, UserPlus,
   Wrench, X,
@@ -14,8 +14,7 @@ const ALL_TOOLS = [
   // Epic 7 — Owner + Principal only. ⌘K filters by role, not sub_category, so it
   // is listed for 'owner' alone here (a non-principal admin must never reach it);
   // the Principal gets it from the sidebar, which does gate on sub_category.
-  { id: 'school-directory',       name: 'School Directory',      subtitle: 'Find any person',          icon: Compass,       roles: ['owner'] },
-  { id: 'student-database',       name: 'Student Database',      subtitle: 'Manage & search students', icon: Users,         roles: ['owner','admin'] },
+  { id: 'student-database',       name: 'School Directory',      subtitle: 'Students, staff & strength', icon: Users,       roles: ['owner','admin'] },
   // D-44 part 2: 'fee-receipts' was a second entry loading this same screen, and it was
   // offered to owner AND admin. Merged into this one; the roles list keeps both, so
   // nobody who could reach the screen before has lost it. "receipts" stays in the

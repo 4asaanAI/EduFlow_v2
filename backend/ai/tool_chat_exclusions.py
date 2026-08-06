@@ -24,23 +24,29 @@ from typing import Any, Dict
 # Structural / configuration tools: set up once (or once a year) on a screen, never
 # asked for mid-conversation. Removing them from the chat advertisement is where the
 # owner's token bill actually is.
+#
+# **No delete belongs in here (owner instruction, 2026-08-07).** The trim originally
+# swept up every delete alongside the create/update it sat next to, and the effect was
+# that the school's owner asked Flo to delete a class and was told "that operation is
+# not available to me" — about something it was fully authorised to do. Being told the
+# assistant cannot do a thing it can do costs more trust than the tokens were worth.
+# Creating and editing structure stays out: those have a form on a screen, and nobody
+# was asking Flo for them.
 _STRUCTURAL_CONFIG_TOOLS = frozenset({
     # Organisation structure
-    "create_branch", "update_branch", "delete_branch",
+    "create_branch", "update_branch",
     "update_school_settings", "year_end_transition",
     # Academic structure
-    "create_class", "update_class", "delete_class",
-    "create_house", "update_house", "delete_house",
+    "create_class", "update_class",
+    "create_house", "update_house",
     # Fee configuration (recording a payment or a discount is NOT here — that is
     # everyday work and stays available in chat)
     "create_fee_structure", "update_fee_structure",
-    "create_discount_type", "update_discount_type", "delete_discount_type",
+    "create_discount_type", "update_discount_type",
     # Asset and transport registers
-    "create_asset", "update_asset", "delete_asset",
-    "create_transport_route", "update_transport_route", "delete_transport_route",
+    "create_asset", "update_asset",
+    "create_transport_route", "update_transport_route",
     "add_transport_vehicle",
-    # Housekeeping deletes that are done from a list screen, with the row in view
-    "delete_announcement", "delete_query_ticket", "delete_visitor",
 })
 
 EXCLUDE_FOR_ROLE: Dict[str, frozenset] = {

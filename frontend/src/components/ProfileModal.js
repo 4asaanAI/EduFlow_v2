@@ -7,6 +7,7 @@ import {
   requestMyProfileChange, getMyProfileChangeRequests,
 } from '../lib/api';
 import StudentProfileEditor from './StudentProfileEditor';
+import { userInitials } from '../lib/initials';
 
 // The school's city. Single literal, so correcting it is a one-line change
 // rather than a hunt — it was wrong ("Lucknow") in four separate places.
@@ -368,7 +369,7 @@ export default function ProfileModal({ onClose }) {
 
             <div style={{ textAlign: 'center', marginBottom: 28 }}>
               <div style={{ width: 72, height: 72, borderRadius: 18, background: ROLE_COLORS[currentUser.role], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, fontWeight: 700, color: '#fff', margin: '0 auto 14px' }}>
-                {currentUser.initials}
+                {userInitials(currentUser)}
               </div>
               <h3 style={{ fontSize: 20, fontWeight: 600, color: text, marginBottom: 6, letterSpacing: '-0.02em' }}>{currentUser.name}</h3>
               <span style={{ fontSize: 12, fontWeight: 600, color: ROLE_COLORS[currentUser.role], background: `${ROLE_COLORS[currentUser.role]}12`, padding: '4px 14px', borderRadius: 20 }}>

@@ -42,6 +42,14 @@ class IncidentNotFoundError(Exception):
     """No record with this id in the resolved collection → HTTP 404."""
 
 
+class IncidentConflictError(Exception):
+    """The incident must not be removed in its current state → HTTP 409.
+
+    Added 2026-08-07 with `delete_incident`: a resolved incident is the school's
+    account of a safeguarding matter and stays.
+    """
+
+
 class IncidentAmbiguousError(Exception):
     """The same id exists in more than one collection → refuse (HTTP 409)."""
 
@@ -380,3 +388,44 @@ async def create_incident(db, actor_ctx: ActorContext, params: dict, *, session=
         {"severity": severity, "description": params["description"][:100]},
     )
     return {"incident": {k: v for k, v in incident.items() if k != "_id"}}
+
+
+async def delete_incident(db, actor_ctx: ActorContext, params: dict, *, session=None) -> dict:
+    """Delete an incident record.
+
+    Owner instruction 2026-08-07 — an incident logged in error (wrong child, duplicate
+    entry, a test row) could be closed but never removed, so it stayed in the school's
+    safeguarding record for good.
+
+    Deliberately restricted to incidents that are still open: once an incident has been
+    resolved it is part of the school's account of what happened and how it was handled,
+    and that must not be quietly erasable. The whole record goes into the audit trail
+    before it is removed.
+
+    params: ``{incident_id}``
+    returns: ``{"deleted": True, "incident_id": <id>}``
+    """
+    incident_id = params.get("incident_id")
+    if not incident_id:
+        raise IncidentValidationError("incident_id is required")
+    existing = await db.incidents.find_one(
+        scoped_query({"id": incident_id}, branch_id=actor_ctx.branch_id), {"_id": 0},
+        **_session_kwargs(session),
+    )
+    if not existing:
+        raise IncidentNotFoundError("Incident not found")
+
+    if existing.get("status") == "resolved":
+        raise IncidentConflictError(
+            "A resolved incident is part of the school's safeguarding record and cannot be deleted"
+        )
+
+    await db.incidents.delete_one(
+        scoped_query({"id": incident_id}, branch_id=actor_ctx.branch_id),
+        **_session_kwargs(session),
+    )
+    await _audit(
+        db, "incident_delete", "incidents", incident_id, actor_ctx,
+        {"deleted": existing}, reason=params.get("reason"),
+    )
+    return {"deleted": True, "incident_id": incident_id}

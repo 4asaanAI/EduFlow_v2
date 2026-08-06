@@ -30,6 +30,8 @@ import { ON_ROLL_VIEW, OFF_ROLL_VIEW, readState } from '../../lib/enrolmentState
 import ProfileNotes from '../ui/ProfileNotes';
 import ProfileDocuments from '../ui/ProfileDocuments';
 import { ALL_ROWS, useTablePageSize } from '../../hooks/useTablePrefs';
+// The staff finder from the retired School Directory screen (D-44 cluster D).
+import { StaffTab } from './SchoolDirectory';
 
 /**
  * The most rows `GET /api/students` will return in one request (`per_page` is
@@ -716,12 +718,16 @@ export default function StudentDatabase() {
   }, [searchParams, setSearchParams]);
 
   const canManage = ['owner', 'admin'].includes(currentUser.role);
-  const canErase = currentUser.role === 'owner';
   // Owner or principal only, matching require_owner_or_principal on the enrolment
   // endpoint. Offering the button to anyone else would only produce a refusal when
   // they pressed it, which is the D-49 mistake.
-  const canRestore = currentUser.role === 'owner'
+  const isHeadOfSchool = currentUser.role === 'owner'
     || (currentUser.role === 'admin' && currentUser.sub_category === 'principal');
+  const canRestore = isHeadOfSchool;
+  // Owner request 2026-08-07: the principal reported there was no way to delete a
+  // student. Erase was owner-only, so the principal saw View / Edit / Status and
+  // nothing else. It now matches require_owner_or_principal on the erase endpoint.
+  const canErase = isHeadOfSchool;
 
   // UX-DR10: the user's chosen page size, remembered per table.
   const [pageSize, setPageSize] = useTablePageSize('students');
@@ -1026,18 +1032,33 @@ export default function StudentDatabase() {
       {/* Page Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--c-text)', margin: 0 }}>Student Database</h1>
-          <div style={{ color: 'var(--c-faint)', fontSize: 12, marginTop: 3 }}>{total} records</div>
+          {/* Renamed on the owner's instruction, 2026-08-07. There used to be two
+              screens listing every student — this one, and a read-only "School
+              Directory" — and the owner reported them as "two views of the student
+              database for some reason". They are one screen now, under the name that
+              says what it is: everyone in the school, in one place. */}
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--c-text)', margin: 0 }}>School Directory</h1>
+          <div style={{ color: 'var(--c-faint)', fontSize: 12, marginTop: 3 }}>
+            {tab === 'staff' ? 'Everyone who works at the school' : `${total} students`}
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Btn variant="secondary" onClick={loadData}><RefreshCw size={13} />Refresh</Btn>
-          {canManage && <Btn onClick={() => setShowAdd(true)}><Plus size={13} />Add Student</Btn>}
+          {tab !== 'staff' && <Btn variant="secondary" onClick={loadData}><RefreshCw size={13} />Refresh</Btn>}
+          {canManage && tab !== 'staff' && <Btn onClick={() => setShowAdd(true)}><Plus size={13} />Add Student</Btn>}
         </div>
       </div>
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 2, marginBottom: 18, borderBottom: '1px solid var(--c-border)' }}>
-        {[{ id: 'database', label: 'Database' }, { id: 'strength', label: 'Class Strength' }].map(t => (
+        {[
+          { id: 'database', label: 'Students' },
+          // The staff list came from the School Directory, which was owner and
+          // principal only. Merging the two screens must not hand the staff list to
+          // the accountant, transport head or receptionist, who all have this screen
+          // for students and never had the Directory. Same gate, new home.
+          ...(isHeadOfSchool ? [{ id: 'staff', label: 'Staff' }] : []),
+          { id: 'strength', label: 'Class Strength' },
+        ].map(t => (
           <button key={t.id} data-testid={`tab-${t.id}`} onClick={() => setTab(t.id)} style={{
             padding: '8px 16px', fontSize: 13,
             fontWeight: tab === t.id ? 700 : 500,
@@ -1048,6 +1069,16 @@ export default function StudentDatabase() {
           }}>{t.label}</button>
         ))}
       </div>
+
+      {/* ── Staff Tab (merged in from the retired School Directory, 2026-08-07) ──
+          Opening a person still hands off to Staff Tracker, exactly as it did on the
+          old screen, so nothing a person could do before has moved. */}
+      {tab === 'staff' && isHeadOfSchool && (
+        <StaffTab
+          onOpen={(s) => setSearchParams({ tool: 'staff-tracker', focus: s.id })}
+          onOpenFullScreen={() => setSearchParams({ tool: 'staff-tracker' })}
+        />
+      )}
 
       {/* ── Class Strength Tab ── */}
       {tab === 'strength' && (

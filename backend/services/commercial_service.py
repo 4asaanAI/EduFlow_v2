@@ -993,3 +993,125 @@ async def commercial_summary(db, actor: ActorContext, entity_id: Optional[str] =
     return {"consolidated": consolidated, "entities": rows,
             "totals": {"net_sales_paise": sum(row["net_sales_paise"] for row in rows),
                        "weighted_pipeline_paise": sum(row["weighted_pipeline_paise"] for row in rows)}}
+
+
+# ───────────────────── Deletes (owner instruction, 2026-08-07) ─────────────────
+#
+# The school's owner asked for delete to be available for every kind of record,
+# through Flo as well as the screens. These are the commercial three. Each follows
+# the same shape as the deletes that already existed (class, house, discount type):
+# hard-delete, blocked when something still points at the record, with the whole
+# deleted document written into the audit trail first so it can be reconstructed.
+
+
+async def delete_legal_entity(db, actor: ActorContext, params: dict, *, session=None) -> dict:
+    """Delete a legal entity. Blocked while it owns any commercial record.
+
+    params: ``{entity_id}``  returns: ``{"deleted": True, "entity_id": <id>}``
+    """
+    kwargs = session_kwargs(session)
+    entity_id = _required(params, "entity_id")
+    existing = await db.legal_entities.find_one(_scope(actor, {"id": entity_id}), {"_id": 0}, **kwargs)
+    if not existing:
+        raise CommercialNotFoundError("Legal entity not found")
+
+    # The operating default is what every legacy record without an entity_id is
+    # attributed to. Deleting it would orphan the school's own books.
+    if existing.get("is_default") or existing.get("owns_legacy_records"):
+        raise CommercialConflictError(
+            "This is the school's operating entity — make another one the default before deleting it"
+        )
+
+    children = await db.legal_entities.count_documents(
+        _scope(actor, {"parent_entity_id": entity_id}), **kwargs
+    )
+    if children:
+        raise CommercialConflictError(
+            f"Cannot delete an entity with {children} entity/entities reporting to it"
+        )
+
+    for collection, label in (
+        (db.retail_sales, "sale"),
+        (db.enquiries, "enquiry"),
+        (db.commercial_products, "product"),
+        (db.pos_shifts, "till shift"),
+    ):
+        used = await collection.count_documents(_scope(actor, {"entity_id": entity_id}), **kwargs)
+        if used:
+            raise CommercialConflictError(
+                f"Cannot delete this entity: {used} {label}(s) are still booked to it"
+            )
+
+    await db.legal_entities.delete_one(_scope(actor, {"id": entity_id}), **kwargs)
+    await _audit(db, actor, "legal_entity_delete", "legal_entities", entity_id,
+                 {"deleted": existing}, reason=_clean(params.get("reason")))
+    return {"deleted": True, "entity_id": entity_id}
+
+
+async def delete_crm_lead(db, actor: ActorContext, params: dict, *, session=None) -> dict:
+    """Delete an admission enquiry. Blocked once it has become a real application.
+
+    Releases the phone/email reservation the enquiry held, so the same family can be
+    entered again afterwards — without this the contact stays locked forever against
+    an enquiry that no longer exists.
+
+    params: ``{enquiry_id}``  returns: ``{"deleted": True, "enquiry_id": <id>}``
+    """
+    kwargs = session_kwargs(session)
+    enquiry_id = _required(params, "enquiry_id")
+    existing = await db.enquiries.find_one(_scope(actor, {"id": enquiry_id}), {"_id": 0}, **kwargs)
+    if not existing:
+        raise CommercialNotFoundError("Enquiry not found")
+
+    if existing.get("student_id") or existing.get("application_id"):
+        raise CommercialConflictError(
+            "This enquiry has already become an application or an enrolled student — "
+            "it cannot be deleted"
+        )
+
+    opportunities = await db.crm_opportunities.count_documents(
+        _scope(actor, {"enquiry_id": enquiry_id}), **kwargs
+    )
+    if opportunities:
+        raise CommercialConflictError(
+            f"Cannot delete an enquiry with {opportunities} open opportunity/opportunities"
+        )
+
+    await db.enquiries.delete_one(_scope(actor, {"id": enquiry_id}), **kwargs)
+    # Free the contact reservation, and the activity trail that only described it.
+    await db.crm_contact_keys.delete_many({"enquiry_id": enquiry_id}, **kwargs)
+    await db.crm_activities.delete_many(_scope(actor, {"enquiry_id": enquiry_id}), **kwargs)
+    await _audit(db, actor, "crm_lead_delete", "enquiries", enquiry_id,
+                 {"deleted": existing}, reason=_clean(params.get("reason")))
+    return {"deleted": True, "enquiry_id": enquiry_id}
+
+
+async def delete_product(db, actor: ActorContext, params: dict, *, session=None) -> dict:
+    """Delete a shop product. Blocked once it has ever been sold.
+
+    A product that has been sold is part of the sales record: deleting it would leave
+    receipts pointing at nothing. Those are retired with `is_active` instead, which is
+    what `update` already does.
+
+    params: ``{product_id}``  returns: ``{"deleted": True, "product_id": <id>}``
+    """
+    kwargs = session_kwargs(session)
+    product_id = _required(params, "product_id")
+    existing = await db.commercial_products.find_one(
+        _scope(actor, {"id": product_id}), {"_id": 0}, **kwargs
+    )
+    if not existing:
+        raise CommercialNotFoundError("Retail product not found")
+
+    sold = await db.retail_sales.count_documents(
+        _scope(actor, {"lines.product_id": product_id}), **kwargs
+    )
+    if sold:
+        raise CommercialConflictError(
+            f"Cannot delete a product that appears on {sold} sale(s) — mark it inactive instead"
+        )
+
+    await db.commercial_products.delete_one(_scope(actor, {"id": product_id}), **kwargs)
+    await _audit(db, actor, "retail_product_delete", "commercial_products", product_id,
+                 {"deleted": existing}, reason=_clean(params.get("reason")))
+    return {"deleted": True, "product_id": product_id}

@@ -68,3 +68,35 @@ def test_exclusion_list_contains_no_read_tools():
     from services.ai_action_policy import is_action_tool
     for name in EXCLUDE_FOR_ROLE["owner"]:
         assert is_action_tool(TOOL_REGISTRY[name]), f"{name} is a read tool and must not be trimmed"
+
+
+# ── Owner instruction, 2026-08-07: no delete may be hidden from chat ──────────
+#
+# The original trim swept every delete up with the create/update beside it, so the
+# school's owner asked Flo to delete a class and was told the operation "is not
+# available to me" — about something it was authorised to do. These pin the rule so a
+# later round of cost-cutting cannot quietly take the deletes away again.
+
+def test_no_delete_tool_is_hidden_from_any_role():
+    for role_key, excluded in EXCLUDE_FOR_ROLE.items():
+        hidden_deletes = sorted(n for n in excluded if n.startswith("delete_"))
+        assert hidden_deletes == [], (
+            f"{role_key} cannot see {hidden_deletes} in chat. Deletes must stay offered: "
+            "being told Flo cannot do something it can do is the bug this closed."
+        )
+
+
+@pytest.mark.parametrize("user", [OWNER, PRINCIPAL], ids=["owner", "principal"])
+def test_every_delete_the_caller_may_run_is_offered_to_the_model(user):
+    authorized_deletes = {
+        n for n, d in TOOL_REGISTRY.items()
+        if n.startswith("delete_") and is_tool_authorized(user, d)
+    }
+    assert authorized_deletes, "no delete tools resolved — the registry moved"
+    assert authorized_deletes <= _advertised(user)
+
+
+def test_deleting_a_class_is_offered_to_the_principal():
+    """The exact request that failed: 'then delete the class'."""
+    assert is_chat_advertised(PRINCIPAL, "delete_class")
+    assert is_tool_authorized(PRINCIPAL, TOOL_REGISTRY["delete_class"])

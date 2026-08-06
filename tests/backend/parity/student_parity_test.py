@@ -165,7 +165,43 @@ async def test_set_status_ai_and_rest_identical(client, auth_headers, fake_db, m
     assert ai_state == rest_state
 
 
-def test_no_ai_student_delete_or_erase_tool():
-    # AD15: hard-delete and DPDP-erase stay UI-only — never AI-reachable.
-    for forbidden in ("delete_student", "erase_student"):
-        assert forbidden not in tool_functions_v2.TOOL_REGISTRY
+def test_no_ai_student_erase_tool():
+    """AD15: permanent erasure stays UI-only — never AI-reachable.
+
+    Restated 2026-08-07. The rule used to be written as "no `delete_student` tool
+    either", and on the owner's instruction a `delete_student` tool now exists. That is
+    not a relaxation of AD15: the new tool takes a child OFF THE ROLL and the Student
+    Database screen puts them back, which is what the delete button on that screen has
+    always done. What AD15 exists to prevent is the assistant destroying a child's
+    record beyond recovery, and the test below proves that is still impossible.
+    """
+    assert "erase_student" not in tool_functions_v2.TOOL_REGISTRY
+    assert not [
+        name for name in tool_functions_v2.TOOL_REGISTRY
+        if "erase" in name and "student" in name
+    ]
+
+
+async def test_ai_delete_student_takes_off_the_roll_and_destroys_nothing(fake_db, monkeypatch):
+    """The AD15 property, asserted on behaviour rather than on a tool name."""
+    monkeypatch.setattr(tool_functions_v2, "get_db", lambda: fake_db)
+    _clear(fake_db)
+    fake_db.students.docs.append({
+        "id": "stu-del-1", "_id": "stu-del-1", "schoolId": "aaryans-joya",
+        "name": "Test Pupil", "admission_number": "ADM-DEL-1",
+        "is_active": True, "status": "active",
+    })
+
+    out = await tool_functions_v2.tool_delete_student(
+        {"student_id": "stu-del-1"}, OWNER_USER, None
+    )
+
+    assert out["success"] is True
+    surviving = [s for s in fake_db.students.docs if s["id"] == "stu-del-1"]
+    assert surviving, "the AI must never destroy a student record — only take them off the roll"
+    assert surviving[0]["is_active"] is False
+    # And the way back still exists.
+    back = await tool_functions_v2.tool_set_student_status(
+        {"student_id": "stu-del-1", "status": "active"}, OWNER_USER, None
+    )
+    assert back["success"] is True

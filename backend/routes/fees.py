@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse, Response, JSONResponse
 from database import TimedQuery, get_db
 from models.schemas import FeeTransaction
-from middleware.auth import get_current_user, require_role, require_owner
+from middleware.auth import get_current_user, require_role, require_owner, require_owner_or_principal
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from school_identity import default_branch_id
@@ -32,8 +32,10 @@ from services.fee_config_service import (
     create_discount_type as svc_create_discount_type,
     update_discount_type as svc_update_discount_type,
     delete_discount_type as svc_delete_discount_type,
+    delete_fee_structure as svc_delete_fee_structure,
     FeeConfigValidationError,
     FeeConfigNotFoundError,
+    FeeConfigConflictError,
 )
 from services.fee_lifecycle_service import (
     FeeLifecycleNotFoundError,
@@ -258,6 +260,27 @@ async def update_fee_structure(structure_id: str, request: Request, user: dict =
     except FeeConfigValidationError as e:
         raise HTTPException(400, str(e))
     return {"success": True}
+
+
+@router.delete("/structures/{structure_id}")
+async def delete_fee_structure(structure_id: str, request: Request,
+                               user: dict = Depends(require_owner_or_principal)):
+    """Delete a fee structure. Refused once charges have been raised against it.
+
+    Owner instruction 2026-08-07 — parity reference for the AI `delete_fee_structure`
+    tool, which calls the same service.
+    """
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_delete_fee_structure(db, actor_ctx, {"structure_id": structure_id})
+    except FeeConfigNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except FeeConfigConflictError as e:
+        raise HTTPException(409, str(e))
+    except FeeConfigValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result}
 
 
 @router.get("/structures/{structure_id}/versions")

@@ -42,6 +42,16 @@ PARITY_CORPUS = {
     "create_discount_type": "fee_config_parity_test.py",
     "update_discount_type": "fee_config_parity_test.py",
     "delete_discount_type": "fee_config_parity_test.py",
+    # Owner instruction 2026-08-07 — the deletes Flo was missing. `delete_enquiry`
+    # covers records made by both `create_enquiry` and `create_crm_lead`.
+    "delete_student": "new_deletes_parity_test.py",
+    "delete_staff": "new_deletes_parity_test.py",
+    "delete_fee_structure": "new_deletes_parity_test.py",
+    "delete_incident": "new_deletes_parity_test.py",
+    "delete_certificate": "new_deletes_parity_test.py",
+    "delete_enquiry": "new_deletes_parity_test.py",
+    "delete_legal_entity": "new_deletes_parity_test.py",
+    "delete_retail_product": "new_deletes_parity_test.py",
     # Epic K.2 — academic-structure CRUD
     "create_class": "academic_structure_parity_test.py",
     "update_class": "academic_structure_parity_test.py",

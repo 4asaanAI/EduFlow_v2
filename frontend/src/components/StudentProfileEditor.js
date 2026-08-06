@@ -5,6 +5,7 @@ import {
   CheckCircle2, AlertCircle, Pencil, Lock, GraduationCap,
 } from 'lucide-react';
 import { getMyStudentProfile, updateMyStudentProfile, updateMyGuardian } from '../lib/api';
+import { userInitials } from '../lib/initials';
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
 const GENDERS = ['Male', 'Female', 'Other'];
@@ -429,7 +430,7 @@ export default function StudentProfileEditor({ isDark, currentUser, onClose }) {
 
         {/* Avatar */}
         <div style={{ width: 76, height: 76, borderRadius: '50%', background: `linear-gradient(135deg,#a78bfa,#818cf8)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, fontWeight: 800, color: '#fff', margin: '0 auto 14px', boxShadow: '0 0 0 4px rgba(167,139,250,0.2), 0 8px 24px rgba(167,139,250,0.3)', letterSpacing: '-0.02em' }}>
-          {currentUser?.initials || '?'}
+          {userInitials(currentUser)}
         </div>
 
         <h2 style={{ fontSize: 20, fontWeight: 700, color: t.text, marginBottom: 6, letterSpacing: '-0.02em' }}>

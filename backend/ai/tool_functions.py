@@ -679,9 +679,13 @@ async def tool_search_students(params: dict, user: dict, scope=None) -> dict:
             {"admission_number": {"$regex": safe_q, "$options": "i"}},
         ]
     if class_name:
-        cls = await db.classes.find_one(_tenant_query(scope, {"name": {"$regex": re.escape(class_name), "$options": "i"}}))
-        if cls:
-            filter_q["class_id"] = cls["id"]
+        # Owner report 2026-08-07: "4-C" is how every screen writes it, but classes
+        # store the grade and section apart, so a `name`-only regex never matched.
+        from ai.class_resolver import find_classes as _find_classes
+        matched = await _find_classes(db, class_name, _tenant_query(scope, {}))
+        if matched:
+            matched_ids = [c["id"] for c in matched]
+            filter_q["class_id"] = matched_ids[0] if len(matched_ids) == 1 else {"$in": matched_ids}
 
     students = await db.students.find(_tenant_query(scope, filter_q)).to_list(20)
     result = []

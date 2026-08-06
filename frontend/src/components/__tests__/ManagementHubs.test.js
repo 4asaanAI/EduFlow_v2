@@ -24,13 +24,18 @@ describe('owner and principal management hubs', () => {
   //
   // They are listed here by name rather than the guard being loosened, so a future
   // navigation change still has to justify anything else it drops.
-  const REACHED_THROUGH_THE_DIRECTORY = ['student-database', 'staff-tracker'];
+  // Updated 2026-08-07 when the merge actually landed: 'school-directory' and
+  // 'student-database' were two screens listing the same students, and are now one,
+  // under the id 'student-database' and the name "School Directory". So the directory
+  // IS the student-database tile, and only Staff Tracker is reached through it.
+  const REACHED_THROUGH_THE_DIRECTORY = ['staff-tracker'];
+  const DIRECTORY = 'student-database';
 
   test('preserve access to every legacy owner and principal destination through a hub', () => {
     const ownerItems = new Set(MANAGEMENT_HUBS.flatMap(hub => hubItemsForUser(hub, { role: 'owner' }).map(item => item[0])));
     const principalItems = new Set(MANAGEMENT_HUBS.flatMap(hub => hubItemsForUser(hub, { role: 'admin', sub_category: 'principal' }).map(item => item[0])));
-    ['school-directory', 'fee-collection', 'library-circulation', 'school-activities', 'audit-log'].forEach(id => expect(ownerItems.has(id)).toBe(true));
-    ['school-directory', 'enquiry-register', 'library-circulation', 'transport-manager', 'audit-log'].forEach(id => expect(principalItems.has(id)).toBe(true));
+    [DIRECTORY, 'fee-collection', 'library-circulation', 'school-activities', 'audit-log'].forEach(id => expect(ownerItems.has(id)).toBe(true));
+    [DIRECTORY, 'enquiry-register', 'library-circulation', 'transport-manager', 'audit-log'].forEach(id => expect(principalItems.has(id)).toBe(true));
     const reachable = (set) => (id) => set.has(id) || REACHED_THROUGH_THE_DIRECTORY.includes(id);
     expect(OWNER_TOOLS.filter(id => !reachable(ownerItems)(id))).toEqual([]);
     expect(TOOL_SETS.admin_principal.filter(id => !reachable(principalItems)(id))).toEqual([]);
@@ -40,7 +45,7 @@ describe('owner and principal management hubs', () => {
     const ownerItems = new Set(MANAGEMENT_HUBS.flatMap(hub => hubItemsForUser(hub, { role: 'owner' }).map(item => item[0])));
     // One tile, not three. This is the thing the owner actually asked for, so it is
     // asserted rather than left to be undone by the next person tidying the hub.
-    expect(ownerItems.has('school-directory')).toBe(true);
+    expect(ownerItems.has(DIRECTORY)).toBe(true);
     REACHED_THROUGH_THE_DIRECTORY.forEach(id => expect(ownerItems.has(id)).toBe(false));
   });
 

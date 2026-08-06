@@ -60,7 +60,9 @@ OWNER_ONLY_ENDPOINTS = (
     ("POST", "/api/fees/sync/job-1/resolve-conflict", {"conflict_id": "c1", "decision": "keep_ours"}, None),
     ("POST", "/api/issues/facility/fr-1/confirm-resolution", None, None),
     ("PATCH", "/api/settings/school", {"school_name": "Aaryans"}, None),
-    ("POST", "/api/students/student-1/erase", None, {"reason": "Detailed erasure reason for QA"}),
+    # Student erase moved to owner-OR-PRINCIPAL on 2026-08-07 (owner request: the
+    # principal's screen had no way to delete a student). Covered below and in
+    # tests/backend/api/test_student_erase_permissions.py.
     ("PUT", "/api/tokens/limits", {"limits": {"teacher": 1, "student": 1}}, None),
     (
         "PATCH",
@@ -100,6 +102,29 @@ async def test_owner_only_endpoints_reject_teacher_admin_and_student(
     response = client.request(method, url, **kwargs)
 
     assert response.status_code == 403
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        _headers("teacher"),
+        _headers("student"),
+        _headers("admin", "accountant"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_student_erase_still_rejects_everyone_below_head_of_school(client, headers):
+    """Erase widened to the principal on 2026-08-07 — and to nobody else.
+
+    A 404 here would mean the role got past the gate and only missed because the
+    student is fictional, so this asserts the refusal explicitly.
+    """
+    resp = client.post(
+        "/api/students/student-1/erase",
+        data={"reason": "Detailed erasure reason for QA"},
+        headers=headers,
+    )
+    assert resp.status_code == 403
 
 
 @pytest.mark.parametrize(

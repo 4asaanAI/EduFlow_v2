@@ -237,6 +237,15 @@ WRITE_TOOL_REQUIRED_PARAMS = {
     "mark_staff_attendance": (),
     "correct_fee_transaction": ("transaction_id", "reason"),
     "delete_fee_transaction": ("transaction_id",),
+    # Owner instruction 2026-08-07 — the deletes Flo was missing.
+    "delete_student": ("student_id",),
+    "delete_staff": ("staff_id",),
+    "delete_fee_structure": ("structure_id",),
+    "delete_incident": ("incident_id",),
+    "delete_certificate": ("cert_id",),
+    "delete_enquiry": ("enquiry_id",),
+    "delete_legal_entity": ("entity_id",),
+    "delete_retail_product": ("product_id",),
     "trigger_fee_sync": (),
     # Wave 2 — assets, visitors, certificates, query tickets, transport, announcement moderation
     "create_asset": ("name",),

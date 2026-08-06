@@ -20,7 +20,7 @@ export const MANAGEMENT_HUBS = [
       // editing. `student-database` and `staff-tracker` remain reachable by deep link
       // (the Directory's own rows point at them) and stay in the permission lists —
       // only the duplicate front doors are gone.
-      ['school-directory', 'School Directory', 'Every student, guardian and staff member in one place', 'both'],
+      ['student-database', 'School Directory', 'Every student, guardian and staff member in one place', 'both'],
       ['data-import', 'Data Import', 'Validate and import student records', 'owner'],
       ['certificate-generator', 'Certificates', 'TC, bonafide and school documents', 'both'],
       ['id-card-generator', 'ID Cards', 'Generate and print student cards', 'both'],

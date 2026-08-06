@@ -579,3 +579,75 @@ async def set_enrolment_state(
     )
     updated = await db.staff.find_one(scoped_filter({"id": staff_id}, school_id), {"_id": 0})
     return {"staff": updated, "noop": False, "previous_state": previous_state}
+
+
+async def delete_staff(
+    db,
+    actor_ctx: ActorContext,
+    params: dict,
+    *,
+    session=None,
+) -> dict:
+    """Take a colleague off the roll — the shared path behind `DELETE /api/staff/{id}`
+    and the AI `delete_staff` tool.
+
+    Owner instruction 2026-08-07 — Flo could add a staff member but had no way to
+    remove one.
+
+    Reversible, like the student equivalent: `set_enrolment_state` puts them back. It
+    closes the door behind them as it goes — `set_enrolment_state` already disables the
+    login and revokes any refresh token, so an open session cannot outlive the
+    decision, and this adds the erasure of what the assistant had learned about them
+    (R6.4 / DPDP §12). That erasure is best-effort and never blocks the deactivation.
+
+    params: ``{staff_id, reason?}``
+    returns: ``{"staff": <doc>, "noop": bool, "previous_state": str}``
+    """
+    from services import enrolment_status
+
+    staff_id = params.get("staff_id")
+    if not staff_id:
+        raise StaffValidationError("staff_id is required")
+
+    result = await set_enrolment_state(
+        db,
+        actor_ctx,
+        {
+            "staff_id": staff_id,
+            "state": enrolment_status.TC_ISSUED,
+            "reason": params.get("reason"),
+        },
+        session=session,
+    )
+    if not result.get("noop"):
+        await erase_ai_memory_of_staff(db, actor_ctx, result.get("staff") or {})
+    return result
+
+
+async def erase_ai_memory_of_staff(db, actor_ctx: ActorContext, staff: dict) -> None:
+    """Erase what the assistant learned about a colleague who has left (R6.4, DPDP §12).
+
+    Lifted out of `routes/staff.py:delete_staff` on 2026-08-07 so the AI tool and the
+    REST route cannot drift: before this, only the route did it, so a colleague
+    deactivated by any other path left their memories behind.
+
+    Best-effort by design — the deactivation itself has already happened and must not
+    be undone because a memory store was unreachable.
+    """
+    user_id = staff.get("user_id")
+    if not user_id:
+        return
+    try:
+        from services.memory.store import erase_owner_memories
+        from services.memory.skills_store import erase_owner_skills
+        from services.memory.feedback_store import erase_owner_feedback
+
+        changed_by = actor_ctx.user_id or "system"
+        await erase_owner_memories(db, school_id=actor_ctx.school_id, user_id=user_id, changed_by=changed_by)
+        await erase_owner_skills(db, school_id=actor_ctx.school_id, user_id=user_id, changed_by=changed_by)
+        await erase_owner_feedback(db, school_id=actor_ctx.school_id, user_id=user_id, changed_by=changed_by)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning(
+            "ai_memory/skill/feedback erase on staff delete failed", exc_info=True
+        )

@@ -24,6 +24,12 @@ import { ALL_TOOLS } from '../CommandPalette';
 const RETIRED = 'fee-receipts';
 const CANONICAL = 'fee-collection';
 
+// The second merge, 2026-08-07: the school's owner reported "two views of the student
+// database for some reason". 'school-directory' listed every student read-only;
+// 'student-database' listed the same students with the buttons. One screen now.
+const RETIRED_DIRECTORY = 'school-directory';
+const CANONICAL_DIRECTORY = 'student-database';
+
 const idsOf = (tools) => (tools || []).map((t) => (typeof t === 'string' ? t : t.id));
 
 // Every list, in all four registries, that decides what a person is offered.
@@ -35,11 +41,34 @@ const everyOfferedIdList = () => [
   ['CommandPalette ALL_TOOLS', idsOf(ALL_TOOLS)],
 ];
 
-describe('the retired duplicate is gone from every menu', () => {
+describe('the retired duplicates are gone from every menu', () => {
   everyOfferedIdList().forEach(([label, ids]) => {
-    test(`${label} does not offer ${RETIRED}`, () => {
+    test(`${label} offers neither retired name`, () => {
       expect(ids).not.toContain(RETIRED);
+      expect(ids).not.toContain(RETIRED_DIRECTORY);
     });
+  });
+});
+
+describe('the directory merge (2026-08-07)', () => {
+  test('the retired directory id resolves to the merged screen', () => {
+    expect(resolveToolId(RETIRED_DIRECTORY)).toBe(CANONICAL_DIRECTORY);
+  });
+
+  test('everyone who could reach either screen can still reach the merged one', () => {
+    // The Directory was owner + principal; the Student Database reached further.
+    // The merged screen must keep the WIDER set, or a role loses a screen it had.
+    expect(OWNER_TOOLS).toContain(CANONICAL_DIRECTORY);
+    expect(idsOf(TOOLS_BY_ROLE.owner)).toContain(CANONICAL_DIRECTORY);
+    expect(TOOL_SETS.admin_principal).toContain(CANONICAL_DIRECTORY);
+    expect(TOOL_SETS.admin_accountant).toContain(CANONICAL_DIRECTORY);
+    expect(TOOL_SETS.admin_receptionist).toContain(CANONICAL_DIRECTORY);
+    expect(ADMIN_SUBCATEGORY_TOOLS.principal).toContain(CANONICAL_DIRECTORY);
+  });
+
+  test('the owner is offered the merged screen exactly once', () => {
+    expect(OWNER_TOOLS.filter((id) => id === CANONICAL_DIRECTORY)).toHaveLength(1);
+    expect(idsOf(TOOLS_BY_ROLE.owner).filter((id) => id === CANONICAL_DIRECTORY)).toHaveLength(1);
   });
 });
 

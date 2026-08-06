@@ -52,7 +52,6 @@ const loadTool = async (rawToolId) => {
   if (toolId === 'student-database') return (await import('./tools/StudentDatabase')).default;
   // Epic 7 — the School Directory (Owner + Principal only, via their tool sets).
   // Reads the existing students/staff endpoints; adds no new server surface.
-  if (toolId === 'school-directory') return (await import('./tools/SchoolDirectory')).default;
   if (toolId === 'school-activities') return (await import('./tools/SchoolActivities')).default;
   if (toolId === 'transport-optimisation') return (await import('./tools/TransportOptimisation')).default;
   if (toolId === 'student-leave-manager') return (await import('./tools/StudentLeaveManager')).default;

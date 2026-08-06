@@ -16,6 +16,7 @@ from services import enrolment_status
 from services import photo_url_service
 from services.student_service import (
     create_student as create_student_service,
+    delete_student as delete_student_service,
     set_enrolment_state as set_enrolment_state_service,
     update_student as update_student_service,
     upsert_guardians as upsert_guardians_service,
@@ -593,26 +594,26 @@ async def update_student(student_id: str, request: Request):
 
 @router.delete("/{student_id}")
 async def delete_student(student_id: str, request: Request):
+    """Take a student off the roll.
+
+    The body of this moved into `student_service.delete_student` on 2026-08-07 so the
+    AI `delete_student` tool runs the identical path (parity gate F.6). Behaviour is
+    unchanged apart from one correction it inherits: the state is now written through
+    `set_enrolment_state`, which is the single writer of `is_active` and `status`
+    together. The old inline version wrote the legacy label "withdrawn"; the state it
+    means is `tc_issued`, and writing it properly is what lets the student be put back.
+    """
     db = get_db()
     user = get_user(request)
     if not _role_can_manage(user):
         raise HTTPException(403, "Forbidden")
-    student = await db.students.find_one(_student_query({"id": student_id}), {"_id": 0})
-    if not student:
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        await delete_student_service(db, actor_ctx, {"student_id": student_id})
+    except StudentNotFoundError:
         raise HTTPException(404, "Student not found")
-
-    withdrawal_date = datetime.now().strftime("%Y-%m-%d")
-    await db.students.update_one(
-        _student_query({"id": student_id}),
-        {"$set": {"is_active": False, "status": "withdrawn", "withdrawal_date": withdrawal_date, "updated_at": datetime.now().isoformat()}},
-    )
-    await _audit(
-        db,
-        action="deactivate",
-        student_id=student_id,
-        user=user,
-        changes={"is_active": {"previous": student.get("is_active"), "new": False}, "status": {"previous": student.get("status"), "new": "withdrawn"}},
-    )
+    except StudentValidationError as e:
+        raise HTTPException(400, str(e))
     return {"success": True}
 
 
@@ -823,7 +824,25 @@ async def upload_guardian_photo(student_id: str, guardian_id: str, request: Requ
 
 
 @router.post("/{student_id}/erase")
-async def erase_student(student_id: str, request: Request, reason: str = Form(default=None), user: dict = Depends(require_owner)):
+async def erase_student(
+    student_id: str,
+    request: Request,
+    reason: str = Form(default=None),
+    user: dict = Depends(require_owner_or_principal),
+):
+    """Permanently erase a student (DPDP right-to-be-forgotten).
+
+    Owner request 2026-08-07: this was owner-only, so the principal's screen offered
+    View / Edit / Status and no way to delete anyone, which is what was reported. The
+    principal is a head of school and already decides — through
+    `POST /{student_id}/enrolment` — that a child has left; widening this to
+    `require_owner_or_principal` puts the two decisions on the same footing.
+
+    Still deliberately heavier than a delete: it demands a written reason of at least
+    ten characters, writes the full record into the audit trail before touching
+    anything, anonymises attendance history, and purges profile notes and AI memory.
+    None of that is relaxed here — only who may start it.
+    """
     db = get_db()
     if not reason or len(reason.strip()) < 10:
         raise HTTPException(400, "A detailed erasure reason is required")

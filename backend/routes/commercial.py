@@ -22,6 +22,9 @@ from services.commercial_service import (
     create_return,
     create_sale,
     crm_pipeline,
+    delete_crm_lead,
+    delete_legal_entity,
+    delete_product,
     entity_record_filter,
     list_entities,
     open_shift,
@@ -103,6 +106,21 @@ async def patch_default_entity(entity_id: str, request: Request, user: dict = De
     return {"success": True, "data": row}
 
 
+@router.delete("/entities/{entity_id}")
+async def delete_entity(entity_id: str, request: Request, user: dict = Depends(require_owner)):
+    """Delete a legal entity. Owner only, and refused while anything is booked to it.
+
+    Owner instruction 2026-08-07 — parity reference for the AI `delete_legal_entity`
+    tool, which calls the same service.
+    """
+    try:
+        row = await _transactional_call(user, delete_legal_entity, {"entity_id": entity_id})
+    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError,
+            TransactionUnavailableError) as exc:
+        raise _error(exc)
+    return {"success": True, "data": row}
+
+
 @router.get("/summary")
 async def get_summary(request: Request, entity_id: str | None = None, consolidated: bool = False,
                       user: dict = Depends(require_commercial_reporter)):
@@ -148,6 +166,21 @@ async def patch_crm_lead(enquiry_id: str, request: Request,
         row = await _transactional_call(user, update_crm_lead, enquiry_id, await _body(request))
     except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError,
             EnquiryValidationError, EnquiryConflictError, EnquiryNotFoundError,
+            TransactionUnavailableError) as exc:
+        raise _error(exc)
+    return {"success": True, "data": row}
+
+
+@router.delete("/crm/leads/{enquiry_id}")
+async def delete_lead(enquiry_id: str, request: Request, user: dict = Depends(require_admissions_operator)):
+    """Delete an admission enquiry entered in error.
+
+    Owner instruction 2026-08-07 — parity reference for the AI `delete_enquiry` tool.
+    Refused once the enquiry has become an application or an enrolled student.
+    """
+    try:
+        row = await _transactional_call(user, delete_crm_lead, {"enquiry_id": enquiry_id})
+    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError,
             TransactionUnavailableError) as exc:
         raise _error(exc)
     return {"success": True, "data": row}
@@ -242,6 +275,22 @@ async def get_products(request: Request, entity_id: str | None = None,
 async def post_product(request: Request, user: dict = Depends(require_retail_configurator)):
     try:
         row = await _transactional_call(user, create_product, await _body(request))
+    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError,
+            TransactionUnavailableError) as exc:
+        raise _error(exc)
+    return {"success": True, "data": row}
+
+
+@router.delete("/products/{product_id}")
+async def delete_retail_product(product_id: str, request: Request,
+                                user: dict = Depends(require_retail_configurator)):
+    """Delete a shop product. Refused once it appears on any sale.
+
+    Owner instruction 2026-08-07 — parity reference for the AI `delete_retail_product`
+    tool.
+    """
+    try:
+        row = await _transactional_call(user, delete_product, {"product_id": product_id})
     except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError,
             TransactionUnavailableError) as exc:
         raise _error(exc)

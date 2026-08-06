@@ -863,6 +863,92 @@ TOOL_GET_MY_SCHOOL_HUB = {
 # TOOLS_BY_ROLE — maps (role, sub_category) to list of tool dicts
 # ---------------------------------------------------------------------------
 
+# ── Deletes added on the owner's instruction, 2026-08-07 ─────────────────────
+# Flo could create these records and remove none of them, and was telling the school
+# it "cannot" do things it was authorised to do.
+TOOL_DELETE_STUDENT = {
+    "name": "delete_student",
+    "description": (
+        "Record that a student has left the school — takes them off the roll and off "
+        "every screen. DESTRUCTIVE, requires double confirmation. Reversible from the "
+        "Student Database screen. This does NOT erase the child's record permanently; "
+        "permanent erasure is done on the screen, by a person, with a written reason."
+    ),
+    "params_schema": {
+        "student_id": "required — student ID (use search_students to find it)",
+        "reason": "optional — why they are leaving",
+    },
+}
+TOOL_DELETE_STAFF = {
+    "name": "delete_staff",
+    "description": (
+        "Record that a member of staff has left — closes their login and ends any open "
+        "session. DESTRUCTIVE, requires double confirmation. Reversible from the staff screen."
+    ),
+    "params_schema": {
+        "staff_id": "required — staff ID (use get_staff_directory to find it)",
+        "reason": "optional — why they are leaving",
+    },
+}
+TOOL_DELETE_FEE_STRUCTURE = {
+    "name": "delete_fee_structure",
+    "description": (
+        "Permanently delete a fee structure. DESTRUCTIVE, requires double confirmation. "
+        "Blocked once any charge has been raised against it."
+    ),
+    "params_schema": {"structure_id": "required — fee structure ID"},
+}
+TOOL_DELETE_INCIDENT = {
+    "name": "delete_incident",
+    "description": (
+        "Permanently delete an incident logged in error. DESTRUCTIVE, requires double "
+        "confirmation. Blocked once the incident has been resolved."
+    ),
+    "params_schema": {
+        "incident_id": "required — incident ID",
+        "reason": "optional — why it is being deleted",
+    },
+}
+TOOL_DELETE_CERTIFICATE = {
+    "name": "delete_certificate",
+    "description": (
+        "Permanently delete a certificate raised in error. DESTRUCTIVE, requires double "
+        "confirmation. Blocked once the certificate has been issued."
+    ),
+    "params_schema": {
+        "cert_id": "required — certificate ID",
+        "reason": "optional — why it is being deleted",
+    },
+}
+TOOL_DELETE_ENQUIRY = {
+    "name": "delete_enquiry",
+    "description": (
+        "Permanently delete an admission enquiry entered in error, freeing its phone and "
+        "email so the family can be entered again. DESTRUCTIVE, requires double "
+        "confirmation. Blocked once the enquiry has become an application or a student."
+    ),
+    "params_schema": {
+        "enquiry_id": "required — enquiry ID",
+        "reason": "optional — why it is being deleted",
+    },
+}
+TOOL_DELETE_LEGAL_ENTITY = {
+    "name": "delete_legal_entity",
+    "description": (
+        "Permanently delete a legal entity. DESTRUCTIVE, requires double confirmation. "
+        "Blocked while it is the operating default or while anything is booked to it."
+    ),
+    "params_schema": {"entity_id": "required — legal entity ID"},
+}
+TOOL_DELETE_RETAIL_PRODUCT = {
+    "name": "delete_retail_product",
+    "description": (
+        "Permanently delete a shop product. DESTRUCTIVE, requires double confirmation. "
+        "Blocked once it appears on any sale — retire it instead."
+    ),
+    "params_schema": {"product_id": "required — shop product ID"},
+}
+
 _OWNER_TOOLS = [
     # ---- Read / analytics ----
     TOOL_GET_SCHOOL_PULSE,
@@ -968,6 +1054,15 @@ _OWNER_TOOLS = [
     TOOL_UPDATE_ENQUIRY_STATUS,
     # ---- Incident logging ----
     TOOL_CREATE_INCIDENT,
+    # ---- Deletes (owner instruction, 2026-08-07) ----
+    TOOL_DELETE_STUDENT,
+    TOOL_DELETE_STAFF,
+    TOOL_DELETE_FEE_STRUCTURE,
+    TOOL_DELETE_INCIDENT,
+    TOOL_DELETE_CERTIFICATE,
+    TOOL_DELETE_ENQUIRY,
+    TOOL_DELETE_LEGAL_ENTITY,
+    TOOL_DELETE_RETAIL_PRODUCT,
 ]
 
 _PRINCIPAL_TOOLS = [
@@ -1028,6 +1123,16 @@ _PRINCIPAL_TOOLS = [
     # in BOTH directions: it_tech was offered a log it could no longer open, and the
     # principal was not offered one they could.
     TOOL_QUERY_AUDIT_LOG,
+    # ---- Deletes (owner instruction, 2026-08-07) ----
+    # Everything the registry allows a principal. `delete_legal_entity` is owner-only
+    # and is deliberately absent.
+    TOOL_DELETE_STUDENT,
+    TOOL_DELETE_STAFF,
+    TOOL_DELETE_FEE_STRUCTURE,
+    TOOL_DELETE_INCIDENT,
+    TOOL_DELETE_CERTIFICATE,
+    TOOL_DELETE_ENQUIRY,
+    TOOL_DELETE_RETAIL_PRODUCT,
 ]
 
 _ACCOUNTS_TOOLS = [
@@ -1038,6 +1143,9 @@ _ACCOUNTS_TOOLS = [
     TOOL_GET_FEE_DEFAULTERS,
     TOOL_GET_COMMERCIAL_OPERATIONS,
     TOOL_GET_STUDENT_DATABASE,  # names + fees only — enforced in role rules
+    # ---- Deletes the registry allows the accountant (2026-08-07) ----
+    TOOL_DELETE_FEE_STRUCTURE,
+    TOOL_DELETE_RETAIL_PRODUCT,
 ]
 
 _TRANSPORT_HEAD_TOOLS = [
@@ -1047,6 +1155,9 @@ _TRANSPORT_HEAD_TOOLS = [
 _RECEPTIONIST_TOOLS = [
     TOOL_GET_ENQUIRIES,
     TOOL_GET_ADMISSIONS_PIPELINE,
+    # Reception enters enquiries, so reception can remove one entered in error
+    # (2026-08-07). Blocked once it has become an application.
+    TOOL_DELETE_ENQUIRY,
 ]
 
 _CLASS_TEACHER_TOOLS = [

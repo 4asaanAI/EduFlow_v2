@@ -18,8 +18,10 @@ const T = {
   }])),
   // Epic 7 — find any person (students + staff) in one place. Owner + Principal
   // only; it lives in their tool sets and reads the existing endpoints.
-  'school-directory':      { id: 'school-directory',      name: 'School Directory',    subtitle: 'Find any person',       icon: Compass,       color: '#4f8ff7' },
-  'student-database':      { id: 'student-database',      name: 'Student Database',    subtitle: 'Manage & search',       icon: Users,         color: '#4f8ff7' },
+  // 'school-directory' was retired on 2026-08-07 (D-44 cluster D): it and
+  // 'student-database' listed the same students, one read-only. One screen now,
+  // under the Directory's name. Old links resolve through lib/toolAliases.
+  'student-database':      { id: 'student-database',      name: 'School Directory',    subtitle: 'Students, staff & strength', icon: Users,    color: '#4f8ff7' },
   'fee-tracker':           { id: 'fee-tracker',           name: 'Fee Tracker',         subtitle: 'Reminders & dues',      icon: IndianRupee,   color: '#34d399' },
   'attendance-recorder':   { id: 'attendance-recorder',   name: 'Attendance',          subtitle: 'Mark & track',          icon: ClipboardList, color: '#fb923c' },
   'certificate-generator': { id: 'certificate-generator', name: 'Certificates',        subtitle: 'TC, Bonafide, etc.',    icon: Award,         color: '#fbbf24' },
@@ -96,7 +98,6 @@ const T = {
 const TOOL_SETS = {
   // Admin sub-roles
   admin_principal: [
-    'school-directory',
     'student-database','fee-tracker','attendance-recorder','certificate-generator',
     'circular-sender','enquiry-register','document-scanner','smart-fee-defaulter',
     'parent-message','student-transfer','id-card-generator',
@@ -167,7 +168,6 @@ const SUB_ROLE_LABELS = {
 };
 
 const OWNER_TOOLS = [
-  'school-directory',
   'student-database','fee-tracker','attendance-recorder','certificate-generator',
   'circular-sender','enquiry-register','smart-fee-defaulter',
   'parent-message','id-card-generator','timetable-builder','asset-tracker','asset-custody',

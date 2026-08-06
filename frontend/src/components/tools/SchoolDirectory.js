@@ -454,3 +454,15 @@ function ErrorBanner({ text }) {
 }
 
 export { registerCode, designationOf, REGISTER_CODES };
+
+/**
+ * The staff finder, exported so the merged School Directory screen
+ * (`tools/StudentDatabase`) can host it as its Staff tab (D-44 cluster D, done
+ * 2026-08-07 on the owner's instruction).
+ *
+ * The school's owner reported "two views of the student database for some reason" —
+ * this screen and the Student Database both listed every student, one read-only and
+ * one with the buttons. There is now one screen, and this is the half of this file
+ * that had no equivalent over there.
+ */
+export { StaffTab };

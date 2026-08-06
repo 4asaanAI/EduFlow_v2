@@ -24,6 +24,7 @@ from services.staff_service import (
     create_staff as create_staff_service,
     update_staff as update_staff_service,
     set_enrolment_state as set_staff_enrolment_state_service,
+    delete_staff as delete_staff_service,
     StaffFieldValidationError,
     StaffValidationError,
     StaffNotFoundError,
@@ -590,41 +591,26 @@ async def update_staff(staff_id: str, request: Request):
 
 @router.delete("/{staff_id}")
 async def delete_staff(staff_id: str, request: Request):
+    """Take a colleague off the roll.
+
+    The body of this moved into `staff_service.delete_staff` on 2026-08-07 so the AI
+    `delete_staff` tool runs the identical path (parity gate F.6). Behaviour is
+    unchanged: the record is deactivated, the login is disabled, live sessions are
+    revoked, and what the assistant learned about them is erased.
+    """
     db = get_db()
     user = get_user(request)
     if not _can_manage(user):
         raise HTTPException(403, "Forbidden")
-    staff = await db.staff.find_one(_staff_query({"id": staff_id}), {"_id": 0})
-    if not staff:
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        await delete_staff_service(db, actor_ctx, {"staff_id": staff_id})
+    except StaffNotFoundError:
         raise HTTPException(404, "Staff not found")
-
-    update = {"is_active": False, "deactivated_at": datetime.now().isoformat(), "updated_at": datetime.now().isoformat()}
-    await db.staff.update_one(_staff_query({"id": staff_id}), {"$set": update})
-    if staff.get("user_id"):
-        await db.auth_users.update_one({"id": staff["user_id"]}, {"$set": {"is_active": False}})
-        await revoke_user_refresh_tokens(db, staff["user_id"], reason="staff_deactivated")
-        # R6.4 (XM5, DPDP §12): when a staff account is retired, erase the AI's
-        # learned memories AND skills for that user — the assistant must not retain
-        # what it learned about a person who has left. Best-effort, audited inside.
-        try:
-            from services.memory.store import erase_owner_memories
-            from services.memory.skills_store import erase_owner_skills
-            from services.memory.feedback_store import erase_owner_feedback
-
-            await erase_owner_memories(
-                db, school_id=get_school_id(), user_id=staff["user_id"], changed_by=user.get("id", "system")
-            )
-            await erase_owner_skills(
-                db, school_id=get_school_id(), user_id=staff["user_id"], changed_by=user.get("id", "system")
-            )
-            # R10.2 AC4: feedback is DPDP-erasable and joins the lifecycle-end path.
-            await erase_owner_feedback(
-                db, school_id=get_school_id(), user_id=staff["user_id"], changed_by=user.get("id", "system")
-            )
-        except Exception:
-            import logging
-            logging.getLogger(__name__).warning("ai_memory/skill/feedback erase on staff delete failed", exc_info=True)
-    await _audit(db, action="deactivate", staff_id=staff_id, user=user, changes={"is_active": {"previous": staff.get("is_active"), "new": False}})
+    except StaffAuthorizationError:
+        raise HTTPException(403, "Forbidden")
+    except StaffValidationError as e:
+        raise HTTPException(400, str(e))
     return {"success": True}
 
 

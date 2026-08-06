@@ -13,6 +13,7 @@ from __future__ import annotations
 import uuid
 
 from services.actor_context import ActorContext
+from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
 from tenant import scoped_query
 
@@ -145,3 +146,51 @@ async def reject_certificate(db, actor_ctx: ActorContext, params: dict) -> dict:
         )
     updated = await db.certificates.find_one(scoped_query({"id": cert_id}, branch_id=bid), {"_id": 0})
     return {"certificate": updated}
+
+
+async def delete_certificate(db, actor_ctx: ActorContext, params: dict) -> dict:
+    """Delete a certificate record. Owner or principal only.
+
+    Owner instruction 2026-08-07 — a certificate raised in error (wrong pupil, wrong
+    type, a duplicate request) could be rejected but never removed.
+
+    A certificate that has been **issued** is a document the family may be holding in
+    their hand: the serial number on that paper has to keep meaning something, so
+    issued certificates cannot be deleted. Requested and rejected ones can.
+
+    params: ``{cert_id}``
+    returns: ``{"deleted": True, "cert_id": <id>, "serial_number": <serial>}``
+    """
+    cert_id = params.get("cert_id")
+    if not cert_id:
+        raise CertificateValidationError("cert_id is required")
+    if not _is_owner_or_principal(actor_ctx):
+        raise CertificateStateError("Only the school's owner or principal may delete a certificate")
+    bid = actor_ctx.branch_id
+    cert = await db.certificates.find_one(scoped_query({"id": cert_id}, branch_id=bid), {"_id": 0})
+    if not cert:
+        raise CertificateNotFoundError(cert_id)
+    if cert.get("status") == "generated":
+        raise CertificateStateError(
+            "This certificate has already been issued and may be in the family's hands — "
+            "it cannot be deleted"
+        )
+    await db.certificates.delete_one(scoped_query({"id": cert_id}, branch_id=bid))
+    await write_audit_doc(
+        db,
+        {
+            "id": str(uuid.uuid4()),
+            "entity_type": "certificate",
+            "collection": "certificates",
+            "entity_id": cert_id,
+            "action": "certificate_delete",
+            "changed_by": actor_ctx.user_id,
+            "changed_by_role": actor_ctx.role,
+            "changes": {"deleted": cert},
+            "reason": params.get("reason"),
+            "created_at": actor_ctx.now_iso(),
+        },
+        school_id=actor_ctx.school_id,
+        branch_id=bid or "",
+    )
+    return {"deleted": True, "cert_id": cert_id, "serial_number": cert.get("serial_number")}

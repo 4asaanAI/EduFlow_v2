@@ -25,6 +25,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { getMyTokenUsage } from '../lib/api';
 import { helpToolsForUser } from '../lib/helpMenu';
 import TokenUpgradeModal from './TokenUpgradeModal';
+import { userInitials } from '../lib/initials';
 
 const ROLE_COLORS = { owner: '#fb923c', admin: '#4f8ff7', teacher: '#34d399', student: '#a78bfa', parent: '#22d3ee' };
 const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', teacher: 'Teacher', student: 'Student', parent: 'Guardian' };
@@ -124,7 +125,7 @@ export default function AccountMenu({ onOpenProfile, onOpenSettings, onSelectToo
           fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 700, color: '#fff',
           boxShadow: `0 2px 6px ${roleColor}44`,
         }}>
-          {currentUser.initials}
+          {userInitials(currentUser)}
         </span>
       </button>
 
