@@ -384,6 +384,44 @@ Totals derived from `Students-Fees-Structure-Report`, cross-checked before any b
 Real money, currently invisible to EduFlow. Includes the 4 passed-out and a spread across
 live classes.
 
+### K5. 🔴🔴 THE SCHOOL'S OWN REPORTS DISAGREE ABOUT WHAT HAS BEEN BILLED — STOP HERE
+**Found 2026-08-06 by cross-checking the new `Fees-Structure-Report-Summary` against the
+per-student report. This is the reason the ledger has NOT been built.**
+
+Comparing like with like (the same 9 fee heads, Transport excluded from both, because the
+class summary has no Transport block):
+
+| Population counted | Total billed |
+|---|---|
+| Every row in the per-student report (2,004) | **₹8,69,36,010** |
+| Only students who are in the student export (1,844) | **₹7,87,76,500** |
+| **The school's own class summary** | **₹8,02,21,070** |
+
+The school's figure sits BETWEEN the two, so it is counting *some* but not all of the
+students who are absent from the student export. **16 of the 18 classes disagree**; only
+`12th Commerce` and `12TH PASS OUT OLD DUE 25-26` tie exactly. The gap runs from ₹70,800
+(5th, 12th Science) to **₹12.5 lakh (11th Science)**.
+
+Depending on which population is correct, the school's total billed is anywhere between
+₹7.88 crore and ₹8.69 crore — **a spread of ₹81 lakh.**
+
+**Why this stops the build.** A ledger is not a report you can revise quietly later: once
+~11,000 fee lines exist, every receipt, every outstanding-dues list and every parent
+reminder is computed from them. Loading a figure that three of the school's own exports
+disagree about would put a number on a parent's receipt that the school's books do not
+recognise. The per-student report reconciles beautifully WITH ITSELF (2,003 of 2,004 rows
+satisfy fees+fine−discount−paid=balance); that is internal consistency, and it is not the
+same thing as agreeing with the class summary.
+
+**What is needed — a human decision, not a guess:**
+1. Which population should EduFlow bill: currently-enrolled students only, or everyone with
+   an outstanding balance including those who have left?
+2. Where does the school's own ₹8.02 crore come from — which students are in it?
+3. Confirmation of the treatment of the 136 students carrying ₹69.8 lakh who are not on the
+   platform at all.
+
+Until those are answered, no fee data should be written.
+
 ### K2. 🔴 Build from the LEDGER report, not from these totals
 The Google Drive folder "Vedmarg Data" holds `Ledger-Report-06-08-2026-01-03.xlsx` (3.9 MB),
 which is almost certainly the actual transaction list — individual payments with dates and
