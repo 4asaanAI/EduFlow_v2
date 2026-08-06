@@ -270,7 +270,7 @@ usefully carries name, contact, gender, class-teacher assignment (46) and status
 
 ## H. Office staff — on the platform NOWHERE, and not in any spreadsheet
 
-### H1. 🔴 10 office staff exist only in a photograph
+### H1. ✅ Office staff — 9 LOADED 2026-08-06 (2 still without contacts)
 From `aaryans_database/adminstaff.jpg` (added 2026-08-06). **None of these 10 is in the
 teachers export, and none is on the platform.** The teachers export covers TEACHING staff
 only, so the whole office is missing from EduFlow.
@@ -294,8 +294,25 @@ only, so the whole office is missing from EduFlow.
 These matter more than they look: the account office and reception map onto real EduFlow
 roles (`accountant`, `receptionist`) that gate what a person can see and do.
 
-**What is needed:** the full office list with contact details — ideally exported the same
-way the teachers were — plus confirmation that the photo is not truncated.
+**Loaded 2026-08-06** from the Employees screen Abhimanyu supplied, which carried email,
+mobile and employee code. **9 created**, staff 89 → 98. All 9 have both an email and a
+phone. Roles: 2 accountant, 3 management, 1 receptionist, 1 maintenance, 1 transport_head,
+1 support_staff.
+
+**The two sources reconcile rather than conflict:** `adminstaff.jpg` gives DESIGNATION
+("Care Taker", "Receptionist"), the Employees screen gives DEPARTMENT ("Admin Office").
+Both are stored — department from one, designation from the other. No guessing was needed.
+
+**Still open:**
+- **No logins were created.** 88 of 98 staff have a login; these 9 do not, because no
+  credentials were supplied. They appear in staff lists and can be assigned, but cannot
+  sign in. Deliberate — inventing passwords for real people is not ours to do.
+- **2 people from the photograph are NOT in the Employees screen and have no contacts:**
+  **SONU (Accountant)** and **SAMIYA ANSARI (Receptionist)**. Not created.
+- **CHAMAN SINGH (Transport)** appears in the Employees screen but NOT in the photograph —
+  so the photograph was indeed incomplete, as suspected.
+- `support_staff` was used for the Social Media Executive; the platform has no
+  social-media role. Harmless, but it is an approximation, not a fact.
 
 *(`more staff info.txt` in the same folder was checked and does NOT cover these — it is a
 subject-and-class teaching allocation from July, all teachers.)*
