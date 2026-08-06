@@ -15,6 +15,7 @@ from ai.redaction import _mask_phone  # canonical phone mask (first-2 + last-3)
 from school_identity import default_branch_id
 from tenant import add_school_id, get_school_id, scoped_filter, scoped_query
 from ai.fee_metrics import DEFAULTER_STATUSES, student_outstanding_from_txns
+from services import enrolment_status
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
 from services.actor_context import actor_ctx_from_user
@@ -456,6 +457,10 @@ async def tool_get_student_database(params: dict, user: dict, scope: dict = None
             "roll": s.get("roll_number", "N/A"),
             "admission_number": s.get("admission_number", "N/A"),
             "status": s.get("status", "active"),
+            # Owner request 10: the raw `status` word is the platform's vocabulary
+            # ("withdrawn"), not the school's, and it cannot tell an NSO student from
+            # one who has taken their TC. This says which of the three they are in.
+            "enrolment_state": enrolment_status.normalise(s),
         })
 
     elapsed = (time.time() - t0) * 1000
@@ -2228,6 +2233,163 @@ async def tool_query_student_record(params: dict, user: dict, scope: dict = None
     if user.get("role") == "owner" or _is_principal(user) or user.get("sub_category") == "transport_head":
         data["transport"] = {"route_zone_id": student.get("route_zone_id")}
     return _ok([data], 0, "Student record ready.")
+
+
+async def _resolve_note_subject(db, params: dict, bid: str | None) -> tuple:
+    """Work out who a note is about, from an id or a name.
+
+    Returns `(subject_type, subject_id, display_name)` or raises ValueError with a
+    sentence a person can read. Accepting a name matters: nobody asks Flo to "add a
+    note to student 8f3c-…", they ask her to add one about Riya in 7-B.
+    """
+    subject_type = str(params.get("subject_type") or "student").strip().lower()
+    if subject_type not in ("student", "staff"):
+        raise ValueError("A note can be about a student or a member of staff.")
+    collection = db.students if subject_type == "student" else db.staff
+
+    subject_id = str(params.get("subject_id") or "").strip()
+    if subject_id:
+        doc = await collection.find_one(scoped_query({"id": subject_id}, branch_id=bid), {"_id": 0})
+        if not doc:
+            raise ValueError("I could not find that person.")
+        return subject_type, subject_id, doc.get("name") or subject_id
+
+    name = str(params.get("name") or "").strip()
+    if not name:
+        raise ValueError("Tell me who the note is about — a name is enough.")
+    matches = await collection.find(
+        scoped_query({"name": {"$regex": re.escape(name), "$options": "i"}}, branch_id=bid), {"_id": 0}
+    ).to_list(10)
+    if not matches:
+        raise ValueError(f"I could not find anyone called {name}.")
+    if len(matches) > 1:
+        names = ", ".join(m.get("name", "") for m in matches[:5])
+        raise ValueError(
+            f"More than one person matches {name} ({names}). Tell me which one and I will add it."
+        )
+    return subject_type, matches[0]["id"], matches[0].get("name") or name
+
+
+async def tool_get_profile_notes(params: dict, user: dict, scope: dict = None) -> dict:
+    """YOUR OWN notes on one person. Never anybody else's.
+
+    Owner request 4 decision 3, 2026-08-06: notes are private to their author. The
+    owner and the principal may both keep notes about the same child and neither can
+    read the other's. That rule is enforced in the service, and this tool goes through
+    the same function the screen does, so Flo cannot become the way around it.
+    """
+    from services.profile_notes_service import list_notes, ProfileNoteValidationError
+
+    t0 = time.time()
+    db = get_db()
+    bid = _branch_id(user, scope)
+    try:
+        subject_type, subject_id, display = await _resolve_note_subject(db, params, bid)
+    except ValueError as e:
+        return _empty_result(str(e), (time.time() - t0) * 1000)
+
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        rows = await list_notes(db, actor_ctx, {"subject_type": subject_type, "subject_id": subject_id})
+    except ProfileNoteValidationError as e:
+        return _empty_result(str(e), (time.time() - t0) * 1000)
+
+    results = [{
+        "written_on": row.get("created_at", "")[:10],
+        "note": row.get("body", ""),
+        "pictures": len(row.get("attachments") or []),
+    } for row in rows]
+    elapsed = (time.time() - t0) * 1000
+    if not results:
+        return _empty_result(f"You have no notes about {display}.", elapsed)
+    return _ok(results, elapsed, f"Your notes about {display}. Only you can see these.")
+
+
+async def tool_add_profile_note(params: dict, user: dict, scope: dict = None) -> dict:
+    """Write a note about a student or a member of staff, as the person asking.
+
+    The note belongs to whoever asked for it — the same privacy rule as the screen,
+    for the same reason. Confirmed before it lands, like every other write.
+    """
+    from services.profile_notes_service import add_note, ProfileNoteValidationError
+
+    t0 = time.time()
+    db = get_db()
+    bid = _branch_id(user, scope)
+    try:
+        subject_type, subject_id, display = await _resolve_note_subject(db, params, bid)
+    except ValueError as e:
+        return _empty_result(str(e), (time.time() - t0) * 1000)
+
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        note = await add_note(db, actor_ctx, {
+            "subject_type": subject_type,
+            "subject_id": subject_id,
+            "body": params.get("note") or params.get("body"),
+            "attachments": params.get("attachments"),
+        })
+    except ProfileNoteValidationError as e:
+        return _empty_result(str(e), (time.time() - t0) * 1000)
+
+    return _ok(
+        [{"about": display, "note": note.get("body", ""), "written_on": note.get("created_at", "")[:10]}],
+        (time.time() - t0) * 1000,
+        f"Note saved on {display}'s profile. Only you can see it.",
+    )
+
+
+async def tool_get_enrolment_summary(params: dict, user: dict, scope: dict = None) -> dict:
+    """How many are on the roll, on the NSO list, and gone — students and staff.
+
+    Owner request 10, 2026-08-06. Without this, the honest answer to "how many
+    students does the school have" cannot be given: every other tool counts
+    `is_active`, so Flo says "1,801" when the truthful answer is "1,801 on the roll,
+    3 more on the NSO list who are still marked absent every morning". The two are
+    different numbers and the school uses both.
+    """
+    t0 = time.time()
+    db = get_db()
+    bid = _branch_id(user, scope)
+
+    async def _counts(collection):
+        out = {}
+        for view in (
+            enrolment_status.ON_ROLL_VIEW,
+            enrolment_status.NSO_VIEW,
+            enrolment_status.TC_ISSUED_VIEW,
+            enrolment_status.ON_REGISTER_VIEW,
+        ):
+            out[view] = await collection.count_documents(
+                scoped_query(dict(enrolment_status.view_filter(view)), branch_id=bid)
+            )
+        return out
+
+    students = await _counts(db.students)
+    staff = await _counts(db.staff)
+
+    rows = [
+        {
+            "group": "students",
+            "on_roll": students[enrolment_status.ON_ROLL_VIEW],
+            "nso": students[enrolment_status.NSO_VIEW],
+            "left_with_tc": students[enrolment_status.TC_ISSUED_VIEW],
+            "marked_on_the_daily_register": students[enrolment_status.ON_REGISTER_VIEW],
+        },
+        {
+            "group": "staff_and_teachers",
+            "on_roll": staff[enrolment_status.ON_ROLL_VIEW],
+            "nso": staff[enrolment_status.NSO_VIEW],
+            "left_with_tc": staff[enrolment_status.TC_ISSUED_VIEW],
+            "marked_on_the_daily_register": staff[enrolment_status.ON_REGISTER_VIEW],
+        },
+    ]
+    message = (
+        f"{students[enrolment_status.ON_ROLL_VIEW]} students on the roll, plus "
+        f"{students[enrolment_status.NSO_VIEW]} on the NSO list who have stopped attending "
+        "but are still marked on the daily register. Give both numbers; they are not the same thing."
+    )
+    return _ok(rows, (time.time() - t0) * 1000, message)
 
 
 async def tool_query_audit_log(params: dict, user: dict, scope: dict = None) -> dict:
@@ -4764,6 +4926,38 @@ TOOL_REGISTRY = {
         "params_schema": {
             "student_id": {"type": "string", "description": "Student ID"},
         },
+    },
+    "get_profile_notes": {
+        "fn": tool_get_profile_notes,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Your own private notes about a student or a member of staff. Nobody else's.",
+        "params_schema": {
+            "name": {"type": "string", "description": "Who the notes are about"},
+            "subject_id": {"type": "string", "description": "Optional exact student or staff ID"},
+            "subject_type": {"type": "string", "description": "'student' or 'staff' — defaults to student"},
+        },
+    },
+    "add_profile_note": {
+        "fn": tool_add_profile_note,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Write a private note on a student or staff profile. Only the author can read it back.",
+        "params_schema": {
+            "name": {"type": "string", "description": "Who the note is about"},
+            "note": {"type": "string", "description": "What to write"},
+            "subject_id": {"type": "string", "description": "Optional exact student or staff ID"},
+            "subject_type": {"type": "string", "description": "'student' or 'staff' — defaults to student"},
+        },
+        "requires_confirmation": True,
+        "dispatch_type": "write",
+    },
+    "get_enrolment_summary": {
+        "fn": tool_get_enrolment_summary,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "How many students and staff are on the roll, on the NSO list, and have left with a TC.",
+        "params_schema": {},
     },
     "query_audit_log": {
         "fn": tool_query_audit_log,

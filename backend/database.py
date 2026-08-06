@@ -390,6 +390,10 @@ async def _create_indexes():
     await db.exam_result_corrections.create_index([("result_id", 1), ("revision", -1)], unique=True)
     await db.audit_logs.create_index([("actor_id", 1), ("created_at", -1)])
     await db.audit_logs.create_index([("entity_type", 1), ("entity_id", 1)])
+    # Owner request 4 (2026-08-06): private notes on a profile. Every read is pinned
+    # to one author AND one subject, because a note is private to whoever wrote it,
+    # so that is the shape of the index.
+    await db.profile_notes.create_index([("schoolId", 1), ("author_id", 1), ("subject_type", 1), ("subject_id", 1), ("created_at", -1)])
     await db.lesson_plans.create_index([("class_id", 1), ("week", 1)])
     await db.sms_logs.create_index("created_at", expireAfterSeconds=7776000)
     # D-36: the notifications (user_id, read, created_at) index used to be declared a

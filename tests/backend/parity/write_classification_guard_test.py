@@ -67,6 +67,11 @@ READ_ONLY_ALLOWLIST = frozenset({
     "get_my_fees",
     "get_my_results",
     "get_my_school_hub",
+    # Owner request 10 (2026-08-06): counts only — the roll, the NSO list and the
+    # people who have left. It writes nothing.
+    "get_enrolment_summary",
+    # Owner request 4: reads back only the caller's OWN notes. Writes nothing.
+    "get_profile_notes",
     "get_school_pulse",
     "get_smart_alerts",
     "get_staff_list",

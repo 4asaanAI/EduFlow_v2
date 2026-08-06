@@ -12,6 +12,18 @@ FINANCIAL_COLLECTIONS = {"fee_transactions", "fee_structures", "payroll", "expen
 USER_MGMT_COLLECTIONS = {"users", "refresh_tokens"}
 PRINCIPAL_BLOCKED = FINANCIAL_COLLECTIONS | USER_MGMT_COLLECTIONS
 
+#: Admin sub-categories allowed to read the audit log.
+#:
+#: Owner request 10, 2026-08-06: the log is a record of who changed what in the
+#: school's data, and Aman asked that only the owner and the principal be able to
+#: read it. `it_tech` and `management` used to be here and were removed then; the
+#: menu side of the same rule lives in `frontend/src/lib/helpMenu.js`.
+#:
+#: None and "" stay: admin accounts created before sub-categories existed carry no
+#: sub-category at all, and dropping them would lock working accounts out of a
+#: screen they use today. That grandfathering pre-dates this change.
+AUDIT_READER_SUB_CATEGORIES = ("principal", None, "")
+
 
 def get_user(req: Request):
     return get_current_user(req)
@@ -31,13 +43,11 @@ async def list_audit_log(
 ):
     db = get_db()
     user = get_user(request)
-    # auth: owner OR admin (with sub_category principal/None/"") — narrower
-    # than require_owner_or_principal because legacy admins without a
-    # sub_category were grandfathered in; canonical helper would lock them out.
-    is_it_tech = user.get("role") == "admin" and user.get("sub_category") == "it_tech"
+    # auth: owner OR admin in AUDIT_READER_SUB_CATEGORIES — narrower than
+    # require_owner_or_principal because legacy admins without a sub_category were
+    # grandfathered in; the canonical helper would lock them out.
     if user.get("role") == "admin":
-        sub = user.get("sub_category", "")
-        if sub not in ("principal", "it_tech", "management", None, ""):
+        if user.get("sub_category", "") not in AUDIT_READER_SUB_CATEGORIES:
             raise HTTPException(403, "Forbidden")
     elif user.get("role") != "owner":
         raise HTTPException(403, "Forbidden")
@@ -52,13 +62,9 @@ async def list_audit_log(
     if collection:
         if is_principal and collection in PRINCIPAL_BLOCKED:
             raise HTTPException(403, "Forbidden")
-        if is_it_tech and collection in FINANCIAL_COLLECTIONS:
-            raise HTTPException(403, "Forbidden")
         query["collection"] = collection
     elif is_principal:
         query["collection"] = {"$nin": list(PRINCIPAL_BLOCKED)}
-    elif is_it_tech:
-        query["collection"] = {"$nin": list(FINANCIAL_COLLECTIONS)}
 
     if changed_by:
         query["changed_by"] = changed_by
@@ -102,14 +108,13 @@ async def get_record_history(
     user: dict = Depends(require_role("owner", "admin")),
 ):
     db = get_db()
-    if user.get("role") == "admin" and user.get("sub_category", "") not in ("principal", "it_tech", None, ""):
+    if user.get("role") == "admin" and user.get("sub_category", "") not in AUDIT_READER_SUB_CATEGORIES:
         raise HTTPException(403, "Forbidden")
     if page < 1:
         raise HTTPException(400, "page must be >= 1")
     if not 1 <= limit <= 100:
         raise HTTPException(400, "limit must be between 1 and 100")
     is_principal = user.get("role") == "admin" and user.get("sub_category") == "principal"
-    is_it_tech = user.get("role") == "admin" and user.get("sub_category") == "it_tech"
     query = {
         "$or": [
             {"entity_id": record_id},
@@ -120,9 +125,7 @@ async def get_record_history(
         query["collection"] = {"$nin": list(PRINCIPAL_BLOCKED)}
         if user.get("branch_id"):
             query["branch_id"] = user.get("branch_id")
-    elif is_it_tech:
-        query["collection"] = {"$nin": list(FINANCIAL_COLLECTIONS)}
-    scoped = scoped_filter(query, get_school_id())  # branch-scope: intentional — a principal is already pinned to their own branch_id a few lines above; owners and IT read the school
+    scoped = scoped_filter(query, get_school_id())  # branch-scope: intentional — a principal is already pinned to their own branch_id a few lines above; the owner reads the school
     skip = (page - 1) * limit
     async with TimedQuery(collection_name="audit_logs", operation="count_documents", query_shape="record_history"):
         total = await db.audit_logs.count_documents(scoped)

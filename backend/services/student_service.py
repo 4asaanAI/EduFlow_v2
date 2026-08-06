@@ -20,6 +20,7 @@ import uuid
 from typing import Optional
 
 from models.schemas import Guardian, Student
+from services import enrolment_status
 from services.actor_context import ActorContext
 from services.audit_service import write_audit_doc
 from services.txn_context import session_kwargs as _txn_session_kwargs
@@ -29,6 +30,9 @@ from tenant import scoped_filter
 UPDATABLE_FIELDS = {
     "name", "class_id", "admission_number", "roll_number", "dob", "gender",
     "blood_group", "height_cm", "weight_kg", "medical_notes", "emergency_contact",
+    # Owner request 11 (2026-08-06): where the child lives. Editable by the same
+    # people who may edit the rest of the profile.
+    "address",
     "house", "photo_url", "uses_transport", "bus_route", "route_zone_id", "status",
 }
 TRANSPORT_HEAD_FIELDS = {"route_zone_id", "uses_transport", "bus_route"}
@@ -146,6 +150,7 @@ async def create_student(
         height_cm=params.get("height_cm"),
         weight_kg=params.get("weight_kg"),
         medical_notes=params.get("medical_notes"),
+        address=params.get("address"),
     )
     student_doc = _serialize(student)
     await db.students.insert_one({**student_doc, "_id": student.id}, **_session_kwargs(session))
@@ -261,6 +266,10 @@ async def set_student_status(
     `update_student` with a single `status` field — NOT the DELETE route.
 
     params: ``{student_id, status}``
+
+    ⚠️  This writes the LABEL only. For anything that should change whether the student
+    is on the roll or on the daily register, call `set_enrolment_state` below instead —
+    writing `status` on its own leaves `is_active` behind and the two disagree.
     """
     status = params.get("status")
     if not status:
@@ -269,6 +278,91 @@ async def set_student_status(
         db, actor_ctx, {"student_id": params.get("student_id"), "status": status},
         session=session, idempotency_key=idempotency_key,
     )
+
+
+async def set_enrolment_state(
+    db,
+    actor_ctx: ActorContext,
+    params: dict,
+    *,
+    session=None,
+    idempotency_key: Optional[str] = None,
+) -> dict:
+    """Move a student between active, NSO and TC issued — and back.
+
+    params: ``{student_id, state, reason?}``
+    returns: ``{"student": <updated_doc>, "noop": bool, "previous_state": str}``
+
+    THE ONE WRITER of `is_active` on a student, and it always writes `status` in the
+    same breath. See services/enrolment_status.py for what the three states mean and
+    why NSO could not be expressed with `is_active` alone.
+
+    This is also the route back. Until it existed nothing in the product could set
+    `is_active` to True: it was absent from UPDATABLE_FIELDS, so a student marked
+    inactive — as one was during the demo on 2026-08-05 — was unreachable by every
+    endpoint and every AI tool, and the only visible symptom was a headcount one short
+    (owner request 9, 2026-08-06). Do not remove this without providing another way
+    back, or the same trap reopens.
+
+    `reason` is optional here on purpose. It is compulsory only for permanent erasure,
+    which destroys the record and lives in its own owner-only route. Moving a student
+    between these three is reversible, and demanding a paragraph for a reversible act
+    is how people learn to type "x" into the box.
+    """
+    student_id = params.get("student_id")
+    if not student_id:
+        raise StudentValidationError("student_id is required")
+
+    state = str(params.get("state") or "").strip().lower()
+    if state not in enrolment_status.SETTABLE_STATES:
+        raise StudentValidationError(
+            "state must be one of: " + ", ".join(enrolment_status.SETTABLE_STATES)
+        )
+
+    school_id = actor_ctx.school_id
+    existing = await db.students.find_one(
+        scoped_filter({"id": student_id}, school_id), {"_id": 0}
+    )
+    if not existing:
+        raise StudentNotFoundError("Student not found")
+
+    previous_state = enrolment_status.normalise(existing)
+    update = enrolment_status.fields_for(state)
+    changes = {
+        key: {"previous": existing.get(key), "new": value}
+        for key, value in update.items()
+        if existing.get(key) != value
+    }
+    if not changes:
+        return {"student": existing, "noop": True, "previous_state": previous_state}
+
+    update["updated_at"] = actor_ctx.now_iso()
+    # A leaving date belongs to the TC, not to NSO — an NSO student has not left, they
+    # have stopped turning up. Clearing it on the way back matters: without that, a
+    # restored student carries a withdrawal date that reports would still believe.
+    if state == enrolment_status.TC_ISSUED:
+        update["withdrawal_date"] = actor_ctx.now_iso()[:10]
+    elif state == enrolment_status.ACTIVE:
+        update["withdrawal_date"] = None
+
+    await db.students.update_one(
+        scoped_filter({"id": student_id}, school_id), {"$set": update},
+        **_session_kwargs(session),
+    )
+    await _write_student_audit(
+        db, actor_ctx,
+        # A distinct action so the log answers "who put this child back on the roll,
+        # and when" without anyone reading a diff to work it out.
+        action=f"enrolment_{state}",
+        student_id=student_id,
+        changes={**changes, "previous_state": {"previous": previous_state, "new": state}},
+        reason=(params.get("reason") or "").strip() or None,
+        session=session,
+    )
+    updated = await db.students.find_one(
+        scoped_filter({"id": student_id}, school_id), {"_id": 0}
+    )
+    return {"student": updated, "noop": False, "previous_state": previous_state}
 
 
 async def upsert_guardians(

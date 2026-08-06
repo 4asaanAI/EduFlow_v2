@@ -27,6 +27,12 @@ scripts/
 *.docx
 *.txt
 
+# The Devanagari font's licence must travel WITH the font. `*.txt` above would have
+# stripped it out of the deploy, leaving the .ttf on the server with no licence
+# beside it. SIL OFL 1.1 permits redistribution and embedding, and requires the
+# licence to be included. Keep this line whenever the font is shipped.
+!backend/assets/fonts/OFL.txt
+
 # ── Local uploads (S3 in prod) ───────────────────────────────────────────────
 backend/uploads/
 

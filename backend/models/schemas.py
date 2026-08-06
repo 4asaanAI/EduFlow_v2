@@ -66,6 +66,11 @@ class Student(SchoolScopedModel):
     weight_kg: Optional[float] = None
     medical_notes: Optional[str] = None
     emergency_contact: Optional[str] = None
+    # Owner request 11 (2026-08-06): the school had nowhere to record where a child
+    # lives, which is the first thing anyone needs when a family stops answering the
+    # phone. One free-text field on purpose — Indian addresses do not fit tidily into
+    # line1/line2/postcode, and a form that fights the address is a form nobody fills in.
+    address: Optional[str] = None
     house: Optional[str] = None
     photo_url: Optional[str] = None
     admission_date: str = Field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d"))
@@ -86,6 +91,8 @@ class Staff(SchoolScopedModel):
     employee_id: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
+    # Owner request 11 (2026-08-06) — same field, same reason, on the staff side.
+    address: Optional[str] = None
     photo_url: Optional[str] = None
     qualification: Optional[str] = None
     specialization: Optional[str] = None
@@ -260,6 +267,7 @@ class StudentCreate(SchoolScopedModel):
     height_cm: Optional[float] = None
     weight_kg: Optional[float] = None
     medical_notes: Optional[str] = None
+    address: Optional[str] = None
     phone: Optional[str] = None
     guardian_name: Optional[str] = None
     guardian_phone: Optional[str] = None

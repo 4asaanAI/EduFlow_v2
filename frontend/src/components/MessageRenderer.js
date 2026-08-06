@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import DOMPurify from 'dompurify';
 import { useTheme } from '../contexts/ThemeContext';
-import { ThumbsUp, ThumbsDown, Download, FileText } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, Download, FileText, Pencil } from 'lucide-react';
 import BotMascot from './ui/BotMascot';
-import { emitFeedback, getGeneratedFileLink } from '../lib/api';
+import DocumentEditor from './ui/DocumentEditor';
+import { emitFeedback, getGeneratedFileLink, getGeneratedFileContent } from '../lib/api';
 import { useColumnSort, SortableHeaderRow } from './tools/ToolPage';
 
 /**
@@ -34,6 +35,29 @@ export function GeneratedFile({ block }) {
   // 'loading' → fetching that link.
   // 'error' → the file could not be fetched (missing, no access, expired legacy block).
   const [status, setStatus] = useState(fileId ? 'ready' : 'error');
+
+  // The edit panel (owner request, 2026-08-07). Kept separate from `status` because
+  // opening the editor and preparing a download are two independent things and one
+  // failing must not disable the other.
+  const [editing, setEditing] = useState(null);
+  const [editError, setEditError] = useState('');
+  const [editLoading, setEditLoading] = useState(false);
+
+  async function handleEdit() {
+    if (!fileId || editLoading) return;
+    setEditLoading(true);
+    setEditError('');
+    try {
+      const body = await getGeneratedFileContent(fileId);
+      setEditing(String(body?.data?.content_html || ''));
+    } catch (err) {
+      // A document made before editing existed answers 409 with its own sentence.
+      // Passing that through matters: "this old file cannot be edited" and "something
+      // broke" call for different things from the person reading it.
+      setEditError(err?.message || 'This document could not be opened for editing.');
+    }
+    setEditLoading(false);
+  }
 
   async function handleDownload() {
     if (!fileId || status === 'loading') return;
@@ -78,6 +102,24 @@ export function GeneratedFile({ block }) {
           This link has expired. Ask for the file again.
         </span>
       ) : (
+        <>
+        <button
+          type="button"
+          onClick={handleEdit}
+          disabled={editLoading}
+          data-testid="generated-file-edit"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '8px 14px', borderRadius: 'var(--radius-md, 10px)',
+            border: '1px solid var(--color-border)', background: 'transparent',
+            color: 'var(--color-text-primary)', fontSize: 13, fontWeight: 600,
+            cursor: editLoading ? 'default' : 'pointer', flexShrink: 0,
+            opacity: editLoading ? 0.7 : 1,
+          }}
+        >
+          <Pencil size={14} aria-hidden="true" />
+          {editLoading ? 'Opening…' : 'Read and edit'}
+        </button>
         <button
           type="button"
           onClick={handleDownload}
@@ -94,6 +136,24 @@ export function GeneratedFile({ block }) {
           <Download size={14} aria-hidden="true" />
           {status === 'loading' ? 'Preparing…' : 'Download'}
         </button>
+        </>
+      )}
+
+      {editError && (
+        <div
+          data-testid="generated-file-edit-error"
+          style={{ flexBasis: '100%', fontSize: 12, color: 'var(--color-text-muted)' }}
+        >
+          {editError}
+        </div>
+      )}
+
+      {editing !== null && (
+        <DocumentEditor
+          fileName={name}
+          html={editing}
+          onClose={() => setEditing(null)}
+        />
       )}
     </div>
   );
@@ -110,7 +170,13 @@ export function GeneratedFile({ block }) {
 // set the renderer emits (no script/iframe/img/span), keeps the href/target/rel
 // that links need, and constrains link protocols.
 const MARKDOWN_SANITIZE_CONFIG = {
-  ALLOWED_TAGS: ['h2', 'h3', 'h4', 'p', 'ul', 'ol', 'li', 'hr', 'br', 'strong',
+  // `div` earns its place here for ONE reason: every table Flo writes is wrapped in
+  // a bare <div> so the table can scroll sideways inside its own box (owner request
+  // 8, 2026-08-06). Without the wrapper the nearest scrolling ancestor is the reply
+  // itself, so dragging a wide table dragged the whole answer with it. A <div> with
+  // no attributes is inert — class, style and every event attribute are still
+  // stripped below, so this does not widen what AI-authored content can do.
+  ALLOWED_TAGS: ['div', 'h2', 'h3', 'h4', 'p', 'ul', 'ol', 'li', 'hr', 'br', 'strong',
     'em', 'code', 'pre', 'a', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
   ALLOWED_ATTR: ['href', 'target', 'rel'],
   ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|tel:|\/)/i,
@@ -159,7 +225,11 @@ function renderTable(lines) {
   const rows = lines.map(l => l.split('|').filter((_, i, a) => i > 0 && i < a.length - 1).map(c => c.trim()));
   const headers = rows[0] || [];
   const bodyRows = rows.filter((_, i) => i > 1);
-  let html = '<table><thead><tr>';
+  // The wrapper is what scrolls, not the reply. See MARKDOWN_SANITIZE_CONFIG above
+  // and the `.prose-chat > div:has(> table)` rule in index.css. It must stay a bare
+  // <div> with no attributes — the sanitizer strips class and style, so the CSS finds
+  // it structurally.
+  let html = '<div><table><thead><tr>';
   headers.forEach(h => { html += `<th>${h}</th>`; });
   html += '</tr></thead><tbody>';
   bodyRows.forEach((row) => {
@@ -167,7 +237,7 @@ function renderTable(lines) {
     row.forEach(cell => { html += `<td>${processInline(cell)}</td>`; });
     html += '</tr>';
   });
-  html += '</tbody></table>';
+  html += '</tbody></table></div>';
   return html;
 }
 
@@ -405,15 +475,25 @@ function ToolTraceSummary({ calls, recalledMemories, isDark }) {
       }}>
         {summaryLabel}
       </summary>
-      <div style={{ borderTop: `1px solid ${border}`, padding: '8px 11px', display: 'grid', gap: 6 }}>
+      <div style={{
+        borderTop: `1px solid ${border}`, padding: '8px 11px', display: 'grid', gap: 6,
+        // Long enough to read several notes in full, short enough that the panel
+        // cannot push the rest of the conversation off the screen.
+        maxHeight: 260, overflowY: 'auto',
+      }}>
         {memories.length > 0 && (
-          <div data-testid="recalled-memories" style={{ display: 'grid', gap: 4 }}>
+          <div data-testid="recalled-memories" style={{ display: 'grid', gap: 6 }}>
             {memories.map((m, i) => (
               <div key={`mem-${m.id || i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                <span style={{ color: '#a78bfa', fontSize: 11, flexShrink: 0 }}>🧠 remembered</span>
+                <span style={{ color: '#a78bfa', fontSize: 11, flexShrink: 0, alignSelf: 'flex-start' }}>🧠 remembered</span>
+                {/* Owner request 18 (2026-08-06): this was clamped to one line with an
+                    ellipsis, so every note was cut off mid-sentence and there was no
+                    way to read the rest — the panel exists precisely to show what Flo
+                    used, and a truncated note does not show it. It wraps now, and the
+                    panel body scrolls if the list gets long. */}
                 <span style={{
-                  minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  color: text, fontSize: 11,
+                  minWidth: 0, color: text, fontSize: 11, lineHeight: 1.5,
+                  overflowWrap: 'anywhere',
                 }}>
                   {m.text}
                 </span>
@@ -509,10 +589,20 @@ export default function MessageRenderer({ message, isStreaming, onActionButton }
   const markdownFn = parseMarkdownText(isDark);
 
   return (
-    <div data-testid="assistant-message" style={{ display: 'flex', gap: 14, marginBottom: 24, alignItems: 'flex-start' }}>
+    <div data-testid="assistant-message" className="assistant-row" style={{ display: 'flex', gap: 14, marginBottom: 24, alignItems: 'flex-start' }}>
       {/* Flo's face, not a generic sparkle (Abhimanyu, 2026-07-22). The assistant
-          has a name and a face; a star said "some AI wrote this". */}
-      <div style={{
+          has a name and a face; a star said "some AI wrote this".
+
+          HIDDEN ON PHONES (owner request 7, 2026-08-06). Repeated on every single
+          reply, the 28px face plus its 14px gutter took 42px off a ~390px screen for
+          the length of the whole conversation — and it says the same thing every
+          time, on a screen where only Flo and you are talking. It stays on desktop,
+          where the width is there and it keeps a long thread readable.
+
+          Hidden with CSS rather than removed from the tree on purpose: the element
+          and its test id survive at every width, so the avatar contract test still
+          has something to assert against. */}
+      <div className="assistant-avatar" style={{
         width: 28, height: 28, borderRadius: 8, flexShrink: 0,
         background: 'linear-gradient(135deg, rgba(79,143,247,0.12), rgba(167,139,250,0.12))',
         display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',

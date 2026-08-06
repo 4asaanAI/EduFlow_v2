@@ -49,7 +49,7 @@ jest.mock('../../lib/api', () => {
 import Header from '../Header';
 import AllNotifications from '../tools/AllNotifications';
 import AllChats, { MAX_BULK_DELETE } from '../tools/AllChats';
-import { PAGE_SIZES } from '../../hooks/useTablePrefs';
+import { BULK_SAFE_PAGE_SIZES } from '../../hooks/useTablePrefs';
 import {
   bulkDeleteConversations,
   deleteConversation,
@@ -581,8 +581,11 @@ describe('6.5 every chat is reachable and clearable', () => {
 
   test('a selection can never exceed what the server accepts', () => {
     // Selection is page-only, so the largest possible selection is the largest
-    // page size. This is the test that notices if either number moves.
-    expect(Math.max(...PAGE_SIZES)).toBeLessThanOrEqual(MAX_BULK_DELETE);
+    // page size THIS table offers. This is the test that notices if either number
+    // moves — and it is what caught the 2026-08-06 change that added 250, 500 and
+    // All to the shared menu for the student list. This page takes the bulk-safe
+    // menu instead, precisely because its rows can be ticked and deleted.
+    expect(Math.max(...BULK_SAFE_PAGE_SIZES)).toBeLessThanOrEqual(MAX_BULK_DELETE);
   });
 
   test('remembers its page size under its own key', async () => {

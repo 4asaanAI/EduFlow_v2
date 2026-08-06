@@ -50,6 +50,35 @@ SCHOOL_IDENTITY: Dict[str, str] = {
     "website": "www.theaaryans.in",
 }
 
+# ── The school's stationery, transcribed word for word ──────────────────────────
+#
+# Added 2026-08-07 after Abhimanyu compared a generated PDF against the school's own
+# printed enquiry form and found the letterhead did not match it: the name was set as
+# "The Aaryans" rather than "THE AARYANS", and the footer had been reworded.
+#
+# THIS IS NOT A SECOND SOURCE OF TRUTH FOR THE ADDRESS, which is the mistake D-15 was
+# raised for. `address`, `phone`, `email` and `website` above remain the values the
+# product uses and displays. These strings are how those same details are PRINTED on
+# the school's stationery, punctuation and all, and they exist so a document that is
+# meant to look like the school's own paper actually does.
+#
+# Transcribed character by character from the printed enquiry form held in
+# `aaryans_database/`. If the school reprints its stationery, retranscribe from the
+# new form rather than editing these by eye.
+LETTERHEAD = {
+    "name": "THE AARYANS",
+    "tagline": "A Senior Secondary Co-educational School Affiliated to CBSE, New Delhi",
+    "affiliation_line": "Affiliation No. 2133014",
+    "footer_address": (
+        "Prem Nagar, Joya, Delhi-Moradabad Highway, Distt. Amroha-244222 (U.P.), "
+        "Contact # +91-8126965555, 8126968888"
+    ),
+    "footer_contact": "Email ID : theaaryansjoya@gmail.com, Web : www.theaaryans.in",
+    # The pale repeated wordmark printed across the whole page of the form.
+    "watermark_text": "THE AARYANS",
+}
+
+
 # Environment may still override the four fields that were configurable before this
 # file existed, so a second school deploying this code is not stuck with The Aaryans'
 # details. The rest are not env-configurable: adding ten more env vars would recreate

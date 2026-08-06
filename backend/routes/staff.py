@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
+import re
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 
 from database import get_db
-from middleware.auth import get_current_user, require_owner_or_principal, require_role
+from middleware.auth import get_current_user, require_owner, require_owner_or_principal, require_role
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification
 from services.actor_context import actor_ctx_from_user
@@ -16,15 +18,18 @@ from services.leave_service import (
     LeaveNotFoundError,
     LeaveConflictError,
 )
+from services import enrolment_status
 from services.staff_service import (
     create_staff as create_staff_service,
     update_staff as update_staff_service,
+    set_enrolment_state as set_staff_enrolment_state_service,
     StaffFieldValidationError,
     StaffValidationError,
     StaffNotFoundError,
     StaffAuthorizationError,
     LinkedUserNotFoundError,
 )
+from services.s3_storage import delete_object
 from tenant import get_school_id, scoped_filter, scoped_query
 from services.auth_tokens import revoke_user_refresh_tokens
 
@@ -59,6 +64,8 @@ PROFILE_FIELDS = {
     "department",
     "join_date",
     "salary",
+    # Owner request 11 (2026-08-06) — kept in lockstep with staff_service.PROFILE_FIELDS.
+    "address",
     "role",
     "sub_category",
 }
@@ -155,8 +162,8 @@ async def _notify_reviewers(db, *, message: str, source_id: str) -> None:
         logging.getLogger(__name__).warning("profile change request notify failed", exc_info=True)
 
 
-async def _audit(db, *, action: str, staff_id: str, user: dict, changes: dict | None = None):
-    await write_audit_doc(db, {
+async def _audit(db, *, action: str, staff_id: str, user: dict, changes: dict | None = None, reason: str | None = None):
+    doc = {
         "_id": str(uuid.uuid4()),
         "id": str(uuid.uuid4()),
         "schoolId": get_school_id(),
@@ -167,23 +174,113 @@ async def _audit(db, *, action: str, staff_id: str, user: dict, changes: dict | 
         "changed_by_role": user.get("role"),
         "changes": changes or {},
         "created_at": datetime.now().isoformat(),
-    }, school_id=get_school_id(), branch_id=user.get("branch_id"))
+    }
+    if reason:
+        doc["reason"] = reason
+    await write_audit_doc(db, doc, school_id=get_school_id(), branch_id=user.get("branch_id"))
 
 
-@router.get("/")
-async def list_staff(request: Request, page: int = 1, limit: int = 20, sort: str = "name", include_inactive: bool = False):
+def _may_see_off_roll(user: dict) -> bool:
+    """Who may look at staff and teachers who are no longer on the roll.
+
+    Owner request 10, 2026-08-06: the same pair as on the student side. The list is
+    how an NSO or TC-issued colleague is found in order to be put back or removed
+    for good, and both of those are head-of-school decisions.
+    """
+    return user.get("role") == "owner" or (
+        user.get("role") == "admin" and user.get("sub_category") == "principal"
+    )
+
+
+@router.get("/enrolment-summary")
+async def staff_enrolment_summary(request: Request):
+    """How many staff are on the roll, how many are NSO, how many have left.
+
+    Owner request 10, 2026-08-06. The staff twin of the student summary, and the
+    numbers the recycle-bin screen puts at the top of each tab.
+    """
     db = get_db()
     user = get_user(request)
     if not _can_manage(user):
         raise HTTPException(403, "Forbidden")
+    counts = {}
+    for view in (
+        enrolment_status.ON_ROLL_VIEW,
+        enrolment_status.NSO_VIEW,
+        enrolment_status.TC_ISSUED_VIEW,
+        enrolment_status.ON_REGISTER_VIEW,
+        enrolment_status.OFF_ROLL_VIEW,
+    ):
+        counts[view] = await db.staff.count_documents(
+            _staff_query(dict(enrolment_status.view_filter(view)))
+        )
+    return {
+        "success": True,
+        "data": {
+            "on_roll": counts[enrolment_status.ON_ROLL_VIEW],
+            "nso": counts[enrolment_status.NSO_VIEW],
+            "tc_issued": counts[enrolment_status.TC_ISSUED_VIEW],
+            "on_register": counts[enrolment_status.ON_REGISTER_VIEW],
+            "off_roll": counts[enrolment_status.OFF_ROLL_VIEW],
+        },
+        "meta": {"labels": enrolment_status.STATE_LABELS},
+    }
+
+
+@router.get("/")
+async def list_staff(
+    request: Request,
+    page: int = 1,
+    limit: int = 20,
+    sort: str = "name",
+    search: str = None,
+    include_inactive: bool = False,
+    enrolment_state: str = None,
+):
+    db = get_db()
+    user = get_user(request)
+    if not _can_manage(user):
+        raise HTTPException(403, "Forbidden")
+    if include_inactive and not _may_see_off_roll(user):
+        raise HTTPException(403, "Forbidden")
+    if enrolment_state:
+        if enrolment_state not in enrolment_status.LIST_VIEWS:
+            raise HTTPException(400, "enrolment_state must be one of: " + ", ".join(enrolment_status.LIST_VIEWS))
+        # Same rule as the student list: any view that can show someone off the roll
+        # is the same privilege as `include_inactive`. `on_register` is exempt because
+        # an NSO colleague still has to be markable on the staff attendance screen.
+        if enrolment_state not in (enrolment_status.ON_ROLL_VIEW, enrolment_status.ON_REGISTER_VIEW):
+            if not _may_see_off_roll(user):
+                raise HTTPException(403, "Forbidden")
 
     page = max(1, page)
     per_page = max(1, min(limit, 500))
-    query = {} if include_inactive else {"is_active": True}
+    if enrolment_state:
+        query = dict(enrolment_status.view_filter(enrolment_state))
+    else:
+        query = {} if include_inactive else {"is_active": True}
+    if search:
+        safe_search = re.escape(search)
+        name_or_id = [
+            {"name": {"$regex": safe_search, "$options": "i"}},
+            {"employee_id": {"$regex": safe_search, "$options": "i"}},
+            {"designation": {"$regex": safe_search, "$options": "i"}},
+            {"department": {"$regex": safe_search, "$options": "i"}},
+        ]
+        # "On the register" is itself an `$or`, so the two have to be `$and`ed or the
+        # state filter is thrown away and the search covers everyone.
+        if "$or" in query:
+            query = {"$and": [{"$or": query.pop("$or")}, {"$or": name_or_id}], **query}
+        else:
+            query["$or"] = name_or_id
     sort_field, sort_dir = SORT_FIELDS.get(sort, SORT_FIELDS["name"])
     scoped = _staff_query(query)
     staff = await db.staff.find(scoped, {"_id": 0, "salary": 0}).sort(sort_field, sort_dir).skip((page - 1) * per_page).limit(per_page).to_list(per_page)
     total = await db.staff.count_documents(scoped)
+    for member in staff:
+        state = enrolment_status.normalise(member)
+        member["enrolment_state"] = state
+        member["enrolment_label"] = enrolment_status.STATE_LABELS.get(state, state)
     return {"success": True, "data": staff, "meta": {"page": page, "per_page": per_page, "total": total, "sort": sort}}
 
 
@@ -526,6 +623,123 @@ async def delete_staff(staff_id: str, request: Request):
             logging.getLogger(__name__).warning("ai_memory/skill/feedback erase on staff delete failed", exc_info=True)
     await _audit(db, action="deactivate", staff_id=staff_id, user=user, changes={"is_active": {"previous": staff.get("is_active"), "new": False}})
     return {"success": True}
+
+
+@router.post("/{staff_id}/enrolment")
+async def set_staff_enrolment(staff_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
+    """Move a staff member or teacher between on the roll, NSO and TC issued.
+
+    Owner request 10 decision 2, 2026-08-06: the three states are not students-only.
+    This is the way back as much as the way out — before it, `DELETE /api/staff/{id}`
+    switched a colleague off and nothing in the product could switch them on again,
+    the same trap that lost a student during the 2026-08-05 demo.
+
+    Owner or principal only, matching the student endpoint.
+    """
+    db = get_db()
+    body = await request.json()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await set_staff_enrolment_state_service(db, actor_ctx, {**body, "staff_id": staff_id})
+    except StaffNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except StaffAuthorizationError as e:
+        raise HTTPException(403, str(e))
+    except StaffValidationError as e:
+        raise HTTPException(400, str(e))
+    state = enrolment_status.normalise(result["staff"])
+    return {
+        "success": True,
+        "data": _public_staff(result["staff"]),
+        "meta": {
+            "state": state,
+            "previous_state": result["previous_state"],
+            "noop": result["noop"],
+            "label": enrolment_status.STATE_LABELS.get(state, state),
+        },
+    }
+
+
+@router.post("/{staff_id}/erase")
+async def erase_staff(staff_id: str, request: Request, reason: str = Form(default=None), user: dict = Depends(require_owner)):
+    """Destroy a staff record for good. Owner only, and the reason is compulsory.
+
+    Owner request 10, 2026-08-06. The staff twin of `POST /api/students/{id}/erase`.
+    This is the bottom of the recycle bin: there is no way back from here, which is
+    exactly why a written reason of at least ten characters is demanded before
+    anything is touched, and why the whole record is copied into the audit log first.
+
+    Salary records are left alone on purpose. They are a financial record the school
+    has to keep, they store no name of their own (the payslip screen reads the name
+    off the staff record at the time it renders), and once this record is gone the
+    `staff_id` on them is an orphan identifier that names nobody.
+    """
+    db = get_db()
+    if not reason or len(reason.strip()) < 10:
+        raise HTTPException(400, "A detailed erasure reason is required")
+
+    staff = await db.staff.find_one(_staff_query({"id": staff_id}), {"_id": 0})
+    if not staff:
+        raise HTTPException(404, "Staff not found")
+    if staff.get("role") == "owner":
+        raise HTTPException(403, "The owner's own record cannot be erased")
+
+    token = hashlib.sha256(f"{staff_id}:{datetime.now().isoformat()}".encode("utf-8")).hexdigest()
+    await _audit(
+        db,
+        action="dpdp_erase",
+        staff_id=staff_id,
+        user=user,
+        changes={"erasure_token": token, "staff_snapshot": staff},
+        reason=reason.strip(),
+    )
+
+    await db.staff_attendance.update_many(
+        _staff_query({"staff_id": staff_id}),
+        {"$set": {"staff_id": token, "staff_name": None, "erased_staff_ref": token}},
+    )
+    await db.leave_requests.delete_many(_staff_query({"staff_id": staff_id}))
+
+    uploads = await db.file_uploads.find(
+        scoped_filter({"linked_table": "staff", "linked_id": staff_id}, get_school_id()), {"_id": 0}
+    ).to_list(100)  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+    for upload in uploads:
+        if upload.get("s3_key"):
+            delete_object(upload["s3_key"])
+    await db.file_uploads.delete_many(
+        scoped_filter({"linked_table": "staff", "linked_id": staff_id}, get_school_id())
+    )  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+
+    # Owner request 4: private notes about this person go with the person.
+    try:
+        from services.profile_notes_service import purge_subject_notes
+
+        await purge_subject_notes(db, get_school_id(), "staff", staff_id)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning("profile note purge on staff erase failed", exc_info=True)
+
+    user_id = staff.get("user_id")
+    await db.staff.delete_one(_staff_query({"id": staff_id}))
+
+    if user_id:
+        await revoke_user_refresh_tokens(db, user_id, reason="staff_erased")
+        await db.auth_users.delete_one({"id": user_id})
+        # DPDP §12, same rule as the staff deactivate path: what the assistant
+        # learned about a person goes when the person's record does.
+        try:
+            from services.memory.store import erase_owner_memories
+            from services.memory.skills_store import erase_owner_skills
+            from services.memory.feedback_store import erase_owner_feedback
+
+            await erase_owner_memories(db, school_id=get_school_id(), user_id=user_id, changed_by=user.get("id", "system"))
+            await erase_owner_skills(db, school_id=get_school_id(), user_id=user_id, changed_by=user.get("id", "system"))
+            await erase_owner_feedback(db, school_id=get_school_id(), user_id=user_id, changed_by=user.get("id", "system"))
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning("ai_memory/skill/feedback erase on staff erase failed", exc_info=True)
+
+    return {"success": True, "data": {"erasure_token": token}}
 
 
 @router.get("/{staff_id}/leave-requests")

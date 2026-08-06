@@ -34,6 +34,8 @@ logger = logging.getLogger(__name__)
 PROFILE_FIELDS = {
     "name", "staff_type", "employee_id", "phone", "email", "photo_url",
     "qualification", "specialization", "department", "join_date", "salary",
+    # Owner request 11 (2026-08-06) — where this person lives.
+    "address",
     "role", "sub_category",
 }
 LEAVE_BALANCE_FIELDS = {"casual_leave_balance", "medical_leave_balance", "earned_leave_balance"}
@@ -219,9 +221,9 @@ def _default_username(body: dict) -> str:
 
 async def _write_staff_audit(
     db, actor_ctx: ActorContext, *, action: str, staff_id: str,
-    changes: Optional[dict] = None, session=None,
+    changes: Optional[dict] = None, reason: Optional[str] = None, session=None,
 ) -> None:
-    await write_audit_doc(db, {
+    doc = {
         "_id": str(uuid.uuid4()),
         "id": str(uuid.uuid4()),
         "schoolId": actor_ctx.school_id,
@@ -232,7 +234,10 @@ async def _write_staff_audit(
         "changed_by_role": actor_ctx.role,
         "changes": changes or {},
         "created_at": actor_ctx.now_iso(),
-    }, school_id=actor_ctx.school_id, branch_id=actor_ctx.branch_id)
+    }
+    if reason:
+        doc["reason"] = reason
+    await write_audit_doc(db, doc, school_id=actor_ctx.school_id, branch_id=actor_ctx.branch_id)
 
 
 async def _assert_login_is_linkable(db, actor_ctx: ActorContext, login: dict) -> None:
@@ -352,6 +357,7 @@ async def create_staff(
         employee_id=params.get("employee_id"),
         phone=params.get("phone"),
         email=params.get("email"),
+        address=params.get("address"),
         qualification=params.get("qualification"),
         specialization=params.get("specialization"),
         department=params.get("department"),
@@ -472,3 +478,104 @@ async def update_staff(
     await _write_staff_audit(db, actor_ctx, action="update", staff_id=staff_id, changes=changes, session=session)
     updated = await db.staff.find_one(scoped_filter({"id": staff_id}, school_id), {"_id": 0})
     return {"staff": updated, "noop": False}
+
+
+async def set_enrolment_state(
+    db,
+    actor_ctx: ActorContext,
+    params: dict,
+    *,
+    session=None,
+    idempotency_key: Optional[str] = None,
+) -> dict:
+    """Move a staff member or teacher between on the roll, NSO and TC issued.
+
+    params: ``{staff_id, state, reason?}``
+    returns: ``{"staff": <updated_doc>, "noop": bool, "previous_state": str}``
+
+    THE ONE WRITER of `is_active` on a staff record outside `DELETE /api/staff/{id}`,
+    and it always writes `status` in the same breath. See
+    `services/enrolment_status.py` for what the three states mean.
+
+    Owner request 10 decision 2, Abhimanyu 2026-08-06: the three states apply to
+    staff and teachers exactly as they do to students, not to students only. The
+    words are the school's own, so they are kept even where "TC issued" reads oddly
+    for an employee — a member of staff who has formally left is in the same place
+    in the product as a child who has taken their leaving certificate, and a second
+    vocabulary for the same three states is how the two would drift apart.
+
+    THE LOGIN FOLLOWS THE STATE. Someone off the roll cannot sign in, and their
+    existing sessions are ended straight away; putting them back on the roll turns
+    the login on again. Doing this here rather than in the route is what stops a
+    person keeping a working session after the school has stopped employing them.
+
+    What this deliberately does NOT do is erase what the assistant learned about
+    them. `DELETE /api/staff/{id}` does that because it reads as a retirement, and
+    permanent erasure does it because the record is being destroyed. These three
+    states are reversible, and an erase you cannot undo has no place behind a button
+    labelled "move to NSO".
+    """
+    from services import enrolment_status
+    from services.auth_tokens import revoke_user_refresh_tokens
+
+    school_id = actor_ctx.school_id
+    staff_id = params.get("staff_id")
+    if not staff_id:
+        raise StaffValidationError("staff_id is required")
+
+    state = str(params.get("state") or "").strip().lower()
+    if state not in enrolment_status.SETTABLE_STATES:
+        raise StaffValidationError(
+            "state must be one of: " + ", ".join(enrolment_status.SETTABLE_STATES)
+        )
+
+    existing = await db.staff.find_one(scoped_filter({"id": staff_id}, school_id), {"_id": 0})
+    if not existing:
+        raise StaffNotFoundError("Staff not found")
+
+    # Story 1.1 again: owner authority is not switched off through this API either.
+    # Deactivating the owner's own staff record would lock the school out of the one
+    # account that can put anything back.
+    if _holds_owner_authority(existing) and state != enrolment_status.ACTIVE:
+        raise StaffAuthorizationError("Forbidden")
+
+    previous_state = enrolment_status.normalise(existing)
+    update = enrolment_status.fields_for(state)
+    changes = {
+        key: {"previous": existing.get(key), "new": value}
+        for key, value in update.items()
+        if existing.get(key) != value
+    }
+    if not changes:
+        return {"staff": existing, "noop": True, "previous_state": previous_state}
+
+    update["updated_at"] = actor_ctx.now_iso()
+    if state == enrolment_status.ACTIVE:
+        update["deactivated_at"] = None
+    else:
+        update["deactivated_at"] = actor_ctx.now_iso()
+
+    await db.staff.update_one(
+        scoped_filter({"id": staff_id}, school_id), {"$set": update}, **_session_kwargs(session)
+    )
+
+    if existing.get("user_id"):
+        on_roll = state == enrolment_status.ACTIVE
+        await db.auth_users.update_one(
+            {"id": existing["user_id"]}, {"$set": {"is_active": on_roll}}, **_session_kwargs(session)
+        )
+        if not on_roll:
+            await revoke_user_refresh_tokens(db, existing["user_id"], reason=f"staff_{state}")
+
+    await _write_staff_audit(
+        db, actor_ctx,
+        # A distinct action per state, so the log answers "who took this teacher off
+        # the roll, and when" without anyone reading a diff to work it out.
+        action=f"enrolment_{state}",
+        staff_id=staff_id,
+        changes={**changes, "previous_state": {"previous": previous_state, "new": state}},
+        reason=(params.get("reason") or "").strip() or None,
+        session=session,
+    )
+    updated = await db.staff.find_one(scoped_filter({"id": staff_id}, school_id), {"_id": 0})
+    return {"staff": updated, "noop": False, "previous_state": previous_state}

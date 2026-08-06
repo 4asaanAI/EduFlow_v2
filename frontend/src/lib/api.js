@@ -148,6 +148,33 @@ export async function getGeneratedFileLink(fileId) {
   return res.json();
 }
 
+/**
+ * The text of a document Flo made, so it can be opened in the edit panel.
+ *
+ * Read only on purpose. A corrected document is downloaded from the browser and
+ * nothing is written back to the server (Abhimanyu, 2026-08-07), so there is no
+ * matching save call here and there should not be one added without that decision
+ * being revisited.
+ *
+ * A 409 means the document predates editing and can only be downloaded. That is
+ * surfaced as its own message rather than as a generic failure, because "you cannot
+ * edit this particular old file" and "something went wrong" need different responses
+ * from the person reading it.
+ */
+export async function getGeneratedFileContent(fileId) {
+  const res = await apiFetch(`${API}/uploads/content/${encodeURIComponent(fileId)}`, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err = new Error(body.detail || `generated file content failed: ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
 export function sendMessageStream(convId, text, user, onEvent, sessionId = null, imageData = null) {
   const chatSessionId = sessionId || getBrowserSseSessionId();
   const body = JSON.stringify({ text, session_id: chatSessionId, image_data: imageData || undefined });
@@ -356,6 +383,47 @@ export async function getStudents(params = {}) {
   return res.json();
 }
 
+/**
+ * The most rows `GET /api/students` returns in one request. `per_page` is clamped to
+ * 500 in backend/routes/students.py; if that cap ever moves, this moves with it.
+ */
+export const STUDENTS_PAGE_MAX = 500;
+
+/**
+ * EVERY student, not the first page of them.
+ *
+ * Owner note, 2026-08-07: "the whole list of students is not appearing here and same
+ * at other places too". The cause was screens calling `getStudents()` with no
+ * arguments, which the server answers with its default of 20 rows. On a school with
+ * 1,802 students that is a list that looks complete and is not, and there is nothing
+ * on the screen to say so, which is the worst version of the bug.
+ *
+ * This walks the pages and joins them. It stops as soon as a page comes back short or
+ * the running count reaches the reported total, so a wrong total cannot spin forever.
+ * Use it anywhere a person needs to FIND someone (a dropdown, a pick list); use plain
+ * `getStudents` with an explicit limit where the screen paginates properly itself.
+ */
+export async function getAllStudents(params = {}) {
+  const collected = [];
+  let page = 1;
+  let total = 0;
+  for (;;) {
+    // eslint-disable-next-line no-await-in-loop
+    const res = await getStudents({ ...params, page, limit: STUDENTS_PAGE_MAX });
+    if (!res.success) {
+      return collected.length
+        ? { success: true, data: collected, meta: { total: collected.length, partial: true } }
+        : res;
+    }
+    const batch = res.data || [];
+    collected.push(...batch);
+    total = res.meta?.total || collected.length;
+    if (batch.length < STUDENTS_PAGE_MAX || collected.length >= total) break;
+    page += 1;
+  }
+  return { success: true, data: collected, meta: { total: total || collected.length } };
+}
+
 export async function createStudent(data) {
   const res = await apiFetch(`${API}/students/`, {
     method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
@@ -398,6 +466,37 @@ export async function deactivateStudent(studentId) {
   const res = await apiFetch(`${API}/students/${studentId}`, {
     method: 'DELETE', headers: getHeaders(),
   });
+  return res.json();
+}
+
+/**
+ * Move a student between on the roll, the NSO list, and TC issued — either direction.
+ *
+ * Owner requests 9 and 10 (2026-08-06). `state` is one of 'active', 'nso',
+ * 'tc_issued'. Restoring is simply state 'active', which is what recovers a student
+ * deactivated by mistake — something no call in this file could do before, because the
+ * server had no way to switch `is_active` back on.
+ *
+ * Owner or principal only on the server. `reason` is optional; it is compulsory only
+ * for eraseStudent below, which destroys the record.
+ */
+export async function setStudentEnrolment(studentId, state, reason) {
+  const res = await apiFetch(`${API}/students/${studentId}/enrolment`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(reason ? { state, reason } : { state }),
+  });
+  return res.json();
+}
+
+/**
+ * How many students are on the roll, how many are NSO, how many have their TC.
+ *
+ * Owner request 10 (2026-08-06). The recycle-bin screen puts these three numbers at
+ * the top so nobody has to guess whether "1,801" included the NSO list.
+ */
+export async function getStudentEnrolmentSummary() {
+  const res = await apiFetch(`${API}/students/enrolment-summary`, { headers: getHeaders() });
   return res.json();
 }
 
@@ -752,6 +851,120 @@ export async function updateStaff(staffId, data) {
 
 export async function deactivateStaff(staffId) {
   const res = await apiFetch(`${API}/staff/${staffId}`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
+  return res.json();
+}
+
+/**
+ * Move a staff member or teacher between on the roll, the NSO list, and TC issued.
+ *
+ * Owner request 10 decision 2 (2026-08-06): the three states are not students-only.
+ * `state` is one of 'active', 'nso', 'tc_issued'; owner or principal only on the
+ * server; `reason` is optional and is only compulsory for eraseStaff below.
+ *
+ * Someone taken off the roll also loses their login, and gets it back on return.
+ */
+export async function setStaffEnrolment(staffId, state, reason) {
+  const res = await apiFetch(`${API}/staff/${staffId}/enrolment`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(reason ? { state, reason } : { state }),
+  });
+  return res.json();
+}
+
+/** Destroy a staff record for good. Owner only, and the reason is compulsory. */
+export async function eraseStaff(staffId, reason) {
+  const body = new FormData();
+  body.append('reason', reason);
+  const headers = getHeaders();
+  delete headers['Content-Type'];
+  const res = await apiFetch(`${API}/staff/${staffId}/erase`, {
+    method: 'POST', headers, body,
+  });
+  return res.json();
+}
+
+/** The staff twin of getStudentEnrolmentSummary. */
+export async function getStaffEnrolmentSummary() {
+  const res = await apiFetch(`${API}/staff/enrolment-summary`, { headers: getHeaders() });
+  return res.json();
+}
+
+// ─── Private notes on a profile (owner request 4, 2026-08-06) ────────────────
+//
+// Owner and principal only, and PRIVATE TO EACH AUTHOR: each of them sees only the
+// notes they wrote themselves. That is decision 3 of 2026-08-06 and it is deliberate,
+// not an oversight — do not add a "show everyone's" option here.
+
+/**
+ * Put a file on the server and get back its id and a link.
+ *
+ * The one generic upload. Note pictures and identity documents both ride on it with
+ * a different `entityType`, rather than each growing an endpoint of its own — the
+ * server decides who may read a stored file, and one door is easier to keep honest
+ * than three.
+ */
+export async function uploadEntityFile(file, entityType, entityId) {
+  const body = new FormData();
+  body.append('file', file);
+  body.append('entity_type', entityType);
+  if (entityId) body.append('entity_id', entityId);
+  const headers = getHeaders();
+  delete headers['Content-Type'];
+  const res = await apiFetch(`${API}/uploads`, { method: 'POST', headers, body });
+  return res.json();
+}
+
+/** The files already stored against one person or record. */
+export async function listEntityFiles(entityType, entityId) {
+  const qs = new URLSearchParams({ entity_type: entityType, entity_id: entityId }).toString();
+  const res = await apiFetch(`${API}/uploads?${qs}`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function deleteEntityFile(fileId) {
+  const res = await apiFetch(`${API}/uploads/${encodeURIComponent(fileId)}`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
+  return res.json();
+}
+
+export async function getProfileNotes(subjectType, subjectId) {
+  const qs = new URLSearchParams({ subject_type: subjectType, subject_id: subjectId }).toString();
+  const res = await apiFetch(`${API}/profile-notes?${qs}`, { headers: getHeaders() });
+  return res.json();
+}
+
+/** How many notes YOU have on each of these people. One request, not one per row. */
+export async function getProfileNoteCounts(subjectType, subjectIds) {
+  const qs = new URLSearchParams({
+    subject_type: subjectType,
+    subject_ids: (subjectIds || []).join(','),
+  }).toString();
+  const res = await apiFetch(`${API}/profile-notes/counts?${qs}`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function addProfileNote(subjectType, subjectId, body, attachments = []) {
+  const res = await apiFetch(`${API}/profile-notes`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ subject_type: subjectType, subject_id: subjectId, body, attachments }),
+  });
+  return res.json();
+}
+
+export async function updateProfileNote(noteId, changes) {
+  const res = await apiFetch(`${API}/profile-notes/${noteId}`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(changes),
+  });
+  return res.json();
+}
+
+export async function deleteProfileNote(noteId) {
+  const res = await apiFetch(`${API}/profile-notes/${noteId}`, {
     method: 'DELETE', headers: getHeaders(),
   });
   return res.json();

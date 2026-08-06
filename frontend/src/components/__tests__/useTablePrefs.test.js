@@ -12,6 +12,8 @@ import { renderHook, act } from '@testing-library/react';
 import {
   useTablePageSize,
   readStoredPageSize,
+  pageSizeLabel,
+  ALL_ROWS,
   PAGE_SIZES,
   DEFAULT_PAGE_SIZE,
 } from '../../hooks/useTablePrefs';
@@ -22,14 +24,22 @@ beforeEach(() => {
 });
 
 describe('the offered sizes', () => {
-  it('are exactly what UX-DR10 specifies', () => {
-    expect(PAGE_SIZES).toEqual([5, 10, 15, 20, 25, 30]);
+  it('keep the six UX-DR10 sizes and add the larger ones the owner asked for', () => {
+    // 2026-08-06 item 13: 30 a page is 61 pages for 1,802 students. The original
+    // six stay first and in order so nobody's stored preference changes meaning.
+    expect(PAGE_SIZES.slice(0, 6)).toEqual([5, 10, 15, 20, 25, 30]);
+    expect(PAGE_SIZES).toEqual([5, 10, 15, 20, 25, 30, 50, 100, 250, 500, ALL_ROWS]);
   });
 
   it('default to 15, not 20', () => {
     // 20 was the old hard-coded page size; the owner asked for 15.
     expect(DEFAULT_PAGE_SIZE).toBe(15);
     expect(PAGE_SIZES).toContain(DEFAULT_PAGE_SIZE);
+  });
+
+  it('spells "All" rather than showing the sentinel number', () => {
+    expect(pageSizeLabel(ALL_ROWS)).toBe('All');
+    expect(pageSizeLabel(30)).toBe('30');
   });
 });
 
@@ -44,7 +54,7 @@ describe('reading a stored size', () => {
   });
 
   it.each([
-    ['a size an older build offered', '50'],
+    ['a size no build has ever offered', '35'],
     ['a value never offered', '7'],
     ['a non-numeric string', 'abc'],
     ['an empty string', ''],

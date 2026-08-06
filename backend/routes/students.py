@@ -8,12 +8,14 @@ import uuid
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
 from database import get_db
-from middleware.auth import get_current_user, require_owner, require_role
+from middleware.auth import get_current_user, require_owner, require_owner_or_principal, require_role
 from models.schemas import StudentCreate
 from services.actor_context import actor_ctx_from_user
 from services.audit_service import write_audit_doc
+from services import enrolment_status
 from services.student_service import (
     create_student as create_student_service,
+    set_enrolment_state as set_enrolment_state_service,
     update_student as update_student_service,
     upsert_guardians as upsert_guardians_service,
     ClassNotFoundError,
@@ -207,6 +209,46 @@ async def class_strength_stats(request: Request):
     return {"success": True, "data": data}
 
 
+@router.get("/enrolment-summary")
+async def student_enrolment_summary(request: Request):
+    """How many are on the roll, how many are NSO, how many have their TC.
+
+    Owner request 10, 2026-08-06. Without this, every honest answer to "how many
+    students are there" has to be assembled by hand, and Flo answers "1,801" when
+    the truthful answer is "1,801 on the roll, 3 on the NSO list who are still
+    marked every morning". The recycle-bin screen reads the same three numbers.
+
+    Open to the same roles that may read the student list. The numbers say nothing
+    about any individual child.
+    """
+    db = get_db()
+    user = get_user(request)
+    if user["role"] not in READ_ROLES:
+        raise HTTPException(403, "Forbidden")
+    counts = {}
+    for view in (
+        enrolment_status.ON_ROLL_VIEW,
+        enrolment_status.NSO_VIEW,
+        enrolment_status.TC_ISSUED_VIEW,
+        enrolment_status.ON_REGISTER_VIEW,
+        enrolment_status.OFF_ROLL_VIEW,
+    ):
+        counts[view] = await db.students.count_documents(
+            _student_query(dict(enrolment_status.view_filter(view)))
+        )
+    return {
+        "success": True,
+        "data": {
+            "on_roll": counts[enrolment_status.ON_ROLL_VIEW],
+            "nso": counts[enrolment_status.NSO_VIEW],
+            "tc_issued": counts[enrolment_status.TC_ISSUED_VIEW],
+            "on_register": counts[enrolment_status.ON_REGISTER_VIEW],
+            "off_roll": counts[enrolment_status.OFF_ROLL_VIEW],
+        },
+        "meta": {"labels": enrolment_status.STATE_LABELS},
+    }
+
+
 @router.get("/")
 async def list_students(
     request: Request,
@@ -216,6 +258,7 @@ async def list_students(
     limit: int = 20,
     sort: str = "created_at",
     include_inactive: bool = False,
+    enrolment_state: str = None,
 ):
     db = get_db()
     user = get_user(request)
@@ -223,20 +266,53 @@ async def list_students(
     # below for `include_inactive`. Single Depends() can't express both.
     if user["role"] not in READ_ROLES:
         raise HTTPException(403, "Forbidden")
-    if include_inactive and user["role"] != "owner":
+    # Owner OR principal (owner request 10, 2026-08-06). This list is how the NSO and
+    # TC-issued records are found in order to be restored or permanently removed, and
+    # restoring is an owner-or-principal action — a principal who cannot see the list
+    # cannot use the button they are allowed to press. Everyone else still sees only
+    # students on the roll.
+    _may_see_inactive = user["role"] == "owner" or (
+        user["role"] == "admin" and user.get("sub_category") == "principal"
+    )
+    if include_inactive and not _may_see_inactive:
         raise HTTPException(403, "Forbidden")
+
+    # `enrolment_state` is the named version of the same thing and it is what the
+    # recycle bin, the NSO list and the TC-issued list ask for. `include_inactive`
+    # is kept because older screens and saved links still send it; it means the
+    # same as `enrolment_state=all`.
+    if enrolment_state:
+        if enrolment_state not in enrolment_status.LIST_VIEWS:
+            raise HTTPException(400, "enrolment_state must be one of: " + ", ".join(enrolment_status.LIST_VIEWS))
+        # Anything that can show a person who is off the roll is the same privilege
+        # as `include_inactive`, so it is gated the same way. `on_register` is the
+        # exception: an NSO child has to be markable by the teacher taking the
+        # register, which is the whole reason the state exists.
+        if enrolment_state != enrolment_status.ON_ROLL_VIEW and enrolment_state != enrolment_status.ON_REGISTER_VIEW:
+            if not _may_see_inactive:
+                raise HTTPException(403, "Forbidden")
 
     page = max(page, 1)
     per_page = max(1, min(limit, 500))
-    query = {} if include_inactive else {"is_active": True}
+    if enrolment_state:
+        query = dict(enrolment_status.view_filter(enrolment_state))
+    else:
+        query = {} if include_inactive else {"is_active": True}
     if class_id:
         query["class_id"] = class_id
     if search:
         safe_search = re.escape(search)
-        query["$or"] = [
+        name_or_number = [
             {"name": {"$regex": safe_search, "$options": "i"}},
             {"admission_number": {"$regex": safe_search, "$options": "i"}},
         ]
+        # The "on the register" view is itself an `$or` (on the roll OR NSO), so
+        # assigning `query["$or"]` here would quietly throw the state filter away and
+        # search the whole school. Two `$or`s have to be `$and`ed together.
+        if "$or" in query:
+            query = {"$and": [{"$or": query.pop("$or")}, {"$or": name_or_number}], **query}
+        else:
+            query["$or"] = name_or_number
 
     # Part 14 + 15: Teacher should only see students in their assigned classes.
     # Assignments come from the Academic Structure (classes.class_teacher_id +
@@ -299,6 +375,11 @@ async def list_students(
     for student in students:
         student["class_info"] = class_map.get(student.get("class_id"))
         student["primary_phone"] = guardian_phone_map.get(student.get("id"))
+        # So a row can be badged "NSO" or "TC issued" without the screen owning a
+        # second copy of the rule that reads it off `is_active` and `status`.
+        state = enrolment_status.normalise(student)
+        student["enrolment_state"] = state
+        student["enrolment_label"] = enrolment_status.STATE_LABELS.get(state, state)
         if student.get("photo_url") and student["photo_url"].startswith("s3://"):
             student["photo_url"] = None
 
@@ -525,6 +606,45 @@ async def delete_student(student_id: str, request: Request):
     return {"success": True}
 
 
+@router.post("/{student_id}/enrolment")
+async def set_student_enrolment(student_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
+    """Move a student between on the roll, NSO, and TC issued — in either direction.
+
+    Owner requests 9 and 10, 2026-08-06. This is the way BACK as well as the way out:
+    before it, nothing in the product could set `is_active` to True, so a student
+    marked inactive by mistake was gone from every screen with no route home. The
+    school's owner asked for a student deactivated during a demo to be recovered, and
+    this endpoint is how that is done — from the screen, by a person, not by an agent
+    reaching into the database.
+
+    Owner or principal only. `DELETE /{student_id}` (deactivate) stays open to the
+    wider admin set it always was; deciding a child has left the school, or putting one
+    back, is a head-of-school decision.
+    """
+    db = get_db()
+    body = await request.json()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await set_enrolment_state_service(db, actor_ctx, {**body, "student_id": student_id})
+    except StudentNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except StudentValidationError as e:
+        raise HTTPException(400, str(e))
+    state = enrolment_status.normalise(result["student"])
+    return {
+        "success": True,
+        "data": result["student"],
+        "meta": {
+            "state": state,
+            "previous_state": result["previous_state"],
+            "noop": result["noop"],
+            # Spelled out so a confirmation card can print it without owning a second
+            # copy of the wording.
+            "label": enrolment_status.STATE_LABELS.get(state, state),
+        },
+    }
+
+
 @router.post("/{student_id}/photo")
 async def upload_student_photo(student_id: str, request: Request, file: UploadFile = File(...)):
     db = get_db()
@@ -721,6 +841,15 @@ async def erase_student(student_id: str, request: Request, reason: str = Form(de
             delete_object(upload["s3_key"])
     await db.guardians.delete_many(scoped_filter({"student_id": student_id}, get_school_id()))  # branch-scope: intentional — scoped to one named person's own record, not to a branch
     await db.file_uploads.delete_many(scoped_filter({"linked_table": "students", "linked_id": student_id}, get_school_id()))  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+    # Owner request 4: private notes about this child go with the child. Leaving them
+    # behind would keep a written account of someone the school has erased.
+    try:
+        from services.profile_notes_service import purge_subject_notes
+
+        await purge_subject_notes(db, get_school_id(), "student", student_id)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning("profile note purge on student erase failed", exc_info=True)
     await db.students.delete_one(_student_query({"id": student_id}))
     # Epic G (G.7 / DPDP §12): purge any AI memory that references this student so
     # the right-to-erasure also covers what the assistant "learned" about them.

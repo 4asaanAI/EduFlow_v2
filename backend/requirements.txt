@@ -36,6 +36,13 @@ google-generativeai>=0.8.0; python_version >= "3.9"
 google-genai>=1.0.0; python_version >= "3.9"
 openai>=1.30.0; python_version >= "3.9"
 fpdf2>=2.7.0
+# Text shaping for Hindi in generated PDFs. Devanagari is not drawn in the order it
+# is stored: vowel signs move in front of their consonant and clusters join into
+# single conjunct glyphs. Without a shaper the characters are all present but sit in
+# visibly wrong shapes and order. fpdf2 reads this through `set_text_shaping(True)`.
+# If it is ever absent, PDF generation still works and says so in the log
+# (see services/document_builder.py) rather than failing.
+uharfbuzz>=0.39.0
 twilio>=9.2.0
 pypdf>=4.0.0
 python-docx>=1.1.0

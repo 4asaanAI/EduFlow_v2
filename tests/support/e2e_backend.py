@@ -8,8 +8,51 @@ from urllib.parse import urlparse
 
 
 USER = {"id": "admin-1", "role": "owner", "name": "Admin User", "initials": "AU"}
+
+# Owner request 20 remainder (2026-08-07): the layout sweep had to check EVERY role's
+# screens at phone width, and this double could only ever sign in one person — the
+# owner. So the browser layout check was structurally incapable of seeing the screens
+# a teacher, an accountant or a parent actually gets, which are different screens.
+#
+# Each role signs in with its own username and the fixed password below. The refresh
+# cookie carries the username, so two roles can hold two sessions without one
+# overwriting the other. `admin` / `admin123` keeps working and still resolves to the
+# owner, so every test written before this change is untouched.
+E2E_PASSWORD = "admin123"
+
+USERS = {
+    "admin": USER,
+    "owner": USER,
+    "principal": {"id": "principal-1", "role": "admin", "sub_category": "principal",
+                  "name": "Principal User", "initials": "PU"},
+    "accountant": {"id": "accountant-1", "role": "admin", "sub_category": "accountant",
+                   "name": "Accounts User", "initials": "AC"},
+    "ittech": {"id": "ittech-1", "role": "admin", "sub_category": "it_tech",
+               "name": "IT User", "initials": "IT"},
+    "management": {"id": "management-1", "role": "admin", "sub_category": "management",
+                   "name": "Management User", "initials": "MG"},
+    "teacher": {"id": "teacher-1", "role": "teacher", "name": "Teacher User", "initials": "TU"},
+    "student": {"id": "student-1", "role": "student", "name": "Student User", "initials": "SU"},
+    "parent": {"id": "parent-1", "role": "parent", "name": "Parent User", "initials": "PA"},
+}
+
+COOKIE_PREFIX = "eduflow_refresh_token=e2e-refresh"
+
 CONVERSATIONS = []
 MESSAGES = {}
+
+
+def user_from_cookie(cookie_header: str):
+    """Which role is this request? None when the caller is not signed in.
+
+    The cookie value is `e2e-refresh` for the original admin session and
+    `e2e-refresh-<username>` for every other role, so the old value still parses.
+    """
+    if COOKIE_PREFIX not in (cookie_header or ""):
+        return None
+    value = cookie_header.split(COOKIE_PREFIX, 1)[1].split(";", 1)[0]
+    username = value.lstrip("-").strip()
+    return USERS.get(username, USER)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -50,9 +93,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/api/auth/refresh":
-            if "eduflow_refresh_token=e2e-refresh" not in self.headers.get("Cookie", ""):
+            user = user_from_cookie(self.headers.get("Cookie", ""))
+            if user is None:
                 return self._json({"detail": "Not authenticated"}, 401)
-            return self._json({"success": True, "access_token": "e2e-access", "token": "e2e-access", "user": USER})
+            return self._json({"success": True, "access_token": "e2e-access", "token": "e2e-access", "user": user})
         if path == "/api/tokens/usage/me":
             return self._json({"success": True, "data": {"total_used": 0, "role_limit": 50000, "self_recharge_enabled": True}})
         if path == "/api/chat/conversations":
@@ -68,16 +112,22 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/auth/login":
             body = self._read_json()
-            if body.get("username") != "admin" or body.get("password") != "admin123":
+            username = body.get("username")
+            user = USERS.get(username)
+            if user is None or body.get("password") != E2E_PASSWORD:
                 return self._json({"detail": "Invalid username or password"}, 401)
+            # `admin` keeps the exact cookie value it always had, so any test or saved
+            # storage state written before roles existed still authenticates.
+            cookie_value = "e2e-refresh" if username == "admin" else f"e2e-refresh-{username}"
             return self._json(
-                {"success": True, "access_token": "e2e-access", "token": "e2e-access", "user": USER},
-                extra_headers={"Set-Cookie": "eduflow_refresh_token=e2e-refresh; HttpOnly; SameSite=Lax; Path=/"},
+                {"success": True, "access_token": "e2e-access", "token": "e2e-access", "user": user},
+                extra_headers={"Set-Cookie": f"eduflow_refresh_token={cookie_value}; HttpOnly; SameSite=Lax; Path=/"},
             )
         if path == "/api/auth/refresh":
-            if "eduflow_refresh_token=e2e-refresh" not in self.headers.get("Cookie", ""):
+            user = user_from_cookie(self.headers.get("Cookie", ""))
+            if user is None:
                 return self._json({"detail": "Not authenticated"}, 401)
-            return self._json({"success": True, "access_token": "e2e-access", "token": "e2e-access", "user": USER})
+            return self._json({"success": True, "access_token": "e2e-access", "token": "e2e-access", "user": user})
         if path == "/api/auth/logout":
             self._read_json()
             return self._json({"success": True}, extra_headers={"Set-Cookie": "eduflow_refresh_token=; Max-Age=0; Path=/"})

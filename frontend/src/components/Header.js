@@ -3,6 +3,7 @@ import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { Search, Bell, ChevronLeft, Menu, X, CalendarDays } from 'lucide-react';
 import { getAuthHeaders } from '../lib/authSession';
+import AccountMenu from './AccountMenu';
 import NotificationDetailModal from './NotificationDetailModal';
 import { getToolForNotification } from '../lib/notifRouting';
 import { API, apiFetch,
@@ -400,7 +401,7 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
   );
 }
 
-export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpenSettings, onToggleSidebar, activeConvTitle }) {
+export default function Header({ activeTool, onBack, canGoBack, onOpenProfile, onOpenSettings, onToggleSidebar, activeConvTitle }) {
   const { currentUser } = useUser();
   const { isDark } = useTheme();
   const [showSearch, setShowSearch] = useState(false);
@@ -496,19 +497,35 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
             <Menu size={ICON_SIZE} />
           </button>
-          {/* Back is desktop-only. On a phone the hamburger sits right beside it and
-              already gets you out of a tool, so Back is redundant and it crowds the
-              header enough to push the search box and bell off screen. */}
-          {activeTool && !isMobile ? (
-            <button data-testid="back-to-chat-btn" onClick={onBackToChat} style={{
-              background: 'var(--color-surface-raised)', border: 'none', color: secondary,
-              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
-              fontSize: 13, fontWeight: 500, padding: '5px 10px', borderRadius: 8,
-              transition: 'var(--transition-fast)',
-            }}
+          {/* Back goes back ONE screen, not straight to the chat (owner request 19,
+              2026-08-06). See the trail in Layout.js: a screen opened from a hub
+              returns to that hub, and only a screen with nothing behind it returns
+              to the chat.
+
+              It used to be desktop-only, on the reasoning that the hamburger already
+              gets you out of a tool on a phone. That is true for leaving a tool and
+              false for stepping back through one, which is the whole complaint — so
+              it now shows at every width. On a phone it collapses to the arrow alone,
+              which is what keeps the search box and bell on screen; the accessible
+              name carries the word either way. */}
+          {activeTool ? (
+            <button
+              data-testid="back-to-chat-btn"
+              onClick={onBack}
+              aria-label={canGoBack ? 'Back to the previous screen' : 'Back to the chat'}
+              title={canGoBack ? 'Back' : 'Back to chat'}
+              style={{
+                background: 'var(--color-surface-raised)', border: 'none', color: secondary,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
+                fontSize: 13, fontWeight: 500,
+                padding: isMobile ? '7px 8px' : '5px 10px',
+                minHeight: isMobile ? 34 : undefined,
+                borderRadius: 8, transition: 'var(--transition-fast)',
+              }}
               onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
               onMouseLeave={e => e.currentTarget.style.background = 'var(--color-surface-raised)'}>
-              <ChevronLeft size={14} /> Back
+              <ChevronLeft size={isMobile ? 16 : 14} aria-hidden="true" />
+              {isMobile ? null : 'Back'}
             </button>
           ) : null}
           {/* The EduFlow wordmark, never the tool's name.
@@ -650,6 +667,16 @@ export default function Header({ activeTool, onBackToChat, onOpenProfile, onOpen
               />
             )}
           </div>
+
+          {/* Owner request 15 (2026-08-06): search, bell, then the account button —
+              left to right, in that order. It used to sit at the foot of the sidebar,
+              where on a phone it was part of a stack of fixed furniture that left
+              Tools and Recent Chats about two rows each. */}
+          <AccountMenu
+            onOpenProfile={onOpenProfile}
+            onOpenSettings={onOpenSettings}
+            activeTool={activeTool}
+          />
         </div>
       </header>
 

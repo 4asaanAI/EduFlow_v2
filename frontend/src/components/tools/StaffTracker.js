@@ -1,7 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { adminResetPassword, createStaff, deactivateStaff, decideProfileChangeRequest, getPendingLeaves, getProfileChangeRequests, getStaff, getStaffMember, subscribeSSE, updateLeave, updateStaff } from '../../lib/api';
-import { ArrowRight, CheckCircle, Edit3, KeyRound, Plus, RefreshCw, X, XCircle } from 'lucide-react';
+import { adminResetPassword, createStaff, deactivateStaff, decideProfileChangeRequest, eraseStaff, getPendingLeaves, getProfileChangeRequests, getStaff, getStaffEnrolmentSummary, getStaffMember, setStaffEnrolment, subscribeSSE, updateLeave, updateStaff } from '../../lib/api';
+import {
+  EnrolmentBadge,
+  EnrolmentStateModal,
+  EraseConfirmModal,
+  ViewPicker,
+} from '../ui/EnrolmentControls';
+import { ON_ROLL_VIEW, OFF_ROLL_VIEW, readState } from '../../lib/enrolmentStates';
+import ProfileNotes from '../ui/ProfileNotes';
+import ProfileDocuments from '../ui/ProfileDocuments';
+import { ArrowRight, CheckCircle, Edit3, KeyRound, Plus, RefreshCw, RotateCcw, Search, Trash2, X, XCircle } from 'lucide-react';
+import { Pill } from '../ui/primitives';
 import { useUser } from '../../contexts/UserContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import DataTable, { cellValue } from '../ui/DataTable';
@@ -14,6 +24,8 @@ const blankForm = {
   phone: '',
   email: '',
   department: '',
+  // Owner request 11 (2026-08-06) - where this person lives.
+  address: '',
   qualification: '',
   specialization: '',
   role: 'teacher',
@@ -48,6 +60,11 @@ const SUB_CATEGORIES = {
     { value: 'coordinator', label: 'Coordinator' },
     { value: 'kg_incharge', label: 'KG In-charge' },
   ],
+};
+
+const sectionLabelStyle = {
+  fontSize: 10, fontWeight: 800, color: 'var(--c-faint)',
+  textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8,
 };
 
 const inputStyle = {
@@ -226,7 +243,32 @@ function StaffModal({ initialStaff, canEditLeaveBalances, onClose, onSaved }) {
                 <input type="number" min="0" value={form[field]} onChange={setField(field)} style={{ ...inputStyle, marginTop: 5 }} />
               </label>
             ))}
+            <label style={{ gridColumn: '1 / -1', fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Address
+              <textarea
+                value={form.address || ''}
+                onChange={setField('address')}
+                rows={2}
+                data-testid="staff-address"
+                placeholder="House, street, locality, town and district"
+                style={{ ...inputStyle, marginTop: 5, resize: 'vertical' }}
+              />
+            </label>
           </div>
+
+          {/* Only on a record that already exists - a note or a document has to hang
+              off something, and there is no id until the record is saved. */}
+          {initialStaff?.id && (
+            <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <div>
+                <div style={sectionLabelStyle}>Documents</div>
+                <ProfileDocuments subjectId={initialStaff.id} />
+              </div>
+              <div>
+                <div style={sectionLabelStyle}>My notes</div>
+                <ProfileNotes subjectType="staff" subjectId={initialStaff.id} subjectName={initialStaff.name} />
+              </div>
+            </div>
+          )}
           {error && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginTop: 12 }}>{error}</div>}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
             <ActionButton variant="secondary" onClick={onClose}>Cancel</ActionButton>
@@ -313,6 +355,18 @@ export default function StaffTracker() {
   const [editing, setEditing] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [resetTarget, setResetTarget] = useState(null);
+  // Owner request 10 decision 2 (2026-08-06): staff and teachers get the same three
+  // states as students, the same recycle bin, and the same compulsory reason before
+  // anything is destroyed. The controls are shared with the student screen for that
+  // reason — two copies of these words is how the two would drift apart.
+  const [enrolmentView, setEnrolmentView] = useState(ON_ROLL_VIEW);
+  const [enrolmentCounts, setEnrolmentCounts] = useState(null);
+  const [stateTarget, setStateTarget] = useState(null);
+  const [eraseTarget, setEraseTarget] = useState(null);
+  const [savingState, setSavingState] = useState(false);
+  // Owner note, 2026-08-07: several lists had no way to search at all, so finding one
+  // person among 89 meant paging through them.
+  const [search, setSearch] = useState('');
   const canResetPassword = currentUser.role === 'owner' || (currentUser.role === 'admin' && currentUser.sub_category === 'principal');
   const [attendanceStreamUpdatedAt, setAttendanceStreamUpdatedAt] = useState(null);
   const [, setClockTick] = useState(0);
@@ -321,6 +375,11 @@ export default function StaffTracker() {
   // the server refuses regardless of what this says.
   const canReviewChanges = currentUser.role === 'owner'
     || (currentUser.role === 'admin' && currentUser.sub_category === 'principal');
+  // Mirrors require_owner_or_principal on POST /api/staff/{id}/enrolment, and
+  // require_owner on the erase route. Offering either to anyone else would only
+  // produce a refusal when they pressed it, which is the D-49 mistake.
+  const canChangeEnrolment = canReviewChanges;
+  const canErase = currentUser.role === 'owner';
   const attendanceLiveLabel = lastUpdatedLabel(attendanceStreamUpdatedAt);
 
   // D-44 — deep link from the School Directory. A staff row there opens
@@ -391,16 +450,41 @@ export default function StaffTracker() {
       render: (p) => `CL ${p.casual_leave_balance ?? 0} · ML ${p.medical_leave_balance ?? 0} · EL ${p.earned_leave_balance ?? 0}`,
     },
     {
+      key: 'status', label: 'Status',
+      render: (profile) => <EnrolmentBadge state={readState(profile)} data-testid={`staff-state-${profile.id}`} />,
+    },
+    {
       key: 'actions', label: 'Actions',
       render: (profile) => (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          <ActionButton variant="secondary" onClick={() => setEditing(profile)}><Edit3 size={13} /></ActionButton>
-          {canResetPassword && <ActionButton variant="secondary" onClick={() => setResetTarget(profile)}><KeyRound size={13} /></ActionButton>}
-          {profile.is_active !== false && <ActionButton variant="danger" onClick={() => deactivate(profile)}>Deactivate</ActionButton>}
+          <ActionButton variant="secondary" onClick={() => setEditing(profile)} aria-label={`Edit ${profile.name}`}><Edit3 size={13} />Edit</ActionButton>
+          {canResetPassword && <ActionButton variant="secondary" onClick={() => setResetTarget(profile)} aria-label={`Reset password for ${profile.name}`}><KeyRound size={13} />Password</ActionButton>}
+          {/* Owner or principal: one button for all three states, in either
+              direction. This is also the only way back — before it, deactivating a
+              colleague was a one-way door. */}
+          {canChangeEnrolment && (
+            <ActionButton variant="secondary" onClick={() => setStateTarget(profile)} aria-label={`Change status for ${profile.name}`}>
+              <RefreshCw size={13} />Status
+            </ActionButton>
+          )}
+          {canChangeEnrolment && readState(profile) !== 'active' && (
+            <ActionButton variant="secondary" onClick={() => restore(profile)} aria-label={`Restore ${profile.name} to the roll`}>
+              <RotateCcw size={13} />Restore
+            </ActionButton>
+          )}
+          {/* The wider admin set keeps the plain deactivate it always had. */}
+          {!canChangeEnrolment && profile.is_active !== false && (
+            <ActionButton variant="danger" onClick={() => deactivate(profile)}>Deactivate</ActionButton>
+          )}
+          {canErase && (
+            <ActionButton variant="danger" onClick={() => setEraseTarget(profile)} aria-label={`Erase ${profile.name} permanently`}>
+              <Trash2 size={13} />Erase
+            </ActionButton>
+          )}
         </div>
       ),
     },
-  ], [canResetPassword]);  // eslint-disable-line react-hooks/exhaustive-deps
+  ], [canResetPassword, canChangeEnrolment, canErase]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -408,8 +492,16 @@ export default function StaffTracker() {
     setError('');
     try {
       const [staffRes, leavesRes, requestsRes] = await Promise.all([
-        // The page size goes to the API so the SERVER paginates (UX-DR10).
-        getStaff({ page, sort, limit: pageSize }),
+        // The page size goes to the API so the SERVER paginates (UX-DR10). The view
+        // and the search term go the same way, so the answer is the whole school's
+        // worth of matches rather than whatever happened to be on this page.
+        getStaff({
+          page,
+          sort,
+          limit: pageSize,
+          enrolment_state: enrolmentView,
+          ...(search ? { search } : {}),
+        }),
         getPendingLeaves().catch(() => ({ data: [] })),
         canReviewChanges ? getProfileChangeRequests('pending').catch(() => ({ data: [] }))
                          : Promise.resolve({ data: [] }),
@@ -427,9 +519,15 @@ export default function StaffTracker() {
     }
     setLoading(false);
     setLeavesLoading(false);
-  }, [page, sort, pageSize, canReviewChanges]);
+  }, [page, sort, pageSize, canReviewChanges, enrolmentView, search]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  const loadCounts = useCallback(async () => {
+    const res = await getStaffEnrolmentSummary();
+    if (res.success) setEnrolmentCounts(res.data);
+  }, []);
+  useEffect(() => { loadCounts(); }, [loadCounts]);
 
   useEffect(() => {
     const interval = setInterval(() => setClockTick(t => t + 1), 30000);
@@ -469,8 +567,42 @@ export default function StaffTracker() {
   const deactivate = async (profile) => {
     if (!window.confirm(`Deactivate ${profile.name}? Their login sessions will be revoked.`)) return;
     const res = await deactivateStaff(profile.id);
-    if (res.success) loadData();
+    if (res.success) { loadData(); loadCounts(); }
     else setError(res.detail || 'Unable to deactivate staff profile');
+  };
+
+  /** Put someone back on the staff roll. Their login comes back with them. */
+  const restore = async (profile) => {
+    if (!window.confirm(`Put ${profile.name} back on the staff roll? Their login will work again.`)) return;
+    const res = await setStaffEnrolment(profile.id, 'active');
+    if (res.success) { loadData(); loadCounts(); }
+    else setError(res.detail || 'Unable to restore this staff profile');
+  };
+
+  const changeState = async (state, reason) => {
+    if (!stateTarget) return;
+    setSavingState(true);
+    const res = await setStaffEnrolment(stateTarget.id, state, reason);
+    setSavingState(false);
+    if (res.success) {
+      setStateTarget(null);
+      loadData();
+      loadCounts();
+    } else {
+      setError(res.detail || 'Unable to change this status');
+    }
+  };
+
+  const confirmErase = async (reason) => {
+    if (!eraseTarget) return;
+    const res = await eraseStaff(eraseTarget.id, reason);
+    if (res.success) {
+      setEraseTarget(null);
+      loadData();
+      loadCounts();
+    } else {
+      setError(res.detail || 'Unable to erase this staff record');
+    }
   };
 
   if (loading) {
@@ -518,14 +650,40 @@ export default function StaffTracker() {
 
       {activeTab === 'profiles' && (
         <>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-            <select value={sort} onChange={(event) => { setSort(event.target.value); setPage(1); }} style={{ ...inputStyle, width: 180 }}>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            <div style={{ position: 'relative', flex: '1 1 240px', maxWidth: 320 }}>
+              <Search size={13} style={{ position: 'absolute', left: 12, top: 20, transform: 'translateY(-50%)', color: 'var(--c-faint)' }} />
+              <input
+                value={search}
+                onChange={(event) => { setSearch(event.target.value); setPage(1); }}
+                data-testid="staff-search"
+                aria-label="Search staff by name, employee ID, designation or department"
+                placeholder="Name, employee ID, designation…"
+                style={{ ...inputStyle, paddingLeft: 32, width: '100%' }}
+              />
+            </div>
+            <ViewPicker
+              value={enrolmentView}
+              canSeeOffRoll={canChangeEnrolment}
+              onChange={(next) => { setEnrolmentView(next); setPage(1); }}
+              data-testid="staff-view-picker"
+            />
+            <select value={sort} onChange={(event) => { setSort(event.target.value); setPage(1); }} aria-label="Sort staff by" style={{ ...inputStyle, width: 180 }}>
               <option value="name">Sort by name</option>
               <option value="staff_type">Sort by type</option>
               <option value="department">Sort by department</option>
               <option value="created_at">Newest first</option>
             </select>
           </div>
+
+          {enrolmentCounts && (
+            <div data-testid="staff-enrolment-counts" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+              <Pill tone="green">{enrolmentCounts.on_roll} on the roll</Pill>
+              <Pill tone="orange">{enrolmentCounts.nso} on the NSO list</Pill>
+              <Pill tone="neutral">{enrolmentCounts.tc_issued} have left</Pill>
+            </div>
+          )}
+
           <DataTable
             tableId="staff"
             caption="Staff, sortable by column"
@@ -539,8 +697,10 @@ export default function StaffTracker() {
             pageSize={pageSize}
             onPageChange={setPage}
             onPageSizeChange={changePageSize}
-            emptyTitle="No staff records found"
-            emptyMessage="Try a different sort, or add a member of staff."
+            emptyTitle={enrolmentView === OFF_ROLL_VIEW ? 'The recycle bin is empty' : 'No staff records found'}
+            emptyMessage={enrolmentView === OFF_ROLL_VIEW
+              ? 'Nobody has been taken off the staff roll. Anyone moved to NSO or marked as having left will appear here, and can be put back.'
+              : 'Try clearing the search, or add a member of staff.'}
           />
         </>
       )}
@@ -611,6 +771,26 @@ export default function StaffTracker() {
       {showAdd && <StaffModal canEditLeaveBalances={canEditLeaveBalances} onClose={() => setShowAdd(false)} onSaved={loadData} />}
       {editing && <StaffModal initialStaff={editing} canEditLeaveBalances={canEditLeaveBalances} onClose={() => setEditing(null)} onSaved={loadData} />}
       {resetTarget && <ResetPasswordModal profile={resetTarget} onClose={() => setResetTarget(null)} />}
+
+      {stateTarget && (
+        <EnrolmentStateModal
+          person={stateTarget}
+          currentState={readState(stateTarget)}
+          kind="staff"
+          busy={savingState}
+          onCancel={() => setStateTarget(null)}
+          onConfirm={changeState}
+        />
+      )}
+
+      {eraseTarget && (
+        <EraseConfirmModal
+          person={eraseTarget}
+          kind="staff"
+          onCancel={() => setEraseTarget(null)}
+          onConfirm={confirmErase}
+        />
+      )}
     </div>
   );
 }

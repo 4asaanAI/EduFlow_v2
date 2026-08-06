@@ -851,6 +851,7 @@ async def get_lesson_plan_completion(
 @router.post("/question-papers/generate")
 async def generate_question_paper(request: Request, user: dict = Depends(require_role("teacher", "admin", "owner"))):
     """Use LLM to generate a question paper."""
+    from ai.builtin_skills import with_builtin_habits
     from ai.llm_client import llm_client
     body = await request.json()
     subject = body.get("subject", "Mathematics")
@@ -882,7 +883,14 @@ Make questions appropriate for Classes 9-12 CBSE standard."""
         # (audit X1: the raw tuple/dict was previously saved as paper content),
         # and surface a real 503 when the model was unavailable.
         result = await llm_client.chat(
-            "You are an expert CBSE question paper setter. Generate well-structured, academically accurate question papers.",
+            # Owner request 17, 2026-08-06: a generated document is printed and handed
+            # to children, so it follows the same plain-language habit as Flo's replies.
+            # This prompt is assembled here rather than in ai/prompts.py, which is why
+            # it was the one user-facing prose path the habit never reached.
+            with_builtin_habits(
+                "You are an expert CBSE question paper setter. Generate well-structured, "
+                "academically accurate question papers."
+            ),
             [{"role": "user", "content": prompt}],
             session_id
         )

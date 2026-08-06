@@ -156,3 +156,37 @@ def test_flo_knows_the_schools_fee_structure_when_recorded():
     })
     assert "FEE STRUCTURE" in prompt
     assert "48,000 per year" in prompt
+
+
+# ─── The habit reaches generated DOCUMENTS too ───────────────────────────────
+#
+# Owner request 17, 2026-08-06: "add the /stop-slop skill as Flo's habit so that it
+# never prints AI slop in her replies or generated documents". The chat prompt had
+# carried it since 2026-08-05; the one-off prompts that generate documents did not,
+# because they are assembled in their own route files and never touched ai/prompts.py.
+# A question paper is printed and handed to children, so it is exactly the case the
+# habit exists for.
+
+
+def test_with_builtin_habits_appends_the_habit_to_any_prompt():
+    from ai.builtin_skills import with_builtin_habits
+
+    result = with_builtin_habits("You are an expert question paper setter.")
+
+    assert "You are an expert question paper setter." in result
+    assert "BUILT-IN HABIT /stop-slop" in result
+    assert result.count("BUILT-IN HABIT /stop-slop") == 1
+
+
+def test_the_question_paper_generator_carries_the_habit():
+    """Read from the source rather than the model: the assertion has to fail if the
+    call is ever rewritten without the wrapper, and mocking the model would still
+    pass on a prompt that had lost it."""
+    import inspect
+
+    import routes.academics as academics
+
+    source = inspect.getsource(academics)
+    assert "with_builtin_habits(" in source, (
+        "the generated question paper no longer goes through the plain-language habit"
+    )

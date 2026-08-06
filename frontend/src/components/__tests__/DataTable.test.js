@@ -109,9 +109,31 @@ describe('paging', () => {
 
 describe('rows-per-page selector (UX-DR10)', () => {
   it('offers exactly the sizes the owner asked for', () => {
+    // The original six, plus the larger ones and All added 2026-08-06 (item 13):
+    // 30 a page is 61 pages for 1,802 students.
     setup();
     const options = within(screen.getByTestId('students-page-size')).getAllByRole('option');
-    expect(options.map(o => o.value)).toEqual(['5', '10', '15', '20', '25', '30']);
+    expect(options.map(o => o.value)).toEqual(['5', '10', '15', '20', '25', '30', '50', '100', '250', '500', '-1']);
+  });
+
+  it('spells the All option rather than showing its sentinel number', () => {
+    setup();
+    const options = within(screen.getByTestId('students-page-size')).getAllByRole('option');
+    expect(options[options.length - 1]).toHaveTextContent('All');
+  });
+
+  it('offers only the narrower menu when a table passes one', () => {
+    // A table whose rows can be selected and deleted in bulk must not offer a page
+    // bigger than the server's bulk limit.
+    setup({ pageSizes: [5, 10, 15] });
+    const options = within(screen.getByTestId('students-page-size')).getAllByRole('option');
+    expect(options.map(o => o.value)).toEqual(['5', '10', '15']);
+  });
+
+  it('shows one page and no way forward when All is selected', () => {
+    setup({ pageSize: -1, total: 1802 });
+    expect(screen.getByTestId('students-page-indicator')).toHaveTextContent('Page 1 of 1');
+    expect(screen.getByTestId('students-next')).toBeDisabled();
   });
 
   it('shows the active value', () => {

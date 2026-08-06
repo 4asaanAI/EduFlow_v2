@@ -3,7 +3,7 @@
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useUser } from '../../contexts/UserContext';
-import { API, apiFetch, getAllClasses, getStudents, getTodayAttendance, bulkMarkAttendance } from '../../lib/api';
+import { API, apiFetch, getAllClasses, getAllStudents, getTodayAttendance, bulkMarkAttendance } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn } from './ToolPage';
 import { Plus, CheckCircle, Save, Bold, Underline, List } from 'lucide-react';
@@ -931,7 +931,7 @@ export function PtmNotes() {
     if (!scopeReady(scope)) return;
     Promise.all([
       getAllClasses().then(r => { if (r.success) setClasses(filterClasses(r.data || [], scope, 'all')); }),
-      getStudents().then(r => { if (r.success) setStudents(r.data || []); }),
+      getAllStudents().then(r => { if (r.success) setStudents(r.data || []); }),
       load(),
     ]).finally(() => setLoading(false));
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps

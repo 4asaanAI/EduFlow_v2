@@ -2,9 +2,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useUser } from '../../contexts/UserContext';
 import { getStaff, getStudents } from '../../lib/api';
+import { EnrolmentBadge } from '../ui/EnrolmentControls';
+import { readState } from '../../lib/enrolmentStates';
 import DataTable, { cellValue } from '../ui/DataTable';
 import { useTablePageSize } from '../../hooks/useTablePrefs';
-import { ArrowRight, RefreshCw, Users } from 'lucide-react';
+import { ArrowRight, RefreshCw, Search, Users } from 'lucide-react';
 
 // ─── The school's own staff vocabulary (Epic 7, owner decision 2026-07-23) ──────
 //
@@ -126,6 +128,10 @@ export default function SchoolDirectory() {
       {activeTab === 'students' ? (
         <StudentsTab
           user={currentUser}
+          // The Directory is the single door now (owner note 2026-08-07), so it has to
+          // carry the things that only live on the full screen: adding a student, the
+          // recycle bin, class strength. Without this the merge would strand them.
+          onOpenFullScreen={() => setSearchParams({ tool: 'student-database' })}
           // Deep-link straight to this student's profile — StudentDatabase reads
           // `focus` and opens the detail panel (fetches by id, so the student
           // need not be on that screen's current page).
@@ -136,7 +142,10 @@ export default function SchoolDirectory() {
         // the list. Staff Tracker reads `focus` and fetches the staff member by id,
         // so it works whatever page that paginated list happens to be showing, and
         // says so plainly if the record cannot be opened.
-        <StaffTab onOpen={(s) => setSearchParams({ tool: 'staff-tracker', focus: s.id })} />
+        <StaffTab
+          onOpen={(s) => setSearchParams({ tool: 'staff-tracker', focus: s.id })}
+          onOpenFullScreen={() => setSearchParams({ tool: 'staff-tracker' })}
+        />
       )}
     </div>
   );
@@ -144,13 +153,17 @@ export default function SchoolDirectory() {
 
 // ─── Students tab ───────────────────────────────────────────────────────────────
 
-function StudentsTab({ user, onOpen }) {
+function StudentsTab({ user, onOpen, onOpenFullScreen }) {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [sort, setSort] = useState('name');
   const [page, setPage] = useState(1);
+  // Owner note, 2026-08-07: the Directory is now the single place to find anybody,
+  // so it needs to be searchable. The search goes to the SERVER, not to the rows
+  // already on screen, or it would only ever find people on the current page.
+  const [search, setSearch] = useState('');
   // Keyed per tab so sizing students does not resize staff (UX-DR10).
   const [pageSize, setPageSize] = useTablePageSize('directory-students');
   const changeSort = useCallback((next) => { setSort(next); setPage(1); }, []);
@@ -160,7 +173,7 @@ function StudentsTab({ user, onOpen }) {
     setLoading(true);
     setError('');
     try {
-      const res = await getStudents({ page, sort, limit: pageSize });
+      const res = await getStudents({ page, sort, limit: pageSize, ...(search ? { search } : {}) });
       if (res.success) {
         setRows(res.data || []);
         setTotal(res.meta?.total || 0);
@@ -171,7 +184,7 @@ function StudentsTab({ user, onOpen }) {
       setError(err.message || 'Unable to load students');
     }
     setLoading(false);
-  }, [page, sort, pageSize]);
+  }, [page, sort, pageSize, search]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -192,7 +205,12 @@ function StudentsTab({ user, onOpen }) {
     // here rather than a column that always reads "not recorded". Sort is
     // server-side (sortKey: 'class').
     { key: 'class', label: 'Class', sortKey: 'class', render: (s) => (s.class_info ? `${s.class_info.name}-${s.class_info.section}` : cellValue(null)) },
+    { key: 'roll', label: 'Roll', render: (s) => cellValue(s.roll_number) },
     { key: 'phone', label: 'Phone', render: (s) => cellValue(s.primary_phone) },
+    { key: 'house', label: 'House', sortKey: 'house', render: (s) => cellValue(s.house) },
+    // Owner request 10: the Directory is the single place now, so it has to say
+    // whether somebody is on the roll, on the NSO list, or has left.
+    { key: 'status', label: 'Status', render: (s) => <EnrolmentBadge state={readState(s)} /> },
     {
       key: 'open', label: '',
       render: () => (
@@ -208,7 +226,18 @@ function StudentsTab({ user, onOpen }) {
   return (
     <>
       {error && <ErrorBanner text={error} />}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: '1 1 240px', maxWidth: 340 }}>
+          <Search size={13} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--c-faint)' }} />
+          <input
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            data-testid="directory-students-search"
+            aria-label="Search students by name or admission number"
+            placeholder="Name or admission number"
+            style={{ ...selectStyle, paddingLeft: 32, width: '100%' }}
+          />
+        </div>
         <select
           data-testid="directory-students-sort"
           value={sort}
@@ -219,6 +248,14 @@ function StudentsTab({ user, onOpen }) {
           <option value="class">Sort by class</option>
           <option value="created_at">Newest first</option>
         </select>
+        <button
+          type="button"
+          onClick={onOpenFullScreen}
+          data-testid="directory-open-student-records"
+          style={linkButtonStyle}
+        >
+          Add, restore or erase a student <ArrowRight size={12} />
+        </button>
       </div>
       <DataTable
         tableId="directory-students"
@@ -243,13 +280,14 @@ function StudentsTab({ user, onOpen }) {
 
 // ─── Staff tab ──────────────────────────────────────────────────────────────────
 
-function StaffTab({ onOpen }) {
+function StaffTab({ onOpen, onOpenFullScreen }) {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [sort, setSort] = useState('name');
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
   const [pageSize, setPageSize] = useTablePageSize('directory-staff');
   const changeSort = useCallback((next) => { setSort(next); setPage(1); }, []);
   const changePageSize = useCallback((n) => { setPageSize(n); setPage(1); }, [setPageSize]);
@@ -258,7 +296,7 @@ function StaffTab({ onOpen }) {
     setLoading(true);
     setError('');
     try {
-      const res = await getStaff({ page, sort, limit: pageSize });
+      const res = await getStaff({ page, sort, limit: pageSize, ...(search ? { search } : {}) });
       if (res.success) {
         setRows(res.data || []);
         setTotal(res.meta?.total || 0);
@@ -269,7 +307,7 @@ function StaffTab({ onOpen }) {
       setError(err.message || 'Unable to load staff');
     }
     setLoading(false);
-  }, [page, sort, pageSize]);
+  }, [page, sort, pageSize, search]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -286,6 +324,8 @@ function StaffTab({ onOpen }) {
     { key: 'designation', label: 'Designation', sortKey: 'designation', render: (p) => <DesignationCell profile={p} /> },
     { key: 'department', label: 'Department', sortKey: 'department', render: (p) => cellValue(p.department) },
     { key: 'phone', label: 'Phone', render: (p) => cellValue(p.phone) },
+    { key: 'email', label: 'Email', render: (p) => cellValue(p.email) },
+    { key: 'status', label: 'Status', render: (p) => <EnrolmentBadge state={readState(p)} /> },
     {
       key: 'open', label: '',
       render: () => (
@@ -313,7 +353,18 @@ function StaffTab({ onOpen }) {
         recorded per staff member, so teachers show their stored designation until that data
         is loaded.
       </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: '1 1 240px', maxWidth: 340 }}>
+          <Search size={13} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--c-faint)' }} />
+          <input
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            data-testid="directory-staff-search"
+            aria-label="Search staff by name, employee ID, designation or department"
+            placeholder="Name, employee ID or department"
+            style={{ ...selectStyle, paddingLeft: 32, width: '100%' }}
+          />
+        </div>
         <select
           data-testid="directory-staff-sort"
           value={sort}
@@ -325,6 +376,14 @@ function StaffTab({ onOpen }) {
           <option value="department">Sort by department</option>
           <option value="created_at">Newest first</option>
         </select>
+        <button
+          type="button"
+          onClick={onOpenFullScreen}
+          data-testid="directory-open-staff-records"
+          style={linkButtonStyle}
+        >
+          Add, restore or erase a staff member <ArrowRight size={12} />
+        </button>
       </div>
       <DataTable
         tableId="directory-staff"
@@ -348,6 +407,20 @@ function StaffTab({ onOpen }) {
 }
 
 // ─── Small shared bits ──────────────────────────────────────────────────────────
+
+/**
+ * The way through to the full records screen behind each tab.
+ *
+ * Owner note, 2026-08-07: the Directory is now the only tile in the hub, so the
+ * things that live ONLY on the full screen - adding a person, the recycle bin, class
+ * strength - have to be reachable from here or the merge would quietly remove them.
+ */
+const linkButtonStyle = {
+  display: 'inline-flex', alignItems: 'center', gap: 6,
+  background: 'transparent', border: '1px solid var(--c-border)',
+  borderRadius: 8, padding: '9px 12px',
+  color: 'var(--tool-hex-4f8ff7)', fontSize: 12, fontWeight: 650, cursor: 'pointer',
+};
 
 const selectStyle = {
   width: 180,

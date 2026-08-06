@@ -85,6 +85,85 @@ def test_audit_record_history_is_paginated(client, fake_db):
     assert body["meta"] == {"page": 2, "limit": 10, "total": 25}
 
 
+# ── Who may read the log at all (owner request 10, 2026-08-06) ──────────────
+# Owner and principal only. `it_tech` and `management` used to be admitted here
+# and by the Help & Support menu; both sides are now closed.
+
+def test_audit_log_unauthenticated_returns_401(client):
+    assert client.get("/api/audit-log").status_code == 401
+
+
+def test_audit_log_wrong_role_returns_403(client):
+    response = client.get("/api/audit-log", headers=_headers("t1", "teacher"))
+    assert response.status_code == 403
+
+
+def test_it_tech_admin_cannot_read_audit_log(client, fake_db):
+    fake_db.audit_logs.docs[:] = [
+        {"id": "a1", "schoolId": "aaryans-joya", "collection": "students", "created_at": "2026-01-02"},
+    ]
+
+    response = client.get(
+        "/api/audit-log",
+        headers=_headers("it-1", "admin", sub_category="it_tech"),
+    )
+
+    assert response.status_code == 403
+
+
+def test_management_admin_cannot_read_audit_log(client, fake_db):
+    fake_db.audit_logs.docs[:] = [
+        {"id": "a1", "schoolId": "aaryans-joya", "collection": "students", "created_at": "2026-01-02"},
+    ]
+
+    response = client.get(
+        "/api/audit-log",
+        headers=_headers("mgmt-1", "admin", sub_category="management"),
+    )
+
+    assert response.status_code == 403
+
+
+def test_it_tech_admin_cannot_read_record_history(client, fake_db):
+    fake_db.audit_logs.docs[:] = [
+        {"id": "a1", "schoolId": "aaryans-joya", "entity_id": "record-1", "created_at": "2026-01-02"},
+    ]
+
+    response = client.get(
+        "/api/audit-log/record/record-1",
+        headers=_headers("it-1", "admin", sub_category="it_tech"),
+    )
+
+    assert response.status_code == 403
+
+
+def test_management_admin_cannot_read_record_history(client, fake_db):
+    fake_db.audit_logs.docs[:] = [
+        {"id": "a1", "schoolId": "aaryans-joya", "entity_id": "record-1", "created_at": "2026-01-02"},
+    ]
+
+    response = client.get(
+        "/api/audit-log/record/record-1",
+        headers=_headers("mgmt-1", "admin", sub_category="management"),
+    )
+
+    assert response.status_code == 403
+
+
+def test_principal_still_reads_the_audit_log(client, fake_db):
+    fake_db.audit_logs.docs[:] = [
+        {"id": "a1", "schoolId": "aaryans-joya", "collection": "students", "created_at": "2026-01-02"},
+    ]
+
+    response = client.get(
+        "/api/audit-log",
+        headers=_headers("principal-1", "admin", sub_category="principal"),
+    )
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()["data"]] == ["a1"]
+
+
 def test_audit_log_rejects_invalid_pagination(client):
     headers = _headers("owner-1", "owner")
 

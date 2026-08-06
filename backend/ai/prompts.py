@@ -614,6 +614,42 @@ TOOL_QUERY_STUDENT_RECORD = {
     "description": "Detailed student record including fee profile and transport assignment.",
     "params_schema": {"student_id": "required — student ID"},
 }
+TOOL_GET_PROFILE_NOTES = {
+    "name": "get_profile_notes",
+    "description": (
+        "The notes YOU have written about a student or member of staff. Notes are "
+        "private to whoever wrote them — you can never see anyone else's, and nobody "
+        "sees yours. Say so if the person seems to expect otherwise."
+    ),
+    "params_schema": {
+        "name": "who the notes are about",
+        "subject_type": "optional — 'student' (default) or 'staff'",
+        "subject_id": "optional — exact ID if known",
+    },
+}
+TOOL_ADD_PROFILE_NOTE = {
+    "name": "add_profile_note",
+    "description": (
+        "Write a private note or remark on a student or staff profile. It belongs to "
+        "the person who asked for it and only they can read it back. Confirm before writing."
+    ),
+    "params_schema": {
+        "name": "who the note is about",
+        "note": "what to write",
+        "subject_type": "optional — 'student' (default) or 'staff'",
+        "subject_id": "optional — exact ID if known",
+    },
+}
+TOOL_GET_ENROLMENT_SUMMARY = {
+    "name": "get_enrolment_summary",
+    "description": (
+        "How many students and staff are on the roll, how many are on the NSO list "
+        "(stopped attending, no TC yet, STILL marked on the daily register every day), "
+        "and how many have left with a TC. Use this for ANY 'how many students/staff' "
+        "question — the plain roll count leaves the NSO list out."
+    ),
+    "params_schema": {},
+}
 TOOL_QUERY_AUDIT_LOG = {
     "name": "query_audit_log",
     "description": "View system audit log — who did what, when (role-scoped; excludes financial & personal fee data).",
@@ -845,6 +881,9 @@ _OWNER_TOOLS = [
     TOOL_GET_FEE_TRANSACTIONS,
     TOOL_GET_ENQUIRIES,
     TOOL_GET_STUDENT_DATABASE,
+    TOOL_GET_ENROLMENT_SUMMARY,
+    TOOL_GET_PROFILE_NOTES,
+    TOOL_ADD_PROFILE_NOTE,
     TOOL_GET_FEE_STRUCTURES,
     TOOL_GET_CLASS_WISE_ATTENDANCE,
     TOOL_GET_TODAY_CLASS_ATTENDANCE,
@@ -945,6 +984,9 @@ _PRINCIPAL_TOOLS = [
     TOOL_APPROVE_LEAVE,
     TOOL_GET_ENQUIRIES,
     TOOL_GET_STUDENT_DATABASE,
+    TOOL_GET_ENROLMENT_SUMMARY,
+    TOOL_GET_PROFILE_NOTES,
+    TOOL_ADD_PROFILE_NOTE,
     TOOL_GET_FEE_STRUCTURES,
     TOOL_GET_CLASS_WISE_ATTENDANCE,
     TOOL_GET_LEAVE_REQUESTS,
@@ -1665,6 +1707,27 @@ the block do the rest.
 """
 
 
+ENROLMENT_STATE_RULES = """
+WHO IS ON THE ROLL, AND WHO IS STILL MARKED (owner request 10, 2026-08-06):
+- The school has THREE states, not two, and the middle one is the one people forget:
+  - On the roll — attending as normal.
+  - NSO — stopped attending, no leaving certificate issued yet. They are OFF the roll
+    but their name STILL APPEARS on the daily attendance register every morning, so a
+    teacher marks them absent and the school notices if one walks back in.
+  - TC issued — the leaving certificate is out. Off the roll and off the register.
+- So there are TWO different counts and they are both true:
+  - the roll count (students the school has), and
+  - the register count (names a teacher marks), which is the roll PLUS the NSO list.
+- NEVER give one as though it were the whole answer. If someone asks how many students
+  there are and any student is on the NSO list, say both: "1,801 on the roll, and 3 more
+  on the NSO list who are still marked every day". Use get_enrolment_summary for this;
+  the other student tools count the roll only.
+- Never call an NSO student "deleted", "removed" or "gone". They have stopped attending,
+  the school has not finished with them, and their record is intact.
+- The same three states apply to staff and teachers, not to students only.
+"""
+
+
 OFF_TOPIC_RULES = """
 STAYING ON PURPOSE:
 - You help with THIS school's operations — students, attendance, fees, staff, academics,
@@ -1877,6 +1940,7 @@ AVAILABLE TOOLS FOR YOUR ROLE ({role}{' / ' + sub_category if sub_category else 
 
 {WRITING_STYLE_RULES}
 {RESPONSE_FORMAT_RULES}
+{ENROLMENT_STATE_RULES}
 {OFF_TOPIC_RULES}
 {student_sections}
 {PROMPT_INJECTION_RULES}"""

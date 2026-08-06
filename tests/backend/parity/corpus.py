@@ -34,6 +34,8 @@ PARITY_CORPUS = {
     "manage_student_guardians": "student_parity_test.py",
     "create_staff": "staff_parity_test.py",
     "update_staff": "staff_parity_test.py",
+    # Owner request 4 (2026-08-06) — private notes on a profile
+    "add_profile_note": "profile_note_parity_test.py",
     # Epic K.1 — fee-config CRUD
     "create_fee_structure": "fee_config_parity_test.py",
     "update_fee_structure": "fee_config_parity_test.py",

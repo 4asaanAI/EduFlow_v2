@@ -156,6 +156,51 @@ export default function Layout() {
   }, [setSearchParams]);
 
   /**
+   * Where Back goes (owner request 19, 2026-08-06).
+   *
+   * Back used to clear `?tool=` outright, which dropped you into the chat from
+   * wherever you were. That is wrong the moment a screen is reached THROUGH another
+   * screen — which is now the normal case, because the nine management hubs exist
+   * to be opened and then drilled into. Open School Database, open Students &
+   * Guardians, press Back, and you were in the chat rather than back at School
+   * Database, with no way to the hub except starting again from the menu.
+   *
+   * The trail is kept here rather than read from browser history because the shell
+   * cannot see how many of the browser's entries belong to this app (a person may
+   * have arrived from anywhere), and `history.back()` past the first one would
+   * leave the site entirely.
+   *
+   * Rules:
+   *   - opening a screen pushes the one you were on;
+   *   - Back pops, so it walks the trail one step at a time;
+   *   - an empty trail means Back goes to the chat, which is the old behaviour and
+   *     the right answer for a screen opened straight from the menu;
+   *   - re-opening a screen already on the trail truncates back to it rather than
+   *     stacking a second copy, so hub → tool → hub → tool cannot grow forever.
+   */
+  const [toolTrail, setToolTrail] = useState([]);
+
+  const pushTool = useCallback((toolId) => {
+    setToolTrail((trail) => {
+      if (!activeTool || activeTool === toolId) return trail;
+      const seenAt = trail.indexOf(toolId);
+      if (seenAt !== -1) return trail.slice(0, seenAt);
+      return [...trail, activeTool];
+    });
+  }, [activeTool]);
+
+  // Deliberately NOT navigating from inside a state updater: React may invoke an
+  // updater twice, and a double navigation would skip a step of the trail.
+  const handleBack = useCallback(() => {
+    if (toolTrail.length === 0) {
+      setActiveToolParam(null);
+      return;
+    }
+    setActiveToolParam(toolTrail[toolTrail.length - 1]);
+    setToolTrail(toolTrail.slice(0, -1));
+  }, [toolTrail, setActiveToolParam]);
+
+  /**
    * Close the drawer when the user picks something that NAVIGATES.
    *
    * On phones the sidebar is an overlay sitting on top of the thing you just
@@ -178,6 +223,7 @@ export default function Layout() {
 
   const handleNewChat = async () => {
     setActiveToolParam(null);
+    setToolTrail([]);
     closeDrawerOnNavigate();
     // D-64: takes no arguments (see the note on getConversations below).
     const res = await createConversation();
@@ -189,6 +235,10 @@ export default function Layout() {
   };
 
   const handleSelectTool = (toolId) => {
+    // Picking a screen from the MENU starts a fresh trail: the menu is a top-level
+    // jump, not a step deeper into where you already were. Drilling in from a hub
+    // goes through the `open-tool` handler below, which does push.
+    setToolTrail([]);
     setActiveToolParam(toolId);
     closeDrawerOnNavigate();
     if (isToolDashboardRole) {
@@ -201,6 +251,7 @@ export default function Layout() {
 
   const handleSelectConv = async (convId) => {
     setActiveToolParam(null);
+    setToolTrail([]);
     setActiveConvId(convId);
     closeDrawerOnNavigate();
     try {
@@ -222,11 +273,18 @@ export default function Layout() {
     setConvRefresh(n => n + 1);
   };
 
+  // `open-tool` is how a screen opens another screen: a hub card, a search result,
+  // the notification panel. That IS a step deeper, so it pushes onto the trail and
+  // Back returns to the screen that sent you.
   useEffect(() => {
-    const handler = (e) => { if (e.detail) { setActiveToolParam(e.detail); } };
+    const handler = (e) => {
+      if (!e.detail) return;
+      pushTool(resolveToolId(e.detail));
+      setActiveToolParam(e.detail);
+    };
     window.addEventListener('open-tool', handler);
     return () => window.removeEventListener('open-tool', handler);
-  }, [setActiveToolParam]);
+  }, [setActiveToolParam, pushTool]);
 
   /**
    * Epic 6: the All Chats page opening a conversation, and telling the shell that
@@ -346,19 +404,14 @@ export default function Layout() {
         convRefresh={convRefresh}
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
-        // Profile and Settings open a modal ON TOP of the drawer, so the drawer
-        // has to go too — otherwise closing the modal reveals the menu you
-        // opened it from, still sitting over the page.
-        onOpenProfile={() => { closeDrawerOnNavigate(); setShowProfile(true); }}
-        onOpenSettings={() => { closeDrawerOnNavigate(); setShowSettings(true); }}
-        isToolDashboardRole={isToolDashboardRole}
       />
 
       <div className="app-main-content" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
         <Header
           activeTool={activeTool}
           activeConvTitle={activeConvTitle}
-          onBackToChat={() => setActiveToolParam(null)}
+          onBack={handleBack}
+          canGoBack={toolTrail.length > 0}
           onOpenProfile={() => setShowProfile(true)}
           onOpenSettings={() => setShowSettings(true)}
           onToggleSidebar={() => setSidebarOpen(v => !v)}

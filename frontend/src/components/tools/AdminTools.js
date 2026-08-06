@@ -3,10 +3,11 @@
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
-import { API, apiFetch, getStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, correctFeeTransaction, deleteFeeTransaction, getPendingLeaves, updateLeave, getWhatsappDefaulters, sendAttendanceAlerts, getSchoolSettings } from '../../lib/api';
+import { API, apiFetch, getStudents, getAllStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, correctFeeTransaction, deleteFeeTransaction, getPendingLeaves, updateLeave, getWhatsappDefaulters, sendAttendanceAlerts, getSchoolSettings } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, LineChartWidget, useColumnSort, SortableHeaderRow } from './ToolPage';
 import { Search, Plus, CheckCircle, XCircle, Save, RefreshCw, X, FileDown, MessageSquare, Edit3, Trash2 } from 'lucide-react';
+import SearchablePicker from '../ui/SearchablePicker';
 import FullStudentDatabase from './StudentDatabase';
 import AdmissionsWorkflow from './AdmissionsWorkflow';
 
@@ -701,7 +702,7 @@ export function CertificateGenerator() {
 
   useEffect(() => {
     Promise.all([
-      getStudents().then(r => { if (r.success) setStudents(r.data || []); }),
+      getAllStudents().then(r => { if (r.success) setStudents(r.data || []); }),
       loadCerts(),
       // Epic 4 / Story 4.3: the affiliation line on a certificate used to be a
       // hard-coded string in this file. A CBSE certificate carries the school's
@@ -760,8 +761,23 @@ export function CertificateGenerator() {
         <div>
           <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
             <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Generate Certificate</h3>
-            <FormField label="Student" type="select" value={form.student_id} onChange={f('student_id')}
-              options={students.map(s => ({ value: s.id, label: s.name }))} required />
+            {/* Owner note, 2026-08-07: a plain dropdown of 1,802 names with no search,
+                fed by a request that returned only the first twenty of them. */}
+            <div style={{ marginBottom: 14 }}>
+              <SearchablePicker
+                label="Student"
+                required
+                value={form.student_id}
+                onChange={f('student_id')}
+                data-testid="certificate-student"
+                options={students.map(s => ({
+                  value: s.id,
+                  label: s.name,
+                  hint: [s.class_info ? `${s.class_info.name}-${s.class_info.section}` : null, s.admission_number]
+                    .filter(Boolean).join(' · '),
+                }))}
+              />
+            </div>
             <FormField label="Certificate Type" type="select" value={form.cert_type} onChange={f('cert_type')}
               options={Object.entries(CERT_LABELS).map(([v, l]) => ({ value: v, label: l }))} />
             <ActionBtn label={generating ? 'Generating...' : 'Generate Certificate'} onClick={generate} disabled={generating || !form.student_id} />
@@ -1954,10 +1970,16 @@ export function IdCardGenerator() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [printing, setPrinting] = useState(false);
   const [printError, setPrintError] = useState('');
+  // Owner note, 2026-08-07: "there should be a search option for the name among the
+  // list". Picking one child out of 1,802 by scrolling is not a thing anyone does.
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     Promise.all([
-      apiFetch(`${API}/students/`, { headers: h() }).then(r => r.json()).then(r => { if (r.success) setStudents(r.data || []); }),
+      // Owner note, 2026-08-07: this was a raw fetch with no limit, so the server
+      // answered with its default 20 rows and the card list silently stopped at the
+      // first twenty of 1,802 students.
+      getAllStudents().then(r => { if (r.success) setStudents(r.data || []); }),
       // Was a raw fetch, which bypassed api.js and so skipped the class ordering
       // applied in getAllClasses. Project convention is that all API calls go
       // through api.js for exactly this reason.
@@ -1965,10 +1987,19 @@ export function IdCardGenerator() {
     ]).finally(() => setLoading(false));
   }, [currentUser]);
 
+  const filtered = students.filter(s => {
+    if (filterClass && s.class_id !== filterClass) return false;
+    if (!search.trim()) return true;
+    const needle = search.trim().toLowerCase();
+    return [s.name, s.admission_number, s.roll_number]
+      .some(v => String(v || '').toLowerCase().includes(needle));
+  });
+
+  // Select All follows what is on screen. Selecting rows a search has hidden is how
+  // somebody prints 1,802 cards while looking at a list of four.
   const toggleAll = () => {
-    const filtered = filterClass ? students.filter(s => s.class_id === filterClass) : students;
-    if (selectedIds.length === filtered.length) setSelectedIds([]);
-    else setSelectedIds(filtered.map(s => s.id));
+    const allChosen = filtered.length > 0 && filtered.every(s => selectedIds.includes(s.id));
+    setSelectedIds(allChosen ? [] : filtered.map(s => s.id));
   };
 
   const printCards = () => {
@@ -1986,16 +2017,22 @@ export function IdCardGenerator() {
     );
   };
 
-  const filtered = filterClass ? students.filter(s => s.class_id === filterClass) : students;
-
   return (
     <ToolPage title="ID Card Generator" subtitle="Generate printable student ID cards" loading={loading}>
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-        <select value={filterClass} onChange={e => setFilterClass(e.target.value)} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          data-testid="id-card-search"
+          aria-label="Search students by name, admission number or roll number"
+          placeholder="Search by name, admission or roll no."
+          style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none', minWidth: 240, flex: '1 1 240px', maxWidth: 320 }}
+        />
+        <select value={filterClass} onChange={e => setFilterClass(e.target.value)} aria-label="Filter by class" style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
           <option value="">All Classes</option>
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
         </select>
-        <ActionBtn label={selectedIds.length === filtered.length ? 'Deselect All' : 'Select All'} variant="secondary" onClick={toggleAll} />
+        <ActionBtn label={filtered.length > 0 && filtered.every(s => selectedIds.includes(s.id)) ? 'Deselect all shown' : 'Select all shown'} variant="secondary" onClick={toggleAll} />
         <ActionBtn label={printing ? 'Generating PDF...' : `Download ${selectedIds.length} ID Cards PDF`} onClick={printCards} disabled={selectedIds.length === 0 || printing} />
       </div>
       {printError && (
@@ -2315,7 +2352,7 @@ export function TransportManager() {
     try {
       const [routesRes, studentsRes] = await Promise.all([
         apiFetch(`${API}/ops/transport`, { headers: h() }).then(r => r.json()),
-        getStudents({})
+        getAllStudents()
       ]);
       if (routesRes.success) setRoutes(routesRes.data || []);
       if (studentsRes.success) setStudents(studentsRes.data || []);
@@ -2423,7 +2460,19 @@ export function TransportManager() {
           <form onSubmit={handleAssign}>
             <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Route" type="select" value={assignForm.bus_route} onChange={fa('bus_route')} options={routes.map(r => ({ value: r.id, label: r.route_name }))} required />
-              <FormField label="Student" type="select" value={assignForm.student_id} onChange={fa('student_id')} options={students.map(s => ({ value: s.id, label: s.name }))} required />
+              <SearchablePicker
+                label="Student"
+                required
+                value={assignForm.student_id}
+                onChange={fa('student_id')}
+                data-testid="transport-student"
+                options={students.map(s => ({
+                  value: s.id,
+                  label: s.name,
+                  hint: [s.class_info ? `${s.class_info.name}-${s.class_info.section}` : null, s.admission_number]
+                    .filter(Boolean).join(' · '),
+                }))}
+              />
             </div>
             {assignError && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 8 }}>{assignError}</div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
@@ -2744,7 +2793,7 @@ export function StudentPerformanceViewer() {
 
   useEffect(() => {
     Promise.all([
-      getStudents().then(r => { if (r.success) setStudents(r.data || []); }),
+      getAllStudents().then(r => { if (r.success) setStudents(r.data || []); }),
       apiFetch(`${API}/academics/results`, { headers: h() }).then(r => r.json()).then(r => { if (r.success) setResults(r.data || []); }),
     ]).finally(() => setLoading(false));
   }, [currentUser]);

@@ -93,15 +93,41 @@ def _patch_ocr(monkeypatch, **kwargs):
 
 
 def test_an_unavailable_engine_never_reads_as_a_blank_page(client, monkeypatch):
-    """Before the deploy that installs tesseract, every request lands here."""
+    """A missing engine AND a missing fallback still says which, not "blank"."""
     _patch_ocr(monkeypatch, text="", available=False,
                reason="The OCR engine is not installed on this server yet.")
+    _patch_vision(monkeypatch, description="", available=False,
+                  reason="This server cannot look at pictures yet.")
 
     body = _upload(client, _bearer({"user_id": "o1", "role": "owner", "name": "O"})).json()
 
-    assert "not installed on this server yet" in body["extracted_text"]
+    assert "cannot look at pictures yet" in body["extracted_text"]
     assert body["ocr_note"]
     assert "blank" not in body["extracted_text"].lower()
+
+
+def test_a_server_without_the_free_reader_still_gets_the_picture_looked_at(client, monkeypatch):
+    """Owner request 16, 2026-08-06 — the defect this file did not previously cover.
+
+    The fallback used to be reached ONLY when the free reader ran and found nothing.
+    When the reader was absent — which is the state of the live Elastic Beanstalk
+    server — the code returned "not available" and stopped, so an attached photo was
+    never looked at by anything at all. Aman sent Flo a picture and was told image
+    text extraction was not available, while the paid path built for exactly this
+    case sat unused.
+
+    Absent and found-nothing must both fall through to the fallback.
+    """
+    _patch_ocr(monkeypatch, text="", available=False,
+               reason="The OCR engine is not installed on this server yet.")
+    calls = _patch_vision(monkeypatch, description="A school admission form for Asha Kumari.",
+                          available=True)
+
+    body = _upload(client, _bearer({"user_id": "o1", "role": "owner", "name": "O"})).json()
+
+    assert len(calls) == 1, "the fallback should have been tried when the reader is absent"
+    assert "Asha Kumari" in body["extracted_text"]
+    assert body["ocr_note"] is None
 
 
 def test_text_found_on_the_page_is_handed_to_flo_as_ordinary_text(client, monkeypatch):

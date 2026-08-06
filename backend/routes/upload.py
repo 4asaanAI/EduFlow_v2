@@ -271,6 +271,55 @@ async def generated_file_link(file_id: str, user: dict = Depends(get_current_use
     }}
 
 
+@router.get("/content/{file_id}")
+async def generated_file_content(file_id: str, user: dict = Depends(get_current_user)):
+    """The text of a document Flo made, so a person can read and correct it.
+
+    Owner request, 2026-08-07: until now a generated document could only be
+    downloaded. There was no way to fix one wrong sentence short of asking Flo again.
+
+    THE CORRECTED COPY IS NOT SAVED HERE, and that is a decision, not an omission
+    (Abhimanyu, 2026-08-07). The person edits in the browser and downloads the result;
+    nothing is written back. So this endpoint is READ ONLY by design, and there is
+    deliberately no matching PUT. If that decision is ever revisited, the new version
+    must be a NEW record with its own author and timestamp, never an overwrite of this
+    one, because the original is what the audit row already refers to.
+
+    Access is the SAME check the download link uses. Anyone who may download the file
+    may read its text, and nobody else — a separate, looser rule here would be a way
+    round the download gate.
+    """
+    db = get_db()
+    record = await db.file_uploads.find_one(
+        # branch-scope: intentional — file_uploads is school-scoped; a file belongs to
+        # its uploader and the school, not to a branch.
+        scoped_filter({"id": file_id}, get_school_id())  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+    )
+    if not record:
+        raise HTTPException(404, "That file could not be found. Please ask for it again.")
+    if not _can_access_upload(record, user):
+        raise HTTPException(403, "Forbidden")
+
+    content = record.get("editable_html") or ""
+    if not content:
+        # Documents generated before this shipped hold no editable copy. Saying so
+        # plainly is better than opening an empty editor, which would read as though
+        # the document itself were empty.
+        raise HTTPException(
+            409,
+            "This document was made before editing was available, so it can only be "
+            "downloaded. Ask Flo for it again to get an editable copy.",
+        )
+    return {"success": True, "data": {
+        "file_id": file_id,
+        "file_name": record.get("file_name"),
+        "doc_type": (record.get("file_name") or "").rsplit(".", 1)[-1].lower(),
+        "content_html": content,
+        "editable": True,
+        "saves_to_server": False,
+    }}
+
+
 @router.get("")
 async def list_uploads(
     request: Request,

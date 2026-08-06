@@ -7,7 +7,7 @@
  */
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { GeneratedFile } from '../MessageRenderer';
-import { getGeneratedFileLink } from '../../lib/api';
+import { getGeneratedFileLink, getGeneratedFileContent } from '../../lib/api';
 
 jest.mock('../../contexts/ThemeContext', () => ({ useTheme: () => ({ isDark: true }) }));
 jest.mock('../../lib/api', () => {
@@ -29,6 +29,7 @@ jest.mock('../../lib/api', () => {
   return Object.assign(stub, {
     emitFeedback: jest.fn(),
     getGeneratedFileLink: jest.fn(),
+    getGeneratedFileContent: jest.fn(),
   });
 });
 
@@ -137,4 +138,73 @@ test('a block with missing details still renders without throwing', () => {
   expect(screen.getByText('document')).toBeInTheDocument();
   // No file_id → nothing to fetch → the honest "ask again" state, not a dead button.
   expect(screen.getByTestId('generated-file-expired')).toBeInTheDocument();
+});
+
+/*
+ * Reading and correcting a document (owner request, 2026-08-07).
+ *
+ * Until this, a document Flo made could only be downloaded — one wrong sentence meant
+ * asking Flo again. The panel is the pattern the Question Paper Creator already uses,
+ * lifted into `ui/DocumentEditor` rather than copied, so a fix to the sanitising or
+ * the PDF export cannot land in one of them and miss the other.
+ *
+ * NOTHING IS SAVED BACK. That is Abhimanyu's decision of 2026-08-07, so the panel has
+ * no save button, and it SAYS so — an edit panel with no save reads as broken unless
+ * it explains itself.
+ */
+test('the file card offers a way to read and correct the document', () => {
+  render(<GeneratedFile block={block} />);
+  expect(screen.getByTestId('generated-file-edit')).toBeInTheDocument();
+});
+
+test('opening the editor fetches the document text and shows it', async () => {
+  getGeneratedFileContent.mockResolvedValue({
+    success: true,
+    data: { content_html: '<h1>Notice</h1><p>Holiday on Monday.</p>', saves_to_server: false },
+  });
+
+  render(<GeneratedFile block={block} />);
+  fireEvent.click(screen.getByTestId('generated-file-edit'));
+
+  await waitFor(() => expect(screen.getByTestId('document-editor')).toBeInTheDocument());
+  expect(getGeneratedFileContent).toHaveBeenCalledWith(block.file_id);
+  expect(screen.getByTestId('document-editor-surface').textContent).toMatch(/Holiday on Monday\./);
+});
+
+test('the panel says in plain words that changes are not saved', async () => {
+  getGeneratedFileContent.mockResolvedValue({
+    success: true, data: { content_html: '<p>Text.</p>' },
+  });
+
+  render(<GeneratedFile block={block} />);
+  fireEvent.click(screen.getByTestId('generated-file-edit'));
+
+  await waitFor(() => expect(screen.getByTestId('document-editor-notice')).toBeInTheDocument());
+  expect(screen.getByTestId('document-editor-notice').textContent).toMatch(/not saved/i);
+});
+
+test('a document made before editing existed says so in its own words', async () => {
+  // The server answers 409 with a sentence explaining that particular file can only
+  // be downloaded. "Something went wrong" would send the person looking for a fault
+  // that is not there.
+  const err = new Error('This document was made before editing was available, so it can only be downloaded.');
+  err.status = 409;
+  getGeneratedFileContent.mockRejectedValue(err);
+
+  render(<GeneratedFile block={block} />);
+  fireEvent.click(screen.getByTestId('generated-file-edit'));
+
+  await waitFor(() => expect(screen.getByTestId('generated-file-edit-error')).toBeInTheDocument());
+  expect(screen.getByTestId('generated-file-edit-error').textContent).toMatch(/only be downloaded/i);
+  expect(screen.queryByTestId('document-editor')).not.toBeInTheDocument();
+});
+
+test('a failed open never disables the download', async () => {
+  getGeneratedFileContent.mockRejectedValue(new Error('nope'));
+
+  render(<GeneratedFile block={block} />);
+  fireEvent.click(screen.getByTestId('generated-file-edit'));
+
+  await waitFor(() => expect(screen.getByTestId('generated-file-edit-error')).toBeInTheDocument());
+  expect(screen.getByTestId('generated-file-download')).not.toBeDisabled();
 });

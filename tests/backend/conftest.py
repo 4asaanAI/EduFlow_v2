@@ -104,6 +104,7 @@ try:
     import routes.academics as academics_routes
     import routes.issues as issues_routes
     import routes.audit as audit_routes
+    import routes.profile_notes as profile_notes_routes
     import routes.upload as upload_routes
     import routes.chat_upload as chat_upload_routes
     import routes.image_gen as image_gen_routes
@@ -568,6 +569,7 @@ class FakeDb:
         self.approval_requests = FakeCollection()
         self.notifications = FakeCollection()
         self.audit_logs = FakeCollection()
+        self.profile_notes = FakeCollection()
         self.file_uploads = FakeCollection()
         self.orphaned_s3_keys = FakeCollection()
         self.users = FakeCollection()
@@ -723,6 +725,7 @@ if APP_AVAILABLE:
     academics_routes.get_db = lambda: _fake_db
     issues_routes.get_db = lambda: _fake_db
     audit_routes.get_db = lambda: _fake_db
+    profile_notes_routes.get_db = lambda: _fake_db
     upload_routes.get_db = lambda: _fake_db
     image_gen_routes.get_db = lambda: _fake_db
     chat_routes.get_db = lambda: _fake_db

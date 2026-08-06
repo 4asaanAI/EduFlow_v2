@@ -54,9 +54,11 @@ async function executeAction(convId, action, params, label) {
 
 function TypingIndicator() {
   return (
-    <div style={{ display: 'flex', gap: 14, padding: '12px 0', alignItems: 'flex-start' }}>
-      {/* Same face as every one of Flo's replies — it is Flo who is thinking. */}
-      <div style={{
+    <div className="assistant-row" style={{ display: 'flex', gap: 14, padding: '12px 0', alignItems: 'flex-start' }}>
+      {/* Same face as every one of Flo's replies — it is Flo who is thinking, and it
+          is hidden on a phone for the same reason (owner request 7). The shared
+          .assistant-row / .assistant-avatar classes are what keep the two in step. */}
+      <div className="assistant-avatar" style={{
         width: 28, height: 28, borderRadius: 8,
         background: 'linear-gradient(135deg, rgba(79,143,247,0.15), rgba(167,139,250,0.15))',
         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden',
@@ -990,11 +992,15 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
             );
             return (
               <div className="fade-in" data-testid="chat-stream-block">
-                {/* STREAM_GUTTER is the 42px the avatar occupies (28px + 14px gap).
-                    Every stacked element shares it, so the progress panel, any badge
-                    and the reply body have ONE left edge instead of three. */}
+                {/* --stream-gutter is the space the avatar occupies: 42px on desktop
+                    (28px + 14px gap), 0 on a phone where the avatar is hidden (owner
+                    request 7). Every stacked element reads the same variable, so the
+                    progress panel, any badge and the reply body have ONE left edge
+                    instead of three — and on a phone all three sit flush left rather
+                    than indenting past a face that is not drawn. STREAM_GUTTER stays
+                    exported as the desktop number for the tests that assert it. */}
                 {hasProgressPanel ? (
-                  <div style={{ paddingLeft: STREAM_GUTTER, marginBottom: STREAM_GAP }} data-testid="chat-progress-panel">
+                  <div style={{ paddingLeft: 'var(--stream-gutter)', marginBottom: STREAM_GAP }} data-testid="chat-progress-panel">
                     <ThinkingProcess
                       steps={thinkingSteps}
                       isStreaming={streaming}
@@ -1003,7 +1009,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
                     />
                   </div>
                 ) : currentStreamMsg.toolCall ? (
-                  <div style={{ paddingLeft: STREAM_GUTTER, marginBottom: STREAM_GAP }} data-testid="chat-tool-badge">
+                  <div style={{ paddingLeft: 'var(--stream-gutter)', marginBottom: STREAM_GAP }} data-testid="chat-tool-badge">
                     <ToolCallBadge tool={currentStreamMsg.toolCall.tool} status={currentStreamMsg.toolCall.status} />
                   </div>
                 ) : null}
@@ -1020,7 +1026,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
                     aria-live="polite"
                     data-testid="chat-stall-notice"
                     style={{
-                      paddingLeft: STREAM_GUTTER, marginTop: STREAM_GAP,
+                      paddingLeft: 'var(--stream-gutter)', marginTop: STREAM_GAP,
                       fontSize: 13, color: 'var(--color-text-muted)',
                     }}
                   >

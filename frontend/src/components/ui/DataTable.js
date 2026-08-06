@@ -30,7 +30,7 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { Button, EmptyState } from './primitives';
-import { PAGE_SIZES } from '../../hooks/useTablePrefs';
+import { ALL_ROWS, PAGE_SIZES, pageSizeLabel } from '../../hooks/useTablePrefs';
 
 const srOnly = {
   position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
@@ -93,6 +93,7 @@ export default function DataTable({
   page = 1,
   total = 0,
   pageSize,
+  pageSizes,
   onPageChange,
   onPageSizeChange,
   loading = false,
@@ -101,7 +102,12 @@ export default function DataTable({
   emptyMessage,
   tableId = 'table',
 }) {
-  const totalPages = Math.max(1, Math.ceil(total / (pageSize || 1)));
+  // ALL_ROWS (-1) means "one page holding everything", so the page count is 1 and
+  // Prev/Next are both disabled. Without this the arithmetic divides by -1 and the
+  // page count comes out negative.
+  const totalPages = pageSize === ALL_ROWS
+    ? 1
+    : Math.max(1, Math.ceil(total / (pageSize || 1)));
   const selectId = `${tableId}-page-size`;
 
   // A failed load must never be dressed up as an empty result — owner item 7.
@@ -262,8 +268,11 @@ export default function DataTable({
               minHeight: 36,
             }}
           >
-            {PAGE_SIZES.map((n) => (
-              <option key={n} value={n}>{n}</option>
+            {/* `pageSizes` lets a table offer a narrower menu than the full set.
+                The All Chats page does, because its rows can be selected and deleted
+                in bulk and the server caps that at 100. See BULK_SAFE_PAGE_SIZES. */}
+            {(pageSizes || PAGE_SIZES).map((n) => (
+              <option key={n} value={n}>{pageSizeLabel(n)}</option>
             ))}
           </select>
           <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>

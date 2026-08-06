@@ -1,15 +1,14 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { getConversations, updateConversation, deleteConversation, getMyTokenUsage, getSchoolSettings } from '../lib/api';
-import TokenUpgradeModal from './TokenUpgradeModal';
+import { getConversations, updateConversation, deleteConversation, getSchoolSettings } from '../lib/api';
 import { filterToolsForUser } from '../lib/toolPermissions';
 import {
   Activity, IndianRupee, Users, BarChart2, Bell, FileText, HeartPulse, Megaphone,
   CalendarDays, UserPlus, MessageSquare, Pin, Star, Trash2, Plus, BookOpen,
   ClipboardList, Brain, PenTool, BarChart, UserCheck, Award, Truck,
   Package, Printer, FilePlus, HelpCircle, Target, Compass, FileCheck,
-  Edit2, X, ChevronDown, ChevronRight, MessageCircle, Settings, User, LogOut, Sun, Moon,
+  Edit2, X, ChevronDown, ChevronRight, MessageCircle, Settings, User,
   LifeBuoy, Database, RefreshCw, Wrench, Monitor, AlertTriangle, ScrollText, Trophy,
   Search,
 } from 'lucide-react';
@@ -194,7 +193,9 @@ const ADMIN_SUBCATEGORY_TOOLS = {
   receptionist: ['student-database', 'enquiry-register', 'commercial-operations', 'parent-message', 'student-transfer', 'asset-tracker', 'incident-tracker', 'raise-maintenance', 'custom-form-builder'],
   it_tech: ['tech-issues', 'raise-maintenance', 'custom-form-builder', 'query-section'],
   maintenance: ['maintenance-schedule', 'vendor-log', 'raise-maintenance'],
-  management: ['academic-structure', 'timetable-builder', 'exam-manager', 'raise-maintenance', 'audit-log', 'query-section'],
+  // Owner request 10, 2026-08-06: 'audit-log' removed — the action log is owner
+  // and principal only now, on the server as well (routes/audit.py).
+  management: ['academic-structure', 'timetable-builder', 'exam-manager', 'raise-maintenance', 'query-section'],
 };
 
 // ─── Grouped navigation config per role ──────────────────────────────────────
@@ -202,12 +203,10 @@ const TOOL_GROUPS = {
   owner: {
     top: MANAGEMENT_HUBS.map(hub => hub.id),
     groups: [],
-    bottom: [],
   },
   principal: {
     top: MANAGEMENT_HUBS.map(hub => hub.id),
     groups: [],
-    bottom: [],
   },
   teacher: {
     top: [],
@@ -221,7 +220,6 @@ const TOOL_GROUPS = {
       { id: 'personal', name: 'Personal', icon: User, color: '#34d399',
         tools: ['leave-application', 'my-payslips'] },
     ],
-    bottom: ['form-submissions', 'raise-maintenance'],
   },
   student: {
     top: [],
@@ -233,12 +231,10 @@ const TOOL_GROUPS = {
       { id: 'planning', name: 'Planning', icon: Target, color: '#22d3ee',
         tools: ['study-planner', 'career-guidance'] },
     ],
-    bottom: ['form-submissions', 'raise-maintenance'],
   },
   parent: {
     top: ['guardian-portal'],
     groups: [],
-    bottom: [],
   },
 };
 
@@ -318,16 +314,13 @@ function ConvMenu({ conv, onClose, onRename, onPin, onStar, onDelete, isDark }) 
   );
 }
 
-export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeTool, activeConvId, convRefresh, sidebarOpen, setSidebarOpen, onOpenProfile, onOpenSettings, isToolDashboardRole }) {
-  const { currentUser, logout } = useUser();
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [tokenUsage, setTokenUsage] = useState(null);
-  const { isDark, toggleTheme } = useTheme();
+export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeTool, activeConvId, convRefresh, sidebarOpen, setSidebarOpen }) {
+  const { currentUser } = useUser();
+  const { isDark } = useTheme();
   const [conversations, setConversations] = useState([]);
   const [menuConvId, setMenuConvId] = useState(null);
   const [renamingId, setRenamingId] = useState(null);
   const [renameVal, setRenameVal] = useState('');
-  const [toolsExpanded, setToolsExpanded] = useState(false);
   // (chatsExpanded removed with the "N more chats" expander — the zone now
   //  lists every conversation and scrolls on its own.)
   // Whether the Recent Chats section is open at all. Collapsing belongs on the
@@ -336,8 +329,6 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   const [chatsSectionOpen, setChatsSectionOpen] = useState(true);
   // Tools collapses exactly like Recent Chats — same control, same behaviour.
   const [toolsSectionOpen, setToolsSectionOpen] = useState(true);
-  const [showUserMenu, setShowUserMenu] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
   const [schoolName, setSchoolName] = useState('');
   const [schoolMeta, setSchoolMeta] = useState({ city: '', state: '', phone: '', email: '' });
   const [openGroups, setOpenGroups] = useState(() => {
@@ -370,18 +361,6 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
     window.addEventListener('eduflow-navigate', handleNavigate);
     return () => window.removeEventListener('eduflow-navigate', handleNavigate);
   }, [onSelectTool]);
-
-  useEffect(() => {
-    const h = (e) => { if (userMenuRef.current && !userMenuRef.current.contains(e.target)) { setShowUserMenu(false); setShowHelp(false); } };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, []);
-
-  useEffect(() => {
-    getMyTokenUsage()
-      .then(r => { if (r.success) setTokenUsage(r.data); })
-      .catch(() => {});
-  }, [currentUser.id]);
 
   // School identity — fetched for every role, refreshes when the owner saves settings
   useEffect(() => {
@@ -477,7 +456,13 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
     const GIcon = group.icon;
     return (
       <div key={group.id} style={{ marginBottom: 1 }}>
+        {/* Teachers and students reach EVERY one of their screens through these
+            group headers, and a collapsed group keeps its tools out of the page
+            entirely. Without a handle here, a test sweeping "every screen this role
+            is offered" sees an empty menu and concludes the role has no screens —
+            which is exactly what the 2026-08-07 phone-width sweep hit. */}
         <button onClick={() => toggleGroup(group.id)}
+          data-testid={`tool-group-${group.id}`}
           style={{
             display: 'flex', alignItems: 'center', gap: 9, width: '100%', padding: '7px 10px',
             background: hasActive && !isOpen ? `${group.color}0f` : 'transparent',
@@ -524,11 +509,6 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
     );
   };
 
-  // Bottom pinned tools (audit log, query & support) — separate non-scrolling strip
-  const bottomTools = isToolDashboardRole && groupConfig
-    ? groupConfig.bottom.map(id => tools.find(t => t.id === id)).filter(Boolean)
-    : [];
-
   // Section zone backgrounds — distinct but subtle.
   // Kept as explicit pairs rather than tokens: these two tints exist to tell
   // the tools zone and the chats zone apart, so they are deliberately NOT the
@@ -552,6 +532,9 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
             width: 280px !important; min-width: 280px !important;
           }
           .mobile-close { display: flex !important; }
+          /* Owner request 14: one logo in view, and on a phone that is the header's. */
+          .sidebar-brand-logo { display: none !important; }
+          .sidebar-brand-row { min-height: 36px !important; justify-content: flex-end !important; }
           .sidebar-overlay {
             display: ${sidebarOpen ? 'block' : 'none'};
             position: fixed; inset: 0; background: rgba(0,0,0,0.45);
@@ -611,9 +594,17 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
         {/* ── Header: Logo + School Identity + New Chat ── */}
         <div style={{ padding: '12px 12px 10px', flexShrink: 0 }}>
 
-          {/* Brand row */}
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+          {/* Brand row.
+              The logo is HIDDEN ON PHONES (owner request 14, 2026-08-06). The header
+              already shows it there, and this second 52px copy inside the drawer cost
+              a chunk of the height that Tools and Recent Chats have to share. The rule
+              is unchanged from what the header comments describe — exactly one EduFlow
+              logo in view at a time — it is just now the header's copy that wins on a
+              phone rather than both being drawn. On desktop the header shows none, so
+              this one stays. The close button keeps its row either way. */}
+          <div className="sidebar-brand-row" style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 52 }}>
             <img
+              className="sidebar-brand-logo"
               src="/eduflow-logo.png"
               alt="EduFlow"
               style={{
@@ -836,177 +827,15 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
 
 
 
-        {/* ── Token usage badge ── */}
-        <TokenUsageBadge
-          usage={tokenUsage}
-          role={currentUser.role}
-          isDark={isDark}
-          border={border}
-          onClick={() => setShowUpgradeModal(true)}
-        />
+        {/* ── The token bar and the account block used to sit here ──
+            Both moved into the account menu in the top bar on 2026-08-06 (owner
+            requests 5, 6 and 15). See components/AccountMenu.js. On a phone this
+            drawer had a logo, a school card, New Chat, a token bar and an account
+            row all fixed to it, leaving Tools and Recent Chats roughly two rows
+            each; that height now goes to the two lists people navigate with. */}
 
-        {/* ── User section ── */}
-        <div style={{ borderTop: `1px solid ${border}`, padding: '8px', flexShrink: 0 }} ref={userMenuRef}>
-          {showUserMenu && (
-            <div className="fade-in-scale" style={{
-              position: 'absolute', bottom: 68, left: 8, right: 8,
-              background: 'var(--color-surface-raised)', border: `1px solid ${border}`,
-              borderRadius: 12, padding: 6, boxShadow: 'var(--shadow-lg)', zIndex: 100,
-            }}>
-              {/* Profile */}
-              <button onClick={() => { onOpenProfile(); setShowUserMenu(false); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', background: 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', color: secondary, fontSize: 13, fontWeight: 500, transition: 'var(--transition-fast)' }}
-                onMouseEnter={e => e.currentTarget.style.background = hover}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                <User size={14} />
-                <span>Profile</span>
-              </button>
-              {/* Dark Mode */}
-              <button onClick={toggleTheme}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', background: 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', color: secondary, fontSize: 13, fontWeight: 500, transition: 'var(--transition-fast)' }}
-                onMouseEnter={e => e.currentTarget.style.background = hover}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                {isDark ? <Sun size={14} /> : <Moon size={14} />}
-                <span>{isDark ? 'Light Mode' : 'Dark Mode'}</span>
-              </button>
-              {/* Settings */}
-              <button onClick={() => { onOpenSettings(); setShowUserMenu(false); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', background: 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', color: secondary, fontSize: 13, fontWeight: 500, transition: 'var(--transition-fast)' }}
-                onMouseEnter={e => e.currentTarget.style.background = hover}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                <Settings size={14} />
-                <span>Settings</span>
-              </button>
-              {/* Help — expandable, contains bottomTools */}
-              <button onClick={() => setShowHelp(v => !v)}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', background: showHelp ? hover : 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', color: secondary, fontSize: 13, fontWeight: 500, transition: 'var(--transition-fast)' }}
-                onMouseEnter={e => e.currentTarget.style.background = hover}
-                onMouseLeave={e => { if (!showHelp) e.currentTarget.style.background = 'transparent'; }}>
-                <LifeBuoy size={14} />
-                <span style={{ flex: 1, textAlign: 'left' }}>Help & Support</span>
-                <ChevronDown size={12} color={muted} style={{ transform: showHelp ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s ease' }} />
-              </button>
-              {showHelp && bottomTools.length > 0 && (
-                <div style={{ paddingLeft: 8, paddingBottom: 2 }}>
-                  {bottomTools.map(t => {
-                    const Icon = t.icon;
-                    const isActive = activeTool === t.id;
-                    return (
-                      <button key={t.id} onClick={() => { onSelectTool(t.id); setShowUserMenu(false); setShowHelp(false); }}
-                        style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 10px', background: isActive ? `${t.color}12` : 'transparent', border: 'none', borderRadius: 7, cursor: 'pointer', color: isActive ? t.color : secondary, fontSize: 12, fontWeight: isActive ? 600 : 500, transition: 'var(--transition-fast)' }}
-                        onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = hover; }}
-                        onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}>
-                        <Icon size={13} color={isActive ? t.color : muted} />
-                        <span>{t.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-              <div style={{ borderTop: `1px solid ${border}`, margin: '4px 0' }} />
-              {/* Sign Out */}
-              <button onClick={() => { logout(); setShowUserMenu(false); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', background: 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', color: '#f87171', fontSize: 13, fontWeight: 500, transition: 'var(--transition-fast)' }}
-                onMouseEnter={e => e.currentTarget.style.background = hover}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                <LogOut size={14} />
-                <span>Sign Out</span>
-              </button>
-            </div>
-          )}
-
-          <button onClick={() => setShowUserMenu(v => !v)} data-testid="role-switcher-btn"
-            style={{
-              display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 10px',
-              background: showUserMenu ? hover : 'transparent',
-              border: 'none', borderRadius: 10, cursor: 'pointer', transition: 'all var(--transition-fast)',
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = hover}
-            onMouseLeave={e => { if (!showUserMenu) e.currentTarget.style.background = 'transparent'; }}>
-            <div style={{
-              width: 32, height: 32, borderRadius: 9, background: `linear-gradient(135deg, ${ROLE_COLORS[currentUser.role]}, ${ROLE_COLORS[currentUser.role]}aa)`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0,
-              boxShadow: `0 2px 6px ${ROLE_COLORS[currentUser.role]}44`,
-            }}>
-              {currentUser.initials}
-            </div>
-            <div style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: tp, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{currentUser.name}</div>
-              <div style={{ fontSize: 10, color: ROLE_COLORS[currentUser.role], fontWeight: 600, lineHeight: 1.2, marginTop: 2 }}>{ROLE_LABELS[currentUser.role]}</div>
-            </div>
-            <ChevronDown size={13} color={muted} style={{ transform: showUserMenu ? 'rotate(180deg)' : 'none', transition: 'var(--transition-fast)' }} />
-          </button>
-        </div>
       </aside>
 
-      {showUpgradeModal && (
-        <TokenUpgradeModal
-          onClose={() => setShowUpgradeModal(false)}
-          currentUsage={tokenUsage?.total_used || 0}
-          roleLimit={tokenUsage?.role_limit || 0}
-          canPurchase={currentUser.role !== 'student'}
-        />
-      )}
     </>
-  );
-}
-
-function TokenUsageBadge({ usage, isDark, border, onClick }) {
-  if (!usage) return null;
-
-  const isUnlimited = usage.unlimited === true || usage.role_limit == null;
-  const limit = isUnlimited ? 0 : (usage.role_limit || 0);
-  const used = usage.total_used || 0;
-  const pct = (!isUnlimited && limit > 0) ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-  const barColor = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#10b981';
-  const textColor = 'var(--color-text-secondary)';
-  const bg = 'var(--color-surface-muted)';
-  const hoverBg = 'var(--bg-hover)';
-
-  function fmt(n) {
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-    if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
-    return `${n}`;
-  }
-
-  return (
-    <div style={{ padding: '4px 8px', borderTop: `1px solid ${border}` }}>
-      <button
-        onClick={onClick}
-        title={isUnlimited ? `${used.toLocaleString()} tokens used — Unlimited plan` : `${used.toLocaleString()} / ${limit.toLocaleString()} tokens used — Click to manage`}
-        style={{
-          width: '100%', border: 'none', cursor: 'pointer',
-          background: bg, borderRadius: 10, padding: '8px 10px',
-          display: 'flex', flexDirection: 'column', gap: 5,
-          transition: 'background 0.15s',
-        }}
-        onMouseEnter={e => e.currentTarget.style.background = hoverBg}
-        onMouseLeave={e => e.currentTarget.style.background = bg}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: textColor, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            AI Tokens
-          </span>
-          {isUnlimited
-            ? <span style={{ fontSize: 10, fontWeight: 700, color: '#10b981' }}>∞ Unlimited</span>
-            : <span style={{ fontSize: 10, fontWeight: 700, color: barColor }}>{pct}%</span>
-          }
-        </div>
-        {!isUnlimited && (
-          <div style={{ height: 4, borderRadius: 3, background: 'var(--color-border)', overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 3, transition: 'width 0.5s ease' }} />
-          </div>
-        )}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 10, color: textColor }}>
-            {isUnlimited ? `${fmt(used)} used` : `${fmt(used)} / ${fmt(limit)}`}
-          </span>
-          <span style={{ fontSize: 10, color: '#4f8ff7', fontWeight: 600 }}>
-            {!isUnlimited && pct >= 80 ? '⚡ Top up →' : 'Manage →'}
-          </span>
-        </div>
-      </button>
-    </div>
   );
 }

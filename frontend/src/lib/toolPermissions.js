@@ -23,6 +23,22 @@ export const DOCUMENT_ISSUER_TOOLS = ['certificate-generator', 'id-card-generato
 const DOCUMENT_ISSUER_ADMIN_SUB_CATEGORIES = ['principal', 'accountant'];
 
 /**
+ * Admin sub-categories allowed per restricted tool.
+ *
+ * `audit-log` — owner request 10, 2026-08-06. The action log is a record of who
+ * changed what in the school's data, and Aman asked that only the owner and the
+ * principal be able to read it. The server enforces the same list in
+ * `backend/routes/audit.py` (`AUDIT_READER_SUB_CATEGORIES`); the Help & Support
+ * menu applies it separately in `helpMenu.js`. Offering it to an `it_tech` or
+ * `management` profile now only produces a refusal when they press it.
+ */
+const RESTRICTED_TOOL_ADMIN_SUB_CATEGORIES = {
+  'certificate-generator': DOCUMENT_ISSUER_ADMIN_SUB_CATEGORIES,
+  'id-card-generator': DOCUMENT_ISSUER_ADMIN_SUB_CATEGORIES,
+  'audit-log': ['principal'],
+};
+
+/**
  * May this user be OFFERED this tool?
  *
  * The owner check short-circuits before any sub_category test — the school owner's
@@ -30,11 +46,12 @@ const DOCUMENT_ISSUER_ADMIN_SUB_CATEGORIES = ['principal', 'accountant'];
  * from the one person who certainly may use it. Same trap as on the server.
  */
 export function canUseTool(user, toolId) {
-  if (!DOCUMENT_ISSUER_TOOLS.includes(toolId)) return true;
+  const allowedSubs = RESTRICTED_TOOL_ADMIN_SUB_CATEGORIES[toolId];
+  if (!allowedSubs) return true;
   if (!user) return false;
   if (user.role === 'owner') return true;
   if (user.role !== 'admin') return false;
-  return DOCUMENT_ISSUER_ADMIN_SUB_CATEGORIES.includes(user.sub_category);
+  return allowedSubs.includes(user.sub_category);
 }
 
 /** Drop every tool this user may not use. Accepts ids or objects with an `id`. */

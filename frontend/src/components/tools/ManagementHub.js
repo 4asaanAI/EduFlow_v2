@@ -25,11 +25,14 @@ export default function ManagementHub({ hubId }) {
   const open = toolId => window.dispatchEvent(new CustomEvent('open-tool', { detail: toolId }));
 
   return <ToolPage title={hub.name} subtitle={hub.subtitle}>
+    {/* The hub's own icon, and nothing else. This row used to carry
+        "N connected workspaces. Choose what you need." — one shared component, so
+        the same sentence appeared on all nine hubs. It told a person nothing they
+        could not see (the cards are right below it, and they can count), and it
+        cost a line of vertical space on every hub on a phone. Removed at the
+        owner's request, 2026-08-06. */}
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: hub.color, marginBottom: 16 }}>
       <Icon size={22} aria-hidden="true" />
-      <span style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>
-        {items.length} connected workspaces. Choose what you need.
-      </span>
     </div>
     <div className="responsive-form-grid" data-testid={`management-hub-${hub.id}`} style={grid}>
       {items.map(([id, name, description]) => <button

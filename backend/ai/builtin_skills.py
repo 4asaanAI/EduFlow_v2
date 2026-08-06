@@ -49,3 +49,19 @@ ALWAYS_ON_SKILLS = (STOP_SLOP,)
 def render_builtin_habits() -> str:
     """Render immutable habits in a stable order for every Flo system prompt."""
     return "\n\n".join(skill.render() for skill in ALWAYS_ON_SKILLS)
+
+
+def with_builtin_habits(system_prompt: str) -> str:
+    """Append the always-on habits to a system prompt built somewhere else.
+
+    Owner request 17, 2026-08-06: "add the /stop-slop skill as Flo's habit so that it
+    never prints AI slop in her replies OR GENERATED DOCUMENTS". The chat prompt in
+    ai/prompts.py already carried the habits; the one-off prompts that generate
+    documents did not, because they are assembled in their own routes and never went
+    near that file. A question paper written in the padded, enthusiastic register the
+    habit exists to prevent is exactly what a school prints and hands to children.
+
+    Any new place that asks the model for prose a human will read should go through
+    this rather than writing its own instructions from scratch.
+    """
+    return f"{system_prompt.strip()}\n\n{render_builtin_habits()}"

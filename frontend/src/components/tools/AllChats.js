@@ -32,7 +32,7 @@ import {
 } from '../../lib/api';
 import DataTable from '../ui/DataTable';
 import { Button, EmptyState, Pill, inputStyle } from '../ui/primitives';
-import { useTablePageSize } from '../../hooks/useTablePrefs';
+import { BULK_SAFE_PAGE_SIZES, useTablePageSize } from '../../hooks/useTablePrefs';
 
 /**
  * Mirrors CONVERSATION_BULK_DELETE_MAX in backend/models/schemas.py.
@@ -198,7 +198,10 @@ export default function AllChats() {
   const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState('');
 
-  const [pageSize, setPageSize] = useTablePageSize('chats');
+  // BULK_SAFE_PAGE_SIZES, not the full menu: rows here can be ticked and deleted
+  // in bulk, and the server refuses more than MAX_BULK_DELETE at once. See the
+  // note on MAX_BULK_DELETE above.
+  const [pageSize, setPageSize] = useTablePageSize('chats', BULK_SAFE_PAGE_SIZES);
 
   // Anything that changes WHICH rows are on screen clears the selection —
   // otherwise a tick made on page 1 would be carried into a confirmation whose
@@ -554,6 +557,7 @@ export default function AllChats() {
           page={page}
           total={total}
           pageSize={pageSize}
+          pageSizes={BULK_SAFE_PAGE_SIZES}
           onPageChange={changePage}
           onPageSizeChange={changePageSize}
         />

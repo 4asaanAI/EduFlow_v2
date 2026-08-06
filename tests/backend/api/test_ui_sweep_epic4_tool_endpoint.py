@@ -237,6 +237,7 @@ def test_every_registry_tool_declares_whether_it_writes(client):
         "get_smart_alerts", "get_staff_list", "get_staff_status",
         "get_student_council", "get_student_database", "get_student_profile",
         "get_timetable", "get_today_class_attendance", "get_transport_status",
+        "get_enrolment_summary", "get_profile_notes",
         "get_upcoming_events", "query_attendance_status", "query_audit_log",
         "query_dashboard_summary", "query_fee_status", "query_incidents",
         "query_maintenance_requests", "query_staff_availability",

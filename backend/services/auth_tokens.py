@@ -34,11 +34,49 @@ def cookie_secure() -> bool:
     return os.environ.get("ENVIRONMENT") == "production"
 
 
+def cookie_samesite() -> str:
+    """SameSite for the refresh cookie: "none" in production, "strict" elsewhere.
+
+    ⚠️  READ THIS BEFORE CHANGING IT BACK TO "strict".
+
+    This cookie was SameSite=Strict, and that meant it never worked in production —
+    not once. The site is served from `main.ddxpej151tf13.amplifyapp.com` and the API
+    from `dapbq24rsje5g.cloudfront.net`. Those are different registrable domains, so
+    every call to /api/auth/refresh is a cross-site request, and a Strict cookie is by
+    definition never attached to one. The browser held the cookie and silently
+    declined to send it.
+
+    What that looked like to the school (owner request 3, 2026-08-06): everyone was
+    signed out exactly one hour after signing in — JWT_EXPIRY_MINUTES — no matter how
+    hard they were working at the time. It read as an inactivity timeout set to an
+    hour. It was not a timeout at all: the silent renewal that is supposed to keep a
+    session alive could not run, so the access token simply reached its expiry and
+    nothing replaced it. Aman reported being thrown out mid-task with the page in
+    front of him.
+
+    "none" requires "secure", which is why this pairs with cookie_secure(). Outside
+    production the front end and the API are both on localhost — same site — so
+    "strict" is both correct and the stronger choice, and Secure would break plain
+    http://localhost.
+
+    What still protects this cookie: HttpOnly (no script can read it), Secure (TLS
+    only), an explicit CORS allow-list of origins in server.py rather than a wildcard,
+    and single-use rotation on every refresh. SameSite was never what was holding the
+    line here; it was only preventing the feature from working.
+
+    The real fix is to put the site and the API on one domain, at which point this
+    goes back to "strict". Until then it must stay "none" or logins break again.
+    """
+    return "none" if cookie_secure() else "strict"
+
+
 # Part 1 hardening: cookie path widened from "/api/auth" to "/".
 # Rationale: future endpoints outside /api/auth (e.g. /api/account) need the
 # refresh cookie to be re-issued automatically. Security is preserved by the
-# HttpOnly + Secure + SameSite=Strict trio, which already prevents reuse from
-# malicious origins regardless of path scope.
+# HttpOnly + Secure + explicit-CORS-origin trio, which prevents reuse from
+# malicious origins regardless of path scope. (This note used to name
+# SameSite=Strict as part of that trio; see cookie_samesite() for why it could
+# not have been doing that job in production.)
 REFRESH_COOKIE_PATH = "/"
 
 # Part 1.5 Patch F: the cookie path widened from /api/auth → / in Part 1.
@@ -57,7 +95,7 @@ def set_refresh_cookie(response: Response, token: str) -> None:
         max_age=REFRESH_TOKEN_TTL_SECONDS,
         httponly=True,
         secure=cookie_secure(),
-        samesite="strict",
+        samesite=cookie_samesite(),
         path=REFRESH_COOKIE_PATH,
     )
 
@@ -67,7 +105,7 @@ def clear_refresh_cookie(response: Response) -> None:
         key=REFRESH_COOKIE_NAME,
         httponly=True,
         secure=cookie_secure(),
-        samesite="strict",
+        samesite=cookie_samesite(),
         path=REFRESH_COOKIE_PATH,
     )
     # Evict any phantom cookie left over from the old /api/auth path.
@@ -75,7 +113,7 @@ def clear_refresh_cookie(response: Response) -> None:
         key=REFRESH_COOKIE_NAME,
         httponly=True,
         secure=cookie_secure(),
-        samesite="strict",
+        samesite=cookie_samesite(),
         path=LEGACY_REFRESH_COOKIE_PATH,
     )
 
@@ -90,7 +128,7 @@ def clear_legacy_refresh_cookie(response: Response) -> None:
         key=REFRESH_COOKIE_NAME,
         httponly=True,
         secure=cookie_secure(),
-        samesite="strict",
+        samesite=cookie_samesite(),
         path=LEGACY_REFRESH_COOKIE_PATH,
     )
 

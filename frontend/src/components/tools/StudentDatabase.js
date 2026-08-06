@@ -6,8 +6,10 @@ import {
   createStudent,
   deactivateStudent,
   eraseStudent,
+  setStudentEnrolment,
   getAllClasses,
   getStudent,
+  getStudentEnrolmentSummary,
   getStudentStrengthStats,
   getStudents,
   updateStudent,
@@ -15,10 +17,26 @@ import {
   uploadStudentPhoto,
   upsertGuardians,
 } from '../../lib/api';
-import { Camera, CheckCircle2, ChevronLeft, ChevronRight, Edit3, MinusCircle, Plus, RefreshCw, Search, Trash2, User, X } from 'lucide-react';
+import { Camera, ChevronLeft, ChevronRight, Edit3, MinusCircle, Plus, RefreshCw, RotateCcw, Search, Trash2, User, X } from 'lucide-react';
 import DataTable, { cellValue } from '../ui/DataTable';
 import { Pill } from '../ui/primitives';
-import { useTablePageSize } from '../../hooks/useTablePrefs';
+import {
+  EnrolmentBadge,
+  EnrolmentStateModal,
+  EraseConfirmModal,
+  ViewPicker,
+} from '../ui/EnrolmentControls';
+import { ON_ROLL_VIEW, OFF_ROLL_VIEW, readState } from '../../lib/enrolmentStates';
+import ProfileNotes from '../ui/ProfileNotes';
+import ProfileDocuments from '../ui/ProfileDocuments';
+import { ALL_ROWS, useTablePageSize } from '../../hooks/useTablePrefs';
+
+/**
+ * The most rows `GET /api/students` will return in one request (`per_page` is
+ * clamped to 500 in backend/routes/students.py). "All" walks the pages in chunks
+ * this size. If the server's cap ever moves, this number moves with it.
+ */
+const SERVER_MAX_LIMIT = 500;
 
 // Class Strength columns. "Not recorded" is its own column because it is a
 // different fact from "Other": one is a student recorded as another gender, the
@@ -57,13 +75,14 @@ const inputStyle = {
   boxSizing: 'border-box',
 };
 
-function Btn({ children, onClick, disabled, variant = 'primary', type = 'button', title, style: extra }) {
+function Btn({ children, onClick, disabled, variant = 'primary', type = 'button', title, style: extra, 'aria-label': ariaLabel }) {
   const secondary = variant === 'secondary';
   const danger = variant === 'danger';
   return (
     <button
       type={type}
       title={title}
+      aria-label={ariaLabel}
       onClick={onClick}
       disabled={disabled}
       style={{
@@ -76,7 +95,10 @@ function Btn({ children, onClick, disabled, variant = 'primary', type = 'button'
         border: secondary ? '1px solid var(--c-border)' : 'none',
         borderRadius: 8,
         padding: '7px 13px',
-        color: danger || !secondary ? '#fff' : 'var(--c-muted)',
+        // --c-text, not --c-muted. A secondary button's label and its icon both take
+        // this colour, and the muted grey sat close enough to the button's own fill
+        // that a 12px icon in it disappeared (owner request 9, 2026-08-06).
+        color: danger || !secondary ? '#fff' : 'var(--c-text)',
         fontSize: 12,
         fontWeight: 600,
         cursor: disabled ? 'not-allowed' : 'pointer',
@@ -159,6 +181,10 @@ function StudentProfileModal({ classes, initialStudent, onClose, onSaved }) {
     gender: initialStudent?.gender || '',
     house: initialStudent?.house || '',
     status: initialStudent?.status || 'active',
+    // Owner request 11 (2026-08-06): where the child lives. One free-text box on
+    // purpose - Indian addresses do not fit tidily into line1/line2/postcode, and a
+    // form that fights the address is a form nobody fills in.
+    address: initialStudent?.address || '',
   });
 
   const getGuardianByRelation = (relation) => {
@@ -231,7 +257,7 @@ function StudentProfileModal({ classes, initialStudent, onClose, onSaved }) {
           dob: personal.dob,
           gender: personal.gender,
           house: personal.house,
-          status: personal.status,
+          address: personal.address,
           blood_group: medical.blood_group,
           height_cm: medical.height_cm ? parseFloat(medical.height_cm) : undefined,
           weight_kg: medical.weight_kg ? parseFloat(medical.weight_kg) : undefined,
@@ -346,15 +372,28 @@ function StudentProfileModal({ classes, initialStudent, onClose, onSaved }) {
                   {HOUSES.map(h => <option key={h} value={h}>{h}</option>)}
                 </select>
               </Field>
-              {editing && (
-                <Field label="Status">
-                  <select value={personal.status} onChange={setP('status')} style={inputStyle}>
-                    <option value="active">Active</option>
-                    <option value="withdrawn">Withdrawn</option>
-                    <option value="transferred">Transferred</option>
-                    <option value="graduated">Graduated</option>
-                  </select>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <Field label="Address">
+                  <textarea
+                    value={personal.address}
+                    onChange={setP('address')}
+                    rows={2}
+                    data-testid="student-address"
+                    style={{ ...inputStyle, resize: 'vertical' }}
+                    placeholder="House, street, locality, town and district"
+                  />
                 </Field>
+              </div>
+              {editing && (
+                /* Owner request 10 (2026-08-06): the free Status list that used to sit
+                   here wrote the `status` word on its own and left `is_active` behind,
+                   which is precisely the bug that made a student unrecoverable. Where a
+                   student stands is now set in one place, by the Status button on the
+                   row, which always writes both. */
+                <div style={{ gridColumn: '1 / -1', fontSize: 12, color: 'var(--c-faint)', lineHeight: 1.55 }}>
+                  To move this student between the roll, the NSO list and having left,
+                  close this form and use the <strong>Status</strong> button on their row.
+                </div>
               )}
             </div>
           )}
@@ -456,7 +495,7 @@ function StudentProfileModal({ classes, initialStudent, onClose, onSaved }) {
 
 // ─── Student Detail Side Panel ────────────────────────────────────────────────
 
-function DetailPanel({ studentId, onClose, onEdit, canManage }) {
+function DetailPanel({ studentId, onClose, onEdit, canManage, canKeepNotes }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -521,6 +560,8 @@ function DetailPanel({ studentId, onClose, onEdit, canManage }) {
               <InfoRow label="Date of Birth" value={data.dob ? `${data.dob}${age ? ` (${age}y)` : ''}` : '—'} />
               <InfoRow label="Gender" value={data.gender ? data.gender.charAt(0).toUpperCase() + data.gender.slice(1) : '—'} />
               <InfoRow label="Admission Date" value={data.admission_date || '—'} />
+              {/* Owner request 11 (2026-08-06) */}
+              <InfoRow label="Address" value={data.address || '—'} />
             </Section>
 
             {/* Medical */}
@@ -559,6 +600,26 @@ function DetailPanel({ studentId, onClose, onEdit, canManage }) {
             {data.uses_transport && (
               <Section title="Transport">
                 <InfoRow label="Bus Route" value={data.bus_route || '—'} />
+              </Section>
+            )}
+
+            {/* Owner request 11 (2026-08-06): Aadhaar, birth certificate and the rest.
+                A school record, so the owner and the principal both reach it. */}
+            {canKeepNotes && (
+              <Section title="Documents">
+                <div style={{ padding: '12px 14px' }}>
+                  <ProfileDocuments subjectId={data.id} canManage={canManage} />
+                </div>
+              </Section>
+            )}
+
+            {/* Owner request 4 (2026-08-06). PRIVATE TO EACH AUTHOR, unlike the
+                documents above: the owner and the principal each see only their own. */}
+            {canKeepNotes && (
+              <Section title="My notes">
+                <div style={{ padding: '12px 14px' }}>
+                  <ProfileNotes subjectType="student" subjectId={data.id} subjectName={data.name} />
+                </div>
               </Section>
             )}
           </div>
@@ -619,7 +680,14 @@ export default function StudentDatabase() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [filterClass, setFilterClass] = useState('');
-  const [includeInactive, setIncludeInactive] = useState(false);
+  // Owner request 10 (2026-08-06): this replaced an "Include inactive" tick box.
+  // The tick was the only route to a student who had been switched off, it said
+  // nothing about why, and it could not tell a child who stopped attending from one
+  // who has formally left. Aman asked for a recycle bin, so this is a place you go.
+  const [enrolmentView, setEnrolmentView] = useState(ON_ROLL_VIEW);
+  const [enrolmentCounts, setEnrolmentCounts] = useState(null);
+  const [stateTarget, setStateTarget] = useState(null);
+  const [savingState, setSavingState] = useState(false);
   const [sort, setSort] = useState('name');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -627,7 +695,6 @@ export default function StudentDatabase() {
   const [showAdd, setShowAdd] = useState(false);
   const [detailId, setDetailId] = useState(null);
   const [eraseTarget, setEraseTarget] = useState(null);
-  const [eraseReason, setEraseReason] = useState('');
 
   // Epic 7 — deep-link from the School Directory. A row there opens
   // `?tool=student-database&focus=<id>`; open that student's profile once, then
@@ -650,6 +717,11 @@ export default function StudentDatabase() {
 
   const canManage = ['owner', 'admin'].includes(currentUser.role);
   const canErase = currentUser.role === 'owner';
+  // Owner or principal only, matching require_owner_or_principal on the enrolment
+  // endpoint. Offering the button to anyone else would only produce a refusal when
+  // they pressed it, which is the D-49 mistake.
+  const canRestore = currentUser.role === 'owner'
+    || (currentUser.role === 'admin' && currentUser.sub_category === 'principal');
 
   // UX-DR10: the user's chosen page size, remembered per table.
   const [pageSize, setPageSize] = useTablePageSize('students');
@@ -693,25 +765,82 @@ export default function StudentDatabase() {
       render: (s) => (s.blood_group ? <Pill tone="red">{s.blood_group}</Pill> : cellValue(null)),
     },
     {
-      key: 'status', label: 'Status',
-      render: (s) => (
-        <Pill tone={s.is_active ? 'green' : 'neutral'} icon={s.is_active ? CheckCircle2 : MinusCircle}>
-          {s.status || (s.is_active ? 'active' : 'inactive')}
-        </Pill>
-      ),
+      // Owner request 12 (2026-08-06). House was already stored on every student,
+      // already editable on the Add and Edit forms, and already shown on the profile
+      // panel in its house colour — it was simply never a column, so the one place
+      // you would look to see who is in which house did not say.
+      key: 'house', label: 'House', sortKey: 'house',
+      render: (s) => {
+        if (!s.house) return cellValue(null);
+        const hc = HOUSE_COLORS[s.house] || { bg: 'rgba(79,143,247,0.12)', color: '#4f8ff7' };
+        return (
+          <span style={{
+            fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4,
+            background: hc.bg, color: hc.color, whiteSpace: 'nowrap',
+          }}>
+            {s.house}
+          </span>
+        );
+      },
     },
     {
+      // Owner request 10 (2026-08-06): the column used to print the raw stored word
+      // ("withdrawn"), which is the platform's vocabulary rather than the school's,
+      // and it could not tell an NSO child from one who has taken their TC.
+      key: 'status', label: 'Status',
+      render: (s) => <EnrolmentBadge state={readState(s)} data-testid={`student-state-${s.id}`} />,
+    },
+    {
+      // Owner request 9 (2026-08-06): "the buttons at the end of each row don't have
+      // any symbols to them". Two of the four were icon-only, drawn at 12px in the
+      // muted grey — on a phone they read as empty boxes, and the third said
+      // "Deactivate" in words beside them, so the row offered no clue that the blank
+      // ones did anything at all.
+      //
+      // Every button now carries BOTH a word and a symbol, at a size you can see, and
+      // an accessible name. Mixed icon-only and labelled buttons in one row is the
+      // pattern that produced the complaint; do not go back to it.
       key: 'actions', label: 'Actions',
       render: (student) => (
         <div style={{ display: 'flex', gap: 5, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
-          <Btn variant="secondary" onClick={() => setDetailId(student.id)} title="View profile"><User size={12} /></Btn>
-          {canManage && <Btn variant="secondary" onClick={() => openEdit(student)} title="Edit student"><Edit3 size={12} /></Btn>}
-          {canManage && student.is_active && <Btn variant="secondary" onClick={() => deactivate(student)} title="Deactivate">Deactivate</Btn>}
-          {canErase && <Btn variant="danger" onClick={() => setEraseTarget(student)} title="Erase student"><Trash2 size={12} /></Btn>}
+          <Btn variant="secondary" onClick={() => setDetailId(student.id)} title="View this student's profile" aria-label={`View ${student.name}`}>
+            <User size={14} aria-hidden="true" />View
+          </Btn>
+          {canManage && (
+            <Btn variant="secondary" onClick={() => openEdit(student)} title="Edit this student" aria-label={`Edit ${student.name}`}>
+              <Edit3 size={14} aria-hidden="true" />Edit
+            </Btn>
+          )}
+          {/* Owner or principal: one button for all three states, in either
+              direction. Restore is simply "back on the roll", which is why it stays
+              as its own button on an off-roll row — it is the one move somebody is
+              looking for in a hurry when a name has vanished. */}
+          {canRestore && (
+            <Btn variant="secondary" onClick={() => setStateTarget(student)} title="Change where this student stands" aria-label={`Change status for ${student.name}`}>
+              <RefreshCw size={14} aria-hidden="true" />Status
+            </Btn>
+          )}
+          {canRestore && readState(student) !== 'active' && (
+            <Btn variant="secondary" onClick={() => restore(student)} title="Put back on the school roll" aria-label={`Restore ${student.name} to the roll`}>
+              <RotateCcw size={14} aria-hidden="true" />Restore
+            </Btn>
+          )}
+          {/* The wider admin set can still take a student off the roll, exactly as
+              before. Only the head of school decides where they land after that. */}
+          {canManage && !canRestore && student.is_active && (
+            <Btn variant="secondary" onClick={() => deactivate(student)} title="Mark as no longer attending" aria-label={`Deactivate ${student.name}`}>
+              <MinusCircle size={14} aria-hidden="true" />Deactivate
+            </Btn>
+          )}
+          {canErase && (
+            <Btn variant="danger" onClick={() => setEraseTarget(student)} title="Erase permanently" aria-label={`Erase ${student.name} permanently`}>
+              <Trash2 size={14} aria-hidden="true" />Erase
+            </Btn>
+          )}
         </div>
       ),
     },
-  ], [canManage, canErase]);  // eslint-disable-line react-hooks/exhaustive-deps
+  ], [canManage, canErase, canRestore]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Server-side aggregated stats for the Class Strength tab (accurate across all pages)
   const [strengthStats, setStrengthStats] = useState([]);
@@ -774,14 +903,42 @@ export default function StudentDatabase() {
     setLoading(true);
     setError('');
     try {
+      const filters = {};
+      if (search) filters.search = search;
+      if (filterClass) filters.class_id = filterClass;
+      // The server takes the view by name and answers with the derived state on each
+      // row, so the screen never has to work out from `is_active` and `status` which
+      // of the three a student is in.
+      filters.enrolment_state = enrolmentView;
+
+      // "All" (owner request 13, 2026-08-06). The server refuses more than
+      // SERVER_MAX_LIMIT in one request, so this walks the pages and joins them
+      // rather than asking for 1,802 at once and getting 500. It stops as soon as
+      // a page comes back short or the running count reaches the reported total,
+      // so a wrong total on the server cannot spin this forever.
+      if (pageSize === ALL_ROWS) {
+        const collected = [];
+        let cursor = 1;
+        let reportedTotal = 0;
+        for (;;) {
+          const res = await getStudents({ ...filters, page: cursor, sort, limit: SERVER_MAX_LIMIT });
+          if (!res.success) { setError(res.detail || 'Unable to load students'); break; }
+          const batch = res.data || [];
+          collected.push(...batch);
+          reportedTotal = res.meta?.total || collected.length;
+          if (batch.length < SERVER_MAX_LIMIT || collected.length >= reportedTotal) break;
+          cursor += 1;
+        }
+        setStudents(collected);
+        setTotal(reportedTotal || collected.length);
+        setLoading(false);
+        return;
+      }
+
       // UX-DR10: the size goes to the API so the SERVER paginates. Fetching
       // everything and slicing on the client would defeat the point entirely
       // on a 1,802-row table.
-      const params = { page, sort, limit: pageSize };
-      if (search) params.search = search;
-      if (filterClass) params.class_id = filterClass;
-      if (includeInactive) params.include_inactive = true;
-      const res = await getStudents(params);
+      const res = await getStudents({ ...filters, page, sort, limit: pageSize });
       if (res.success) {
         setStudents(res.data || []);
         setTotal(res.meta?.total || 0);
@@ -792,10 +949,19 @@ export default function StudentDatabase() {
       setError(err.message || 'Unable to load students');
     }
     setLoading(false);
-  }, [search, filterClass, includeInactive, sort, page, pageSize]);
+  }, [search, filterClass, enrolmentView, sort, page, pageSize]);
 
   useEffect(() => { loadClasses(); }, [loadClasses]);
   useEffect(() => { loadData(); }, [loadData]);
+
+  // The three numbers at the top of the screen. They are what stops anyone reading
+  // "1,801 students" as the whole story when three more are on the NSO list and are
+  // still marked every morning.
+  const loadCounts = useCallback(async () => {
+    const res = await getStudentEnrolmentSummary();
+    if (res.success) setEnrolmentCounts(res.data);
+  }, []);
+  useEffect(() => { if (tab === 'database') loadCounts(); }, [tab, loadCounts]);
 
   const deactivate = async (student) => {
     if (!window.confirm(`Deactivate ${student.name}?`)) return;
@@ -804,13 +970,47 @@ export default function StudentDatabase() {
     else setError(res.detail || 'Unable to deactivate student');
   };
 
-  const confirmErase = async () => {
+  /**
+   * Put a student back on the roll (owner request 9, 2026-08-06).
+   *
+   * The button this sits behind is the answer to "a student was deleted during a demo
+   * and we cannot get them back". They were never deleted — deactivating only switches
+   * a student off — but until the enrolment endpoint existed nothing in the product
+   * could switch one back on, so a mistake was permanent in practice.
+   *
+   * Owner and principal only, which is why the button is gated on `canRestore` rather
+   * than `canManage`: the wider admin set can deactivate, but deciding a child is back
+   * on the roll is a head-of-school decision, and the server enforces the same rule.
+   */
+  const restore = async (student) => {
+    if (!window.confirm(`Put ${student.name} back on the school roll?`)) return;
+    const res = await setStudentEnrolment(student.id, 'active');
+    if (res.success) { loadData(); loadCounts(); }
+    else setError(res.detail || 'Unable to restore student');
+  };
+
+  /** Move one student between the three states, with the optional note. */
+  const changeState = async (state, reason) => {
+    if (!stateTarget) return;
+    setSavingState(true);
+    const res = await setStudentEnrolment(stateTarget.id, state, reason);
+    setSavingState(false);
+    if (res.success) {
+      setStateTarget(null);
+      loadData();
+      loadCounts();
+    } else {
+      setError(res.detail || 'Unable to change this student’s status');
+    }
+  };
+
+  const confirmErase = async (reason) => {
     if (!eraseTarget) return;
-    const res = await eraseStudent(eraseTarget.id, eraseReason);
+    const res = await eraseStudent(eraseTarget.id, reason);
     if (res.success) {
       setEraseTarget(null);
-      setEraseReason('');
       loadData();
+      loadCounts();
     } else {
       setError(res.detail || 'Unable to erase student');
     }
@@ -938,13 +1138,25 @@ export default function StudentDatabase() {
               <option value="gender">Gender</option>
               <option value="created_at">Newest first</option>
             </select>
-            {currentUser.role === 'owner' && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--c-muted)', fontSize: 12, minHeight: 36, cursor: 'pointer' }}>
-                <input type="checkbox" checked={includeInactive} onChange={e => { setIncludeInactive(e.target.checked); setPage(1); }} />
-                Include inactive
-              </label>
-            )}
+            <ViewPicker
+              value={enrolmentView}
+              canSeeOffRoll={canRestore}
+              onChange={(next) => { setEnrolmentView(next); setPage(1); }}
+              data-testid="student-view-picker"
+            />
           </div>
+
+          {/* The honest headline. "1,801 students" on its own is not the whole
+              answer when three more are on the NSO list and are marked every
+              morning, and this is the one place the difference is visible. */}
+          {enrolmentCounts && (
+            <div data-testid="enrolment-counts" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+              <Pill tone="green">{enrolmentCounts.on_roll} on the roll</Pill>
+              <Pill tone="orange">{enrolmentCounts.nso} on the NSO list</Pill>
+              <Pill tone="neutral">{enrolmentCounts.tc_issued} left the school</Pill>
+              <Pill tone="blue">{enrolmentCounts.on_register} marked every day</Pill>
+            </div>
+          )}
 
           {error && <div style={{ color: '#f87171', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.18)', borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 12 }}>{error}</div>}
 
@@ -965,8 +1177,10 @@ export default function StudentDatabase() {
               pageSize={pageSize}
               onPageChange={setPage}
               onPageSizeChange={changePageSize}
-              emptyTitle="No students match these filters"
-              emptyMessage="Try clearing the search or choosing a different class."
+              emptyTitle={enrolmentView === OFF_ROLL_VIEW ? 'The recycle bin is empty' : 'No students match these filters'}
+              emptyMessage={enrolmentView === OFF_ROLL_VIEW
+                ? 'Nobody has been taken off the roll. Anyone moved to NSO or marked as having left will appear here, and can be put back.'
+                : 'Try clearing the search or choosing a different class.'}
             />
           )}
         </>
@@ -975,20 +1189,26 @@ export default function StudentDatabase() {
       {/* Modals */}
       {showAdd && <StudentProfileModal classes={classes} onClose={() => setShowAdd(false)} onSaved={loadData} />}
       {editing && <StudentProfileModal classes={classes} initialStudent={editing} onClose={() => setEditing(null)} onSaved={loadData} />}
-      {detailId && <DetailPanel studentId={detailId} onClose={() => setDetailId(null)} onEdit={openEdit} canManage={canManage} />}
+      {detailId && <DetailPanel studentId={detailId} onClose={() => setDetailId(null)} onEdit={openEdit} canManage={canManage} canKeepNotes={canRestore} />}
+
+      {stateTarget && (
+        <EnrolmentStateModal
+          person={stateTarget}
+          currentState={readState(stateTarget)}
+          kind="student"
+          busy={savingState}
+          onCancel={() => setStateTarget(null)}
+          onConfirm={changeState}
+        />
+      )}
 
       {eraseTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 210, padding: 16 }}>
-          <div style={{ background: 'var(--c-input)', border: '1px solid var(--c-border)', borderRadius: 10, padding: 22, width: 480, maxWidth: '100%' }}>
-            <h3 style={{ color: 'var(--c-text)', fontSize: 16, margin: '0 0 6px' }}>Erase {eraseTarget.name}</h3>
-            <p style={{ color: 'var(--c-faint)', fontSize: 12, lineHeight: 1.6, margin: '0 0 12px' }}>This permanently removes student PII and pseudonymizes attendance records. Enter a detailed reason.</p>
-            <textarea value={eraseReason} onChange={e => setEraseReason(e.target.value)} rows={4} style={{ ...inputStyle, resize: 'vertical' }} />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
-              <Btn variant="secondary" onClick={() => { setEraseTarget(null); setEraseReason(''); }}>Cancel</Btn>
-              <Btn variant="danger" disabled={eraseReason.trim().length < 10} onClick={confirmErase}>Erase Student</Btn>
-            </div>
-          </div>
-        </div>
+        <EraseConfirmModal
+          person={eraseTarget}
+          kind="student"
+          onCancel={() => setEraseTarget(null)}
+          onConfirm={confirmErase}
+        />
       )}
     </div>
   );

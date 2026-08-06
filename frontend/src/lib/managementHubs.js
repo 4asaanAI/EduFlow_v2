@@ -13,9 +13,14 @@ export const MANAGEMENT_HUBS = [
   {
     id: 'school-database-hub', name: 'School Database', subtitle: 'Students, guardians and staff', color: 'var(--tool-hex-4f8ff7)',
     items: [
-      ['school-directory', 'School Directory', 'Find any student or staff member', 'both'],
-      ['student-database', 'Students & Guardians', 'Profiles, status and linked guardians', 'both'],
-      ['staff-tracker', 'Teachers & Staff', 'Profiles, roles and employment records', 'both'],
+      // Owner note, 2026-08-07: "school directory could be the sole directory... so,
+      // let's just have single place with all the information rather than 3 places".
+      // The Directory already listed everyone; it now carries the full information
+      // and the search, and opening a row still leads to the same profile screens for
+      // editing. `student-database` and `staff-tracker` remain reachable by deep link
+      // (the Directory's own rows point at them) and stay in the permission lists —
+      // only the duplicate front doors are gone.
+      ['school-directory', 'School Directory', 'Every student, guardian and staff member in one place', 'both'],
       ['data-import', 'Data Import', 'Validate and import student records', 'owner'],
       ['certificate-generator', 'Certificates', 'TC, bonafide and school documents', 'both'],
       ['id-card-generator', 'ID Cards', 'Generate and print student cards', 'both'],
@@ -115,9 +120,34 @@ export function hubsForUser(user) {
   return [];
 }
 
+/**
+ * Screens the owner is NOT offered, even though the owner may open anything.
+ *
+ * Owner request 1, 2026-08-06: "why is principal daily appearing in the owner
+ * profile?" It appeared because `hubItemsForUser` short-circuited on
+ * `audience === 'owner'` and handed the owner EVERY row in a hub, including the
+ * thirteen tagged `principal`.
+ *
+ * The list is deliberately ONE entry long. Most of those thirteen are not
+ * duplicates of anything — Timetable, Academic Structure, marking attendance,
+ * Transport, Parent Messages, Student Transfer exist only in the principal's set,
+ * and hiding them would take real screens away from the owner to answer a
+ * complaint about one. Principal Daily is different: it is the principal's own
+ * morning list of absences and substitutions, and the owner's equivalent, School
+ * Pulse, already sits directly beside it in the same hub.
+ *
+ * This hides it from the owner's MENU only. Nothing about permissions changes; an
+ * owner who opens the screen by its address still gets it.
+ */
+const HIDDEN_FROM_OWNER = new Set(['principal-daily']);
+
 export function hubItemsForUser(hub, user) {
   if (!hubsForUser(user).some(item => item.id === hub?.id)) return [];
-  const audience = user?.role === 'owner' ? 'owner' : 'principal';
-  return (hub?.items || []).filter(([id, , , access]) =>
-    (audience === 'owner' || access === 'both' || access === audience) && canUseTool(user, id));
+  const isOwner = user?.role === 'owner';
+  const audience = isOwner ? 'owner' : 'principal';
+  return (hub?.items || []).filter(([id, , , access]) => {
+    if (isOwner && HIDDEN_FROM_OWNER.has(id)) return false;
+    const forThisAudience = isOwner || access === 'both' || access === audience;
+    return forThisAudience && canUseTool(user, id);
+  });
 }

@@ -646,6 +646,156 @@ img, video, canvas, svg { max-width: 100%; }
   .app-main-content table td {
     white-space: nowrap;
   }
+
+  /* Owner request 20 (2026-08-06): a table's own left and right edges are noise on
+     a phone. The screen edge already frames it, and drawing a border there while the
+     content scrolls under it makes the scrollbar look like it has escaped the table.
+     Top and bottom stay, so the table still reads as one block. */
+  .app-main-content :is(div, section, main):has(> table) {
+    border-left: none !important;
+    border-right: none !important;
+    border-radius: 0 !important;
+  }
+}
+
+/* ---------- 3b. A table Flo writes scrolls inside its own box ----------
+   Owner request 8 (2026-08-06). Every markdown table is wrapped in a bare <div> by
+   renderTable() in MessageRenderer.js precisely so this rule has something to grab.
+
+   Without the wrapper, the nearest thing that could scroll was `.prose-chat` — the
+   element holding the ENTIRE reply — so dragging a wide table sideways dragged the
+   sentences above and below it out of view too. That is what Aman reported.
+
+   At every width, not only on phones: a wide enough table overflows a desktop
+   column as well. Cells stop wrapping so the table takes its natural width and the
+   wrapper does the scrolling; the table stays one element, so its headings stay
+   lined up with its cells (see the warning in section 3 above). */
+.prose-chat > div:has(> table) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+  margin: 0.75rem 0;
+}
+.prose-chat > div:has(> table) > table {
+  width: auto;
+  min-width: 100%;
+  margin: 0;
+}
+.prose-chat > div:has(> table) th,
+.prose-chat > div:has(> table) td {
+  white-space: nowrap;
+}
+
+/* ---------- 3c. Flo's face is not repeated on a phone ----------
+   Owner request 7 (2026-08-06). The avatar and its gutter cost 42px of a ~390px
+   screen on every single reply, saying the same thing each time in a conversation
+   that only ever has two participants. The element stays in the page (its test id
+   is part of the avatar contract) — only its box is removed. */
+:root { --stream-gutter: 42px; }
+@media (max-width: 768px) {
+  .assistant-row > .assistant-avatar { display: none; }
+  .assistant-row { gap: 0; }
+  /* Nothing occupies the gutter any more, so nothing should indent past it. */
+  :root { --stream-gutter: 0px; }
+}
+
+/* ---------- 3d. Scrollbars stay inside the box that scrolls ----------
+   Owner request 20 (2026-08-06): "the scroll bar in the tables is not properly shown,
+   it goes out of the table boundary". A default overlay scrollbar is drawn on the
+   scroll container's padding edge, which on a bordered, rounded table sits on top of
+   the border and reads as though it has escaped. Giving it a thin styled track keeps
+   it visibly part of the table, and it matches the sidebar's, which is already
+   styled this way. */
+.app-main-content :is(div, section, main):has(> table)::-webkit-scrollbar {
+  height: 8px;
+}
+.app-main-content :is(div, section, main):has(> table)::-webkit-scrollbar-track {
+  background: transparent;
+}
+.app-main-content :is(div, section, main):has(> table)::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 8px;
+}
+.app-main-content :is(div, section, main):has(> table)::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+.app-main-content :is(div, section, main):has(> table),
+.prose-chat > div:has(> table) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+.prose-chat > div:has(> table)::-webkit-scrollbar { height: 8px; }
+.prose-chat > div:has(> table)::-webkit-scrollbar-track { background: transparent; }
+.prose-chat > div:has(> table)::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 8px;
+}
+
+/* ---------- 3e. The rest of the platform, same two defects ----------
+   Owner request 20 remainder (2026-08-07). Sections 3 and 3d fixed the two cases Aman
+   pointed at. Sweeping the other screens found the SAME two defects in three more
+   shapes that those rules cannot reach, because both rules key off `:has(> table)` —
+   the table has to be a DIRECT child of the thing being corrected.
+
+   Shape 1 — the card is the GRANDPARENT. `tools/ToolPage.js` renders
+   `<card border+radius><scroll div><table>`, so `:has(> table)` matched the inner
+   scroll div, which draws no border, and never reached the card that draws the side
+   borders. That component is the table on roughly twenty screens across every role,
+   so this was the single widest miss. Same shape in ExamManager, FeeCollection,
+   PrincipalDailyOps, TimetableBuilder and AdmissionsWorkflow.
+
+   `.prose-chat` is excluded by name: a chat reply containing a markdown table matches
+   this selector too, and stripping its corners would be a new defect, not a fix.
+
+   Shape 2 — the border is on the TABLE itself, not on any wrapper
+   (TransportOptimisation). Removing a wrapper's border does nothing when the table
+   draws its own.
+
+   Shape 3 — a sideways-scrolling region that is not a table at all. The chunky
+   default scrollbar sitting over a rounded edge is what Aman actually described, and
+   it looked identical on the audit log wrapper, the attendance register regions and
+   every other horizontally scrolling panel. Those all kept the browser default. */
+@media (max-width: 900px) {
+  .app-main-content :is(div, section):has(> :is(div, section) > table):not(.prose-chat) {
+    border-left: none !important;
+    border-right: none !important;
+    border-radius: 0 !important;
+  }
+  .app-main-content table {
+    border-left: none !important;
+    border-right: none !important;
+  }
+}
+
+/* Shape 3: ONE scrollbar treatment for every sideways-scrolling region in the app,
+   not only the ones that happen to hold a table. Applied at every width, like the
+   chat table rule above, because a narrow desktop window scrolls these too. */
+.app-main-content .responsive-table-card,
+.app-main-content .responsive-table-region,
+.app-main-content [style*="overflow-x: auto"],
+.app-main-content [style*="overflow-x:auto"] {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+.app-main-content .responsive-table-card::-webkit-scrollbar,
+.app-main-content .responsive-table-region::-webkit-scrollbar,
+.app-main-content [style*="overflow-x: auto"]::-webkit-scrollbar,
+.app-main-content [style*="overflow-x:auto"]::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+.app-main-content .responsive-table-card::-webkit-scrollbar-track,
+.app-main-content .responsive-table-region::-webkit-scrollbar-track,
+.app-main-content [style*="overflow-x: auto"]::-webkit-scrollbar-track,
+.app-main-content [style*="overflow-x:auto"]::-webkit-scrollbar-track {
+  background: transparent;
+}
+.app-main-content .responsive-table-card::-webkit-scrollbar-thumb,
+.app-main-content .responsive-table-region::-webkit-scrollbar-thumb,
+.app-main-content [style*="overflow-x: auto"]::-webkit-scrollbar-thumb,
+.app-main-content [style*="overflow-x:auto"]::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 8px;
 }
 
 /* ---------- 4. Dialogs, modals and drawers ----------

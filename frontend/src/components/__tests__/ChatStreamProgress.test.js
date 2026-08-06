@@ -115,6 +115,13 @@ test('with no progress steps the badge is still shown, so nothing is lost', asyn
 test('everything stacked in the turn shares one left edge', async () => {
   // Asserted as a value rather than eyeballed: three stacked elements at 42px, 0px
   // and 42px is exactly the defect a screenshot review keeps missing.
+  //
+  // The edge is a CSS variable rather than a literal since 2026-08-06: it is 42px on
+  // desktop, where Flo's avatar occupies that space, and 0 on a phone, where the
+  // avatar is hidden (owner request 7) and indenting past a face nobody can see would
+  // waste the width the change was made to reclaim. jsdom does not resolve variables,
+  // so what matters here — and what this now asserts — is that every stacked element
+  // reads the SAME one. STREAM_GUTTER remains the desktop value it resolves to.
   let emit;
   holdStreamOpen((onEvent) => { emit = onEvent; });
   renderChat();
@@ -125,7 +132,8 @@ test('everything stacked in the turn shares one left edge', async () => {
   });
 
   const panel = await screen.findByTestId('chat-progress-panel');
-  expect(panel).toHaveStyle(`padding-left: ${STREAM_GUTTER}px`);
+  expect(panel).toHaveStyle('padding-left: var(--stream-gutter)');
+  expect(STREAM_GUTTER).toBe(42);
 });
 
 test('the typing indicator and the progress panel are never both shown', async () => {

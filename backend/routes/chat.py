@@ -194,6 +194,10 @@ WRITE_TOOL_REQUIRED_PARAMS = {
     "manage_student_guardians": ("student_id", "guardians"),
     "create_staff": ("name", "staff_type"),
     "update_staff": ("staff_id",),
+    # Owner request 4 (2026-08-06) — private notes on a profile. `name` rather than an
+    # id because nobody asks Flo to note something against "student 8f3c-…"; the tool
+    # resolves the name and refuses if more than one person matches.
+    "add_profile_note": ("name", "note"),
     # Epic K.1 — fee-config CRUD
     "create_fee_structure": ("name",),
     "update_fee_structure": ("structure_id",),

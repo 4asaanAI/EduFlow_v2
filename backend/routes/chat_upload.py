@@ -308,12 +308,7 @@ async def upload_chat_file(request: Request, file: UploadFile = File(...)):
             image_data = None  # do not hand the bytes on to a caller who may not use them
         else:
             result = extract_image_text(data)
-            if not result.available:
-                # NOT an empty page. Say which, or a deployment problem reads as
-                # "this form is blank" — the Epic 4 defect in a new place.
-                ocr_note = result.reason
-                extracted = f"[Image attached: {filename}. {result.reason}]"
-            elif result.found_text:
+            if result.available and result.found_text:
                 extracted = (
                     f"[Text read from the image {filename}"
                     + (f", language {result.language}" if result.language else "")
@@ -322,14 +317,31 @@ async def upload_chat_file(request: Request, file: UploadFile = File(...)):
                 if result.notes:
                     extracted += "\n\n[" + " ".join(result.notes) + "]"
             else:
-                # Story 10.6: reading the words was not enough, so fall back to the
-                # paid service — and ONLY here. A page whose text was read never
-                # reaches this branch, which is what keeps printed paper free.
+                # Fall back to the paid service. TWO ways of getting here, and the
+                # second one is the bug fixed on 2026-08-06 (owner request 16):
+                #
+                #   1. Tesseract ran and found no words. Story 10.6's original case —
+                #      a handwritten note, or "what is in this picture".
+                #   2. Tesseract is NOT INSTALLED on this server. This branch used to
+                #      return `result.reason` and stop, so on a machine without the
+                #      binary — which is what Elastic Beanstalk is running — an
+                #      attached photo was never looked at by anything. Aman sent Flo a
+                #      picture and was told "image text extraction is not available",
+                #      while the paid fallback that was built for exactly this sat
+                #      untouched a few lines below.
+                #
+                # A page whose text WAS read still never reaches here, so printed
+                # paper stays free wherever Tesseract does exist.
                 vision = describe_image_bytes(data, sniff_image_type(data) or "image/jpeg")
                 if vision.understood:
                     used_paid_vision = True
                     extracted = f"[Description of the image {filename}]\n{vision.description}"
                 else:
+                    # Both routes failed. Say so plainly and say WHICH — an empty
+                    # answer here would read as "this form is blank", which is the
+                    # Epic 4 defect (a failure that looks like a figure) in a new
+                    # place. Prefer the vision service's reason when the free reader
+                    # was simply absent, since that is the one that was tried last.
                     ocr_note = vision.reason or result.reason
                     extracted = f"[Image attached: {filename}. {ocr_note}]"
 

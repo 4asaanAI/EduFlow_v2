@@ -221,3 +221,63 @@ def test_clear_refresh_cookie_evicts_both_paths():
     assert "Path=/api/auth" in joined
     # `Path=/` will substring-match both — assert a header exists with exactly Path=/;
     assert any(b"Path=/;" in h or h.rstrip(b"; ").endswith(b"Path=/") for h in paths), joined
+
+
+# ─── The refresh cookie has to survive a cross-site request ──────────────────
+#
+# Owner request 3, 2026-08-06. The cookie was SameSite=Strict, and the site
+# (amplifyapp.com) and the API (cloudfront.net) are different registrable domains,
+# so the browser never attached it to /api/auth/refresh. The silent renewal could
+# not run, and every person was signed out exactly JWT_EXPIRY_MINUTES after signing
+# in regardless of what they were doing. These tests are what notices if someone
+# "hardens" it back to strict without also putting both onto one domain.
+
+
+def _samesite_with_environment(monkeypatch, value):
+    if value is None:
+        monkeypatch.delenv("ENVIRONMENT", raising=False)
+    else:
+        monkeypatch.setenv("ENVIRONMENT", value)
+    return auth_tokens.cookie_samesite()
+
+
+def test_production_refresh_cookie_is_samesite_none(monkeypatch):
+    assert _samesite_with_environment(monkeypatch, "production") == "none"
+
+
+def test_production_refresh_cookie_is_secure_because_none_requires_it(monkeypatch):
+    # SameSite=None without Secure is rejected outright by every current browser,
+    # so these two must move together.
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    assert auth_tokens.cookie_samesite() == "none"
+    assert auth_tokens.cookie_secure() is True
+
+
+@pytest.mark.parametrize("environment", [None, "development", "staging", "test"])
+def test_non_production_keeps_the_stricter_setting(monkeypatch, environment):
+    # Off production the site and the API are both on localhost — same site — so
+    # strict works and is the better choice. Secure would break plain http there.
+    assert _samesite_with_environment(monkeypatch, environment) == "strict"
+    assert auth_tokens.cookie_secure() is False
+
+
+def test_every_cookie_call_uses_the_same_setting(monkeypatch):
+    # Setting the cookie with one SameSite and deleting it with another leaves the
+    # browser holding a cookie the server believes it removed.
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    seen = []
+
+    class RecordingResponse:
+        def set_cookie(self, **kwargs):
+            seen.append(kwargs["samesite"])
+
+        def delete_cookie(self, **kwargs):
+            seen.append(kwargs["samesite"])
+
+    response = RecordingResponse()
+    auth_tokens.set_refresh_cookie(response, "t")
+    auth_tokens.clear_refresh_cookie(response)
+    auth_tokens.clear_legacy_refresh_cookie(response)
+
+    assert seen, "no cookie calls were recorded"
+    assert set(seen) == {"none"}

@@ -128,6 +128,12 @@ async def store_document(
         "created_at": datetime.now().isoformat(),
         "generated": True,
         "generated_source": source,
+        # The document as editable HTML, so the edit panel has something to open
+        # without having to pull the .pdf apart in the browser. It is a COPY of what
+        # the file already says, never an alternative version of it: Abhimanyu's
+        # decision on 2026-08-07 is that a corrected document is downloaded only and
+        # nothing is written back here, so this field is never updated after creation.
+        "editable_html": built.editable_html,
         "storage": "s3",
         "s3_bucket": stored.bucket,
         "s3_key": stored.key,

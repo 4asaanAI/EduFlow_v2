@@ -74,6 +74,29 @@ let webpackConfig = {
         ],
       };
 
+      // Stop hunting for source maps inside other people's packages.
+      //
+      // `html2pdf.js` inlines a few libraries into its bundle and leaves their
+      // `//# sourceMappingURL=…` comments behind, pointing at map files it never
+      // ships (SVGPathData.module.js.map, performance-now.js.map). Every build and
+      // every dev-server start then printed "Failed to parse source map", which is
+      // a packaging mistake in that library and says nothing about this codebase.
+      //
+      // A warning that is always there and never actionable is worse than no
+      // warning: it trains people to skim past the block where a real one appears.
+      //
+      // Narrow on purpose. Source maps for OUR code are untouched, so debugging
+      // `src/` is exactly as it was; only `node_modules` is skipped.
+      const sourceMapRule = (webpackConfig.module?.rules || []).find(
+        (rule) => rule && rule.enforce === 'pre' && String(rule.loader || '').includes('source-map-loader'),
+      );
+      if (sourceMapRule) {
+        sourceMapRule.exclude = [
+          ...(Array.isArray(sourceMapRule.exclude) ? sourceMapRule.exclude : sourceMapRule.exclude ? [sourceMapRule.exclude] : []),
+          /node_modules/,
+        ];
+      }
+
       // Add health check plugin to webpack if enabled
       if (config.enableHealthCheck && healthPluginInstance) {
         webpackConfig.plugins.push(healthPluginInstance);

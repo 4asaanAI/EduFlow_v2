@@ -7,6 +7,7 @@ from models.schemas import AttendanceBulkRequest, StudentAttendance, StaffAttend
 from middleware.auth import get_current_user, require_role, require_owner_or_principal
 from datetime import date, datetime
 from tenant import get_school_id, scoped_filter, scoped_query
+from services import enrolment_status
 from services.audit_service import write_audit_doc
 from services.actor_context import actor_ctx_from_user
 from services.attendance_service import (
@@ -249,7 +250,11 @@ async def get_today_attendance(class_id: str, request: Request, date: str = None
     target_date = date if date else dt.today().strftime("%Y-%m-%d")
 
     await _require_teacher_class_access(db, user, class_id)
-    students = await db.students.find(scoped_filter({"class_id": class_id, "is_active": True}, get_school_id()), {"_id": 0}).to_list(100)  # branch-scope: intentional — pinned to one class, and a class belongs to exactly one branch
+    # NSO students belong on the register (owner request 10, 2026-08-06): they have
+    # stopped attending but no TC has been issued, so the school keeps marking them
+    # absent every day and notices if one walks back in. `is_active` alone cannot say
+    # that, which is why this reads the filter from services/enrolment_status.py.
+    students = await db.students.find(scoped_filter({"class_id": class_id, **enrolment_status.on_register_filter()}, get_school_id()), {"_id": 0}).to_list(100)  # branch-scope: intentional — pinned to one class, and a class belongs to exactly one branch
     attendance = await db.student_attendance.find(scoped_filter({"class_id": class_id, "date": target_date}, get_school_id()), {"_id": 0}).to_list(100)  # branch-scope: intentional — pinned to one class, and a class belongs to exactly one branch
     att_by_student = {a["student_id"]: a for a in attendance}
 
@@ -406,7 +411,8 @@ async def export_attendance_summary(request: Request, class_id: str, month: str,
         raise HTTPException(400, "month must be in YYYY-MM format")
 
     students = await db.students.find(
-        scoped_filter({"class_id": class_id, "is_active": {"$ne": False}}, get_school_id()),  # branch-scope: intentional — pinned to one class, and a class belongs to exactly one branch
+        # Same rule as the daily register above: NSO stays on it, TC issued does not.
+        scoped_filter({"class_id": class_id, **enrolment_status.on_register_filter()}, get_school_id()),  # branch-scope: intentional — pinned to one class, and a class belongs to exactly one branch
         {"_id": 0, "id": 1, "name": 1, "admission_number": 1, "roll_number": 1},
     ).sort("roll_number", 1).to_list(500)
     student_ids = [s["id"] for s in students]
