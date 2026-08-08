@@ -37,6 +37,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from services.actor_context import ActorContext
+from services.ai_action_policy import privileged_profile
 from services.audit_service import write_audit_doc
 from services.txn_context import session_kwargs as _txn_session_kwargs
 from tenant import scoped_filter, scoped_query
@@ -114,6 +115,34 @@ STUDENT_FIELD_MAP: Dict[str, str] = {
 }
 
 ADMISSION_HEADERS = ("admissionno", "admissionnumber", "admno")
+
+# ─── Who may import which columns ────────────────────────────────────────────
+# Owner and principal import the whole student record. The accountant and the
+# management profile import only their own segment, so that widening import to
+# them does not quietly widen it to every field on a child's record.
+#
+# The profile names come from `ai_action_policy.privileged_profile` on purpose:
+# that function is already the single place deciding what these four profiles
+# are, and a second copy of that mapping here would drift away from it.
+
+# The accountant's segment: the money-adjacent identifiers, plus the contact
+# numbers fee reminders are actually sent to (that profile already sends them).
+FINANCE_IMPORT_FIELDS = frozenset({
+    "bank_name", "bank_account_number", "bank_ifsc",
+    "phone", "whatsapp_phone", "alternate_phone", "father_phone", "mother_phone",
+})
+
+# Bank details are the accountant's alone; management gets everything else.
+_FINANCE_ONLY_FIELDS = frozenset({"bank_name", "bank_account_number", "bank_ifsc"})
+NON_FINANCE_IMPORT_FIELDS = frozenset(STUDENT_FIELD_MAP.values()) - _FINANCE_ONLY_FIELDS
+
+# None means "no field restriction" — not "no access". Access itself is decided
+# by the route gate and the tool registry, never here.
+IMPORT_FIELD_SCOPES: Dict[str, "frozenset | None"] = {
+    "leadership": None,
+    "finance": FINANCE_IMPORT_FIELDS,
+    "non_finance": NON_FINANCE_IMPORT_FIELDS,
+}
 
 # Never let a spreadsheet touch these through this path: money is reconciled through
 # the fee ledger, and enrolment status changes a child's standing at the school.
@@ -215,9 +244,22 @@ async def _load_file(db, actor_ctx: ActorContext, file_id: str) -> tuple:
         ) from exc
 
 
+def allowed_import_fields(actor_ctx: ActorContext) -> "frozenset | None":
+    """Which student fields this actor may import. None means every mapped field.
+
+    Raises for any profile that is not one of the four reviewed ones, so that a
+    role slipping past a route gate cannot import by default.
+    """
+    profile = privileged_profile({"role": actor_ctx.role, "sub_category": actor_ctx.sub_category})
+    if profile not in IMPORT_FIELD_SCOPES:
+        raise ImportValidationError("Importing a file is not part of your access.")
+    return IMPORT_FIELD_SCOPES[profile]
+
+
 async def _build_plan(db, actor_ctx: ActorContext, rows: List[Dict[str, str]],
                       *, overwrite: bool) -> Dict[str, Any]:
     """Work out, for every row, exactly what would change. Writes nothing."""
+    allowed = allowed_import_fields(actor_ctx)
     admissions = [a for a in (_admission_of(r) for r in rows) if a]
     existing: Dict[str, dict] = {}
     if admissions:
@@ -230,6 +272,7 @@ async def _build_plan(db, actor_ctx: ActorContext, rows: List[Dict[str, str]],
 
     updates: List[Dict[str, Any]] = []
     field_totals: Dict[str, int] = {}
+    skipped_fields: set = set()
     unmatched: List[Dict[str, str]] = []
     no_admission: List[Dict[str, str]] = []
     seen: set = set()
@@ -252,6 +295,11 @@ async def _build_plan(db, actor_ctx: ActorContext, rows: List[Dict[str, str]],
 
         changes: Dict[str, str] = {}
         for field, value in _mapped_values(row).items():
+            # Out-of-scope columns are recorded and reported, never written. Dropping
+            # them silently would let someone believe a column had been imported.
+            if allowed is not None and field not in allowed:
+                skipped_fields.add(field)
+                continue
             current = str(student.get(field, "") or "").strip()
             if current and not overwrite:
                 continue
@@ -278,6 +326,7 @@ async def _build_plan(db, actor_ctx: ActorContext, rows: List[Dict[str, str]],
         "not_found_in_database": len(unmatched),
         "not_found_sample": unmatched[:10],
         "overwrite": overwrite,
+        "columns_outside_your_access": sorted(skipped_fields),
         "_updates": updates,
     }
 
@@ -306,8 +355,16 @@ async def apply_import(db, actor_ctx: ActorContext, params: dict, *, session=Non
     plan = await _build_plan(db, actor_ctx, rows, overwrite=overwrite)
     updates = plan.pop("_updates", [])
     if not updates:
-        plan.update({"filename": record.get("filename", ""), "applied": 0,
-                     "message": "Nothing to change — the database already has this information."})
+        outside = plan.get("columns_outside_your_access") or []
+        # Saying "already has this information" when the real reason is that every
+        # usable column was outside this profile's segment would be a lie.
+        reason = (
+            "Nothing was imported: the columns in this file are outside your access ("
+            + ", ".join(outside) + "). Someone with wider access needs to import these."
+            if outside and not plan.get("fields_to_fill")
+            else "Nothing to change — the database already has this information."
+        )
+        plan.update({"filename": record.get("filename", ""), "applied": 0, "message": reason})
         return plan
 
     batch_id = str(uuid.uuid4())
@@ -354,6 +411,11 @@ async def apply_import(db, actor_ctx: ActorContext, params: dict, *, session=Non
             f"Filled {plan['fields_to_fill']} pieces of information across {applied} "
             f"students from '{record.get('filename')}'."
             + (f" {failed} could not be saved." if failed else "")
+            + (
+                " Ignored (outside your access): "
+                + ", ".join(plan["columns_outside_your_access"]) + "."
+                if plan.get("columns_outside_your_access") else ""
+            )
         ),
     })
     return plan

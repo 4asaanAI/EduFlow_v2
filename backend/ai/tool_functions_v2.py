@@ -2876,6 +2876,11 @@ async def tool_preview_data_import(params: dict, user: dict, scope: dict = None)
     if plan["rows_without_admission_number"]:
         msg += (f" {plan['rows_without_admission_number']} rows have no admission number "
                 "and were skipped — I will not guess which child they belong to.")
+    # Said BEFORE the person confirms, not after: a column outside their segment is
+    # indistinguishable from an imported one unless it is named.
+    if plan.get("columns_outside_your_access"):
+        msg += (" These columns are outside your access and will not be imported: "
+                + ", ".join(plan["columns_outside_your_access"]) + ".")
     return _ok([plan], (time.time() - t0) * 1000, msg)
 
 
@@ -5997,8 +6002,11 @@ TOOL_REGISTRY = {
     "preview_data_import": {
         "fn": tool_preview_data_import,
         "roles": ["owner", "admin"],
-        "sub_categories": ["principal"],
-        "access_domain": "students",
+        # Accountant and management import their own segment only; the field scope
+        # lives in data_import_service.IMPORT_FIELD_SCOPES, not here.
+        "sub_categories": ["principal", "accountant", "management"],
+        # No literal access_domain: it is assigned below from SHARED_LOOKUP_TOOL_NAMES.
+        # A literal here would be silently overwritten and read as authoritative.
         "description": (
             "Read EVERY row of an attached spreadsheet (file_id from the attachment) and "
             "report exactly what is missing from the database. Use this whenever someone "
@@ -6014,8 +6022,11 @@ TOOL_REGISTRY = {
     "import_data_file": {
         "fn": tool_import_data_file,
         "roles": ["owner", "admin"],
-        "sub_categories": ["principal"],
-        "access_domain": "students",
+        # Accountant and management import their own segment only; the field scope
+        # lives in data_import_service.IMPORT_FIELD_SCOPES, not here.
+        "sub_categories": ["principal", "accountant", "management"],
+        # No literal access_domain: it is assigned below from SHARED_LOOKUP_TOOL_NAMES.
+        # A literal here would be silently overwritten and read as authoritative.
         "description": (
             "Write an attached spreadsheet's data into the live student records, reading "
             "every row. By default it only FILLS BLANKS and never replaces information "
@@ -6746,6 +6757,13 @@ SHARED_LOOKUP_TOOL_NAMES = frozenset({
     "draft_document", "search_students", "get_student_database",
     "get_student_profile", "query_student_record", "get_staff_list",
     "get_class_list",
+    # Spreadsheet import is shared so that the accountant and management profiles
+    # can both import their OWN segment (2026-08-08). It is deliberately not a
+    # widening of what they may write: `data_import_service.IMPORT_FIELD_SCOPES`
+    # limits the accountant to bank and contact columns and management to the
+    # non-finance ones, and any column outside a profile's segment is reported
+    # back rather than written.
+    "preview_data_import", "import_data_file",
 })
 
 LEADERSHIP_ONLY_TOOL_NAMES = frozenset({
@@ -6754,6 +6772,12 @@ LEADERSHIP_ONLY_TOOL_NAMES = frozenset({
 
 BULK_TOOL_NAMES = frozenset({
     "mark_attendance", "mark_staff_attendance", "trigger_fee_sync",
+    # A spreadsheet import rewrites fields on up to every student on the roll in one
+    # call, which is the definition of bulk. It was missing here, so the loop below
+    # set requires_confirmation=False and the confirm card its own description
+    # promises never appeared (found and fixed 2026-08-08, while widening import to
+    # the accountant and management profiles).
+    "import_data_file",
 })
 
 SECURITY_SENSITIVE_TOOL_NAMES = frozenset({"set_profile_password"})

@@ -18,7 +18,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from database import get_db
-from middleware.auth import require_owner_accountant_or_principal, require_owner_or_principal
+from middleware.auth import (
+    require_owner_accountant_or_principal,
+    require_owner_or_admin_subcategories,
+    require_owner_or_principal,
+)
 from services.actor_context import actor_ctx_from_user
 from services.messaging_service import (
     MessagingLimitError,
@@ -37,6 +41,13 @@ from services.messaging_service import (
 from tenant import get_school_id
 
 router = APIRouter(prefix="/api/parent-messaging", tags=["parent-messaging"])
+
+# Spreadsheet import is open to the four reviewed authority profiles. Which COLUMNS
+# each of them may actually write is decided inside the import service, not here, so
+# the REST route and Flo's tool cannot disagree about it.
+require_import_profile = require_owner_or_admin_subcategories(
+    "principal", "accountant", "management",
+)
 
 
 def _raise(exc: Exception):
@@ -191,7 +202,7 @@ def _raise_import(exc: Exception):
 
 @import_router.post("/preview")
 async def post_import_preview(request: Request,
-                              user: dict = Depends(require_owner_or_principal)):
+                              user: dict = Depends(require_import_profile)):
     """What the import WOULD change, across every row. Writes nothing."""
     db = get_db()
     ctx = actor_ctx_from_user(user, school_id=get_school_id())
@@ -204,7 +215,7 @@ async def post_import_preview(request: Request,
 
 @import_router.post("/apply")
 async def post_import_apply(request: Request,
-                            user: dict = Depends(require_owner_or_principal)):
+                            user: dict = Depends(require_import_profile)):
     db = get_db()
     ctx = actor_ctx_from_user(user, school_id=get_school_id())
     try:
