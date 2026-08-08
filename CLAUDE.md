@@ -54,7 +54,27 @@
 
 ---
 
-> ## 🆕 Parent messaging + deferred tool loading (2026-08-08) — NOT yet deployed
+> ## ⚠️ Deploys MUST run as the `claude-hosting` IAM user
+>
+> Three AWS logins exist for account `210447603820`. Only **`claude-hosting`** carries
+> `AdministratorAccess-AWSElasticBeanstalk`. The `Claude` and `claude-code-dev-user`
+> logins can read Elastic Beanstalk and can even create an application version, so a
+> deploy looks fine right up until `update-environment` fails within seconds on
+> `s3:DeleteObject` denied. **That is the wrong-key symptom, not a missing permission.
+> Do not ask anyone to widen IAM for it** (a 2026-08-08 session did, and lost the day).
+>
+> Keys are `AWS_ACCESS_KEY_ID_HOSTING` / `AWS_SECRET_ACCESS_KEY_HOSTING` in the repo
+> root `.env` (gitignored, untracked — verified). Confirm with
+> `aws sts get-caller-identity` before deploying: the Arn must end `user/claude-hosting`.
+>
+> The failure happens BEFORE the running app is touched, so a failed deploy never takes
+> the school down — it only leaves the environment Red, complaining that the instance
+> runs an "incorrect application version". A successful deploy clears that.
+>
+> Verify a deploy by hitting a brand-new route: **401 proves the new code is live and
+> still guarded; 404 means it did not ship.**
+
+> ## 🆕 Parent messaging + deferred tool loading (2026-08-08) — DEPLOYED 2026-08-08 15:02 IST
 >
 > **Flo can now send WhatsApp/SMS to families for real**, always behind a confirm card that
 > states how many families it reaches. One shared path: `services/messaging_service.py`,
@@ -67,12 +87,28 @@
 > new wording goes through `submit_whatsapp_template` (Twilio Content API → Meta approval,
 > minutes to a day, can be refused). Do not let any doc or prompt imply otherwise.
 >
-> ⚠️ **WhatsApp cannot send in production right now.** `TWILIO_WHATSAPP_FROM` and both
-> template SIDs are NOT set on Elastic Beanstalk (checked 2026-08-08). The OLD bulk route
-> silently recorded every recipient as "not_configured" and returned success — the new path
-> fails loudly with a 503 naming the missing variable instead. Set those three before
-> promising anyone WhatsApp works. SMS has credentials (`TWILIO_PHONE_NUMBER` is a US
-> number, +1228…, which is worth reviewing for Indian delivery and cost).
+> ⚠️ **WhatsApp cannot send in production, and it is NOT just three unset env vars.**
+> Corrected 2026-08-08 by reading the Twilio account directly. `TWILIO_WHATSAPP_FROM`
+> and both template SIDs are indeed unset on Elastic Beanstalk — but there is nothing
+> valid to set them to yet:
+>
+> - **No production WhatsApp sender exists.** The only sender on the account is
+>   `whatsapp:+14155238886`, which is Twilio's shared *sandbox* number, and it is
+>   `OFFLINE`. The sandbox can only message people who have themselves texted a join
+>   code, so it can never reach the school's families. A WhatsApp Business Account does
+>   exist (`waba_id 757370660501818`); a real sender number must be registered to it.
+> - **No school templates exist.** The account holds 3 approved templates, all
+>   `MARKETING`-category Layaa AI sales outreach. Fee and attendance reminders are
+>   `UTILITY` and must be written and submitted separately. Sending school reminders on
+>   a marketing template is wrong and risks the WhatsApp Business Account.
+>
+> The OLD bulk route silently recorded every recipient as "not_configured" and returned
+> success — the new path fails loudly with a 503 naming the missing variable instead.
+>
+> SMS does have working credentials, but both numbers on the account are **US numbers**
+> (`+12286410951`, `+15612508971`). To Indian parents that is expensive per message,
+> arrives as an international sender, and is the kind of number Indian carriers filter.
+> An Indian DLT-registered sender is the right answer for school SMS.
 >
 > **Deferred tool loading** (`ai/tool_search.py`) cut an owner/principal turn from ~36,400
 > to ~9,700 tokens (73%). A small CORE set is described in full; everything else is listed
