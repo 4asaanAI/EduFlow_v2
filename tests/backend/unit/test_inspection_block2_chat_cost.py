@@ -1,18 +1,30 @@
 """Inspection Remediation BLOCK 2 — T8 (NEW-12), the advertised tool list.
 
-Before this block an owner's every chat message carried 107 tool definitions. The
-trim removes structural configuration tools from what the model is OFFERED. The
-non-negotiable property is that it changes cost and NOTHING about authorization:
-an excluded tool must still be authorized, still dispatchable, and still advertised
-when it is named explicitly.
+**Mechanism replaced 2026-08-08; the intent is unchanged and still pinned here.**
+
+T8 originally solved the cost problem by HIDING structural tools from owner/principal
+(`EXCLUDE_FOR_ROLE`). That worked on tokens and failed on trust: a hidden tool is, to
+the model, indistinguishable from one that does not exist, which is how the school's
+owner came to be told an operation was "not available to me" about something they were
+fully authorised to do. The delete tools were pulled back out of the list for exactly
+that reason (owner instruction, 2026-08-07).
+
+`ai/tool_search.py` now achieves the saving differently: a small CORE of everyday tools
+is described in full, everything else is listed BY NAME and its instructions fetched on
+demand. Nothing is invisible, so the failure above cannot recur.
+
+The properties this file has always defended are re-asserted below against the new
+mechanism: the list must be cheaper than the authorized set, it must change cost and
+NOTHING about authorization, everyday work must stay immediate, and no tool — least of
+all a delete — may become unreachable.
 """
 
 from __future__ import annotations
 
 import pytest
 
+from ai import tool_search
 from ai.tool_access import is_tool_authorized
-from ai.tool_chat_exclusions import EXCLUDE_FOR_ROLE, is_chat_advertised
 from ai.tool_functions_v2 import TOOL_REGISTRY
 
 OWNER = {"id": "o1", "role": "owner"}
@@ -21,82 +33,90 @@ ACCOUNTANT = {"id": "a1", "role": "admin", "sub_category": "accountant"}
 TEACHER = {"id": "t1", "role": "teacher"}
 
 
-def _advertised(user):
+@pytest.fixture(autouse=True)
+def _enabled(monkeypatch):
+    monkeypatch.setenv("EDUFLOW_TOOL_SEARCH", "1")
+
+
+def _advertised(user, unlocked=None):
     from routes.chat import _build_llm_tools
-    return {t["function"]["name"] for t in _build_llm_tools(user)}
+    return {t["function"]["name"] for t in _build_llm_tools(user, unlocked=unlocked)}
+
+
+def _authorized(user):
+    return {n for n, d in TOOL_REGISTRY.items() if is_tool_authorized(user, d)}
 
 
 def test_owner_tool_list_is_smaller_than_the_authorized_set():
-    authorized = {n for n, d in TOOL_REGISTRY.items() if is_tool_authorized(OWNER, d)}
     advertised = _advertised(OWNER)
-    assert advertised < authorized, "the trim did nothing"
-    assert len(authorized) - len(advertised) == len(EXCLUDE_FOR_ROLE["owner"])
+    assert advertised < _authorized(OWNER), "deferral did nothing"
 
 
-def test_excluded_tools_are_still_authorized():
-    """The whole safety argument for T8: this is a cost change, not a permission change."""
-    for name in EXCLUDE_FOR_ROLE["owner"]:
+def test_deferred_tools_are_still_authorized():
+    """The whole safety argument: this is a cost change, not a permission change."""
+    from routes.chat import _authorized_tool_names
+
+    for name in tool_search.deferred_names(_authorized_tool_names(OWNER)):
         tool_def = TOOL_REGISTRY.get(name)
-        assert tool_def is not None, f"{name} is not a real tool — the exclusion list has rotted"
-        assert is_tool_authorized(OWNER, tool_def) is True, f"{name} lost the owner's permission"
+        assert tool_def is not None, f"{name} is not a real tool — the catalogue has rotted"
+        assert is_tool_authorized(OWNER, tool_def)
 
 
-def test_an_excluded_tool_is_still_advertised_when_named_explicitly():
-    """Suggested actions and the tool panel pass `only={...}` — never trimmed."""
+def test_a_deferred_tool_is_still_advertised_when_named_explicitly():
+    """The tool panel and suggested actions name a tool directly; that path never defers."""
     from routes.chat import _build_llm_tools
-    name = sorted(EXCLUDE_FOR_ROLE["owner"])[0]
-    tools = _build_llm_tools(OWNER, only={name})
-    assert [t["function"]["name"] for t in tools] == [name]
+
+    named = {t["function"]["name"] for t in _build_llm_tools(OWNER, only={"update_expense"})}
+    assert named == {"update_expense"}
 
 
 @pytest.mark.parametrize("user", [ACCOUNTANT, TEACHER], ids=["accountant", "teacher"])
-def test_smaller_roles_are_untouched(user):
-    authorized = {n for n, d in TOOL_REGISTRY.items() if is_tool_authorized(user, d)}
-    assert _advertised(user) == authorized
+def test_smaller_roles_also_benefit_but_keep_their_everyday_tools(user):
+    """Unlike the old trim, deferral applies to every role — but core work stays loaded."""
+    advertised = _advertised(user)
+    authorized = _authorized(user)
+    assert advertised <= authorized
+    for name in ("get_student_profile", "search_tools"):
+        if name in authorized:
+            assert name in advertised
 
 
-def test_everyday_work_is_never_trimmed():
-    """Recording a payment or marking attendance is conversation, not configuration."""
-    for name in ("record_fee_payment", "mark_attendance", "apply_discount",
-                 "create_student", "draft_document", "get_student_database"):
-        assert is_chat_advertised(OWNER, name), f"{name} must stay available in chat"
+def test_everyday_work_is_never_deferred():
+    """Marking attendance and taking a fee must not cost an extra round-trip."""
+    advertised = _advertised(OWNER)
+    for name in ("mark_attendance", "record_fee_payment", "get_fee_defaulters",
+                 "get_student_profile", "get_daily_brief"):
+        assert name in advertised, f"{name} is everyday work and must stay loaded"
 
 
-def test_exclusion_list_contains_no_read_tools():
-    """Trimming a read tool would make Flo unable to answer a question. Only the
-    deliberate, form-driven writes belong here."""
-    from services.ai_action_policy import is_action_tool
-    for name in EXCLUDE_FOR_ROLE["owner"]:
-        assert is_action_tool(TOOL_REGISTRY[name]), f"{name} is a read tool and must not be trimmed"
+def test_no_tool_is_hidden_from_the_model_entirely():
+    """The property the old trim could not offer: everything is at least NAMED."""
+    from routes.chat import _authorized_tool_names
 
-
-# ── Owner instruction, 2026-08-07: no delete may be hidden from chat ──────────
-#
-# The original trim swept every delete up with the create/update beside it, so the
-# school's owner asked Flo to delete a class and was told the operation "is not
-# available to me" — about something it was authorised to do. These pin the rule so a
-# later round of cost-cutting cannot quietly take the deletes away again.
-
-def test_no_delete_tool_is_hidden_from_any_role():
-    for role_key, excluded in EXCLUDE_FOR_ROLE.items():
-        hidden_deletes = sorted(n for n in excluded if n.startswith("delete_"))
-        assert hidden_deletes == [], (
-            f"{role_key} cannot see {hidden_deletes} in chat. Deletes must stay offered: "
-            "being told Flo cannot do something it can do is the bug this closed."
-        )
+    names = _authorized_tool_names(OWNER)
+    catalogue = tool_search.catalogue_block(names)
+    advertised = _advertised(OWNER)
+    for name in names:
+        assert name in advertised or name in catalogue, f"{name} is invisible to the model"
 
 
 @pytest.mark.parametrize("user", [OWNER, PRINCIPAL], ids=["owner", "principal"])
-def test_every_delete_the_caller_may_run_is_offered_to_the_model(user):
-    authorized_deletes = {
-        n for n, d in TOOL_REGISTRY.items()
-        if n.startswith("delete_") and is_tool_authorized(user, d)
-    }
-    assert authorized_deletes, "no delete tools resolved — the registry moved"
-    assert authorized_deletes <= _advertised(user)
+def test_every_delete_the_caller_may_run_is_reachable(user):
+    """Owner instruction 2026-08-07: Flo must never claim it cannot delete something
+    it is authorised to delete. Deletes may be deferred, but must be findable."""
+    from routes.chat import _authorized_tool_names
+
+    names = _authorized_tool_names(user)
+    catalogue = tool_search.catalogue_block(names)
+    advertised = _advertised(user)
+    available = {n: d for n, d in TOOL_REGISTRY.items()
+                 if is_tool_authorized(user, d) and not tool_search.is_core(n)}
+    for name in (n for n in names if n.startswith("delete_")):
+        assert name in advertised or name in catalogue
+        assert tool_search.rank(f"select:{name}", available, limit=1) == [name]
 
 
-def test_deleting_a_class_is_offered_to_the_principal():
-    """The exact request that failed: 'then delete the class'."""
-    assert is_chat_advertised(PRINCIPAL, "delete_class")
-    assert is_tool_authorized(PRINCIPAL, TOOL_REGISTRY["delete_class"])
+def test_deleting_a_class_is_reachable_by_the_principal():
+    available = {n: d for n, d in TOOL_REGISTRY.items()
+                 if is_tool_authorized(PRINCIPAL, d) and not tool_search.is_core(n)}
+    assert "delete_class" in tool_search.rank("delete class", available, limit=8)

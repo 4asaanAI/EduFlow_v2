@@ -64,11 +64,22 @@ def test_stored_prompt_delimiters_are_escaped_and_single_branch_tools_are_hidden
     )
     assert prompt.count("<<<end_live_school_data>>>") == 1
     assert prompt.count("<<<end_fee_structure_data>>>") == 1
-    # Setup/comparison tools stay on the deliberate screen workflow. Deletion remains
-    # available in Flo and is protected by the destructive-action confirmation gate.
+    # Setup/comparison tools stay on the deliberate screen workflow.
     for hidden in ("create_branch", "update_branch", "get_branch_comparison"):
         assert f"**{hidden}**" not in prompt
-    assert "**delete_branch**" in prompt
+    # Deletion remains AVAILABLE and is protected by the destructive-action confirm
+    # gate. Since 2026-08-08 its instructions are fetched on demand rather than
+    # described in full here, so the check is reachability, not markdown presence.
+    from ai import tool_search
+    from ai.tool_access import is_tool_authorized
+    from ai.tool_functions_v2 import TOOL_REGISTRY
+    from routes.chat import _authorized_tool_names
+
+    owner_user = {"id": "o", "role": "owner", "name": "Owner"}
+    names = _authorized_tool_names(owner_user)
+    assert "delete_branch" in names
+    assert "delete_branch" in tool_search.catalogue_block(names)
+    assert is_tool_authorized(owner_user, TOOL_REGISTRY["delete_branch"])
 
 
 async def test_context_builder_applies_active_branch_before_prompt(monkeypatch):
@@ -127,13 +138,27 @@ def test_commercial_tool_is_advertised_by_profile_domain():
     principal = build_system_prompt({"role": "admin", "sub_category": "principal", "name": "Principal"}, {})
     accountant = build_system_prompt({"role": "admin", "sub_category": "accountant", "name": "Accounts"}, {})
     teacher = build_system_prompt({"role": "teacher", "sub_category": "class_teacher", "name": "Teacher"}, {})
-    assert "get_commercial_operations" in owner
-    assert "get_commercial_operations" in principal
-    assert "get_commercial_operations" in accountant
-    assert "get_commercial_operations" not in teacher
-    assert "create_crm_lead" in owner and "create_crm_lead" in principal
-    assert "create_crm_lead" not in accountant
+    # Deferred tool loading (2026-08-08): these are specialist tools, so they now
+    # reach the model by name + on-demand schema rather than by full description in
+    # the prompt. What must hold is the PROFILE DOMAIN grant itself.
+    from ai.tool_access import is_tool_authorized
+    from ai.tool_functions_v2 import TOOL_REGISTRY
+    from routes.chat import _authorized_tool_names
+
+    users = {
+        "owner": {"id": "o", "role": "owner"},
+        "principal": {"id": "p", "role": "admin", "sub_category": "principal"},
+        "accountant": {"id": "a", "role": "admin", "sub_category": "accountant"},
+        "teacher": {"id": "t", "role": "teacher", "sub_category": "class_teacher"},
+    }
+    for who in ("owner", "principal", "accountant"):
+        assert is_tool_authorized(users[who], TOOL_REGISTRY["get_commercial_operations"])
+        assert "get_commercial_operations" in _authorized_tool_names(users[who])
+    assert not is_tool_authorized(users["teacher"], TOOL_REGISTRY["get_commercial_operations"])
+    for who in ("owner", "principal"):
+        assert is_tool_authorized(users[who], TOOL_REGISTRY["create_crm_lead"])
+    assert not is_tool_authorized(users["accountant"], TOOL_REGISTRY["create_crm_lead"])
     for finance_tool in ("post_pos_sale", "post_pos_return"):
-        assert finance_tool in owner
-        assert finance_tool in principal
-        assert finance_tool in accountant
+        for who in ("owner", "principal", "accountant"):
+            assert is_tool_authorized(users[who], TOOL_REGISTRY[finance_tool])
+            assert finance_tool in _authorized_tool_names(users[who])

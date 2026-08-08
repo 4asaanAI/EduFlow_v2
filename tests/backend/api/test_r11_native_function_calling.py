@@ -153,9 +153,19 @@ def test_invented_tool_name_is_narrated_not_silent(client, fake_db, monkeypatch)
 def test_build_llm_tools_only_advertises_authorized(monkeypatch):
     """R11.2: a student is never advertised a management/write tool — the model
     cannot invoke what it is not given (invented/unauthorized names impossible)."""
-    owner_tools = {t["function"]["name"] for t in chat._build_llm_tools({"role": "owner"})}
-    student_tools = {t["function"]["name"] for t in chat._build_llm_tools({"role": "student"})}
-    assert "award_house_points" in owner_tools
+    owner = {"role": "owner"}
+    student = {"role": "student"}
+    owner_tools = {t["function"]["name"] for t in chat._build_llm_tools(owner)}
+    student_tools = {t["function"]["name"] for t in chat._build_llm_tools(student)}
+    # Deferred tool loading (2026-08-08) means the advertised list is now the CORE
+    # set, so sampling one specialist tool no longer proves anything. Assert the
+    # actual property instead: nobody is offered a tool they are not authorized for.
+    from ai.tool_access import is_tool_authorized
+    from ai.tool_functions_v2 import TOOL_REGISTRY as _REG
+    for name in owner_tools:
+        assert is_tool_authorized(owner, _REG[name])
+    for name in student_tools:
+        assert is_tool_authorized(student, _REG[name])
     assert "award_house_points" not in student_tools
     # every advertised schema is well-formed
     for t in chat._build_llm_tools({"role": "owner"}):

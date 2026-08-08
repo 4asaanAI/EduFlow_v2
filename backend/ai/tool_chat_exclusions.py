@@ -1,20 +1,21 @@
 """NEW-12 / T8 — which tools are ADVERTISED to the model in chat.
 
-Measured on `main` before this change, an owner's every chat message sent 107 tool
-definitions (~21,500 tokens) before the question was even read. Most of that budget
-went to structural configuration tools nobody asks Flo about in conversation: adding
-a branch, deleting a class, editing a discount type, running the year-end transition.
-Those are done deliberately, on a screen, with a form in front of you.
+**Superseded for cost purposes on 2026-08-08.** This file used to also carry a
+role-based exclusion list (`EXCLUDE_FOR_ROLE`) that dropped structural/configuration
+tools from an owner's or principal's advertised list to save tokens. That approach had
+a real cost of its own: a hidden tool is indistinguishable, to the model, from a tool
+that does not exist, which is how the school's owner once got told an operation "is not
+available to me" about something they were fully authorised to do.
+
+`ai/tool_search.py` now solves the same token problem without that failure mode —
+non-core tools are listed by NAME and their schemas fetched on demand, so nothing is
+ever invisible and Flo can never deny a capability it has. The exclusion list is gone.
+
+What remains here is the one rule that was never about cost: a *relevance* rule.
 
 **This file changes what is OFFERED, never what is ALLOWED.** Authorization stays
 exactly where it was, in `ai/tool_access.is_tool_authorized`, and is still the only
-thing consulted at dispatch. An excluded tool that is named explicitly (the tool
-panel, a suggested action, `_build_llm_tools(only={...})`) runs exactly as before.
-So this is a cost change, not a permission change, and it cannot widen or narrow
-anyone's access.
-
-Exclusions apply to owner and principal only — the two roles whose lists are large
-enough for the saving to matter. Every other role is untouched.
+thing consulted at dispatch.
 """
 
 from __future__ import annotations
@@ -23,38 +24,10 @@ from typing import Any, Dict
 
 from school_identity import default_branch_id
 
-# Structural / configuration tools: set up once (or once a year) on a screen, never
-# asked for mid-conversation. Removing them from the chat advertisement is where the
-# owner's token bill actually is.
-#
-# **No delete belongs in here (owner instruction, 2026-08-07).** The trim originally
-# swept up every delete alongside the create/update it sat next to, and the effect was
-# that the school's owner asked Flo to delete a class and was told "that operation is
-# not available to me" — about something it was fully authorised to do. Being told the
-# assistant cannot do a thing it can do costs more trust than the tokens were worth.
-# Creating and editing structure stays out: those have a form on a screen, and nobody
-# was asking Flo for them.
-_STRUCTURAL_CONFIG_TOOLS = frozenset({
-    # Organisation structure
-    "create_branch", "update_branch",
-    "update_school_settings", "year_end_transition",
-    # Academic structure
-    "create_class", "update_class",
-    "create_house", "update_house",
-    # Fee configuration (recording a payment or a discount is NOT here — that is
-    # everyday work and stays available in chat)
-    "create_fee_structure", "update_fee_structure",
-    "create_discount_type", "update_discount_type",
-    # Asset and transport registers
-    "create_asset", "update_asset",
-    "create_transport_route", "update_transport_route",
-    "add_transport_vehicle",
-})
-
-EXCLUDE_FOR_ROLE: Dict[str, frozenset] = {
-    "owner": _STRUCTURAL_CONFIG_TOOLS,
-    "admin:principal": _STRUCTURAL_CONFIG_TOOLS,
-}
+# Deliberately empty: the cost-motivated trim moved to ai/tool_search.py (2026-08-08).
+# Kept as a named, empty mapping rather than deleted so the seam — and the reason it is
+# empty — stays visible to the next person tempted to re-add a hide-by-role list.
+EXCLUDE_FOR_ROLE: Dict[str, frozenset] = {}
 
 
 def _role_key(user: Dict[str, Any] | None) -> str:
