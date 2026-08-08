@@ -1,35 +1,20 @@
 import { getAccessToken, redirectToLoginOnce, refreshAccessToken } from './authSession';
 import { sortClasses } from './classOrder';
 
-// ─── The ONE place the server's address is decided (NEW-08) ──────────────────
-// `REACT_APP_BACKEND_URL` must not be read anywhere else in application code.
-// Vite maps the preferred `VITE_BACKEND_URL` (and the legacy name) to this one
-// compile-time value in `vite.config.js`.
-// It used to be read in 25 files, each re-deriving the same thing, which is how
-// commit 80d803b's https fix reached 13 of them and missed 7 — including the
-// login and token-refresh path. `frontend/src/lib/__tests__/apiBaseUrl.test.js`
-// fails the build if a 26th reader appears.
 const _rawBackend = process.env.REACT_APP_BACKEND_URL || '';
 // Force HTTPS when the page is served over HTTPS (prevents mixed-content blocks on Amplify/CloudFront)
-export const BACKEND = typeof window !== 'undefined' && window.location.protocol === 'https:'
+const BACKEND = typeof window !== 'undefined' && window.location.protocol === 'https:'
   ? _rawBackend.replace(/^http:\/\/(?!localhost)/, 'https://')
   : _rawBackend;
-export const API = `${BACKEND}/api`;
+const API = `${BACKEND}/api`;
 
-// D-47 CLOSED 2026-08-04 (owner's decision: delete the second address, map everything
-// to the one that remains).
-//
-// There used to be a second base here, UPLOAD_API, built from REACT_APP_UPLOAD_URL. It
-// existed on the belief that CloudFront blocked multipart POST. That belief turned out
-// to be wrong — the D-37 investigation watched multipart requests reach the application
-// through CloudFront — and in the deployed setup both variables held the SAME value
-// anyway, so the two bases were identical and only one of the five uploads used the
-// second one. Four uploads on one address and one on another, agreeing by accident, is
-// a trap: the day REACT_APP_UPLOAD_URL was pointed anywhere else, four of them would
-// have silently kept using the wrong address.
-//
-// There is now one address, `API`, for every request including uploads.
-// REACT_APP_UPLOAD_URL is no longer read anywhere and can be deleted from Amplify.
+// REACT_APP_UPLOAD_URL: direct EB URL for file uploads, bypassing CloudFront (which
+// blocks POST multipart). Falls back to BACKEND if not set (works fine in local dev).
+const _rawUpload = process.env.REACT_APP_UPLOAD_URL || _rawBackend;
+const UPLOAD_BACKEND = typeof window !== 'undefined' && window.location.protocol === 'https:'
+  ? _rawUpload.replace(/^http:\/\/(?!localhost)/, 'https://')
+  : _rawUpload;
+const UPLOAD_API = `${UPLOAD_BACKEND}/api`;
 
 /**
  * Build headers for API requests.
@@ -131,73 +116,6 @@ export async function getMessages(convId) {
   return res.json();
 }
 
-// --- Leadership messaging ---
-
-async function messagingJson(path, options = {}) {
-  const res = await apiFetch(`${API}/messaging${path}`, {
-    ...options,
-    headers: { ...getHeaders(), ...(options.headers || {}) },
-  });
-  const body = res.status === 204 ? { success: true } : await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.detail || 'Messaging request failed');
-  return body;
-}
-
-export function getMessagingContacts() {
-  return messagingJson('/contacts');
-}
-
-export function getMessagingThreads() {
-  return messagingJson('/threads');
-}
-
-export function createDirectMessageThread(userId) {
-  return messagingJson('/threads/direct', {
-    method: 'POST', body: JSON.stringify({ user_id: userId }),
-  });
-}
-
-export function createMessageGroup(name, memberIds) {
-  return messagingJson('/threads/groups', {
-    method: 'POST', body: JSON.stringify({ name, member_ids: memberIds }),
-  });
-}
-
-export function updateMessageGroup(threadId, update) {
-  return messagingJson(`/threads/${encodeURIComponent(threadId)}`, {
-    method: 'PATCH', body: JSON.stringify(update),
-  });
-}
-
-export function getPlatformMessages(threadId, before = '') {
-  const query = before ? `?before=${encodeURIComponent(before)}` : '';
-  return messagingJson(`/threads/${encodeURIComponent(threadId)}/messages${query}`);
-}
-
-export function sendPlatformMessage(threadId, text, replyToId = null) {
-  return messagingJson(`/threads/${encodeURIComponent(threadId)}/messages`, {
-    method: 'POST', body: JSON.stringify({ text, reply_to_id: replyToId }),
-  });
-}
-
-export function markMessageThreadRead(threadId) {
-  return messagingJson(`/threads/${encodeURIComponent(threadId)}/read`, { method: 'PATCH' });
-}
-
-export function sendMessageTyping(threadId) {
-  return messagingJson(`/threads/${encodeURIComponent(threadId)}/typing`, { method: 'POST' });
-}
-
-export function editPlatformMessage(messageId, text) {
-  return messagingJson(`/messages/${encodeURIComponent(messageId)}`, {
-    method: 'PATCH', body: JSON.stringify({ text }),
-  });
-}
-
-export function deletePlatformMessage(messageId) {
-  return messagingJson(`/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE' });
-}
-
 /**
  * Exchange a generated file's opaque id for a FRESH, short-lived download link
  * (D-37). The signed URL is never carried through the chat message — Flo only
@@ -216,46 +134,21 @@ export async function getGeneratedFileLink(fileId) {
   return res.json();
 }
 
-/**
- * The text of a document Flo made, so it can be opened in the edit panel.
- *
- * Read only on purpose. A corrected document is downloaded from the browser and
- * nothing is written back to the server (Abhimanyu, 2026-08-07), so there is no
- * matching save call here and there should not be one added without that decision
- * being revisited.
- *
- * A 409 means the document predates editing and can only be downloaded. That is
- * surfaced as its own message rather than as a generic failure, because "you cannot
- * edit this particular old file" and "something went wrong" need different responses
- * from the person reading it.
- */
-export async function getGeneratedFileContent(fileId) {
-  const res = await apiFetch(`${API}/uploads/content/${encodeURIComponent(fileId)}`, {
-    method: 'GET',
-    headers: getHeaders(),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    const err = new Error(body.detail || `generated file content failed: ${res.status}`);
-    err.status = res.status;
-    throw err;
-  }
-  return res.json();
-}
-
 export function sendMessageStream(convId, text, user, onEvent, sessionId = null, imageData = null) {
   const chatSessionId = sessionId || getBrowserSseSessionId();
   const body = JSON.stringify({ text, session_id: chatSessionId, image_data: imageData || undefined });
 
-  const doFetch = () => fetch(`${API}/chat/conversations/${convId}/messages`, {
-    method: 'POST',
-    headers: {
-      ...getHeaders(),
-      'X-SSE-Session-ID': chatSessionId,
-    },
-    credentials: 'include',
-    body,
-  });
+  const doFetch = () => {
+    return fetch(`${API}/chat/conversations/${convId}/messages`, {
+      method: 'POST',
+      headers: {
+        ...getHeaders(),
+        'X-SSE-Session-ID': chatSessionId,
+      },
+      credentials: 'include',
+      body,
+    });
+  };
 
   return doFetch().then(async (res) => {
     if (res.status === 401) {
@@ -276,15 +169,7 @@ export function sendMessageStream(convId, text, user, onEvent, sessionId = null,
     }
 
     if (!res.ok || !res.body) {
-      const raw = await res.text().catch(() => '');
-      // NEW-07/T13: a rejected message (empty text, bad attachment) now answers 400
-      // with {"detail": "..."} instead of a 200 that looked like a stream and
-      // produced a silent turn. Show the sentence, not the raw JSON around it.
-      let message = raw;
-      try {
-        const parsed = JSON.parse(raw);
-        message = parsed?.detail || parsed?.error || raw;
-      } catch {}
+      const message = await res.text().catch(() => '');
       throw new Error(message || `Chat request failed (${res.status})`);
     }
 
@@ -301,25 +186,34 @@ export function sendMessageStream(convId, text, user, onEvent, sessionId = null,
         onEvent(data);
       } catch (err) {
         // R1.1 AC3: never swallow a malformed SSE frame silently.
-        console.warn('malformed SSE event JSON', err, part.slice(0, 200));
+        console.warn('[API.sendMessageStream] malformed SSE event JSON', err, part.slice(0, 200));
       }
     };
 
     try {
+      let frameCount = 0;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         const parts = buffer.split('\n\n');
         buffer = parts.pop();
-        for (const part of parts) processFrame(part);
+        for (const part of parts) {
+          frameCount++;
+          processFrame(part);
+        }
       }
       // R8.4 AC4: flush the decoder + buffer tail. A stream whose final frame
       // (often the terminal `done`) is not followed by a trailing "\n\n" would
       // otherwise be dropped on the floor — a silent-turn tail-loss.
       buffer += decoder.decode();
-      for (const part of buffer.split('\n\n')) processFrame(part);
-    } catch {
+      for (const part of buffer.split('\n\n')) {
+        if (part) {
+          frameCount++;
+          processFrame(part);
+        }
+      }
+    } catch (err) {
       onEvent({ type: 'thinking_clear' });
       onEvent({ type: 'stream_error', retryable: true, reason: 'stream_network_error' });
       return;
@@ -329,7 +223,7 @@ export function sendMessageStream(convId, text, user, onEvent, sessionId = null,
       onEvent({ type: 'thinking_clear' });
       onEvent({ type: 'stream_error', retryable: true, reason: 'stream_closed_without_done' });
     }
-  }).catch(() => {
+  }).catch((err) => {
     onEvent({ type: 'thinking_clear' });
     onEvent({ type: 'stream_error', retryable: true, reason: 'stream_network_error' });
   });
@@ -364,38 +258,16 @@ export function subscribeSSE(path, onEvent, { onReconnect, reconnect = true, max
   const open = async () => {
     if (stopped) return;
     controller = new AbortController();
-    const request = () => fetch(`${API}${path}`, {
-      method: 'GET',
-      headers: {
-        ...getHeaders(),
-        'X-SSE-Session-ID': sessionId,
-      },
-      credentials: 'include',
-      signal: controller.signal,
-    });
     try {
-      let res = await request();
-
-      // NEW-03: this stream is the one call `apiFetch` cannot own — the response body
-      // is read incrementally and a redirect-on-failure would kill a background
-      // subscription. It still has to renew an expired login, and it did not: a 401
-      // fell straight into scheduleReconnect(), which retried forever with the same
-      // dead token, so live notifications stopped after 60 minutes and never came back
-      // until the page was reloaded. A GET cannot duplicate anything, so refreshing
-      // once and reopening is safe. Same shape as `sendMessageStream` above.
-      if (res.status === 401) {
-        try {
-          await refreshAccessToken(API);
-          res = await request();
-        } catch {}
-        if (res.status === 401) {
-          // Say so out loud rather than reconnecting into a wall forever.
-          onEvent({ type: 'sse_auth_expired' });
-          stopped = true;
-          return;
-        }
-      }
-
+      const res = await fetch(`${API}${path}`, {
+        method: 'GET',
+        headers: {
+          ...getHeaders(),
+          'X-SSE-Session-ID': sessionId,
+        },
+        credentials: 'include',
+        signal: controller.signal,
+      });
       if (!res.ok || !res.body) {
         scheduleReconnect();
         return;
@@ -445,54 +317,13 @@ export function subscribeSSE(path, onEvent, { onReconnect, reconnect = true, max
 }
 
 // --- Students ---
-export async function getStudents(params = {}) {
+export async function getStudents(user, params = {}) {
   const qs = new URLSearchParams(params).toString();
   const res = await apiFetch(`${API}/students/?${qs}`, { headers: getHeaders() });
   return res.json();
 }
 
-/**
- * The most rows `GET /api/students` returns in one request. `per_page` is clamped to
- * 500 in backend/routes/students.py; if that cap ever moves, this moves with it.
- */
-export const STUDENTS_PAGE_MAX = 500;
-
-/**
- * EVERY student, not the first page of them.
- *
- * Owner note, 2026-08-07: "the whole list of students is not appearing here and same
- * at other places too". The cause was screens calling `getStudents()` with no
- * arguments, which the server answers with its default of 20 rows. On a school with
- * 1,802 students that is a list that looks complete and is not, and there is nothing
- * on the screen to say so, which is the worst version of the bug.
- *
- * This walks the pages and joins them. It stops as soon as a page comes back short or
- * the running count reaches the reported total, so a wrong total cannot spin forever.
- * Use it anywhere a person needs to FIND someone (a dropdown, a pick list); use plain
- * `getStudents` with an explicit limit where the screen paginates properly itself.
- */
-export async function getAllStudents(params = {}) {
-  const collected = [];
-  let page = 1;
-  let total = 0;
-  for (;;) {
-    // eslint-disable-next-line no-await-in-loop
-    const res = await getStudents({ ...params, page, limit: STUDENTS_PAGE_MAX });
-    if (!res.success) {
-      return collected.length
-        ? { success: true, data: collected, meta: { total: collected.length, partial: true } }
-        : res;
-    }
-    const batch = res.data || [];
-    collected.push(...batch);
-    total = res.meta?.total || collected.length;
-    if (batch.length < STUDENTS_PAGE_MAX || collected.length >= total) break;
-    page += 1;
-  }
-  return { success: true, data: collected, meta: { total: total || collected.length } };
-}
-
-export async function createStudent(data) {
+export async function createStudent(user, data) {
   const res = await apiFetch(`${API}/students/`, {
     method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
   });
@@ -534,37 +365,6 @@ export async function deactivateStudent(studentId) {
   const res = await apiFetch(`${API}/students/${studentId}`, {
     method: 'DELETE', headers: getHeaders(),
   });
-  return res.json();
-}
-
-/**
- * Move a student between on the roll, the NSO list, and TC issued — either direction.
- *
- * Owner requests 9 and 10 (2026-08-06). `state` is one of 'active', 'nso',
- * 'tc_issued'. Restoring is simply state 'active', which is what recovers a student
- * deactivated by mistake — something no call in this file could do before, because the
- * server had no way to switch `is_active` back on.
- *
- * Owner or principal only on the server. `reason` is optional; it is compulsory only
- * for eraseStudent below, which destroys the record.
- */
-export async function setStudentEnrolment(studentId, state, reason) {
-  const res = await apiFetch(`${API}/students/${studentId}/enrolment`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify(reason ? { state, reason } : { state }),
-  });
-  return res.json();
-}
-
-/**
- * How many students are on the roll, how many are NSO, how many have their TC.
- *
- * Owner request 10 (2026-08-06). The recycle-bin screen puts these three numbers at
- * the top so nobody has to guess whether "1,801" included the NSO list.
- */
-export async function getStudentEnrolmentSummary() {
-  const res = await apiFetch(`${API}/students/enrolment-summary`, { headers: getHeaders() });
   return res.json();
 }
 
@@ -710,13 +510,13 @@ export async function getAttendanceHistory(attendanceId) {
 }
 
 // --- Fees ---
-export async function getFeeTransactions(params = {}) {
+export async function getFeeTransactions(user, params = {}) {
   const qs = new URLSearchParams(params).toString();
   const res = await apiFetch(`${API}/fees/transactions?${qs}`, { headers: getHeaders() });
   return res.json();
 }
 
-export async function recordFeePayment(data, idempotencyKey) {
+export async function recordFeePayment(user, data, idempotencyKey) {
   const headers = getHeaders();
   if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
   const res = await apiFetch(`${API}/fees/transactions`, {
@@ -784,13 +584,19 @@ export async function applyFeeDiscount(data) {
   return res.json();
 }
 
-// NEW-11 (2026-08-04): `approveFeeDiscount` and `rejectFeeDiscount` used to sit here.
-// They called POST /fees/discounts/{id}/approve|reject — wrong path AND wrong method;
-// the server only serves PATCH /fees/discounts/pending-approvals/{id}/approve|reject.
-// Nothing called them: the Fee Collection screen already calls the correct address
-// itself. Deleted rather than corrected, because a helper that looks ready to use and
-// would 404 on first use is worse than no helper. If a caller is ever needed, write it
-// against `PATCH /fees/discounts/pending-approvals/{approval_id}/approve|reject`.
+export async function approveFeeDiscount(applicationId) {
+  const res = await apiFetch(`${API}/fees/discounts/${applicationId}/approve`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  return res.json();
+}
+
+export async function rejectFeeDiscount(applicationId, reason) {
+  const res = await apiFetch(`${API}/fees/discounts/${applicationId}/reject`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify({ reason }),
+  });
+  return res.json();
+}
 
 export async function getSalaryStructures() {
   const res = await apiFetch(`${API}/fees/payroll/structures`, { headers: getHeaders() });
@@ -853,16 +659,6 @@ export async function getStaff(params = {}) {
   return res.json();
 }
 
-// D-44: one staff record by id. The Staff Tracker paginates on the server, so a
-// deep link from the School Directory cannot assume the person is on the page that
-// happens to be loaded. The server refuses this for anyone who may not manage staff
-// (and for a staff member asking about someone else), so the deep link degrades to a
-// plain message rather than showing a record it should not.
-export async function getStaffMember(staffId) {
-  const res = await apiFetch(`${API}/staff/${encodeURIComponent(staffId)}`, { headers: getHeaders() });
-  return res.json();
-}
-
 // Story 1.3 — your own staff record, READ ONLY. Nobody edits their own details;
 // corrections go through the Owner or Principal on the staff screen. There is
 // deliberately no update counterpart here: the server refuses one, and shipping
@@ -919,120 +715,6 @@ export async function updateStaff(staffId, data) {
 
 export async function deactivateStaff(staffId) {
   const res = await apiFetch(`${API}/staff/${staffId}`, {
-    method: 'DELETE', headers: getHeaders(),
-  });
-  return res.json();
-}
-
-/**
- * Move a staff member or teacher between on the roll, the NSO list, and TC issued.
- *
- * Owner request 10 decision 2 (2026-08-06): the three states are not students-only.
- * `state` is one of 'active', 'nso', 'tc_issued'; owner or principal only on the
- * server; `reason` is optional and is only compulsory for eraseStaff below.
- *
- * Someone taken off the roll also loses their login, and gets it back on return.
- */
-export async function setStaffEnrolment(staffId, state, reason) {
-  const res = await apiFetch(`${API}/staff/${staffId}/enrolment`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify(reason ? { state, reason } : { state }),
-  });
-  return res.json();
-}
-
-/** Destroy a staff record for good. Owner only, and the reason is compulsory. */
-export async function eraseStaff(staffId, reason) {
-  const body = new FormData();
-  body.append('reason', reason);
-  const headers = getHeaders();
-  delete headers['Content-Type'];
-  const res = await apiFetch(`${API}/staff/${staffId}/erase`, {
-    method: 'POST', headers, body,
-  });
-  return res.json();
-}
-
-/** The staff twin of getStudentEnrolmentSummary. */
-export async function getStaffEnrolmentSummary() {
-  const res = await apiFetch(`${API}/staff/enrolment-summary`, { headers: getHeaders() });
-  return res.json();
-}
-
-// ─── Private notes on a profile (owner request 4, 2026-08-06) ────────────────
-//
-// Owner and principal only, and PRIVATE TO EACH AUTHOR: each of them sees only the
-// notes they wrote themselves. That is decision 3 of 2026-08-06 and it is deliberate,
-// not an oversight — do not add a "show everyone's" option here.
-
-/**
- * Put a file on the server and get back its id and a link.
- *
- * The one generic upload. Note pictures and identity documents both ride on it with
- * a different `entityType`, rather than each growing an endpoint of its own — the
- * server decides who may read a stored file, and one door is easier to keep honest
- * than three.
- */
-export async function uploadEntityFile(file, entityType, entityId) {
-  const body = new FormData();
-  body.append('file', file);
-  body.append('entity_type', entityType);
-  if (entityId) body.append('entity_id', entityId);
-  const headers = getHeaders();
-  delete headers['Content-Type'];
-  const res = await apiFetch(`${API}/uploads`, { method: 'POST', headers, body });
-  return res.json();
-}
-
-/** The files already stored against one person or record. */
-export async function listEntityFiles(entityType, entityId) {
-  const qs = new URLSearchParams({ entity_type: entityType, entity_id: entityId }).toString();
-  const res = await apiFetch(`${API}/uploads?${qs}`, { headers: getHeaders() });
-  return res.json();
-}
-
-export async function deleteEntityFile(fileId) {
-  const res = await apiFetch(`${API}/uploads/${encodeURIComponent(fileId)}`, {
-    method: 'DELETE', headers: getHeaders(),
-  });
-  return res.json();
-}
-
-export async function getProfileNotes(subjectType, subjectId) {
-  const qs = new URLSearchParams({ subject_type: subjectType, subject_id: subjectId }).toString();
-  const res = await apiFetch(`${API}/profile-notes?${qs}`, { headers: getHeaders() });
-  return res.json();
-}
-
-/** How many notes YOU have on each of these people. One request, not one per row. */
-export async function getProfileNoteCounts(subjectType, subjectIds) {
-  const qs = new URLSearchParams({
-    subject_type: subjectType,
-    subject_ids: (subjectIds || []).join(','),
-  }).toString();
-  const res = await apiFetch(`${API}/profile-notes/counts?${qs}`, { headers: getHeaders() });
-  return res.json();
-}
-
-export async function addProfileNote(subjectType, subjectId, body, attachments = []) {
-  const res = await apiFetch(`${API}/profile-notes`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify({ subject_type: subjectType, subject_id: subjectId, body, attachments }),
-  });
-  return res.json();
-}
-
-export async function updateProfileNote(noteId, changes) {
-  const res = await apiFetch(`${API}/profile-notes/${noteId}`, {
-    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(changes),
-  });
-  return res.json();
-}
-
-export async function deleteProfileNote(noteId) {
-  const res = await apiFetch(`${API}/profile-notes/${noteId}`, {
     method: 'DELETE', headers: getHeaders(),
   });
   return res.json();
@@ -1229,7 +911,7 @@ export async function uploadChatFile(file) {
     // of failing on a stale in-memory access token. Only the Authorization header is
     // passed; Content-Type is left unset so the browser writes the multipart boundary.
     const token = getAccessToken();
-    const res = await apiFetch(`${API}/chat/upload`, {
+    const res = await apiFetch(`${UPLOAD_API}/chat/upload`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: form,
@@ -1496,3 +1178,5 @@ export async function emitFeedback(rating, meta = {}) {
     });
   } catch {}
 }
+
+

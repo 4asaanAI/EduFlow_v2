@@ -826,6 +826,15 @@ async def tool_get_fee_defaulters(params: dict, user: dict, scope: dict = None) 
             except (ValueError, TypeError):
                 days_overdue = 0
 
+        # whatsapp_phone is unmasked: this tool is called via direct /tools/execute
+        # by owner/admin explicitly to send WhatsApp messages \u2014 masking would break
+        # the wa.me link. AI-chat responses still go through redact_for_llm() upstream.
+        wa_phone = (
+            student.get("whatsapp_phone")
+            or student.get("whatsapp")
+            or student.get("phone")
+            or ""
+        )
         results.append({
             "name": student.get("name", ""),
             "class": class_name,
@@ -833,11 +842,13 @@ async def tool_get_fee_defaulters(params: dict, user: dict, scope: dict = None) 
             "amount_due_fmt": f"\u20b9{dues['owed']:,.0f}",
             "days_overdue": days_overdue,
             "student_id": sid,
-            # R4.4/AC3/DPDP: mask guardian phones AT SOURCE (like get_transport_status).
+            # R4.4/AC3/DPDP: mask guardian phones for AI-chat display.
             "father_phone": _mask_phone(student.get("father_phone", "")),
             "mother_phone": _mask_phone(student.get("mother_phone", "")),
             "guardian_phone": _mask_phone(student.get("guardian_phone", "")),
             "phone": _mask_phone(student.get("phone", "")),
+            # Unmasked for WhatsApp direct-action use (owner/admin only endpoint).
+            "whatsapp_phone": wa_phone,
         })
 
     results.sort(key=lambda x: x["amount_due"], reverse=True)
