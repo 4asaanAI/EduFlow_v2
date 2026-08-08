@@ -386,7 +386,9 @@ TOOL_CREATE_STAFF = {
         "name": "required — staff full name",
         "staff_type": "required — e.g. teacher, accountant, receptionist, peon, driver",
         "role": "optional — login role: 'teacher' or 'admin' only. 'owner' is NEVER accepted here, from anyone; owner access is assigned out of band",
-        "sub_category": "optional, owner-only — for role 'admin': principal, accountant, transport_head, receptionist, it_tech, maintenance, management, support_staff; for role 'teacher': class_teacher, subject_teacher, hod, coordinator, kg_incharge",
+        "sub_category": "optional, owner/principal-only — for role 'admin': principal, accountant, transport_head, receptionist, it_tech, maintenance, management, support_staff; for role 'teacher': class_teacher, subject_teacher, hod, coordinator, kg_incharge",
+        "username": "required for Flo — login username",
+        "password": "required for Flo — initial password, 8-128 characters",
         "employee_id": "optional",
         "phone": "optional",
         "email": "optional",
@@ -450,7 +452,7 @@ TOOL_UPDATE_DISCOUNT_TYPE = {
 }
 TOOL_DELETE_DISCOUNT_TYPE = {
     "name": "delete_discount_type",
-    "description": "Permanently delete a discount type. DESTRUCTIVE — requires double confirmation.",
+    "description": "Permanently delete a discount type. Destructive; requires confirmation.",
     "params_schema": {"discount_type_id": "required"},
 }
 
@@ -479,7 +481,7 @@ TOOL_UPDATE_CLASS = {
 }
 TOOL_DELETE_CLASS = {
     "name": "delete_class",
-    "description": "Permanently delete a class. DESTRUCTIVE — blocked if active students are assigned. Requires double confirmation.",
+    "description": "Permanently delete a class. Destructive; blocked if active students are assigned and requires confirmation.",
     "params_schema": {"class_id": "required"},
 }
 TOOL_CREATE_HOUSE = {
@@ -501,7 +503,7 @@ TOOL_UPDATE_HOUSE = {
 }
 TOOL_DELETE_HOUSE = {
     "name": "delete_house",
-    "description": "Permanently delete a house. DESTRUCTIVE — blocked if active students are assigned. Requires double confirmation.",
+    "description": "Permanently delete a house. Destructive; blocked if active students are assigned and requires confirmation.",
     "params_schema": {"house_id": "required"},
 }
 
@@ -528,7 +530,7 @@ TOOL_UPDATE_BRANCH = {
 }
 TOOL_DELETE_BRANCH = {
     "name": "delete_branch",
-    "description": "Permanently delete a branch. Owner only. DESTRUCTIVE — blocked if active students assigned. Requires double confirmation.",
+    "description": "Permanently delete a branch. Owner only. Destructive; blocked if active students are assigned and requires confirmation.",
     "params_schema": {"branch_id": "required"},
 }
 TOOL_UPDATE_SCHOOL_SETTINGS = {
@@ -544,7 +546,7 @@ TOOL_UPDATE_SCHOOL_SETTINGS = {
 }
 TOOL_YEAR_END_TRANSITION = {
     "name": "year_end_transition",
-    "description": "Transition school to a new academic year — promotes all students, archives current year. Owner only. HIGH-IMPACT DESTRUCTIVE. Requires double confirmation.",
+    "description": "Transition school to a new academic year: promotes all students and archives the current year. Owner only. High impact; requires confirmation.",
     "params_schema": {
         "new_year_name": "required — e.g. '2026-27'",
         "start_date": "optional YYYY-MM-DD",
@@ -870,7 +872,7 @@ TOOL_DELETE_STUDENT = {
     "name": "delete_student",
     "description": (
         "Record that a student has left the school — takes them off the roll and off "
-        "every screen. DESTRUCTIVE, requires double confirmation. Reversible from the "
+        "every screen. Destructive; requires confirmation. Reversible from the "
         "Student Database screen. This does NOT erase the child's record permanently; "
         "permanent erasure is done on the screen, by a person, with a written reason."
     ),
@@ -883,7 +885,7 @@ TOOL_DELETE_STAFF = {
     "name": "delete_staff",
     "description": (
         "Record that a member of staff has left — closes their login and ends any open "
-        "session. DESTRUCTIVE, requires double confirmation. Reversible from the staff screen."
+        "session. Destructive; requires confirmation. Reversible from the staff screen."
     ),
     "params_schema": {
         "staff_id": "required — staff ID (use get_staff_directory to find it)",
@@ -893,7 +895,7 @@ TOOL_DELETE_STAFF = {
 TOOL_DELETE_FEE_STRUCTURE = {
     "name": "delete_fee_structure",
     "description": (
-        "Permanently delete a fee structure. DESTRUCTIVE, requires double confirmation. "
+        "Permanently delete a fee structure. Destructive; requires confirmation. "
         "Blocked once any charge has been raised against it."
     ),
     "params_schema": {"structure_id": "required — fee structure ID"},
@@ -935,7 +937,7 @@ TOOL_DELETE_ENQUIRY = {
 TOOL_DELETE_LEGAL_ENTITY = {
     "name": "delete_legal_entity",
     "description": (
-        "Permanently delete a legal entity. DESTRUCTIVE, requires double confirmation. "
+        "Permanently delete a legal entity. Destructive; requires confirmation. "
         "Blocked while it is the operating default or while anything is booked to it."
     ),
     "params_schema": {"entity_id": "required — legal entity ID"},
@@ -943,7 +945,7 @@ TOOL_DELETE_LEGAL_ENTITY = {
 TOOL_DELETE_RETAIL_PRODUCT = {
     "name": "delete_retail_product",
     "description": (
-        "Permanently delete a shop product. DESTRUCTIVE, requires double confirmation. "
+        "Permanently delete a shop product. Destructive; requires confirmation. "
         "Blocked once it appears on any sale — retire it instead."
     ),
     "params_schema": {"product_id": "required — shop product ID"},
@@ -1155,9 +1157,6 @@ _TRANSPORT_HEAD_TOOLS = [
 _RECEPTIONIST_TOOLS = [
     TOOL_GET_ENQUIRIES,
     TOOL_GET_ADMISSIONS_PIPELINE,
-    # Reception enters enquiries, so reception can remove one entered in error
-    # (2026-08-07). Blocked once it has become an application.
-    TOOL_DELETE_ENQUIRY,
 ]
 
 _CLASS_TEACHER_TOOLS = [
@@ -1239,6 +1238,41 @@ _MAINTENANCE_TOOLS = [
     TOOL_QUERY_MAINTENANCE_REQUESTS,
 ]
 
+
+def _profile_registry_tools(role: str, sub_category: str | None) -> list[dict]:
+    """Build privileged prompt catalogues from the executable registry.
+
+    These four profiles intentionally have broad domain policies. Deriving their
+    catalogue from the same authorization gate prevents prompt/dispatch drift when a
+    new tool is added.
+    """
+    from ai.tool_access import is_tool_authorized
+    from ai.tool_chat_exclusions import is_chat_advertised
+    from ai.tool_functions_v2 import TOOL_REGISTRY
+    from school_identity import default_branch_id
+
+    user = {
+        "id": "prompt-catalogue", "role": role, "sub_category": sub_category,
+        "branch_id": default_branch_id(),
+    }
+    return [
+        {
+            "name": name,
+            "description": tool.get("description", ""),
+            "params_schema": tool.get("params_schema") or {},
+        }
+        for name, tool in TOOL_REGISTRY.items()
+        if is_tool_authorized(user, tool) and is_chat_advertised(user, name)
+    ]
+
+
+# Aman and Adesh receive the complete school-management surface; Sonu receives all
+# finance plus required lookups; Lalit receives every non-finance capability.
+_OWNER_TOOLS = _profile_registry_tools("owner", "owner")
+_PRINCIPAL_TOOLS = _profile_registry_tools("admin", "principal")
+_ACCOUNTS_TOOLS = _profile_registry_tools("admin", "accountant")
+_MANAGEMENT_TOOLS = _profile_registry_tools("admin", "management")
+
 TOOLS_BY_ROLE = {
     # Owner
     ("owner", None): _OWNER_TOOLS,
@@ -1246,6 +1280,7 @@ TOOLS_BY_ROLE = {
     # Admin sub-categories
     ("admin", "principal"): _PRINCIPAL_TOOLS,
     ("admin", "accountant"): _ACCOUNTS_TOOLS,
+    ("admin", "management"): _MANAGEMENT_TOOLS,
     ("admin", "transport_head"): _TRANSPORT_HEAD_TOOLS,
     ("admin", "receptionist"): _RECEPTIONIST_TOOLS,
     ("admin", "it_tech"): _IT_TECH_TOOLS,
@@ -1273,7 +1308,10 @@ TOOLS_BY_ROLE = {
 # on 2026-08-06 and would otherwise pick it straight back up through this door. The
 # tool itself still refuses them, so this is about not ADVERTISING a refusal — being
 # invited to ask and then told no is worse than never being offered.
-_ADMIN_FALLBACK_TOOLS = [t for t in _PRINCIPAL_TOOLS if t is not TOOL_QUERY_AUDIT_LOG]
+_ADMIN_FALLBACK_TOOLS = [
+    t for t in _PRINCIPAL_TOOLS
+    if t["name"] not in {"query_audit_log", "get_profile_notes", "add_profile_note", "recall_history"}
+]
 
 _ROLE_FALLBACK = {
     "owner": _OWNER_TOOLS,
@@ -1359,6 +1397,8 @@ STUDENT MANAGEMENT (full CRUD):
 
 STAFF MANAGEMENT (full CRUD):
 - Add new staff (creates login account): use create_staff
+- Create student login profiles: use create_student_login
+- Change profile passwords: use set_profile_password; never repeat a password in the response
 - Edit staff profile: use update_staff
 - View staff: get_staff_list, get_staff_status
 
@@ -1425,13 +1465,12 @@ SALARY: Never reveal exact salaries in chat — direct to Financial Reports pane
 
     # ---- Admin: Principal ----
     ("admin", "principal"): """
-ROLE: Principal — Operational Head of this school
-- You have access to all operational data: students, fees (view only), attendance, staff, enquiries, houses, library, transport, inventory, incidents and parent complaints.
-- You CANNOT see: owner-only financial reports (revenue/expense/profit), branch comparisons, or staff salaries.
-- You CANNOT record fee payments (accounts department only).
-- You CAN: approve/reject leave requests, mark attendance, award house points, view all student profiles, view fee defaulters, check open parent complaints/grievances, manage timetable and bell timings.
-- You can view admissions CRM, campus retail totals, and operating legal entities through get_commercial_operations. Consolidated entity reporting remains owner-only.
-- You can create and advance admissions CRM leads through create_crm_lead and update_crm_lead after confirmation.
+ROLE: Principal — Full School Management Access
+- You can read and update every operational and financial school domain exposed by the available tools, including fees, expenses, payroll status, retail, legal entities, students, staff, admissions, academics, transport, assets and settings.
+- Use the available tool instead of directing the Principal to a panel when Flo can complete the request.
+- Ordinary single-record writes execute immediately. Destructive, bulk and financial-reversal actions require explicit confirmation.
+- Audit history is fully visible so the Principal can review changes made by every profile.
+- You may create any non-owner staff/admin login profile and change any non-owner profile password. Never repeat a password in the response.
 
 MORNING WORKFLOW (Principal Adesh's typical first 30 minutes — varies daily):
 1. Check C-class support staff (peons, aaya, sweepers, guards, gardeners) on duty
@@ -1451,14 +1490,22 @@ For parent complaints, list open/unresolved cases with priority and days pending
 
     # ---- Admin: Accounts ----
     ("admin", "accountant"): """
-ROLE: Accounts Staff — Financial Data Only
-- You can access financial/fee-related data: fee summary, fee transactions, fee structures and fee defaulters.
-- You can view campus retail totals and the legal-entity structure through get_commercial_operations using domain retail or entities. Admissions CRM remains outside your access.
-- During the controlled pilot, fee payment writes must use the Fee Collection panel; Flo does not submit them for accounts staff.
-- You can access the student database but ONLY for names and fee data. You CANNOT see personal info (phone, address, DOB, guardian), attendance records, or academic results.
-- You CANNOT see: staff salaries, attendance data, academic data, house points, library, transport, inventory, or enquiries.
-- You CANNOT approve leaves or mark attendance.
-- If asked about non-financial data, politely explain that it is outside your access scope.
+ROLE: Accountant Head — Complete Finance Access
+- You can read and update every financial domain exposed by the available tools: fees, payments, discounts, fee structures, expenses, accounting periods, payroll and salaries, legal entities, campus retail/POS, corrections, reversals and finance reporting.
+- You can use student, staff and class lookup tools only as needed to identify the subject of a financial transaction or payroll record.
+- Ordinary single-record finance writes execute immediately. Destructive, bulk and financial-reversal actions require explicit confirmation.
+- Admissions CRM, attendance, academics, transport, general staff administration and other non-finance operations are outside your scope.
+- Never reveal credentials or unrelated personal data. If asked for a non-finance action, state that it is outside the Accountant Head profile.
+""",
+
+    ("admin", "management"): """
+ROLE: Admin Office — Complete Non-Finance Access
+- You can read and update every non-financial school domain exposed by the available tools: students, staff administration, admissions, attendance, academics, classes, houses, announcements, incidents, visitors, certificates, assets, inventory, transport, settings and operational workflows.
+- Finance is the only excluded domain. Do not access or modify fees, payments, discounts, expenses, payroll, salaries, accounting periods, legal entities, campus POS/retail or finance reports.
+- Ordinary single-record writes execute immediately. Destructive and bulk actions require explicit confirmation.
+- Audit history and private leadership notes remain visible only to the school's owner and Principal.
+- You may create student records and student login profiles, and change passwords only for student profiles. You cannot create or change staff/admin credentials.
+- Never repeat a password in the response.
 """,
 
     # ---- Admin: Transport Head ----
@@ -1662,7 +1709,7 @@ PERSONAL INFORMATION ACCESS RULES:
 - Owner and Principal: can see personal info of all staff and students.
 - Class Teacher: can see personal info of students in their own class only.
 - HOD/Coordinator: can see personal info of students in their scope.
-- Accounts staff: can see student NAMES and FEE DATA only — NO personal info (no phone, address, DOB, guardian).
+- Accounts staff: can see student identity/fee data and staff identity/salary data only when needed for fees or payroll — no unrelated personal, academic, medical, attendance, address, or guardian data.
 - Transport Head: can see personal info of drivers and conductors only.
 - Students can NEVER see other students' personal info.
 - Support staff: cannot see anyone else's personal info.
@@ -1714,15 +1761,14 @@ tool name. If no tool fits, answer directly or say plainly what you cannot do.
 
 WRITE / ACTION TOOLS (tools that modify data — CRUD operations, fee payment,
 attendance, leave, house points, announcements, incidents, etc.):
-Just CALL the write tool with the parameters you have. The system will show the
-user a confirmation card summarising the change and will NOT apply anything
-until the user confirms — so you never execute a write yourself and never need
-to build a confirmation block. If a required parameter is missing, ask the user
-for it in plain language instead of guessing.
+Just CALL the write tool with the parameters you have. Ordinary single-record
+writes run immediately through the audited transaction dispatcher. The system
+shows a confirmation card only for destructive, bulk, and financial-reversal
+actions. If a required parameter is missing, ask the user for it in plain
+language instead of guessing.
 
-DESTRUCTIVE OPERATIONS (delete_class, delete_house, delete_branch,
-delete_discount_type, year_end_transition):
-Call the tool as usual; the system enforces a double confirmation and states the
+DESTRUCTIVE OPERATIONS (all delete tools and year_end_transition):
+Call the tool as usual; the system enforces confirmation and states the
 irreversible consequences to the user. Only call these when the user clearly
 asked to delete/permanently remove something.
 

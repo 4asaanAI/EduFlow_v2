@@ -143,6 +143,13 @@ async def create_period(db, actor_ctx: ActorContext, params: dict, *, session=No
         "created_at": now, "updated_at": now,
     }
     await db.accounting_periods.insert_one(doc, **kwargs)
+    await write_audit_doc(db, {
+        "id": str(uuid.uuid4()), "entity_type": "accounting_period", "entity_id": period_id,
+        "action": "accounting_period_created", "changed_by": actor_ctx.user_id,
+        "changed_by_role": actor_ctx.role,
+        "changes": {key: value for key, value in doc.items() if key != "_id"},
+        "created_at": now,
+    }, school_id=actor_ctx.school_id, branch_id=actor_ctx.branch_id or "")
     return {key: value for key, value in doc.items() if key != "_id"}
 
 

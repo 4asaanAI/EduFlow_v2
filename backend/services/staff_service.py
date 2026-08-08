@@ -288,7 +288,8 @@ async def _create_or_link_user(db, actor_ctx: ActorContext, body: dict, *, sessi
         await _assert_login_is_linkable(db, actor_ctx, existing)
         return existing["id"], None
 
-    temp_password = body.get("password") or f"EduFlow-{uuid.uuid4().hex[:8]}"
+    temp_password = body.get("password") or (None if body.get("password_hash") else f"EduFlow-{uuid.uuid4().hex[:8]}")
+    password_hash = body.get("password_hash") or hash_password(temp_password)
     role = body.get("role") or ("teacher" if body.get("staff_type") == "teacher" else "admin")
     user_id = str(uuid.uuid4())
     await db.auth_users.insert_one({
@@ -297,8 +298,9 @@ async def _create_or_link_user(db, actor_ctx: ActorContext, body: dict, *, sessi
         "schoolId": actor_ctx.school_id,
         "username": username,
         "username_lower": username.lower(),
-        "password_hash": hash_password(temp_password),
+        "password_hash": password_hash,
         "is_active": True,
+        "must_change_password": False,
         "user_info": {
             "id": user_id,
             "role": role,
@@ -329,6 +331,10 @@ async def create_staff(
     """
     if not params.get("name") or not params.get("staff_type"):
         raise StaffValidationError("name and staff_type are required")
+    if "password" in params and not 8 <= len(str(params.get("password") or "")) <= 128:
+        raise StaffValidationError("password must be 8-128 characters")
+    if params.get("password_hash") and not str(params["password_hash"]).startswith(("$2a$", "$2b$", "$2y$")):
+        raise StaffValidationError("protected password value is invalid")
     requested_role = _norm(params.get("role")) or ("teacher" if params.get("staff_type") == "teacher" else "admin")
     requested_sub = _norm(params.get("sub_category"))
     effective = {**params, "role": requested_role}
@@ -344,8 +350,8 @@ async def create_staff(
     # Authority BEFORE validation, deliberately: a caller who may not set these
     # fields at all should not be handed an error message enumerating the values
     # that would have been accepted.
-    if not _is_owner(actor_ctx) and (requested_role == "admin" or requested_sub):
-        raise StaffAuthorizationError("Only owner can create privileged staff accounts")
+    if not _is_owner_or_principal(actor_ctx) and (requested_role == "admin" or requested_sub):
+        raise StaffAuthorizationError("Only owner or principal can create privileged staff accounts")
     # Story 1.2 — a value the permission system does not recognize grants nothing.
     _validate_role_and_sub_category(effective, existing=None)
 

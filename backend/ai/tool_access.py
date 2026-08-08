@@ -16,7 +16,11 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from services.ai_action_policy import is_action_authorized_phase1, is_action_tool
+from services.ai_action_policy import (
+    is_action_authorized_phase1,
+    is_action_tool,
+    profile_authorization_decision,
+)
 
 
 def is_tool_authorized(user: Dict[str, Any], tool_def: Dict[str, Any]) -> bool:
@@ -26,6 +30,10 @@ def is_tool_authorized(user: Dict[str, Any], tool_def: Dict[str, Any]) -> bool:
     sub_categories: [...] means admin must have a matching sub_category;
     non-admin roles that appear in roles[] are never blocked by sub_categories.
     """
+    profile_decision = profile_authorization_decision(user, tool_def)
+    if profile_decision is not None:
+        return profile_decision
+
     if (user or {}).get("role") not in (tool_def or {}).get("roles", []):
         return False
     sub_categories = (tool_def or {}).get("sub_categories")
@@ -45,7 +53,7 @@ def is_read_only_tool(tool_def: Dict[str, Any]) -> bool:
     """True iff this tool may be invoked through a plain request/response endpoint.
 
     A write tool reaching the tool-panel endpoint would bypass every protection the
-    confirm flow provides: the two-step confirm token, the AI-write kill-switch
+    confirmation flow provides: a bound confirm token, the AI-write kill-switch
     (F.4), the Phase-1 lockdown (F.11), the destructive-acknowledgment step (F.10)
     and the write-ahead audit row (P4). So writes go through chat, which has all of
     them, and this endpoint serves reads.

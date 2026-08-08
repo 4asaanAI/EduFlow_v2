@@ -28,6 +28,14 @@ from services.org_config_service import (
     OrgConfigNotFoundError,
     OrgConfigConflictError,
 )
+from services.custom_form_service import (
+    CustomFormNotFoundError,
+    CustomFormValidationError,
+    create_form as svc_create_custom_form,
+    delete_form as svc_delete_custom_form,
+    submit_response as svc_submit_form_response,
+    update_form as svc_update_custom_form,
+)
 from datetime import datetime
 import uuid
 
@@ -44,6 +52,17 @@ def _is_it_tech(user: dict) -> bool:
 
 def _can_manage_platform(user: dict) -> bool:
     return user.get("role") == "owner" or _is_it_tech(user)
+
+
+def require_custom_form_reader(request: Request) -> dict:
+    """Keep custom operational data outside the finance-only profile."""
+    user = get_current_user(request)
+    role = user.get("role")
+    if role in {"owner", "teacher", "staff"}:
+        return user
+    if role == "admin" and user.get("sub_category") in {"principal", "management"}:
+        return user
+    raise HTTPException(403, "Forbidden")
 
 
 def _settings_query(extra: dict | None = None) -> dict:
@@ -347,55 +366,42 @@ async def delete_class(class_id: str, request: Request, user: dict = Depends(req
 
 
 @router.get("/forms")
-async def list_forms(request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff"))):
+async def list_forms(request: Request, user: dict = Depends(require_custom_form_reader)):
     db = get_db()
     forms = await db.custom_forms.find(_settings_query(), {"_id": 0}).sort("created_at", -1).to_list(50)
     return {"success": True, "data": forms}
 
 
 @router.post("/forms")
-async def create_form(request: Request, user: dict = Depends(require_role("admin", "owner"))):
+async def create_form(request: Request, user: dict = Depends(require_owner_principal_or_management)):
     try:
-        db = get_db()
-        body = await request.json()
-        if not body.get("title"):
-            raise HTTPException(400, "Title is required")
-        if not body.get("fields") or len(body.get("fields", [])) == 0:
-            raise HTTPException(400, "At least one field is required")
-
-        form = {
-            "id": str(uuid.uuid4()),
-            "schoolId": get_school_id(),
-            "title": body.get("title"),
-            "fields": body.get("fields", []),
-            "audience": body.get("audience", "all"),
-            "public_slug": body.get("public_slug") or str(uuid.uuid4())[:8],
-            "expires_at": body.get("expires_at"),
-            "created_by": user["id"],
-            "is_active": True,
-            "created_at": datetime.now().isoformat(),
-        }
-        result = await db.custom_forms.insert_one({**form, "_id": form["id"]})
-        await write_audit(
-            db,
-            action="custom_form_create",
-            entity_id=form["id"],
-            collection="custom_forms",
-            changed_by=user["id"],
-            changed_by_role=user.get("role", ""),
-            school_id=get_school_id(),
-            branch_id=user.get("branch_id", ""),
-            changes={"title": form["title"], "audience": form["audience"]},
+        form = await svc_create_custom_form(
+            get_db(), actor_ctx_from_user(user, school_id=get_school_id()), await request.json()
         )
         return {"success": True, "data": form}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(500, f"Error creating form: {str(e)}")
+    except CustomFormValidationError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.patch("/forms/{form_id}")
+async def update_form(
+    form_id: str, request: Request,
+    user: dict = Depends(require_owner_principal_or_management),
+):
+    try:
+        form = await svc_update_custom_form(
+            get_db(), actor_ctx_from_user(user, school_id=get_school_id()),
+            form_id, await request.json(),
+        )
+    except CustomFormNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except CustomFormValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": form}
 
 
 @router.get("/forms/{form_id}")
-async def get_form(form_id: str, request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff"))):
+async def get_form(form_id: str, request: Request, user: dict = Depends(require_custom_form_reader)):
     db = get_db()
     form = await db.custom_forms.find_one(_settings_query({"id": form_id}), {"_id": 0})
     if not form:
@@ -405,58 +411,37 @@ async def get_form(form_id: str, request: Request, user: dict = Depends(require_
 
 @router.post("/forms/{form_id}/responses")
 async def submit_form_response(form_id: str, request: Request):
-    db = get_db()
     user = get_user(request)
-    body = await request.json()
-    response = {
-        "id": str(uuid.uuid4()),
-        "schoolId": get_school_id(),
-        "form_id": form_id,
-        "submitted_by": user["id"],
-        "submitted_by_name": user.get("name", "Anonymous"),
-        "submitted_by_role": user["role"],
-        "answers": body.get("answers", {}),
-        "submitted_at": datetime.now().isoformat(),
-    }
-    await db.form_responses.insert_one({**response, "_id": response["id"]})
-    await write_audit(
-        db,
-        action="form_response_submit",
-        entity_id=response["id"],
-        collection="form_responses",
-        changed_by=user["id"],
-        changed_by_role=user.get("role", ""),
-        school_id=get_school_id(),
-        branch_id=user.get("branch_id", ""),
-        changes={"form_id": form_id},
-    )
+    if user.get("role") == "admin" and user.get("sub_category") == "accountant":
+        raise HTTPException(403, "Forbidden")
+    try:
+        response = await svc_submit_form_response(
+            get_db(), actor_ctx_from_user(user, school_id=get_school_id()),
+            form_id, await request.json(),
+        )
+    except CustomFormNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except CustomFormValidationError as e:
+        raise HTTPException(400, str(e))
     return {"success": True, "data": response}
 
 
 @router.get("/forms/{form_id}/responses")
-async def get_form_responses(form_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
+async def get_form_responses(form_id: str, request: Request, user: dict = Depends(require_owner_principal_or_management)):
     db = get_db()
     responses = await db.form_responses.find(_settings_query({"form_id": form_id}), {"_id": 0}).sort("submitted_at", -1).to_list(500)
     return {"success": True, "data": responses}
 
 
 @router.delete("/forms/{form_id}")
-async def delete_form(form_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
-    db = get_db()
-    await db.custom_forms.delete_one(_settings_query({"id": form_id}))
-    await db.form_responses.delete_many(_settings_query({"form_id": form_id}))
-    await write_audit(
-        db,
-        action="custom_form_delete",
-        entity_id=form_id,
-        collection="custom_forms",
-        changed_by=user["id"],
-        changed_by_role=user.get("role", ""),
-        school_id=get_school_id(),
-        branch_id=user.get("branch_id", ""),
-        changes={"deleted": True},
-    )
-    return {"success": True}
+async def delete_form(form_id: str, request: Request, user: dict = Depends(require_owner_principal_or_management)):
+    try:
+        result = await svc_delete_custom_form(
+            get_db(), actor_ctx_from_user(user, school_id=get_school_id()), form_id
+        )
+    except CustomFormNotFoundError as e:
+        raise HTTPException(404, str(e))
+    return {"success": True, "data": result}
 
 
 @router.get("/academic-year")

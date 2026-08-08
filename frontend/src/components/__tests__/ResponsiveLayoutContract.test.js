@@ -119,7 +119,7 @@ test('the user is never forbidden from zooming the page themselves', () => {
   // Banned twice over: Abhimanyu asked that pinch-zoom keep working when the user
   // chooses it, and removing zoom from people who need it to read is an
   // accessibility failure. The zoom is stopped by removing its cause instead.
-  const html = fs.readFileSync(path.resolve(__dirname, '../../../public/index.html'), 'utf8');
+  const html = fs.readFileSync(path.resolve(__dirname, '../../../index.html'), 'utf8');
   const tag = html.match(/<meta\s+name="viewport"[^>]*>/i);
   // Jest's expect takes no message argument (Playwright's does) — the assertion name
   // carries the meaning instead.

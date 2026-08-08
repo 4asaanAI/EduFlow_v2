@@ -90,23 +90,21 @@ pytest tests/backend/test_auth.py::test_login_success -v
 ```
 
 **Test requirements:**
-- Set `APP_AVAILABLE=true` to run integration tests (they skip otherwise)
-- MongoDB must be reachable
-- Tests use a test database (configured in `conftest.py`)
-- 387 tests, 0 skipped when properly configured
+- Pin `MONGO_URL` and `DB_NAME` to the isolated test database; the guard rejects unsafe targets
+- The required baseline is zero failures; do not pin a pass count
 
 ---
 
-## Running Migrations
+## Running a Migration
 
 ```bash
 cd backend
-python migrations/run_all.py
+python migrations/NNN_reviewed_migration.py
 ```
 
-Migrations track completion in `_migrations` collection. Idempotent — safe to run multiple times.
-
-> **Check:** Verify migration `014_ensure_maintenance_user` is in `run_all.py` before running against a fresh DB.
+Never run `migrations/run_all.py` against the live school database. Read the specific
+script, rehearse it against a recent production copy, verify its preflight and rollback
+plan, then execute only that script with an explicit target.
 
 ---
 

@@ -172,15 +172,11 @@ class FeeTransactionNotFoundError(Exception):
 
 
 class FeeAuthorizationError(Exception):
-    """Accountant touching a transaction they did not create → HTTP 403."""
+    """Caller is not permitted to change a fee transaction."""
 
 
 _CORRECTABLE_FIELDS = {"amount", "status", "due_date", "paid_date", "payment_mode",
                        "transaction_ref", "fee_period", "fee_head", "fee_type"}
-
-
-def _is_accountant(actor_ctx: ActorContext) -> bool:
-    return actor_ctx.role == "admin" and (actor_ctx.sub_category or "") in ("accounts", "accountant")
 
 
 async def correct_transaction(
@@ -195,7 +191,8 @@ async def correct_transaction(
     /transactions/{id}/correct + AI `correct_fee_transaction`).
 
     params: {transaction_id, reason, <any of _CORRECTABLE_FIELDS>}
-    EC-10.3: correction_count increments; EC-10.5: accountant only corrects own.
+    Every correction preserves the original snapshot, increments correction_count,
+    and writes the actor and reason to the audit trail.
     """
     from tenant import scoped_query as _scoped_query
 
@@ -211,8 +208,6 @@ async def correct_transaction(
     )
     if not original:
         raise FeeTransactionNotFoundError(transaction_id)
-    if _is_accountant(actor_ctx) and original.get("created_by") != actor_ctx.user_id:
-        raise FeeAuthorizationError("Accountant can only correct their own transactions")
     try:
         await assert_posting_allowed(
             db, bid, params.get("paid_date") or original.get("paid_date") or actor_ctx.now().strftime("%Y-%m-%d")
@@ -306,8 +301,6 @@ async def delete_transaction(
     )
     if not original or original.get("deleted"):
         raise FeeTransactionNotFoundError(transaction_id)
-    if _is_accountant(actor_ctx) and original.get("created_by") != actor_ctx.user_id:
-        raise FeeAuthorizationError("Accountant can only delete their own transactions")
     try:
         await assert_posting_allowed(
             db, bid, original.get("paid_date") or actor_ctx.now().strftime("%Y-%m-%d")

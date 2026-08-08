@@ -11,6 +11,7 @@ from routes.chat import _is_tool_authorized
 OWNER = {"id": "o1", "role": "owner"}
 PRINCIPAL = {"id": "p1", "role": "admin", "sub_category": "principal"}
 ACCOUNTANT = {"id": "a1", "role": "admin", "sub_category": "accountant"}
+MANAGEMENT = {"id": "m1", "role": "admin", "sub_category": "management"}
 TEACHER = {"id": "t1", "role": "teacher"}
 STUDENT = {"id": "s1", "role": "student"}
 
@@ -28,9 +29,10 @@ def test_owner_and_principal_may_act():
     assert is_action_authorized_phase1(PRINCIPAL, WRITE_TOOL) is True
 
 
-def test_other_staff_refused_for_writes_in_phase1():
+def test_reviewed_admin_profiles_may_write_but_other_staff_remain_locked_down():
     assert is_action_authorized_phase1(TEACHER, WRITE_TOOL) is False
-    assert is_action_authorized_phase1(ACCOUNTANT, WRITE_TOOL) is False
+    assert is_action_authorized_phase1(ACCOUNTANT, WRITE_TOOL) is True
+    assert is_action_authorized_phase1(MANAGEMENT, WRITE_TOOL) is True
 
 
 def test_reads_unaffected_for_everyone():

@@ -4,7 +4,11 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse, Response, JSONResponse
 from database import TimedQuery, get_db
 from models.schemas import FeeTransaction
-from middleware.auth import get_current_user, require_role, require_owner, require_owner_or_principal
+from middleware.auth import (
+    get_current_user,
+    require_owner_or_admin_subcategories,
+    require_role,
+)
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from school_identity import default_branch_id
@@ -45,11 +49,7 @@ from services.fee_lifecycle_service import (
     replace_installments,
 )
 from services.contact_log_service import log_contact_event, ContactLogValidationError
-from services.payroll_service import (
-    is_owner_or_accountant as _svc_is_owner_or_accountant,
-    disburse_salary,
-    upsert_salary_structure,
-)
+from services.payroll_service import disburse_salary, upsert_salary_structure
 from services.razorpay_service import create_school_fee_checkout
 from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, normalize_session_id, publish
 from ai.fee_metrics import fee_totals_from_txns
@@ -65,6 +65,9 @@ import httpx
 DISCOUNT_APPROVAL_THRESHOLD = Decimal(os.environ.get("DISCOUNT_APPROVAL_THRESHOLD", "10000"))
 
 router = APIRouter(prefix="/api/fees", tags=["fees"])
+require_finance_profile = require_owner_or_admin_subcategories(
+    "principal", "accountant", "accounts",
+)
 
 
 def get_user(req: Request):
@@ -103,12 +106,12 @@ def _is_accounts(user: dict) -> bool:
 
 
 def _can_fee_write(user: dict) -> bool:
-    return _is_owner(user) or _is_accounts(user)
+    return _is_owner(user) or _is_principal(user) or _is_accounts(user)
 
 
 def _require_fee_write(user: dict):
     if not _can_fee_write(user):
-        raise HTTPException(403, "Only owner or accounts admin can change fee records")
+        raise HTTPException(403, "Only the owner, principal, or accountant can change fee records")
 
 
 def _normalize_fee_key(student_id: str | None, fee_period: str | None, fee_head: str | None) -> str:
@@ -226,15 +229,15 @@ async def _publish_fee_update(db, event_type: str, payload: dict | None = None, 
 
 
 @router.get("/structures")
-async def get_fee_structures(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def get_fee_structures(request: Request, user: dict = Depends(require_finance_profile)):
     db = get_db()
     structures = await db.fee_structures.find(_fee_query(), {"_id": 0}).to_list(50)
     return {"success": True, "data": structures}
 
 
 @router.post("/structures")
-async def create_fee_structure(request: Request, user: dict = Depends(require_owner)):
-    """P10.3: Owner-only — create a fee structure for a class.
+async def create_fee_structure(request: Request, user: dict = Depends(require_finance_profile)):
+    """Create a fee structure for a class.
 
     Thin adapter over services.fee_config_service.create_fee_structure — the SAME
     write path as the AI `create_fee_structure` tool (Story K.1 / AD7)."""
@@ -246,8 +249,8 @@ async def create_fee_structure(request: Request, user: dict = Depends(require_ow
 
 
 @router.patch("/structures/{structure_id}")
-async def update_fee_structure(structure_id: str, request: Request, user: dict = Depends(require_owner)):
-    """P10.3: Owner-only — update a fee structure.
+async def update_fee_structure(structure_id: str, request: Request, user: dict = Depends(require_finance_profile)):
+    """Update a fee structure.
 
     Thin adapter over services.fee_config_service.update_fee_structure (Story K.1 / AD7)."""
     db = get_db()
@@ -264,7 +267,7 @@ async def update_fee_structure(structure_id: str, request: Request, user: dict =
 
 @router.delete("/structures/{structure_id}")
 async def delete_fee_structure(structure_id: str, request: Request,
-                               user: dict = Depends(require_owner_or_principal)):
+                               user: dict = Depends(require_finance_profile)):
     """Delete a fee structure. Refused once charges have been raised against it.
 
     Owner instruction 2026-08-07 — parity reference for the AI `delete_fee_structure`
@@ -285,7 +288,7 @@ async def delete_fee_structure(structure_id: str, request: Request,
 
 @router.get("/structures/{structure_id}/versions")
 async def list_fee_structure_versions(structure_id: str, request: Request,
-                                      user: dict = Depends(require_role("owner", "admin"))):
+                                      user: dict = Depends(require_finance_profile)):
     db = get_db()
     structure = await db.fee_structures.find_one(_fee_query({"id": structure_id}), {"_id": 0})
     if not structure:
@@ -304,7 +307,7 @@ async def list_fee_structure_versions(structure_id: str, request: Request,
 
 @router.put("/structures/{structure_id}/installments")
 async def put_fee_installments(structure_id: str, request: Request,
-                               user: dict = Depends(require_owner)):
+                               user: dict = Depends(require_finance_profile)):
     db = get_db()
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
@@ -319,7 +322,7 @@ async def put_fee_installments(structure_id: str, request: Request,
 
 @router.post("/structures/{structure_id}/charges/preview")
 async def preview_fee_charges(structure_id: str, request: Request,
-                              user: dict = Depends(require_role("owner", "admin"))):
+                              user: dict = Depends(require_finance_profile)):
     db = get_db()
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
@@ -336,7 +339,7 @@ async def preview_fee_charges(structure_id: str, request: Request,
 
 @router.post("/structures/{structure_id}/charges/generate")
 async def create_fee_charges(structure_id: str, request: Request,
-                             user: dict = Depends(require_owner)):
+                             user: dict = Depends(require_finance_profile)):
     db = get_db()
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
@@ -353,7 +356,7 @@ async def create_fee_charges(structure_id: str, request: Request,
 
 
 @router.get("/transactions")
-async def get_fee_transactions(request: Request, student_id: str = None, status: str = None, class_id: str = None, overdue_days: int = None, user: dict = Depends(require_role("owner", "admin"))):
+async def get_fee_transactions(request: Request, student_id: str = None, status: str = None, class_id: str = None, overdue_days: int = None, user: dict = Depends(require_finance_profile)):
     db = get_db()
     query = _fee_query({"deleted": {"$ne": True}})
     if student_id:
@@ -532,7 +535,7 @@ async def create_online_fee_checkout(request: Request,
 
 
 @router.post("/transactions")
-async def record_payment(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def record_payment(request: Request, user: dict = Depends(require_finance_profile)):
     db = get_db()
     _require_fee_write(user)
     body = await request.json()
@@ -568,7 +571,7 @@ async def record_payment(request: Request, user: dict = Depends(require_role("ow
 async def correct_fee_transaction(
     transaction_id: str,
     request: Request,
-    user: dict = Depends(require_role("owner", "admin")),
+    user: dict = Depends(require_finance_profile),
 ):
     # AD7 shared write path — same service as the AI `correct_fee_transaction` tool.
     db = get_db()
@@ -589,7 +592,7 @@ async def correct_fee_transaction(
 
 
 @router.post("/contact-log")
-async def create_fee_contact_log(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def create_fee_contact_log(request: Request, user: dict = Depends(require_finance_profile)):
     db = get_db()
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
@@ -602,13 +605,13 @@ async def create_fee_contact_log(request: Request, user: dict = Depends(require_
 
 
 @router.get("/summary")
-async def get_fee_summary(request: Request, fee_period: str = None, user: dict = Depends(require_role("owner", "admin"))):
+async def get_fee_summary(request: Request, fee_period: str = None, user: dict = Depends(require_finance_profile)):
     db = get_db()
     return {"success": True, "data": await _fee_summary_payload(db, fee_period)}
 
 
 @router.get("/stream")
-async def fee_stream(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def fee_stream(request: Request, user: dict = Depends(require_finance_profile)):
     db = get_db()
     session_id = normalize_session_id(
         request.headers.get("X-SSE-Session-ID") or request.query_params.get("session_id")
@@ -649,6 +652,8 @@ async def fee_stream(request: Request, user: dict = Depends(require_role("owner"
 @router.get("/status/{student_id}")
 async def get_student_fee_status(student_id: str, request: Request, user: dict = Depends(require_role("owner", "admin", "teacher", "parent", "student"))):
     db = get_db()
+    if user.get("role") == "admin" and user.get("sub_category") not in ("principal", "accountant", "accounts"):
+        raise HTTPException(403, "Forbidden")
     # Ownership check for student role — a student can only see their own fee status
     if user.get("role") == "student":
         student_record = await db.students.find_one(
@@ -670,7 +675,7 @@ async def get_student_fee_status(student_id: str, request: Request, user: dict =
 
 
 @router.delete("/transactions/{transaction_id}")
-async def delete_fee_transaction(transaction_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def delete_fee_transaction(transaction_id: str, request: Request, user: dict = Depends(require_finance_profile)):
     # AD7 shared write path — same service as the AI `delete_fee_transaction` tool.
     db = get_db()
     _require_fee_write(user)
@@ -689,7 +694,7 @@ async def delete_fee_transaction(transaction_id: str, request: Request, user: di
 
 
 @router.post("/discount-types")
-async def create_discount_type(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def create_discount_type(request: Request, user: dict = Depends(require_finance_profile)):
     """Thin adapter over services.fee_config_service.create_discount_type (Story K.1 / AD7)."""
     db = get_db()
     _require_fee_write(user)
@@ -703,7 +708,7 @@ async def create_discount_type(request: Request, user: dict = Depends(require_ro
 
 
 @router.get("/discount-types")
-async def get_discount_types(request: Request, include_inactive: bool = False, user: dict = Depends(require_role("owner", "admin"))):
+async def get_discount_types(request: Request, include_inactive: bool = False, user: dict = Depends(require_finance_profile)):
     db = get_db()
     query = _fee_query() if include_inactive else _fee_query({"is_active": True})
     items = await db.fee_discount_types.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
@@ -711,7 +716,7 @@ async def get_discount_types(request: Request, include_inactive: bool = False, u
 
 
 @router.patch("/discount-types/{discount_type_id}")
-async def update_discount_type(discount_type_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def update_discount_type(discount_type_id: str, request: Request, user: dict = Depends(require_finance_profile)):
     """Thin adapter over services.fee_config_service.update_discount_type (Story K.1 / AD7)."""
     db = get_db()
     _require_fee_write(user)
@@ -727,9 +732,8 @@ async def update_discount_type(discount_type_id: str, request: Request, user: di
 
 
 @router.delete("/discount-types/{discount_type_id}")
-async def delete_discount_type(discount_type_id: str, request: Request, user: dict = Depends(require_owner)):
-    """Owner-only: hard-delete a discount type. Parity reference for the AI
-    `delete_discount_type` tool (destructive — F.10 two-step at the chat layer)."""
+async def delete_discount_type(discount_type_id: str, request: Request, user: dict = Depends(require_finance_profile)):
+    """Hard-delete a discount type through the canonical service."""
     db = get_db()
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
     try:
@@ -740,7 +744,7 @@ async def delete_discount_type(discount_type_id: str, request: Request, user: di
 
 
 @router.post("/discounts/apply")
-async def apply_discount(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def apply_discount(request: Request, user: dict = Depends(require_finance_profile)):
     db = get_db()
     _require_fee_write(user)
     body = await request.json()
@@ -770,8 +774,8 @@ async def apply_discount(request: Request, user: dict = Depends(require_role("ow
 
 
 @router.get("/discounts/pending-approvals")
-async def list_pending_discount_approvals(request: Request, user: dict = Depends(require_owner)):
-    """P10.4: Owner-only — list pending large-discount approval requests."""
+async def list_pending_discount_approvals(request: Request, user: dict = Depends(require_finance_profile)):
+    """List pending large-discount approval requests."""
     db = get_db()
     bid = user.get("branch_id")
     # NEW-07/T13: returned straight to the caller — exclude the internal id.
@@ -782,8 +786,8 @@ async def list_pending_discount_approvals(request: Request, user: dict = Depends
 
 
 @router.patch("/discounts/pending-approvals/{approval_id}/approve")
-async def approve_pending_discount(approval_id: str, request: Request, user: dict = Depends(require_owner)):
-    """P10.4: Owner-only — approve a pending large discount."""
+async def approve_pending_discount(approval_id: str, request: Request, user: dict = Depends(require_finance_profile)):
+    """Approve a pending large discount."""
     db = get_db()
     bid = user.get("branch_id")
     pending = await db.pending_discount_approvals.find_one(
@@ -805,8 +809,8 @@ async def approve_pending_discount(approval_id: str, request: Request, user: dic
 
 
 @router.patch("/discounts/pending-approvals/{approval_id}/reject")
-async def reject_pending_discount(approval_id: str, request: Request, user: dict = Depends(require_owner)):
-    """P10.4: Owner-only — reject a pending large discount."""
+async def reject_pending_discount(approval_id: str, request: Request, user: dict = Depends(require_finance_profile)):
+    """Reject a pending large discount."""
     db = get_db()
     bid = user.get("branch_id")
     result = await db.pending_discount_approvals.update_one(
@@ -854,6 +858,8 @@ async def _discount_breakdown(db, student_id: str):
 @router.get("/discounts/{student_id}")
 async def get_student_discounts(student_id: str, request: Request, user: dict = Depends(require_role("owner", "admin", "teacher", "parent", "student"))):
     db = get_db()
+    if user.get("role") == "admin" and user.get("sub_category") not in ("principal", "accountant", "accounts"):
+        raise HTTPException(403, "Forbidden")
     if user.get("role") == "student":
         own_student = await db.students.find_one(
             scoped_query({"user_id": user["id"]}, branch_id=user.get("branch_id")),
@@ -875,7 +881,7 @@ async def get_student_discounts(student_id: str, request: Request, user: dict = 
 
 
 @router.get("/discount-summary")
-async def get_discount_summary(request: Request, user: dict = Depends(require_owner)):
+async def get_discount_summary(request: Request, user: dict = Depends(require_finance_profile)):
     db = get_db()
     applications = await db.fee_discounts.find(_fee_query(), {"_id": 0}).to_list(2000)
     type_ids = [item["discount_type_id"] for item in applications]
@@ -901,7 +907,7 @@ async def get_discount_summary(request: Request, user: dict = Depends(require_ow
 
 
 @router.get("/payroll/structures")
-async def list_salary_structures(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def list_salary_structures(request: Request, user: dict = Depends(require_finance_profile)):
     if not _can_fee_write(user):
         raise HTTPException(403, "Forbidden")
     items = await get_db().salary_structures.find(_fee_query(), {"_id": 0}).sort("created_at", -1).to_list(500)
@@ -909,7 +915,7 @@ async def list_salary_structures(request: Request, user: dict = Depends(require_
 
 
 @router.post("/payroll/structures")
-async def fees_upsert_salary_structure(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def fees_upsert_salary_structure(request: Request, user: dict = Depends(require_finance_profile)):
     """R12.5: delegates to payroll_service.upsert_salary_structure (canonical)."""
     if not _can_fee_write(user):
         raise HTTPException(403, "Forbidden")
@@ -935,7 +941,7 @@ async def fees_upsert_salary_structure(request: Request, user: dict = Depends(re
 
 
 @router.post("/payroll/disbursements")
-async def fees_create_salary_disbursement(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def fees_create_salary_disbursement(request: Request, user: dict = Depends(require_finance_profile)):
     """R12.5: delegates to payroll_service.disburse_salary (canonical, idempotent)."""
     if not _can_fee_write(user):
         raise HTTPException(403, "Forbidden")
@@ -1007,7 +1013,7 @@ SYNC_JOB_TIMEOUT_MINUTES = int(os.environ.get("SYNC_JOB_TIMEOUT_MINUTES", "30"))
 
 
 @router.post("/sync/trigger")
-async def trigger_fee_sync(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def trigger_fee_sync(request: Request, user: dict = Depends(require_finance_profile)):
     # AD7 shared write path — same service as the AI `trigger_fee_sync` tool.
     db = get_db()
     actor_ctx = actor_ctx_from_user(user)
@@ -1023,7 +1029,7 @@ async def trigger_fee_sync(request: Request, user: dict = Depends(require_role("
 
 
 @router.get("/sync/{sync_job_id}")
-async def get_fee_sync_job(sync_job_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def get_fee_sync_job(sync_job_id: str, request: Request, user: dict = Depends(require_finance_profile)):
     job = await get_db().fee_sync_jobs.find_one(_fee_query({"id": sync_job_id}), {"_id": 0})
     if not job:
         raise HTTPException(404, "Sync job not found")
@@ -1031,7 +1037,7 @@ async def get_fee_sync_job(sync_job_id: str, request: Request, user: dict = Depe
 
 
 @router.post("/sync/{sync_job_id}/resolve-conflict")
-async def resolve_fee_sync_conflict(sync_job_id: str, request: Request, user: dict = Depends(require_owner)):
+async def resolve_fee_sync_conflict(sync_job_id: str, request: Request, user: dict = Depends(require_finance_profile)):
     db = get_db()
     body = await request.json()
     conflict_id = body.get("conflict_id")
@@ -1089,7 +1095,7 @@ async def _next_receipt_number(db, school_id: str) -> str:
 
 
 @router.get("/transactions/{transaction_id}/receipt")
-async def get_fee_receipt(transaction_id: str, request: Request, format: str = "pdf", user: dict = Depends(require_role("owner", "admin"))):
+async def get_fee_receipt(transaction_id: str, request: Request, format: str = "pdf", user: dict = Depends(require_finance_profile)):
     """Returns a fee receipt.  format=json returns structured JSON; default is PDF."""
     db = get_db()
     bid = user.get("branch_id")
@@ -1198,7 +1204,7 @@ async def get_fee_receipt(transaction_id: str, request: Request, format: str = "
 
 
 @router.get("/export")
-async def export_fee_transactions(request: Request, period: str = None, format: str = "csv", user: dict = Depends(require_role("owner", "admin"))):
+async def export_fee_transactions(request: Request, period: str = None, format: str = "csv", user: dict = Depends(require_finance_profile)):
     db = get_db()
     query = _fee_query({})
     if period:

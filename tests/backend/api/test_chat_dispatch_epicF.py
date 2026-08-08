@@ -141,8 +141,8 @@ async def test_teacher_write_refused_in_phase1(client, fake_db, monkeypatch):
     assert ran == []
 
 
-# ── F.10: two-step destructive + deletion audit ─────────────────────────────
-async def test_destructive_requires_second_ack_then_audits(client, fake_db, monkeypatch):
+# ── Destructive actions: one explicit confirmation + deletion audit ─────────
+async def test_destructive_user_confirmation_acknowledges_and_audits(client, fake_db, monkeypatch):
     async def _fn(params, user, scope=None):
         return {"success": True, "message": "deleted"}
 
@@ -151,16 +151,10 @@ async def test_destructive_requires_second_ack_then_audits(client, fake_db, monk
              "params": {"id": "obj-9", "leave_id": "lv-1", "action": "approve"}}]
     tok = _seed_plan_token(fake_db, user_id="own-1", session_id="s1", plan=plan)
 
-    # First confirm WITHOUT ack → 409 destructive_confirmation_required
-    r1 = client.post("/api/chat/confirm", headers=_bearer(OWNER), json={
+    # Clicking the confirm card is itself the destructive acknowledgement.
+    response = client.post("/api/chat/confirm", headers=_bearer(OWNER), json={
         "token": tok, "session_id": "s1", "confirmed": True})
-    assert r1.status_code == 409, r1.text
-    assert r1.json()["detail"]["code"] == "destructive_confirmation_required"
-
-    # Token not burned — second confirm WITH ack succeeds + writes deletion audit
-    r2 = client.post("/api/chat/confirm", headers=_bearer(OWNER), json={
-        "token": tok, "session_id": "s1", "confirmed": True, "destructive_ack": True})
-    assert r2.status_code == 200, r2.text
+    assert response.status_code == 200, response.text
     dels = [d for d in fake_db.audit_logs.docs if d.get("action") == "delete"]
     assert len(dels) == 1
     assert dels[0]["changes"]["actor"] == "own-1"

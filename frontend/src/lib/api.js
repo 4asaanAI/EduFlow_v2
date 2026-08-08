@@ -2,8 +2,9 @@ import { getAccessToken, redirectToLoginOnce, refreshAccessToken } from './authS
 import { sortClasses } from './classOrder';
 
 // ─── The ONE place the server's address is decided (NEW-08) ──────────────────
-// `REACT_APP_BACKEND_URL` must not be read anywhere else in the app except
-// `setupProxy.js` (dev-server only, runs in Node before this module exists).
+// `REACT_APP_BACKEND_URL` must not be read anywhere else in application code.
+// Vite maps the preferred `VITE_BACKEND_URL` (and the legacy name) to this one
+// compile-time value in `vite.config.js`.
 // It used to be read in 25 files, each re-deriving the same thing, which is how
 // commit 80d803b's https fix reached 13 of them and missed 7 — including the
 // login and token-refresh path. `frontend/src/lib/__tests__/apiBaseUrl.test.js`
@@ -128,6 +129,73 @@ export async function deleteConversation(convId) {
 export async function getMessages(convId) {
   const res = await apiFetch(`${API}/chat/conversations/${convId}/messages`, { headers: getHeaders() });
   return res.json();
+}
+
+// --- Leadership messaging ---
+
+async function messagingJson(path, options = {}) {
+  const res = await apiFetch(`${API}/messaging${path}`, {
+    ...options,
+    headers: { ...getHeaders(), ...(options.headers || {}) },
+  });
+  const body = res.status === 204 ? { success: true } : await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.detail || 'Messaging request failed');
+  return body;
+}
+
+export function getMessagingContacts() {
+  return messagingJson('/contacts');
+}
+
+export function getMessagingThreads() {
+  return messagingJson('/threads');
+}
+
+export function createDirectMessageThread(userId) {
+  return messagingJson('/threads/direct', {
+    method: 'POST', body: JSON.stringify({ user_id: userId }),
+  });
+}
+
+export function createMessageGroup(name, memberIds) {
+  return messagingJson('/threads/groups', {
+    method: 'POST', body: JSON.stringify({ name, member_ids: memberIds }),
+  });
+}
+
+export function updateMessageGroup(threadId, update) {
+  return messagingJson(`/threads/${encodeURIComponent(threadId)}`, {
+    method: 'PATCH', body: JSON.stringify(update),
+  });
+}
+
+export function getPlatformMessages(threadId, before = '') {
+  const query = before ? `?before=${encodeURIComponent(before)}` : '';
+  return messagingJson(`/threads/${encodeURIComponent(threadId)}/messages${query}`);
+}
+
+export function sendPlatformMessage(threadId, text, replyToId = null) {
+  return messagingJson(`/threads/${encodeURIComponent(threadId)}/messages`, {
+    method: 'POST', body: JSON.stringify({ text, reply_to_id: replyToId }),
+  });
+}
+
+export function markMessageThreadRead(threadId) {
+  return messagingJson(`/threads/${encodeURIComponent(threadId)}/read`, { method: 'PATCH' });
+}
+
+export function sendMessageTyping(threadId) {
+  return messagingJson(`/threads/${encodeURIComponent(threadId)}/typing`, { method: 'POST' });
+}
+
+export function editPlatformMessage(messageId, text) {
+  return messagingJson(`/messages/${encodeURIComponent(messageId)}`, {
+    method: 'PATCH', body: JSON.stringify({ text }),
+  });
+}
+
+export function deletePlatformMessage(messageId) {
+  return messagingJson(`/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE' });
 }
 
 /**
@@ -1428,5 +1496,3 @@ export async function emitFeedback(rating, meta = {}) {
     });
   } catch {}
 }
-
-

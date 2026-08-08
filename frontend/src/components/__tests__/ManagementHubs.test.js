@@ -49,10 +49,10 @@ describe('owner and principal management hubs', () => {
     REACHED_THROUGH_THE_DIRECTORY.forEach(id => expect(ownerItems.has(id)).toBe(false));
   });
 
-  test('keeps owner-only financial and settings screens out of principal hubs', () => {
+  test('gives the reviewed principal full finance and settings access', () => {
     const principalItems = new Set(MANAGEMENT_HUBS.flatMap(hub => hubItemsForUser(hub, { role: 'admin', sub_category: 'principal' }).map(item => item[0])));
-    expect(principalItems.has('financial-reports')).toBe(false);
-    expect(principalItems.has('payroll-manager')).toBe(false);
-    expect(principalItems.has('school-settings')).toBe(false);
+    expect(principalItems.has('financial-reports')).toBe(true);
+    expect(principalItems.has('payroll-manager')).toBe(true);
+    expect(principalItems.has('school-settings')).toBe(true);
   });
 });

@@ -90,8 +90,8 @@ describe('consolidation — no silent re-introduction of duplicates', () => {
     expect(TOOL_SETS.admin_maintenance).not.toContain('raise-maintenance');
   });
 
-  it("'raise-maintenance' still exists for the roles it is the only way in for", () => {
-    expect(TOOL_SETS.admin_accountant).toContain('raise-maintenance');
+  it("'raise-maintenance' stays non-financial and remains available to IT support", () => {
+    expect(TOOL_SETS.admin_accountant).not.toContain('raise-maintenance');
     expect(TOOL_SETS.admin_it_tech).toContain('raise-maintenance');
   });
 });

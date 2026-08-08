@@ -65,7 +65,10 @@ async def disburse_salary(
 
     # Idempotency: check before insert to return the existing doc cleanly.
     existing = await db.salary_disbursements.find_one(
-        {"staff_id": staff_id, "month": month}, {"_id": 0}
+        scoped_query(
+            {"staff_id": staff_id, "month": month},
+            branch_id=branch_id, school_id=school_id,
+        ), {"_id": 0}
     )
     if existing:
         return existing, True
@@ -93,7 +96,10 @@ async def disburse_salary(
     except DuplicateKeyError:
         # Concurrent double-submit — return the winner's row.
         existing = await db.salary_disbursements.find_one(
-            {"staff_id": staff_id, "month": month}, {"_id": 0}
+            scoped_query(
+                {"staff_id": staff_id, "month": month},
+                branch_id=branch_id, school_id=school_id,
+            ), {"_id": 0}
         )
         return existing or doc, True
 
@@ -115,7 +121,11 @@ async def upsert_salary_structure(
 ) -> dict:
     """Upsert a salary structure for a staff member (one canonical record per staff_id)."""
     now = _now_iso()
-    existing = await db.salary_structures.find_one({"staff_id": staff_id}, {"_id": 0})
+    existing = await db.salary_structures.find_one(
+        scoped_query(
+            {"staff_id": staff_id}, branch_id=branch_id, school_id=school_id
+        ), {"_id": 0}
+    )
     doc = {
         "id": (existing or {}).get("id") or str(uuid.uuid4()),
         "schoolId": school_id,
@@ -133,7 +143,9 @@ async def upsert_salary_structure(
         doc["branch_id"] = branch_id
 
     await db.salary_structures.update_one(
-        {"staff_id": staff_id},
+        scoped_query(
+            {"staff_id": staff_id}, branch_id=branch_id, school_id=school_id
+        ),
         {"$set": doc, "$setOnInsert": {"_id": doc["id"]}},
         upsert=True,
     )

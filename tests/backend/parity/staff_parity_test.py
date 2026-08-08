@@ -69,7 +69,8 @@ def _clean(fake_db):
 def _payload():
     return {
         "name": "Parity Teacher", "staff_type": "teacher", "department": "Math",
-        "phone": "9220000001", "employee_id": "EMP-PAR", "password": "FixedPass1",
+        "phone": "9220000001", "employee_id": "EMP-PAR",
+        "username": "parity.teacher", "password": "FixedPass1",
     }
 
 
@@ -94,12 +95,18 @@ async def test_create_staff_ai_does_not_leak_temp_password(fake_db, monkeypatch)
     _clear(fake_db)
     monkeypatch.setattr(tool_functions_v2, "get_db", lambda: fake_db)
     out = await tool_functions_v2.tool_create_staff(
-        {"name": "Secret Teacher", "staff_type": "teacher"}, OWNER_USER, None
+        {
+            "name": "Secret Teacher", "staff_type": "teacher",
+            "username": "secret.teacher", "password": "SecretPass1",
+        },
+        OWNER_USER,
+        None,
     )
     assert out["success"] is True
     # The plaintext temporary password must never enter the chat/LLM-visible payload.
     assert "temporary_password" not in out.get("data", {})
     assert "EduFlow-" not in str(out)
+    assert "SecretPass1" not in str(out)
 
 
 async def test_update_staff_ai_and_rest_identical(client, auth_headers, fake_db, monkeypatch):

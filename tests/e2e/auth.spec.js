@@ -43,7 +43,7 @@ test.describe('Authentication', () => {
 
       // Then: an error message is displayed, user stays on login page
       await expect(loginPage.errorMessage).toBeVisible();
-      await expect(loginPage.errorMessage).toContainText(/invalid|incorrect|not found/i);
+      await expect(loginPage.errorMessage).toHaveText('Incorrect username or password');
       await expect(page).toHaveURL(/\/login/);
     });
 
@@ -57,6 +57,20 @@ test.describe('Authentication', () => {
 
       // Then: form validation prevents submission (HTML5 or custom validation)
       await expect(page).toHaveURL(/\/login/);
+    });
+
+    test('should show and hide the entered password', async ({ page }) => {
+      const loginPage = new LoginPage(page);
+      await loginPage.goto();
+      await loginPage.passwordInput.fill('visible-secret');
+
+      await expect(loginPage.passwordInput).toHaveAttribute('type', 'password');
+      await page.getByRole('button', { name: 'Show password' }).click();
+      await expect(loginPage.passwordInput).toHaveAttribute('type', 'text');
+      await expect(loginPage.passwordInput).toHaveValue('visible-secret');
+
+      await page.getByRole('button', { name: 'Hide password' }).click();
+      await expect(loginPage.passwordInput).toHaveAttribute('type', 'password');
     });
   });
 

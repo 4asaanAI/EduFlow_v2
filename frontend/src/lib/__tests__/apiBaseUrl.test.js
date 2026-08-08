@@ -17,20 +17,15 @@ const path = require('path');
 
 const SRC = path.join(__dirname, '..', '..');
 
-// `setupProxy.js` runs in Node inside the dev server, before any app module exists, so
-// it cannot import from `lib/api.js`. It is the only other legitimate reader.
 const BASE_URL_ALLOWED = new Set([
   path.join('lib', 'api.js'),
-  'setupProxy.js',
 ]);
 
 // `lib/api.js` IS the wrapper, and `lib/authSession.js` owns the refresh call itself —
-// routing either through the wrapper that calls them would loop. `setupProxy.js` runs
-// in Node before any app module exists.
+// routing either through the wrapper that calls them would loop.
 const BARE_FETCH_ALLOWED = new Set([
   path.join('lib', 'api.js'),
   path.join('lib', 'authSession.js'),
-  'setupProxy.js',
 ]);
 
 // `contexts/UserContext.js` is exempt PER CALL, not per file: login and logout
@@ -82,7 +77,7 @@ test('the app has files to check (guards against a broken walk silently passing)
   expect(FILES.length).toBeGreaterThan(40);
 });
 
-test('REACT_APP_BACKEND_URL is read in lib/api.js and setupProxy.js only', () => {
+test('REACT_APP_BACKEND_URL is read in lib/api.js only', () => {
   const offenders = FILES.filter(
     ({ rel, full }) =>
       !BASE_URL_ALLOWED.has(rel) &&

@@ -9,7 +9,7 @@ def _owner_h():
 
 
 def _accountant_h():
-    t = create_jwt({"user_id": "a1", "role": "admin", "name": "A", "sub_category": "accounts"})
+    t = create_jwt({"user_id": "a1", "role": "admin", "name": "A", "sub_category": "accountant"})
     return {"Authorization": f"Bearer {t}"}
 
 
@@ -78,10 +78,10 @@ def test_owner_can_list_pending_approvals(client, fake_db):
     assert isinstance(data["data"], list)
 
 
-def test_non_owner_cannot_list_pending_approvals(client):
-    """Accountant cannot view pending approvals — owner-only endpoint."""
+def test_accountant_can_list_pending_approvals(client):
+    """The accountant head can manage the complete finance workflow."""
     resp = client.get("/api/fees/discounts/pending-approvals", headers=_accountant_h())
-    assert resp.status_code == 403
+    assert resp.status_code == 200
 
 
 def test_discount_missing_type_returns_404(client, fake_db):

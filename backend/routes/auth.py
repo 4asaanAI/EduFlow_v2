@@ -27,6 +27,15 @@ from middleware.auth import (
     verify_password,
 )
 from services.audit_service import write_audit
+from services.actor_context import actor_ctx_from_user
+from services.account_management_service import (
+    create_student_login,
+    set_profile_password,
+    AccountAuthorizationError,
+    AccountConflictError,
+    AccountNotFoundError,
+    AccountValidationError,
+)
 from services.auth_tokens import (
     clear_legacy_refresh_cookie,
     clear_refresh_cookie,
@@ -105,6 +114,17 @@ class AdminResetPasswordRequest(BaseModel):
         if v is None:
             return v
         if len(v) < 8 or len(v) > 128:
+            raise ValueError("Password must be 8-128 characters")
+        return v
+
+
+class CreateStudentLoginRequest(BaseModel):
+    username: Optional[str] = None
+    password: str
+
+    @validator("password")
+    def validate_password(cls, v):
+        if len(v or "") < 8 or len(v) > 128:
             raise ValueError("Password must be 8-128 characters")
         return v
 
@@ -406,38 +426,47 @@ def _log_login_failed(request: Request, username: str, reason: str) -> None:
 
 @router.post("/admin/users/{user_id}/reset-password")
 async def admin_reset_password(user_id: str, body: AdminResetPasswordRequest, user: dict = Depends(require_role("owner", "admin"))):
-    if not _can_administer_auth(user):
-        raise HTTPException(403, "Only owner or principal admin can reset user passwords")
     db = get_db()
-    auth_record = await db.auth_users.find_one(_auth_user_filter(user_id))
-    if not auth_record:
-        raise HTTPException(404, "User not found")
-
-    target_role = (auth_record.get("user_info") or {}).get("role") or auth_record.get("role", "")
-
-    # IT-tech cannot reset owner passwords
-    if target_role == "owner" and user.get("role") != "owner":
-        raise HTTPException(403, "Cannot reset owner password — contact system administrator")
-
     new_password = body.new_password or f"EduFlow-{uuid.uuid4().hex[:10]}"
-    from tenant import get_school_id
-    await db.auth_users.update_one(
-        _auth_user_filter(user_id),
-        {"$set": {"password_hash": hash_password(new_password), "must_change_password": True, "password_reset_by": user["id"], "password_reset_at": datetime.now(timezone.utc).isoformat()}},
-    )
-    await revoke_user_refresh_tokens(db, user_id, reason="admin_password_reset")
-    await write_audit(
-        db,
-        action="admin_password_reset",
-        entity_id=user_id,
-        collection="auth_users",
-        changed_by=user["id"],
-        changed_by_role=user.get("role", ""),
-        school_id=get_school_id(),
-        branch_id=user.get("branch_id", ""),
-        changes={"reset_for_role": target_role},
-    )
+    try:
+        await set_profile_password(
+            db,
+            actor_ctx_from_user(user),
+            {"user_id": user_id, "new_password": new_password},
+            must_change_password=False,
+        )
+    except AccountAuthorizationError as exc:
+        raise HTTPException(403, str(exc))
+    except AccountNotFoundError as exc:
+        raise HTTPException(404, str(exc))
+    except AccountValidationError as exc:
+        raise HTTPException(400, str(exc))
     return {"success": True, "message": "Password reset successfully. Communicate new credentials securely."}
+
+
+@router.post("/admin/students/{student_id}/login")
+async def admin_create_student_login(
+    student_id: str,
+    body: CreateStudentLoginRequest,
+    user: dict = Depends(require_role("owner", "admin")),
+):
+    """Create a login for an existing student; management is student-only."""
+    db = get_db()
+    try:
+        result = await create_student_login(
+            db,
+            actor_ctx_from_user(user),
+            {"student_id": student_id, "username": body.username, "password": body.password},
+        )
+    except AccountAuthorizationError as exc:
+        raise HTTPException(403, str(exc))
+    except AccountNotFoundError as exc:
+        raise HTTPException(404, str(exc))
+    except AccountConflictError as exc:
+        raise HTTPException(409, str(exc))
+    except AccountValidationError as exc:
+        raise HTTPException(400, str(exc))
+    return {"success": True, "data": result["account"]}
 
 
 @router.post("/admin/users/{user_id}/unlock")

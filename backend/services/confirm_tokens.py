@@ -99,6 +99,7 @@ async def issue_confirm_token(
     school_id: str | None = None,
     branch_id: str | None = None,
     plan: list[dict[str, Any]] | None = None,
+    confirmation_mode: str = "user",
     db=None,
 ) -> str:
     """Create a one-time confirmation token for a pending AI write dispatch.
@@ -122,6 +123,7 @@ async def issue_confirm_token(
         "expires_at": expires_at,
         "used": False,
         "created_at": _now(),
+        "confirmation_mode": confirmation_mode,
     }
     if plan is not None:
         document["plan"] = plan

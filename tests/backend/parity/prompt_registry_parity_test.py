@@ -28,6 +28,7 @@ fold the lockdown in.
 from __future__ import annotations
 
 from ai.prompts import TOOLS_BY_ROLE
+from ai.tool_access import is_tool_authorized
 from ai.tool_functions_v2 import TOOL_REGISTRY
 from middleware.auth import VALID_SUB_CATEGORIES
 
@@ -70,15 +71,9 @@ MUST_ADVERTISE_EVERYWHERE = frozenset({"recall_history"})
 
 
 def _registry_authorized(role: str, sub_category, tool_def: dict) -> bool:
-    """Registry-level auth: role in roles AND (no sub restriction, or non-admin,
-    or matching admin sub_category). Mirrors _is_tool_authorized minus lockdown."""
-    if role not in tool_def.get("roles", []):
-        return False
-    subs = tool_def.get("sub_categories")
-    if subs is not None and role == "admin":
-        if sub_category not in subs:
-            return False
-    return True
+    return is_tool_authorized(
+        {"id": "parity", "role": role, "sub_category": sub_category}, tool_def
+    )
 
 
 def _advertised_params(tool: dict) -> dict:
@@ -187,10 +182,11 @@ def test_assertion5_prompt_sub_categories_are_canonical():
 
 
 def test_accountant_gets_accounts_not_principal_tools():
-    """C4 regression: accountant must resolve to the accounts tool list, never fall
-    through to principal (which would over-expose leave/attendance)."""
+    """Accountant gets complete finance, without non-finance principal tools."""
     from ai.prompts import _resolve_tools
     tools = {t["name"] for t in _resolve_tools("admin", "accountant")}
-    assert "record_fee_payment" not in tools  # Phase-1 AI writes are owner/principal only
+    assert "record_fee_payment" in tools
+    assert "upsert_salary_structure" in tools
+    assert "create_accounting_period" in tools
     assert "approve_leave" not in tools  # principal-only — must not leak
     assert "mark_attendance" not in tools

@@ -143,6 +143,27 @@ def test_library_circulation_preserves_copies_and_student_scope(client, fake_db)
     assert fake_db.library_titles.docs[0]["copies_available"] == 1
 
 
+def test_library_search_treats_regex_characters_as_literal_text(client, fake_db):
+    owner = _headers("owner-1", "owner")
+    fake_db.library_titles.docs.extend([
+        {
+            "id": "literal", "schoolId": "aaryans-joya", "branch_id": "branch-a",
+            "title": "C++ Fundamentals", "author": "A. Teacher",
+            "accession_number": "LIB-C++", "is_active": True,
+        },
+        {
+            "id": "unrelated", "schoolId": "aaryans-joya", "branch_id": "branch-a",
+            "title": "Chemistry", "author": "B. Teacher",
+            "accession_number": "LIB-002", "is_active": True,
+        },
+    ])
+
+    response = client.get("/api/campus/library/titles", params={"search": "C++"}, headers=owner)
+
+    assert response.status_code == 200
+    assert [row["id"] for row in response.json()["data"]] == ["literal"]
+
+
 @pytest.mark.parametrize("path", [
     "/api/campus/resources", "/api/campus/inventory/items",
     "/api/campus/procurement/requisitions", "/api/campus/library/titles",

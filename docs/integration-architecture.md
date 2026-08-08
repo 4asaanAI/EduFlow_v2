@@ -38,7 +38,7 @@ EduFlow is a two-part system (frontend SPA + backend API) that communicate exclu
 
 **Protocol:** HTTPS REST  
 **Auth:** `Authorization: Bearer <JWT access_token>` on every request  
-**Base URL:** `REACT_APP_API_URL` env var (e.g. `https://api.eduflow.school`)
+**Base URL:** `VITE_BACKEND_URL` env var (legacy `REACT_APP_BACKEND_URL` remains supported)
 
 **Request headers:**
 | Header | Purpose | When |
@@ -218,7 +218,7 @@ In production: only the Amplify domain is listed. No wildcard.
 ### Frontend
 | Variable | Purpose |
 |----------|---------|
-| `REACT_APP_API_URL` | Backend base URL |
+| `VITE_BACKEND_URL` | Backend base URL |
 
 ---
 

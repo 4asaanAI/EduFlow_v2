@@ -5,9 +5,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { API, apiFetch, getAllClasses, getAllStudents, getTodayAttendance, bulkMarkAttendance } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
-import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn } from './ToolPage';
+import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, ErrorCard } from './ToolPage';
 import { Plus, CheckCircle, Save, Bold, Underline, List } from 'lucide-react';
-import html2pdf from 'html2pdf.js';
 import DOMPurify from 'dompurify';
 export { FormSubmissions } from './StudentTools';
 
@@ -76,6 +75,8 @@ export function ClassAttendanceMarker() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [loadError, setLoadError] = useState(false);
 
   // Attendance is class-teacher-only: show solely the classes the teacher is
   // class teacher of in the Academic Structure.
@@ -89,21 +90,35 @@ export function ClassAttendanceMarker() {
       }
     });
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (selectedClass) { setLoading(true);
+  useEffect(() => { if (selectedClass) { setLoading(true); setLoadError(false); setRecords([]);
     apiFetch(`${API}/attendance/student/today/${selectedClass}?date=${date}`, { headers: h() })
-      .then(r => r.json()).then(r => { if (r.success) setRecords(r.data || []); }).finally(() => setLoading(false)); 
+      .then(r => r.json()).then(r => {
+        if (!r.success) throw new Error('Unable to load attendance');
+        setRecords(r.data || []);
+      }).catch(() => setLoadError(true)).finally(() => setLoading(false));
   } }, [selectedClass, date, currentUser]);
 
   const handleSave = async () => {
     setSaving(true);
-    await bulkMarkAttendance({ class_id: selectedClass, date, records: records.map(s => ({ student_id: s.student_id, status: s.status })) });
-    setSaved(true); setSaving(false); setTimeout(() => setSaved(false), 3000);
+    setSaveError('');
+    try {
+      const result = await bulkMarkAttendance({ class_id: selectedClass, date, records: records.map(s => ({ student_id: s.student_id, status: s.status })) });
+      if (!result?.success) throw new Error(result?.detail || 'Unable to save attendance.');
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (error) {
+      setSaveError(error.message || 'Unable to save attendance.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const markAll = status => setRecords(prev => prev.map(s => ({ ...s, status })));
 
   return (
     <ToolPage title="Class Attendance" subtitle="Mark attendance for your class">
+      {saveError && <ErrorCard message={saveError} />}
+      {loadError && <ErrorCard message="Unable to load this attendance register. Please try again." />}
       {scope?.is_teacher && classes.length === 0 && (
         <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 16, marginBottom: 14, fontSize: 13, color: 'var(--c-muted)' }}>
           You are not set as the class teacher of any class yet. Ask your admin to assign you a class in Academic Structure to mark attendance.
@@ -117,14 +132,14 @@ export function ClassAttendanceMarker() {
         <ActionBtn label="All Present" variant="success" onClick={() => markAll('present')} />
         <ActionBtn label="All Absent" variant="danger" onClick={() => markAll('absent')} />
       </div>
-      {records.length > 0 && (
+      {!loadError && records.length > 0 && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
           {[['Present', records.filter(r => r.status === 'present').length, 'var(--tool-hex-34d399)'], ['Absent', records.filter(r => r.status === 'absent').length, 'var(--tool-hex-f87171)'], ['Total', records.length, 'var(--c-text)']].map(([l, v, c]) => (
             <StatCard key={l} value={v} label={l} color={c} small />
           ))}
         </div>
       )}
-      <DataTable headers={['Roll', 'Student Name', 'Status', 'Quick Mark']}
+      {!loadError && <DataTable headers={['Roll', 'Student Name', 'Status', 'Quick Mark']}
         rows={records.map((s, i) => [
           s.roll_number || '-',
           s.name,
@@ -137,8 +152,8 @@ export function ClassAttendanceMarker() {
           </div>
         ])}
         emptyMsg={loading ? 'Loading...' : 'No students found'}
-      />
-      {records.length > 0 && <button onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 7, background: saved ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-4f8ff7)', border: 'none', borderRadius: 8, padding: '10px 20px', color: 'var(--tool-hex-fff)', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 12 }}>
+      />}
+      {!loadError && records.length > 0 && <button onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 7, background: saved ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-4f8ff7)', border: 'none', borderRadius: 8, padding: '10px 20px', color: 'var(--tool-hex-fff)', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 12 }}>
         {saved ? <CheckCircle size={14} /> : <Save size={14} />}{saved ? 'Saved!' : saving ? 'Saving...' : 'Save Attendance'}
       </button>}
     </ToolPage>
@@ -339,7 +354,7 @@ export function QuestionPaperCreator() {
   };
 
 
-  const downloadPdf = () => {
+  const downloadPdf = async () => {
     const liveContent = editorRef.current?.innerHTML || editedContent;
     // Create a visible overlay — html2canvas cannot capture off-screen/fixed elements
     const overlay = document.createElement('div');
@@ -356,7 +371,12 @@ export function QuestionPaperCreator() {
       html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: 'white' },
       jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' },
     };
-    html2pdf().set(opt).from(inner).save().finally(() => document.body.removeChild(overlay));
+    try {
+      const { default: html2pdf } = await import('html2pdf.js');
+      await html2pdf().set(opt).from(inner).save();
+    } finally {
+      overlay.remove();
+    }
   };
 
   const downloadWord = () => {
@@ -726,6 +746,7 @@ export function WorksheetCreator() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
 
   const load = useCallback(async () => {
@@ -740,18 +761,27 @@ export function WorksheetCreator() {
     ]).finally(() => setLoading(false));
   }, [currentUser, load]);
 
-  const openCreate = () => { setEditingId(null); setForm({ subject_id: '', topic: '', type: 'practice', content: '' }); setShowForm(true); };
-  const openEdit = (w) => { setEditingId(w.id); setForm({ subject_id: w.subject_id || '', topic: w.topic || '', type: w.type || 'practice', content: w.content || '' }); setShowForm(true); };
+  const openCreate = () => { setSaveError(''); setEditingId(null); setForm({ subject_id: '', topic: '', type: 'practice', content: '' }); setShowForm(true); };
+  const openEdit = (w) => { setSaveError(''); setEditingId(w.id); setForm({ subject_id: w.subject_id || '', topic: w.topic || '', type: w.type || 'practice', content: w.content || '' }); setShowForm(true); };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
-    const url = editingId ? `${API}/academics/worksheets/${editingId}` : `${API}/academics/worksheets`;
-    const method = editingId ? 'PATCH' : 'POST';
-    await apiFetch(url, { method, headers: h(), body: JSON.stringify(form) }).catch(() => {});
-    setShowForm(false); setEditingId(null);
-    await load();
-    setSaving(false);
+    setSaveError('');
+    try {
+      const url = editingId ? `${API}/academics/worksheets/${editingId}` : `${API}/academics/worksheets`;
+      const method = editingId ? 'PATCH' : 'POST';
+      const response = await apiFetch(url, { method, headers: h(), body: JSON.stringify(form) });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || !body.success) throw new Error(body.detail || 'Unable to save the worksheet.');
+      setShowForm(false);
+      setEditingId(null);
+      await load();
+    } catch (error) {
+      setSaveError(error.message || 'Unable to save the worksheet.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (id) => {
@@ -767,6 +797,7 @@ export function WorksheetCreator() {
         <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16 }}>
           <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingId ? 'Edit Worksheet' : 'New Worksheet'}</h3>
           <form onSubmit={handleSubmit}>
+            {saveError && <ErrorCard message={saveError} />}
             <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Subject" type="select" value={form.subject_id} onChange={f('subject_id')} options={subjects.map(s => ({ value: s.id, label: s.name }))} />
               <FormField label="Type" type="select" value={form.type} onChange={f('type')} options={['practice', 'revision', 'homework'].map(v => ({ value: v, label: v }))} />
@@ -804,6 +835,7 @@ export function SubstitutionViewer() {
   const { currentUser } = useUser();
   const [subs, setSubs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   // D-63: read the id through `?.` like every other component on this screen does.
   // Without it, rendering before the session has resolved throws and takes the whole
@@ -814,15 +846,21 @@ export function SubstitutionViewer() {
     // No signed-in user yet: stay on the loading state rather than asking the server
     // for `?user_id=undefined`, which would come back empty and read as "no changes".
     if (!userId) return;
+    setLoadError(false);
     // Fetch timetable changes / substitutions
     apiFetch(`${API}/academics/substitutions?user_id=${userId}`, { headers: h() })
-      .then(r => r.json()).then(r => { if (r.success) setSubs(r.data || []); })
-      .catch(() => {}).finally(() => setLoading(false));
+      .then(r => r.json()).then(r => {
+        if (!r.success) throw new Error('Unable to load substitutions');
+        setSubs(r.data || []);
+      })
+      .catch(() => setLoadError(true)).finally(() => setLoading(false));
   }, [userId]);
 
   return (
     <ToolPage title="Substitution Viewer" subtitle="View your schedule changes" loading={loading}>
-      {subs.length === 0 ? (
+      {loadError ? (
+        <ErrorCard message="Unable to load substitution assignments. Please try again." />
+      ) : subs.length === 0 ? (
         <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, fontSize: 13 }}>
           No substitution assignments for today. Check back later.
         </div>

@@ -61,10 +61,7 @@ def test_confirm_display_falls_back_for_unknown_tool():
     assert display == 'Execute custom_write_tool with parameters: {"x": 1}'
 
 
-def test_native_tool_call_maps_write_tool_to_confirm_candidate():
-    """R11.2: a native tool_call for a write tool maps to an internal candidate
-    with confirm_requested=True (the confirm card is issued server-side; the
-    model no longer emits a confirm_action JSON block)."""
+def test_native_tool_call_maps_ordinary_write_without_confirmation():
     from ai.llm_client import ToolCall
 
     candidates = chat._tool_calls_to_candidates([
@@ -76,9 +73,18 @@ def test_native_tool_call_maps_write_tool_to_confirm_candidate():
         "action": "create_announcement",
         "params": {"title": "Holiday", "content": "School closed tomorrow"},
         "reason": "",
-        "confirm_requested": True,
+        "confirm_requested": False,
         "id": "call_1",
     }]
+
+
+def test_native_tool_call_marks_destructive_write_for_confirmation():
+    from ai.llm_client import ToolCall
+
+    candidates = chat._tool_calls_to_candidates([
+        ToolCall(id="call_delete", name="delete_expense", arguments={"expense_id": "e1"}),
+    ])
+    assert candidates[0]["confirm_requested"] is True
 
 
 def test_native_tool_call_maps_read_tool_without_confirm():

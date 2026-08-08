@@ -111,13 +111,17 @@ def test_native_tool_call_dispatches_read_tool(client, fake_db, monkeypatch):
     assert any("4B" in m.get("content", "") for m in persisted)
 
 
-def test_native_write_tool_call_emits_confirm_card(client, fake_db, monkeypatch):
-    """R11.2/AC4: a write tool_call is gated behind the confirm card, unchanged."""
+def test_native_bulk_write_tool_call_emits_confirm_card(client, fake_db, monkeypatch):
+    """Bulk writes still stop for one explicit user confirmation."""
     _seed(fake_db)
     seq = _SeqChat([
         LLMResult(text="", ok=True, reason="tool_calls",
-                  tool_calls=[ToolCall(id="w1", name="award_house_points",
-                                       arguments={"student_name": "Rahul", "points": 5, "reason": "helpful"})]),
+                  tool_calls=[ToolCall(
+                      id="w1", name="mark_attendance",
+                      arguments={"class_id": "class-4b", "attendance": [
+                          {"student_id": "stu-1", "status": "present"},
+                      ]},
+                  )]),
     ])
     monkeypatch.setattr(chat.llm_client, "chat", seq)
 
@@ -125,7 +129,7 @@ def test_native_write_tool_call_emits_confirm_card(client, fake_db, monkeypatch)
         return params
     monkeypatch.setattr(chat, "_resolve_params", _resolve)
 
-    resp = _post(client, text="give Rahul 5 house points")
+    resp = _post(client, text="mark the class attendance")
     events = _events(resp.text)
     assert any(e.get("type") == "confirm_action" for e in events), \
         f"no confirm card; got {[e.get('type') for e in events]}"

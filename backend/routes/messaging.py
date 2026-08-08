@@ -1,0 +1,716 @@
+from __future__ import annotations
+
+import asyncio
+import re
+import uuid
+from datetime import datetime, timezone
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, ConfigDict, field_validator
+from pymongo.errors import DuplicateKeyError
+
+from database import get_db
+from middleware.auth import require_owner_or_admin_subcategories
+from services.sse import (
+    KEEPALIVE_COMMENT,
+    connect as sse_connect,
+    disconnect as sse_disconnect,
+    encode_sse,
+    is_connected as sse_is_connected,
+    normalize_session_id,
+    publish as sse_publish,
+)
+from tenant import add_school_id, get_school_id, scoped_query
+
+
+router = APIRouter(prefix="/api/messaging", tags=["messaging"])
+require_messaging_profile = require_owner_or_admin_subcategories(
+    "principal", "accountant", "management"
+)
+
+LEADERSHIP_PROFILES = {
+    ("owner", "owner"),
+    ("admin", "principal"),
+    ("admin", "accountant"),
+    ("admin", "management"),
+}
+LEADERSHIP_USERNAMES = {
+    "aman.litt", "adesh.singh", "sonu.ruhal", "lalit.thomas",
+}
+MAX_MESSAGE_LENGTH = 4000
+MAX_GROUP_NAME_LENGTH = 80
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _channel(user_id: str) -> str:
+    return f"messaging:{user_id}"
+
+
+def _clean_text(value: str, *, field: str, max_length: int) -> str:
+    cleaned = re.sub(r"\r\n?", "\n", value or "").strip()
+    if not cleaned:
+        raise ValueError(f"{field} is required")
+    if len(cleaned) > max_length:
+        raise ValueError(f"{field} must be {max_length} characters or fewer")
+    return cleaned
+
+
+class DirectThreadRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: str
+
+    @field_validator("user_id")
+    @classmethod
+    def validate_user_id(cls, value: str) -> str:
+        return _clean_text(value, field="User", max_length=128)
+
+
+class GroupThreadRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    member_ids: list[str]
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return _clean_text(value, field="Group name", max_length=MAX_GROUP_NAME_LENGTH)
+
+    @field_validator("member_ids")
+    @classmethod
+    def validate_members(cls, value: list[str]) -> list[str]:
+        cleaned = list(dict.fromkeys(str(item).strip() for item in value if str(item).strip()))
+        if not cleaned:
+            raise ValueError("Choose at least one group member")
+        return cleaned
+
+
+class GroupThreadUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: Optional[str] = None
+    member_ids: Optional[list[str]] = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        return _clean_text(value, field="Group name", max_length=MAX_GROUP_NAME_LENGTH)
+
+    @field_validator("member_ids")
+    @classmethod
+    def validate_members(cls, value: Optional[list[str]]) -> Optional[list[str]]:
+        if value is None:
+            return None
+        cleaned = list(dict.fromkeys(str(item).strip() for item in value if str(item).strip()))
+        if not cleaned:
+            raise ValueError("Choose at least one group member")
+        return cleaned
+
+
+class MessageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+    reply_to_id: Optional[str] = None
+
+    @field_validator("text")
+    @classmethod
+    def validate_text(cls, value: str) -> str:
+        return _clean_text(value, field="Message", max_length=MAX_MESSAGE_LENGTH)
+
+
+class MessageEditRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+
+    @field_validator("text")
+    @classmethod
+    def validate_text(cls, value: str) -> str:
+        return _clean_text(value, field="Message", max_length=MAX_MESSAGE_LENGTH)
+
+
+def _scope(query: dict, user: dict) -> dict:
+    return scoped_query(query, branch_id=user.get("branch_id"))
+
+
+async def _leadership_contacts(db, user: dict) -> list[dict]:
+    query = {
+        "schoolId": get_school_id(),
+        "is_active": {"$ne": False},
+        "username_lower": {"$in": list(LEADERSHIP_USERNAMES)},
+    }
+    if user.get("branch_id"):
+        query["user_info.branch_id"] = user["branch_id"]
+    rows = await db.auth_users.find(
+        query,
+        {"_id": 0, "id": 1, "user_info": 1},
+    ).to_list(50)
+    contacts = []
+    for row in rows:
+        info = row.get("user_info") or {}
+        role = info.get("role") or row.get("role")
+        sub_category = info.get("sub_category") or ("owner" if role == "owner" else None)
+        user_id = info.get("id") or row.get("id")
+        if not user_id or (role, sub_category) not in LEADERSHIP_PROFILES:
+            continue
+        contacts.append({
+            "id": user_id,
+            "name": info.get("name") or "School profile",
+            "role": role,
+            "sub_category": sub_category,
+        })
+    contacts.sort(key=lambda item: (item["role"] != "owner", item["name"].casefold()))
+    return contacts
+
+
+async def _contact_map(db, user: dict) -> dict[str, dict]:
+    return {contact["id"]: contact for contact in await _leadership_contacts(db, user)}
+
+
+async def _require_contact(db, user_id: str, actor: dict) -> dict:
+    contact = (await _contact_map(db, actor)).get(user_id)
+    if not contact:
+        raise HTTPException(404, "Messaging profile not found")
+    return contact
+
+
+async def _thread_for_member(db, thread_id: str, user: dict) -> dict:
+    thread = await db.platform_message_threads.find_one(
+        _scope({"id": thread_id, "member_ids": user["id"]}, user), {"_id": 0}
+    )
+    if not thread:
+        raise HTTPException(404, "Conversation not found")
+    return thread
+
+
+async def _publish_to_users(user_ids: list[str], event: dict) -> None:
+    for user_id in set(user_ids):
+        await sse_publish(_channel(user_id), event)
+
+
+def _receipt_status(message: dict, receipts: list[dict]) -> dict:
+    recipients = [
+        row for row in receipts if row.get("user_id") != message.get("sender_id")
+    ]
+    if not recipients:
+        return {"status": "sent", "delivered_count": 0, "read_count": 0, "recipient_count": 0}
+    delivered = sum(1 for row in recipients if row.get("delivered_at"))
+    read = sum(1 for row in recipients if row.get("read_at"))
+    status = "read" if read == len(recipients) else "delivered" if delivered == len(recipients) else "sent"
+    return {
+        "status": status,
+        "delivered_count": delivered,
+        "read_count": read,
+        "recipient_count": len(recipients),
+    }
+
+
+async def _serialize_thread(
+    thread: dict,
+    *,
+    user_id: str,
+    contacts: dict[str, dict],
+    unread_count: int = 0,
+    last_receipts: Optional[list[dict]] = None,
+) -> dict:
+    members = [contacts[member_id] for member_id in thread.get("member_ids", []) if member_id in contacts]
+    if thread.get("kind") == "direct":
+        other = next((member for member in members if member["id"] != user_id), None)
+        title = (other or {}).get("name", "Conversation")
+    else:
+        title = thread.get("name") or "Group"
+    data = {
+        **{key: value for key, value in thread.items() if key != "_id"},
+        "title": title,
+        "members": members,
+        "unread_count": unread_count,
+    }
+    last = thread.get("last_message")
+    if last and last.get("sender_id") == user_id:
+        data["last_message"]["receipt"] = _receipt_status(last, last_receipts or [])
+    return data
+
+
+@router.get("/contacts")
+async def list_contacts(user: dict = Depends(require_messaging_profile)):
+    db = get_db()
+    contacts = await _leadership_contacts(db, user)
+    if user["id"] not in {contact["id"] for contact in contacts}:
+        raise HTTPException(403, "Messaging is limited to the four leadership profiles")
+    presence_rows = await db.platform_message_presence.find(
+        _scope({"user_id": {"$in": [contact["id"] for contact in contacts]}}, user), {"_id": 0}
+    ).to_list(20)
+    presence = {row["user_id"]: row for row in presence_rows}
+    data = []
+    for contact in contacts:
+        row = presence.get(contact["id"], {})
+        data.append({
+            **contact,
+            "online": sse_is_connected(_channel(contact["id"])),
+            "last_seen_at": row.get("last_seen_at"),
+            "is_self": contact["id"] == user["id"],
+        })
+    return {"success": True, "data": data, "meta": {"count": len(data)}}
+
+
+@router.get("/threads")
+async def list_threads(user: dict = Depends(require_messaging_profile)):
+    db = get_db()
+    await _require_contact(db, user["id"], user)
+    contacts = await _contact_map(db, user)
+    threads = await db.platform_message_threads.find(
+        _scope({"member_ids": user["id"]}, user), {"_id": 0}
+    ).sort("updated_at", -1).to_list(100)
+    thread_ids = [thread["id"] for thread in threads]
+    unread_rows = await db.platform_message_receipts.find(
+        _scope({"thread_id": {"$in": thread_ids}, "user_id": user["id"], "read_at": None}, user),
+        {"_id": 0, "thread_id": 1},
+    ).to_list(1000)
+    unread_by_thread: dict[str, int] = {}
+    for row in unread_rows:
+        unread_by_thread[row["thread_id"]] = unread_by_thread.get(row["thread_id"], 0) + 1
+    last_ids = [(thread.get("last_message") or {}).get("id") for thread in threads]
+    last_ids = [message_id for message_id in last_ids if message_id]
+    receipt_rows = await db.platform_message_receipts.find(
+        _scope({"message_id": {"$in": last_ids}}, user), {"_id": 0}
+    ).to_list(500)
+    receipts_by_message: dict[str, list[dict]] = {}
+    for row in receipt_rows:
+        receipts_by_message.setdefault(row["message_id"], []).append(row)
+    data = [
+        await _serialize_thread(
+            thread,
+            user_id=user["id"],
+            contacts=contacts,
+            unread_count=unread_by_thread.get(thread["id"], 0),
+            last_receipts=receipts_by_message.get((thread.get("last_message") or {}).get("id"), []),
+        )
+        for thread in threads
+    ]
+    return {
+        "success": True,
+        "data": data,
+        "meta": {"count": len(data), "unread_total": sum(unread_by_thread.values())},
+    }
+
+
+@router.post("/threads/direct", status_code=201)
+async def create_direct_thread(
+    body: DirectThreadRequest,
+    user: dict = Depends(require_messaging_profile),
+):
+    if body.user_id == user["id"]:
+        raise HTTPException(400, "Choose another profile")
+    db = get_db()
+    await _require_contact(db, user["id"], user)
+    await _require_contact(db, body.user_id, user)
+    member_ids = sorted([user["id"], body.user_id])
+    direct_key = ":".join(member_ids)
+    existing = await db.platform_message_threads.find_one(
+        _scope({"kind": "direct", "direct_key": direct_key}, user), {"_id": 0}
+    )
+    contacts = await _contact_map(db, user)
+    if existing:
+        return {
+            "success": True,
+            "data": await _serialize_thread(existing, user_id=user["id"], contacts=contacts),
+            "meta": {"created": False},
+        }
+    now = _now()
+    thread = {
+        "id": str(uuid.uuid4()),
+        "kind": "direct",
+        "direct_key": direct_key,
+        "branch_id": user.get("branch_id"),
+        "member_ids": member_ids,
+        "created_by": user["id"],
+        "created_at": now,
+        "updated_at": now,
+        "last_message": None,
+    }
+    thread = add_school_id(thread)
+    try:
+        await db.platform_message_threads.insert_one(thread)
+    except DuplicateKeyError:
+        existing = await db.platform_message_threads.find_one(
+            _scope({"kind": "direct", "direct_key": direct_key}, user), {"_id": 0}
+        )
+        if not existing:
+            raise
+        return {
+            "success": True,
+            "data": await _serialize_thread(existing, user_id=user["id"], contacts=contacts),
+            "meta": {"created": False},
+        }
+    await _publish_to_users(member_ids, {"type": "thread_created", "thread_id": thread["id"]})
+    return {
+        "success": True,
+        "data": await _serialize_thread(thread, user_id=user["id"], contacts=contacts),
+        "meta": {"created": True},
+    }
+
+
+@router.post("/threads/groups", status_code=201)
+async def create_group_thread(
+    body: GroupThreadRequest,
+    user: dict = Depends(require_messaging_profile),
+):
+    db = get_db()
+    contacts = await _contact_map(db, user)
+    if user["id"] not in contacts:
+        raise HTTPException(403, "Messaging is limited to the four leadership profiles")
+    member_ids = list(dict.fromkeys([user["id"], *body.member_ids]))
+    if len(member_ids) < 3:
+        raise HTTPException(400, "A group needs at least three members; use a direct message for two")
+    unknown = [member_id for member_id in member_ids if member_id not in contacts]
+    if unknown:
+        raise HTTPException(400, "One or more selected profiles cannot use messaging")
+    now = _now()
+    thread = {
+        "id": str(uuid.uuid4()),
+        "kind": "group",
+        "name": body.name,
+        "branch_id": user.get("branch_id"),
+        "member_ids": member_ids,
+        "admin_ids": [user["id"]],
+        "created_by": user["id"],
+        "created_at": now,
+        "updated_at": now,
+        "last_message": None,
+    }
+    thread = add_school_id(thread)
+    await db.platform_message_threads.insert_one(thread)
+    await _publish_to_users(member_ids, {"type": "thread_created", "thread_id": thread["id"]})
+    return {
+        "success": True,
+        "data": await _serialize_thread(thread, user_id=user["id"], contacts=contacts),
+    }
+
+
+@router.patch("/threads/{thread_id}")
+async def update_group_thread(
+    thread_id: str,
+    body: GroupThreadUpdate,
+    user: dict = Depends(require_messaging_profile),
+):
+    db = get_db()
+    thread = await _thread_for_member(db, thread_id, user)
+    if thread.get("kind") != "group":
+        raise HTTPException(400, "Direct conversations cannot be edited")
+    if user["id"] not in thread.get("admin_ids", []):
+        raise HTTPException(403, "Only a group admin can edit this group")
+    changes = {"updated_at": _now()}
+    if body.name is not None:
+        changes["name"] = body.name
+    if body.member_ids is not None:
+        contacts = await _contact_map(db, user)
+        member_ids = list(dict.fromkeys([thread["created_by"], user["id"], *body.member_ids]))
+        if len(member_ids) < 3:
+            raise HTTPException(400, "A group needs at least three members")
+        if any(member_id not in contacts for member_id in member_ids):
+            raise HTTPException(400, "One or more selected profiles cannot use messaging")
+        changes["member_ids"] = member_ids
+    await db.platform_message_threads.update_one(_scope({"id": thread_id}, user), {"$set": changes})
+    updated = {**thread, **changes}
+    await _publish_to_users(
+        list(set(thread.get("member_ids", [])) | set(updated.get("member_ids", []))),
+        {"type": "thread_updated", "thread_id": thread_id},
+    )
+    return {
+        "success": True,
+        "data": await _serialize_thread(
+            updated, user_id=user["id"], contacts=await _contact_map(db, user)
+        ),
+    }
+
+
+@router.get("/threads/{thread_id}/messages")
+async def list_messages(
+    thread_id: str,
+    before: Optional[str] = None,
+    limit: int = 50,
+    user: dict = Depends(require_messaging_profile),
+):
+    db = get_db()
+    await _thread_for_member(db, thread_id, user)
+    limit = min(max(limit, 1), 100)
+    query = {"thread_id": thread_id}
+    if before:
+        query["created_at"] = {"$lt": before}
+    messages = await db.platform_messages.find(_scope(query, user), {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    messages.reverse()
+    message_ids = [message["id"] for message in messages]
+    receipts = await db.platform_message_receipts.find(
+        _scope({"message_id": {"$in": message_ids}}, user), {"_id": 0}
+    ).to_list(500)
+    receipts_by_message: dict[str, list[dict]] = {}
+    for row in receipts:
+        receipts_by_message.setdefault(row["message_id"], []).append(row)
+    contacts = await _contact_map(db, user)
+    reply_ids = [message.get("reply_to_id") for message in messages if message.get("reply_to_id")]
+    reply_rows = await db.platform_messages.find(
+        _scope({"id": {"$in": reply_ids}}, user), {"_id": 0, "id": 1, "sender_id": 1, "text": 1, "deleted_at": 1}
+    ).to_list(100)
+    replies = {row["id"]: row for row in reply_rows}
+    data = []
+    for message in messages:
+        sender = contacts.get(message.get("sender_id"), {})
+        reply = replies.get(message.get("reply_to_id"))
+        data.append({
+            **message,
+            "sender_name": sender.get("name", "School profile"),
+            "reply_to": ({
+                "id": reply["id"],
+                "sender_name": contacts.get(reply.get("sender_id"), {}).get("name", "School profile"),
+                "text": "This message was deleted" if reply.get("deleted_at") else reply.get("text", ""),
+            } if reply else None),
+            "receipt": _receipt_status(message, receipts_by_message.get(message["id"], [])),
+        })
+    return {"success": True, "data": data, "meta": {"count": len(data), "has_more": len(data) == limit}}
+
+
+@router.post("/threads/{thread_id}/messages", status_code=201)
+async def send_message(
+    thread_id: str,
+    body: MessageRequest,
+    user: dict = Depends(require_messaging_profile),
+):
+    db = get_db()
+    thread = await _thread_for_member(db, thread_id, user)
+    if body.reply_to_id:
+        reply = await db.platform_messages.find_one(
+            _scope({"id": body.reply_to_id, "thread_id": thread_id}, user), {"_id": 0, "id": 1}
+        )
+        if not reply:
+            raise HTTPException(400, "Reply target is not in this conversation")
+    now = _now()
+    message = {
+        "id": str(uuid.uuid4()),
+        "thread_id": thread_id,
+        "branch_id": user.get("branch_id"),
+        "sender_id": user["id"],
+        "text": body.text,
+        "reply_to_id": body.reply_to_id,
+        "created_at": now,
+        "edited_at": None,
+        "deleted_at": None,
+    }
+    receipts = []
+    for member_id in thread["member_ids"]:
+        is_sender = member_id == user["id"]
+        receipts.append({
+            "id": str(uuid.uuid4()),
+            "thread_id": thread_id,
+            "branch_id": user.get("branch_id"),
+            "message_id": message["id"],
+            "user_id": member_id,
+            "delivered_at": now if is_sender or sse_is_connected(_channel(member_id)) else None,
+            "read_at": now if is_sender else None,
+        })
+    message = add_school_id(message)
+    receipts = [add_school_id(receipt) for receipt in receipts]
+    await db.platform_messages.insert_one(message)
+    await db.platform_message_receipts.insert_many(receipts)
+    last_message = {
+        "id": message["id"],
+        "sender_id": user["id"],
+        "text": body.text[:180],
+        "created_at": now,
+        "deleted_at": None,
+    }
+    await db.platform_message_threads.update_one(
+        _scope({"id": thread_id}, user), {"$set": {"last_message": last_message, "updated_at": now}}
+    )
+    event = {"type": "message", "thread_id": thread_id, "message": message}
+    await _publish_to_users(thread["member_ids"], event)
+    return {
+        "success": True,
+        "data": {
+            **message,
+            "sender_name": user.get("name") or "School profile",
+            "reply_to": None,
+            "receipt": _receipt_status(message, receipts),
+        },
+    }
+
+
+@router.patch("/threads/{thread_id}/read")
+async def mark_thread_read(
+    thread_id: str,
+    user: dict = Depends(require_messaging_profile),
+):
+    db = get_db()
+    thread = await _thread_for_member(db, thread_id, user)
+    query = _scope({"thread_id": thread_id, "user_id": user["id"], "read_at": None}, user)
+    pending = await db.platform_message_receipts.find(query, {"_id": 0, "message_id": 1}).to_list(500)
+    if pending:
+        now = _now()
+        await db.platform_message_receipts.update_many(
+            query, {"$set": {"delivered_at": now, "read_at": now}}
+        )
+        await _publish_to_users(thread["member_ids"], {
+            "type": "receipt",
+            "thread_id": thread_id,
+            "message_ids": [row["message_id"] for row in pending],
+            "user_id": user["id"],
+            "status": "read",
+            "at": now,
+        })
+    return {"success": True, "data": {"updated": len(pending)}}
+
+
+@router.post("/threads/{thread_id}/typing", status_code=204)
+async def send_typing(
+    thread_id: str,
+    user: dict = Depends(require_messaging_profile),
+):
+    db = get_db()
+    thread = await _thread_for_member(db, thread_id, user)
+    recipients = [member_id for member_id in thread["member_ids"] if member_id != user["id"]]
+    await _publish_to_users(recipients, {
+        "type": "typing",
+        "thread_id": thread_id,
+        "user_id": user["id"],
+        "name": user.get("name") or "Someone",
+    })
+
+
+@router.patch("/messages/{message_id}")
+async def edit_message(
+    message_id: str,
+    body: MessageEditRequest,
+    user: dict = Depends(require_messaging_profile),
+):
+    db = get_db()
+    message = await db.platform_messages.find_one(
+        _scope({"id": message_id, "sender_id": user["id"]}, user), {"_id": 0}
+    )
+    if not message or message.get("deleted_at"):
+        raise HTTPException(404, "Message not found")
+    await _thread_for_member(db, message["thread_id"], user)
+    created = datetime.fromisoformat(message["created_at"].replace("Z", "+00:00"))
+    if (datetime.now(timezone.utc) - created).total_seconds() > 900:
+        raise HTTPException(409, "Messages can be edited for 15 minutes")
+    edited_at = _now()
+    await db.platform_messages.update_one(
+        _scope({"id": message_id}, user), {"$set": {"text": body.text, "edited_at": edited_at}}
+    )
+    thread = await db.platform_message_threads.find_one(_scope({"id": message["thread_id"]}, user), {"_id": 0})
+    if thread and (thread.get("last_message") or {}).get("id") == message_id:
+        await db.platform_message_threads.update_one(
+            _scope({"id": thread["id"]}, user), {"$set": {"last_message.text": body.text[:180], "updated_at": edited_at}}
+        )
+    if thread:
+        await _publish_to_users(thread["member_ids"], {
+            "type": "message_updated", "thread_id": thread["id"], "message_id": message_id,
+            "text": body.text, "edited_at": edited_at,
+        })
+    return {"success": True, "data": {"id": message_id, "text": body.text, "edited_at": edited_at}}
+
+
+@router.delete("/messages/{message_id}")
+async def delete_message(
+    message_id: str,
+    user: dict = Depends(require_messaging_profile),
+):
+    db = get_db()
+    message = await db.platform_messages.find_one(
+        _scope({"id": message_id, "sender_id": user["id"]}, user), {"_id": 0}
+    )
+    if not message or message.get("deleted_at"):
+        raise HTTPException(404, "Message not found")
+    thread = await _thread_for_member(db, message["thread_id"], user)
+    deleted_at = _now()
+    await db.platform_messages.update_one(
+        _scope({"id": message_id}, user), {"$set": {"text": "", "deleted_at": deleted_at}}
+    )
+    if (thread.get("last_message") or {}).get("id") == message_id:
+        await db.platform_message_threads.update_one(
+            _scope({"id": thread["id"]}, user),
+            {"$set": {"last_message.text": "This message was deleted", "last_message.deleted_at": deleted_at}},
+        )
+    await _publish_to_users(thread["member_ids"], {
+        "type": "message_deleted", "thread_id": thread["id"], "message_id": message_id,
+        "deleted_at": deleted_at,
+    })
+    return {"success": True}
+
+
+@router.get("/stream")
+async def messaging_stream(
+    request: Request,
+    user: dict = Depends(require_messaging_profile),
+):
+    db = get_db()
+    await _require_contact(db, user["id"], user)
+    session_id = normalize_session_id(request.headers.get("X-SSE-Session-ID"))
+    queue = await sse_connect(_channel(user["id"]), session_id)
+    contacts = await _leadership_contacts(db, user)
+    contact_ids = [contact["id"] for contact in contacts]
+    connected_at = _now()
+    await db.platform_message_presence.update_one(
+        _scope({"user_id": user["id"]}, user),
+        {"$set": {"user_id": user["id"], "branch_id": user.get("branch_id"), "last_seen_at": connected_at}},
+        upsert=True,
+    )
+    pending = await db.platform_message_receipts.find(
+        _scope({"user_id": user["id"], "delivered_at": None}, user), {"_id": 0, "message_id": 1, "thread_id": 1}
+    ).to_list(1000)
+    if pending:
+        await db.platform_message_receipts.update_many(
+            _scope({"user_id": user["id"], "delivered_at": None}, user),
+            {"$set": {"delivered_at": connected_at}},
+        )
+    await _publish_to_users(contact_ids, {
+        "type": "presence", "user_id": user["id"], "online": True, "last_seen_at": connected_at,
+    })
+    if pending:
+        await _publish_to_users(contact_ids, {
+            "type": "receipt", "user_id": user["id"], "status": "delivered",
+            "message_ids": [row["message_id"] for row in pending],
+            "thread_ids": list({row["thread_id"] for row in pending}), "at": connected_at,
+        })
+
+    async def event_generator():
+        try:
+            yield encode_sse({"type": "ready", "user_id": user["id"]})
+            while True:
+                if await request.is_disconnected():
+                    break
+                event = await queue.get()
+                if event == KEEPALIVE_COMMENT:
+                    yield KEEPALIVE_COMMENT
+                    continue
+                if isinstance(event, dict) and event.get("type") == "close":
+                    break
+                yield encode_sse(event)
+        except asyncio.CancelledError:
+            raise
+        finally:
+            await sse_disconnect(_channel(user["id"]), session_id, queue)
+            last_seen = _now()
+            await db.platform_message_presence.update_one(
+                _scope({"user_id": user["id"]}, user),
+                {"$set": {"user_id": user["id"], "branch_id": user.get("branch_id"), "last_seen_at": last_seen}},
+                upsert=True,
+            )
+            still_online = sse_is_connected(_channel(user["id"]))
+            await _publish_to_users(contact_ids, {
+                "type": "presence", "user_id": user["id"], "online": still_online,
+                "last_seen_at": last_seen,
+            })
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

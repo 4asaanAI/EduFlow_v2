@@ -25,14 +25,15 @@ def _tenant_match(query: dict | None = None) -> dict:
 
 async def _get_house_standings(db) -> list:
     """Return the 4 houses sorted by points (descending)."""
-    pipeline = [
-        _tenant_match({}),
-        {"$group": {"_id": "$house", "points": {"$sum": "$points"}}},
-        {"$sort": {"points": -1}},
-        {"$limit": 4},
+    houses = await db.houses.find(
+        _tenant_query({"is_active": {"$ne": False}}),
+        {"_id": 0, "name": 1, "points": 1},
+    ).sort("points", -1).to_list(4)
+    return [
+        {"house": house.get("name", ""), "points": house.get("points", 0)}
+        for house in houses
+        if house.get("name")
     ]
-    results = await db.house_points.aggregate(pipeline).to_list(4)
-    return [{"house": r["_id"], "points": r["points"]} for r in results if r["_id"]]
 
 
 async def _get_attendance_rate(db, today: str) -> str:
@@ -394,14 +395,18 @@ async def _build_coordinator_context(db, today: str, user_id: str) -> dict:
     classes = []
     if coordinator_range and "-" in coordinator_range:
         try:
-            start, end = coordinator_range.split("-")
-            class_numbers = list(range(int(start), int(end) + 1))
-            class_name_patterns = [str(n) for n in class_numbers]
-            classes = await db.classes.find(_tenant_query({"name": {"$regex": "|".join(class_name_patterns), "$options": "i"}})).to_list(100)
+            start, end = (int(part.strip()) for part in coordinator_range.split("-", 1))
+            if start <= end:
+                patterns = [rf"(?:Class\s*)?{number}(?:st|nd|rd|th)?\b" for number in range(start, end + 1)]
+                classes = await db.classes.find(
+                    _tenant_query({"name": {"$regex": "^(?:" + "|".join(patterns) + ")", "$options": "i"}})
+                ).to_list(100)
         except (ValueError, TypeError):
             classes = []
     elif coordinator_range:
-        classes = await db.classes.find(_tenant_query({"name": {"$regex": coordinator_range, "$options": "i"}})).to_list(100)
+        classes = await db.classes.find(
+            _tenant_query({"name": {"$regex": re.escape(coordinator_range), "$options": "i"}})
+        ).to_list(100)
     else:
         classes = []
 
@@ -548,13 +553,11 @@ async def _build_student_context(db, today: str, user_id: str) -> dict:
     # House points
     house = student.get("house")
     if house:
-        pipeline = [
-            _tenant_match({"house": house}),
-            {"$group": {"_id": None, "points": {"$sum": "$points"}}},
-        ]
-        result = await db.house_points.aggregate(pipeline).to_list(1)
+        house_doc = await db.houses.find_one(
+            _tenant_query({"name": house}), {"_id": 0, "points": 1}
+        )
         ctx["house"] = house
-        ctx["house_points"] = result[0]["points"] if result else 0
+        ctx["house_points"] = house_doc.get("points", 0) if house_doc else 0
     else:
         ctx["house"] = None
         ctx["house_points"] = 0

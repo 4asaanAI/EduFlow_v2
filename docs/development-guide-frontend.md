@@ -22,7 +22,8 @@ yarn install
 yarn start      # Dev server on http://localhost:3000
 ```
 
-The dev server proxies `/api/*` to `http://localhost:8000` (configured in `craco.config.js`).
+Set `DEV_API_TARGET=http://localhost:8000` to proxy `/api/*` through Vite. Without it,
+the browser calls the backend URL configured below.
 
 ---
 
@@ -31,12 +32,12 @@ The dev server proxies `/api/*` to `http://localhost:8000` (configured in `craco
 Create `frontend/.env.local`:
 
 ```bash
-REACT_APP_API_URL=http://localhost:8000
+VITE_BACKEND_URL=http://localhost:8000
 ```
 
 In production (Amplify), set:
 ```bash
-REACT_APP_API_URL=https://api.yourdomain.com
+VITE_BACKEND_URL=https://api.yourdomain.com
 ```
 
 ---
@@ -47,7 +48,8 @@ REACT_APP_API_URL=https://api.yourdomain.com
 yarn build      # Produces frontend/build/
 ```
 
-**Important:** Use `craco build` (via the `yarn build` script) — NOT `react-scripts build` directly. CRACO applies path alias resolution (`@/` → `src/`).
+`yarn build` runs the hooks lint gate and Vite production build. AWS Amplify continues
+to publish `frontend/build/`.
 
 ---
 
@@ -64,7 +66,7 @@ import api from '@/lib/api'
 import { Button } from '../../components/ui/button'
 ```
 
-Defined in `craco.config.js` + `jsconfig.json`.
+Defined in `vite.config.js`, `jest.config.js`, and `jsconfig.json`.
 
 ---
 

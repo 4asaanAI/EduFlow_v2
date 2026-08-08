@@ -76,10 +76,10 @@ async def test_parent_prompt_exposes_only_guardian_hub():
     assert [item["name"] for item in _resolve_tools("parent", None)] == ["get_my_school_hub"]
 
 
-async def test_phase_one_prompts_do_not_offer_blocked_staff_writes():
+async def test_reviewed_accountant_prompt_has_finance_writes_but_teacher_stays_locked_down():
     accountant = {item["name"] for item in _resolve_tools("admin", "accountant")}
     teacher = {item["name"] for item in _resolve_tools("teacher", "class_teacher")}
-    assert "record_fee_payment" not in accountant
+    assert "record_fee_payment" in accountant
     assert "mark_attendance" not in teacher
     assert "award_house_points" not in teacher
 

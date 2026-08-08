@@ -32,9 +32,9 @@ def test_accountant_can_read_salary_structures(client):
     assert "data" in resp.json()
 
 
-def test_accountant_cannot_create_salary_structure(client):
+def test_accountant_can_create_salary_structure(client):
     resp = client.post("/api/payroll/structures", json={"staff_id": "s2", "base_salary": 20000}, headers=_accountant_h())
-    assert resp.status_code == 403
+    assert resp.status_code in (200, 201)
 
 
 def test_owner_can_disburse_salary(client, fake_db):
@@ -44,9 +44,9 @@ def test_owner_can_disburse_salary(client, fake_db):
     assert resp.status_code in (200, 201)
 
 
-def test_principal_cannot_read_payroll(client):
+def test_principal_can_read_payroll(client):
     resp = client.get("/api/payroll/disbursements", headers=_principal_h())
-    assert resp.status_code == 403
+    assert resp.status_code == 200
 
 
 def test_disbursements_list_accessible_to_accountant(client):

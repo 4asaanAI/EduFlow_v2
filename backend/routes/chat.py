@@ -38,7 +38,12 @@ from models.schemas import (
 from ai.llm_client import llm_client, AI_UNAVAILABLE_MESSAGE
 from ai.prompts import build_system_prompt
 from ai.context_builder import build_school_context, detect_language
-from ai.tool_functions_v2 import TOOL_REGISTRY, WRITE_TOOL_NAMES, openai_tool_schema
+from ai.tool_functions_v2 import (
+    EXPLICIT_CONFIRMATION_TOOL_NAMES,
+    TOOL_REGISTRY,
+    WRITE_TOOL_NAMES,
+    openai_tool_schema,
+)
 from ai.scope_resolver import resolve_scope, Scope
 from ai.tool_access import is_tool_authorized
 from ai.tool_invoker import (
@@ -52,7 +57,7 @@ from ai.tool_invoker import (
 from ai.tool_chat_exclusions import is_chat_advertised
 from ai.content_filter import filter_response, check_input_safety
 from ai.redaction import redact_for_llm
-from middleware.auth import get_current_user, require_owner
+from middleware.auth import get_current_user, hash_password, require_owner
 from services.token_service import check_and_reserve_tokens, record_usage
 from services.confirm_tokens import (
     issue_confirm_token,
@@ -64,7 +69,6 @@ from services.confirm_tokens import (
     audit_ai_rate_limit_hit,
 )
 from services.ai_rate_limiter import increment_and_check as _ai_rate_check, decrement_count as _ai_rate_decrement
-from services.ai_action_policy import is_action_authorized_phase1
 from services.memory import chat_integration as chat_memory
 from services.ai_kill_switch import ai_writes_enabled
 from services.ai_shadow_mode import ai_dry_run_enabled
@@ -128,8 +132,11 @@ AI_STREAM_SECOND_CALL = os.environ.get("AI_STREAM_SECOND_CALL", "false").strip()
     "1", "true", "yes", "on",
 )
 
-# Tools that require user confirmation before execution
+# All mutating tools. The explicit-confirmation subset is separately derived from
+# registry metadata, so ordinary writes still use the hardened dispatcher without a
+# needless user stop.
 WRITE_ACTION_TOOLS = set(WRITE_TOOL_NAMES)
+CONFIRMATION_ACTION_TOOLS = set(EXPLICIT_CONFIRMATION_TOOL_NAMES)
 
 # F.10/FR42: destructive (delete) tools require a SECOND explicit acknowledgment
 # beyond the plan-confirm, and write an actor-tagged deletion audit row. Derived
@@ -141,7 +148,6 @@ DESTRUCTIVE_TOOL_NAMES = {
 # F.10: student hard-delete / DPDP-erase are NEVER exposed to the assistant — they
 # stay UI-only. These names are refused outright even if a future planner emits one.
 FORBIDDEN_AI_TOOLS = {
-    "delete_student",
     "erase_student",
     "dpdp_erase_student",
     "hard_delete_student",
@@ -192,7 +198,9 @@ WRITE_TOOL_REQUIRED_PARAMS = {
     "update_student": ("student_id",),
     "set_student_status": ("student_id", "status"),
     "manage_student_guardians": ("student_id", "guardians"),
-    "create_staff": ("name", "staff_type"),
+    "create_staff": ("name", "staff_type", "username", "password"),
+    "create_student_login": ("student_id", "password"),
+    "set_profile_password": ("new_password",),
     "update_staff": ("staff_id",),
     # Owner request 4 (2026-08-06) — private notes on a profile. `name` rather than an
     # id because nobody asks Flo to note something against "student 8f3c-…"; the tool
@@ -230,6 +238,15 @@ WRITE_TOOL_REQUIRED_PARAMS = {
     "close_pos_shift": ("shift_id", "counted_cash"),
     "post_pos_sale": ("shift_id", "lines", "payments"),
     "post_pos_return": ("sale_id", "shift_id", "lines", "reason"),
+    "upsert_salary_structure": ("staff_id", "base_salary"),
+    "disburse_salary": ("staff_id", "month", "base_salary"),
+    "correct_salary_disbursement": ("disbursement_id", "changes", "reason"),
+    "create_accounting_period": ("name", "start_date", "end_date"),
+    "change_accounting_period_status": ("period_id", "status"),
+    "create_custom_form": ("title", "fields"),
+    "update_custom_form": ("form_id",),
+    "add_custom_form_row": ("form_id", "answers"),
+    "delete_custom_form": ("form_id",),
     "create_incident": ("description",),
     # Owner coverage gap-close — expenses edit/delete, staff attendance, fee txn, fee sync
     "update_expense": ("expense_id",),
@@ -939,7 +956,7 @@ def _tool_calls_to_candidates(tool_calls) -> list[dict]:
             "action": name,
             "params": args if isinstance(args, dict) else {},
             "reason": "",
-            "confirm_requested": name in WRITE_ACTION_TOOLS,
+            "confirm_requested": name in CONFIRMATION_ACTION_TOOLS,
             "id": getattr(tc, "id", "") or "",
         })
     return out
@@ -1544,6 +1561,15 @@ def _build_confirm_display(tool_name: str, params: dict) -> str:
             f"Publish announcement '{p.get('title', '?')}' to "
             f"{p.get('audience_type', 'all')} — \"{p.get('content', '')[:80]}{'...' if len(p.get('content','')) > 80 else ''}\""
         ),
+        "set_profile_password": lambda p: (
+            "Replace the password for profile "
+            f"{p.get('username') or p.get('user_id') or '?'} and end its existing sessions"
+        ),
+        "create_student_login": lambda p: (
+            "Create a login profile for student "
+            f"{p.get('_resolved_student', p.get('student_id', '?'))}"
+        ),
+        "create_staff": lambda p: f"Create staff login profile for {p.get('name', '?')}",
     }
     builder = displays.get(tool_name)
     if builder:
@@ -1554,31 +1580,91 @@ def _build_confirm_display(tool_name: str, params: dict) -> str:
     return f"Execute {tool_name} with parameters: {json.dumps(params, ensure_ascii=False)}"
 
 
+def _protect_secret_params(tool_name: str, params: dict) -> dict:
+    """Replace registry-declared plaintext credentials with bcrypt hashes.
+
+    Confirmation tokens, plans, dispatch audits and persisted tool traces all use
+    this protected shape. Domain adapters accept the internal ``*_hash`` names;
+    those names are absent from the model schema, so the model cannot supply them.
+    """
+    protected = {k: v for k, v in (params or {}).items() if not k.startswith("_")}
+    tool = TOOL_REGISTRY.get(tool_name) or {}
+    for key in tool.get("secret_params") or ():
+        value = protected.pop(key, None)
+        if value not in (None, ""):
+            hash_key = "new_password_hash" if key == "new_password" else "password_hash"
+            protected[hash_key] = hash_password(str(value))
+    return protected
+
+
+def _safe_trace_params(tool_name: str, params: dict) -> dict:
+    """Return useful action metadata without credentials or credential hashes."""
+    hidden = set((TOOL_REGISTRY.get(tool_name) or {}).get("secret_params") or ())
+    hidden |= {"password_hash", "new_password_hash"}
+    safe = {k: v for k, v in (params or {}).items() if k not in hidden and not k.startswith("_")}
+    if hidden.intersection(params or {}):
+        safe["credential_provided"] = True
+    return safe
+
+
 async def _build_confirm_event(tool_name: str, params: dict, user: dict, session_id: str, db) -> dict:
     """Create the server-side confirmation token and SSE payload for a write tool."""
-    public_params = {k: v for k, v in params.items() if not k.startswith("_")}
+    execution_params = _protect_secret_params(tool_name, params)
+    display_params = _safe_trace_params(tool_name, params)
     token = await issue_confirm_token(
         action=tool_name,
-        params=public_params,
+        params=execution_params,
         user_id=user["id"],
         session_id=session_id,
         school_id=get_school_id(),
         branch_id=user.get("branch_id"),
         db=db,
     )
+    destructive = tool_name in DESTRUCTIVE_TOOL_NAMES
     return {
         "type": "confirm_action",
         "action_id": token,
         "token": token,
         "tool": tool_name,
-        "params": public_params,
+        "params": display_params,
         "display": _build_confirm_display(tool_name, params),
+        "destructive": destructive,
         "expires_in_seconds": 5 * 60,
         "buttons": [
-            {"label": "Confirm", "action": "confirm"},
+            {"label": "Confirm deletion" if destructive else "Confirm", "action": "confirm"},
             {"label": "Cancel", "action": "cancel"},
         ],
     }
+
+
+async def _execute_automatic_write(
+    tool_name: str,
+    params: dict,
+    user: dict,
+    session_id: str,
+    db,
+    conv_id: str,
+) -> dict:
+    """Run an ordinary write through the hardened confirmed-dispatch machinery.
+
+    The server issues and immediately consumes its own one-shot token. This retains
+    tenant binding, kill switch, rate limiting, transactionality, idempotency and
+    write-ahead audit without claiming the user clicked a confirmation card.
+    """
+    execution_params = _protect_secret_params(tool_name, params)
+    token = await issue_confirm_token(
+        action=tool_name,
+        params=execution_params,
+        user_id=user["id"],
+        session_id=session_id,
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id"),
+        confirmation_mode="automatic",
+        db=db,
+    )
+    return await _execute_confirmed_dispatch(
+        token, session_id, user, db, conv_id=conv_id, destructive_ack=False
+    )
 
 
 def _deep_link_for_tool(tool_name: str) -> str:
@@ -1592,6 +1678,12 @@ async def _build_plan_confirm_event(
 ) -> dict:
     """E.5/UX-DR1: issue ONE plan-confirm token and a single confirm_action SSE
     event that lists every step of the resolved multi-step plan."""
+    protected_steps = []
+    for step in plan_steps:
+        protected_steps.append({
+            **step,
+            "params": _protect_secret_params(step.get("tool"), step.get("params") or {}),
+        })
     token = await issue_confirm_token(
         action="plan",
         params={},
@@ -1599,7 +1691,7 @@ async def _build_plan_confirm_event(
         session_id=session_id,
         school_id=get_school_id(),
         branch_id=user.get("branch_id"),
-        plan=plan_steps,
+        plan=protected_steps,
         db=db,
     )
     step_displays = [
@@ -2195,6 +2287,29 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                 yield thinking_event("tool_start", f"Preparing {tool_name}...", tool=tool_name)
                 await _thinking_delay()
 
+                if tool_name not in CONFIRMATION_ACTION_TOOLS:
+                    yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'running'})}\n\n"
+                    try:
+                        dispatch = await _execute_automatic_write(
+                            tool_name, resolved_params, user, session_id, db, conv_id
+                        )
+                    except HTTPException as exc:
+                        detail = exc.detail if isinstance(exc.detail, str) else exc.detail.get("message", "Action failed")
+                        yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'error', 'error': detail})}\n\n"
+                        yield f"data: {json.dumps({'type': 'error', 'phase': 'write', 'message': detail})}\n\n"
+                        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                        return
+                    data = dispatch.get("data") or {}
+                    result = data.get("result")
+                    message = data.get("message") or f"Action '{tool_name}' completed successfully."
+                    yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'done'})}\n\n"
+                    yield thinking_event("tool_done", message, tool=tool_name)
+                    for i in range(0, len(message), 4):
+                        yield f"data: {json.dumps({'type': 'text_delta', 'delta': message[i:i + 4]})}\n\n"
+                        await asyncio.sleep(0.008)
+                    yield f"data: {json.dumps({'type': 'done', 'message_id': data.get('message_id'), 'tokens_used': 0})}\n\n"
+                    return
+
                 try:
                     confirm_event = await _build_confirm_event(tool_name, resolved_params, user, session_id, db)
                 except HTTPException as exc:
@@ -2528,6 +2643,29 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                     )
                     await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
                     yield f"data: {json.dumps({'type': 'done', 'message_id': ai_msg.id, 'tokens_used': total_tokens_used})}\n\n"
+                    return
+
+                if tool_name not in CONFIRMATION_ACTION_TOOLS:
+                    yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'running'})}\n\n"
+                    try:
+                        dispatch = await _execute_automatic_write(
+                            tool_name, resolved_params, user, session_id, db, conv_id
+                        )
+                    except HTTPException as exc:
+                        detail = exc.detail if isinstance(exc.detail, str) else exc.detail.get("message", "Action failed")
+                        yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'error', 'error': detail})}\n\n"
+                        yield f"data: {json.dumps({'type': 'error', 'phase': 'write', 'message': detail})}\n\n"
+                        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                        return
+                    data = dispatch.get("data") or {}
+                    result = data.get("result")
+                    message = data.get("message") or f"Action '{tool_name}' completed successfully."
+                    yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'done'})}\n\n"
+                    yield thinking_event("tool_done", message, tool=tool_name)
+                    for i in range(0, len(message), 4):
+                        yield f"data: {json.dumps({'type': 'text_delta', 'delta': message[i:i + 4]})}\n\n"
+                        await asyncio.sleep(0.008)
+                    yield f"data: {json.dumps({'type': 'done', 'message_id': data.get('message_id'), 'tokens_used': total_tokens_used})}\n\n"
                     return
 
                 try:
@@ -3252,9 +3390,16 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
     # AD14: a whole plan is ONE dispatch — a single audit row, not one per step.
     audit_id = None
     try:
+        audit_params = (
+            {"steps": [
+                {**step, "params": _safe_trace_params(step.get("tool"), step.get("params") or {})}
+                for step in plan_steps
+            ]}
+            if plan_steps else _safe_trace_params(tool_name, params)
+        )
         audit_id = await audit_ai_dispatch_pending(
             tool_name=tool_name,
-            params=params,
+            params=audit_params,
             user_id=user["id"],
             session_id=session_id,
             confirmed_at=token_doc.get("confirmed_at"),
@@ -3345,8 +3490,13 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
         try:
             # F.7: pilot observability — one confirmation + plan_executed event per
             # dispatch, plus a per-step outcome. PII-free (tool names + statuses only).
+            dispatch_event = (
+                "confirmation"
+                if token_doc.get("confirmation_mode") != "automatic"
+                else "automatic_dispatch"
+            )
             await record_ai_metric(
-                db, event="confirmation", user_id=user["id"], tool_name=tool_name,
+                db, event=dispatch_event, user_id=user["id"], tool_name=tool_name,
                 status=exec_result.status, school_id=get_school_id(), branch_id=user.get("branch_id"),
             )
             await record_ai_metric(
@@ -3499,7 +3649,18 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
                 conversation_id=conv_id,
                 role="assistant",
                 content=msg_content,
-                tool_calls=[{"tool": tool_name, "params": params, "result": result, "token": token}],
+                tool_calls=[{
+                    "tool": tool_name,
+                    "params": (
+                        {"steps": [
+                            {**step, "params": _safe_trace_params(step.get("tool"), step.get("params") or {})}
+                            for step in plan_steps
+                        ]}
+                        if plan_steps else _safe_trace_params(tool_name, params)
+                    ),
+                    "result": result,
+                    "token": token,
+                }],
                 language_detected="en",
             )
             await db.messages.insert_one({**ai_msg.dict(), "_id": ai_msg.id})
@@ -3542,7 +3703,10 @@ async def confirm_token_action(request: Request):
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id is required")
 
-    destructive_ack = bool(body.get("destructive_ack") or body.get("acknowledge_destructive"))
+    # Reaching this endpoint with an explicit confirm decision is the single
+    # destructive/bulk confirmation requested by the product owner. The card already
+    # labels deletion consequences; no second click is required.
+    destructive_ack = True
     try:
         return await _execute_confirmed_dispatch(
             token, session_id, user, db, body.get("conversation_id"), destructive_ack=destructive_ack
@@ -3584,7 +3748,7 @@ async def confirm_action(conv_id: str, request: Request):
 
     token = body.get("token") or body.get("action_id")
     session_id = body.get("session_id") or conv_id
-    destructive_ack = bool(body.get("destructive_ack") or body.get("acknowledge_destructive"))
+    destructive_ack = True
     try:
         return await _execute_confirmed_dispatch(
             token, session_id, user, db, conv_id, destructive_ack=destructive_ack

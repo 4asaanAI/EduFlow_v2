@@ -28,9 +28,9 @@ platform: Fully Implemented (699 backend tests, Parts 1–16 complete)
 
 | Username | Password | Role |
 |---|---|---|
-| `owner` | `owner@123` | Owner |
-| `admin` | `admin@123` | Principal |
-| `accountant` | `accountant@123` | Accountant |
+| `owner` | `$EDUFLOW_TEST_OWNER_PASSWORD` | Owner |
+| `admin` | `$EDUFLOW_TEST_PRINCIPAL_PASSWORD` | Principal |
+| `accountant` | `$EDUFLOW_TEST_ACCOUNTANT_PASSWORD` | Accountant |
 | `ittech` | `ittech@123` | IT & Tech |
 | `maintenance` | `maintenance@123` | Maintenance |
 | `reception` | `reception@123` | Receptionist |

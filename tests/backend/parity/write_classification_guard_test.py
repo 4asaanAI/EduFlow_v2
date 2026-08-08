@@ -43,6 +43,7 @@ READ_ONLY_ALLOWLIST = frozenset({
     # Read-only adapter over commercial_service reporting. It lists scoped CRM,
     # retail, and entity summaries and exposes no mutation path.
     "get_commercial_operations",
+    "get_custom_forms",
     "get_daily_brief",
     "get_announcements",
     "get_admissions_pipeline",
@@ -57,6 +58,7 @@ READ_ONLY_ALLOWLIST = frozenset({
     "get_fee_transactions",
     "get_financial_report",
     "get_finance_controls",
+    "get_payroll",
     "get_house_details",
     "get_house_standings",
     "get_inventory_status",

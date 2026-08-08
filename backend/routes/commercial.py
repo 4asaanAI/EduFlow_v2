@@ -87,7 +87,7 @@ async def get_entities(request: Request, user: dict = Depends(require_entity_vie
 
 
 @router.post("/entities")
-async def post_entity(request: Request, user: dict = Depends(require_owner)):
+async def post_entity(request: Request, user: dict = Depends(require_commercial_reporter)):
     try:
         row = await _transactional_call(user, create_entity, await _body(request))
     except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError,
@@ -97,7 +97,7 @@ async def post_entity(request: Request, user: dict = Depends(require_owner)):
 
 
 @router.patch("/entities/{entity_id}/default")
-async def patch_default_entity(entity_id: str, request: Request, user: dict = Depends(require_owner)):
+async def patch_default_entity(entity_id: str, request: Request, user: dict = Depends(require_commercial_reporter)):
     try:
         row = await _transactional_call(user, set_default_entity, entity_id)
     except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError,
@@ -107,7 +107,7 @@ async def patch_default_entity(entity_id: str, request: Request, user: dict = De
 
 
 @router.delete("/entities/{entity_id}")
-async def delete_entity(entity_id: str, request: Request, user: dict = Depends(require_owner)):
+async def delete_entity(entity_id: str, request: Request, user: dict = Depends(require_commercial_reporter)):
     """Delete a legal entity. Owner only, and refused while anything is booked to it.
 
     Owner instruction 2026-08-07 — parity reference for the AI `delete_legal_entity`
@@ -124,8 +124,11 @@ async def delete_entity(entity_id: str, request: Request, user: dict = Depends(r
 @router.get("/summary")
 async def get_summary(request: Request, entity_id: str | None = None, consolidated: bool = False,
                       user: dict = Depends(require_commercial_reporter)):
-    if consolidated and user.get("role") != "owner":
-        raise HTTPException(403, "Only the school owner can view consolidated entity reporting")
+    if consolidated and not (
+        user.get("role") == "owner"
+        or (user.get("role") == "admin" and user.get("sub_category") == "principal")
+    ):
+        raise HTTPException(403, "Only the school owner or principal can view consolidated entity reporting")
     try:
         data = await commercial_summary(get_db(), _actor(user), entity_id, consolidated=consolidated)
     except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:

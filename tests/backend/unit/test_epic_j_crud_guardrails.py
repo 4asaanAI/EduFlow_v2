@@ -42,17 +42,34 @@ def test_phase1_lockdown_blocks_everyone_else(tool_name, actor):
     assert _is_tool_authorized(actor, tdef) is False
 
 
-# ── Staff: privilege-escalation block (principal cannot mint admin/owner) ─────
-async def test_principal_cannot_create_privileged_staff(fake_db):
+# ── Staff: principal can create admins, but owner authority stays out-of-band ──
+async def test_principal_can_create_admin_but_not_owner(fake_db):
+    original_staff = list(fake_db.staff.docs)
+    original_auth = list(fake_db.auth_users.docs)
+    original_audit = list(fake_db.audit_logs.docs)
     ctx = actor_ctx_from_user(PRINCIPAL, school_id="aaryans-joya")
-    with pytest.raises(staff_service.StaffAuthorizationError):
-        await staff_service.create_staff(
-            fake_db, ctx, {"name": "Sneaky", "staff_type": "admin", "role": "admin"}
+    try:
+        result = await staff_service.create_staff(
+            fake_db,
+            ctx,
+            {
+                "name": "Office Admin", "staff_type": "admin", "role": "admin",
+                "sub_category": "management", "username": "office.admin",
+                "password": "OfficePass1",
+            },
         )
-    with pytest.raises(staff_service.StaffAuthorizationError):
-        await staff_service.create_staff(
-            fake_db, ctx, {"name": "Sneaky", "staff_type": "teacher", "sub_category": "accountant"}
-        )
+        assert result["staff"]["role"] == "admin"
+        assert result["staff"]["sub_category"] == "management"
+        with pytest.raises(staff_service.StaffAuthorizationError):
+            await staff_service.create_staff(
+                fake_db,
+                ctx,
+                {"name": "Owner Two", "staff_type": "admin", "role": "owner"},
+            )
+    finally:
+        fake_db.staff.docs[:] = original_staff
+        fake_db.auth_users.docs[:] = original_auth
+        fake_db.audit_logs.docs[:] = original_audit
 
 
 async def test_principal_owner_only_fields_silently_stripped_on_update(fake_db):
@@ -66,7 +83,8 @@ async def test_principal_owner_only_fields_silently_stripped_on_update(fake_db):
         fake_db, ctx, {"staff_id": "stf-1", "salary": 999}
     )
     assert result["noop"] is True
-    assert fake_db.staff.docs[0]["salary"] == 100
+    stored = next(row for row in fake_db.staff.docs if row.get("id") == "stf-1")
+    assert stored["salary"] == 100
 
 
 async def test_principal_granting_owner_role_raises_not_stripped(fake_db):
@@ -85,8 +103,9 @@ async def test_principal_granting_owner_role_raises_not_stripped(fake_db):
         await staff_service.update_staff(
             fake_db, ctx, {"staff_id": "stf-2", "salary": 999, "role": "owner"}
         )
-    assert fake_db.staff.docs[0]["salary"] == 100
-    assert fake_db.staff.docs[0]["role"] == "teacher"
+    stored = next(row for row in fake_db.staff.docs if row.get("id") == "stf-2")
+    assert stored["salary"] == 100
+    assert stored["role"] == "teacher"
 
 
 # ── Student edge cases ────────────────────────────────────────────────────────

@@ -18,7 +18,7 @@ Confirm:
 - `ENVIRONMENT=production` is set in production.
 - `JWT_SECRET` is a strong production-only value.
 - `MONGO_URL` points at the intended Atlas cluster and database.
-- `python backend/migrations/run_all.py` has been tested against a staging clone.
+- Every required migration has been read and rehearsed individually against a recent production clone.
 - `GET /api/health/ready` is healthy in the currently deployed environment before starting the deploy.
 - No unresolved migration or seed script is being run against the wrong database.
 
@@ -49,14 +49,16 @@ Expected result for readiness is HTTP `200` with `db_connected: true` and `schoo
 
 ## 3. Migration Procedure
 
-Migrations must be idempotent and must run against the explicit production Atlas URI.
+Never run `migrations/run_all.py` against the live school database. The tracking
+history does not prove that old seed-like migrations are safe for the 1,802 real
+student records. Read, rehearse, approve, and run only the required migration.
 
 ```bash
 cd backend
 set MONGO_URL=mongodb+srv://<DB_USER>:<DB_PASSWORD>@<CLUSTER_HOST>/
 set DB_NAME=eduflow
 set SCHOOL_ID=aaryans-joya
-python migrations/run_all.py
+python migrations/NNN_reviewed_migration.py
 ```
 
 For PowerShell, prefer process-scoped variables:
@@ -65,10 +67,12 @@ For PowerShell, prefer process-scoped variables:
 $env:MONGO_URL = "mongodb+srv://<DB_USER>:<DB_PASSWORD>@<CLUSTER_HOST>/"
 $env:DB_NAME = "eduflow"
 $env:SCHOOL_ID = "aaryans-joya"
-python backend\migrations\run_all.py
+python backend\migrations\NNN_reviewed_migration.py
 ```
 
-Expected output should show migrations as applied or already applied. Stop immediately if the target database name or school id is not the production value you intended.
+Record the script name, checksum, preflight result, row counts, and operator in the
+deployment log. Stop immediately if the target database name or school ID is not the
+production value you intended.
 
 ## 4. Rollback Procedure
 

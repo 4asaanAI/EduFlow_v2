@@ -78,7 +78,7 @@ eduflow/                            # Repository root
 │   │   └── ai_rate_limits.yaml     # Per-role AI action rate limit configuration
 │   │
 │   ├── migrations/                 # MongoDB migration scripts
-│   │   ├── run_all.py              # ★ Migration runner — execute all pending migrations
+│   │   ├── run_all.py              # Fresh/test DB runner; never use on live school data
 │   │   ├── 001_add_branches.py     # through
 │   │   └── 017_backfill_rate_limit_override_expires_at.py
 │   │
@@ -89,7 +89,8 @@ eduflow/                            # Repository root
 │
 ├── frontend/                       # React SPA
 │   ├── package.json                # Frontend dependencies
-│   ├── craco.config.js             # Build config (path aliases: @/ → src/)
+│   ├── vite.config.js              # Build/dev config (path alias, proxy, output)
+│   ├── jest.config.js              # Unit-test transforms and path aliases
 │   ├── jsconfig.json               # JS path resolution
 │   ├── tailwind.config.js          # Tailwind v3 config
 │   ├── components.json             # shadcn/ui config

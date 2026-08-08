@@ -40,7 +40,7 @@ def _clear(fake_db):
 def _seed(fake_db):
     fake_db.houses.docs.append({"id": "h-1", "schoolId": "aaryans-joya", "name": "Blue", "points": 100})
     fake_db.students.docs.append({"id": "stu-1", "schoolId": "aaryans-joya", "name": "Alice",
-                                  "house_id": "h-1", "is_active": True})
+                                  "house": "Blue", "is_active": True})
 
 
 @pytest.fixture(autouse=True)
@@ -83,3 +83,7 @@ async def test_ai_and_rest_house_points_identical(client, fake_db, monkeypatch):
     # Old un-audited collection is no longer written (it may not even exist anymore).
     legacy = getattr(fake_db, "house_points", None)
     assert legacy is None or len(legacy.docs) == 0
+
+    standings = await tool_functions_v2.tool_get_house_standings({}, OWNER_USER, None)
+    assert standings["data"][0]["points_total"] == 110
+    assert standings["data"][0]["breakdown"] == {"awards": 10}

@@ -42,10 +42,20 @@ async function overhangingElements(page) {
     for (const el of main.querySelectorAll('*')) {
       const rect = el.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) continue;
-      // A region that is MEANT to scroll sideways is not an offender; its own
-      // content being wider than it is is the whole point.
-      const style = window.getComputedStyle(el);
-      if (style.overflowX === 'auto' || style.overflowX === 'scroll') continue;
+      // A region that is meant to scroll sideways, and all content inside it, may
+      // be wider than the viewport. The earlier check exempted only the wrapper,
+      // then incorrectly reported its table children as overhangs.
+      let cursor = el;
+      let insideHorizontalScroller = false;
+      while (cursor && cursor !== main) {
+        const overflowX = window.getComputedStyle(cursor).overflowX;
+        if (overflowX === 'auto' || overflowX === 'scroll') {
+          insideHorizontalScroller = true;
+          break;
+        }
+        cursor = cursor.parentElement;
+      }
+      if (insideHorizontalScroller) continue;
       if (rect.right > limit) {
         offenders.push(`${el.tagName.toLowerCase()}.${el.className || '(no class)'} right=${Math.round(rect.right)} limit=${Math.round(limit)}`);
       }
@@ -105,7 +115,7 @@ test('no field on the sign-in screen triggers an iOS zoom', async ({ page }) => 
   // Checked separately because it is the one screen every user meets before any
   // session exists, and the role sweep below signs in first.
   await page.setViewportSize(PHONE);
-  await page.goto('/login');
+  await page.goto('/login', { waitUntil: 'domcontentloaded' });
   expect(await undersizedFields(page), 'sign-in fields under 16px will zoom on an iPhone').toEqual([]);
 });
 
@@ -155,6 +165,9 @@ test('management hubs and commercial workspace adapt across target widths', asyn
 
 for (const role of ROLES) {
   test(`every screen offered to ${role} fits a phone`, async ({ browser }) => {
+    // Management and owner now expose dozens of real workspaces. Keep the per-action
+    // limits strict, but allow the exhaustive sequential navigation to finish.
+    test.setTimeout(240_000);
     // A fresh context, deliberately WITHOUT the saved owner session, or every role
     // would silently be checked as the owner and this whole sweep would prove nothing.
     const context = await browser.newContext({ storageState: undefined, viewport: PHONE });

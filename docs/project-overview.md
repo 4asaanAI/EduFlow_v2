@@ -16,7 +16,7 @@ EduFlow is a **school management platform** built around an AI chat assistant. S
 
 | Part | Technology | Hosting |
 |------|-----------|---------|
-| Frontend | React 19 SPA (CRA + CRACO, Tailwind, shadcn/ui) | AWS Amplify |
+| Frontend | React 19 SPA (Vite, Tailwind, shadcn/ui) | AWS Amplify |
 | Backend | FastAPI (Python 3.9, Motor, MongoDB) | AWS Elastic Beanstalk |
 | Database | MongoDB Atlas | Cloud |
 | File storage | AWS S3 | Cloud |
@@ -54,7 +54,7 @@ EduFlow is a **school management platform** built around an AI chat assistant. S
 EduFlow uses **dual-axis tenancy**:
 
 1. **School** — `schoolId` field on every document; value from `SCHOOL_ID` env var. Currently single-school per deployment.
-2. **Branch** — `branch_id` field on operational docs; value from JWT claim. Multi-branch within one school.
+2. **Branch** — `branch_id` field on operational docs; value from JWT claim. The live school currently has one active Joya branch; scoping remains for future expansion.
 
 All MongoDB queries are automatically scoped by `ScopedDatabase` (schoolId) and explicitly by `scoped_query()` (branch_id).
 

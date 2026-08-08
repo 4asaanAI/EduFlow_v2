@@ -9,7 +9,7 @@ import {
   ScrollText, Shield, Trophy, Brain, HelpCircle, Compass,
 } from 'lucide-react';
 import { filterToolsForUser } from '../lib/toolPermissions';
-import { MANAGEMENT_HUBS, MANAGEMENT_HUB_IDS } from '../lib/managementHubs';
+import { MANAGEMENT_HUBS, MANAGEMENT_HUB_IDS, hubsForUser } from '../lib/managementHubs';
 
 // ─── All tool definitions ──────────────────────────────────────────────────────
 const T = {
@@ -110,8 +110,14 @@ const TOOL_SETS = {
   // certificates and ID cards (owner decision 2026-08-04, decision 2).
   admin_accountant: [
     'student-database','fee-tracker','smart-fee-defaulter','fee-collection','accounting-periods','payroll-manager',
-    'certificate-generator','id-card-generator',
-    'custom-form-builder','raise-maintenance',
+  ],
+  admin_management: [
+    'student-database','attendance-recorder','certificate-generator','circular-sender',
+    'enquiry-register','document-scanner','parent-message','student-transfer','id-card-generator',
+    'principal-daily','timetable-builder','asset-tracker','transport-manager','incident-tracker',
+    'student-leave-manager','resource-calendar','asset-custody','procurement-inventory',
+    'library-circulation','quiz-manager','school-activities','automated-report',
+    'custom-form-builder','attendance-alerts','query-section','raise-maintenance',
   ],
   admin_transport_head: [
     'student-database','transport-manager','asset-tracker','custom-form-builder','raise-maintenance',
@@ -191,7 +197,9 @@ function getTools(user) {
     return resolve(MANAGEMENT_HUB_IDS);
   }
   if (user.role === 'admin') {
-    if (user.sub_category === 'principal') return resolve(MANAGEMENT_HUB_IDS);
+    if (['principal', 'accountant', 'management'].includes(user.sub_category)) {
+      return resolve(hubsForUser(user).map(hub => hub.id));
+    }
     const key = `admin_${user.sub_category || 'principal'}`;
     return resolve(TOOL_SETS[key] || TOOL_SETS.admin_principal);
   }

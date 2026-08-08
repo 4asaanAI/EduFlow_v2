@@ -5,6 +5,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import './theme.css';
 import { UserProvider, useUser } from './contexts/UserContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { MessagingProvider } from './contexts/MessagingContext';
 import { ToastProvider } from './components/Toast';
 import Layout from './components/Layout';
 import Login from './components/Login';
@@ -60,11 +61,13 @@ export default function App() {
     <ErrorBoundary name="EduFlow">
       <ThemeProvider>
         <UserProvider>
-          <ToastProvider>
-            <BrowserRouter>
-              <AppContent />
-            </BrowserRouter>
-          </ToastProvider>
+          <MessagingProvider>
+            <ToastProvider>
+              <BrowserRouter>
+                <AppContent />
+              </BrowserRouter>
+            </ToastProvider>
+          </MessagingProvider>
         </UserProvider>
       </ThemeProvider>
     </ErrorBoundary>

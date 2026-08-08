@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getConversations, updateConversation, deleteConversation, getSchoolSettings } from '../lib/api';
-import { filterToolsForUser } from '../lib/toolPermissions';
+import { canUseTool, filterToolsForUser } from '../lib/toolPermissions';
 import {
   Activity, IndianRupee, Users, BarChart2, Bell, FileText, HeartPulse, Megaphone,
   CalendarDays, UserPlus, MessageSquare, Pin, Star, Trash2, Plus, BookOpen,
@@ -169,23 +169,17 @@ const TOOLS_BY_ROLE = {
 const ROLE_COLORS = { owner: '#fb923c', admin: '#4f8ff7', teacher: '#34d399', student: '#a78bfa', parent: '#22d3ee' };
 const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', teacher: 'Teacher', student: 'Student', parent: 'Guardian' };
 
+const REVIEWED_ADMIN_TOOL_IDS = [...new Set(
+  [...(TOOLS_BY_ROLE.owner || []), ...(TOOLS_BY_ROLE.admin || [])].map(tool => tool.id),
+)];
+const reviewedAdminTools = (subCategory) => REVIEWED_ADMIN_TOOL_IDS.filter(
+  id => canUseTool({ role: 'admin', sub_category: subCategory }, id),
+);
+
 const ADMIN_SUBCATEGORY_TOOLS = {
-  // D-49: the accountant is one of the three profiles the server lets issue
-  // certificates and ID cards (owner decision 2026-08-04, decision 2).
-  accountant: ['student-database', 'fee-tracker', 'smart-fee-defaulter', 'fee-collection', 'accounting-periods', 'payroll-manager', 'commercial-operations', 'certificate-generator', 'id-card-generator', 'custom-form-builder', 'raise-maintenance'],
+  accountant: reviewedAdminTools('accountant'),
   transport_head: ['student-database', 'transport-manager', 'transport-optimisation', 'asset-tracker', 'custom-form-builder', 'raise-maintenance'],
-  principal: [
-    'academic-structure', 'student-database', 'attendance-recorder', 'attendance-overview', 'principal-daily',
-    // D-49: the principal may issue both document types on the server, and the
-    // grouped navigation below already lists ID Cards under Students — it just never
-    // resolved, because this allow-list omitted it.
-    'timetable-builder', 'certificate-generator', 'id-card-generator', 'circular-sender', 'parent-message',
-    'enquiry-register', 'smart-fee-defaulter', 'staff-tracker',
-    'staff-performance', 'staff-leave-manager', 'incident-tracker', 'smart-alerts',
-    'transport-manager', 'school-activities', 'document-scanner', 'audit-log',
-    'facility-requests', 'raise-maintenance', 'custom-form-builder', 'query-section', 'exam-manager',
-    'student-leave-manager', 'resource-calendar', 'asset-custody', 'procurement-inventory', 'library-circulation', 'quiz-manager',
-  ],
+  principal: reviewedAdminTools('principal'),
   // D-49: 'id-card-generator' removed — the server refuses a receptionist, so
   // offering the button only produced a refusal when they pressed it.
   receptionist: ['student-database', 'enquiry-register', 'commercial-operations', 'parent-message', 'student-transfer', 'asset-tracker', 'incident-tracker', 'raise-maintenance', 'custom-form-builder'],
@@ -193,7 +187,7 @@ const ADMIN_SUBCATEGORY_TOOLS = {
   maintenance: ['maintenance-schedule', 'vendor-log', 'raise-maintenance'],
   // Owner request 10, 2026-08-06: 'audit-log' removed — the action log is owner
   // and principal only now, on the server as well (routes/audit.py).
-  management: ['academic-structure', 'timetable-builder', 'exam-manager', 'raise-maintenance', 'query-section'],
+  management: reviewedAdminTools('management'),
 };
 
 // ─── Grouped navigation config per role ──────────────────────────────────────
@@ -259,10 +253,15 @@ function getSidebarTools(user) {
   if (user.role !== 'admin') return tools;
   const allowed = ADMIN_SUBCATEGORY_TOOLS[user.sub_category];
   if (!allowed) return tools.filter(tool => !MANAGEMENT_HUB_IDS.includes(tool.id));
-  const ownerTools = user.sub_category === 'principal' ? (TOOLS_BY_ROLE.owner || []) : [];
-  const allTools = [...new Map([...tools, ...ownerTools].filter(t => t?.id).map(t => [t.id, t])).values()];
+  const reviewedProfile = ['principal', 'accountant', 'management'].includes(user.sub_category);
+  const ownerTools = reviewedProfile ? (TOOLS_BY_ROLE.owner || []) : [];
+  const allTools = filterToolsForUser(
+    user,
+    [...new Map([...tools, ...ownerTools].filter(t => t?.id).map(t => [t.id, t])).values()],
+  );
   const resolved = allowed.map(id => allTools.find(tool => tool.id === id)).filter(Boolean);
-  return user.sub_category === 'principal' ? [...HUB_TOOLS, ...resolved] : resolved;
+  const hubs = HUB_TOOLS.filter(hub => filterToolsForUser(user, [hub]).length > 0);
+  return reviewedProfile ? [...hubs, ...resolved.filter(tool => !MANAGEMENT_HUB_IDS.includes(tool.id))] : resolved;
 }
 
 function timeAgo(iso) {

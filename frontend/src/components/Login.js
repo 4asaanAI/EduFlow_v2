@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import BotMascot from './ui/BotMascot';
 
 export default function Login() {
@@ -10,6 +10,7 @@ export default function Login() {
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -143,18 +144,35 @@ export default function Login() {
                 <label style={{ display: 'block', fontSize: 12, color: secondary, fontWeight: 600, marginBottom: 8 }}>
                   Password
                 </label>
-                <input
-                  data-testid="login-password"
-                  type="password"
-                  value={password}
-                  onChange={e => { setPassword(e.target.value); setError(''); }}
-                  placeholder="Enter password"
-                  required
-                  autoComplete="current-password"
-                  style={inputStyle}
-                  onFocus={e => e.target.style.borderColor = accent}
-                  onBlur={e => e.target.style.borderColor = inputBorder}
-                />
+                <div style={{ position: 'relative' }}>
+                  <input
+                    data-testid="login-password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={e => { setPassword(e.target.value); setError(''); }}
+                    placeholder="Enter password"
+                    required
+                    autoComplete="current-password"
+                    style={{ ...inputStyle, paddingRight: 50 }}
+                    onFocus={e => e.target.style.borderColor = accent}
+                    onBlur={e => e.target.style.borderColor = inputBorder}
+                  />
+                  <button
+                    type="button"
+                    data-testid="login-password-toggle"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                    onClick={() => setShowPassword(value => !value)}
+                    style={{
+                      position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                      width: 36, height: 36, display: 'grid', placeItems: 'center', padding: 0,
+                      border: 'none', background: 'transparent', color: muted, cursor: 'pointer',
+                    }}
+                  >
+                    {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                  </button>
+                </div>
               </div>
 
               {error && (

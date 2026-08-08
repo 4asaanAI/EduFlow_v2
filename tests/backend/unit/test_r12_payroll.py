@@ -58,7 +58,7 @@ async def test_disburse_salary_creates_canonical_doc():
 async def test_disburse_salary_idempotent():
     from services.payroll_service import disburse_salary
 
-    existing = {"id": "d-001", "staff_id": "s1", "month": "2026-06", "net_amount": 28000.0, "paid_by": "o1"}
+    existing = {"id": "d-001", "schoolId": "school-a", "staff_id": "s1", "month": "2026-06", "net_amount": 28000.0, "paid_by": "o1"}
     db = type("Db", (), {"salary_disbursements": FakeCollection([existing])})()
     doc, idempotent = await disburse_salary(
         db,
@@ -129,13 +129,13 @@ def test_payroll_disburse_legacy_accounts_rejected(client):
     assert resp.status_code == 403
 
 
-def test_payroll_disburse_principal_rejected(client):
+def test_payroll_disburse_principal_allowed(client):
     resp = client.post(
         "/api/payroll/disburse",
         json={"staff_id": "s1", "month": "2026-07", "gross": 20000},
         headers=_principal_h(),
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 200
 
 
 def test_payroll_disburse_idempotent_returns_existing(client, fake_db):

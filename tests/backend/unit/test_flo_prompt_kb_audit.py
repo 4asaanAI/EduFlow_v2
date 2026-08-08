@@ -64,8 +64,11 @@ def test_stored_prompt_delimiters_are_escaped_and_single_branch_tools_are_hidden
     )
     assert prompt.count("<<<end_live_school_data>>>") == 1
     assert prompt.count("<<<end_fee_structure_data>>>") == 1
-    for hidden in ("create_branch", "update_branch", "delete_branch", "get_branch_comparison"):
+    # Setup/comparison tools stay on the deliberate screen workflow. Deletion remains
+    # available in Flo and is protected by the destructive-action confirmation gate.
+    for hidden in ("create_branch", "update_branch", "get_branch_comparison"):
         assert f"**{hidden}**" not in prompt
+    assert "**delete_branch**" in prompt
 
 
 async def test_context_builder_applies_active_branch_before_prompt(monkeypatch):
@@ -117,7 +120,7 @@ async def test_partial_library_and_inventory_migrations_keep_legacy_context(fake
     assert await _get_inventory_alerts(fake_db) == 2
 
 
-def test_commercial_tool_is_advertised_only_to_authorized_leadership_profiles():
+def test_commercial_tool_is_advertised_by_profile_domain():
     from ai.prompts import build_system_prompt
 
     owner = build_system_prompt({"role": "owner", "name": "Owner"}, {})
@@ -128,7 +131,9 @@ def test_commercial_tool_is_advertised_only_to_authorized_leadership_profiles():
     assert "get_commercial_operations" in principal
     assert "get_commercial_operations" in accountant
     assert "get_commercial_operations" not in teacher
-    for write_tool in ("create_crm_lead", "post_pos_sale", "post_pos_return"):
-        assert write_tool in owner
-        assert write_tool in principal
-        assert write_tool not in accountant
+    assert "create_crm_lead" in owner and "create_crm_lead" in principal
+    assert "create_crm_lead" not in accountant
+    for finance_tool in ("post_pos_sale", "post_pos_return"):
+        assert finance_tool in owner
+        assert finance_tool in principal
+        assert finance_tool in accountant

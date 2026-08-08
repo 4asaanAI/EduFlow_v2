@@ -34,6 +34,8 @@ PARITY_CORPUS = {
     "manage_student_guardians": "student_parity_test.py",
     "create_staff": "staff_parity_test.py",
     "update_staff": "staff_parity_test.py",
+    "create_student_login": "account_management_parity_test.py",
+    "set_profile_password": "account_management_parity_test.py",
     # Owner request 4 (2026-08-06) — private notes on a profile
     "add_profile_note": "profile_note_parity_test.py",
     # Epic K.1 — fee-config CRUD
@@ -80,6 +82,18 @@ PARITY_CORPUS = {
     "close_pos_shift": "commercial_parity_test.py",
     "post_pos_sale": "commercial_parity_test.py",
     "post_pos_return": "commercial_parity_test.py",
+    # Finance administration added for the four reviewed Flo profiles.
+    "upsert_salary_structure": "finance_admin_parity_test.py",
+    "disburse_salary": "finance_admin_parity_test.py",
+    "correct_salary_disbursement": "finance_admin_parity_test.py",
+    "create_accounting_period": "finance_admin_parity_test.py",
+    "change_accounting_period_status": "finance_admin_parity_test.py",
+    # Controlled school-defined schemas and rows (safe alternative to arbitrary
+    # Mongo collection/schema mutation).
+    "create_custom_form": "custom_form_parity_test.py",
+    "update_custom_form": "custom_form_parity_test.py",
+    "add_custom_form_row": "custom_form_parity_test.py",
+    "delete_custom_form": "custom_form_parity_test.py",
     "create_incident": "ops_crud_parity_test.py",
     # Owner coverage gap-close — staff attendance + fee transaction lifecycle
     "mark_staff_attendance": "staff_attendance_parity_test.py",

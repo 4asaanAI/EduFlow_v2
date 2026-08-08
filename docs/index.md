@@ -17,7 +17,7 @@ _Generated: 2026-05-15 | Mode: initial_scan | Scan level: deep_
 
 ### Frontend (`frontend/`)
 - **Type:** Web SPA
-- **Tech Stack:** React 19, CRA + CRACO, Tailwind CSS v3, shadcn/ui, plain JS
+- **Tech Stack:** React 19, Vite 6, Tailwind CSS v3, shadcn/ui, plain JS
 - **Root:** `frontend/src/index.js`
 - **API client:** `frontend/src/lib/api.js`
 
@@ -78,20 +78,23 @@ uvicorn server:app --reload --port 8000
 ```bash
 cd frontend
 yarn install
-REACT_APP_API_URL=http://localhost:8000 yarn start
+VITE_BACKEND_URL=http://localhost:8000 yarn start
 ```
 
 ### Run backend tests
 ```bash
-APP_AVAILABLE=true pytest tests/backend/ -v
-# Expected: 387 passed, 0 skipped
+MONGO_URL=mongodb://127.0.0.1:27099/eduflow_test DB_NAME=eduflow_test python -m pytest tests/backend/ -q
+# Required result: zero failures; the pass count is intentionally not pinned.
 ```
 
-### Run migrations
+### Run a migration
 ```bash
 cd backend
-python migrations/run_all.py
+# Read and rehearse the specific migration against a production copy first.
+python migrations/NNN_specific_migration.py
 ```
+
+Never run `migrations/run_all.py` against the live school database.
 
 ---
 
@@ -104,24 +107,15 @@ python migrations/run_all.py
 | `backend/tenant.py` | `scoped_filter()`, `scoped_query()` (branch + school tenancy) |
 | `backend/middleware/auth.py` | `get_current_user`, `require_role`, `require_owner` |
 | `backend/ai/tool_functions_v2.py` | All AI tool implementations |
-| `backend/migrations/run_all.py` | Migration runner |
+| `backend/migrations/run_all.py` | Fresh/test DB aggregate runner; prohibited on live school data |
 | `frontend/src/lib/api.js` | Central API client (all fetch calls) |
 | `frontend/src/contexts/UserContext.js` | Auth state (user, token, login, logout) |
 | `frontend/src/App.js` | Route definitions + protected routes |
 
 ---
 
-## Part 4 — Multi-Tenancy Focus Areas
-
-> The next quality sweep (Part 4) targets these specific areas:
-
-1. **`backend/routes/exports.py`** — exam-results enrichment uses cross-tenant class/subject lookups
-2. **`backend/middleware/auth.py`** — `require_role()` cannot express `sub_category` constraint; need `require_access(role, sub_category)` helper
-3. **`backend/migrations/run_all.py`** — verify migration 014 (`ensure_maintenance_user`) is included
-4. **`backend/database.py`** — `otps` collection has indexes defined but zero application code; candidate for removal
-5. **`backend/ai/tool_functions_v2.py`** — ~30 AI tool callsites that do not pass `branch_id` to `scoped_query()`
-6. **`backend/tenant.py`** — `schoolId` is env-var only (not in JWT); architectural decision needed for true multi-school SaaS
-7. **`backend/routes/audit.py`** — audit write-ahead gate is synchronous; availability risk at scale
+The active quality and release status is maintained in
+`_bmad-output/platform-quality-sweep.md` and the repository `AGENTS.md` banner.
 
 ---
 

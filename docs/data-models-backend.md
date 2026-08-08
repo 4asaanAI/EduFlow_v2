@@ -471,7 +471,9 @@ Indexes: `status`
 
 ## Migrations
 
-Migrations are Python scripts in `backend/migrations/`, run via `backend/migrations/run_all.py`.
+Migrations are Python scripts in `backend/migrations/`. Production migrations are
+reviewed, rehearsed, and executed one at a time; `run_all.py` must never target the live
+school database.
 
 | Migration | Description |
 |-----------|-------------|
@@ -493,4 +495,5 @@ Migrations are Python scripts in `backend/migrations/`, run via `backend/migrati
 | `016_admin_sub_category_default` | Default sub_category for admin users |
 | `017_backfill_rate_limit_override_expires_at` | Fix rate limit expiry backfill |
 
-> **Note (Part 4):** Migration 014 (`ensure_maintenance_user`) may be missing from `run_all.py` — verify before running against a fresh DB.
+The table is historical and not a production execution plan. Inspect the current
+`backend/migrations/` directory and the specific script before any run.

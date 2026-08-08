@@ -13,6 +13,9 @@ jest.mock('../../contexts/UserContext', () => ({
 jest.mock('../../contexts/ThemeContext', () => ({
   useTheme: () => ({ isDark: true, toggleTheme: jest.fn() }),
 }));
+jest.mock('../../contexts/MessagingContext', () => ({
+  useMessaging: () => ({ available: false, unreadCount: 0 }),
+}));
 jest.mock('../../lib/api', () => {
   // D-60: the stub is derived from the REAL module's export list rather than hand-written.
   // A hand-written list names a handful of helpers while `lib/api` exports over a hundred,

@@ -21,6 +21,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from school_identity import default_branch_id
+
 # Structural / configuration tools: set up once (or once a year) on a screen, never
 # asked for mid-conversation. Removing them from the chat advertisement is where the
 # owner's token bill actually is.
@@ -69,4 +71,14 @@ def is_chat_advertised(user: Dict[str, Any] | None, tool_name: str) -> bool:
     NOT an authorization check. Never call this at dispatch — `is_tool_authorized`
     is the gate, and it is unchanged.
     """
-    return tool_name not in EXCLUDE_FOR_ROLE.get(_role_key(user), frozenset())
+    caller = user or {}
+    # Joya currently has one active branch, so a comparison cannot answer anything.
+    # Keep this contextual and outside EXCLUDE_FOR_ROLE: read tools must never be
+    # globally trimmed, and this automatically stops applying to a school-level token.
+    if (
+        tool_name == "get_branch_comparison"
+        and caller.get("branch_id") == default_branch_id()
+        and _role_key(caller) in {"owner", "admin:principal"}
+    ):
+        return False
+    return tool_name not in EXCLUDE_FOR_ROLE.get(_role_key(caller), frozenset())

@@ -83,16 +83,13 @@ async def test_the_owner_and_principal_are_let_through(user, fake_db, monkeypatc
     assert result.get("denied") is not True, result
 
 
-async def test_a_legacy_admin_with_no_sub_category_is_still_grandfathered(fake_db, monkeypatch):
-    """`AUDIT_READER_SUB_CATEGORIES` deliberately includes None and "" so admins
-    created before sub-categories existed are not locked out. Flo shares that list, so
-    it inherits the same allowance rather than inventing a stricter one of its own."""
+async def test_a_legacy_admin_with_no_sub_category_is_not_audit_reader(fake_db, monkeypatch):
     monkeypatch.setattr("ai.tool_functions_v2.get_db", lambda: fake_db)
     fake_db.audit_logs.docs[:] = []
     legacy = {"id": "old-1", "role": "admin", "name": "Legacy Admin"}
     result = await tool_query_audit_log({}, legacy)
-    assert result.get("denied") is not True
-    assert None in AUDIT_READER_SUB_CATEGORIES or "" in AUDIT_READER_SUB_CATEGORIES
+    assert result.get("denied") is True
+    assert AUDIT_READER_SUB_CATEGORIES == ("principal",)
 
 
 def test_flo_and_the_route_share_one_list_rather_than_two_copies():

@@ -117,6 +117,12 @@ export const MANAGEMENT_HUB_IDS = MANAGEMENT_HUBS.map(hub => hub.id);
 export function hubsForUser(user) {
   if (user?.role === 'owner') return MANAGEMENT_HUBS;
   if (user?.role === 'admin' && user?.sub_category === 'principal') return MANAGEMENT_HUBS;
+  if (user?.role === 'admin' && user?.sub_category === 'accountant') {
+    return MANAGEMENT_HUBS.filter(hub => ['school-database-hub', 'finance-commercial-hub'].includes(hub.id));
+  }
+  if (user?.role === 'admin' && user?.sub_category === 'management') {
+    return MANAGEMENT_HUBS.filter(hub => canUseTool(user, hub.id));
+  }
   return [];
 }
 
@@ -145,9 +151,11 @@ export function hubItemsForUser(hub, user) {
   if (!hubsForUser(user).some(item => item.id === hub?.id)) return [];
   const isOwner = user?.role === 'owner';
   const audience = isOwner ? 'owner' : 'principal';
+  const hasProfileMatrix = user?.role === 'admin'
+    && ['principal', 'accountant', 'management'].includes(user?.sub_category);
   return (hub?.items || []).filter(([id, , , access]) => {
     if (isOwner && HIDDEN_FROM_OWNER.has(id)) return false;
-    const forThisAudience = isOwner || access === 'both' || access === audience;
+    const forThisAudience = isOwner || hasProfileMatrix || access === 'both' || access === audience;
     return forThisAudience && canUseTool(user, id);
   });
 }

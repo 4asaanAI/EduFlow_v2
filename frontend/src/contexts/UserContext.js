@@ -68,20 +68,27 @@ export function UserProvider({ children }) {
   // refreshing wrapper would try to renew a login that does not exist yet and then
   // bounce the person to the login page they are already on. Same for logout below.
   const loginPassword = useCallback(async (username, password) => {
-    const res = await fetch(`${API}/auth/login`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
+    let res;
+    try {
+      res = await fetch(`${API}/auth/login`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+    } catch {
+      throw new Error('Unable to connect to the server. Please try again.');
+    }
 
     let data = {};
     try {
       data = await res.json();
     } catch {
-      throw new Error(res.ok ? 'Unexpected server response' : 'Invalid username or password');
+      if (res.status === 401) throw new Error('Incorrect username or password');
+      throw new Error(res.ok ? 'Unexpected server response' : 'Login failed. Please try again.');
     }
 
+    if (res.status === 401) throw new Error('Incorrect username or password');
     if (!res.ok) throw new Error(data.detail || 'Login failed');
 
     const nextToken = data.access_token || data.token;

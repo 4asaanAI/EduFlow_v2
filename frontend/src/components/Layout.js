@@ -42,6 +42,7 @@ const loadTool = async (rawToolId) => {
   // eight navigation configs.
   if (toolId === 'all-notifications') return (await import('./tools/AllNotifications')).default;
   if (toolId === 'all-chats') return (await import('./tools/AllChats')).default;
+  if (toolId === 'platform-messaging') return (await import('./MessagingScreen')).default;
 
   // Existing dedicated tools
   if (toolId === 'query-section') return (await import('./tools/QuerySection')).QuerySection;

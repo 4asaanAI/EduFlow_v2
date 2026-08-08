@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from database import TransactionUnavailableError, get_db, get_txn_session
-from middleware.auth import require_owner, require_role
+from middleware.auth import require_role
 from services.accounting_period_service import (
     AccountingPeriodNotFoundError,
     AccountingPeriodValidationError,
@@ -19,6 +19,14 @@ from tenant import get_school_id, scoped_query
 
 
 router = APIRouter(prefix="/api/accounting", tags=["accounting"])
+
+
+def _require_finance_profile(user: dict) -> dict:
+    if user.get("role") == "owner":
+        return user
+    if user.get("role") == "admin" and user.get("sub_category") in {"principal", "accountant"}:
+        return user
+    raise HTTPException(403, "Only the school owner, principal, or accountant can manage accounting periods")
 
 
 def _actor(user: dict):
@@ -42,8 +50,7 @@ async def _create_period_transactionally(user: dict, body: dict):
 async def list_periods(request: Request,
                        entity_id: str | None = None,
                        user: dict = Depends(require_role("owner", "admin"))):
-    if user.get("role") != "owner" and user.get("sub_category") != "accountant":
-        raise HTTPException(403, "Only the school owner or accountant can view accounting periods")
+    _require_finance_profile(user)
     db = get_db()
     branch_id = user.get("branch_id") or default_branch_id()
     query = {}
@@ -64,7 +71,8 @@ async def list_periods(request: Request,
 
 
 @router.post("/periods")
-async def post_period(request: Request, user: dict = Depends(require_owner)):
+async def post_period(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+    _require_finance_profile(user)
     try:
         row = await _create_period_transactionally(user, await request.json())
     except AccountingPeriodValidationError as exc:
@@ -76,7 +84,8 @@ async def post_period(request: Request, user: dict = Depends(require_owner)):
 
 @router.patch("/periods/{period_id}/status")
 async def patch_period_status(period_id: str, request: Request,
-                              user: dict = Depends(require_owner)):
+                              user: dict = Depends(require_role("owner", "admin"))):
+    _require_finance_profile(user)
     try:
         row = await change_period_status(
             get_db(), _actor(user),

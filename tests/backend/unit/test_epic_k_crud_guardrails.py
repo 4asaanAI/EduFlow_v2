@@ -31,13 +31,13 @@ K2_TOOLS = [
     "create_class", "update_class", "delete_class",
     "create_house", "update_house", "delete_house",
 ]
-# K.3 org-config tools are OWNER-ONLY (org config stays owner-only even in Phase 2, AD15).
-K3_OWNER_ONLY_TOOLS = [
+# The explicitly reviewed principal profile has full access, including org config.
+K3_ORG_TOOLS = [
     "create_branch", "update_branch", "delete_branch",
     "update_school_settings", "year_end_transition",
 ]
 K_OWNER_PRINCIPAL_TOOLS = K1_TOOLS + K2_TOOLS
-K_TOOLS = K_OWNER_PRINCIPAL_TOOLS + K3_OWNER_ONLY_TOOLS
+K_TOOLS = K_OWNER_PRINCIPAL_TOOLS + K3_ORG_TOOLS
 K_DESTRUCTIVE_TOOLS = ["delete_discount_type", "delete_class", "delete_house",
                        "delete_branch", "year_end_transition"]
 K_NON_DESTRUCTIVE = [t for t in K_TOOLS if t not in K_DESTRUCTIVE_TOOLS]
@@ -65,21 +65,29 @@ def test_lockdown_allows_owner_and_principal(tool_name):
     assert _is_tool_authorized(PRINCIPAL, tdef) is True
 
 
-# ── K.3 org-config write tools are Owner-ONLY (principal blocked) ─────────────
-@pytest.mark.parametrize("tool_name", K3_OWNER_ONLY_TOOLS)
-def test_org_config_is_owner_only(tool_name):
+# ── K.3 org-config write tools are available to full-access leadership ────────
+@pytest.mark.parametrize("tool_name", K3_ORG_TOOLS)
+def test_org_config_is_available_to_owner_and_principal(tool_name):
     tdef = TOOL_REGISTRY[tool_name]
     assert _is_tool_authorized(OWNER, tdef) is True
-    assert _is_tool_authorized(PRINCIPAL, tdef) is False
+    assert _is_tool_authorized(PRINCIPAL, tdef) is True
 
 
 @pytest.mark.parametrize("tool_name", K_TOOLS)
-@pytest.mark.parametrize("actor", [ACCOUNTANT, TEACHER, STUDENT])
-def test_lockdown_blocks_everyone_else(tool_name, actor):
-    # Even accountant (whom the REST discount-type route permits) is blocked on
-    # the AI surface during Phase 1 — widened only in Phase 2 (Epic H).
+@pytest.mark.parametrize("actor", [TEACHER, STUDENT])
+def test_lockdown_blocks_unreviewed_roles(tool_name, actor):
     tdef = TOOL_REGISTRY[tool_name]
     assert _is_tool_authorized(actor, tdef) is False
+
+
+@pytest.mark.parametrize("tool_name", K1_TOOLS)
+def test_accountant_can_manage_fee_configuration(tool_name):
+    assert _is_tool_authorized(ACCOUNTANT, TOOL_REGISTRY[tool_name]) is True
+
+
+@pytest.mark.parametrize("tool_name", K2_TOOLS + K3_ORG_TOOLS)
+def test_accountant_cannot_manage_non_finance_structure(tool_name):
+    assert _is_tool_authorized(ACCOUNTANT, TOOL_REGISTRY[tool_name]) is False
 
 
 # ── Destructive registration (F.10/FR42) ─────────────────────────────────────

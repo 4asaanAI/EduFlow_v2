@@ -20,7 +20,19 @@
 // Anything not listed here is unrestricted as far as this module is concerned.
 export const DOCUMENT_ISSUER_TOOLS = ['certificate-generator', 'id-card-generator'];
 
-const DOCUMENT_ISSUER_ADMIN_SUB_CATEGORIES = ['principal', 'accountant'];
+export const FINANCE_TOOL_IDS = new Set([
+  'finance-commercial-hub', 'fee-collection', 'fee-sync', 'fee-tracker',
+  'smart-fee-defaulter', 'financial-reports', 'accounting-periods',
+  'payroll-manager', 'expense-tracker', 'commercial-operations',
+]);
+
+const FINANCE_SHARED_TOOL_IDS = new Set(['school-database-hub', 'student-database']);
+const LEADERSHIP_ONLY_TOOL_IDS = new Set([
+  'audit-log', 'what-ive-learned', 'conversation-trace', 'ai-health-report',
+  'governance-ai-hub',
+]);
+
+const DOCUMENT_ISSUER_ADMIN_SUB_CATEGORIES = ['principal', 'management'];
 
 /**
  * Admin sub-categories allowed per restricted tool.
@@ -46,10 +58,18 @@ const RESTRICTED_TOOL_ADMIN_SUB_CATEGORIES = {
  * from the one person who certainly may use it. Same trap as on the server.
  */
 export function canUseTool(user, toolId) {
-  const allowedSubs = RESTRICTED_TOOL_ADMIN_SUB_CATEGORIES[toolId];
-  if (!allowedSubs) return true;
   if (!user) return false;
   if (user.role === 'owner') return true;
+  if (user.role === 'admin' && user.sub_category === 'principal') return true;
+  if (user.role === 'admin' && user.sub_category === 'accountant') {
+    return FINANCE_TOOL_IDS.has(toolId) || FINANCE_SHARED_TOOL_IDS.has(toolId);
+  }
+  if (user.role === 'admin' && user.sub_category === 'management') {
+    return !FINANCE_TOOL_IDS.has(toolId) && !LEADERSHIP_ONLY_TOOL_IDS.has(toolId);
+  }
+
+  const allowedSubs = RESTRICTED_TOOL_ADMIN_SUB_CATEGORIES[toolId];
+  if (!allowedSubs) return true;
   if (user.role !== 'admin') return false;
   return allowedSubs.includes(user.sub_category);
 }

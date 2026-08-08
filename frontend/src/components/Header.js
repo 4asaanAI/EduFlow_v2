@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { Search, Bell, ChevronLeft, Menu, X, CalendarDays } from 'lucide-react';
+import { Search, Bell, ChevronLeft, Menu, X, CalendarDays, MessageCircle } from 'lucide-react';
 import { getAuthHeaders } from '../lib/authSession';
 import AccountMenu from './AccountMenu';
 import NotificationDetailModal from './NotificationDetailModal';
 import { getToolForNotification } from '../lib/notifRouting';
+import { useMessaging } from '../contexts/MessagingContext';
 import { API, apiFetch,
   getAcademicYear,
   getNotifications,
@@ -404,6 +405,7 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
 export default function Header({ activeTool, onBack, canGoBack, onOpenProfile, onOpenSettings, onToggleSidebar, activeConvTitle }) {
   const { currentUser } = useUser();
   const { isDark } = useTheme();
+  const messaging = useMessaging();
   const [showSearch, setShowSearch] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
   const [detailNotif, setDetailNotif] = useState(null);
@@ -621,6 +623,37 @@ export default function Header({ activeTool, onBack, canGoBack, onOpenProfile, o
                 Academic Year {academicYear}
               </span>
             </div>
+          )}
+
+          {messaging.available && (
+            <button
+              aria-label={messaging.unreadCount
+                ? `Messages, ${messaging.unreadCount} unread`
+                : 'Messages'}
+              title="Messages"
+              data-testid="messaging-btn"
+              onClick={() => window.dispatchEvent(new CustomEvent('open-tool', { detail: 'platform-messaging' }))}
+              style={{ ...ICON_BTN, color: activeTool === 'platform-messaging' ? 'var(--color-accent-blue)' : muted, position: 'relative' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+            >
+              <MessageCircle size={ICON_SIZE} />
+              {messaging.unreadCount > 0 && (
+                <span
+                  data-testid="message-badge"
+                  style={{
+                    position: 'absolute', top: 2, right: 0,
+                    minWidth: 16, height: 16, padding: '0 4px', boxSizing: 'content-box',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'var(--color-danger)', color: 'var(--color-inverse-text)',
+                    border: `2px solid ${bg}`, borderRadius: 'var(--radius-full)',
+                    fontFamily: 'var(--font-display)', fontSize: 10, fontWeight: 700, lineHeight: 1,
+                  }}
+                >
+                  {messaging.unreadCount > 9 ? '9+' : messaging.unreadCount}
+                </span>
+              )}
+            </button>
           )}
 
           <div ref={notifRef} style={{ position: 'relative' }}>

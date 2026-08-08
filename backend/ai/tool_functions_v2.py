@@ -96,6 +96,14 @@ from services.staff_service import (
     StaffAuthorizationError,
     LinkedUserNotFoundError,
 )
+from services.account_management_service import (
+    create_student_login as svc_create_student_login,
+    set_profile_password as svc_set_profile_password,
+    AccountAuthorizationError,
+    AccountConflictError,
+    AccountNotFoundError,
+    AccountValidationError,
+)
 from services.fee_config_service import (
     create_fee_structure as svc_create_fee_structure,
     update_fee_structure as svc_update_fee_structure,
@@ -208,6 +216,30 @@ from services.attendance_correction_service import (
     correct_attendance,
     AttendanceCorrectionValidationError,
     AttendanceCorrectionNotFoundError,
+)
+from services.accounting_period_service import (
+    AccountingPeriodClosedError,
+    AccountingPeriodNotFoundError,
+    AccountingPeriodValidationError,
+    assert_posting_allowed,
+    change_period_status as svc_change_accounting_period_status,
+    create_period as svc_create_accounting_period,
+)
+from services.payroll_service import (
+    PayrollNotFoundError,
+    PayrollValidationError,
+    build_payslip,
+    correct_disbursement as svc_correct_salary_disbursement,
+    disburse_salary as svc_disburse_salary,
+    upsert_salary_structure as svc_upsert_salary_structure,
+)
+from services.custom_form_service import (
+    CustomFormNotFoundError,
+    CustomFormValidationError,
+    create_form as svc_create_custom_form,
+    delete_form as svc_delete_custom_form,
+    submit_response as svc_submit_custom_form_response,
+    update_form as svc_update_custom_form,
 )
 
 # ----- Re-export all 14 original tools and their registry -----
@@ -1086,20 +1118,21 @@ async def tool_get_house_standings(params: dict, user: dict, scope: dict = None)
     # M4: one query for ALL houses' points (was one aggregate per house), grouped
     # by house + category in memory.
     house_ids = [h["id"] for h in houses if h.get("id")]
-    point_rows = await db.house_points.find(
-        {"house_id": {"$in": house_ids}}, {"_id": 0, "house_id": 1, "category": 1, "points": 1}
+    point_rows = await db.house_points_log.find(
+        scoped_query({"house_id": {"$in": house_ids}}, branch_id=_branch_id(user, scope)),
+        {"_id": 0, "house_id": 1, "category": 1, "delta": 1},
     ).to_list(50000)
     breakdown_by_house: dict = {}
     for row in point_rows:
         hid = row.get("house_id")
-        cat = row.get("category")
+        cat = row.get("category") or "awards"
         cat_map = breakdown_by_house.setdefault(hid, {})
-        cat_map[cat] = cat_map.get(cat, 0) + (row.get("points") or 0)
+        cat_map[cat] = cat_map.get(cat, 0) + (row.get("delta") or 0)
 
     results = []
     for h in houses:
         breakdown = breakdown_by_house.get(h["id"], {})
-        points_total = sum(breakdown.values())
+        points_total = h.get("points", 0)
         results.append({
             "house_name": h.get("name", ""),
             "color": h.get("color", ""),
@@ -1121,12 +1154,15 @@ async def tool_get_house_details(params: dict, user: dict, scope: dict = None) -
     """Single house details: members, captains, recent points."""
     t0 = time.time()
     db = get_db()
+    bid = _branch_id(user, scope)
 
     house = None
     if params.get("house_id"):
-        house = await db.houses.find_one({"id": params["house_id"]})
+        house = await db.houses.find_one(scoped_query({"id": params["house_id"]}, branch_id=bid))
     elif params.get("house_name"):
-        house = await db.houses.find_one({"name": {"$regex": re.escape(params["house_name"]), "$options": "i"}})
+        house = await db.houses.find_one(scoped_query({
+            "name": {"$regex": f"^{re.escape(params['house_name'])}$", "$options": "i"},
+        }, branch_id=bid))
 
     if not house:
         elapsed = (time.time() - t0) * 1000
@@ -1142,7 +1178,9 @@ async def tool_get_house_details(params: dict, user: dict, scope: dict = None) -
     # reported zero members no matter how many children were in it. Found while
     # restoring the 1,204 house assignments the owner reported as missing; the empty
     # member list would have made that restore look like it had not worked.
-    member_filter = {"house": house.get("name"), "is_active": True}
+    member_filter = scoped_query(
+        {"house": house.get("name"), "is_active": True}, branch_id=bid
+    )
     members_raw, members_total = await _find_capped(db.students, member_filter)
     members = [{"name": m.get("name", ""), "class": m.get("class_id", ""), "role": m.get("house_role", "member")} for m in members_raw]
     # NEW-05/T6: captains are asked for BY ROLE, never sliced out of the capped member
@@ -1156,26 +1194,28 @@ async def tool_get_house_details(params: dict, user: dict, scope: dict = None) -
                  "role": c.get("house_role", "member")} for c in captains_raw]
 
     # Recent points (last 20 entries)
-    recent_points = await db.house_points.find({"house_id": house["id"]}).sort("created_at", -1).to_list(20)
+    recent_points = await db.house_points_log.find(
+        scoped_query({"house_id": house["id"]}, branch_id=bid)
+    ).sort("created_at", -1).to_list(20)
     # M4: batch student name lookups (was find_one per point).
     rp_sids = [rp["student_id"] for rp in recent_points if rp.get("student_id")]
-    rp_students = await db.students.find({"id": {"$in": rp_sids}}).to_list(len(rp_sids) or 1) if rp_sids else []
+    rp_students = await db.students.find(
+        scoped_query({"id": {"$in": rp_sids}}, branch_id=bid)
+    ).to_list(len(rp_sids) or 1) if rp_sids else []
     rp_student_map = {s["id"]: s for s in rp_students}
     recent = []
     for rp in recent_points:
         student = rp_student_map.get(rp.get("student_id"))
         recent.append({
             "student_name": student["name"] if student else "N/A",
-            "points": rp.get("points", 0),
-            "category": rp.get("category", ""),
+            "points": rp.get("delta", 0),
+            "category": rp.get("category", "awards"),
             "reason": rp.get("reason", ""),
             "date": rp.get("created_at", "")[:10] if rp.get("created_at") else "",
         })
 
     # Total points
-    total_pipeline = [{"$match": {"house_id": house["id"]}}, {"$group": {"_id": None, "total": {"$sum": "$points"}}}]
-    total_result = await db.house_points.aggregate(total_pipeline).to_list(1)
-    total_points = total_result[0]["total"] if total_result else 0
+    total_points = house.get("points", 0)
 
     data = [{
         "house_name": house.get("name", ""),
@@ -1231,6 +1271,11 @@ async def tool_award_house_points(params: dict, user: dict, scope: dict = None) 
         return _failed(f"Student '{student_name}' not found.", elapsed)
 
     house_id = student.get("house_id")
+    if not house_id and student.get("house"):
+        house = await db.houses.find_one(scoped_query({
+            "name": {"$regex": f"^{re.escape(str(student['house']))}$", "$options": "i"},
+        }, branch_id=_branch_id(user, scope)))
+        house_id = house.get("id") if house else None
     if not house_id:
         elapsed = (time.time() - t0) * 1000
         return _failed(f"Student '{student['name']}' is not assigned to any house.", elapsed)
@@ -1856,6 +1901,10 @@ async def tool_create_staff(params: dict, user: dict, scope: dict = None) -> dic
     # surfaced to the LLM/chat — it is delivered out-of-band via the panel.
     if not (params.get("name") and params.get("staff_type")):
         return {"success": False, "message": "name and staff_type are required."}
+    if not params.get("username"):
+        return _failed("username is required when Flo creates a staff login profile.")
+    if not (params.get("password") or params.get("password_hash")):
+        return _failed("password is required when Flo creates a staff login profile.")
     db = get_db()
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
     try:
@@ -1866,10 +1915,58 @@ async def tool_create_staff(params: dict, user: dict, scope: dict = None) -> dic
         return _empty_result("Linked user account not found.")
     except StaffValidationError as e:
         return {"success": False, "message": str(e)}
-    message = "Staff created."
-    if result.get("temporary_password"):
-        message += " A temporary password was issued; deliver it to the staff member via the staff panel."
-    return {"success": True, "data": result["staff"], "message": message}
+    data = {**result["staff"], "login_username": params["username"].strip().lower()}
+    return {"success": True, "data": data, "message": "Staff login profile created."}
+
+
+async def tool_create_student_login(params: dict, user: dict, scope: dict = None) -> dict:
+    """Create a student login without returning the supplied credential to chat."""
+    if not params.get("student_id"):
+        return _failed("student_id is required.")
+    if not (params.get("password") or params.get("password_hash")):
+        return _failed("password is required.")
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_create_student_login(db, actor_ctx, params)
+    except AccountNotFoundError:
+        return _empty_result("Student not found.")
+    except AccountConflictError as e:
+        return _failed(str(e))
+    except AccountAuthorizationError as e:
+        return _failed(str(e))
+    except AccountValidationError as e:
+        return _failed(str(e))
+    return {
+        "success": True,
+        "data": result["account"],
+        "message": "Student login profile created.",
+    }
+
+
+async def tool_set_profile_password(params: dict, user: dict, scope: dict = None) -> dict:
+    """Replace a permitted profile credential and revoke its existing sessions."""
+    if not (params.get("user_id") or params.get("username")):
+        return _failed("user_id or username is required.")
+    if not (params.get("new_password") or params.get("new_password_hash")):
+        return _failed("new_password is required.")
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_set_profile_password(
+            db, actor_ctx, params, must_change_password=False
+        )
+    except AccountNotFoundError:
+        return _empty_result("User profile not found.")
+    except AccountAuthorizationError as e:
+        return _failed(str(e))
+    except AccountValidationError as e:
+        return _failed(str(e))
+    return {
+        "success": True,
+        "data": result["account"],
+        "message": "Password changed and existing sessions ended.",
+    }
 
 
 async def tool_update_staff(params: dict, user: dict, scope: dict = None) -> dict:
@@ -3110,7 +3207,7 @@ async def tool_get_expenses(params: dict, user: dict, scope: dict = None) -> dic
     query: dict = {}
     category = params.get("category")
     if category:
-        query["category"] = {"$regex": category, "$options": "i"}
+        query["category"] = {"$regex": re.escape(str(category)), "$options": "i"}
     month = params.get("month")
     if month:
         query["date"] = {"$gte": f"{month}-01", "$lte": f"{month}-31"}
@@ -3764,9 +3861,12 @@ async def tool_get_commercial_operations(params: dict, user: dict, scope: dict =
     if user.get("role") == "admin" and user.get("sub_category") == "accountant" and domain in {"overview", "crm"}:
         return {"success": False, "denied": True, "data": {}, "meta": {"count": 0},
                 "message": "Accounts staff can view campus retail totals and legal-entity structure, not admissions CRM."}
-    if domain == "consolidated" and user.get("role") != "owner":
+    is_leadership = user.get("role") == "owner" or (
+        user.get("role") == "admin" and user.get("sub_category") == "principal"
+    )
+    if domain == "consolidated" and not is_leadership:
         return {"success": False, "denied": True, "data": {}, "meta": {"count": 0},
-                "message": "Only the school's owner can view consolidated legal-entity reporting."}
+                "message": "Only the school's owner and principal can view consolidated legal-entity reporting."}
     db = get_db()
     actor = actor_ctx_from_user(user, branch_id=_branch_id(user, scope) or default_branch_id())
     entity_id = params.get("entity_id")
@@ -3967,14 +4067,251 @@ async def tool_get_finance_controls(params: dict, user: dict, scope: dict = None
             "version_count": len(versions),
         },
     }
-    if user.get("role") == "owner":
-        payroll = await db.salary_disbursements.find(scoped_query({}, branch_id=bid), {"_id": 0, "status": 1}).to_list(1000)
-        payroll_counts: dict[str, int] = {}
-        for row in payroll:
-            status = row.get("status", "unknown")
-            payroll_counts[status] = payroll_counts.get(status, 0) + 1
-        data["payroll_status_counts"] = payroll_counts
+    payroll = await db.salary_disbursements.find(
+        scoped_query({}, branch_id=bid), {"_id": 0, "status": 1}
+    ).to_list(1000)
+    payroll_counts: dict[str, int] = {}
+    for row in payroll:
+        status = row.get("status", "unknown")
+        payroll_counts[status] = payroll_counts.get(status, 0) + 1
+    data["payroll_status_counts"] = payroll_counts
     return _enterprise_env(data)
+
+
+async def tool_get_payroll(params: dict, user: dict, scope: dict = None) -> dict:
+    """Finance-scoped payroll structures, disbursements, corrections, or payslip."""
+    db = get_db()
+    bid = _branch_id(user, scope)
+    view = str(params.get("view") or "overview").strip().lower()
+    if view not in {"overview", "structures", "disbursements", "corrections", "payslip"}:
+        return _failed("view must be overview, structures, disbursements, corrections, or payslip")
+    if view == "structures":
+        rows = await db.salary_structures.find(
+            scoped_query({}, branch_id=bid), {"_id": 0}
+        ).sort("updated_at", -1).to_list(500)
+        return _enterprise_env(rows, count=len(rows))
+    if view == "corrections":
+        disbursement_id = str(params.get("disbursement_id") or "").strip()
+        if not disbursement_id:
+            return _failed("disbursement_id is required for corrections")
+        rows = await db.salary_disbursement_corrections.find(
+            scoped_query({"disbursement_id": disbursement_id}, branch_id=bid), {"_id": 0}
+        ).sort("revision", 1).to_list(100)
+        return _enterprise_env(rows, count=len(rows))
+    if view == "payslip":
+        disbursement_id = str(params.get("disbursement_id") or "").strip()
+        if not disbursement_id:
+            return _failed("disbursement_id is required for a payslip")
+        row = await db.salary_disbursements.find_one(
+            scoped_query({"id": disbursement_id}, branch_id=bid), {"_id": 0}
+        )
+        if not row:
+            return _empty_result("Salary disbursement not found.")
+        return _enterprise_env(await build_payslip(db, row, branch_id=bid))
+
+    query = {}
+    if params.get("month"):
+        query["month"] = params["month"]
+    rows = await db.salary_disbursements.find(
+        scoped_query(query, branch_id=bid), {"_id": 0}
+    ).sort("paid_at", -1).to_list(500)
+    staff_ids = sorted({row.get("staff_id") for row in rows if row.get("staff_id")})
+    staff_rows = await db.staff.find(
+        scoped_query({"id": {"$in": staff_ids}}, branch_id=bid), {"_id": 0, "id": 1, "name": 1}
+    ).to_list(len(staff_ids)) if staff_ids else []
+    staff_map = {row["id"]: row.get("name") for row in staff_rows}
+    enriched = [{**row, "staff_name": staff_map.get(row.get("staff_id"))} for row in rows]
+    if view == "disbursements":
+        return _enterprise_env(enriched, count=len(enriched))
+    return _enterprise_env({
+        "disbursement_count": len(enriched),
+        "total_net": sum(float(row.get("net_amount") or 0) for row in enriched),
+        "recent": enriched[:25],
+    })
+
+
+async def _audit_payroll_write(db, actor, action: str, entity_id: str, changes: dict) -> None:
+    await write_audit_doc(db, {
+        "id": str(uuid.uuid4()), "entity_type": "payroll", "entity_id": entity_id,
+        "action": action, "changed_by": actor.user_id, "changed_by_role": actor.role,
+        "changes": changes, "created_at": actor.now_iso(),
+    }, school_id=actor.school_id, branch_id=actor.branch_id or "")
+
+
+async def tool_upsert_salary_structure(params: dict, user: dict, scope: dict = None) -> dict:
+    staff_id = str(params.get("staff_id") or "").strip()
+    if not staff_id or params.get("base_salary") is None:
+        return _failed("staff_id and base_salary are required")
+    db = get_db()
+    bid = _branch_id(user, scope)
+    if not await db.staff.find_one(scoped_query({"id": staff_id}, branch_id=bid), {"_id": 0, "id": 1}):
+        return _empty_result("Staff member not found.")
+    try:
+        base_salary = float(params["base_salary"])
+        if base_salary < 0:
+            raise ValueError
+        row = await svc_upsert_salary_structure(
+            db, staff_id=staff_id, base_salary=base_salary,
+            allowances=params.get("allowances"), deductions=params.get("deductions"),
+            effective_from=params.get("effective_from"),
+            is_active=params.get("is_active", True), updated_by=user["id"],
+            school_id=get_school_id(), branch_id=bid,
+        )
+    except (TypeError, ValueError):
+        return _failed("base_salary must be a non-negative number")
+    actor = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=bid)
+    await _audit_payroll_write(db, actor, "salary_structure_upsert", row["id"], row)
+    return {"success": True, "data": row, "message": "Salary structure saved."}
+
+
+async def tool_disburse_salary(params: dict, user: dict, scope: dict = None) -> dict:
+    staff_id = str(params.get("staff_id") or "").strip()
+    month = str(params.get("month") or "").strip()
+    if not staff_id or not month or params.get("base_salary") is None:
+        return _failed("staff_id, month, and base_salary are required")
+    db = get_db()
+    bid = _branch_id(user, scope)
+    try:
+        await assert_posting_allowed(db, bid, f"{month}-01", params.get("entity_id"))
+        row, idempotent = await svc_disburse_salary(
+            db, staff_id=staff_id, month=month, base_salary=float(params["base_salary"]),
+            allowances=float(params.get("allowances") or 0),
+            deductions=float(params.get("deductions") or 0),
+            payment_mode=params.get("payment_mode") or "bank_transfer",
+            reference=params.get("reference"), status=params.get("status") or "paid",
+            paid_by=user["id"], school_id=get_school_id(), branch_id=bid,
+        )
+    except (TypeError, ValueError):
+        return _failed("Salary amounts must be numbers")
+    except AccountingPeriodClosedError as exc:
+        return _failed(str(exc))
+    if not idempotent:
+        actor = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=bid)
+        await _audit_payroll_write(db, actor, "salary_disbursement_create", row["id"], row)
+    return {"success": True, "data": row, "message": "Salary was already recorded for that month." if idempotent else "Salary disbursement recorded."}
+
+
+async def tool_correct_salary_disbursement(params: dict, user: dict, scope: dict = None) -> dict:
+    disbursement_id = str(params.get("disbursement_id") or "").strip()
+    if not disbursement_id:
+        return _failed("disbursement_id is required")
+    db = get_db()
+    bid = _branch_id(user, scope)
+    current = await db.salary_disbursements.find_one(
+        scoped_query({"id": disbursement_id}, branch_id=bid), {"_id": 0, "month": 1}
+    )
+    if not current:
+        return _empty_result("Salary disbursement not found.")
+    try:
+        await assert_posting_allowed(db, bid, f"{current['month']}-01", params.get("entity_id"))
+        row = await svc_correct_salary_disbursement(
+            db, disbursement_id=disbursement_id, changes=params.get("changes") or {},
+            reason=params.get("reason") or "", corrected_by=user["id"], branch_id=bid,
+        )
+    except AccountingPeriodClosedError as exc:
+        return _failed(str(exc))
+    except PayrollNotFoundError:
+        return _empty_result("Salary disbursement not found.")
+    except PayrollValidationError as exc:
+        return _failed(str(exc))
+    actor = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=bid)
+    await _audit_payroll_write(db, actor, "salary_disbursement_correct", disbursement_id, {"reason": params.get("reason"), "changes": params.get("changes") or {}})
+    return {"success": True, "data": row, "message": "Salary disbursement corrected."}
+
+
+async def tool_create_accounting_period(params: dict, user: dict, scope: dict = None) -> dict:
+    actor = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=_branch_id(user, scope))
+    try:
+        row = await svc_create_accounting_period(get_db(), actor, params)
+    except AccountingPeriodValidationError as exc:
+        return _failed(str(exc))
+    return {"success": True, "data": row, "message": f"Accounting period '{row['name']}' created."}
+
+
+async def tool_change_accounting_period_status(params: dict, user: dict, scope: dict = None) -> dict:
+    period_id = str(params.get("period_id") or "").strip()
+    if not period_id:
+        return _failed("period_id is required")
+    actor = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=_branch_id(user, scope))
+    try:
+        row = await svc_change_accounting_period_status(get_db(), actor, period_id, params)
+    except AccountingPeriodNotFoundError:
+        return _empty_result("Accounting period not found.")
+    except AccountingPeriodValidationError as exc:
+        return _failed(str(exc))
+    return {"success": True, "data": row, "message": f"Accounting period {row['status']}."}
+
+
+async def tool_get_custom_forms(params: dict, user: dict, scope: dict = None) -> dict:
+    db = get_db()
+    form_id = str(params.get("form_id") or "").strip()
+    query = {"id": form_id} if form_id else {}
+    forms = await db.custom_forms.find(
+        scoped_filter(query, get_school_id()), {"_id": 0}
+    ).sort("created_at", -1).to_list(200)
+    if form_id and not forms:
+        return _empty_result("Custom form not found.")
+    if params.get("include_responses") and form_id:
+        responses = await db.form_responses.find(
+            scoped_filter({"form_id": form_id}, get_school_id()), {"_id": 0}
+        ).sort("submitted_at", -1).to_list(500)
+        return _enterprise_env({"form": forms[0], "responses": responses})
+    return _enterprise_env(forms, count=len(forms))
+
+
+async def tool_create_custom_form(params: dict, user: dict, scope: dict = None) -> dict:
+    actor = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=_branch_id(user, scope))
+    try:
+        row = await svc_create_custom_form(get_db(), actor, params)
+    except CustomFormValidationError as exc:
+        return _failed(str(exc))
+    return {"success": True, "data": row, "message": f"Custom data form '{row['title']}' created."}
+
+
+async def tool_update_custom_form(params: dict, user: dict, scope: dict = None) -> dict:
+    form_id = str(params.get("form_id") or "").strip()
+    if not form_id:
+        return _failed("form_id is required")
+    actor = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=_branch_id(user, scope))
+    try:
+        row = await svc_update_custom_form(
+            get_db(), actor, form_id,
+            {key: value for key, value in params.items() if key != "form_id"},
+        )
+    except CustomFormNotFoundError:
+        return _empty_result("Custom form not found.")
+    except CustomFormValidationError as exc:
+        return _failed(str(exc))
+    return {"success": True, "data": row, "message": f"Custom data form updated to schema version {row.get('schema_version', 1)}."}
+
+
+async def tool_add_custom_form_row(params: dict, user: dict, scope: dict = None) -> dict:
+    form_id = str(params.get("form_id") or "").strip()
+    if not form_id:
+        return _failed("form_id is required")
+    actor = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=_branch_id(user, scope))
+    try:
+        row = await svc_submit_custom_form_response(get_db(), actor, form_id, params)
+    except CustomFormNotFoundError:
+        return _empty_result("Active custom form not found.")
+    except CustomFormValidationError as exc:
+        return _failed(str(exc))
+    return {"success": True, "data": row, "message": "Custom data row added."}
+
+
+async def tool_delete_custom_form(params: dict, user: dict, scope: dict = None) -> dict:
+    form_id = str(params.get("form_id") or "").strip()
+    if not form_id:
+        return _failed("form_id is required")
+    actor = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_delete_custom_form(get_db(), actor, form_id)
+    except CustomFormNotFoundError:
+        return _empty_result("Custom form not found.")
+    return {
+        "success": True, "data": result,
+        "message": f"Custom form deleted with {result['deleted_responses']} response rows.",
+    }
 
 
 async def tool_get_my_school_hub(params: dict, user: dict, scope: dict = None) -> dict:
@@ -4242,8 +4579,184 @@ TOOL_REGISTRY = {
         "roles": ["owner", "admin"],
         "sub_categories": ["accountant"],
         "dispatch_type": "read",
-        "description": "Accounting periods, versioned fee schedules, and owner-only payroll status counts.",
+        "description": "Accounting periods, versioned fee schedules, and payroll status counts.",
         "params_schema": {},
+    },
+    "get_payroll": {
+        "fn": tool_get_payroll,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "accountant"],
+        "dispatch_type": "read",
+        "description": "View payroll overview, salary structures, disbursements, corrections, or a payslip.",
+        "params_schema": {
+            "view": {"type": "string", "description": "overview, structures, disbursements, corrections, or payslip"},
+            "month": {"type": "string", "description": "Optional YYYY-MM month"},
+            "disbursement_id": {"type": "string", "description": "Required for corrections or payslip"},
+        },
+    },
+    "upsert_salary_structure": {
+        "fn": tool_upsert_salary_structure,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "accountant"],
+        "dispatch_type": "write",
+        "requires_confirmation": False,
+        "description": "Create or update a staff salary structure.",
+        "params_schema": {
+            "staff_id": {"type": "string", "description": "Staff ID"},
+            "base_salary": {"type": "number", "description": "Base salary"},
+            "allowances": {"type": "object", "description": "Allowance breakdown"},
+            "deductions": {"type": "object", "description": "Deduction breakdown"},
+            "effective_from": {"type": "string", "description": "YYYY-MM-DD"},
+            "is_active": {"type": "boolean", "description": "Active state"},
+        },
+    },
+    "disburse_salary": {
+        "fn": tool_disburse_salary,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "accountant"],
+        "dispatch_type": "write",
+        "requires_confirmation": False,
+        "description": "Record a salary disbursement for one staff member and month.",
+        "params_schema": {
+            "staff_id": {"type": "string", "description": "Staff ID"},
+            "month": {"type": "string", "description": "YYYY-MM"},
+            "base_salary": {"type": "number", "description": "Base salary"},
+            "allowances": {"type": "number", "description": "Total allowances"},
+            "deductions": {"type": "number", "description": "Total deductions"},
+            "payment_mode": {"type": "string", "description": "Payment mode"},
+            "reference": {"type": "string", "description": "Payment reference"},
+            "status": {"type": "string", "description": "paid, pending, or processed"},
+            "entity_id": {"type": "string", "description": "Optional legal entity ID"},
+        },
+    },
+    "correct_salary_disbursement": {
+        "fn": tool_correct_salary_disbursement,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "accountant"],
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "description": "Correct a salary disbursement with a mandatory reason and revision history.",
+        "params_schema": {
+            "disbursement_id": {"type": "string", "description": "Disbursement ID"},
+            "changes": {"type": "object", "description": "Corrected payroll fields"},
+            "reason": {"type": "string", "description": "Correction reason"},
+            "entity_id": {"type": "string", "description": "Optional legal entity ID"},
+        },
+    },
+    "create_accounting_period": {
+        "fn": tool_create_accounting_period,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "accountant"],
+        "dispatch_type": "write",
+        "requires_confirmation": False,
+        "description": "Create a non-overlapping accounting period for an operating entity.",
+        "params_schema": {
+            "name": {"type": "string", "description": "Period name"},
+            "start_date": {"type": "string", "description": "YYYY-MM-DD"},
+            "end_date": {"type": "string", "description": "YYYY-MM-DD"},
+            "entity_id": {"type": "string", "description": "Optional legal entity ID"},
+        },
+    },
+    "change_accounting_period_status": {
+        "fn": tool_change_accounting_period_status,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "accountant"],
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "description": "Close or reopen an accounting period; reopening requires a reason.",
+        "params_schema": {
+            "period_id": {"type": "string", "description": "Accounting period ID"},
+            "status": {"type": "string", "description": "open or closed"},
+            "reason": {"type": "string", "description": "Required when reopening"},
+        },
+    },
+    "get_custom_forms": {
+        "fn": tool_get_custom_forms,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "management"],
+        "dispatch_type": "read",
+        "requires_confirmation": False,
+        "description": (
+            "List the school's controlled custom-data forms, or inspect one form "
+            "and its rows. This is the safe extension surface for school-specific data."
+        ),
+        "params_schema": {
+            "form_id": {"type": "string", "description": "Optional form ID"},
+            "include_responses": {
+                "type": "boolean",
+                "description": "Include saved rows when a form_id is supplied",
+            },
+        },
+    },
+    "create_custom_form": {
+        "fn": tool_create_custom_form,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "management"],
+        "dispatch_type": "write",
+        "requires_confirmation": False,
+        "description": (
+            "Create a school-scoped custom-data form with validated field definitions. "
+            "Use this instead of changing database collections directly."
+        ),
+        "params_schema": {
+            "title": {"type": "string", "description": "Form or dataset name"},
+            "fields": {
+                "type": "array",
+                "description": (
+                    "Fields as {key, label, type, required, options?}; supported types are "
+                    "text, textarea, number, date, email, phone, select, and checkbox"
+                ),
+            },
+            "audience": {"type": "string", "description": "Optional audience label"},
+        },
+    },
+    "update_custom_form": {
+        "fn": tool_update_custom_form,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "management"],
+        "dispatch_type": "write",
+        "requires_confirmation": False,
+        "description": (
+            "Add or edit fields and metadata on a controlled custom-data form. "
+            "Field changes create a new schema version and preserve existing rows."
+        ),
+        "params_schema": {
+            "form_id": {"type": "string", "description": "Form ID"},
+            "title": {"type": "string", "description": "Optional updated title"},
+            "fields": {"type": "array", "description": "Optional complete field definition list"},
+            "audience": {"type": "string", "description": "Optional audience label"},
+            "is_active": {"type": "boolean", "description": "Whether rows may be added"},
+        },
+    },
+    "add_custom_form_row": {
+        "fn": tool_add_custom_form_row,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "management"],
+        "dispatch_type": "write",
+        "requires_confirmation": False,
+        "description": "Add one validated row to a controlled custom-data form.",
+        "params_schema": {
+            "form_id": {"type": "string", "description": "Form ID"},
+            "answers": {
+                "type": "object",
+                "description": "Values keyed by the form's field keys",
+            },
+        },
+    },
+    "delete_custom_form": {
+        "fn": tool_delete_custom_form,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "management"],
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "description": (
+            "Permanently delete a controlled custom-data form and all of its rows. "
+            "Destructive; requires confirmation."
+        ),
+        "params_schema": {
+            "form_id": {"type": "string", "description": "Form ID"},
+        },
     },
     "get_commercial_operations": {
         "fn": tool_get_commercial_operations,
@@ -4834,19 +5347,47 @@ TOOL_REGISTRY = {
         "fn": tool_create_staff,
         "roles": ["owner", "admin"],
         "sub_categories": ["principal"],
-        "description": "Create a new staff member (auto-creates a login account). Only an owner may create privileged (owner/admin) accounts.",
+        "description": "Create a new staff member and login profile. Owner or principal may create any non-owner staff/admin profile.",
         "dispatch_type": "write",
         "requires_confirmation": True,
         "params_schema": {
             "name": {"type": "string", "description": "Staff full name (required)"},
             "staff_type": {"type": "string", "description": "e.g. teacher, accountant, receptionist (required)"},
-            "role": {"type": "string", "description": "Login role (owner-only for owner/admin)"},
-            "sub_category": {"type": "string", "description": "Admin sub-category (owner-only)"},
+            "role": {"type": "string", "description": "Login role: teacher or admin; owner cannot be granted here"},
+            "sub_category": {"type": "string", "description": "Admin or teacher sub-category"},
+            "username": {"type": "string", "description": "Login username (required for Flo creation)"},
+            "password": {"type": "string", "description": "Initial password, 8-128 characters (required for Flo creation)"},
             "employee_id": {"type": "string", "description": "Employee ID"},
             "phone": {"type": "string", "description": "Phone"},
             "email": {"type": "string", "description": "Email"},
             "department": {"type": "string", "description": "Department"},
         },
+        "secret_params": ["password"],
+    },
+    "create_student_login": {
+        "fn": tool_create_student_login,
+        "roles": ["owner", "admin"],
+        "description": "Create and link a login profile for an existing student. Management may use this only for students.",
+        "dispatch_type": "write",
+        "params_schema": {
+            "student_id": {"type": "string", "description": "Existing student ID (required)"},
+            "username": {"type": "string", "description": "Login username; admission number is used if omitted"},
+            "password": {"type": "string", "description": "Initial password, 8-128 characters (required)"},
+        },
+        "secret_params": ["password"],
+    },
+    "set_profile_password": {
+        "fn": tool_set_profile_password,
+        "roles": ["owner", "admin"],
+        "description": "Change another profile's password and end its existing sessions. Owner and principal may manage non-owner profiles; management is restricted to students.",
+        "dispatch_type": "write",
+        "security_sensitive": True,
+        "params_schema": {
+            "user_id": {"type": "string", "description": "Target login user ID; provide this or username"},
+            "username": {"type": "string", "description": "Target username; provide this or user_id"},
+            "new_password": {"type": "string", "description": "New password, 8-128 characters (required)"},
+        },
+        "secret_params": ["new_password"],
     },
     "update_staff": {
         "fn": tool_update_staff,
@@ -4926,7 +5467,7 @@ TOOL_REGISTRY = {
         "fn": tool_delete_discount_type,
         "roles": ["owner", "admin"],
         "sub_categories": ["principal"],
-        "description": "Permanently delete a discount type. Destructive — requires a second confirmation.",
+        "description": "Permanently delete a discount type. Destructive; requires confirmation.",
         "dispatch_type": "write",
         "requires_confirmation": True,
         "destructive": True,
@@ -4969,7 +5510,7 @@ TOOL_REGISTRY = {
         "fn": tool_delete_class,
         "roles": ["owner", "admin"],
         "sub_categories": ["principal"],
-        "description": "Permanently delete a class. Destructive — requires a second confirmation. Blocked if active students are assigned.",
+        "description": "Permanently delete a class. Destructive; requires confirmation. Blocked if active students are assigned.",
         "dispatch_type": "write",
         "requires_confirmation": True,
         "destructive": True,
@@ -5006,7 +5547,7 @@ TOOL_REGISTRY = {
         "fn": tool_delete_house,
         "roles": ["owner", "admin"],
         "sub_categories": ["principal"],
-        "description": "Permanently delete a house. Destructive — requires a second confirmation. Blocked if active students are assigned.",
+        "description": "Permanently delete a house. Destructive; requires confirmation. Blocked if active students are assigned.",
         "dispatch_type": "write",
         "requires_confirmation": True,
         "destructive": True,
@@ -5044,7 +5585,7 @@ TOOL_REGISTRY = {
     "delete_branch": {
         "fn": tool_delete_branch,
         "roles": ["owner"],
-        "description": "Permanently delete a branch (owner only). Destructive — requires a second confirmation. Blocked if active students are assigned.",
+        "description": "Permanently delete a branch (owner only). Destructive; requires confirmation. Blocked if active students are assigned.",
         "dispatch_type": "write",
         "requires_confirmation": True,
         "destructive": True,
@@ -5069,7 +5610,7 @@ TOOL_REGISTRY = {
     "year_end_transition": {
         "fn": tool_year_end_transition,
         "roles": ["owner"],
-        "description": "Transition the school to a new academic year (owner only). High-impact — requires a second confirmation.",
+        "description": "Transition the school to a new academic year (owner only). High impact; requires confirmation.",
         "dispatch_type": "write",
         "requires_confirmation": True,
         "destructive": True,
@@ -5347,7 +5888,7 @@ TOOL_REGISTRY = {
         "fn": tool_delete_expense,
         "roles": ["owner", "admin"],
         "sub_categories": ["accountant"],
-        "description": "Permanently delete an expense record. Destructive — requires a second confirmation.",
+        "description": "Permanently delete an expense record. Destructive; requires confirmation.",
         "dispatch_type": "write",
         "requires_confirmation": True,
         "destructive": True,
@@ -5390,7 +5931,7 @@ TOOL_REGISTRY = {
         "fn": tool_delete_fee_transaction,
         "roles": ["owner", "admin"],
         "sub_categories": ["accountant"],
-        "description": "Delete a fee transaction (soft delete — kept in the financial trail). Use for duplicate or erroneous entries. Destructive — requires a second confirmation.",
+        "description": "Delete a fee transaction (soft delete, kept in the financial trail). Use for duplicate or erroneous entries. Destructive; requires confirmation.",
         "dispatch_type": "write",
         "requires_confirmation": True,
         "destructive": True,
@@ -5451,7 +5992,7 @@ TOOL_REGISTRY = {
     "delete_asset": {
         "fn": tool_delete_asset,
         "roles": ["owner", "admin"],
-        "description": "Permanently delete an inventory asset. Destructive — requires a second confirmation.",
+        "description": "Permanently delete an inventory asset. Destructive; requires confirmation.",
         "dispatch_type": "write",
         "requires_confirmation": True,
         "destructive": True,
@@ -5490,7 +6031,7 @@ TOOL_REGISTRY = {
         "fn": tool_delete_visitor,
         "roles": ["owner", "admin"],
         "sub_categories": ["principal", "receptionist"],
-        "description": "Delete a visitor-log entry. Destructive — requires a second confirmation.",
+        "description": "Delete a visitor-log entry. Destructive; requires confirmation.",
         "dispatch_type": "write",
         "requires_confirmation": True,
         "destructive": True,
@@ -5576,7 +6117,7 @@ TOOL_REGISTRY = {
         "fn": tool_delete_query_ticket,
         "roles": ["owner", "admin"],
         "sub_categories": ["it_tech"],
-        "description": "Delete a support/query ticket. Destructive — requires a second confirmation.",
+        "description": "Delete a support/query ticket. Destructive; requires confirmation.",
         "dispatch_type": "write",
         "requires_confirmation": True,
         "destructive": True,
@@ -5621,7 +6162,7 @@ TOOL_REGISTRY = {
     "delete_transport_route": {
         "fn": tool_delete_transport_route,
         "roles": ["owner", "admin"],
-        "description": "Delete a transport route. Blocked while active students are assigned. Destructive — requires a second confirmation.",
+        "description": "Delete a transport route. Blocked while active students are assigned. Destructive; requires confirmation.",
         "dispatch_type": "write",
         "requires_confirmation": True,
         "destructive": True,
@@ -5659,7 +6200,7 @@ TOOL_REGISTRY = {
     "delete_announcement": {
         "fn": tool_delete_announcement,
         "roles": ["owner", "admin"],
-        "description": "Delete an announcement. Destructive — requires a second confirmation.",
+        "description": "Delete an announcement. Destructive; requires confirmation.",
         "dispatch_type": "write",
         "requires_confirmation": True,
         "destructive": True,
@@ -5678,7 +6219,7 @@ TOOL_REGISTRY = {
         "description": (
             "Record that a student has left the school, taking them off the roll and off "
             "every screen. Reversible from the Student Database. Destructive — requires a "
-            "second confirmation. This does NOT permanently erase the child's record; "
+            "confirmation. This does NOT permanently erase the child's record; "
             "erasure is done on the screen, by a person, with a written reason."
         ),
         "dispatch_type": "write",
@@ -5696,7 +6237,7 @@ TOOL_REGISTRY = {
         "description": (
             "Record that a member of staff has left, closing their login and ending any "
             "open session. Reversible from the staff screen. Destructive — requires a "
-            "second confirmation."
+            "confirmation."
         ),
         "dispatch_type": "write",
         "requires_confirmation": True,
@@ -5727,7 +6268,7 @@ TOOL_REGISTRY = {
         "sub_categories": ["principal"],
         "description": (
             "Permanently delete an incident logged in error. Destructive — requires a "
-            "second confirmation. Blocked once the incident has been resolved, because a "
+            "confirmation. Blocked once the incident has been resolved, because a "
             "resolved incident is part of the school's safeguarding record."
         ),
         "dispatch_type": "write",
@@ -5744,7 +6285,7 @@ TOOL_REGISTRY = {
         "sub_categories": ["principal"],
         "description": (
             "Permanently delete a certificate raised in error. Destructive — requires a "
-            "second confirmation. Blocked once the certificate has been issued, because "
+            "confirmation. Blocked once the certificate has been issued, because "
             "the family may be holding the printed copy."
         ),
         "dispatch_type": "write",
@@ -5762,7 +6303,7 @@ TOOL_REGISTRY = {
         "description": (
             "Permanently delete an admission enquiry entered in error, freeing the phone "
             "and email so the family can be entered again. Destructive — requires a "
-            "second confirmation. Blocked once the enquiry has become an application or "
+            "confirmation. Blocked once the enquiry has become an application or "
             "an enrolled student."
         ),
         "dispatch_type": "write",
@@ -5804,6 +6345,65 @@ TOOL_REGISTRY = {
         },
     },
 }
+
+# The profile matrix is metadata on the registry entry itself so every invocation
+# door (chat, native function calls, and tool panels) makes the same decision.
+FINANCE_TOOL_NAMES = frozenset({
+    "get_finance_controls", "get_commercial_operations", "get_fee_summary",
+    "get_payroll", "upsert_salary_structure", "disburse_salary",
+    "correct_salary_disbursement", "create_accounting_period",
+    "change_accounting_period_status",
+    "get_financial_report", "get_fee_transactions", "get_fee_structures",
+    "get_fee_defaulters", "query_fee_status", "get_expenses", "create_expense",
+    "update_expense", "delete_expense", "apply_discount", "record_fee_payment",
+    "create_fee_structure", "update_fee_structure", "delete_fee_structure",
+    "create_discount_type", "update_discount_type", "delete_discount_type",
+    "correct_fee_transaction", "delete_fee_transaction", "trigger_fee_sync",
+    "get_fee_sync_status", "create_legal_entity", "set_default_legal_entity",
+    "delete_legal_entity", "create_retail_product", "delete_retail_product",
+    "open_pos_shift", "close_pos_shift", "post_pos_sale", "post_pos_return",
+})
+
+SHARED_LOOKUP_TOOL_NAMES = frozenset({
+    "draft_document", "search_students", "get_student_database",
+    "get_student_profile", "query_student_record", "get_staff_list",
+    "get_class_list",
+})
+
+LEADERSHIP_ONLY_TOOL_NAMES = frozenset({
+    "recall_history", "query_audit_log", "get_profile_notes", "add_profile_note",
+})
+
+BULK_TOOL_NAMES = frozenset({
+    "mark_attendance", "mark_staff_attendance", "trigger_fee_sync",
+})
+
+SECURITY_SENSITIVE_TOOL_NAMES = frozenset({"set_profile_password"})
+
+# Ordinary single-record writes execute immediately through the same token-bound,
+# transactional, kill-switched, rate-limited and write-ahead-audited dispatcher.
+# Only destructive, bulk, and financial-reversal actions stop for a user decision.
+EXPLICIT_CONFIRMATION_TOOL_NAMES = frozenset({
+    name for name, tool in TOOL_REGISTRY.items() if tool.get("destructive")
+}) | BULK_TOOL_NAMES | frozenset({
+    "post_pos_return", "correct_fee_transaction", "correct_salary_disbursement",
+    "change_accounting_period_status",
+}) | SECURITY_SENSITIVE_TOOL_NAMES
+
+for _tool_name, _tool_def in TOOL_REGISTRY.items():
+    if _tool_name in LEADERSHIP_ONLY_TOOL_NAMES:
+        _tool_def["access_domain"] = "leadership"
+    elif _tool_name in FINANCE_TOOL_NAMES:
+        _tool_def["access_domain"] = "finance"
+    elif _tool_name in SHARED_LOOKUP_TOOL_NAMES:
+        _tool_def["access_domain"] = "shared"
+    else:
+        _tool_def["access_domain"] = "non_finance"
+
+    if _tool_def.get("dispatch_type") == "write":
+        _tool_def["requires_confirmation"] = _tool_name in EXPLICIT_CONFIRMATION_TOOL_NAMES
+        if _tool_name in BULK_TOOL_NAMES:
+            _tool_def["bulk"] = True
 
 WRITE_TOOL_NAMES = {
     name for name, tool in TOOL_REGISTRY.items()

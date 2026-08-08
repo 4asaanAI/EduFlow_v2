@@ -33,6 +33,7 @@ def _make_db(**collections):
         "leave_requests", "house_points", "library_books",
         "library_transactions", "vehicles", "transport_routes",
         "inventory", "enquiries", "visitor_log", "subjects", "exams",
+        "houses", "house_points_log",
     ]
     for name in defaults:
         setattr(db, name, FakeCollection())
@@ -236,6 +237,55 @@ async def test_build_receptionist_context_uses_school_wide_scope(monkeypatch):
     assert "todays_visitor_count" in ctx
     # School-wide — receptionists see all school enquiries/visitors
     assert ctx["pending_enquiries"] >= 1
+
+
+async def test_reversed_coordinator_range_does_not_widen_context(monkeypatch):
+    """A malformed stored range must not expose every class through Flo's prompt context."""
+    from ai import context_builder
+
+    db = _make_db(
+        staff=FakeCollection([{
+            "id": "staff-1", "user_id": "coordinator-1", "schoolId": "aaryans-joya",
+            "sub_category": "coordinator", "coordinator_range": "5-1",
+        }]),
+        classes=FakeCollection([
+            {"id": "c1", "name": "1st", "section": "A", "schoolId": "aaryans-joya"},
+            {"id": "c5", "name": "5th", "section": "A", "schoolId": "aaryans-joya"},
+        ]),
+    )
+    monkeypatch.setenv("SCHOOL_ID", "aaryans-joya")
+
+    ctx = await context_builder._build_coordinator_context(
+        db, date.today().strftime("%Y-%m-%d"), "coordinator-1"
+    )
+
+    assert ctx["classes_in_range"] == 0
+
+
+async def test_coordinator_context_range_does_not_match_class_ten(monkeypatch):
+    from ai import context_builder
+
+    db = _make_db(
+        staff=FakeCollection([{
+            "id": "staff-1", "user_id": "coordinator-1", "schoolId": "aaryans-joya",
+            "sub_category": "coordinator", "coordinator_range": "1-5",
+        }]),
+        classes=FakeCollection([
+            {"id": "c1", "name": "1st", "section": "A", "schoolId": "aaryans-joya"},
+            {"id": "c10", "name": "10th", "section": "A", "schoolId": "aaryans-joya"},
+        ]),
+        students=FakeCollection([
+            {"id": "s1", "class_id": "c1", "is_active": True, "schoolId": "aaryans-joya"},
+            {"id": "s10", "class_id": "c10", "is_active": True, "schoolId": "aaryans-joya"},
+        ]),
+    )
+    monkeypatch.setenv("SCHOOL_ID", "aaryans-joya")
+
+    ctx = await context_builder._build_coordinator_context(
+        db, date.today().strftime("%Y-%m-%d"), "coordinator-1"
+    )
+
+    assert ctx["classes_in_range"] == 1
 
 
 # ---------------------------------------------------------------------------

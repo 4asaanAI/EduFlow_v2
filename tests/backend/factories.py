@@ -137,3 +137,31 @@ def make_leave_request(staff_id: str = "s1", status: str = "pending", **kwargs) 
         },
         **kwargs,
     )
+
+
+def make_auth_user(
+    role: str = "admin",
+    sub_category: str = "principal",
+    branch_id: str = DEFAULT_BRANCH_ID,
+    **kwargs,
+) -> dict:
+    user_id = kwargs.pop("id", str(uuid.uuid4()))
+    name = kwargs.pop("name", "Test Profile")
+    username = kwargs.pop("username", f"profile.{user_id[:8]}")
+    return {
+        "id": user_id,
+        "schoolId": kwargs.pop("schoolId", DEFAULT_SCHOOL_ID),
+        "username": username,
+        "username_lower": username.casefold(),
+        "role": role,
+        "is_active": True,
+        "user_info": {
+            "id": user_id,
+            "name": name,
+            "role": role,
+            "sub_category": sub_category,
+            "branch_id": branch_id,
+            "is_active": True,
+        },
+        **kwargs,
+    }

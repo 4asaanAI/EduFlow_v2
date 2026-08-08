@@ -9,6 +9,7 @@
 
 const { defineConfig, devices } = require('@playwright/test');
 const isWindows = process.platform === 'win32';
+const chromiumChannel = process.env.PLAYWRIGHT_CHANNEL || undefined;
 
 /** @type {import('@playwright/test').PlaywrightTestConfig} */
 const config = defineConfig({
@@ -50,6 +51,7 @@ const config = defineConfig({
     {
       name: 'setup',
       testMatch: /support\/fixtures\/auth\.setup\.js/,
+      use: { channel: chromiumChannel },
     },
 
     // Chromium (primary)
@@ -59,6 +61,7 @@ const config = defineConfig({
       testIgnore: /e2e\/responsive\.spec\.js/,
       use: {
         ...devices['Desktop Chrome'],
+        channel: chromiumChannel,
         storageState: 'tests/support/fixtures/.auth/admin.json',
       },
       dependencies: ['setup'],
@@ -83,6 +86,7 @@ const config = defineConfig({
       testMatch: /e2e\/responsive\.spec\.js/,
       use: {
         ...devices['Desktop Chrome'],
+        channel: chromiumChannel,
         storageState: 'tests/support/fixtures/.auth/admin.json',
       },
       dependencies: ['setup'],

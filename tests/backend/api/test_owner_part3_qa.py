@@ -56,8 +56,6 @@ def _owner() -> dict:
 
 OWNER_ONLY_ENDPOINTS = (
     # P9.6: fee-collection-summary is now owner OR principal — moved to OWNER_OR_PRINCIPAL_ENDPOINTS below.
-    ("GET", "/api/fees/discount-summary", None, None),
-    ("POST", "/api/fees/sync/job-1/resolve-conflict", {"conflict_id": "c1", "decision": "keep_ours"}, None),
     ("POST", "/api/issues/facility/fr-1/confirm-resolution", None, None),
     ("PATCH", "/api/settings/school", {"school_name": "Aaryans"}, None),
     # Student erase moved to owner-OR-PRINCIPAL on 2026-08-07 (owner request: the
@@ -154,7 +152,6 @@ async def test_fee_summary_allows_principal(client):
     "user",
     [
         {"id": "teacher-1", "role": "teacher"},
-        {"id": "principal-1", "role": "admin", "sub_category": "principal"},
         {"id": "student-1", "role": "student"},
     ],
 )
@@ -167,6 +164,12 @@ async def test_owner_only_ai_tools_reject_non_owner_roles(tool_name, user):
 @pytest.mark.asyncio
 async def test_owner_only_ai_tools_allow_owner(tool_name):
     assert _is_tool_authorized(_owner(), TOOL_REGISTRY[tool_name]) is True
+
+
+@pytest.mark.parametrize("tool_name", ["get_financial_report", "query_dashboard_summary", "confirm_resolution"])
+async def test_full_principal_profile_allows_school_management_ai_tools(tool_name):
+    principal = {"id": "principal-1", "role": "admin", "sub_category": "principal"}
+    assert _is_tool_authorized(principal, TOOL_REGISTRY[tool_name]) is True
 
 
 @pytest.mark.asyncio

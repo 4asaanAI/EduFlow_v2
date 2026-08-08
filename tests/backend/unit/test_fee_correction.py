@@ -4,7 +4,7 @@ from middleware.auth import create_jwt
 from tests.backend.factories import make_fee_transaction
 
 def _accountant_headers(user_id="acct-1"):
-    t = create_jwt({"user_id": user_id, "role": "admin", "name": "Acct", "sub_category": "accounts"})
+    t = create_jwt({"user_id": user_id, "role": "admin", "name": "Acct", "sub_category": "accountant"})
     return {"Authorization": f"Bearer {t}"}
 
 
@@ -25,8 +25,8 @@ def test_accountant_can_correct_own_transaction(client, fake_db):
     assert resp.status_code == 200
 
 
-def test_accountant_cannot_correct_other_transaction(client, fake_db):
-    """Accountant cannot correct a transaction created by someone else."""
+def test_accountant_can_correct_other_transaction(client, fake_db):
+    """The accountant head can correct any scoped finance record; the change is audited."""
     txn = make_fee_transaction(id="txn-c2", created_by="other-user", amount=5000)
     fake_db.fee_transactions.docs = [txn]
     resp = client.patch(
@@ -34,7 +34,7 @@ def test_accountant_cannot_correct_other_transaction(client, fake_db):
         json={"amount": 4000, "reason": "Error"},
         headers=_accountant_headers("acct-1"),
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 200
 
 
 def test_owner_can_correct_any_transaction(client, fake_db):

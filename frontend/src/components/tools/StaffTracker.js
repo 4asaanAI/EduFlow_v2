@@ -288,13 +288,13 @@ function ResetPasswordModal({ profile, onClose }) {
 
   const submit = async (e) => {
     e.preventDefault();
-    if (newPassword.length < 6) { setError('Password must be at least 6 characters'); return; }
+    if (newPassword.length < 8) { setError('Password must be at least 8 characters'); return; }
     setSaving(true);
     setError('');
     const res = await adminResetPassword(profile.user_id || profile.id, newPassword);
     setSaving(false);
     if (res.success) {
-      setSuccess(`Password reset. The user will be asked to change it on next login.`);
+      setSuccess('Password changed. Existing sessions have been signed out.');
     } else {
       setError(res.detail || 'Failed to reset password');
     }

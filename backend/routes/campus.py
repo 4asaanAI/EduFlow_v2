@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from database import get_db
@@ -247,10 +249,11 @@ async def list_library_titles(request: Request, search: str | None = None,
                               user: dict = Depends(require_role("owner", "admin", "teacher", "student", "parent"))):
     query = {"is_active": True}
     if search:
+        safe_search = re.escape(search.strip())
         query["$or"] = [
-            {"title": {"$regex": search, "$options": "i"}},
-            {"author": {"$regex": search, "$options": "i"}},
-            {"accession_number": {"$regex": search, "$options": "i"}},
+            {"title": {"$regex": safe_search, "$options": "i"}},
+            {"author": {"$regex": safe_search, "$options": "i"}},
+            {"accession_number": {"$regex": safe_search, "$options": "i"}},
         ]
     rows = await get_db().library_titles.find(
         scoped_query(query, branch_id=user.get("branch_id")), {"_id": 0}

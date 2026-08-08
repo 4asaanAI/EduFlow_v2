@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { getAuthHeaders } from '../../lib/authSession';
-import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, useColumnSort, SortableHeaderRow } from './ToolPage';
+import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, ErrorCard, useColumnSort, SortableHeaderRow } from './ToolPage';
 import { Brain, HelpCircle, Send } from 'lucide-react';
 import { API, apiFetch } from '../../lib/api';
 
@@ -549,6 +549,7 @@ export function StudyPlanner() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const f = k => v => setPlan(p => ({ ...p, [k]: v }));
 
   useEffect(() => {
@@ -559,11 +560,18 @@ export function StudyPlanner() {
 
   const handleSave = async () => {
     setSaving(true);
+    setSaveError('');
     try {
-      const r = await apiFetch(`${API}/ops/study-plan`, { method: 'POST', headers: h(), body: JSON.stringify(plan) }).then(r => r.json());
-      if (r.success) { setSaved(true); setTimeout(() => setSaved(false), 3000); }
-    } catch {}
-    setSaving(false);
+      const response = await apiFetch(`${API}/ops/study-plan`, { method: 'POST', headers: h(), body: JSON.stringify(plan) });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || !body.success) throw new Error(body.detail || 'Unable to save your study plan.');
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (error) {
+      setSaveError(error.message || 'Unable to save your study plan.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (loading) return <ToolPage title="Study Planner" subtitle="Plan your week"><div style={{ color: 'var(--c-faint)', fontSize: 13 }}>Loading...</div></ToolPage>;
@@ -571,7 +579,8 @@ export function StudyPlanner() {
   return (
     <ToolPage title="Study Planner" subtitle="Plan your weekly study schedule">
       <div style={{ maxWidth: 600 }}>
-        <p style={{ color: 'var(--c-faint)', fontSize: 12, marginBottom: 16 }}>Set your study goals for each day of the week. Your plan is saved automatically.</p>
+        <p style={{ color: 'var(--c-faint)', fontSize: 12, marginBottom: 16 }}>Set your study goals for each day of the week, then save your plan.</p>
+        {saveError && <ErrorCard message={saveError} />}
         <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
           {Object.keys(plan).filter(k => k !== 'user_id' && k !== 'updated_at').map(day => (
             <FormField key={day} label={day.charAt(0).toUpperCase() + day.slice(1)} value={plan[day] || ''} onChange={f(day)}

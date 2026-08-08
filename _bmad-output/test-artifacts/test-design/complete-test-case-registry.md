@@ -22,9 +22,9 @@ total_test_cases: 310
 
 | # | Username | Password | Role |
 |---|---|---|---|
-| U1 | `owner` | `owner@123` | Owner |
-| U2 | `admin` | `admin@123` | Principal |
-| U3 | `accountant` | `accountant@123` | Accountant |
+| U1 | `owner` | `$EDUFLOW_TEST_OWNER_PASSWORD` | Owner |
+| U2 | `admin` | `$EDUFLOW_TEST_PRINCIPAL_PASSWORD` | Principal |
+| U3 | `accountant` | `$EDUFLOW_TEST_ACCOUNTANT_PASSWORD` | Accountant |
 | U4 | `ittech` | `ittech@123` | IT & Tech |
 | U5 | `maintenance` | `maintenance@123` | Maintenance |
 | U6 | `reception` | `reception@123` | Receptionist |

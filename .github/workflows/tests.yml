@@ -74,13 +74,13 @@ jobs:
       - name: Run the suite
         env:
           CI: 'true'
-        run: npx craco test --watchAll=false
+        run: yarn test --runInBand
 
       - name: Build with the hook-dependency rule at error
         # This is the T11 gate. react-hooks/exhaustive-deps is "error" on a
         # production build, so a reintroduced stale dependency fails here rather
         # than showing someone yesterday's data on a screen.
-        run: npx craco build
+        run: yarn build
 
   mongo-real:
     name: Real-Mongo write-rollback tier

@@ -41,7 +41,7 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 |---|---|---|
 | React | 19.0.0 | No legacy lifecycle methods |
 | React Router DOM | 7.5.1 | v7 API — `createBrowserRouter` or `<BrowserRouter>` |
-| CRA + CRACO | react-scripts 5.0.1 + @craco/craco 7.1.0 | Build via `craco`, NOT `react-scripts` directly |
+| Vite | 6.4.x | Build output remains `build/` for AWS Amplify |
 | Tailwind CSS | 3.4.17 | v3, NOT v4 — no @layer base conflicts |
 | shadcn/ui (Radix UI) | various | Already installed — reuse, do not add duplicates |
 | React Hook Form | 7.56.2 | + @hookform/resolvers 5.0.1 |
@@ -167,10 +167,10 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 ### Testing Rules
 
 - Test files live in `tests/` at project root — backend tests are Pytest
-- Frontend has no test suite currently — when adding tests, use `craco test`
+- Frontend unit tests use Jest + RTL — run `yarn test --runInBand`
 - Never test against the live MongoDB Atlas instance — mock `get_db()` in tests
 - When testing auth-protected routes, inject a pre-signed JWT in the `Authorization` header
-- **387 backend tests passing (0 skipped)**. The fix for Python 3.9 `str | None` syntax (`from __future__ import annotations`) unlocked the previously-silently-skipped 178 tests — always add this import to route files or the conftest `APP_AVAILABLE` check silently skips the entire integration suite.
+- The required baseline is zero failures. Never pin a pass count because the suite grows continuously. Always add `from __future__ import annotations` to Python files that use modern annotation syntax.
 
 ---
 
@@ -194,7 +194,7 @@ _Critical rules and patterns AI agents must follow when implementing code in thi
 
 ### Development Workflow Rules
 
-- **Frontend start**: `cd frontend && yarn start` (uses CRACO)
+- **Frontend start**: `cd frontend && yarn start` (Vite on port 3000)
 - **Backend start**: `cd backend && uvicorn server:app --reload`
 - **Environment variables**: backend reads from `backend/.env`; frontend reads from `frontend/.env`
 - **New backend route**: create `backend/routes/<name>.py`, add router to `server.py`
@@ -402,7 +402,9 @@ Two tenancy axes coexist: `branch_id` (per-branch) and `schoolId` (per-school, S
 
 - Migrations: `backend/migrations/NNN_<slug>.py` — sequential prefix.
 - Every migration: `async def migrate(db)`, idempotent, registered in `run_all.py` MIGRATIONS list.
-- **Current range:** 001–021 all present and in run_all.py. Migration 014 gap was fixed in Part 4.
+- Register new migrations in `run_all.py` for fresh/test database setup, but never run
+  that aggregate runner against the live school database. Production migrations are
+  read, rehearsed, and executed one at a time.
 - TTL indexes: `expireAfterSeconds=0` + `expires_at` datetime field in the doc. Use `sparse=True` where TTL is conditional.
 - **`sms_logs.created_at`** must be stored as native `datetime` object (not ISO string) for TTL index to fire. Fixed in Part 16.
 
@@ -529,7 +531,7 @@ from tests.backend.factories import (
 - `frontend/src/setupTests.js` configures RTL matchers
 - `frontend/src/components/__tests__/` for component tests
 
-### Current baseline: **699 backend tests, 0 skipped** (as of 2026-05-16)
+### Current baseline: **zero failures**; read the pass count from the current run
 
 ---
 

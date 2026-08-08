@@ -86,6 +86,18 @@ async def test_create_expense_parity(client, fake_db):
     assert len(rest_state["audit"]) == 1
 
 
+async def test_get_expenses_treats_category_as_literal_text(fake_db):
+    fake_db.expenses.docs[:] = [
+        {"id": "literal", "schoolId": SCHOOL, "category": "C++", "amount": 100, "date": "2026-06-01"},
+        {"id": "unrelated", "schoolId": SCHOOL, "category": "Catering", "amount": 200, "date": "2026-06-02"},
+    ]
+
+    result = await tool_functions_v2.tool_get_expenses({"category": "C++"}, OWNER_USER, None)
+
+    assert result["success"] is True
+    assert [row["id"] for row in result["data"]["expenses"]] == ["literal"]
+
+
 def _seed_expense(fake_db):
     fake_db.expenses.docs[:] = [{
         "_id": "exp-1", "id": "exp-1", "schoolId": SCHOOL, "category": "maintenance",

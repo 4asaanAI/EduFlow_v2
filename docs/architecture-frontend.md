@@ -6,7 +6,7 @@ _Generated: 2026-05-15 | Scan: deep | Part: frontend_
 
 ## Executive Summary
 
-EduFlow's frontend is a **React 19 SPA** built with CRA + CRACO. It is a role-based chat-centric interface: all school management actions are accessible either through an AI chat assistant or through structured tool panels.
+EduFlow's frontend is a **React 19 SPA** built with Vite. It is a role-based chat-centric interface: school management actions are accessible either through Flo or through structured tool panels.
 
 Key design decisions:
 1. **Chat-first UX** — AI chat is the primary interaction pattern; tools are secondary panels
@@ -23,7 +23,7 @@ Key design decisions:
 |---------|------|---------|
 | Framework | React | 19.0.0 |
 | Router | React Router DOM | 7.5.1 |
-| Build tool | CRA + CRACO | react-scripts 5.0.1 + @craco/craco 7.1.0 |
+| Build tool | Vite | 6.4.x + React plugin 4.4.x |
 | Styling | Tailwind CSS | 3.4.17 (v3 — NOT v4) |
 | Component system | shadcn/ui (Radix UI) | Various |
 | Forms | React Hook Form + Zod | 7.56.2 + 3.24.4 |
@@ -155,7 +155,8 @@ const res = await axios.post(`${API_BASE}/uploads`, formData, {
 })
 ```
 
-`API_BASE` defaults to `http://localhost:8000` in dev, configured via `REACT_APP_API_URL` env var in prod.
+The backend origin is configured with `VITE_BACKEND_URL`; the legacy
+`REACT_APP_BACKEND_URL` name remains supported during deployment migration.
 
 ---
 
@@ -228,20 +229,20 @@ Accordion, AlertDialog, Alert, AspectRatio, Avatar, Badge, Breadcrumb, Button, C
 ```bash
 cd frontend
 yarn install
-yarn start       # CRA dev server on :3000
+yarn start       # Vite dev server on :3000
 ```
 
 **Build:**
 ```bash
-yarn build       # → frontend/build/ (via craco)
+yarn build       # hooks lint + Vite → frontend/build/
 ```
 
-**Path alias:** `@/` maps to `src/` (configured in `craco.config.js` + `jsconfig.json`).
+**Path alias:** `@/` maps to `src/` in Vite, Jest, and `jsconfig.json`.
 
 **AWS Amplify (prod):**
 - Build command: `yarn build`
 - Output directory: `build/`
-- Environment var: `REACT_APP_API_URL` → backend URL
+- Environment var: `VITE_BACKEND_URL` → backend URL (legacy `REACT_APP_BACKEND_URL` also supported)
 
 ---
 

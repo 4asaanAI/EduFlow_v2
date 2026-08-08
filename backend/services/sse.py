@@ -97,6 +97,11 @@ async def publish(channel: str, event: dict[str, Any]) -> None:
         _connections.pop(channel, None)
 
 
+def is_connected(channel: str) -> bool:
+    """Return whether this worker currently has a live subscriber for a channel."""
+    return bool(_connections.get(channel))
+
+
 async def keepalive_loop() -> None:
     while True:
         await asyncio.sleep(KEEPALIVE_SECONDS)

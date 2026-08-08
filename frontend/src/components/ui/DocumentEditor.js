@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
-import html2pdf from 'html2pdf.js';
 import { Bold, Underline, List, X } from 'lucide-react';
 
 /**
@@ -42,7 +41,7 @@ export default function DocumentEditor({ fileName = 'document', html = '', onClo
   const baseName = String(fileName).replace(/\.[^.]+$/, '').replace(/\s+/g, '-') || 'document';
   const liveHtml = () => editorRef.current?.innerHTML || html;
 
-  const downloadPdf = () => {
+  const downloadPdf = async () => {
     // html2canvas cannot capture an off-screen or hidden element, so the copy being
     // printed is placed on screen for the moment it takes, then removed.
     const overlay = document.createElement('div');
@@ -52,17 +51,21 @@ export default function DocumentEditor({ fileName = 'document', html = '', onClo
     inner.innerHTML = DOMPurify.sanitize(liveHtml());
     overlay.appendChild(inner);
     document.body.appendChild(overlay);
-    html2pdf()
-      .set({
-        margin: [12, 12, 12, 12],
-        filename: `${baseName}-edited.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: 'white' },
-        jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' },
-      })
-      .from(inner)
-      .save()
-      .finally(() => document.body.removeChild(overlay));
+    try {
+      const { default: html2pdf } = await import('html2pdf.js');
+      await html2pdf()
+        .set({
+          margin: [12, 12, 12, 12],
+          filename: `${baseName}-edited.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: 'white' },
+          jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' },
+        })
+        .from(inner)
+        .save();
+    } finally {
+      overlay.remove();
+    }
   };
 
   const downloadWord = () => {

@@ -20,6 +20,7 @@ def test_it_tech_cannot_reset_owner_password(client, fake_db):
     fake_db.auth_users.docs = [
         {
             "id": "owner-user",
+            "schoolId": "aaryans-joya",
             "user_info": {"id": "owner-user", "role": "owner", "name": "Owner"},
             "password_hash": "x",
         }
@@ -42,6 +43,7 @@ def test_owner_can_reset_non_owner_password(client, fake_db):
     fake_db.auth_users.docs = [
         {
             "id": "teacher-user",
+            "schoolId": "aaryans-joya",
             "user_info": {"id": "teacher-user", "role": "teacher", "name": "Teacher"},
             "password_hash": "x",
         }

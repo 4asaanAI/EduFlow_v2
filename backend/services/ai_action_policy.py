@@ -1,31 +1,18 @@
-"""Phase-1 AI action-authorization lockdown (AI Layer Hardening, Story F.11 / FR43).
+"""Central Flo authorization overlay for privileged school profiles.
 
-THE SINGLE SWITCH. During Phase 1 the *entire* AI write/action surface — every
-Epic A–C hardened write tool, the CRUD tools (Epics J/K), and any destructive op
-(F.10) — is permitted ONLY for **Owner** or **Principal** (`role=admin` AND
-`sub_category=principal`), even where the underlying REST route permits broader
-roles (e.g. teacher `mark_attendance`, accountant fee config).
-
-This is a deliberate, reversible pilot scope, NOT a permanent RBAC change. Phase 2
-(Epic H) widens it to other staff roles **without engine changes** by editing the
-single `PHASE_1_ACTION_ROLES` policy below (or flipping `LOCKDOWN_ENABLED`).
-
-Hard invariants:
-- Applies to ACTION/WRITE tools only. **Student (and every) read tool is
-  unaffected** — students keep their current read-only, content-filtered
-  experience and are *permanently* excluded from the write/action expansion.
-- Enforced at `_is_tool_authorized` (routes/chat.py) — i.e. BEFORE any confirm
-  token is issued, before the rate slot is taken, and per-step for plans. A
-  refused action never reaches the executor.
+The registry remains the source of truth for ordinary roles. Four named authority
+profiles have broader, domain-based access: owner and principal get the complete
+school-management surface, accountant gets finance plus the lookups finance needs,
+and management gets every non-finance surface. Leadership notes and audit history
+remain owner/principal-only. Other staff keep the former action lockdown.
 """
 
 from __future__ import annotations
 
 from typing import Any, Dict
 
-# Flip to False in Phase 2 (Epic H) to lift the pilot lockdown, OR widen the
-# role predicate below. Kept as an explicit module constant so the cutover is a
-# one-line, greppable, reviewable change.
+# Kept for backwards compatibility and as the single guard for roles outside the
+# four reviewed profiles. Teachers and narrower admins do not silently gain writes.
 LOCKDOWN_ENABLED = True
 
 
@@ -44,7 +31,7 @@ def is_action_tool(tool_def: Dict[str, Any]) -> bool:
 
 
 def is_owner_or_principal(user: Dict[str, Any]) -> bool:
-    """The two acceptance-gate profiles for the Phase-1 pilot."""
+    """Profiles with full Flo school-management authority."""
     role = (user or {}).get("role")
     if role == "owner":
         return True
@@ -53,15 +40,50 @@ def is_owner_or_principal(user: Dict[str, Any]) -> bool:
     return False
 
 
-def is_action_authorized_phase1(user: Dict[str, Any], tool_def: Dict[str, Any]) -> bool:
-    """Phase-1 gate: action tools are Owner/Principal-only; reads pass through.
+def privileged_profile(user: Dict[str, Any]) -> str:
+    role = (user or {}).get("role")
+    sub_category = (user or {}).get("sub_category")
+    if role == "owner":
+        return "leadership"
+    if role == "admin" and sub_category == "principal":
+        return "leadership"
+    if role == "admin" and sub_category == "accountant":
+        return "finance"
+    if role == "admin" and sub_category == "management":
+        return "non_finance"
+    return ""
 
-    Returns True when the tool is permitted for `user` under the current phase
-    policy. Read tools always return True here (the registry role check still
-    applies separately upstream).
+
+def profile_authorization_decision(
+    user: Dict[str, Any], tool_def: Dict[str, Any]
+) -> "bool | None":
+    """Return an authoritative decision for a reviewed profile, else ``None``.
+
+    Profile expansion applies only to school-management tools already assigned to
+    owner/admin somewhere in the registry. It never grants student/guardian self tools.
     """
+    profile = privileged_profile(user)
+    if not profile:
+        return None
+    # Domain expansion is registry metadata. Synthetic definitions used by unit
+    # tests and callers outside TOOL_REGISTRY retain ordinary role semantics.
+    if "access_domain" not in (tool_def or {}):
+        return None
+    roles = set((tool_def or {}).get("roles") or ())
+    if not roles.intersection({"owner", "admin"}):
+        return False
+    domain = (tool_def or {}).get("access_domain")
+    if profile == "leadership":
+        return True
+    if profile == "finance":
+        return domain in {"finance", "shared"}
+    return domain in {"non_finance", "shared"}
+
+
+def is_action_authorized_phase1(user: Dict[str, Any], tool_def: Dict[str, Any]) -> bool:
+    """Retained action gate for roles not covered by the profile matrix."""
     if not LOCKDOWN_ENABLED:
         return True
     if not is_action_tool(tool_def):
         return True
-    return is_owner_or_principal(user)
+    return bool(privileged_profile(user))

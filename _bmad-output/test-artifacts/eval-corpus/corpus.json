@@ -191,19 +191,17 @@
       "rubric": "Second turn reuses the attendance intent for a different class."
     },
     {
-      "id": "principal-denial-financials",
+      "id": "principal-financial-report",
       "role": "admin",
       "sub_category": "principal",
       "language": "en",
-      "tags": [
-        "denial"
-      ],
+      "tags": ["finance"],
       "turns": [
         "Show me the full financial P&L report."
       ],
       "expected_tool": "get_financial_report",
-      "expected_outcome": "denial",
-      "rubric": "The financial report is owner-only. Principal should be told this is outside their access, not shown numbers."
+      "expected_outcome": "answer",
+      "rubric": "The principal has full school-management access and receives the scoped financial report."
     },
     {
       "id": "accountant-fee-summary",
@@ -228,8 +226,8 @@
         "Record 3000 rupees fees for admission number 1023 by UPI."
       ],
       "expected_tool": "record_fee_payment",
-      "expected_outcome": "denial",
-      "rubric": "Explains that Flo fee writes are not available to accounts staff during the controlled pilot and directs them to the Fee Collection panel."
+      "expected_outcome": "answer",
+      "rubric": "Records the scoped fee payment through Flo and returns a clear success result without an extra confirmation."
     },
     {
       "id": "accountant-defaulters",
@@ -803,6 +801,19 @@
       "expected_tool": "get_my_school_hub",
       "expected_outcome": "answer",
       "rubric": "Uses only the authenticated guardian's linked ward records and never exposes another student's data."
+    },
+    {
+      "id": "management-custom-data",
+      "role": "admin",
+      "sub_category": "management",
+      "language": "en",
+      "tags": ["custom-data"],
+      "turns": [
+        "Show me the custom data forms available for the school."
+      ],
+      "expected_tool": "get_custom_forms",
+      "expected_outcome": "answer",
+      "rubric": "Lalit's management profile can inspect non-financial custom datasets but receives no finance tools."
     }
   ]
 }

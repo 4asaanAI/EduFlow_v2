@@ -33,9 +33,9 @@ This creates all demo users, classes, students, staff, fee structures.
 
 | Username | Password | Role | Sub-Category |
 |---|---|---|---|
-| `owner` | `owner@123` | owner | — |
-| `admin` | `admin@123` | admin | principal |
-| `accountant` | `accountant@123` | admin | accountant |
+| `owner` | `$EDUFLOW_TEST_OWNER_PASSWORD` | owner | — |
+| `admin` | `$EDUFLOW_TEST_PRINCIPAL_PASSWORD` | admin | principal |
+| `accountant` | `$EDUFLOW_TEST_ACCOUNTANT_PASSWORD` | admin | accountant |
 | `transport` | `transport@123` | admin | transport_head |
 | `reception` | `reception@123` | admin | receptionist |
 | `ittech` | `ittech@123` | admin | it_tech |
@@ -91,7 +91,7 @@ This creates all demo users, classes, students, staff, fee structures.
 
 ### 4.2 Owner Role
 
-Login: `owner` / `owner@123`
+Login: `owner` / `$EDUFLOW_TEST_OWNER_PASSWORD`
 
 **School Dashboard**
 1. Check School Pulse widget — student count, staff count, fee collection summary
@@ -122,7 +122,7 @@ Login: `owner` / `owner@123`
 
 ### 4.3 Principal Role
 
-Login: `admin` / `admin@123`
+Login: `admin` / `$EDUFLOW_TEST_PRINCIPAL_PASSWORD`
 
 **Daily Ops Panel**
 1. Open Principal Daily Ops from sidebar
@@ -158,7 +158,7 @@ Login: `admin` / `admin@123`
 
 ### 4.4 Accountant Role
 
-Login: `accountant` / `accountant@123`
+Login: `accountant` / `$EDUFLOW_TEST_ACCOUNTANT_PASSWORD`
 
 **Fee Collection**
 1. Open Fee Collection tool

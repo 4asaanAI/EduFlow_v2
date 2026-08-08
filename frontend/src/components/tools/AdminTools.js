@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { API, apiFetch, getStudents, getAllStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, correctFeeTransaction, deleteFeeTransaction, getPendingLeaves, updateLeave, getWhatsappDefaulters, sendAttendanceAlerts, getSchoolSettings } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
-import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, LineChartWidget, useColumnSort, SortableHeaderRow } from './ToolPage';
+import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, ErrorCard, LineChartWidget, useColumnSort, SortableHeaderRow } from './ToolPage';
 import { Search, Plus, CheckCircle, XCircle, Save, RefreshCw, X, FileDown, MessageSquare, Edit3, Trash2 } from 'lucide-react';
 import SearchablePicker from '../ui/SearchablePicker';
 import FullStudentDatabase from './StudentDatabase';
@@ -451,6 +451,8 @@ export function AttendanceRecorder() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => { getAllClasses().then(r => { if (r.success && r.data.length > 0) { setClasses(r.data); setSelectedClass(r.data[0].id); } }); }, [currentUser]);
 
@@ -462,8 +464,17 @@ export function AttendanceRecorder() {
   // any other. Guarded by AttendanceRecorderDate.test.js.
   const loadStudents = useCallback(async () => {
     setLoading(true);
-    try { const r = await getTodayAttendance(selectedClass, date); if (r.success) setRecords(r.data || []); } catch {}
-    setLoading(false);
+    setLoadError(false);
+    setRecords([]);
+    try {
+      const result = await getTodayAttendance(selectedClass, date);
+      if (!result?.success) throw new Error('Unable to load attendance');
+      setRecords(result.data || []);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }, [selectedClass, date]);
 
   useEffect(() => { if (selectedClass) loadStudents(); }, [selectedClass, loadStudents]);
@@ -472,11 +483,16 @@ export function AttendanceRecorder() {
 
   const handleSave = async () => {
     setSaving(true);
+    setSaveError('');
     try {
-      await bulkMarkAttendance({ class_id: selectedClass, date, records: records.map(s => ({ student_id: s.student_id, status: s.status })) });
+      const result = await bulkMarkAttendance({ class_id: selectedClass, date, records: records.map(s => ({ student_id: s.student_id, status: s.status })) });
+      if (!result?.success) throw new Error(result?.detail || 'Unable to save attendance.');
       setSaved(true); setTimeout(() => setSaved(false), 3000);
-    } catch {}
-    setSaving(false);
+    } catch (error) {
+      setSaveError(error.message || 'Unable to save attendance.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const statusOpts = ['present', 'absent', 'late', 'holiday'];
@@ -484,6 +500,8 @@ export function AttendanceRecorder() {
 
   return (
     <ToolPage title="Attendance Recorder" subtitle="Mark class attendance">
+      {saveError && <ErrorCard message={saveError} />}
+      {loadError && <ErrorCard message="Unable to load this attendance register. Please try again." onRetry={loadStudents} />}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} data-testid="class-select" style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
@@ -492,7 +510,7 @@ export function AttendanceRecorder() {
         <ActionBtn label="All Present" variant="success" onClick={() => markAll('present')} data-testid="mark-all-present" />
         <ActionBtn label="All Absent" variant="danger" onClick={() => markAll('absent')} data-testid="mark-all-absent" />
       </div>
-      {records.length > 0 && (
+      {!loadError && records.length > 0 && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
           {[{ label: 'Present', val: presentCount, color: 'var(--tool-hex-34d399)' }, { label: 'Absent', val: records.filter(r => r.status === 'absent').length, color: 'var(--tool-hex-f87171)' }, { label: 'Late', val: records.filter(r => r.status === 'late').length, color: 'var(--tool-hex-fbbf24)' }, { label: 'Total', val: records.length, color: 'var(--c-text)' }].map(s => (
             <StatCard key={s.label} value={s.val} label={s.label} color={s.color} small />
@@ -505,7 +523,7 @@ export function AttendanceRecorder() {
           Safe to reorder: each Quick Mark button updates the record by student_id, never
           by its position in the list. `Quick Mark` is not sortable-meaningful but the
           shared component makes every heading a button, which is harmless here. */}
-      <div style={{ marginBottom: 14 }}>
+      {!loadError && <div style={{ marginBottom: 14 }}>
         <DataTable
           tableId="attendance-register"
           headers={['Roll', 'Student Name', 'Status', 'Quick Mark']}
@@ -529,8 +547,8 @@ export function AttendanceRecorder() {
             ];
           })}
         />
-      </div>
-      {records.length > 0 && <button data-testid="save-attendance-btn" onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 7, background: saved ? 'var(--tool-hex-34d399)' : saving ? 'var(--tool-hex-1e3a5f)' : 'var(--tool-hex-4f8ff7)', border: 'none', borderRadius: 8, padding: '10px 20px', color: 'var(--tool-hex-fff)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+      </div>}
+      {!loadError && records.length > 0 && <button data-testid="save-attendance-btn" onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 7, background: saved ? 'var(--tool-hex-34d399)' : saving ? 'var(--tool-hex-1e3a5f)' : 'var(--tool-hex-4f8ff7)', border: 'none', borderRadius: 8, padding: '10px 20px', color: 'var(--tool-hex-fff)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
         {saved ? <CheckCircle size={14} /> : <Save size={14} />}
         {saved ? 'Saved!' : saving ? 'Saving...' : 'Save Attendance'}
       </button>}

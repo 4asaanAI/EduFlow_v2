@@ -61,6 +61,8 @@ MIGRATIONS = [
     ("028_enterprise_school_workflows", "Add non-destructive indexes for enterprise fee, admissions, leave, campus, payroll, guardian, and quiz workflows"),
     ("029_commercial_operations", "Add index-only CRM, campus retail, and legal-entity controls"),
     ("030_profile_notes_index", "Index-only: the (schoolId, author_id, subject_type, subject_id, created_at) index behind private profile notes (owner request 4, 2026-08-06)"),
+    ("031_provision_school_leadership_accounts", "Provision the reviewed Aman, Adesh, Sonu, and Lalit profiles and login authority (data-changing; run explicitly only)"),
+    ("032_platform_messaging_indexes", "Add index-only leadership platform messaging storage"),
 ]
 
 

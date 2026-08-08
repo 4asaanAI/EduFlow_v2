@@ -122,6 +122,7 @@ try:
     import routes.guardian as guardian_routes
     import routes.quizzes as quizzes_routes
     import routes.commercial as commercial_routes
+    import routes.messaging as messaging_routes
     # UI Sweep Epic 4: `routes.tools` was never wired into the harness, so the
     # endpoint behind every tool screen had no tests at all — which is how a double
     # result envelope survived a whole initiative. It is registered here so it can be.
@@ -598,6 +599,10 @@ class FakeDb:
         self.notifications = FakeCollection()
         self.audit_logs = FakeCollection()
         self.profile_notes = FakeCollection()
+        self.platform_message_threads = FakeCollection()
+        self.platform_messages = FakeCollection()
+        self.platform_message_receipts = FakeCollection()
+        self.platform_message_presence = FakeCollection()
         self.file_uploads = FakeCollection()
         self.orphaned_s3_keys = FakeCollection()
         self.users = FakeCollection()
@@ -772,6 +777,7 @@ if APP_AVAILABLE:
     guardian_routes.get_db = lambda: _fake_db
     quizzes_routes.get_db = lambda: _fake_db
     commercial_routes.get_db = lambda: _fake_db
+    messaging_routes.get_db = lambda: _fake_db
     tools_routes.get_db = lambda: _fake_db
     tool_functions_v1.get_db = lambda: _fake_db
     tool_functions_v2_mod.get_db = lambda: _fake_db

@@ -19,6 +19,10 @@ jest.mock('../../contexts/ThemeContext', () => ({
   useTheme: () => ({ isDark: true, theme: 'dark', toggleTheme: () => {} }),
 }));
 
+jest.mock('../../contexts/MessagingContext', () => ({
+  useMessaging: () => ({ available: false, unreadCount: 0 }),
+}));
+
 // D-48: a hand-written mock factory does NOT fall through to the real module, so
 // every export the factory forgets is `undefined`. The shell calls ~15 API helpers
 // across Sidebar/Header/ChatInterface, and the old factory listed 8 — the missing

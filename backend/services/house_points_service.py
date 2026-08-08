@@ -23,7 +23,7 @@ from typing import Optional
 
 from services.actor_context import ActorContext
 from services.audit_service import write_audit
-from tenant import scoped_filter
+from tenant import scoped_query
 
 
 class HousePointsValidationError(Exception):
@@ -62,14 +62,17 @@ async def award_points(db, actor_ctx: ActorContext, params: dict, *, session=Non
     except (TypeError, ValueError):
         raise HousePointsValidationError("delta must be an integer")
 
-    house = await db.houses.find_one(scoped_filter({"id": house_id}, school_id), {"_id": 0}, **_session_kwargs(session))
+    house_query = scoped_query(
+        {"id": house_id}, branch_id=actor_ctx.branch_id, school_id=school_id
+    )
+    house = await db.houses.find_one(house_query, {"_id": 0}, **_session_kwargs(session))
     if not house:
         raise HouseNotFoundError("House not found")
 
     new_points = max(0, house.get("points", 0) + delta)
     now_iso = actor_ctx.now().isoformat()
     await db.houses.update_one(
-        scoped_filter({"id": house_id}, school_id),
+        house_query,
         {"$set": {"points": new_points, "updated_at": now_iso}},
         **_session_kwargs(session),
     )
@@ -77,6 +80,7 @@ async def award_points(db, actor_ctx: ActorContext, params: dict, *, session=Non
         "_id": str(uuid.uuid4()),
         "id": str(uuid.uuid4()),
         "schoolId": school_id,
+        "branch_id": actor_ctx.branch_id,
         "house_id": house_id,
         "house_name": house.get("name"),
         "delta": delta,

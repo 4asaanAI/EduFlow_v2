@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Request, Depends
 from pymongo.errors import DuplicateKeyError
 
 from database import get_db
-from middleware.auth import get_current_user, require_owner
+from middleware.auth import get_current_user
 from services.payroll_service import (
     PayrollNotFoundError,
     PayrollValidationError,
@@ -22,21 +22,35 @@ from services.payroll_service import (
     upsert_salary_structure,
 )
 from services.accounting_period_service import AccountingPeriodClosedError, assert_posting_allowed
+from services.actor_context import actor_ctx_from_user
+from services.audit_service import write_audit_doc
 from tenant import scoped_query, get_school_id
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
 
 
+async def _audit_payroll_write(db, user: dict, action: str, entity_id: str, changes: dict) -> None:
+    actor = actor_ctx_from_user(
+        user, school_id=get_school_id(), branch_id=user.get("branch_id")
+    )
+    await write_audit_doc(db, {
+        "id": str(uuid.uuid4()), "entity_type": "payroll", "entity_id": entity_id,
+        "action": action, "changed_by": actor.user_id, "changed_by_role": actor.role,
+        "changes": changes, "created_at": actor.now_iso(),
+    }, school_id=actor.school_id, branch_id=actor.branch_id or "")
+
+
 def _require_owner_or_accountant(request: Request) -> dict:
     user = get_current_user(request)
-    if not _is_owner_or_accountant(user):
+    is_principal = user.get("role") == "admin" and user.get("sub_category") == "principal"
+    if not (_is_owner_or_accountant(user) or is_principal):
         raise HTTPException(403, "Forbidden")
     return user
 
 
 @router.get("/structures")
 async def list_salary_structures(request: Request):
-    """List all salary structures. Owner and accountant only."""
+    """List salary structures for the owner, principal, or accountant."""
     user = _require_owner_or_accountant(request)
     db = get_db()
     bid = user.get("branch_id")
@@ -47,8 +61,8 @@ async def list_salary_structures(request: Request):
 
 
 @router.post("/structures")
-async def create_salary_structure(request: Request, user: dict = Depends(require_owner)):
-    """Create/update a salary structure. Owner only. R12.5: delegates to payroll_service."""
+async def create_salary_structure(request: Request, user: dict = Depends(_require_owner_or_accountant)):
+    """Create/update a salary structure through the canonical payroll service."""
     db = get_db()
     body = await request.json()
     doc = await upsert_salary_structure(
@@ -63,12 +77,13 @@ async def create_salary_structure(request: Request, user: dict = Depends(require
         school_id=get_school_id(),
         branch_id=user.get("branch_id"),
     )
+    await _audit_payroll_write(db, user, "salary_structure_upsert", doc["id"], doc)
     return {"success": True, "data": doc}
 
 
 @router.get("/disbursements")
 async def list_disbursements(request: Request, month: str = None):
-    """List salary disbursements for a month. Owner and accountant only."""
+    """List salary disbursements for a month for authorized finance profiles."""
     user = _require_owner_or_accountant(request)
     db = get_db()
     bid = user.get("branch_id")
@@ -160,14 +175,15 @@ async def create_disbursement(request: Request):
     )
     if idempotent:
         return {"success": True, "data": doc, "idempotent": True}
+    await _audit_payroll_write(db, user, "salary_disbursement_create", doc["id"], doc)
     return {"success": True, "data": doc}
 
 
 @router.patch("/disbursements/{disbursement_id}/process")
 async def mark_disbursement_processed(
-    disbursement_id: str, request: Request, user: dict = Depends(require_owner)
+    disbursement_id: str, request: Request, user: dict = Depends(_require_owner_or_accountant)
 ):
-    """Mark a disbursement as processed. Owner only."""
+    """Mark a disbursement as processed. Owner, principal, or accountant."""
     db = get_db()
     bid = user.get("branch_id")
     result = await db.salary_disbursements.update_one(
@@ -202,7 +218,7 @@ async def get_payslip(disbursement_id: str, request: Request):
 
 @router.get("/disbursements/{disbursement_id}/corrections")
 async def list_disbursement_corrections(disbursement_id: str, request: Request,
-                                        user: dict = Depends(require_owner)):
+                                        user: dict = Depends(_require_owner_or_accountant)):
     rows = await get_db().salary_disbursement_corrections.find(
         scoped_query({"disbursement_id": disbursement_id}, branch_id=user.get("branch_id")),
         {"_id": 0},
@@ -212,7 +228,7 @@ async def list_disbursement_corrections(disbursement_id: str, request: Request,
 
 @router.patch("/disbursements/{disbursement_id}/correct")
 async def patch_disbursement_correction(disbursement_id: str, request: Request,
-                                        user: dict = Depends(require_owner)):
+                                        user: dict = Depends(_require_owner_or_accountant)):
     db = get_db()
     bid = user.get("branch_id")
     body = await request.json()
@@ -234,4 +250,8 @@ async def patch_disbursement_correction(disbursement_id: str, request: Request,
         raise HTTPException(404, str(exc))
     except PayrollValidationError as exc:
         raise HTTPException(400, str(exc))
+    await _audit_payroll_write(
+        db, user, "salary_disbursement_correct", disbursement_id,
+        {"reason": body.get("reason"), "changes": body.get("changes") or {}},
+    )
     return {"success": True, "data": row}

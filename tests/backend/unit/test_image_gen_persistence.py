@@ -127,7 +127,7 @@ def test_certificate_denied_for_receptionist_admin(client):
 # expects 403 — and the allowed profiles (owner, principal) each have their own named
 # test below. Deriving the list is the point: NEW-01 happened because a permission
 # widened and a hand-maintained list did not notice.
-_ISSUER_ADMIN_SUBS = frozenset({"principal", "accountant"})
+_ISSUER_ADMIN_SUBS = frozenset({"principal", "management"})
 _NON_ISSUER_ADMIN_SUBS = sorted(
     SUB_CATEGORIES_BY_ROLE["admin"] - _ISSUER_ADMIN_SUBS
 )
@@ -161,17 +161,16 @@ def test_id_cards_allowed_for_principal(client):
     assert resp.status_code == 200
 
 
-def test_certificate_allowed_for_accountant(client):
-    # Owner decision 2026-08-04 (decision 2): the accountant is the third issuer.
+def test_certificate_allowed_for_management(client):
     resp = client.post("/api/image-gen/certificate", json=_certificate_payload(),
-                       headers=_headers(role="admin", sub_category="accountant"))
+                       headers=_headers(role="admin", sub_category="management"))
     assert resp.status_code == 200
 
 
-def test_id_cards_allowed_for_accountant(client):
+def test_id_cards_allowed_for_management(client):
     resp = client.post("/api/image-gen/id-cards",
                        json={"class_id": "class-1", "students": [{"student_id": "student-1"}]},
-                       headers=_headers(role="admin", sub_category="accountant"))
+                       headers=_headers(role="admin", sub_category="management"))
     assert resp.status_code == 200
 
 

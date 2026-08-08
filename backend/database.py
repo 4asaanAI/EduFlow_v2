@@ -320,6 +320,24 @@ async def _create_indexes():
     # Without this, the sidebar (on every screen) and the All Chats page each do
     # an in-memory sort of a user's whole conversation history on every load.
     await db.conversations.create_index([("schoolId", 1), ("user_id", 1), ("updated_at", -1)])
+    await db.platform_message_threads.create_index(
+        [("schoolId", 1), ("branch_id", 1), ("member_ids", 1), ("updated_at", -1)]
+    )
+    await db.platform_message_threads.create_index(
+        [("schoolId", 1), ("branch_id", 1), ("direct_key", 1)], unique=True, sparse=True
+    )
+    await db.platform_messages.create_index(
+        [("schoolId", 1), ("branch_id", 1), ("thread_id", 1), ("created_at", -1)]
+    )
+    await db.platform_message_receipts.create_index(
+        [("schoolId", 1), ("branch_id", 1), ("message_id", 1), ("user_id", 1)], unique=True
+    )
+    await db.platform_message_receipts.create_index(
+        [("schoolId", 1), ("branch_id", 1), ("user_id", 1), ("read_at", 1), ("thread_id", 1)]
+    )
+    await db.platform_message_presence.create_index(
+        [("schoolId", 1), ("branch_id", 1), ("user_id", 1)], unique=True
+    )
     # R11.5: conversation trace viewer — per-turn diagnostic rows keyed by conversation
     await db.ai_turn_traces.create_index([("conversation_id", 1), ("created_at", 1)])
     await db.assignments.create_index("class_id")
