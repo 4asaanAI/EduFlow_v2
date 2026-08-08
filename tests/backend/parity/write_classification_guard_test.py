@@ -36,6 +36,22 @@ READ_ONLY_ALLOWLIST = frozenset({
     # guard was right that "generate_" reads as mutating.
     "draft_document",
     "draft_parent_message",
+    # Deferred tool loading: reveals tool INSTRUCTIONS the caller is already
+    # authorized for. Reads the registry, writes nothing.
+    "search_tools",
+    # Reads every row of an uploaded spreadsheet and reports what WOULD change.
+    # Writes nothing — `import_data_file` is the confirm-gated write.
+    "preview_data_import",
+    # Parent messaging reads. `get_messaging_status` and `get_message_templates` are
+    # plainly read-only. `get_whatsapp_template_status` is a considered classification,
+    # like `draft_document` above: it DOES write one field — it stores the approval
+    # state Twilio just reported back onto the local template row. That row is a mirror
+    # of state owned by Meta, not a school record: no student, fee, staff member or
+    # message differs afterwards, and re-running it simply re-reads the same truth.
+    # A confirm step would ask a human to approve copying someone else's fact.
+    "get_messaging_status",
+    "get_message_templates",
+    "get_whatsapp_template_status",
     "get_attendance_overview",
     "get_branch_comparison",
     "get_class_list",
@@ -101,7 +117,10 @@ READ_ONLY_ALLOWLIST = frozenset({
 # allowlist whose name doesn't match one of these prefixes is suspicious — the most
 # likely way X7 recurs is a mutating tool (create_/update_/delete_/…) being dropped
 # onto the allowlist to skip the confirm gate.
-_READ_PREFIXES = ("get_", "query_", "search_", "recall_", "draft_")
+# `preview_` added 2026-08-08 for `preview_data_import`. It is a read verb in the same
+# sense as `draft_`: it reports what a write WOULD do and performs none of it. Deliberately
+# narrow — "preview" cannot plausibly name a mutating tool, so it does not weaken the guard.
+_READ_PREFIXES = ("get_", "query_", "search_", "recall_", "draft_", "preview_")
 
 
 def _is_flagged_write(tool_def: dict) -> bool:

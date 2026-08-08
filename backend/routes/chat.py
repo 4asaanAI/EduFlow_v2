@@ -55,6 +55,7 @@ from ai.tool_invoker import (
     tool_accepts_scope,
 )
 from ai.tool_chat_exclusions import is_chat_advertised
+from ai import tool_search
 from ai.content_filter import filter_response, check_input_safety
 from ai.redaction import redact_for_llm
 from middleware.auth import get_current_user, hash_password, require_owner
@@ -179,6 +180,14 @@ _TOOL_DEEP_LINKS = {
 }
 
 WRITE_TOOL_REQUIRED_PARAMS = {
+    # Parent messaging (2026-08-08). `channel` and `audience` are required because a
+    # send with either one guessed reaches the wrong families on the wrong channel.
+    "send_parent_message": ("channel", "audience"),
+    "import_data_file": ("file_id",),
+    "create_message_template": ("name", "channel", "body"),
+    "update_message_template": ("template_id",),
+    "delete_message_template": ("template_id",),
+    "submit_whatsapp_template": ("name", "body"),
     "assign_followup": ("record_id", "assignee_staff_id", "due_date", "note"),
     "update_incident_status": ("record_id", "new_status", "note"),
     "add_thread_entry": ("record_id", "content"),
@@ -993,7 +1002,16 @@ def _close_tool_matches(name: str, user: dict, limit: int = 3) -> list:
     return difflib.get_close_matches(name or "", candidates, n=limit, cutoff=0.6)
 
 
-def _build_llm_tools(user: dict, only: "set | None" = None) -> list:
+def _authorized_tool_names(user: dict) -> list:
+    """Every tool this caller may use — the input to the deferred-tool catalogue."""
+    return [
+        name for name, tdef in TOOL_REGISTRY.items()
+        if _is_tool_authorized(user, tdef) and is_chat_advertised(user, name)
+    ]
+
+
+def _build_llm_tools(user: dict, only: "set | None" = None,
+                     unlocked: "set | None" = None) -> list:
     """R11.2: the native function-calling `tools` list for this caller.
 
     Only tools the caller is authorized for (role + sub_category + Phase-1
@@ -1008,11 +1026,16 @@ def _build_llm_tools(user: dict, only: "set | None" = None) -> list:
             continue
         if not _is_tool_authorized(user, tdef):
             continue
-        # NEW-12/T8: trim the advertised list for owner/principal. Cost only — the
-        # authorization gate above is unchanged, and an explicitly-named tool
-        # (`only=...`) is never trimmed, so nothing becomes unreachable.
         if only is None and not is_chat_advertised(user, name):
             continue
+        # Deferred tool loading (2026-08-08). Send the CORE schemas plus anything the
+        # model has already searched for this turn; the rest are named in the prompt
+        # catalogue and fetched on demand. Cost only — the authorization gate above is
+        # unchanged, and an explicitly-named tool (`only=...`) is never deferred, so
+        # nothing becomes unreachable.
+        if only is None and tool_search.enabled():
+            if not tool_search.is_core(name) and name not in (unlocked or set()):
+                continue
         required = WRITE_TOOL_REQUIRED_PARAMS.get(name, ())
         tools.append(openai_tool_schema(name, tdef, required))
     return tools
@@ -1534,6 +1557,57 @@ async def _resolve_params(params: dict, db, scope=None) -> dict:
     return resolved
 
 
+async def _resolve_import_preview(params: dict, user: dict, db) -> dict:
+    """Attach the real import counts so the confirm card states the blast radius.
+
+    Reads every row (the preview writes nothing), so the person approves the same
+    numbers the import will actually produce.
+    """
+    from services import data_import_service as _imp
+    from services.actor_context import actor_ctx_from_user
+
+    out = dict(params)
+    try:
+        ctx = actor_ctx_from_user(user, school_id=get_school_id())
+        plan = await _imp.preview_import(db, ctx, out)
+    except Exception as exc:
+        out["_import_fields"] = 0
+        out["_import_students"] = 0
+        out["_import_filename"] = f"(could not read the file: {exc})"
+        return out
+    out["_import_fields"] = plan["fields_to_fill"]
+    out["_import_students"] = plan["students_to_update"]
+    out["_import_filename"] = plan["filename"]
+    return out
+
+
+async def _resolve_messaging_audience(params: dict, user: dict, db) -> dict:
+    """Attach `_recipients`, `_recipient_count` and `_message_preview` to a send.
+
+    Runs before the confirm card is built, for two reasons. First, the card must state
+    how many families the send reaches — an approval given without that number is not
+    informed consent. Second, the resolved list is frozen into the confirm token, so the
+    set a person approves is exactly the set that gets sent; re-querying at send time
+    could drift (a fee paid in the interim, a student marked inactive) and would then
+    message somebody nobody approved.
+    """
+    from services import messaging_service as _msg
+    from services.actor_context import actor_ctx_from_user
+
+    out = dict(params)
+    try:
+        ctx = actor_ctx_from_user(user, school_id=get_school_id())
+        result = await _msg.preview(db, ctx, out)
+    except Exception as exc:  # a resolution failure must not hide the reason
+        out["_recipient_count"] = 0
+        out["_message_preview"] = f"(could not work out who this would reach: {exc})"
+        return out
+    out["_recipients"] = result["recipients"]
+    out["_recipient_count"] = result["recipient_count"]
+    out["_message_preview"] = result["sample_message"]
+    return out
+
+
 # ─── Build confirm action display text ────────────────────────────────────────
 
 def _build_confirm_display(tool_name: str, params: dict) -> str:
@@ -1570,6 +1644,35 @@ def _build_confirm_display(tool_name: str, params: dict) -> str:
             f"{p.get('_resolved_student', p.get('student_id', '?'))}"
         ),
         "create_staff": lambda p: f"Create staff login profile for {p.get('name', '?')}",
+        # The number is the whole point of this card: a person approving a send must see
+        # how many families it reaches BEFORE tapping, not discover it afterwards.
+        # `_recipient_count` / `_message_preview` are injected by _resolve_params.
+        "send_parent_message": lambda p: (
+            f"Send a {p.get('channel', '?').upper()} message to "
+            f"{p.get('_recipient_count', '?')} "
+            f"{'family' if p.get('_recipient_count') == 1 else 'families'}"
+            f" ({p.get('audience', 'students')})"
+            + (f"\n\n\"{p.get('_message_preview')}\"" if p.get("_message_preview") else "")
+        ),
+        # An import touches many children's records at once; the card must say how
+        # many, and must be explicit when it will REPLACE rather than fill blanks.
+        "import_data_file": lambda p: (
+            f"Import '{p.get('_import_filename', p.get('file_id', '?'))}' into the live "
+            f"student records: fill {p.get('_import_fields', '?')} missing details across "
+            f"{p.get('_import_students', '?')} students"
+            + (" — OVERWRITING information already on record"
+               if p.get("overwrite") else " (blanks only; existing information is kept)")
+        ),
+        "submit_whatsapp_template": lambda p: (
+            f"Submit new WhatsApp wording '{p.get('name', '?')}' to Meta for approval "
+            f"(it cannot be used until approved)"
+        ),
+        "update_message_template": lambda p: (
+            f"Change the wording of message template '{p.get('template_id', '?')}'"
+        ),
+        "delete_message_template": lambda p: (
+            f"Delete message template '{p.get('template_id', '?')}'"
+        ),
     }
     builder = displays.get(tool_name)
     if builder:
@@ -2249,6 +2352,12 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                 except Exception as e:
                     logger.warning(f"Write parameter extraction failed for {tool_name}: {e}")
                 resolved_params = await _resolve_params(params, db, scope)
+                if tool_name == "import_data_file":
+                    resolved_params = await _resolve_import_preview(resolved_params, user, db)
+                if tool_name == "send_parent_message":
+                    resolved_params = await _resolve_messaging_audience(
+                        resolved_params, user, db
+                    )
                 # Part 2 P1: surface ambiguous-name resolution as a user prompt
                 # before any confirm token is issued or rate slot consumed.
                 if resolved_params.get("_resolution_error"):
@@ -2424,7 +2533,10 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         # R11.2: advertise the caller's authorized tools via native function
         # calling — the model returns structured tool_calls (or a final answer),
         # never JSON-in-text, and can only name a tool it is allowed to use.
-        llm_tools = _build_llm_tools(user)
+        # Deferred tool loading: names the model has fetched via `search_tools` this
+        # turn become callable for the rest of it.
+        unlocked_tools: set = set()
+        llm_tools = _build_llm_tools(user, unlocked=unlocked_tools)
 
         yield thinking_event("analyzing", "Processing the data..." if tool_result else "Thinking about your question...")
         await _thinking_delay()
@@ -2607,6 +2719,12 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
 
             # Resolve parameters
             resolved_params = await _resolve_params(llm_tool_params, db, scope)
+            if tool_name == "send_parent_message":
+                resolved_params = await _resolve_messaging_audience(
+                    resolved_params, user, db
+                )
+            if tool_name == "import_data_file":
+                resolved_params = await _resolve_import_preview(resolved_params, user, db)
             if resolved_params.get("_resolution_error"):
                 err_text = resolved_params["_resolution_error"]
                 yield thinking_event("composing", "Writing your answer...")
@@ -2754,6 +2872,15 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                 {"role": "assistant", "content": "Fetching data..."},
                 {"role": "user", "content": tool_msg},
             ]
+
+            # A `search_tools` round only pays off if the fetched schemas are actually
+            # advertised on the NEXT call — otherwise the model is handed instructions
+            # for tools it still cannot invoke, and loops searching for them.
+            if tool_name == "search_tools":
+                for _row in (tool_result or {}).get("data") or []:
+                    if _row.get("name"):
+                        unlocked_tools.add(_row["name"])
+                llm_tools = _build_llm_tools(user, unlocked=unlocked_tools)
 
             # Part 2 Patch P5: bounded LLM call with cleanup (mirrors Phase 8).
             llm_task_done = asyncio.Event()

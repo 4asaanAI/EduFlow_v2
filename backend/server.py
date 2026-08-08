@@ -65,6 +65,7 @@ from routes.guardian import router as guardian_router
 from routes.quizzes import router as quizzes_router
 from routes.commercial import router as commercial_router
 from routes.messaging import router as messaging_router
+from routes.parent_messaging import router as parent_messaging_router, import_router as data_import_router
 from services.idempotency import (
     get_replay_response,
     record_key,
@@ -270,6 +271,8 @@ app.include_router(guardian_router)
 app.include_router(quizzes_router)
 app.include_router(commercial_router)
 app.include_router(messaging_router)
+app.include_router(parent_messaging_router)
+app.include_router(data_import_router)
 
 
 async def _layaastat_heartbeat_loop():

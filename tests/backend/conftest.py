@@ -114,6 +114,7 @@ try:
     import routes.payroll as payroll_routes
     import routes.queries as queries_routes
     import routes.sms as sms_routes
+    import routes.parent_messaging as parent_messaging_routes
     import routes.learning as learning_routes
     import routes.admissions as admissions_routes
     import routes.student_leave as student_leave_routes
@@ -704,6 +705,11 @@ class FakeDb:
         self.worksheets = FakeCollection()
         self.curriculum_progress = FakeCollection()
         self.sms_logs = FakeCollection()
+        # Parent messaging (2026-08-08): one row per message actually sent, and the
+        # saved wording Flo and the panels both send from.
+        self.message_logs = FakeCollection()
+        self.message_templates = FakeCollection()
+        self.chat_uploaded_files = FakeCollection()
         self.dpdp_consents = FakeCollection()
         self.houses = FakeCollection()
         self.house_points_log = FakeCollection()
@@ -769,6 +775,7 @@ if APP_AVAILABLE:
     payroll_routes.get_db = lambda: _fake_db
     queries_routes.get_db = lambda: _fake_db
     sms_routes.get_db = lambda: _fake_db
+    parent_messaging_routes.get_db = lambda: _fake_db
     learning_routes.get_db = lambda: _fake_db
     admissions_routes.get_db = lambda: _fake_db
     student_leave_routes.get_db = lambda: _fake_db

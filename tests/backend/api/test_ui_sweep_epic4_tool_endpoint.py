@@ -227,6 +227,9 @@ def test_every_registry_tool_declares_whether_it_writes(client):
     # Frozen 2026-07-22. All 46 audited by hand and confirmed read-only.
     KNOWN_WITHOUT_DISPATCH_TYPE = {
         "draft_parent_message", "get_announcements", "get_attendance_overview",
+        # Parent messaging reads (2026-08-08) — audited read-only when added.
+        "get_messaging_status", "get_message_templates", "get_whatsapp_template_status",
+        "search_tools", "preview_data_import",
         "get_branch_comparison", "get_class_list", "get_class_wise_attendance",
         "get_daily_brief", "get_enquiries", "get_exam_results_summary", "get_expenses",
         "get_fee_defaulters", "get_fee_structures", "get_fee_summary",

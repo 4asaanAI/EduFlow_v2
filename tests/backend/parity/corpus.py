@@ -13,6 +13,14 @@ from __future__ import annotations
 
 # tool name -> relative parity test module under tests/backend/parity/
 PARITY_CORPUS = {
+    # Parent messaging (2026-08-08) — Flo can now send to families for real, so the
+    # AI path and the panel path must produce identical message_logs + audit rows.
+    "send_parent_message": "messaging_parity_test.py",
+    "import_data_file": "data_import_parity_test.py",
+    "create_message_template": "messaging_parity_test.py",
+    "update_message_template": "messaging_parity_test.py",
+    "delete_message_template": "messaging_parity_test.py",
+    "submit_whatsapp_template": "messaging_parity_test.py",
     "mark_attendance": "attendance_parity_test.py",
     "correct_attendance": "attendance_correction_parity_test.py",
     "approve_leave": "leave_parity_test.py",

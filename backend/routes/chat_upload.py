@@ -17,13 +17,16 @@ Supported formats:
 
 import io
 import logging
+import uuid
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Request, UploadFile, File, HTTPException
 from database import get_db
 from middleware.auth import get_current_user
 from services.audit_service import write_audit
+from services import s3_storage
 from services.ocr_service import extract_text as extract_image_text
 from services.ocr_service import sniff_image_type
 from services.vision_service import describe_image as describe_image_bytes
@@ -125,6 +128,26 @@ def _extract_xlsx(data: bytes, filename: str) -> str:
     except Exception as exc:
         logger.warning("XLSX extraction error for %s: %s", filename, exc)
         return f"[XLSX: {filename} — extraction error: {exc}]"
+
+
+def _sheet_row_count(data: bytes, filename: str) -> int:
+    """Data-row count for a spreadsheet, so the incomplete-extract notice can say
+    "63 of 1878 rows" rather than only talking about characters."""
+    suffix = Path(filename).suffix.lower()
+    try:
+        if suffix in (".xlsx", ".xls"):
+            import openpyxl
+
+            wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+            total = 0
+            for name in wb.sheetnames:
+                total += max(0, (wb[name].max_row or 0) - 1)
+            return total
+        if suffix == ".csv":
+            return max(0, data.decode("utf-8", errors="replace").count("\n") - 1)
+    except Exception:
+        logger.warning("row count failed for %s", filename, exc_info=True)
+    return 0
 
 
 def _extract_pptx(data: bytes, filename: str) -> str:
@@ -369,12 +392,74 @@ async def upload_chat_file(request: Request, file: UploadFile = File(...)):
             except Exception:
                 logger.warning("image_text_read audit failed", exc_info=True)
 
-    if not image_data and len(extracted) > MAX_TEXT_LENGTH:
-        extracted = extracted[:MAX_TEXT_LENGTH] + f"\n\n[... truncated — original {len(extracted):,} chars]"
+    # Keep the WHOLE file, not just the slice that fits in a conversation.
+    #
+    # Before 2026-08-08 the bytes were read, turned into at most 40,000 characters of
+    # text, and thrown away. For a 1,878-row student export that meant Flo saw 63
+    # children (3.4%) and had no way to reach the rest — so "check my spreadsheet
+    # against the database" was answered from a fragment, confidently. Storing the
+    # file gives the import tools a handle on 100% of the rows; the conversation still
+    # only ever carries the readable summary below.
+    row_count = _sheet_row_count(data, filename)
+    file_id = str(uuid.uuid4())
+    stored_key = ""
+    try:
+        stored_key = s3_storage.build_upload_key(file_id, filename, get_school_id())
+        s3_storage.upload_bytes(
+            content=data,
+            key=stored_key,
+            content_type=s3_storage.infer_content_type(filename, content_type),
+            original_filename=filename,
+        )
+    except Exception:
+        # Storage is a bonus, never a reason to fail the attachment: the person still
+        # gets the readable text. The import tools then say the file is unavailable
+        # rather than silently importing nothing.
+        logger.warning("chat upload could not be stored for %s", filename, exc_info=True)
+        stored_key = ""
+
+    try:
+        await get_db().chat_uploaded_files.insert_one({
+            "_id": file_id,
+            "id": file_id,
+            "schoolId": get_school_id(),
+            "branch_id": user.get("branch_id", ""),
+            "filename": filename,
+            "s3_key": stored_key,
+            "size_bytes": len(data),
+            "content_type": content_type or "",
+            "row_count": row_count,
+            "uploaded_by": user.get("id", ""),
+            "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        logger.warning("chat upload record failed for %s", filename, exc_info=True)
+
+    full_char_count = len(extracted)
+    truncated = not image_data and full_char_count > MAX_TEXT_LENGTH
+    if truncated:
+        # Say it in words the model cannot skim past, and say what to do instead.
+        # A quiet "[truncated]" footer was there before and was not enough: the model
+        # answered about "the file" having read 3% of it.
+        extracted = (
+            extracted[:MAX_TEXT_LENGTH]
+            + f"\n\n[!! INCOMPLETE EXTRACT !! You are seeing only {MAX_TEXT_LENGTH:,} of "
+            f"{full_char_count:,} characters"
+            + (f" — roughly the first {min(row_count, MAX_TEXT_LENGTH * row_count // max(full_char_count,1))} "
+               f"of {row_count} rows" if row_count else "")
+            + ".\nDO NOT answer questions about the whole file from this fragment, and do "
+            "NOT state that anything is present or missing overall. The COMPLETE file is "
+            f"stored as file_id '{file_id}' — use the spreadsheet import tools "
+            "(preview_data_import / import_data_file) which read every row.]"
+        )
 
     return {
         "success": True,
         "filename": filename,
+        "file_id": file_id,
+        "row_count": row_count,
+        "truncated": truncated,
+        "full_char_count": full_char_count,
         "size_bytes": len(data),
         "extracted_text": extracted,
         "char_count": len(extracted),

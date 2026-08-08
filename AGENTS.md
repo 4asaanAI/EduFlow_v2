@@ -60,7 +60,7 @@ permission model changes.
 
 ## What This Project Is
 
-EduFlow is a **chat-first, multi-role school management SaaS** for The Aaryans (CBSE school, Joya, Amroha, UP, India). **ONE branch, `branch-joya`, and all 1,802 students sit on it** — the trust has other branches but this platform serves Joya only (Abhimanyu, 2026-07-22; see `backend/school_identity.py`). The wording here used to say "multi-branch", which was wrong and led an agent to raise branch-scoping as a live gap on 2026-08-04. Branch scoping still exists in the code and stays, but it guards a future second branch, not a present one.
+EduFlow is a **chat-first, multi-role school management SaaS** for The Aaryans (CBSE school, Joya, Amroha, UP, India). **ONE branch, `branch-joya`, and all 1,876 students sit on it** (1,842 active; counted live 2026-08-08 — every doc previously said 1,802, a figure that went stale after the 6 Aug load and was then copied forward. Do not hardcode a roll anywhere: count it) — the trust has other branches but this platform serves Joya only (Abhimanyu, 2026-07-22; see `backend/school_identity.py`). The wording here used to say "multi-branch", which was wrong and led an agent to raise branch-scoping as a live gap on 2026-08-04. Branch scoping still exists in the code and stays, but it guards a future second branch, not a present one.
 
 School staff (owner, principal, teachers, accountants, etc.) manage attendance, fees, academics, staff, and operations through an AI chat assistant + structured tool panels.
 

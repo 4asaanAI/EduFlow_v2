@@ -2855,6 +2855,203 @@ async def tool_draft_parent_message(params: dict, user: dict, scope: dict = None
     return _ok([result], elapsed, f"Parent message draft — {message_type} for {student_name}")
 
 
+async def tool_preview_data_import(params: dict, user: dict, scope: dict = None) -> dict:
+    """Read EVERY row of an attached spreadsheet and report what would change."""
+    from services import data_import_service as _imp
+
+    t0 = time.time()
+    db = get_db()
+    ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        plan = await _imp.preview_import(db, ctx, params)
+    except (_imp.ImportValidationError, _imp.ImportFileUnavailableError) as exc:
+        return _empty_result(str(exc), (time.time() - t0) * 1000)
+    msg = (
+        f"Read all {plan['rows_read']} rows of '{plan['filename']}'. "
+        f"{plan['fields_to_fill']} pieces of information are missing from the database "
+        f"across {plan['students_to_update']} students."
+    )
+    if plan["not_found_in_database"]:
+        msg += f" {plan['not_found_in_database']} rows match no student on record."
+    if plan["rows_without_admission_number"]:
+        msg += (f" {plan['rows_without_admission_number']} rows have no admission number "
+                "and were skipped — I will not guess which child they belong to.")
+    return _ok([plan], (time.time() - t0) * 1000, msg)
+
+
+async def tool_import_data_file(params: dict, user: dict, scope: dict = None) -> dict:
+    """Apply a spreadsheet to the live student records. Confirm-gated."""
+    from services import data_import_service as _imp
+
+    db = get_db()
+    ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await _imp.apply_import(db, ctx, params)
+    except (_imp.ImportValidationError, _imp.ImportFileUnavailableError) as exc:
+        return {"success": False, "message": str(exc)}
+    return {"success": True, "data": result, "message": result.get("message", "")}
+
+
+async def tool_search_tools(params: dict, user: dict, scope: dict = None) -> dict:
+    """Fetch the full schemas for deferred tools so the model can then call them.
+
+    Purely a lookup over the registry the caller is ALREADY authorized for — it reveals
+    instructions, never permission. Authorization is re-checked at dispatch as always.
+    """
+    from ai import tool_search as _ts
+    from ai.tool_access import is_tool_authorized
+
+    t0 = time.time()
+    query = (params.get("query") or "").strip()
+    limit = min(int(params.get("max_results") or 5), 15)
+    if not query:
+        return _empty_result("Give me something to search for.", (time.time() - t0) * 1000)
+
+    available = {
+        name: tdef for name, tdef in TOOL_REGISTRY.items()
+        if is_tool_authorized(user, tdef) and not _ts.is_core(name)
+    }
+    names = _ts.rank(query, available, limit=limit)
+    if not names:
+        return _empty_result(
+            f"No tool matches '{query}'. Tell the person plainly that this is not "
+            "something you can do, rather than guessing at a tool.",
+            (time.time() - t0) * 1000,
+        )
+
+    rows = [
+        {
+            "name": n,
+            "description": available[n].get("description", ""),
+            "schema": openai_tool_schema(n, available[n]),
+            "requires_confirmation": bool(available[n].get("requires_confirmation")),
+        }
+        for n in names
+    ]
+    return _ok(rows, (time.time() - t0) * 1000,
+               f"Loaded {len(rows)} tool(s): {', '.join(names)}. You can call them now.")
+
+
+# ─── Parent messaging (send + templates) ─────────────────────────────────────
+# Thin adapters over services.messaging_service — the SAME write path as the
+# /api/parent-messaging REST routes, pinned by messaging_parity_test.py.
+
+def _messaging_ctx(user: dict, scope: dict = None):
+    return actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+
+
+async def tool_send_parent_message(params: dict, user: dict, scope: dict = None) -> dict:
+    """Send a WhatsApp/SMS to families. Confirm-gated: this runs only after approval."""
+    from services import messaging_service as _msg
+
+    db = get_db()
+    ctx = _messaging_ctx(user, scope)
+    try:
+        # `_recipients` (injected at confirm-resolution time) is the list the confirm
+        # card counted, carried through the token so the person approves and the system
+        # sends the SAME set — not a re-query that may have drifted between the two.
+        result = await _msg.send_messages(db, ctx, params)
+    except _msg.MessagingNotConfiguredError as exc:
+        return {"success": False, "message": str(exc)}
+    except _msg.MessagingLimitError as exc:
+        return {"success": False, "message": str(exc)}
+    except _msg.MessagingValidationError as exc:
+        return {"success": False, "message": str(exc)}
+    return {"success": True, "data": result, "message": result.get("message", "")}
+
+
+async def tool_get_message_templates(params: dict, user: dict, scope: dict = None) -> dict:
+    from services import messaging_service as _msg
+
+    t0 = time.time()
+    db = get_db()
+    ctx = _messaging_ctx(user, scope)
+    rows = await _msg.list_templates(db, ctx, channel=params.get("channel") or "")
+    if not rows:
+        return _empty_result("No message templates have been set up yet.", (time.time() - t0) * 1000)
+    return _ok(rows, (time.time() - t0) * 1000, f"{len(rows)} message template(s).")
+
+
+async def tool_create_message_template(params: dict, user: dict, scope: dict = None) -> dict:
+    from services import messaging_service as _msg
+
+    db = get_db()
+    ctx = _messaging_ctx(user, scope)
+    try:
+        result = await _msg.create_template(db, ctx, params)
+    except _msg.MessagingValidationError as exc:
+        return {"success": False, "message": str(exc)}
+    return {"success": True, "data": result["template"],
+            "message": f"Template '{result['template']['name']}' created."}
+
+
+async def tool_update_message_template(params: dict, user: dict, scope: dict = None) -> dict:
+    from services import messaging_service as _msg
+
+    db = get_db()
+    ctx = _messaging_ctx(user, scope)
+    try:
+        result = await _msg.update_template(db, ctx, params)
+    except _msg.MessagingValidationError as exc:
+        return {"success": False, "message": str(exc)}
+    return {"success": True, "data": result["template"],
+            "message": result.get("note") or f"Template '{result['template'].get('name')}' updated."}
+
+
+async def tool_delete_message_template(params: dict, user: dict, scope: dict = None) -> dict:
+    from services import messaging_service as _msg
+
+    db = get_db()
+    ctx = _messaging_ctx(user, scope)
+    try:
+        result = await _msg.delete_template(db, ctx, params)
+    except _msg.MessagingValidationError as exc:
+        return {"success": False, "message": str(exc)}
+    return {"success": True, "data": result, "message": f"Template '{result['name']}' deleted."}
+
+
+async def tool_submit_whatsapp_template(params: dict, user: dict, scope: dict = None) -> dict:
+    from services import messaging_service as _msg
+
+    db = get_db()
+    ctx = _messaging_ctx(user, scope)
+    try:
+        result = await _msg.submit_whatsapp_template_for_approval(db, ctx, params)
+    except (_msg.MessagingValidationError, _msg.MessagingNotConfiguredError) as exc:
+        return {"success": False, "message": str(exc)}
+    return {"success": True, "data": result["template"], "message": result["message"]}
+
+
+async def tool_get_whatsapp_template_status(params: dict, user: dict, scope: dict = None) -> dict:
+    from services import messaging_service as _msg
+
+    t0 = time.time()
+    db = get_db()
+    ctx = _messaging_ctx(user, scope)
+    try:
+        result = await _msg.refresh_whatsapp_template_status(db, ctx, params)
+    except (_msg.MessagingValidationError, _msg.MessagingNotConfiguredError) as exc:
+        # Read tools must keep the standard envelope even when they fail, or the
+        # shape gate (and anything downstream reading `data`) trips.
+        return _empty_result(str(exc), (time.time() - t0) * 1000)
+    return _ok([result], (time.time() - t0) * 1000, result["message"])
+
+
+async def tool_get_messaging_status(params: dict, user: dict, scope: dict = None) -> dict:
+    """Can this server actually send? Answered before a send, not discovered after."""
+    from services import messaging_service as _msg
+
+    t0 = time.time()
+    rows = [_msg.channel_status("whatsapp"), _msg.channel_status("sms")]
+    unready = [r["channel"] for r in rows if not r["ready"]]
+    msg = (
+        "Both WhatsApp and SMS are ready to send."
+        if not unready
+        else f"NOT configured (nothing would be delivered): {', '.join(unready)}."
+    )
+    return _ok(rows, (time.time() - t0) * 1000, msg)
+
+
 async def tool_create_announcement(params: dict, user: dict, scope: dict = None) -> dict:
     title = (params.get("title") or "").strip()
     content = (params.get("content") or "").strip()
@@ -5795,6 +5992,176 @@ TOOL_REGISTRY = {
         "params_schema": {
             "days": {"type": "integer", "description": "number of days to look ahead (default 7, max 30)"},
         },
+        "requires_confirmation": False,
+    },
+    "preview_data_import": {
+        "fn": tool_preview_data_import,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "access_domain": "students",
+        "description": (
+            "Read EVERY row of an attached spreadsheet (file_id from the attachment) and "
+            "report exactly what is missing from the database. Use this whenever someone "
+            "asks whether a file's data is already in the system — never answer that from "
+            "the attachment text, which may be only a small fraction of the file."
+        ),
+        "params_schema": {
+            "file_id": {"type": "string", "description": "the file_id returned when the file was attached"},
+            "overwrite": {"type": "boolean", "description": "default false — replace values already in the database"},
+        },
+        "requires_confirmation": False,
+    },
+    "import_data_file": {
+        "fn": tool_import_data_file,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "access_domain": "students",
+        "description": (
+            "Write an attached spreadsheet's data into the live student records, reading "
+            "every row. By default it only FILLS BLANKS and never replaces information "
+            "already on record; overwrite=true replaces it and must be asked for "
+            "explicitly. Always run preview_data_import first and tell the person the "
+            "numbers before confirming."
+        ),
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "file_id": {"type": "string", "description": "the file_id returned when the file was attached"},
+            "overwrite": {"type": "boolean", "description": "default false — replace values already in the database"},
+        },
+    },
+    "search_tools": {
+        "fn": tool_search_tools,
+        # Every role that has any tools at all needs to be able to reach its own
+        # deferred ones. This grants no access: results are filtered to what the
+        # caller was already authorized for.
+        "roles": ["owner", "admin", "teacher", "student", "parent", "support_staff"],
+        "access_domain": "meta",
+        "description": (
+            "Fetch the instructions for a tool listed under ADDITIONAL TOOLS so you can "
+            "then use it. Query by keywords ('fee reminder'), by exact names "
+            "('select:get_expenses,update_expense'), or require a word ('+transport bus'). "
+            "Use this BEFORE telling anyone a capability is unavailable."
+        ),
+        "params_schema": {
+            "query": {"type": "string", "description": "keywords, select:name1,name2, or +word keywords"},
+            "max_results": {"type": "integer", "description": "default 5, max 15"},
+        },
+        "requires_confirmation": False,
+    },
+    # ---- Parent messaging: actually sending, and owning the wording ----
+    "send_parent_message": {
+        "fn": tool_send_parent_message,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "accountant"],
+        "access_domain": "communication",
+        "description": (
+            "SEND a WhatsApp or SMS message to families for real. Audience: 'students' "
+            "(student_ids), 'class' (class_id), 'fee_defaulters', "
+            "'attendance_defaulters', or 'all'. SMS takes any wording via `body`; "
+            "WhatsApp must name an approved `template_name` because Meta forbids "
+            "free-typed business-initiated wording."
+        ),
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "channel": {"type": "string", "description": "whatsapp or sms"},
+            "audience": {"type": "string", "description": "students|class|fee_defaulters|attendance_defaulters|all"},
+            "student_ids": {"type": "array", "items": {"type": "string"}, "description": "student ids when audience=students"},
+            "class_id": {"type": "string", "description": "class id when audience=class"},
+            "template_name": {"type": "string", "description": "name of a saved template (REQUIRED for whatsapp)"},
+            "body": {"type": "string", "description": "free wording — SMS only"},
+        },
+    },
+    "get_messaging_status": {
+        "fn": tool_get_messaging_status,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "accountant"],
+        "access_domain": "communication",
+        "description": "Check whether WhatsApp and SMS are actually configured to send on this server.",
+        "params_schema": {},
+        "requires_confirmation": False,
+    },
+    "get_message_templates": {
+        "fn": tool_get_message_templates,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "accountant"],
+        "access_domain": "communication",
+        "description": "List the saved parent-message templates and their wording.",
+        "params_schema": {"channel": {"type": "string", "description": "optional: whatsapp or sms"}},
+        "requires_confirmation": False,
+    },
+    "create_message_template": {
+        "fn": tool_create_message_template,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "access_domain": "communication",
+        "description": "Create a saved parent-message template. SMS templates may use any wording.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "name": {"type": "string", "description": "template name"},
+            "channel": {"type": "string", "description": "whatsapp or sms"},
+            "body": {"type": "string", "description": "wording; may use {student_name} {guardian_name} {class_section} {amount} {date}"},
+            "twilio_template_sid": {"type": "string", "description": "required for whatsapp — the Meta-approved template SID"},
+            "variables": {"type": "array", "items": {"type": "string"}, "description": "ordered placeholder names for whatsapp variables"},
+        },
+    },
+    "update_message_template": {
+        "fn": tool_update_message_template,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "access_domain": "communication",
+        "description": (
+            "Change a saved template's wording. For SMS this changes what parents "
+            "receive. For WhatsApp it changes only the local preview — the delivered "
+            "wording lives in the Meta-approved template and needs re-approval."
+        ),
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "template_id": {"type": "string", "description": "template id or existing name"},
+            "name": {"type": "string", "description": "optional new name"},
+            "body": {"type": "string", "description": "new wording"},
+            "channel": {"type": "string", "description": "whatsapp or sms"},
+        },
+    },
+    "delete_message_template": {
+        "fn": tool_delete_message_template,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "access_domain": "communication",
+        "description": "Delete a saved parent-message template.",
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {"template_id": {"type": "string", "description": "template id or name"}},
+    },
+    "submit_whatsapp_template": {
+        "fn": tool_submit_whatsapp_template,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "access_domain": "communication",
+        "description": (
+            "Submit NEW WhatsApp wording to Meta for approval via Twilio. This is the "
+            "only real way to change what WhatsApp delivers. Approval takes minutes to "
+            "a day and can be refused; the template cannot be used until approved."
+        ),
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "params_schema": {
+            "name": {"type": "string", "description": "template name"},
+            "body": {"type": "string", "description": "the wording to submit for approval"},
+            "variables": {"type": "array", "items": {"type": "string"}, "description": "ordered placeholder names"},
+            "category": {"type": "string", "description": "UTILITY (default) or MARKETING"},
+        },
+    },
+    "get_whatsapp_template_status": {
+        "fn": tool_get_whatsapp_template_status,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "access_domain": "communication",
+        "description": "Check whether a submitted WhatsApp template has been approved by Meta yet.",
+        "params_schema": {"template_name": {"type": "string", "description": "template name or id"}},
         "requires_confirmation": False,
     },
     "draft_parent_message": {

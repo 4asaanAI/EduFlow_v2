@@ -54,6 +54,39 @@
 
 ---
 
+> ## 🆕 Parent messaging + deferred tool loading (2026-08-08) — NOT yet deployed
+>
+> **Flo can now send WhatsApp/SMS to families for real**, always behind a confirm card that
+> states how many families it reaches. One shared path: `services/messaging_service.py`,
+> reached by `/api/parent-messaging/*` (panels) and `send_parent_message` (Flo), pinned by
+> `tests/backend/parity/messaging_parity_test.py`. Templates live in `message_templates`
+> and Flo can create/edit/delete them.
+>
+> **SMS wording is free; WhatsApp wording is not.** Meta requires pre-approved templates,
+> so `update_message_template` on a WhatsApp template changes only the local PREVIEW. Real
+> new wording goes through `submit_whatsapp_template` (Twilio Content API → Meta approval,
+> minutes to a day, can be refused). Do not let any doc or prompt imply otherwise.
+>
+> ⚠️ **WhatsApp cannot send in production right now.** `TWILIO_WHATSAPP_FROM` and both
+> template SIDs are NOT set on Elastic Beanstalk (checked 2026-08-08). The OLD bulk route
+> silently recorded every recipient as "not_configured" and returned success — the new path
+> fails loudly with a 503 naming the missing variable instead. Set those three before
+> promising anyone WhatsApp works. SMS has credentials (`TWILIO_PHONE_NUMBER` is a US
+> number, +1228…, which is worth reviewing for Indian delivery and cost).
+>
+> **Deferred tool loading** (`ai/tool_search.py`) cut an owner/principal turn from ~36,400
+> to ~9,700 tokens (73%). A small CORE set is described in full; everything else is listed
+> BY NAME and its schema fetched via `search_tools` on demand. It replaced the old
+> hide-by-role trim (`EXCLUDE_FOR_ROLE`, now empty), which had caused Flo to tell the
+> school's owner an operation was "not available to me" about something they could do.
+> **Nothing is ever hidden** — `test_tool_search.py` proves every authorized tool stays
+> reachable for all 10 role profiles. Kill switch: `EDUFLOW_TOOL_SEARCH=0`.
+>
+> Adding a tool? Put it in CORE only if it is genuinely everyday — every CORE name is paid
+> for on every turn by every user of that role.
+
+---
+
 ## How To Talk To The Humans Here (MANDATORY)
 
 **Always use plain, human, non-technical language** when explaining, reporting, or
@@ -89,7 +122,7 @@ permission model changes.
 
 ## What This Project Is
 
-EduFlow is a **chat-first, multi-role school management SaaS** for The Aaryans (CBSE school, Joya, Amroha, UP, India). **ONE branch, `branch-joya`, and all 1,802 students sit on it** — the trust has other branches but this platform serves Joya only (Abhimanyu, 2026-07-22; see `backend/school_identity.py`). The wording here used to say "multi-branch", which was wrong and led an agent to raise branch-scoping as a live gap on 2026-08-04. Branch scoping still exists in the code and stays, but it guards a future second branch, not a present one.
+EduFlow is a **chat-first, multi-role school management SaaS** for The Aaryans (CBSE school, Joya, Amroha, UP, India). **ONE branch, `branch-joya`, and all 1,876 students sit on it** (1,842 active; counted live 2026-08-08 — every doc previously said 1,802, a figure that went stale after the 6 Aug load and was then copied forward. Do not hardcode a roll anywhere: count it) — the trust has other branches but this platform serves Joya only (Abhimanyu, 2026-07-22; see `backend/school_identity.py`). The wording here used to say "multi-branch", which was wrong and led an agent to raise branch-scoping as a live gap on 2026-08-04. Branch scoping still exists in the code and stays, but it guards a future second branch, not a present one.
 
 School staff (owner, principal, teachers, accountants, etc.) manage attendance, fees, academics, staff, and operations through an AI chat assistant + structured tool panels.
 
@@ -150,6 +183,12 @@ Depends(require_owner)
 
 # Owner or admin+principal
 Depends(require_owner_or_principal)
+
+# Owner, admin+accountant or admin+principal — the fee-reminder screens
+# (WhatsApp defaulter list + bulk send). Widened from owner/accountant on
+# 2026-08-08: the principal opens these screens, and the narrower gate made them
+# look broken rather than forbidden.
+Depends(require_owner_accountant_or_principal)
 ```
 
 ### Multi-tenancy (MANDATORY)
@@ -423,16 +462,28 @@ Sprint-status keys: `hotfix-1-file-serve-unauthenticated`, `hotfix-2-fee-collect
 #   MONGO_URL=mongodb://127.0.0.1:27099/eduflow_test DB_NAME=eduflow_test
 python -m pytest tests/backend/ -q
 
-# Frontend unit tests — the bar is 0 failed. (The two LayoutRouting.test.js failures this
-# line used to warn about were fixed by T12 on 2026-08-04; the suite is fully green.)
-CI=true npx craco test --watchAll=false
+# Frontend unit tests — the bar is 0 failed. RUN FROM THE `frontend/` FOLDER, not the root.
+# (The two LayoutRouting.test.js failures this line used to warn about were fixed by T12 on
+# 2026-08-04; the suite is fully green.)
+cd frontend && CI=true npx jest
+
+# ⚠️  This line used to read `npx craco test --watchAll=false`. The frontend moved to Vite +
+# plain Jest and craco is NOT installed — that command dies with "could not determine
+# executable to run", which reads like a broken machine rather than a stale doc. Corrected
+# 2026-08-08. There is no craco.config.js in the repo; do not reintroduce that command.
+
+# Frontend production build — this is what Amplify runs, and it RUNS LINT FIRST
+# (`npm run build` = `eslint src --max-warnings=0` then `vite build`). A lint warning
+# fails the deploy, so run this before pushing frontend changes, not just the tests.
+cd frontend && npm run build
 
 # Frontend E2E
 npx playwright test
 
 # Dev server
 cd backend && uvicorn server:app --reload --port 8000
-cd frontend && yarn start
+cd frontend && npm start        # Vite on :3000 (both package-lock.json and yarn.lock
+                                # exist; npm is what the build and CI actually use)
 ```
 
 **If tests skip silently:** a file is missing `from __future__ import annotations` — find it and add it.
