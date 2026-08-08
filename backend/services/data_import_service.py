@@ -331,12 +331,37 @@ async def _build_plan(db, actor_ctx: ActorContext, rows: List[Dict[str, str]],
     }
 
 
+def _rows_or_raise(data: bytes, filename: str) -> List[Dict[str, str]]:
+    rows = parse_rows(data, filename)
+    if not rows:
+        raise ImportValidationError(f"'{filename}' has no data rows.")
+    return rows
+
+
+async def preview_upload(db, actor_ctx: ActorContext, data: bytes, filename: str,
+                         *, overwrite: bool = False) -> Dict[str, Any]:
+    """Preview a file uploaded straight from a screen, rather than a chat attachment.
+
+    The screen and the chat share `_build_plan`, so the segment scoping, the
+    fill-blanks-only rule and the admission-number matching cannot differ between them.
+    """
+    plan = await _build_plan(db, actor_ctx, _rows_or_raise(data, filename), overwrite=overwrite)
+    plan["filename"] = filename
+    plan.pop("_updates", None)
+    return plan
+
+
+async def apply_upload(db, actor_ctx: ActorContext, data: bytes, filename: str,
+                       *, overwrite: bool = False, session=None) -> Dict[str, Any]:
+    """Apply a file uploaded straight from a screen. Same writes as the chat path."""
+    rows = _rows_or_raise(data, filename)
+    return await _apply_plan(db, actor_ctx, rows, filename, overwrite=overwrite, session=session)
+
+
 async def preview_import(db, actor_ctx: ActorContext, params: dict) -> Dict[str, Any]:
     """What an import WOULD do, across every row. Performs no writes."""
     data, record = await _load_file(db, actor_ctx, params.get("file_id", ""))
-    rows = parse_rows(data, record.get("filename", ""))
-    if not rows:
-        raise ImportValidationError(f"'{record.get('filename')}' has no data rows.")
+    rows = _rows_or_raise(data, record.get("filename", ""))
     plan = await _build_plan(db, actor_ctx, rows, overwrite=bool(params.get("overwrite")))
     plan["filename"] = record.get("filename", "")
     plan["file_id"] = params.get("file_id", "")
@@ -347,11 +372,15 @@ async def preview_import(db, actor_ctx: ActorContext, params: dict) -> Dict[str,
 async def apply_import(db, actor_ctx: ActorContext, params: dict, *, session=None) -> Dict[str, Any]:
     """Apply the plan the preview described. One audit row per student changed."""
     data, record = await _load_file(db, actor_ctx, params.get("file_id", ""))
-    rows = parse_rows(data, record.get("filename", ""))
-    if not rows:
-        raise ImportValidationError(f"'{record.get('filename')}' has no data rows.")
+    rows = _rows_or_raise(data, record.get("filename", ""))
+    return await _apply_plan(db, actor_ctx, rows, record.get("filename", ""),
+                             overwrite=bool(params.get("overwrite")), session=session)
 
-    overwrite = bool(params.get("overwrite"))
+
+async def _apply_plan(db, actor_ctx: ActorContext, rows: List[Dict[str, str]], filename: str,
+                      *, overwrite: bool, session=None) -> Dict[str, Any]:
+    """The write itself. Shared by the chat-attachment path and the screen upload."""
+    record = {"filename": filename}
     plan = await _build_plan(db, actor_ctx, rows, overwrite=overwrite)
     updates = plan.pop("_updates", [])
     if not updates:

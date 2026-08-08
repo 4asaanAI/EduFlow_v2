@@ -55,7 +55,7 @@ const ALL_TOOLS = [
   { id: 'document-scanner',       name: 'Doc Scanner',           subtitle: 'Extract & file',           icon: FileCheck,     roles: ['admin'] },
   { id: 'custom-form-builder',    name: 'Form Builder',          subtitle: 'Dynamic forms',            icon: FilePlus,      roles: ['owner','admin'] },
   { id: 'query-section',          name: 'Query & Support',       subtitle: 'Tickets & issues',         icon: LifeBuoy,      roles: ['owner','admin','teacher'] },
-  { id: 'data-import',            name: 'Data Import',           subtitle: 'Validate & seed',          icon: Database,      roles: ['owner'] },
+  { id: 'data-import',            name: 'Data Import',           subtitle: 'Update records & add students', icon: Database, roles: ['owner','admin'] },
   { id: 'fee-sync',               name: 'Fee Sync',              subtitle: 'External API conflicts',   icon: RefreshCw,     roles: ['owner'] },
   { id: 'parent-message',         name: 'Parent Messages',       subtitle: 'Compose & send',           icon: MessageSquare, roles: ['owner','admin'] },
   { id: 'circular-sender',        name: 'Circulars',             subtitle: 'Notices & messages',       icon: Megaphone,     roles: ['admin'] },

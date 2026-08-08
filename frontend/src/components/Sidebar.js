@@ -41,7 +41,7 @@ const TOOLS_BY_ROLE = {
     { id: 'fee-collection', name: 'Fee Collection', subtitle: 'Payments, receipts & export', icon: IndianRupee, color: '#4f8ff7' },
     { id: 'fee-sync', name: 'Fee Sync', subtitle: 'External API conflicts', icon: RefreshCw, color: '#6366f1' },
     { id: 'student-database', name: 'School Directory', subtitle: 'Students, staff & strength', icon: Users, color: '#4f8ff7' },
-    { id: 'data-import', name: 'Data Import', subtitle: 'Validate & seed students', icon: Database, color: '#22d3ee' },
+    { id: 'data-import', name: 'Data Import', subtitle: 'Update records & add students', icon: Database, color: '#22d3ee' },
     { id: 'attendance-overview', name: 'Attendance Overview', subtitle: 'Trends & patterns', icon: ClipboardList, color: '#a78bfa' },
     { id: 'staff-tracker', name: 'Staff Tracker', subtitle: 'Profiles & roles', icon: UserCheck, color: '#4f8ff7' },
     { id: 'staff-attendance-tracker', name: 'Staff Attendance', subtitle: 'Attendance & leaves', icon: UserCheck, color: '#22d3ee' },

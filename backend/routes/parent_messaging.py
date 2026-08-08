@@ -15,7 +15,7 @@ HTTP status codes.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
 from database import get_db
 from middleware.auth import (
@@ -186,7 +186,9 @@ from services.data_import_service import (  # noqa: E402
     ImportFileUnavailableError,
     ImportValidationError,
     apply_import,
+    apply_upload,
     preview_import,
+    preview_upload,
 )
 
 import_router = APIRouter(prefix="/api/data-import", tags=["data-import"])
@@ -220,6 +222,53 @@ async def post_import_apply(request: Request,
     ctx = actor_ctx_from_user(user, school_id=get_school_id())
     try:
         result = await apply_import(db, ctx, await request.json())
+    except Exception as exc:
+        _raise_import(exc)
+    return {"success": True, "data": result}
+
+
+# ─── The same import, from a screen ──────────────────────────────────────────
+# The Data Import panel uploads a file directly rather than going through a chat
+# attachment. These two endpoints exist so that path reaches the SAME service, and
+# therefore the same segment scoping and the same fill-blanks-only rule, instead of
+# growing a second set of import rules on the screen side.
+
+MAX_UPLOAD_IMPORT_BYTES = 20 * 1024 * 1024
+
+
+async def _read_upload(file: UploadFile) -> bytes:
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_IMPORT_BYTES:
+        raise HTTPException(413, "That file is larger than 20 MB.")
+    if not data:
+        raise HTTPException(400, "That file is empty.")
+    return data
+
+
+@import_router.post("/upload-preview")
+async def post_upload_preview(file: UploadFile = File(...),
+                              overwrite: bool = Form(False),
+                              user: dict = Depends(require_import_profile)):
+    """What an uploaded file WOULD change. Writes nothing."""
+    db = get_db()
+    ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    data = await _read_upload(file)
+    try:
+        result = await preview_upload(db, ctx, data, file.filename or "", overwrite=overwrite)
+    except Exception as exc:
+        _raise_import(exc)
+    return {"success": True, "data": result}
+
+
+@import_router.post("/upload-apply")
+async def post_upload_apply(file: UploadFile = File(...),
+                            overwrite: bool = Form(False),
+                            user: dict = Depends(require_import_profile)):
+    db = get_db()
+    ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    data = await _read_upload(file)
+    try:
+        result = await apply_upload(db, ctx, data, file.filename or "", overwrite=overwrite)
     except Exception as exc:
         _raise_import(exc)
     return {"success": True, "data": result}

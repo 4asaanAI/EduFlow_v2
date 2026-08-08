@@ -242,3 +242,78 @@ async def test_rest_and_flo_write_the_same_fields_for_the_accountant(client, fak
         )
 
     assert _mask(fake_db.students.docs) == _mask(rest_state)
+
+
+# ─── The screen upload reaches the same service as the chat attachment ───────
+# The Data Import panel uploads a file directly. If that grew its own rules, the
+# segment scoping would apply in chat and not on the screen.
+
+def _upload(client, headers, endpoint="upload-apply", overwrite=False):
+    return client.post(
+        f"/api/data-import/{endpoint}",
+        files={"file": ("students.xlsx", _sheet(ROWS),
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        data={"overwrite": "true" if overwrite else "false"},
+        headers=headers,
+    )
+
+
+def test_upload_import_unauthenticated_returns_401(client):
+    resp = client.post("/api/data-import/upload-apply",
+                       files={"file": ("s.xlsx", b"x", "application/octet-stream")})
+    assert resp.status_code == 401
+
+
+def test_upload_import_wrong_role_returns_403(client):
+    resp = _upload(client, _headers("t1", "teacher"))
+    assert resp.status_code == 403
+
+
+def test_upload_preview_writes_nothing(client, fake_db):
+    before = copy.deepcopy(fake_db.students.docs)
+    resp = _upload(client, _headers("own-1", "owner"), endpoint="upload-preview")
+    assert resp.status_code == 200, resp.text
+    assert fake_db.students.docs == before
+
+
+def test_uploaded_file_obeys_the_accountant_segment(client, fake_db):
+    resp = _upload(client, _headers("acc-1", "admin", "accountant"))
+    assert resp.status_code == 200, resp.text
+    aryan = _by_admission(fake_db, "ADM-1")
+    assert aryan["bank_name"] == "State Bank"
+    assert "father_name" not in aryan
+    assert "father_name" in resp.json()["data"]["columns_outside_your_access"]
+
+
+def test_uploaded_file_obeys_the_management_segment(client, fake_db):
+    resp = _upload(client, _headers("mgt-1", "admin", "management"))
+    assert resp.status_code == 200, resp.text
+    aryan = _by_admission(fake_db, "ADM-1")
+    assert aryan["father_name"] == "Rakesh"
+    assert "bank_name" not in aryan
+
+
+async def test_screen_upload_and_chat_attachment_write_the_same_fields(client, fake_db):
+    _upload(client, _headers("acc-1", "admin", "accountant"))
+    screen_state = copy.deepcopy(fake_db.students.docs)
+
+    fake_db.students.docs[:] = _students()
+    await tool_functions_v2.TOOL_REGISTRY["import_data_file"]["fn"](
+        {"file_id": "f1"}, ACCOUNTANT_USER, None
+    )
+
+    def _mask(docs):
+        return sorted(
+            [{k: v for k, v in d.items() if k not in {"updated_at", "updated_by"}} for d in docs],
+            key=lambda d: d["admission_number"],
+        )
+
+    assert _mask(fake_db.students.docs) == _mask(screen_state)
+
+
+def test_empty_upload_is_refused_clearly(client):
+    resp = client.post("/api/data-import/upload-apply",
+                       files={"file": ("s.xlsx", b"", "application/octet-stream")},
+                       headers=_headers("own-1", "owner"))
+    assert resp.status_code == 400
+    assert "empty" in resp.json()["detail"].lower()

@@ -26,7 +26,11 @@ export const FINANCE_TOOL_IDS = new Set([
   'payroll-manager', 'expense-tracker', 'commercial-operations',
 ]);
 
-const FINANCE_SHARED_TOOL_IDS = new Set(['school-database-hub', 'student-database']);
+// `data-import` is shared because all four authority profiles may import, but each
+// writes only its OWN columns. The narrowing happens on the server, in
+// `data_import_service.IMPORT_FIELD_SCOPES` — never by hiding the screen, which would
+// only tell the accountant the feature does not exist.
+const FINANCE_SHARED_TOOL_IDS = new Set(['school-database-hub', 'student-database', 'data-import']);
 const LEADERSHIP_ONLY_TOOL_IDS = new Set([
   'audit-log', 'what-ive-learned', 'conversation-trace', 'ai-health-report',
   'governance-ai-hub',

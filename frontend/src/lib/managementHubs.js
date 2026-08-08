@@ -21,7 +21,7 @@ export const MANAGEMENT_HUBS = [
       // (the Directory's own rows point at them) and stay in the permission lists —
       // only the duplicate front doors are gone.
       ['student-database', 'School Directory', 'Every student, guardian and staff member in one place', 'both'],
-      ['data-import', 'Data Import', 'Validate and import student records', 'owner'],
+      ['data-import', 'Data Import', 'Update records from a sheet, or add new students', 'both'],
       ['certificate-generator', 'Certificates', 'TC, bonafide and school documents', 'both'],
       ['id-card-generator', 'ID Cards', 'Generate and print student cards', 'both'],
       ['document-scanner', 'Document Scanner', 'Extract and file documents', 'principal'],

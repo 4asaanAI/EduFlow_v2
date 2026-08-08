@@ -541,6 +541,143 @@ export function StudentStrength() {
 
 // 3b. Data Import
 export function DataImport() {
+  const { currentUser } = useUser();
+  // Adding NEW students stays with the owner and principal. The update tab is open to
+  // all four authority profiles, each writing only its own columns — the server decides
+  // which, so this tab being visible never means more access than the server allows.
+  const canAddStudents = currentUser?.role === 'owner'
+    || (currentUser?.role === 'admin' && currentUser?.sub_category === 'principal');
+  const [tab, setTab] = useState('update');
+
+  return (
+    <ToolPage title="Data Import" subtitle="Update existing records from a sheet, or add new students">
+      <div style={{ maxWidth: 980 }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+          <ActionBtn label="Update existing records" variant={tab === 'update' ? 'success' : undefined}
+                     icon={<RefreshCw size={13} />} onClick={() => setTab('update')} />
+          {canAddStudents && (
+            <ActionBtn label="Add new students" variant={tab === 'add' ? 'success' : undefined}
+                       icon={<Plus size={13} />} onClick={() => setTab('add')} />
+          )}
+        </div>
+        {tab === 'update' ? <UpdateFromSheet /> : <AddNewStudents />}
+      </div>
+    </ToolPage>
+  );
+}
+
+/** Fill blanks on students who are already on the roll. Matched on admission number. */
+function UpdateFromSheet() {
+  const [file, setFile] = useState(null);
+  const [plan, setPlan] = useState(null);
+  const [result, setResult] = useState(null);
+  const [overwrite, setOverwrite] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const run = async (mode) => {
+    if (!file) return;
+    setLoading(true);
+    setError('');
+    if (mode === 'upload-preview') setResult(null);
+    const form = new FormData();
+    form.append('file', file);
+    form.append('overwrite', overwrite ? 'true' : 'false');
+    try {
+      const headers = h();
+      delete headers['Content-Type'];
+      const res = await apiFetch(`${API}/data-import/${mode}`, { method: 'POST', headers, body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Import failed');
+      if (mode === 'upload-preview') setPlan(data.data);
+      else setResult(data.data);
+    } catch (err) {
+      setError(err.message);
+    }
+    setLoading(false);
+  };
+
+  const shown = result || plan;
+  const outside = shown?.columns_outside_your_access || [];
+  const notFound = shown?.not_found_sample || [];
+
+  return (
+    <>
+      <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 14, padding: 18, marginBottom: 16 }}>
+        <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 1fr) auto auto', gap: 10, alignItems: 'center' }}>
+          <input
+            type="file"
+            accept=".csv,.xlsx,.xls"
+            onChange={e => { setFile(e.target.files?.[0] || null); setPlan(null); setResult(null); setError(''); }}
+            style={{ color: 'var(--tool-hex-a0a0a0)', fontSize: 13 }}
+          />
+          <ActionBtn label={loading ? 'Checking...' : 'Check file'} icon={<Upload size={13} />} onClick={() => run('upload-preview')} disabled={!file || loading} />
+          <ActionBtn label={loading ? 'Importing...' : 'Import'} variant="success" icon={<CheckCircle size={13} />} onClick={() => run('upload-apply')} disabled={!plan || loading} />
+        </div>
+        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8, color: 'var(--tool-hex-a0a0a0)', fontSize: 12 }}>
+          <input id="data-import-overwrite" type="checkbox" checked={overwrite} onChange={e => { setOverwrite(e.target.checked); setPlan(null); }} />
+          <label htmlFor="data-import-overwrite">Also replace information already on record (normally only blanks are filled)</label>
+        </div>
+        <div style={{ marginTop: 10, color: 'var(--tool-hex-737373)', fontSize: 12 }}>
+          Students are matched on admission number, never on name. Fees, class and enrolment status can never be set from a sheet.
+        </div>
+        {error && <div style={{ marginTop: 12, color: 'var(--tool-hex-f87171)', fontSize: 13 }}>{error}</div>}
+        {result && (
+          <div style={{ marginTop: 12, padding: '10px 14px', background: 'color-mix(in srgb, var(--tool-hex-34d399) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-34d399) 30%, transparent)', borderRadius: 9 }}>
+            <div style={{ color: 'var(--tool-hex-34d399)', fontSize: 13, fontWeight: 600 }}>{result.message}</div>
+          </div>
+        )}
+      </div>
+
+      {shown && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: 12 }}>
+          <StatCard value={shown.rows_read || 0} label="ROWS READ" color="var(--tool-hex-4f8ff7)" />
+          <StatCard value={shown.students_to_update || 0} label="STUDENTS" color="var(--tool-hex-34d399)" />
+          <StatCard value={shown.fields_to_fill || 0} label="FIELDS" color="var(--tool-hex-34d399)" />
+          <StatCard value={shown.not_found_in_database || 0} label="NOT ON ROLL" color="var(--tool-hex-fbbf24)" />
+          <StatCard value={shown.rows_without_admission_number || 0} label="NO ADM NO." color="var(--tool-hex-f87171)" />
+        </div>
+      )}
+
+      {outside.length > 0 && (
+        <div style={{ marginBottom: 16, padding: '12px 16px', background: 'color-mix(in srgb, var(--tool-hex-fbbf24) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-fbbf24) 35%, transparent)', borderRadius: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tool-hex-fbbf24)' }}>
+            {outside.length} column{outside.length !== 1 ? 's' : ''} in this file {outside.length !== 1 ? 'are' : 'is'} outside your access and {result ? 'were not' : 'will not be'} imported
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--tool-hex-a0a0a0)', marginTop: 4 }}>{outside.join(', ')}</div>
+        </div>
+      )}
+
+      {plan && !result && (
+        <div style={{ marginBottom: 16, padding: '12px 16px', background: 'color-mix(in srgb, var(--tool-hex-4f8ff7) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-4f8ff7) 35%, transparent)', borderRadius: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tool-hex-4f8ff7)' }}>
+            Nothing has been saved yet
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--tool-hex-737373)', marginTop: 3 }}>
+            This would fill {shown.fields_to_fill} piece{shown.fields_to_fill !== 1 ? 's' : ''} of information across {shown.students_to_update} student{shown.students_to_update !== 1 ? 's' : ''}. Press Import to save it.
+          </div>
+        </div>
+      )}
+
+      <DataTable
+        title="Rows matching no student on record"
+        headers={['Admission No.', 'Name']}
+        rows={notFound.map(r => [r.admission_number, r.name])}
+        emptyMsg={shown ? 'Every row matched a student on the roll' : 'Choose a file and press Check file'}
+      />
+
+      <DataTable
+        title="What would be filled, by field"
+        headers={['Field', 'Students']}
+        rows={Object.entries(shown?.by_field || {}).map(([f, n]) => [f, n])}
+        emptyMsg={shown ? 'Nothing to fill — the records already have this information' : ''}
+      />
+    </>
+  );
+}
+
+/** Enrolment: creates NEW students and guardians. Owner and principal only. */
+function AddNewStudents() {
   const [file, setFile] = useState(null);
   const [report, setReport] = useState(null);
   const [result, setResult] = useState(null);
@@ -579,8 +716,7 @@ export function DataImport() {
   const duplicates = report?.duplicates || result?.duplicates || [];
 
   return (
-    <ToolPage title="Data Import" subtitle="Validate and import student records">
-      <div style={{ maxWidth: 980 }}>
+    <>
         <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 14, padding: 18, marginBottom: 16 }}>
           <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 1fr) auto auto', gap: 10, alignItems: 'center' }}>
             <input
@@ -648,8 +784,7 @@ export function DataImport() {
           rows={errors.map(e => [e.row, e.field, <span style={{ color: 'var(--tool-hex-f87171)' }}>{e.message}</span>])}
           emptyMsg={report ? 'No validation errors' : 'Validate a CSV or XLSX file to see row-level results'}
         />
-      </div>
-    </ToolPage>
+    </>
   );
 }
 
