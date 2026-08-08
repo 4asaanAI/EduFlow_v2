@@ -1,3 +1,13 @@
+> # ⚠️ SUPERSEDED — and its central claim was WRONG
+>
+> Replaced by `HANDOFF-2026-08-08-evening-deployed.md`. Everything described below is
+> now **deployed and live**.
+>
+> **Do not act on the P1 section.** The deploy was never blocked by a missing
+> `s3:DeleteObject` permission — the wrong AWS login was being used. Only the
+> `claude-hosting` IAM user can deploy, and its keys were already in the repo `.env`.
+> **Do not widen IAM for it.** Kept for its evidence, not its conclusions.
+
 # Handoff — 2026-08-08 — parent messaging, tool search, spreadsheet import
 
 Paste the prompt at the bottom into a fresh session. Everything above it is the

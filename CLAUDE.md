@@ -73,6 +73,22 @@
 >
 > Verify a deploy by hitting a brand-new route: **401 proves the new code is live and
 > still guarded; 404 means it did not ship.**
+>
+> **Building the bundle.** There is no deploy script. Build it by hand and CHECK IT
+> against the last good one before uploading — a first attempt on 2026-08-08 silently
+> dropped `.ebextensions/` (monitoring alarms, SSE timeout, tesseract OCR) and swept in
+> stray files from `backend/uploads/`, which may hold real people's documents:
+> ```bash
+> SHA=$(git rev-parse --short HEAD); ZIP=deploy/eduflow-backend-main-$SHA.zip
+> zip -qr $ZIP application.py Procfile requirements.txt backend .platform .ebextensions \
+>   -x "*__pycache__*" "*.pyc" "backend/.env" "backend/.env.example" "backend/uploads/*"
+> diff <(unzip -Z1 deploy/<last-good>.zip | sort) <(unzip -Z1 $ZIP | sort)   # expect no diff
+> ```
+> Then `aws s3 cp` it to `elasticbeanstalk-ap-south-1-210447603820`,
+> `create-application-version`, and `update-environment`. `deploy/*.zip` is gitignored.
+>
+> **The frontend deploys itself.** Amplify app `ddxpej151tf13` (EduFlow_v2) builds on every
+> push to `main`. Check with `aws amplify list-jobs --app-id ddxpej151tf13 --branch-name main`.
 
 > ## 🆕 Parent messaging + deferred tool loading (2026-08-08) — DEPLOYED 2026-08-08 15:02 IST
 >
@@ -120,6 +136,53 @@
 >
 > Adding a tool? Put it in CORE only if it is genuinely everyday — every CORE name is paid
 > for on every turn by every user of that role.
+
+---
+
+> ## 🆕 Spreadsheet import is segment-scoped across four profiles (2026-08-08) — LIVE
+>
+> Live as `eduflow-main-20260808-9f5e224`. Import is no longer owner/principal-only:
+>
+> | Profile | May import |
+> |---|---|
+> | owner, principal (`leadership`) | the whole student record |
+> | accountant (`finance`) | bank fields + contact numbers (fee reminders go to those) |
+> | management (`non_finance`) | everything except the bank fields |
+>
+> **One place decides:** `data_import_service.IMPORT_FIELD_SCOPES`, keyed by
+> `ai_action_policy.privileged_profile()` — the function that already defines these four
+> profiles. Do not add a second copy of that mapping anywhere.
+>
+> **Out-of-segment columns are REPORTED, never silently dropped** —
+> `columns_outside_your_access`, named in the preview before anyone confirms and in the
+> result afterwards. A silently dropped column is indistinguishable from an imported one.
+> For the same reason, an import where every usable column was out of scope says exactly
+> that instead of "the database already has this information".
+>
+> **Three entrances, one service.** Flo's `preview_data_import` / `import_data_file`
+> (chat attachment, by `file_id`), `POST /api/data-import/{preview,apply}` (JSON), and
+> `POST /api/data-import/upload-{preview,apply}` (multipart, used by the screen). All
+> reach `_build_plan` / `_apply_plan`; `tests/backend/parity/data_import_profile_scope_test.py`
+> pins that the screen and the chat produce identical writes.
+>
+> ⚠️ **The sidebar "Data Import" panel has TWO tabs, and they are not the same feature.**
+> "Update existing records" is the scoped import above, open to all four profiles.
+> "Add new students" is the OLD `/api/import/{validate,commit}` route
+> (`routes/import_data.py`), which **creates** students — minting admission numbers like
+> `IMP20260808A3F2C` plus a guardian row each — and is **owner/principal only**, with no
+> field scoping because the records are new. Never conflate the two: opening the create
+> path to more profiles is how duplicate children and school-unapproved admission numbers
+> get onto the roll.
+>
+> Import can never set fees, class, or enrolment status (`PROTECTED_FIELDS`), matches on
+> admission number and never on name, and fills blanks only unless `overwrite=true`.
+>
+> **Fixed at the same time:** `import_data_file` was missing from `BULK_TOOL_NAMES`, so the
+> loop at the bottom of `tool_functions_v2.py` set `requires_confirmation=False` and the
+> confirm card its own description promised never appeared — on a tool that rewrites fields
+> across the whole roll. Also removed a dead `"access_domain": "students"` literal on both
+> import tools: that field is assigned from `SHARED_LOOKUP_TOOL_NAMES` further down the
+> module, so the literal was overwritten while still reading as authoritative.
 
 ---
 
