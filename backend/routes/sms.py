@@ -1,7 +1,7 @@
 from __future__ import annotations
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
-from middleware.auth import get_current_user, require_role, require_owner_or_accountant, require_owner_or_principal
+from middleware.auth import get_current_user, require_role, require_owner_accountant_or_principal, require_owner_or_principal
 from tenant import get_school_id, scoped_filter, scoped_query
 from datetime import datetime, timezone
 import json
@@ -372,7 +372,7 @@ async def get_config_status(request: Request, user: dict = Depends(require_role(
 # ─── WhatsApp endpoints ───────────────────────────────────────────────────────
 
 @router.get("/whatsapp-defaulters")
-async def get_whatsapp_defaulters(request: Request, user: dict = Depends(require_owner_or_accountant)):
+async def get_whatsapp_defaulters(request: Request, user: dict = Depends(require_owner_accountant_or_principal)):
     """Return fee defaulters + attendance defaulters with guardian phone numbers."""
     db = get_db()
     branch_id = user.get("branch_id")
@@ -428,6 +428,15 @@ async def get_whatsapp_defaulters(request: Request, user: dict = Depends(require
     ).to_list(2000)
     guardian_map = {g["student_id"]: g for g in guardians}
 
+    # Batch fetch class names. class_id is a random UUID (see students.py), so
+    # emitting it raw put a UUID where the class should be in the WhatsApp modal.
+    class_ids = [cid for cid in {s.get("class_id") for s in students} if cid]
+    classes = await db.classes.find(
+        scoped_filter({"id": {"$in": class_ids}}, school_id),  # branch-scope: intentional — pinned by unique ids already narrowed to this branch's students
+        {"_id": 0, "id": 1, "name": 1, "section": 1},
+    ).to_list(500) if class_ids else []
+    class_map = {c["id"]: c for c in classes}
+
     # Aggregate outstanding amounts per student
     student_outstanding: dict[str, float] = {}
     for t in txns:
@@ -443,10 +452,13 @@ async def get_whatsapp_defaulters(request: Request, user: dict = Depends(require
         phone = g.get("phone") or s.get("phone") or ""
         if not phone:
             return None
+        cls = class_map.get(s.get("class_id")) or {}
+        section = cls.get("section") or s.get("section") or ""
+        class_section = "-".join(p for p in (cls.get("name", ""), section) if p)
         entry = {
             "student_id": sid,
             "student_name": s.get("name", ""),
-            "class_section": f"{s.get('class_id', '')} {s.get('section', '')}".strip(),
+            "class_section": class_section,
             "guardian_name": g.get("name", "Parent"),
             "phone": phone,
         }
@@ -477,7 +489,7 @@ async def get_whatsapp_defaulters(request: Request, user: dict = Depends(require
 
 @router.post("/whatsapp-fee-reminders")
 async def send_whatsapp_fee_reminders(
-    request: Request, user: dict = Depends(require_owner_or_accountant)
+    request: Request, user: dict = Depends(require_owner_accountant_or_principal)
 ):
     """Send WhatsApp fee reminder to a list of fee defaulters using Twilio Content Template."""
     db = get_db()

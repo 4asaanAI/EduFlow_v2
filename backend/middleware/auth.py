@@ -401,3 +401,26 @@ def require_owner_or_accountant(request: Request):
             user.get("role"), user.get("sub_category"), request.url.path,
         )
         raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def require_owner_accountant_or_principal(request: Request):
+    """Owner, admin+accountant, or admin+principal.
+
+    The fee-reminder screens (the WhatsApp defaulter list and the bulk send) sit
+    inside School Pulse and Fee Collection, which the principal already opens.
+    Under the narrower owner/accountant gate the principal got a 403 that the UI
+    swallowed into an empty "no defaulters" list, so the screen looked broken
+    rather than forbidden. Widened deliberately on Abhimanyu's instruction
+    (2026-08-08); teacher, student and every other admin sub_category stay out.
+    """
+    user = get_current_user(request)
+    role = user.get("role")
+    if role == "owner":
+        return user
+    if role == "admin" and user.get("sub_category") in ("accountant", "principal"):
+        return user
+    logger.info(
+        "owner/accountant/principal gate failed: role=%s sub=%s path=%s",
+        role, user.get("sub_category"), request.url.path,
+    )
+    raise HTTPException(status_code=403, detail="Forbidden")

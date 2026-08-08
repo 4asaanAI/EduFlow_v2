@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { apiFetch, createConversation, getBrowserSseSessionId, getMessages, sendMessageStream } from '../lib/api';
+import { API, apiFetch, createConversation, getBrowserSseSessionId, getMessages, sendMessageStream } from '../lib/api';
 import MessageRenderer from './MessageRenderer';
 import InputBar from './InputBar';
 import TokenBudgetBar from './TokenBudgetBar';
@@ -12,7 +12,6 @@ import ThinkingProcess from './ThinkingProcess';
 import ConfirmActionCard from './ConfirmActionCard';
 import ChatFollowup from './ChatFollowup';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 /* Epic 5 (UX-DR8): ONE left edge and ONE vertical rhythm for everything stacked in a
    streaming turn. The gutter is the space the assistant avatar occupies — 28px wide
@@ -36,21 +35,30 @@ function getHeaders() {
   return getAuthHeaders();
 }
 
-async function executeAction(convId, action, params, label, user) {
+async function executeAction(convId, action, params, label) {
   // FL (R8.4): route through apiFetch so a 401 gets one refresh + retry instead
   // of a raw fetch that would fail the action silently on an expired token.
   const res = await apiFetch(`${API}/chat/conversations/${convId}/action`, {
-    method: 'POST', headers: getHeaders(user),
+    method: 'POST', headers: getHeaders(),
     body: JSON.stringify({ action, params, label }),
   });
-  return res.json();
+  const body = await res.json().catch(() => ({}));
+  // NEW-07/T13: a refused action now answers 403/404 with {detail}, not 200 with
+  // {success:false, error}. Normalise both shapes here so the person still sees the
+  // real reason ("You do not have permission...") instead of a generic failure.
+  if (!res.ok) {
+    return { success: false, error: body.detail || body.error || 'Action failed. Please try again.' };
+  }
+  return body;
 }
 
 function TypingIndicator() {
   return (
-    <div style={{ display: 'flex', gap: 14, padding: '12px 0', alignItems: 'flex-start' }}>
-      {/* Same face as every one of Flo's replies — it is Flo who is thinking. */}
-      <div style={{
+    <div className="assistant-row" style={{ display: 'flex', gap: 14, padding: '12px 0', alignItems: 'flex-start' }}>
+      {/* Same face as every one of Flo's replies — it is Flo who is thinking, and it
+          is hidden on a phone for the same reason (owner request 7). The shared
+          .assistant-row / .assistant-avatar classes are what keep the two in step. */}
+      <div className="assistant-avatar" style={{
         width: 28, height: 28, borderRadius: 8,
         background: 'linear-gradient(135deg, rgba(79,143,247,0.15), rgba(167,139,250,0.15))',
         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden',
@@ -85,7 +93,7 @@ function HealthScoreWidget({ user }) {
   const [score, setScore] = useState(null);
   useEffect(() => {
     if (user.role !== 'owner' && user.role !== 'admin') return;
-    executeTool('get_school_pulse', {}, user).then(r => {
+    executeTool('get_school_pulse', {}).then(r => {
       if (!r.success) return;
       const d = r.data?.summary || {};
       // Epic 4 / Story 4.2: attendance_rate reads "not marked yet" before anyone has
@@ -103,7 +111,7 @@ function HealthScoreWidget({ user }) {
       const s = Math.max(0, Math.min(100, Math.round(base - (alerts * 5))));
       setScore(s);
     }).catch(() => {});
-  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user]);
 
   if (score === null || (user.role !== 'owner' && user.role !== 'admin')) return null;
   const color = score >= 80 ? '#34d399' : score >= 60 ? '#fbbf24' : '#f87171';
@@ -192,7 +200,7 @@ function getQuickActionSuggestions(user) {
 function QuickActions({ onSend, isDark, user }) {
   const suggestions = getQuickActionSuggestions(user);
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, maxWidth: 500, margin: '0 auto' }}>
+    <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, maxWidth: 500, margin: '0 auto' }}>
       {suggestions.map((s, i) => (
         <button key={i} onClick={() => onSend(s)} style={{
           background: 'var(--color-surface)',
@@ -300,7 +308,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     if (activeConvId && activeConvId !== convId) {
       setConvId(activeConvId);
     }
-  }, [activeConvId, convId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeConvId, convId]);
 
   // FH4 (R8.2 AC1): wipe ALL turn-scoped UI state when the conversation changes,
   // so a stale confirm card / followup / error / half-streamed message from the
@@ -363,7 +371,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   // Fetch token usage on mount and when user changes
   const fetchTokenUsage = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/tokens/usage/me`, { headers: getHeaders(currentUser) });
+      const res = await apiFetch(`${API}/tokens/usage/me`, { headers: getHeaders() });
       const data = await res.json();
       if (data.success && data.data) {
         const d = data.data;
@@ -377,7 +385,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     } catch {
       // Non-fatal — token bar just won't show
     }
-  }, [currentUser]);
+  }, []);
 
   useEffect(() => {
     fetchTokenUsage();
@@ -425,7 +433,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     // conversation — show a retry affordance instead of a silent blank screen.
     setLoadError(false);
     try {
-      const res = await getMessages(id, currentUser);
+      const res = await getMessages(id);
       if (res && res.success) {
         const msgs = res.data || [];
         msgs.forEach(m => processedMessageIds.current.add(m.id));
@@ -439,9 +447,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   };
 
   const handleSend = async (text, imageData = null, opts = {}) => {
-    if (!text.trim() || streaming) {
-      return;
-    }
+    if (!text.trim() || streaming) return;
     const { skipUserBubble = false, forceCid = null } = opts;
 
     // A fresh user turn resets the one-shot auto-reconnect budget; a retry
@@ -456,8 +462,8 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
       // eat the user's text. Return false so InputBar restores what was typed.
       let res;
       try {
-        res = await createConversation(currentUser);
-      } catch (err) {
+        res = await createConversation();
+      } catch {
         setSendError("Couldn't start a new conversation — check your connection and try again.");
         return false;
       }
@@ -507,7 +513,6 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     // Story 5.2: start the clock the moment the turn begins, not on first token —
     // a request that is accepted and then never answered is the case being caught.
     noteStreamActivity();
-
     try {
       await sendMessageStream(cid, text, currentUser, (event) => {
         // ANY inbound event counts as life, including a keepalive and a thinking
@@ -722,10 +727,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           console.warn('unhandled SSE event', event.type, event);
         }
       }, chatSessionIdRef.current, imageData);
-
-      if (streamErrored) {
-        return;
-      }
+      if (streamErrored) return;
       // R1.2 AC2: terminal-state backstop (FM4: no side effects inside updaters).
       // If a live stream message is still open, finalize it; if the stream
       // resolved having produced nothing at all (a silent resolve — audit S12),
@@ -760,7 +762,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           created_at: new Date().toISOString(),
         }]);
       }
-    } catch (err) {
+    } catch {
       // On SSE error: append "(Response interrupted)" and show Retry.
       // FM4: read the accumulated body from the ref; no side effects in updaters.
       const prev = streamMsgRef.current;
@@ -811,7 +813,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     const actionId = `act-${Date.now()}`;
     setMessages(prev => [...prev, { id: actionId, role: 'user', content: `\u25B6 ${label || action}`, isAction: true, created_at: new Date().toISOString() }]);
     try {
-      const res = await executeAction(convId, action, params, label, currentUser);
+      const res = await executeAction(convId, action, params, label);
       if (res.success) {
         const resultId = `res-${Date.now()}`;
         setMessages(prev => [...prev, { id: resultId, role: 'assistant', content: res.data?.message || 'Done.', created_at: new Date().toISOString() }]);
@@ -990,11 +992,15 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
             );
             return (
               <div className="fade-in" data-testid="chat-stream-block">
-                {/* STREAM_GUTTER is the 42px the avatar occupies (28px + 14px gap).
-                    Every stacked element shares it, so the progress panel, any badge
-                    and the reply body have ONE left edge instead of three. */}
+                {/* --stream-gutter is the space the avatar occupies: 42px on desktop
+                    (28px + 14px gap), 0 on a phone where the avatar is hidden (owner
+                    request 7). Every stacked element reads the same variable, so the
+                    progress panel, any badge and the reply body have ONE left edge
+                    instead of three — and on a phone all three sit flush left rather
+                    than indenting past a face that is not drawn. STREAM_GUTTER stays
+                    exported as the desktop number for the tests that assert it. */}
                 {hasProgressPanel ? (
-                  <div style={{ paddingLeft: STREAM_GUTTER, marginBottom: STREAM_GAP }} data-testid="chat-progress-panel">
+                  <div style={{ paddingLeft: 'var(--stream-gutter)', marginBottom: STREAM_GAP }} data-testid="chat-progress-panel">
                     <ThinkingProcess
                       steps={thinkingSteps}
                       isStreaming={streaming}
@@ -1003,7 +1009,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
                     />
                   </div>
                 ) : currentStreamMsg.toolCall ? (
-                  <div style={{ paddingLeft: STREAM_GUTTER, marginBottom: STREAM_GAP }} data-testid="chat-tool-badge">
+                  <div style={{ paddingLeft: 'var(--stream-gutter)', marginBottom: STREAM_GAP }} data-testid="chat-tool-badge">
                     <ToolCallBadge tool={currentStreamMsg.toolCall.tool} status={currentStreamMsg.toolCall.status} />
                   </div>
                 ) : null}
@@ -1020,7 +1026,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
                     aria-live="polite"
                     data-testid="chat-stall-notice"
                     style={{
-                      paddingLeft: STREAM_GUTTER, marginTop: STREAM_GAP,
+                      paddingLeft: 'var(--stream-gutter)', marginTop: STREAM_GAP,
                       fontSize: 13, color: 'var(--color-text-muted)',
                     }}
                   >

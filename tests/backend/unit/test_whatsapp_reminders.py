@@ -119,6 +119,57 @@ def test_whatsapp_defaulters_accountant_returns_ok():
     assert resp.status_code == 200
 
 
+def test_whatsapp_defaulters_resolves_class_name_not_uuid():
+    """class_id is a random UUID — the modal must show "5-A", never the raw id.
+
+    The older tests here seeded readable class_ids ("X", "IX"), which is exactly
+    why emitting the id raw looked fine in tests and showed a UUID to the owner.
+    """
+    _fake_db.fee_transactions.docs = [
+        {"student_id": "stu-9", "amount": 4000, "status": "pending", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
+    ]
+    _fake_db.student_attendance.docs = []
+    _fake_db.students.docs = [
+        {"id": "stu-9", "name": "Kavya", "class_id": "6f1c2a90-1111-4aaa-8bbb-000000000001",
+         "section": "A", "phone": "+919000000009", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
+    ]
+    _fake_db.guardians.docs = [
+        {"student_id": "stu-9", "name": "Meera", "phone": "+919000000009", "schoolId": "aaryans-joya"},
+    ]
+    _fake_db.classes.docs = [
+        {"id": "6f1c2a90-1111-4aaa-8bbb-000000000001", "name": "5", "section": "A",
+         "schoolId": "aaryans-joya", "branch_id": "branch-a"},
+    ]
+
+    resp = client.get("/api/sms/whatsapp-defaulters", headers=_owner_headers())
+    assert resp.status_code == 200
+    entry = resp.json()["data"]["fee_defaulters"][0]
+    assert entry["class_section"] == "5-A"
+    assert "6f1c2a90" not in entry["class_section"]
+
+
+def test_whatsapp_defaulters_missing_class_doc_omits_class_not_uuid():
+    """A student whose class row is gone shows a blank class, never a raw UUID."""
+    _fake_db.fee_transactions.docs = [
+        {"student_id": "stu-10", "amount": 4000, "status": "pending", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
+    ]
+    _fake_db.student_attendance.docs = []
+    _fake_db.students.docs = [
+        {"id": "stu-10", "name": "Ishan", "class_id": "6f1c2a90-2222-4aaa-8bbb-000000000002",
+         "section": "B", "phone": "+919000000010", "schoolId": "aaryans-joya", "branch_id": "branch-a"},
+    ]
+    _fake_db.guardians.docs = [
+        {"student_id": "stu-10", "name": "Anil", "phone": "+919000000010", "schoolId": "aaryans-joya"},
+    ]
+    _fake_db.classes.docs = []
+
+    resp = client.get("/api/sms/whatsapp-defaulters", headers=_owner_headers())
+    assert resp.status_code == 200
+    entry = resp.json()["data"]["fee_defaulters"][0]
+    assert "6f1c2a90" not in entry["class_section"]
+    assert entry["class_section"] == "B"
+
+
 def test_whatsapp_defaulters_skips_students_without_phone():
     """Students with no phone on student doc AND no guardian phone are excluded."""
     _fake_db.fee_transactions.docs = [
@@ -135,6 +186,31 @@ def test_whatsapp_defaulters_skips_students_without_phone():
     assert resp.json()["data"]["fee_defaulters"] == []
 
 
+def test_whatsapp_defaulters_principal_returns_ok():
+    """The principal opens School Pulse, so the defaulter list must load for them.
+
+    Widened from owner/accountant on 2026-08-08. Before this the principal got a
+    403 that the modal swallowed into an empty list, so it looked broken.
+    """
+    _fake_db.fee_transactions.docs = []
+    _fake_db.student_attendance.docs = []
+    _fake_db.students.docs = []
+    _fake_db.guardians.docs = []
+    _fake_db.classes.docs = []
+    resp = client.get("/api/sms/whatsapp-defaulters", headers=_principal_headers())
+    assert resp.status_code == 200
+
+
+def test_whatsapp_defaulters_other_admin_subcategory_still_403():
+    """Widening to principal must not open the gate to every admin sub_category."""
+    headers = _bearer({
+        "user_id": "rec-1", "role": "admin", "name": "Neha",
+        "sub_category": "receptionist", "branch_id": "branch-a", "schoolId": "aaryans-joya",
+    })
+    resp = client.get("/api/sms/whatsapp-defaulters", headers=headers)
+    assert resp.status_code == 403
+
+
 # ─── POST /api/sms/whatsapp-fee-reminders ─────────────────────────────────────
 
 def test_fee_reminders_unauthenticated_returns_401():
@@ -149,6 +225,23 @@ def test_fee_reminders_teacher_returns_403():
         headers=_teacher_headers(),
     )
     assert resp.status_code == 403
+
+
+def test_fee_reminders_principal_allowed():
+    """The principal can also send the reminders, not just see the list —
+    otherwise the screen loads and then refuses at the last click."""
+    _fake_db.sms_logs.docs = []
+    recipient = {
+        "student_id": "s1", "student_name": "Aryan", "guardian_name": "Rakesh",
+        "phone": "+919000000001", "class_section": "5-A", "outstanding_amount": 5000,
+    }
+    with patch.dict(os.environ, {"TWILIO_ACCOUNT_SID": "", "TWILIO_AUTH_TOKEN": ""}):
+        resp = client.post(
+            "/api/sms/whatsapp-fee-reminders",
+            json={"recipients": [recipient]},
+            headers=_principal_headers(),
+        )
+    assert resp.status_code == 200
 
 
 def test_fee_reminders_empty_recipients_returns_400():

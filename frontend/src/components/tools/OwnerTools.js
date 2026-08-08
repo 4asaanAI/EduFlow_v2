@@ -17,15 +17,33 @@ function WhatsAppReminderModal({ onClose }) {
   const [defaulters, setDefaulters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sent, setSent] = useState({});
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     (async () => {
+      // A failure and a genuinely empty list are NOT the same thing. This used to
+      // swallow every error into an empty array, so a refused request and a school
+      // with no defaulters both read "No fee defaulters found." — the screen looked
+      // broken-but-fine instead of telling the person what actually happened.
+      setLoadError('');
       try {
         const res = await apiFetch(`${API}/sms/whatsapp-defaulters`, { headers: h() });
-        const r = await res.json();
-        const rawData = r.success ? (r.data?.fee_defaulters || []) : [];
-        setDefaulters(Array.isArray(rawData) ? rawData : []);
-      } catch {}
+        const r = await res.json().catch(() => ({}));
+        if (!res.ok || !r.success) {
+          setLoadError(
+            res.status === 403
+              ? "You don't have permission to see the fee defaulter list. Ask the school's owner if you need it."
+              : (r.detail || "Couldn't load the fee defaulter list. Check your connection and try again.")
+          );
+          setDefaulters([]);
+        } else {
+          const rawData = r.data?.fee_defaulters || [];
+          setDefaulters(Array.isArray(rawData) ? rawData : []);
+        }
+      } catch {
+        setLoadError("Couldn't reach the server. Check your connection and try again.");
+        setDefaulters([]);
+      }
       setLoading(false);
     })();
   }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -49,7 +67,9 @@ function WhatsAppReminderModal({ onClose }) {
         <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--tool-hex-2e2e2e)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--tool-hex-e5e5e5)' }}>WhatsApp Fee Reminders</div>
-            <div style={{ fontSize: 12, color: 'var(--tool-hex-888)', marginTop: 2 }}>{defaulters.length} defaulters — tap a row to open WhatsApp</div>
+            <div style={{ fontSize: 12, color: 'var(--tool-hex-888)', marginTop: 2 }}>
+              {loadError ? 'Could not load the list' : `${defaulters.length} defaulters — tap a row to open WhatsApp`}
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {defaulters.length > 0 && (
@@ -61,6 +81,8 @@ function WhatsAppReminderModal({ onClose }) {
         <div style={{ overflowY: 'auto', flex: 1, padding: '12px 20px' }}>
           {loading ? (
             <div style={{ textAlign: 'center', padding: 40, color: 'var(--tool-hex-888)', fontSize: 13 }}>Loading defaulters…</div>
+          ) : loadError ? (
+            <div data-testid="whatsapp-defaulters-error" style={{ textAlign: 'center', padding: 40, color: 'var(--color-danger, #f87171)', fontSize: 13, lineHeight: 1.5 }}>{loadError}</div>
           ) : defaulters.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 40, color: 'var(--tool-hex-888)', fontSize: 13 }}>No fee defaulters found.</div>
           ) : defaulters.map((d, i) => {
