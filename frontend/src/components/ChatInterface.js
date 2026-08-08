@@ -103,7 +103,7 @@ function HealthScoreWidget({ user }) {
       const s = Math.max(0, Math.min(100, Math.round(base - (alerts * 5))));
       setScore(s);
     }).catch(() => {});
-  }, [user.id]);
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (score === null || (user.role !== 'owner' && user.role !== 'admin')) return null;
   const color = score >= 80 ? '#34d399' : score >= 60 ? '#fbbf24' : '#f87171';
@@ -300,7 +300,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     if (activeConvId && activeConvId !== convId) {
       setConvId(activeConvId);
     }
-  }, [activeConvId]);
+  }, [activeConvId, convId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // FH4 (R8.2 AC1): wipe ALL turn-scoped UI state when the conversation changes,
   // so a stale confirm card / followup / error / half-streamed message from the
