@@ -6,7 +6,7 @@ const _rawBackend = process.env.REACT_APP_BACKEND_URL || '';
 const BACKEND = typeof window !== 'undefined' && window.location.protocol === 'https:'
   ? _rawBackend.replace(/^http:\/\/(?!localhost)/, 'https://')
   : _rawBackend;
-const API = `${BACKEND}/api`;
+export const API = `${BACKEND}/api`;
 
 // REACT_APP_UPLOAD_URL: direct EB URL for file uploads, bypassing CloudFront (which
 // blocks POST multipart). Falls back to BACKEND if not set (works fine in local dev).
