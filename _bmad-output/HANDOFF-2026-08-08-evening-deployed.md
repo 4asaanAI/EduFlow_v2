@@ -70,11 +70,17 @@ note before touching it.
 ### Smaller
 - Dead Amplify origin `main.d15d0fwwo2dh1j.amplifyapp.com` removed from `CORS_ORIGINS`
   (confirmed the app no longer exists; live frontend still passes preflight).
-- The 30 students whose rows had no admission number:
-  `aaryans_database/students-without-admission-number-2026-08-08.csv`
-  (**gitignored — it is names and parents' phone numbers. It will NOT be on the PC.**
-  Regenerate it there from `aaryans_database/Students-06-08-2026-12-08-00.xlsx`, or copy
-  it across by hand. Do not commit it.)
+- ~~The 30 students whose rows had no admission number.~~ **CLOSED 2026-08-08 (PC session).
+  Do not reopen and do not send this list to the school.** They already answered it: those
+  30 failed the admission test and were rejected, confirmed in their replies of 6 Aug and
+  recorded in `QUESTIONS-FOR-THE-AARYANS-2026-08-06.md` ("Settled since the first version").
+  The evening note asked for the list to be regenerated and handed over, which would have
+  put a question the school had already closed back in front of them. The CSV
+  (`aaryans_database/students-without-admission-number-2026-08-08.csv`) has been deleted on
+  Abhimanyu's instruction; it can be rebuilt from
+  `aaryans_database/Students-06-08-2026-12-08-00.xlsx` if it is ever needed again.
+  Note their names still overlap 5 of the 102 loaded enquiry leads — that item, unlike this
+  one, is genuinely still open (question 4 in the school-facing document).
 
 ---
 
@@ -212,10 +218,8 @@ by itself; nothing needs re-deriving either way.
 >    `accountant` and `management` are generic words).
 > 4. **Decide `origin/local_testing`** (Shubham's Groq commit) with me. The handoff
 >    recommends dropping it and salvaging only the flow logging. Do not merge blind.
-> 5. **The 30 students without admission numbers** — that CSV is gitignored so it will not
->    be on this machine. Regenerate it from
->    `aaryans_database/Students-06-08-2026-12-08-00.xlsx` if that folder is here, and give
->    me the list to hand to the school.
+> 5. ~~The 30 students without admission numbers.~~ **Already closed — skip this. The school
+>    confirmed those 30 failed the admission test and were rejected. Do not ask them again.**
 >
 > Standing rules: the test bar is ZERO failures — run
 > `MONGO_URL=mongodb://127.0.0.1:27099/eduflow_test DB_NAME=eduflow_test python -m pytest tests/backend/ -q`
