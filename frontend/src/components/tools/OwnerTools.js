@@ -21,20 +21,17 @@ function WhatsAppReminderModal({ onClose }) {
   useEffect(() => {
     (async () => {
       try {
-        // Epic 4 / Story 4.1: the server used to wrap the tool's envelope in a
-        // second one, so this read `r.data.data`. There is one envelope now and
-        // `r.data` IS the payload — the old `?? ` fallback would silently return
-        // the wrong thing for any payload that happened to carry a `data` key.
-        const r = await executeTool('get_fee_defaulters', {});
-        const rawData = r.success ? r.data : [];
+        const res = await apiFetch(`${API}/sms/whatsapp-defaulters`, { headers: h() });
+        const r = await res.json();
+        const rawData = r.success ? (r.data?.fee_defaulters || []) : [];
         setDefaulters(Array.isArray(rawData) ? rawData : []);
       } catch {}
       setLoading(false);
     })();
-  }, [currentUser]);
+  }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sendReminder = (d) => {
-    const phone = (d.whatsapp_phone || d.parent_phone || d.phone || '').replace(/\D/g, '');
+    const phone = (d.phone || d.whatsapp_phone || d.parent_phone || '').replace(/\D/g, '');
     const isd = phone.startsWith('91') || phone.length < 10 ? phone : `91${phone}`;
     const outstanding = money(d.outstanding_amount || d.amount_due || 0);
     const msg = encodeURIComponent(
@@ -67,14 +64,14 @@ function WhatsAppReminderModal({ onClose }) {
           ) : defaulters.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 40, color: 'var(--tool-hex-888)', fontSize: 13 }}>No fee defaulters found.</div>
           ) : defaulters.map((d, i) => {
-            const phone = (d.whatsapp_phone || d.parent_phone || d.phone || '');
+            const phone = (d.phone || d.whatsapp_phone || d.parent_phone || '');
             const isSent = sent[d.student_id || d.id];
             return (
               <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--tool-hex-2e2e2e)' }}>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tool-hex-e5e5e5)' }}>{d.student_name || d.name}</div>
                   <div style={{ fontSize: 11, color: 'var(--tool-hex-888)', marginTop: 2 }}>
-                    {d.class_name || d.class || ''}
+                    {d.class_section || d.class_name || d.class || ''}
                     {phone ? ` · 📱 ${phone}` : ' · No phone on file'}
                   </div>
                 </div>
