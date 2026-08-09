@@ -368,7 +368,11 @@ async def list_students(
         ]).to_list(per_page)
     else:
         sort_field, sort_dir = SORT_FIELDS.get(sort, SORT_FIELDS["created_at"])
-        students = await db.students.find(scoped_query, {"_id": 0, "coordinates": 0}).sort(sort_field, sort_dir).skip(skip).limit(per_page).to_list(per_page)
+        # Secondary sort on `id` makes pagination deterministic when many students
+        # share the same primary sort value (e.g. bulk-imported with identical created_at).
+        students = await db.students.find(scoped_query, {"_id": 0, "coordinates": 0}).sort(
+            [(sort_field, sort_dir), ("id", 1)]
+        ).skip(skip).limit(per_page).to_list(per_page)
 
     class_ids = list({s.get("class_id") for s in students if s.get("class_id")})
     classes = await db.classes.find(scoped_filter({"id": {"$in": class_ids}}, get_school_id()), {"_id": 0}).to_list(len(class_ids)) if class_ids else []  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404

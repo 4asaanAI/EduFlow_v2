@@ -527,7 +527,7 @@ export default function AllChats() {
             icon={Search}
             data-testid="all-chats-no-matches"
             title={`No chat named like "${search}"`}
-            message="This searches chat names, not what was said inside them — so a word you remember typing to Flo will not find it here. Try the name the chat was given, or clear the search."
+            message="This searches chat names, not what was said inside them — so a word you remember typing to EduFlow will not find it here. Try the name the chat was given, or clear the search."
             action={<Button variant="secondary" onClick={() => setSearchInput('')}>Clear search</Button>}
           />
         ) : (
@@ -536,13 +536,13 @@ export default function AllChats() {
             icon={MessageCircle}
             data-testid="all-chats-empty"
             title="No chats yet"
-            message="Every conversation you have with Flo is kept here, however old."
+            message="Every conversation you have with EduFlow is kept here, however old."
           />
         )
       ) : (
         <DataTable
           tableId="chats"
-          caption="Your conversations with Flo"
+          caption="Your conversations with EduFlow"
           columns={columns}
           rows={rows}
           rowKey={(c) => c.id}

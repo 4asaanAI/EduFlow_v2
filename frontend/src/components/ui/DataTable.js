@@ -160,6 +160,7 @@ export default function DataTable({
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
+                          justifyContent: col.align === 'right' ? 'flex-end' : 'flex-start',
                           gap: 5,
                           width: '100%',
                           padding: '11px 14px',

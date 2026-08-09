@@ -47,7 +47,7 @@ const T = {
   'incident-tracker':      { id: 'incident-tracker',      name: 'Incidents & Visitors',subtitle: 'Log & track',           icon: AlertTriangle, color: '#f87171' },
   'audit-log':             { id: 'audit-log',             name: 'Audit Log',           subtitle: 'Who did what',          icon: ScrollText,    color: '#737373' },
   'what-ive-learned':      { id: 'what-ive-learned',      name: "What I've Learned",   subtitle: 'Review & control memory', icon: Brain,       color: '#a78bfa' },
-  'conversation-trace':    { id: 'conversation-trace',    name: 'Conversation Trace',  subtitle: 'Did Flo reply?', icon: MessageSquare, color: '#22d3ee' },
+  'conversation-trace':    { id: 'conversation-trace',    name: 'Conversation Trace',  subtitle: 'Did EduFlow reply?', icon: MessageSquare, color: '#22d3ee' },
   // D-44 part 2: this used to be a second entry, 'fee-receipts', that loaded the very
   // same screen as 'fee-collection'. One screen, one entry. The subtitle keeps the word
   // "receipts" so anyone searching for it still lands here.

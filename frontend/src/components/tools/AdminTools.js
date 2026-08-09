@@ -1204,7 +1204,7 @@ export function DocumentScanner() {
   useEffect(() => {
     Promise.all([
       getAllClasses().then(r => { if (r.success) setClasses(r.data || []); }),
-      apiFetch(`${API}/students/`, { headers: h() }).then(r => r.json()).then(r => { if (r.success) setAllStudents(r.data || []); }),
+      getAllStudents().then(r => { if (r.success) setAllStudents(r.data || []); }),
     ]).finally(() => setLoading(false));
   }, [currentUser]);
 
@@ -1265,8 +1265,10 @@ export function DocumentScanner() {
           {/* Student dropdown — filtered by class */}
           <div style={{ marginBottom: 12 }}>
             {lbl('Student *')}
-            <select value={studentId} onChange={e => setStudentId(e.target.value)} style={selStyle}>
-              <option value="">Select student...</option>
+            <select value={studentId} onChange={e => setStudentId(e.target.value)} style={selStyle} disabled={loading}>
+              <option value="">
+                {loading ? 'Loading students...' : studentsInClass.length === 0 ? (selectedClass ? 'No students in this class' : 'No students found') : 'Select student...'}
+              </option>
               {studentsInClass.map(s => <option key={s.id} value={s.id}>{s.name} {s.admission_number ? `(${s.admission_number})` : ''}</option>)}
             </select>
           </div>
@@ -1610,7 +1612,7 @@ export function ParentMessage() {
   useEffect(() => {
     Promise.all([
       apiFetch(`${API}/settings/classes`, { headers: h() }).then(r => r.json()),
-      apiFetch(`${API}/students/`, { headers: h() }).then(r => r.json()),
+      getAllStudents(),
     ]).then(([cls, stu]) => {
       if (cls.success) setClasses(cls.data || []);
       if (stu.success) setAllStudents(stu.data || []);
@@ -1770,8 +1772,9 @@ export function ParentMessage() {
 export function StudentTransfer() {
   const { currentUser } = useUser();
   const [classes, setClasses] = useState([]);
-  const [allStudents, setAllStudents] = useState([]);
+  const [classStudents, setClassStudents] = useState([]);
   const [selectedClass, setSelectedClass] = useState('');
+  const [loadingStudents, setLoadingStudents] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [transferType, setTransferType] = useState('transfer'); // 'transfer' | 'withdrawal' | 'class_change'
@@ -1784,16 +1787,21 @@ export function StudentTransfer() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    Promise.all([
-      getAllClasses().then(r => { if (r.success) setClasses(r.data || []); }),
-      apiFetch(`${API}/students/`, { headers: h() }).then(r => r.json()).then(r => { if (r.success) setAllStudents(r.data || []); }),
-    ]).finally(() => setLoading(false));
+    getAllClasses().then(r => { if (r.success) setClasses(r.data || []); }).finally(() => setLoading(false));
   }, [currentUser]);
 
-  const filteredStudents = allStudents.filter(s => {
-    const matchClass = !selectedClass || s.class_id === selectedClass;
-    const matchSearch = !search.trim() || s.name.toLowerCase().includes(search.toLowerCase()) || (s.admission_number || '').toLowerCase().includes(search.toLowerCase());
-    return matchClass && matchSearch;
+  useEffect(() => {
+    if (!selectedClass) { setClassStudents([]); return; }
+    setLoadingStudents(true);
+    setSelectedStudent(null);
+    getStudents({ class_id: selectedClass, limit: 500 })
+      .then(r => { if (r.success) setClassStudents(r.data || []); })
+      .finally(() => setLoadingStudents(false));
+  }, [selectedClass]);
+
+  const filteredStudents = classStudents.filter(s => {
+    if (!search.trim()) return true;
+    return s.name.toLowerCase().includes(search.toLowerCase()) || (s.admission_number || '').toLowerCase().includes(search.toLowerCase());
   });
 
   const handleProcess = async () => {
@@ -1881,14 +1889,18 @@ export function StudentTransfer() {
         <div>
           <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, fontWeight: 600, color: 'var(--c-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>1. Find Student</h3>
           <div style={{ marginBottom: 10 }}>
-            <select value={selectedClass} onChange={e => { setSelectedClass(e.target.value); setSelectedStudent(null); }} style={{ ...inpStyle, width: '100%', marginBottom: 8 }}>
-              <option value="">All Classes</option>
+            <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} style={{ ...inpStyle, width: '100%', marginBottom: 8 }}>
+              <option value="">-- Select a class --</option>
               {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
             </select>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or admission no..." style={{ ...inpStyle, width: '100%' }} />
+            {selectedClass && <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or admission no..." style={{ ...inpStyle, width: '100%' }} />}
           </div>
           <div style={{ maxHeight: 340, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {filteredStudents.length === 0 ? (
+            {!selectedClass ? (
+              <p style={{ fontSize: 12, color: 'var(--c-faint)', padding: '8px 0' }}>Select a class to see students</p>
+            ) : loadingStudents ? (
+              <p style={{ fontSize: 12, color: 'var(--c-faint)', padding: '8px 0' }}>Loading students...</p>
+            ) : filteredStudents.length === 0 ? (
               <p style={{ fontSize: 12, color: 'var(--c-faint)', padding: '8px 0' }}>No students found</p>
             ) : filteredStudents.map(s => (
               <div key={s.id} onClick={() => { setSelectedStudent(s); setError(''); }}
@@ -2067,6 +2079,7 @@ export function IdCardGenerator() {
           s.roll_number || 'N/A'
         ])}
         emptyMsg="No students found"
+        loading={loading}
       />
     </ToolPage>
   );

@@ -640,7 +640,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           setThinkingCollapsed(false);
           const errText = (typeof event.message === 'string' && event.message)
             ? event.message
-            : 'Flo hit a problem. Please try again.';
+            : 'EduFlow hit a problem. Please try again.';
           {
             const prev = streamMsgRef.current;
             setStream(null);
@@ -757,7 +757,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
         setMessages(cur => [...cur, {
           id: `ai-fallback-${Date.now()}`,
           role: 'assistant',
-          content: "Flo couldn't produce a reply. Try again.",
+          content: "EduFlow couldn't produce a reply. Try again.",
           interrupted: true,
           created_at: new Date().toISOString(),
         }]);
@@ -931,7 +931,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
               {/* Flo says its own name here — this is where someone learns what to
                   call it, and it is the same name used everywhere else. */}
               <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-md)', marginBottom: 28, fontWeight: 500 }}>
-                I'm Flo. How can I help you today?
+                I'm EduFlow. How can I help you today?
               </p>
               <HealthScoreWidget user={currentUser} />
               <QuickActions onSend={handleSend} isDark={isDark} user={currentUser} />
@@ -947,7 +947,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
               const richBlocks = msg.richBlocks || msg.rich_content?.rich_blocks || [];
               const actionButtons = msg.actionButtons || msg.rich_content?.action_buttons || msg.actions || [];
               if (!hasContent && richBlocks.length === 0 && actionButtons.length === 0) {
-                return { ...msg, content: "Flo couldn't produce a reply. Try again." };
+                return { ...msg, content: "EduFlow couldn't produce a reply. Try again." };
               }
             }
             return msg;
@@ -1031,7 +1031,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
                     }}
                   >
                     {stallState === 'slow'
-                      ? 'Flo is taking longer than usual. Still working…'
+                      ? 'EduFlow is taking longer than usual. Still working…'
                       : 'No response yet. The connection may have dropped — try sending it again.'}
                   </div>
                 )}
