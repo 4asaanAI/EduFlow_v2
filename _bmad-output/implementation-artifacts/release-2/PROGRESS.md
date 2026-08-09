@@ -10,6 +10,28 @@ the run failed. A run that changed code and left this file untouched is an incom
 
 ---
 
+## ▶ NEXT SESSION STARTS HERE
+
+**Do this first, before R2-1.** The school's fee ledger is the school's most urgent need
+and Abhimanyu has approved writing it to the live database.
+
+1. Read the eight fee documents in `aaryans_database/`, above all
+   `Transport-Fees-Structure-Report-Summary-06-08-2026-16-58.pdf` (the missing transport
+   rates), `Ledger-Report-06-08-2026-01-03.xlsx` and
+   `Students-Fees-Structure-Report-06-08-2026-12-49.xlsx`.
+2. Reconcile them against the official fee sheet transcribed in plan R2-16, and against the
+   per-student `fee_snapshot` figures that describe themselves as *not* the ledger. Report
+   any disagreement to Abhimanyu **before** writing.
+3. Create the 11th and 12th Commerce and Science class records. Do **not** guess which
+   student belongs to which stream; that needs the school.
+4. Write the fee structure, with a rollback file saved first. `fee_structures` is empty, so
+   the undo is deleting exactly what you inserted.
+5. Then R2-19: prove Flo can do the same work through the same services.
+
+Everything else in this file still applies. R2-1 remains the next *permissions* job.
+
+---
+
 ## Read this first if you are picking the work up
 
 1. Read the plan document: all of Part 1 (what is broken) and Part 4 (working notes).
@@ -63,7 +85,8 @@ body and are counted as unreachable by the script, so the route column understat
 
 | Sub-part | What it is | Status | Notes |
 |---|---|---|---|
-| R2-0 | Who can log in right now | **MOSTLY ANSWERED** | **The `accountant` and `management` accounts ARE live.** Part 1 is a present condition, not a plan. Three reading tasks left; they block R2-11. |
+| R2-0 | Who can log in right now | **✅ DONE** | Read from the live database 2026-08-10. **1,898 accounts, ALL active**, including 1,802 students and 88 teachers. Login has no role gate. Migration 031 has not run. Plan R2-0 has the full table. |
+| R2-19 | Flo can do the fee work too | NOT STARTED | Abhimanyu, 2026-08-10: anything done by hand, Flo must do on request. Parity tests required. |
 | R2-1 | The permission matrix (one source of truth) | NOT STARTED | All nine profiles, properly defined. The five below Lalit need Aman's answers first. |
 | R2-2 | Close the nine money leaks to Lalit | NOT STARTED | Biggest block. Plan §1.3. Three separate acceptance checks. |
 | R2-3 | Close the owner-only hole in Flo | NOT STARTED | Smallest, highest severity. Plan §1.4. |
@@ -271,3 +294,42 @@ path first.
 **Left.** Two more questions for Abhimanyu, both in the table above: approval for the
 read-only database scan, and whether the fee and transport data arrives as spreadsheets or
 gets typed. Nothing else changed. R2-1 is still the next thing to build.
+
+### 2026-08-10 — read the live database, and the fee ledger arrives (Claude, Opus 5)
+
+**Did.** Abhimanyu approved a read-only pass. Ran it. Nothing was written, no password hash
+was read, no child's details were printed. Also received the school's official 2026-27 fee
+sheet as a photograph and checked what fee data already exists.
+
+**The account finding, which reframes the whole initiative.** There are **1,898 login
+accounts and every one is active**: 1,802 students, 88 teachers, 8 owner and admin desks.
+The release ladder is enforced by nothing except nobody having handed the passwords out;
+`routes/auth.py:190` has no role gate. **The platform also never records that anyone logged
+in** (`last_login` is written nowhere), so a person who logs in and only reads leaves no
+trace at all. Both office accounts have zero audit entries, which is the reassuring half.
+Four admin logins are shared desks rather than named people. Migration 031 has not run.
+Full table in plan R2-0.
+
+**The fee finding.** `fee_structures` is **completely empty**, so Aman is right that this is
+the missing piece. But 1,844 students already carry a `fee_snapshot` whose own `source`
+field reads *"Students-06-08-2026 export; NOT the fee ledger"* — numbers on the platform
+that nobody has vouched for. The seven sibling concessions are already loaded and match the
+school's sheet to the rupee. One payment transaction exists for the entire school.
+`transport_opted` is false for all 1,876 students while their snapshots carry non-zero
+transport fees, so one of those two is wrong.
+
+**Decisions taken.** Split the 11th and 12th class records into Commerce and Science, since
+no stream field exists anywhere and the bands differ by 4,800 a year. Enforce the school's
+fee rules rather than merely recording them (late fine, 5% early payment, strike-off flag).
+Flo must be able to do all the fee work on request, which is now **R2-19**.
+
+**Why the fee write did NOT happen this session, despite approval.** Approval stands. But
+`aaryans_database/` turned out to hold **eight fee documents nobody has reconciled against
+the photograph**, including `Transport-Fees-Structure-Report-Summary-06-08-2026-16-58.pdf`,
+which is exactly the missing transport rate card, plus `Ledger-Report-06-08-2026-01-03.xlsx`
+and six more. Writing the photo's numbers before reading those risks contradicting them,
+and a wrong fee structure reaches 1,842 families. **Read the eight files, reconcile, then
+write.** That is the first job of the next session.
+
+**Left.** Fee structure prepared but not written; approval is in hand. Class split not
+started. R2-1 still unbuilt.

@@ -351,7 +351,52 @@ That file is also what Releases 3 through 7 extend. This is the pattern, not a p
 **Sizing.** Rough, so the school can be told something. A "day" is one focused working
 session. These are estimates and the first two will tell us how wrong they are.
 
-### R2-0 — Who can log in right now ✅ ANSWERED 2026-08-10
+### R2-0 — Who can log in right now ✅ READ FROM THE LIVE DATABASE 2026-08-10
+
+**Measured, not assumed.** Abhimanyu approved a read-only pass and it was run. Scripts kept
+in the scratchpad; nothing was written, no password hash was read, no child's details were
+printed.
+
+**There are 1,898 login accounts and every one is active.**
+
+| Who | Accounts | Active | Password set | Must change on first use | Ever logged in |
+|---|---|---|---|---|---|
+| owner | 1 | 1 | 1 | no | unknowable, see below |
+| admin (8 sub-categories) | 7 | 7 | 7 | no | unknowable |
+| teacher | 88 | 88 | 88 | no | unknowable |
+| student | 1,802 | 1,802 | 1,802 | **yes** | unknowable |
+
+The eight owner and admin logins are `Aman Litt`, `Adesh`, `accountant`, `management`,
+`reception`, `ittech`, `transport`, `maintenance`.
+
+**Five things follow from that, and the plan has to absorb all of them.**
+
+1. **The release ladder is not enforced by anything.** Releases 3 to 6 were written as
+   though accounts get created as each group is let in. They already exist, for everyone,
+   and they are all switched on. `routes/auth.py:190` has no role gate: *"All roles require
+   credentials"*, and any active account with the right password receives a token. What
+   gates a release today is only that nobody has handed the passwords out.
+2. **The platform never records that anyone logged in.** `last_login` is written nowhere in
+   the backend; the field simply does not exist on these rows. So "has this account been
+   used" is unanswerable by inspection. The only available signal is `audit_logs`, which
+   records changes rather than visits, so a person who logs in and only *reads* leaves no
+   trace at all. For a platform holding 1,876 children's records this is a gap worth
+   closing on its own merits.
+3. **Nobody has acted through the two office accounts.** Zero audit entries for both
+   `accountant` and `management`. That is the reassuring half of finding 2.
+4. **Four of the admin logins are desks, not people:** Reception Desk, IT Desk, Transport
+   Desk, Maintenance Desk. A shared login means the audit trail can name the desk and never
+   the person, which defeats the point of having one. The profile drafts assume named
+   people; reconcile that with Aman.
+5. **Migration 031 has NOT run** (28 migrations recorded, 031 and 032 absent). So the four
+   logins are as listed, `sonu.ruhal` and `lalit.thomas` do not exist yet, and R2-11 is a
+   real change rather than a no-op. Adesh's *display name* is already "ADESH SINGH", so
+   only his login string is outstanding.
+
+**Still open:** whether any of these accounts should be switched off until their release.
+Raised with Abhimanyu.
+
+### R2-0 (original framing, kept for the reasoning)
 
 **The `accountant` and `management` accounts are LIVE.** Abhimanyu confirmed it: the
 screenshot that started this work was taken by logging into the management account. So
@@ -616,6 +661,20 @@ writes today, §1.9). This test is what keeps Releases 3 through 7 honest, and i
 only thing standing between a default-deny matrix and five staff profiles quietly losing
 their access or quietly gaining someone else's.
 
+### R2-19 — Flo does the fee work too
+
+**1 day, and it is not optional.**
+
+Abhimanyu, 2026-08-10: whatever is done to the fee data by hand, **Flo must be able to do
+when Sonu, Aman or Adesh asks her**. Loading a fee structure, adding a transport rate,
+applying the 5% early-payment discount, checking a family's balance.
+
+The tools largely exist (`create_fee_structure`, `update_fee_structure`, `apply_discount`,
+`get_fee_defaulters` and the rest of `FINANCE_TOOL_NAMES`). What must be proved is that
+they reach the **same** service the screens use, per the standing parity rule, and that the
+new fee rules above are enforced identically whichever door is used. Add the parity tests
+alongside.
+
 ### R2-15 — A daily digest for Aman and Adesh
 
 **2 days.**
@@ -638,6 +697,77 @@ because it feels like oversight without being any.
 ### R2-16 — What data is still missing, and who fills it
 
 **Report: 1 day. The loading itself depends on what Aman sends.**
+
+> #### ⚠️ Read this before touching fees. Measured live, 2026-08-10.
+>
+> **`fee_structures` is completely EMPTY.** Zero rows. Aman is right that the fee data is
+> the missing piece, and Sonu cannot do his job until it exists.
+>
+> **But per-student fee figures DO already exist, and they disown themselves.** 1,844 of
+> the 1,876 students carry a `fee_snapshot` that looks like this:
+>
+> ```
+> {'school_total_fees': 79090.0, 'transport_fees': 13090.0, 'fine': 1350.0,
+>  'paid_fees': 0.0, 'balance_fees': 80440.0, 'as_of': '2026-08-06',
+>  'source': 'Students-06-08-2026 export; NOT the fee ledger'}
+> ```
+>
+> That `source` line is the important part. Somebody loaded balances from a student export
+> and wrote, in the data itself, that it is not the authoritative ledger. **Do not treat
+> those numbers as true, and do not silently overwrite them either** until it is decided
+> which wins.
+>
+> **The seven sibling concessions are already loaded and are correct**, matching the
+> school's 2026-27 fee sheet to the rupee (1410 / 1560 / 1650 / 1800 / 2100 / 2610 / 2910,
+> flat, quarterly). Do not recreate them.
+>
+> **Payments recorded to date: one transaction, for the entire school.**
+> **`transport_opted` is false or absent for all 1,876 students**, while their snapshots
+> carry non-zero transport fees. Those two facts contradict each other and one of them is
+> wrong.
+>
+> **The official 2026-27 fee sheet** was supplied by Abhimanyu as a photograph on
+> 2026-08-10 and is at `aaryans_database/WhatsApp Image 2026-08-07 at 2.20.25 PM.jpeg`. Its
+> arithmetic is internally consistent (monthly x 3 = quarterly, quarterly x 4 = total, for
+> all seven bands), which is good evidence the transcription below is right:
+>
+> | Band | Admission (new only) | Monthly | Quarterly | Year total |
+> |---|---|---|---|---|
+> | Nur-UKG | 12,000 | 2,350 | 7,050 | 28,200 |
+> | I-II | 12,000 | 2,750 | 8,250 | 33,000 |
+> | III-V | 13,000 | 2,950 | 8,850 | 35,400 |
+> | VI-VIII | 13,000 | 3,250 | 9,750 | 39,000 |
+> | IX-X | 16,500 | 4,000 | 12,000 | 48,000 |
+> | XI-XII Commerce | 16,500 | 5,500 | 16,500 | 66,000 |
+> | XI-XII Science | 16,500 | 5,900 | 17,700 | 70,800 |
+>
+> Registration: 1,200 for Nursery to VIII, 1,500 for IX to XII. Transport (11 months)
+> extra, amount not on this sheet.
+>
+> **Rules the school sets, which the platform enforces** (Abhimanyu, 2026-08-10: the school
+> gave us these, so we implement them, not debate them):
+> - Quarterly instalments due 15 April, 15 July, 15 October, 15 January.
+> - Late fine 10 per day until the last day of that instalment.
+> - After the third month of an instalment the student is liable to be struck off the roll;
+>   re-admission at the Principal's discretion on payment of all arrears plus 1,000 per
+>   instalment. **Flag for the Principal, never remove a child automatically.**
+> - 5% off the whole session's fee if paid in full on or before 30 April.
+>
+> **Decided 2026-08-10:** the six 11th and 12th class records are **split into Commerce and
+> Science**, because the platform has no stream field anywhere and the two bands differ by
+> 4,800 a year. Creating the split classes is safe; **deciding which student belongs in
+> which is not something we can infer** and needs the school.
+>
+> **⚠️ Do not load fees from the photograph alone.** `aaryans_database/` already contains
+> eight fee documents nobody has reconciled against it, including
+> `Transport-Fees-Structure-Report-Summary-06-08-2026-16-58.pdf`, which answers the missing
+> transport amounts, plus `Ledger-Report-06-08-2026-01-03.xlsx`,
+> `Students-Fees-Structure-Report-06-08-2026-12-49.xlsx` and five more. Read those first.
+> Writing the photo's numbers while those files say something different creates a conflict
+> that is very hard to unpick once families have been billed.
+>
+> **Abhimanyu has approved writing the fee structure to the live database.** That approval
+> stands; the sequencing above is the condition, not a hesitation.
 
 Aman says the only thing pending is the database. Three parts:
 
