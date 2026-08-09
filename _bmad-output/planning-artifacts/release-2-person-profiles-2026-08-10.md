@@ -616,6 +616,85 @@ writes today, §1.9). This test is what keeps Releases 3 through 7 honest, and i
 only thing standing between a default-deny matrix and five staff profiles quietly losing
 their access or quietly gaining someone else's.
 
+### R2-15 — A daily digest for Aman and Adesh
+
+**2 days.**
+
+Aman asked for everything on the platform to be visible to him. Today that means opening
+the Audit Log and reading it, which is a screen you have to remember to go and look at.
+
+Build a once-a-day summary for Aman and Adesh: what Sonu and Lalit changed, how many
+student and staff records were added or edited, fee and payroll activity for Aman, and
+anything unusual. Delivered inside the platform. **Not on WhatsApp yet**: there is still no
+production WhatsApp sender (see the standing note in `CLAUDE.md`), so design it so the
+channel can be added later without rewriting it.
+
+The material is already there. `db.audit_logs` records who changed what, when, and the
+previous value. This is a reader over existing data, not new recording.
+
+Keep it short enough to actually be read. A digest nobody opens is worse than the audit log,
+because it feels like oversight without being any.
+
+### R2-16 — What data is still missing, and who fills it
+
+**Report: 1 day. The loading itself depends on what Aman sends.**
+
+Aman says the only thing pending is the database. Three parts:
+
+1. **A completeness report for Aman.** Scan the student and staff records and list which
+   fields are empty and how many records each gap affects: "412 students have no guardian
+   email", "the whole roll has no house allocation", and so on. Hand him one list of what
+   the school still needs to supply, rather than discovering the gaps one screen at a time
+   for the next six months.
+
+   ⚠️ **This reads the live school database.** Read-only, no writes, and Abhimanyu approves
+   the run before it happens (rule 8, §4.1). Produce it as a summary of counts, not an
+   export of children's records.
+
+2. **Fee structures and balances.** Class-wise fees, transport fees, discounts, and what
+   each family has paid so far this year. **This is Sonu's first job** and he cannot start
+   without it. Confirm whether it comes as a spreadsheet from the school or Sonu types it.
+
+3. **Transport routes, stops and riders.** Sits with Sonu until Chaman arrives in Release 3.
+   Needed before that profile is worth switching on.
+
+Parts 2 and 3 go through the spreadsheet import that already exists and is already scoped
+per profile (§1.9). Do not build a new loader.
+
+### R2-17 — One page each for Sonu and Lalit
+
+**1 day.**
+
+Two short guides in plain language, one per person, written for someone who has never used
+the platform: this is your screen, these are the five things you will do most, this is how
+you ask Flo, this is who to go to when something is wrong. Abhimanyu walks each of them
+through it once, in person.
+
+Write them in the same voice as `staff-profiles-draft-for-aman-2026-08-10.md`. No screen
+ids, no field names, no jargon. If a sentence needs a technical word to make sense, the
+screen is the thing that needs fixing.
+
+### R2-18 — Same-day undo
+
+**2 to 3 days.**
+
+Lalit is typing the school's day-to-day data and will make mistakes, and under decision 4
+he cannot delete anything. Give him and Sonu a way to reverse **their own** change on the
+**same day**. Older than that, or somebody else's change, goes to Adesh.
+
+**It is buildable from what already exists.** Audit rows carry `changed_by`, `created_at`
+and `changes` in the shape `{field: {"previous": …, "new": …}}`, so an undo is a write-back
+of the previous value.
+
+**Verify the shape before designing around it.** Not every write path uses that shape
+consistently: `student_service.py:393` records `{"previous_state": {"previous": …, "new": …}}`
+instead. An undo built on an assumed shape silently does nothing on the paths that differ,
+which is worse than not having it. Audit every write path Lalit and Sonu can reach, and make
+the shape consistent first if it is not.
+
+Decide and write down: does an undo produce its own audit row? It must. Reversing a change
+is itself a change, and Aman's digest (R2-15) should show both.
+
 ### R2-14 — Accounts, handover, go-live
 
 **1 day, plus a week of watching.**
@@ -630,6 +709,10 @@ feeling:
 3. Lalit's three checks in R2-2 passing.
 4. Deployed, and each of the four logs in and walks their own menu with someone watching.
 5. No screen offered that the server refuses, for any of the four.
+6. Aman has had at least one daily digest and says it tells him what he wanted to know.
+7. Sonu and Lalit each have their one-page guide and have been walked through it.
+8. The completeness report has reached Aman, and the fee and transport data is either
+   loaded or has a named date.
 
 **Sign-off:** Abhimanyu approves the technical release. Aman accepts it on the school's
 behalf, because he is the one who asked for it and the one who lives with it.
@@ -656,13 +739,21 @@ One sub-part per run. Suite green before the next. Update the progress log every
 | 7 | **R2-9** | Certificate and ID card approval. |
 | 8 | **R2-10** | Staff messaging. Diagnose first; may re-plan. |
 | 9 | **R2-7** + **R2-8** | Menu grouping and Flo briefs. Can pair. |
-| 10 | **R2-12** | Transport head profile, dormant. |
-| 11 | **R2-13** | The proof. Written alongside; run whole here. |
-| 12 | **R2-11** | Rename the logins. Late on purpose: it revokes sessions. |
-| 13 | **R2-14** | Go-live. |
+| 10 | **R2-18** | Same-day undo. Needs the money and people work settled first. |
+| 11 | **R2-15** | Aman's daily digest. Reads what the sub-parts above now record correctly. |
+| 12 | **R2-12** | Transport head profile, dormant. |
+| 13 | **R2-13** | The proof. Written alongside; run whole here. |
+| 14 | **R2-11** | Rename the two office logins. Late on purpose: it revokes their sessions. |
+| 15 | **R2-17** | The two guides. Written once the screens have stopped moving. |
+| 16 | **R2-14** | Go-live. |
 
-Rough total: **17 to 22 working days**, plus whatever R2-10's diagnosis turns up. Treat
-that as a shape, not a promise, and revise it after R2-1.
+**R2-16 runs alongside, not in sequence.** The completeness report can be produced as soon
+as Abhimanyu approves the read, and the answer goes to Aman, who then has to gather things
+from the school. Start it early precisely because it waits on other people.
+
+Rough total: **23 to 30 working days**, plus whatever R2-10's diagnosis turns up and
+whatever the school's data gaps turn out to be. Treat that as a shape, not a promise, and
+revise it after R2-1.
 
 ## Part 4 — Working notes for whoever picks this up
 
@@ -745,6 +836,7 @@ cannot build the bcrypt and cryptography wheels.
 | 2026-08-10 | Created after the audit. Decisions 1-4 recorded. |
 | 2026-08-10 | Revised after Abhimanyu's answers: transport returns to Sonu as a contingency and Chaman Singh's profile is built dormant (3); Sonu may create students (5); certificates and ID cards need approval before printing (6); logins rename (7); staff messaging added as R2-10 (8). Added Part 4 so any agent can resume. |
 | 2026-08-10 (later) | Decision 7 widened to all four logins including Aman and Adesh, with display names. R2-7 settled on one shared vocabulary of department groups. |
+| 2026-08-10 (readiness gaps) | Four sub-parts added after asking what was still missing. **R2-15**, a daily digest for Aman, because "everything is visible to me" currently means remembering to open the audit log. **R2-16**, a report of which fields are empty across the roll, so Aman gets one list of what the school still owes rather than discovering gaps for six months, plus the fee and transport data Sonu cannot start without. **R2-17**, a one-page guide each for Sonu and Lalit. **R2-18**, same-day undo of their own changes, since Lalit types all day and cannot delete. Total moved from 17-22 days to 23-30. Definition of done gained three items. |
 | 2026-08-10 (final credentials) | Decision 7, third and last version. **Only the two office logins change**: `accountant` → `sonu.ruhal`, `management` → `lalit.thomas`. Aman keeps his login untouched and Adesh gains "Singh", which reverses the earlier "all four move to the dotted 031 form". R2-11 shrank accordingly and most of the lock-out risk went with it. Passwords unchanged for everyone, and none is written into this repository. |
 | 2026-08-10 (Abhimanyu's answers) | **R2-0 answered: the `accountant` and `management` accounts are LIVE**, so Part 1 describes a present condition, not a future risk. Decision 9 confirmed: Sonu and Lalit both create-and-await-approval, Aman and Adesh issue directly. Decision 10 **reversed**: the five profiles below Lalit get proper definitions now rather than being frozen until Release 4, drafted for Aman in `staff-profiles-draft-for-aman-2026-08-10.md` and dormant until their release. Decision 11 added: passwords stay as they are, a risk Abhimanyu accepted knowingly, to be revisited at handover. Support staff moved into R2-6's scope. |
 | 2026-08-10 (adversarial review) | Nineteen findings folded in. Added **R2-0**, because nobody had checked whether Sonu's and Lalit's logins are already live. Added §1.10 and decision 10: the platform has eight admin profiles, not four, and a default-deny matrix would have silently stripped the other four. Rewrote §1.6 after finding the approval list and the printer use different words for the same documents, so the obvious fix would have passed Transfer Certificates unapproved. Added decision 9 (Sonu's certificate rights, previously undefined). Committed both audit scripts instead of describing them, and corrected §1.2 from 12 rows to a measured 18. Filled the writes column for all nine profiles. Gave R2-11 a rollback and a rehearsal rather than only a warning. Split R2-2's untestable acceptance criterion into three real ones. Made R2-10 diagnose before fixing. Added sizing, a definition of done, sign-off, and §4.3 on where any of this is verified. |

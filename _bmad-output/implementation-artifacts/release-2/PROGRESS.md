@@ -77,7 +77,11 @@ body and are counted as unreachable by the script, so the route column understat
 | R2-11 | Rename the two office logins, plus Adesh's display name | **BLOCKED** | On R2-0's reading tasks. Scope shrank 2026-08-10: only `accountant` → `sonu.ruhal` and `management` → `lalit.thomas`. **Aman's login is not touched.** Do not widen it back out. |
 | R2-12 | Transport head profile for Chaman Singh, dormant | NOT STARTED | He exists in staff already; no login. |
 | R2-13 | The proof: all-nine-profile sweep test | NOT STARTED | Nine, not four. The only thing guarding the five dormant profiles from silently losing or gaining access. |
-| R2-14 | Accounts, handover, go-live | NOT STARTED | Definition of done is in the plan, R2-14. |
+| R2-15 | A daily digest for Aman and Adesh | NOT STARTED | Reads `audit_logs`, records nothing new. Not WhatsApp yet: no production sender exists. |
+| R2-16 | What data is still missing, and who fills it | NOT STARTED | **Needs Abhimanyu's approval to read the live database.** Counts only, never an export of children's records. Start early: it waits on the school. |
+| R2-17 | One page each for Sonu and Lalit | NOT STARTED | Plain language, no jargon. Write after the screens stop moving. |
+| R2-18 | Same-day undo of your own change | NOT STARTED | Buildable from audit rows, but verify the `changes` shape first: it is not consistent across write paths. |
+| R2-14 | Accounts, handover, go-live | NOT STARTED | Definition of done is in the plan, R2-14. Now eight items, not five. |
 
 Statuses: `NOT STARTED` · `IN PROGRESS` · `BUILT, GATE GREEN` · `DEPLOYED` · `BLOCKED`.
 `BLOCKED` must name what it is blocked on and who can unblock it.
@@ -91,6 +95,8 @@ Statuses: `NOT STARTED` · `IN PROGRESS` · `BUILT, GATE GREEN` · `DEPLOYED` ·
 | 1 | **Aman:** the nine questions in `staff-profiles-draft-for-aman-2026-08-10.md`, covering the five profiles below Lalit. | The five dormant profiles in R2-1 and R2-6. Not the four live ones. | 2026-08-10 | — |
 | 2 | **Abhimanyu:** who may message whom from Release 5 (teachers) and Release 6 (students)? | Release 5, not R2-10 | 2026-08-10 | — |
 | 3 | **Reading task, needs approval to look:** has 031 run in production, have the two accounts been used by anyone but Abhimanyu, and what are Aman's and Adesh's exact login strings? | R2-11 | 2026-08-10 | — |
+| 4 | **Abhimanyu:** approval to run the empty-field scan against the live database, read-only, counts only. | R2-16 | 2026-08-10 | — |
+| 5 | **The school, via Aman:** do the fee structures and balances arrive as a spreadsheet, or does Sonu type them in? Same question for transport routes. | R2-16 | 2026-08-10 | — |
 | ~~4~~ | ~~Decision 9: Sonu's certificate rights~~ | ~~R2-9~~ | 2026-08-10 | **Yes.** Sonu and Lalit both create-and-await-approval; Aman and Adesh issue directly. |
 | ~~5~~ | ~~Decision 10: freeze the other four profiles?~~ | ~~R2-1~~ | 2026-08-10 | **No, define them properly now.** Drafted for Aman; dormant until their release. |
 | ~~6~~ | ~~R2-0: are the accounts live?~~ | ~~everything~~ | 2026-08-10 | **Yes, both are live.** See the note below. |
@@ -231,3 +237,37 @@ follow an obvious pattern, and git history is permanent. The rule is now written
 decision 7: login strings in the repo, passwords never.
 
 **Left.** Unchanged from the entry above.
+
+### 2026-08-10 — four readiness gaps closed (Claude, Opus 5)
+
+**Did.** Asked Abhimanyu what was still missing for the four profiles, and added four
+sub-parts from his answers. The plan went from 14 to 18 sub-parts and from 17-22 days to
+23-30.
+
+**R2-15, Aman's daily digest.** He asked for everything on the platform to be visible to
+him, and today that means remembering to open the Audit Log. A once-a-day summary of what
+Sonu and Lalit changed. It reads `audit_logs` and records nothing new, so it is a reader
+over data that already exists. **Not WhatsApp:** there is still no production sender.
+
+**R2-16, what data is still missing.** Aman says only the database upload is pending, so
+Abhimanyu asked for a list of which fields are empty across the roll, to hand him one list
+rather than discovering gaps for six months. Also the fee structures and balances, which
+Sonu cannot start without, and the transport routes. **This one needs Abhimanyu's approval
+to read the live database**, read-only, counts only, never an export of children's records.
+
+**R2-17, one page each** for Sonu and Lalit, plus Abhimanyu walking them through once.
+
+**R2-18, same-day undo.** Lalit types all day and cannot delete, so he and Sonu get to
+reverse their own change on the same day; older or somebody else's goes to Adesh.
+
+**Checked rather than assumed.** Before writing R2-18 as if it were easy, I verified the
+audit rows carry `changed_by`, `created_at` and the previous value of each field, so an
+undo is a write-back. **But the shape is not consistent:** most paths use
+`{field: {"previous": …, "new": …}}` and `student_service.py:393` uses
+`{"previous_state": {…}}`. An undo built on an assumed shape silently does nothing on the
+paths that differ, which is worse than not having one. R2-18 now says audit every write
+path first.
+
+**Left.** Two more questions for Abhimanyu, both in the table above: approval for the
+read-only database scan, and whether the fee and transport data arrives as spreadsheets or
+gets typed. Nothing else changed. R2-1 is still the next thing to build.
