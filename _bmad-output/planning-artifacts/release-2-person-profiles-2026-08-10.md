@@ -59,20 +59,48 @@ decisions list is what a later reader treats as authoritative.
 8. **Staff messaging.** Every school employee must be reachable by chat inside the
    platform, appearing as each release lets them in.
 
-### Two decisions this plan proposes, awaiting Abhimanyu's yes
+9. **Certificate approval follows the hierarchy exactly.** *Confirmed 2026-08-10.*
+   **Aman and Adesh issue directly. Sonu and Lalit create and wait for approval.** One
+   rule, no exceptions to remember, matching Aman > Adesh > Sonu > Lalit. This closes the
+   gap where Sonu, who sits above Lalit, had no certificate rights at all.
+10. **All nine profiles get a proper definition now.** *Revised 2026-08-10. The first
+    proposal was to freeze receptionist, IT, maintenance and support staff as they are and
+    fix them in Release 4; Abhimanyu chose to define them properly today instead.* The
+    matrix therefore carries a considered, written-down grant for every one of the nine,
+    not four real ones and five placeholders.
 
-Written here rather than left implicit, because both change behaviour and neither was
-covered by the conversation on 2026-08-10.
+    **Defining is not switching on.** Every profile below Lalit is built and tested now and
+    stays dormant until its release. Nobody new gets a login until Abhimanyu says so.
 
-9. **Who else needs certificate approval.** Decision 6 names only Lalit, which leaves Sonu
-   undefined: he has no certificate rights today and R2-5 widens him considerably. The
-   proposal follows the hierarchy exactly: **Aman and Adesh issue directly; Sonu and Lalit
-   create and wait for approval.** One rule, matching Aman > Adesh > Sonu > Lalit.
-10. **The other four admin profiles keep exactly what they have.** The platform already
-    recognises receptionist, IT, maintenance and support staff (§1.10). Release 2 must not
-    touch them: the matrix records their current grants as-is and freezes them, and
-    Release 4 gives them proper profiles. **Doing nothing here is a deliberate act, not an
-    omission**, and R2-13 pins it.
+    The drafts are in
+    `_bmad-output/planning-artifacts/staff-profiles-draft-for-aman-2026-08-10.md`, written
+    in plain words for **Aman to confirm before any of them go live**. They are a proposal,
+    not a decision, and they raise nine questions he needs to answer.
+
+11. **The live-account exposure.** *2026-08-10.* Abhimanyu confirmed the `accountant` and
+    `management` accounts are enabled in production; the screenshot that started this work
+    was taken by logging into one of them. Their passwords follow the account name plus
+    `@123`, on a public login page, guarding 1,876 children's records. Login locks out
+    after 5 wrong attempts for 15 minutes (`routes/auth.py:55-56`), so the risk is the
+    guessability of those two specific strings and nothing else.
+
+    **Decision: the passwords stay as they are for now.** Abhimanyu was offered strong
+    replacements and declined, knowingly, on 2026-08-10: the convenience of the current
+    ones while only he holds them is worth more to him than closing a gap nobody has
+    exploited. **This is a recorded acceptance of a known risk, not an oversight**, and it
+    is written here so that nobody later reads it as something the team missed.
+
+    **Do not quietly change them.** Anyone picking this work up: this was decided, and
+    changing it back without asking would lock Abhimanyu out of the accounts he uses to
+    check the work.
+
+    **Revisit at R2-14, and raise it then.** Handover is the natural moment: that is when
+    the passwords stop being Abhimanyu's alone and start being two more people's, and when
+    the platform's address starts circulating at the school. The mechanism is ready when he
+    wants it: logged in as Aman, the reset control on each profile, or simply asking Flo.
+    It runs through `set_profile_password`, which audits the change and revokes open
+    sessions. **Layaa does not touch the database to do this**, and no password is ever
+    written into this repository.
 
 ---
 
@@ -303,30 +331,33 @@ That file is also what Releases 3 through 7 extend. This is the pattern, not a p
 **Sizing.** Rough, so the school can be told something. A "day" is one focused working
 session. These are estimates and the first two will tell us how wrong they are.
 
-### R2-0 — Find out who can log in right now ⚠️ DO THIS FIRST
+### R2-0 — Who can log in right now ✅ ANSWERED 2026-08-10
 
-**Half a day. Blocks everything.**
+**The `accountant` and `management` accounts are LIVE.** Abhimanyu confirmed it: the
+screenshot that started this work was taken by logging into the management account. So
+every defect in Part 1 is a live condition, not a future risk. The plan was originally
+written as though Release 2 had not happened. It had, partly, and nobody had said so.
 
-§1.7 reports the production logins as `accountant` and `management`. If those accounts are
-**enabled**, then Sonu and Lalit, or anyone who guesses two very obvious passwords, can log
-in today, and every defect in Part 1 is present exposure rather than future risk. This plan
-was written as though Release 2 has not happened. Nobody has checked whether that is true.
+**What that changes, and what it does not.** It does not change the order of work below.
+It does change how the findings read: §1.3's nine money leaks and §1.4's owner-only tools
+are reachable today, by anyone holding those two logins. Right now that is Abhimanyu alone.
 
-Establish, by reading and not assuming:
+Three things still need reading, and they still block R2-11:
 
-- Do `accountant` and `management` rows exist in `auth_users`, and is `is_active` set?
-- Has migration `031_provision_school_leadership_accounts.py` run in production?
-- Have those accounts ever been used? Check last-login and the audit log.
-- What are Aman's and Adesh's actual usernames?
+- Has migration `031_provision_school_leadership_accounts.py` run in production, and what do
+  the four `auth_users` rows actually say?
+- Have the accounts ever been used by anyone other than Abhimanyu? Check last-login and the
+  audit log.
+- What are Aman's and Adesh's exact usernames today? (Reported as `Aman Litt` and `Adesh`,
+  which are display names, so the login strings are unconfirmed.)
 
-**If those accounts are live**, disable them the same day, tell Abhimanyu before doing it,
-and re-read Part 1 as a live incident. Everything below keeps its order; only its urgency
-changes.
+Read-only. Rule 8 in §4.1 stands: no unapproved change to the live database.
 
-Read-only until Abhimanyu approves any write. Rule 8 in §4.1 stands: no unapproved change
-to the live database.
+**Passwords: see decision 11.** They stay as they are, by Abhimanyu's explicit choice.
+Do not change them; revisit at R2-14.
 
-*Done when:* the answers are written into the progress log, and Abhimanyu has seen them.
+*Done when:* the three questions above are answered in the progress log and Abhimanyu has
+seen them.
 
 ### R2-1 — The permission matrix (one source of truth)
 
@@ -336,9 +367,14 @@ Create `backend/services/profile_matrix.py` and a generated JS mirror the fronte
 Profiles keyed by the person's job. Every entry names screen ids, Flo tool names, API route
 groups, and read versus write. **Default deny.**
 
-**All nine profiles go in, not four.** The four in §1.10 are entered with exactly what they
-have today, frozen, per decision 10. `transport_head` goes in fully specified but dormant,
-so R2-12 is a switch rather than a new design.
+**All nine profiles go in, properly defined, not four real ones and five placeholders**
+(decision 10, revised). The five below Lalit are built from the drafts in
+`staff-profiles-draft-for-aman-2026-08-10.md`, **once Aman has confirmed them**, and every
+one stays dormant until its release. Defining is not switching on.
+
+If Aman's answers have not arrived when this sub-part starts, build the four in Release 2
+first and leave the five as clearly-labelled stubs rather than guessing. A guessed profile
+that ships is indistinguishable from an agreed one six weeks later.
 
 Decide and write down how the mirror is produced: a checked-in generated file with a test
 that fails when it drifts is simpler than a build step, and it keeps Jest and Vite working
@@ -401,14 +437,18 @@ records, and transport (routes, vehicles, optimisation) as the contingency under
 3. Add student creation. Correct his Flo brief so it no longer says attendance is out of
 scope.
 
-### R2-6 — Fix the principal's dead buttons
+### R2-6 — Fix the dead buttons, for Adesh and for support staff
 
-**1 day.**
+**1 to 2 days.**
 
-Reconcile Adesh's menu with what the server accepts, both directions. Payroll is the known
-one; the sweep in R2-13 finds the rest. Rule: if the menu offers it, the server accepts it,
-or it comes out of the menu. `support_staff` (§1.10) is the same failure and is explicitly
-**out of scope here** under decision 10; note it and leave it.
+Reconcile every menu with what the server accepts, both directions. Rule: if the menu
+offers it, the server accepts it, or it comes out of the menu.
+
+Two known cases, and R2-13's sweep finds the rest. **Adesh** is offered Payroll & Payslips
+and refused by eight routes (§1.8). **Support staff** has no menu list at all and falls
+through to most of the admin menu, nearly all of it refused (§1.10); under decision 10 as
+revised this is now in scope rather than deferred, and its answer comes from the draft in
+`staff-profiles-draft-for-aman-2026-08-10.md`.
 
 ### R2-7 — One vocabulary: the same department groups for everyone
 
@@ -540,10 +580,11 @@ One test that walks **all nine profiles**, not four, across all three surfaces: 
 the menu offers, every route, all 161 Flo tools. It asserts the matrix and fails when a new
 tool or screen is added without an owner.
 
-It must also pin decision 10: the four profiles in §1.10 have exactly what they had on
-2026-08-10, and in particular still have zero write tools. This test is what keeps Releases
-3 through 7 honest, and it is the only thing standing between a default-deny matrix and
-four staff profiles quietly losing their access.
+It must also pin decision 10 as revised: each of the five profiles below Lalit matches its
+agreed definition, and none of them gained a write tool by accident (all five have zero
+writes today, §1.9). This test is what keeps Releases 3 through 7 honest, and it is the
+only thing standing between a default-deny matrix and five staff profiles quietly losing
+their access or quietly gaining someone else's.
 
 ### R2-14 — Accounts, handover, go-live
 
@@ -650,16 +691,20 @@ cannot build the bcrypt and cryptography wheels.
 - Deployment is verified by hitting a brand-new route: 401 proves the new code is live and
   still guarded, 404 means it did not ship. Then log in as each of the four.
 
-### 4.4 Still open with Abhimanyu
+### 4.4 Still open
 
-1. **Decision 9:** do Sonu and Lalit both create-and-await-approval on certificates, with
-   Aman and Adesh issuing directly? Blocks R2-9.
-2. **Decision 10:** confirm the four profiles in §1.10 are frozen as-is for Release 2 and
-   handled properly in Release 4. Blocks R2-1.
-3. **Who may message whom** from Release 5 (teachers) and Release 6 (students)? Needed
+1. **Aman's answers to the five profile drafts**
+   (`staff-profiles-draft-for-aman-2026-08-10.md`). Nine questions, the sharpest being
+   whether the receptionist should keep Student Transfer and Commercial Operations, and
+   whether maintenance may still edit the vendor list now that vendors are Sonu's. Blocks
+   the five dormant profiles in R2-1, not the four live ones.
+2. **Who may message whom** from Release 5 (teachers) and Release 6 (students)? Needed
    before Release 5, not during it.
-4. **R2-0's findings** need his eyes the moment they exist, especially if the `accountant`
-   and `management` accounts turn out to be live.
+3. **The three reading tasks left in R2-0**: has 031 run, have the two accounts been used
+   by anyone but Abhimanyu, and what are Aman's and Adesh's exact login strings. Blocks
+   R2-11.
+4. **Passwords at handover** (decision 11). Not open now; raise it again at R2-14 and let
+   Abhimanyu decide with the school about to be given the address.
 
 ---
 
@@ -670,4 +715,5 @@ cannot build the bcrypt and cryptography wheels.
 | 2026-08-10 | Created after the audit. Decisions 1-4 recorded. |
 | 2026-08-10 | Revised after Abhimanyu's answers: transport returns to Sonu as a contingency and Chaman Singh's profile is built dormant (3); Sonu may create students (5); certificates and ID cards need approval before printing (6); logins rename (7); staff messaging added as R2-10 (8). Added Part 4 so any agent can resume. |
 | 2026-08-10 (later) | Decision 7 widened to all four logins including Aman and Adesh, with display names. R2-7 settled on one shared vocabulary of department groups. |
+| 2026-08-10 (Abhimanyu's answers) | **R2-0 answered: the `accountant` and `management` accounts are LIVE**, so Part 1 describes a present condition, not a future risk. Decision 9 confirmed: Sonu and Lalit both create-and-await-approval, Aman and Adesh issue directly. Decision 10 **reversed**: the five profiles below Lalit get proper definitions now rather than being frozen until Release 4, drafted for Aman in `staff-profiles-draft-for-aman-2026-08-10.md` and dormant until their release. Decision 11 added: passwords stay as they are, a risk Abhimanyu accepted knowingly, to be revisited at handover. Support staff moved into R2-6's scope. |
 | 2026-08-10 (adversarial review) | Nineteen findings folded in. Added **R2-0**, because nobody had checked whether Sonu's and Lalit's logins are already live. Added §1.10 and decision 10: the platform has eight admin profiles, not four, and a default-deny matrix would have silently stripped the other four. Rewrote §1.6 after finding the approval list and the printer use different words for the same documents, so the obvious fix would have passed Transfer Certificates unapproved. Added decision 9 (Sonu's certificate rights, previously undefined). Committed both audit scripts instead of describing them, and corrected §1.2 from 12 rows to a measured 18. Filled the writes column for all nine profiles. Gave R2-11 a rollback and a rehearsal rather than only a warning. Split R2-2's untestable acceptance criterion into three real ones. Made R2-10 diagnose before fixing. Added sizing, a definition of done, sign-off, and §4.3 on where any of this is verified. |

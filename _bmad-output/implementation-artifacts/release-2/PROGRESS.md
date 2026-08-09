@@ -63,20 +63,20 @@ body and are counted as unreachable by the script, so the route column understat
 
 | Sub-part | What it is | Status | Notes |
 |---|---|---|---|
-| R2-0 | Find out who can log in right now | **NOT STARTED ⚠️** | **Do this first.** If `accountant` and `management` are live accounts, Part 1 is a live exposure, not a plan. |
-| R2-1 | The permission matrix (one source of truth) | NOT STARTED | All nine profiles, not four. Everything else reads it. |
+| R2-0 | Who can log in right now | **MOSTLY ANSWERED** | **The `accountant` and `management` accounts ARE live.** Part 1 is a present condition, not a plan. Three reading tasks left; they block R2-11. |
+| R2-1 | The permission matrix (one source of truth) | NOT STARTED | All nine profiles, properly defined. The five below Lalit need Aman's answers first. |
 | R2-2 | Close the nine money leaks to Lalit | NOT STARTED | Biggest block. Plan §1.3. Three separate acceptance checks. |
 | R2-3 | Close the owner-only hole in Flo | NOT STARTED | Smallest, highest severity. Plan §1.4. |
 | R2-4 | People records: add/edit yes, delete/logins no | NOT STARTED | Plan §1.5, decisions 4 and 5. |
 | R2-5 | Sonu's full remit | NOT STARTED | Attendance read, vendors, transport, create students. |
-| R2-6 | Fix the principal's dead buttons | NOT STARTED | Payroll is the known one. Plan §1.8. |
+| R2-6 | Fix the dead buttons, Adesh and support staff | NOT STARTED | Payroll for Adesh (§1.8); support staff has no menu list at all (§1.10). |
 | R2-7 | One vocabulary: same department groups for everyone | NOT STARTED | Pairs with R2-8. Do NOT invent per-person group names. |
 | R2-8 | Flo briefs per person | NOT STARTED | Pairs with R2-7. |
 | R2-9 | Certificates and ID cards need approval before printing | NOT STARTED | Read plan §1.6 twice. The two systems use different words for the same documents. |
 | R2-10 | Staff messaging: a real colleague directory | NOT STARTED | Diagnose RECONNECTING before fixing. May be infrastructure. |
 | R2-11 | Rename all four logins, with display names | **BLOCKED** | On R2-0 and open question 4. Riskiest step: locks the school's owner out if it goes wrong. |
 | R2-12 | Transport head profile for Chaman Singh, dormant | NOT STARTED | He exists in staff already; no login. |
-| R2-13 | The proof: all-nine-profile sweep test | NOT STARTED | Nine, not four. It is the only thing guarding the four in plan §1.10. |
+| R2-13 | The proof: all-nine-profile sweep test | NOT STARTED | Nine, not four. The only thing guarding the five dormant profiles from silently losing or gaining access. |
 | R2-14 | Accounts, handover, go-live | NOT STARTED | Definition of done is in the plan, R2-14. |
 
 Statuses: `NOT STARTED` · `IN PROGRESS` · `BUILT, GATE GREEN` · `DEPLOYED` · `BLOCKED`.
@@ -84,14 +84,16 @@ Statuses: `NOT STARTED` · `IN PROGRESS` · `BUILT, GATE GREEN` · `DEPLOYED` ·
 
 ---
 
-## Blocked on Abhimanyu
+## Open questions
 
 | # | Question | Blocks | Asked | Answered |
 |---|---|---|---|---|
-| 1 | **Decision 9:** do Sonu and Lalit both create-and-await-approval on certificates, with Aman and Adesh issuing directly? | R2-9 | 2026-08-10 | — |
-| 2 | **Decision 10:** confirm the four profiles in plan §1.10 are frozen as-is for Release 2 and done properly in Release 4. | R2-1 | 2026-08-10 | — |
-| 3 | Who may message whom from Release 5 (teachers) and Release 6 (students)? | Release 5, not R2-10 | 2026-08-10 | — |
-| 4 | R2-0's findings need his eyes the moment they exist, especially if `accountant` and `management` turn out to be live accounts. | R2-11 | pending R2-0 | — |
+| 1 | **Aman:** the nine questions in `staff-profiles-draft-for-aman-2026-08-10.md`, covering the five profiles below Lalit. | The five dormant profiles in R2-1 and R2-6. Not the four live ones. | 2026-08-10 | — |
+| 2 | **Abhimanyu:** who may message whom from Release 5 (teachers) and Release 6 (students)? | Release 5, not R2-10 | 2026-08-10 | — |
+| 3 | **Reading task, needs approval to look:** has 031 run in production, have the two accounts been used by anyone but Abhimanyu, and what are Aman's and Adesh's exact login strings? | R2-11 | 2026-08-10 | — |
+| ~~4~~ | ~~Decision 9: Sonu's certificate rights~~ | ~~R2-9~~ | 2026-08-10 | **Yes.** Sonu and Lalit both create-and-await-approval; Aman and Adesh issue directly. |
+| ~~5~~ | ~~Decision 10: freeze the other four profiles?~~ | ~~R2-1~~ | 2026-08-10 | **No, define them properly now.** Drafted for Aman; dormant until their release. |
+| ~~6~~ | ~~R2-0: are the accounts live?~~ | ~~everything~~ | 2026-08-10 | **Yes, both are live.** See the note below. |
 
 ---
 
@@ -109,8 +111,13 @@ Verified working on 2026-08-10. If a change makes one of these fail, the change 
 - School Directory, Student Database and Staff Tracker contain no money fields.
 - **The four profiles below Lalit have zero write tools**, and Release 2 must not be what
   gives them any. Pinned by R2-13.
-- Passwords do not change for anyone in this release. *(Usernames do, in R2-11, for all
-  four including Aman and Adesh. That is deliberate, per decision 7 as revised.)*
+- **Passwords do not change for anyone, and that is a decision, not an omission.** They
+  are guessable (account name plus `@123`) and Abhimanyu was offered strong replacements
+  on 2026-08-10 and declined, knowingly, while only he holds them. Do not quietly "fix"
+  this: it would lock him out of the accounts he uses to check the work. Raise it again at
+  R2-14, when the school is about to be given the address. Plan, decision 11.
+  *(Usernames do change, in R2-11, for all four including Aman and Adesh. Also deliberate,
+  per decision 7 as revised.)*
 
 ---
 
@@ -170,3 +177,33 @@ committed. No sizing, no definition of done, nobody named to sign off, and nothi
 where any of this is verified given there is no staging environment.
 
 **Left.** Both documents rewritten. R2-0 is still the next thing to do.
+
+### 2026-08-10 — Abhimanyu's answers, and R2-0 comes back live (Claude, Opus 5)
+
+**Did.** Put the three open questions to Abhimanyu and folded the answers into both
+documents. Drafted the five staff profiles below Lalit for Aman to confirm, in
+`_bmad-output/planning-artifacts/staff-profiles-draft-for-aman-2026-08-10.md`.
+
+**The answer that matters. The `accountant` and `management` accounts are LIVE.** The
+screenshot that started this work was taken by logging into the management account. So
+everything in plan Part 1 describes a present condition, not a future risk: those two
+logins reach the nine money leaks in §1.3 and the owner-only tools in §1.4 today. Right now
+Abhimanyu alone holds them. It does not change the order of work; it changes how the
+findings read.
+
+**Passwords stay as they are.** Guessable, on a public login page, guarding 1,876
+children's records. Abhimanyu was offered strong replacements and declined knowingly.
+Login locks out after 5 wrong tries for 15 minutes (`routes/auth.py:55-56`), so the
+exposure is the guessability of two specific strings and nothing else. **Recorded as an
+accepted risk, to be raised again at R2-14 (handover), and not to be quietly reversed.**
+
+**The other two answers.** Certificate approval now follows the hierarchy exactly: Aman and
+Adesh issue directly, Sonu and Lalit create and wait. And the five profiles below Lalit get
+proper definitions now rather than being frozen until Release 4, which reverses the
+proposal in the previous entry. They are built and tested now and stay dormant until each
+one's release; defining is not switching on.
+
+**Left.** Nothing to build until Aman answers the nine questions in the draft, for the five
+dormant profiles. The four live profiles are unblocked, so R2-1 can start on those. Three
+reading tasks remain in R2-0 and they block R2-11; all three need approval to look at the
+live database.

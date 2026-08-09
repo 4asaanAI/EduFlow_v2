@@ -63,9 +63,11 @@
 >    work is: the audit (Part 1), the 14 sub-parts (Part 2), the order (Part 3), and the
 >    working notes an agent needs to resume cold (Part 4).
 >
-> **⚠️ R2-0 comes before everything.** Nobody has checked whether the `accountant` and
-> `management` logins are already ENABLED in production. If they are, every hole below is
-> live exposure rather than a plan. Answer that first, read-only, and tell Abhimanyu.
+> **⚠️ The `accountant` and `management` logins are LIVE in production** (confirmed
+> 2026-08-10). So everything below is a present condition, not a future risk. Their
+> passwords are guessable and **that is a recorded decision of Abhimanyu's, not an
+> oversight** (plan, decision 11). Do not change them: it would lock him out of the
+> accounts he uses to check the work.
 >
 > **The one thing to understand.** Sonu's and Lalit's permissions are granted today by
 > SUBTRACTION — management is defined as "everything not tagged finance", in
