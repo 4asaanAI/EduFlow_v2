@@ -63,6 +63,10 @@
 >    work is: the audit (Part 1), the 14 sub-parts (Part 2), the order (Part 3), and the
 >    working notes an agent needs to resume cold (Part 4).
 >
+> **⚠️ R2-0 comes before everything.** Nobody has checked whether the `accountant` and
+> `management` logins are already ENABLED in production. If they are, every hole below is
+> live exposure rather than a plan. Answer that first, read-only, and tell Abhimanyu.
+>
 > **The one thing to understand.** Sonu's and Lalit's permissions are granted today by
 > SUBTRACTION — management is defined as "everything not tagged finance", in
 > `frontend/src/lib/toolPermissions.js` and at the bottom of `ai/tool_functions_v2.py`.
