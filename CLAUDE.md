@@ -52,6 +52,29 @@
 > `_bmad-output/planning-artifacts/inspection-findings-2026-08-04.md`.
 > Logs in `_bmad-output/implementation-artifacts/inspection-2026-08-04/`.
 
+> ## 🚧 CURRENT INITIATIVE — Release 2: person profiles for Sonu and Lalit (2026-08-10)
+>
+> The school's accountant head (Sonu Ruhal) and management person (Lalit Thomas) get their
+> own logins so they keep the data current. **Start here, in this order:**
+>
+> 1. `_bmad-output/implementation-artifacts/release-2/PROGRESS.md` ← the ONLY record of
+>    what is done. Read it first, update it last, every single run.
+> 2. `_bmad-output/planning-artifacts/release-2-person-profiles-2026-08-10.md` ← what the
+>    work is: the audit (Part 1), the 14 sub-parts (Part 2), the order (Part 3), and the
+>    working notes an agent needs to resume cold (Part 4).
+>
+> **The one thing to understand.** Sonu's and Lalit's permissions are granted today by
+> SUBTRACTION — management is defined as "everything not tagged finance", in
+> `frontend/src/lib/toolPermissions.js` and at the bottom of `ai/tool_functions_v2.py`.
+> Nothing states what they are supposed to have. That is why Lalit can currently see the
+> school's fee figures, read any teacher's salary, open and close the accounting posting
+> lock, and run the year-end promotion. R2-1 replaces subtraction with one written-down
+> grant table, default deny, read by the menu, the server and Flo alike. Do not patch the
+> symptoms without it.
+>
+> One sub-part per run. Suite green before the next. Eight decisions from Abhimanyu are
+> recorded in the plan and are settled; do not re-open them.
+
 ---
 
 > ## ⚠️ Deploys MUST run as the `claude-hosting` IAM user
