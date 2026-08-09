@@ -74,7 +74,7 @@ body and are counted as unreachable by the script, so the route column understat
 | R2-8 | Flo briefs per person | NOT STARTED | Pairs with R2-7. |
 | R2-9 | Certificates and ID cards need approval before printing | NOT STARTED | Read plan §1.6 twice. The two systems use different words for the same documents. |
 | R2-10 | Staff messaging: a real colleague directory | NOT STARTED | Diagnose RECONNECTING before fixing. May be infrastructure. |
-| R2-11 | Rename all four logins, with display names | **BLOCKED** | On R2-0 and open question 4. Riskiest step: locks the school's owner out if it goes wrong. |
+| R2-11 | Rename the two office logins, plus Adesh's display name | **BLOCKED** | On R2-0's reading tasks. Scope shrank 2026-08-10: only `accountant` → `sonu.ruhal` and `management` → `lalit.thomas`. **Aman's login is not touched.** Do not widen it back out. |
 | R2-12 | Transport head profile for Chaman Singh, dormant | NOT STARTED | He exists in staff already; no login. |
 | R2-13 | The proof: all-nine-profile sweep test | NOT STARTED | Nine, not four. The only thing guarding the five dormant profiles from silently losing or gaining access. |
 | R2-14 | Accounts, handover, go-live | NOT STARTED | Definition of done is in the plan, R2-14. |
@@ -116,8 +116,10 @@ Verified working on 2026-08-10. If a change makes one of these fail, the change 
   on 2026-08-10 and declined, knowingly, while only he holds them. Do not quietly "fix"
   this: it would lock him out of the accounts he uses to check the work. Raise it again at
   R2-14, when the school is about to be given the address. Plan, decision 11.
-  *(Usernames do change, in R2-11, for all four including Aman and Adesh. Also deliberate,
-  per decision 7 as revised.)*
+  *(Two usernames change in R2-11: `accountant` → `sonu.ruhal` and `management` →
+  `lalit.thomas`. **Aman's login is not touched**, and Adesh gains "Singh". Migration 031
+  declares the dotted form for all four; the file is wrong and Abhimanyu's instruction
+  wins.)*
 
 ---
 
@@ -207,3 +209,25 @@ one's release; defining is not switching on.
 dormant profiles. The four live profiles are unblocked, so R2-1 can start on those. Three
 reading tasks remain in R2-0 and they block R2-11; all three need approval to look at the
 live database.
+
+### 2026-08-10 — final credentials, and R2-11 shrinks (Claude, Opus 5)
+
+**Did.** Recorded the final credential state and cut R2-11 down to match it.
+
+**The change.** Only the two office logins move: `accountant` → `sonu.ruhal` and
+`management` → `lalit.thomas`. **Aman's login is not touched.** Adesh gains "Singh".
+Passwords unchanged for all four. This reverses the earlier "all four move to the dotted
+form migration 031 declares".
+
+**Why that is good news.** Aman and Adesh are the only two people using the platform today,
+so a rename that skips them removes almost all of the lock-out risk that made R2-11 the
+scariest step. R2-11 went from a day to half a day. **Do not widen it back out for
+tidiness**, and expect to be tempted, because migration 031 does declare `aman.litt` and
+`adesh.singh`. The file and the instruction disagree, and the instruction wins.
+
+**Caught while doing it.** I had written the four actual passwords into the plan document.
+Removed before committing. The passwords add nothing for anyone implementing this, they
+follow an obvious pattern, and git history is permanent. The rule is now written into
+decision 7: login strings in the repo, passwords never.
+
+**Left.** Unchanged from the entry above.

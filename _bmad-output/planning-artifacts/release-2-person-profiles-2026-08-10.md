@@ -50,12 +50,32 @@ decisions list is what a later reader treats as authoritative.
    may too, under decision 4.
 6. **Certificates and ID cards.** Lalit may create all of them, but nothing is produced
    until Aman or Adesh approves it, and that approval happens on the platform.
-7. **Logins.** *Revised 2026-08-10, later the same day.* **All four** move to the form
-   migration 031 already declares: `aman.litt`, `adesh.singh`, `sonu.ruhal`,
-   `lalit.thomas`. Every password stays exactly as it is. Display names go with them, so
-   Adesh shows as "Adesh Singh" everywhere. This supersedes the earlier instruction to
-   leave Aman's and Adesh's credentials alone: Abhimanyu chose the tidier end state
-   knowing it logs both of them out once.
+7. **Logins.** *Settled 2026-08-10, third and final version. This table is the target
+   state; earlier wordings in this document's change log are superseded.*
+
+   | Person | Login | Password |
+   |---|---|---|
+   | Aman Litt (owner) | `Aman Litt` — **unchanged, whatever it is today** | unchanged |
+   | Adesh Singh (principal) | `Adesh Singh` — gains the surname | unchanged |
+   | Sonu Ruhal (accountant) | `sonu.ruhal` — was `accountant` | unchanged |
+   | Lalit Thomas (management) | `lalit.thomas` — was `management` | unchanged |
+
+   **Every password stays exactly as it is** (decision 11), and **no password is written
+   into this repository**. They follow a role-name pattern, Abhimanyu holds them, and an
+   agent doing this work needs the login strings and never the passwords. Writing them into
+   a tracked file would put them in the git history permanently for no gain.
+
+   Display names follow the logins, so Adesh reads "Adesh Singh" in the header, in chat and
+   in the audit trail.
+
+   ⚠️ **One thing to confirm, not to guess.** Abhimanyu wrote Aman's and Adesh's with a
+   space and Sonu's and Lalit's with a dot, which is consistent with Aman and Adesh keeping
+   the login they already have while the two office accounts move to the tidier form.
+   Migration 031 declares all four in the dotted form (`aman.litt`, `adesh.singh`), so the
+   file and the instruction disagree for two of the four. **R2-0 reads the live rows and
+   settles it. Default: leave Aman's and Adesh's login strings exactly as they already are
+   and change only Adesh's display name.** Changing a login string that did not need
+   changing is how the owner gets locked out of his own school.
 8. **Staff messaging.** Every school employee must be reachable by chat inside the
    platform, appearing as each release lets them in.
 
@@ -530,18 +550,28 @@ Then, per decision 8:
 infrastructure work; and Aman, Adesh, Sonu and Lalit see each other, can search, and can
 start both a direct chat and a group.
 
-### R2-11 — Rename all four logins
+### R2-11 — Rename the two office logins, and Adesh's display name
 
-**1 day, and it is the riskiest day in this plan.**
+**Half a day, and it is still the riskiest half-day in this plan.**
 
-Per decision 7 as revised. All four move to the form migration
-`031_provision_school_leadership_accounts.py` already declares: `aman.litt`,
-`adesh.singh`, `sonu.ruhal`, `lalit.thomas`. Passwords unchanged. Display names go with
-them, so Adesh reads "Adesh Singh" in the header, in chat and in the audit trail.
+Per decision 7, third version. **Smaller than it was:** only `accountant` → `sonu.ruhal`
+and `management` → `lalit.thomas` are real login changes. Aman keeps his login untouched.
+Adesh gains "Singh", and if his login string already works, change only the display name.
+Passwords unchanged for everyone.
+
+**Do not widen this back out to all four** because migration 031 declares the dotted form
+for Aman and Adesh too. The file and Abhimanyu's instruction disagree, and the instruction
+wins; see the warning under decision 7.
+
+That reduction matters: Aman and Adesh are the only two people using the platform today, so
+touching only the two accounts nobody depends on removes most of the lock-out risk. Do not
+undo it for tidiness.
 
 **Before touching anything:**
 
-1. R2-0 must be finished, so the live rows are known rather than guessed.
+1. R2-0 must be finished, so the live rows are known rather than guessed. In particular,
+   confirm Aman's and Adesh's exact login strings before deciding whether either needs to
+   change at all.
 2. **Find everything that joins on username, not on user id.** §1.7 is proof there is at
    least one: staff messaging looks people up by `username_lower`. Search the whole
    codebase for `username` before assuming that is the only one. Audit rows, notifications,
@@ -552,16 +582,16 @@ them, so Adesh reads "Adesh Singh" in the header, in chat and in the audit trail
 
 **Rollback, written before the change and not after:**
 
-- Take a copy of the four `auth_users` rows, including `user_info`, and save it where
-  Abhimanyu can reach it without a working login.
+- Take a copy of every `auth_users` row you are about to touch, including `user_info`, and
+  save it where Abhimanyu can reach it without a working login.
 - The undo is a single update per row restoring `username` and `username_lower`. Write and
   rehearse that statement in the same session, before running the change.
-- **A failure here locks the school's owner out of his own school.** Aman and Adesh are
-  the only two people using the platform today, and the rename revokes their sessions.
+- **If this is ever widened to include Aman, a failure locks the school's owner out of his
+  own school.** That is the reason the scope shrank to the two office accounts.
 
-**On the day:** tell the school the day before, do it at a quiet hour, and have all four
-new usernames written down and in Abhimanyu's hand before the change, not after. Confirm by
-logging in as each of the four.
+**On the day:** tell the school beforehand, do it at a quiet hour, and have the new
+usernames in Abhimanyu's hand before the change, not after. Confirm by logging in as each
+of the four, including the two you did not touch.
 
 ### R2-12 — Build the transport head profile for Chaman Singh
 
@@ -715,5 +745,6 @@ cannot build the bcrypt and cryptography wheels.
 | 2026-08-10 | Created after the audit. Decisions 1-4 recorded. |
 | 2026-08-10 | Revised after Abhimanyu's answers: transport returns to Sonu as a contingency and Chaman Singh's profile is built dormant (3); Sonu may create students (5); certificates and ID cards need approval before printing (6); logins rename (7); staff messaging added as R2-10 (8). Added Part 4 so any agent can resume. |
 | 2026-08-10 (later) | Decision 7 widened to all four logins including Aman and Adesh, with display names. R2-7 settled on one shared vocabulary of department groups. |
+| 2026-08-10 (final credentials) | Decision 7, third and last version. **Only the two office logins change**: `accountant` → `sonu.ruhal`, `management` → `lalit.thomas`. Aman keeps his login untouched and Adesh gains "Singh", which reverses the earlier "all four move to the dotted 031 form". R2-11 shrank accordingly and most of the lock-out risk went with it. Passwords unchanged for everyone, and none is written into this repository. |
 | 2026-08-10 (Abhimanyu's answers) | **R2-0 answered: the `accountant` and `management` accounts are LIVE**, so Part 1 describes a present condition, not a future risk. Decision 9 confirmed: Sonu and Lalit both create-and-await-approval, Aman and Adesh issue directly. Decision 10 **reversed**: the five profiles below Lalit get proper definitions now rather than being frozen until Release 4, drafted for Aman in `staff-profiles-draft-for-aman-2026-08-10.md` and dormant until their release. Decision 11 added: passwords stay as they are, a risk Abhimanyu accepted knowingly, to be revisited at handover. Support staff moved into R2-6's scope. |
 | 2026-08-10 (adversarial review) | Nineteen findings folded in. Added **R2-0**, because nobody had checked whether Sonu's and Lalit's logins are already live. Added §1.10 and decision 10: the platform has eight admin profiles, not four, and a default-deny matrix would have silently stripped the other four. Rewrote §1.6 after finding the approval list and the printer use different words for the same documents, so the obvious fix would have passed Transfer Certificates unapproved. Added decision 9 (Sonu's certificate rights, previously undefined). Committed both audit scripts instead of describing them, and corrected §1.2 from 12 rows to a measured 18. Filled the writes column for all nine profiles. Gave R2-11 a rollback and a rehearsal rather than only a warning. Split R2-2's untestable acceptance criterion into three real ones. Made R2-10 diagnose before fixing. Added sizing, a definition of done, sign-off, and §4.3 on where any of this is verified. |
