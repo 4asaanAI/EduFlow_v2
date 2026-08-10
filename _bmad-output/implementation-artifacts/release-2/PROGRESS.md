@@ -12,10 +12,9 @@ the run failed. A run that changed code and left this file untouched is an incom
 
 ## ▶ NEXT SESSION STARTS HERE
 
-**Read the entry at the bottom of this file dated 2026-08-10 (overnight run) first.**
-Priorities 1 to 5 of the overnight handoff are done and the suite is green. The
-permission work is finished; the fee ledger below is the next job, and it needs
-Abhimanyu awake.
+**Read the LAST session entry at the bottom of this file first.** All the permission
+sub-parts are done and the suite is green: R2-1 to R2-6, R2-12 and R2-13. The fee
+ledger below is the next job and it needs Abhimanyu awake.
 
 **Do this next.** The school's fee ledger is the school's most urgent need and
 Abhimanyu has approved writing it to the live database.
@@ -33,8 +32,7 @@ Abhimanyu has approved writing it to the live database.
    the undo is deleting exactly what you inserted.
 5. Then R2-19: prove Flo can do the same work through the same services.
 
-Everything else in this file still applies. The permission sub-parts R2-1 to R2-6,
-R2-12 and R2-13 are all **done and green**. The next *permissions* job is R2-9
+Everything else in this file still applies. The next *permissions* job is R2-9
 (certificate approval), then R2-7/R2-8.
 
 ---
@@ -95,13 +93,13 @@ body and are counted as unreachable by the script, so the route column understat
 | R2-0 | Who can log in right now | **✅ DONE** | Read from the live database 2026-08-10. **1,898 accounts, ALL active**, including 1,802 students and 88 teachers. Login has no role gate. Migration 031 has not run. Plan R2-0 has the full table. |
 | R2-19 | Flo can do the fee work too | NOT STARTED | Abhimanyu, 2026-08-10: anything done by hand, Flo must do on request. Parity tests required. |
 | R2-1 | The permission matrix (one source of truth) | **✅ BUILT, GATE GREEN** | `backend/services/profile_matrix.py` + checked-in JS mirror + drift test. All nine profiles. Default deny. Commit `72a4bed`. |
-| R2-2 | Close the nine money leaks to Lalit | **✅ BUILT, GATE GREEN** | Only THREE of the nine were still open; four were already closed and one was the opposite of a leak. Commit `7893726`. |
+| R2-2 | Close the nine money leaks to Lalit | **✅ BUILT, GATE GREEN** | Only THREE of the nine were still open; four were already closed and one was the opposite of a leak. Commits `7893726`, `2f6eb4b` (the flag on screen). |
 | R2-3 | Close the owner-only hole in Flo | **✅ BUILT, GATE GREEN** | Commit `6a90cff`. The handoff's "all eight non-owner profiles" was wrong about the principal; see the session entry. |
 | R2-4 | People records: add/edit yes, delete/logins no | **✅ BUILT, GATE GREEN** | Guard in the service, so the screen and Flo give one answer. Commit `84e330d`. |
 | R2-5 | Sonu's full remit | **✅ BUILT, GATE GREEN** | Attendance and leave to read, vendors, transport in full until Release 3; Lalit loses vendors and transport. Commit `5eeb553`. |
 | R2-6 | Fix the dead buttons, Adesh and support staff | **✅ BUILT, GATE GREEN** | Adesh could open payroll and then be refused a payslip. Support staff closed in R2-1. Commit `ca701e5`. |
 | R2-7 | One vocabulary: same department groups for everyone | NOT STARTED | Pairs with R2-8. Do NOT invent per-person group names. |
-| R2-8 | Flo briefs per person | NOT STARTED | Pairs with R2-7. |
+| R2-8 | Flo briefs per person | PARTLY DONE | Sonu's and Lalit's rewritten (`73e02a6`) — both were telling them the wrong thing. The other seven profiles' briefs are untouched. |
 | R2-9 | Certificates and ID cards need approval before printing | NOT STARTED | Read plan §1.6 twice. The two systems use different words for the same documents. |
 | R2-10 | Staff messaging: a real colleague directory | NOT STARTED | Diagnose RECONNECTING before fixing. May be infrastructure. |
 | R2-11 | Rename the two office logins, plus Adesh's display name | **BLOCKED** | On R2-0's reading tasks. Scope shrank 2026-08-10: only `accountant` → `sonu.ruhal` and `management` → `lalit.thomas`. **Aman's login is not touched.** Do not widen it back out. |
@@ -553,3 +551,75 @@ touched.
 name in either list silently overrides the domain rule for one profile. Use them only
 when the domains genuinely cannot say what the school meant, and write the reason on
 the same line — every entry there today has one.
+
+### 2026-08-10 — Abhimanyu's four points, and a line-by-line check against the plan (Claude, Opus 5)
+
+**Still safe to hand over the credentials, on the permission side. Still not deployed.**
+Nothing in this entry reopens anything.
+
+**Points 1 and 4 needed no work; both were already true.** Adesh reaches all eleven
+owner-only tools and the same 155 as Aman — leadership was never narrowed, which was
+the deliberate deviation from the handoff recorded in the previous entry, and Abhimanyu
+has now confirmed it was right. The payslip refusal was fixed in R2-6.
+
+**Point 3 was two decisions, not one, and both were put back to him.**
+
+*The fee rate card is public.* What a class is charged per year is on the school's own
+fee sheet and any parent may ask for it. It is the school's price list, not the school's
+money. `get_fee_structures` moved from finance to shared and every staff profile can now
+look it up, the management head included. That is the single exception to "Lalit never
+sees a rupee figure", and it is an exception because the number says nothing about any
+family.
+
+*What is actually the school's money did not move.* Collections, the defaulter list,
+individual payments and the finance report stay finance-only, and so do the three tools
+that WRITE the rate card. A test pins that list by name, because "the fee data is
+public" is exactly the kind of sentence that grows over time.
+
+*The action log stays with Aman and Adesh.* His message could have been read as adding
+Sonu and Lalit. That would have reversed Aman's own request 10 of 2026-08-06, so it went
+back to him and he chose the narrower answer. The five junior profiles are shut out
+either way, which was the unambiguous half of what he asked for.
+
+**Point 2, the check against the plan, found three real gaps.** All three are fixed.
+
+1. **Flo's briefs were telling both new people the wrong thing.** Sonu's said attendance
+   and transport were outside his scope; both are his now. Lalit's promised him student
+   logins and password changes, which R2-4 removed, and offered him transport and school
+   settings, which he no longer has. On day one Flo would have contradicted the platform
+   to the two people being handed credentials. Both rewritten.
+2. **The paid-or-unpaid flag was returned but never displayed.** R2-2 asked for two
+   things and only the first was done: `getStudentFeeStatus` existed and nothing in the
+   frontend called it, so opening a student as Lalit still told him nothing. That is the
+   half that matters to him. The student panel now shows Paid, Unpaid or Overdue.
+3. **Plan §1.8's "eight payroll routes refuse Adesh" was stale**, like several other
+   entries in that register. The shared helper already admitted the principal; only the
+   payslip route was left, and R2-6 closed it.
+
+**One deviation from the plan, stated rather than hidden.** R2-1 asked the matrix to
+name screen ids, Flo tool names AND API route groups. It names the first two. Routes are
+still guarded in each route file. Closing that properly means moving 483 route guards
+onto the table, which is its own piece of work and not something to start at the end of
+a run. The R2-13 sweep measures route reach per profile, so a change there is at least
+visible.
+
+**Measured.**
+
+| Profile | Flo tools | writes |
+|---|---|---|
+| owner | 155 | 100 |
+| principal | 155 | 100 |
+| accountant | 56 | 31 |
+| management | 97 → **98** | 59 |
+| the four dormant with lists | 27 → **28** | 0 |
+| support_staff | 26 → **27** | 0 |
+
+The single +1 everywhere is the fee rate card. Writes, routes and menus unchanged.
+
+**Proved.** Backend 2,815 passed / 0 failed / 15 deselected. Frontend 569 passed /
+0 failed. Production build passed with lint clean.
+
+**Left.** R2-7/R2-8 (menu vocabulary; the briefs for the seven other profiles),
+R2-9 (certificate approval before printing), R2-10, R2-14 to R2-19, and R2-11 last.
+The fee ledger still waits. Nothing deployed, nothing pushed, no production system
+touched.
