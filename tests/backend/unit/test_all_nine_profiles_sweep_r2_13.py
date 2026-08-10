@@ -255,12 +255,12 @@ EXPECTED_REACH = {
     "owner":          (155, 100),
     "principal":      (155, 100),
     "accountant":     (56, 31),
-    "management":     (97, 59),
-    "transport_head":(27, 0),
-    "receptionist": (27, 0),
-    "it_tech":      (27, 0),
-    "maintenance":  (27, 0),
-    "support_staff":(26, 0),
+    "management":     (98, 59),
+    "transport_head": (28, 0),
+    "receptionist":   (28, 0),
+    "it_tech":        (28, 0),
+    "maintenance":    (28, 0),
+    "support_staff":  (27, 0),
 }
 
 

@@ -177,6 +177,79 @@ def test_fee_status_gives_the_management_head_a_flag_and_no_amounts(client, fake
     assert leaked == set(), f"the management head was handed money keys: {sorted(leaked)}"
 
 
+# ─── The one money figure everyone may see: the published rate card ───────────
+
+def test_the_fee_rate_card_is_public_to_every_staff_profile():
+    """Abhimanyu, 2026-08-10.
+
+    What a class is charged per year is on the school's own fee sheet and any parent
+    may ask for it. It is the school's price list, not the school's money, so it is
+    the single exception to "the management head never sees a rupee figure".
+
+    `get_fee_structures` returns class group, the named components, their amounts and
+    the annual total. No child, no arrears, no payment history.
+    """
+    from ai.tool_access import is_tool_authorized
+    from ai.tool_functions_v2 import TOOL_REGISTRY
+
+    tool = TOOL_REGISTRY["get_fee_structures"]
+    for sub_category in (
+        "principal", "accountant", "management", "transport_head",
+        "receptionist", "it_tech", "maintenance", "support_staff",
+    ):
+        user = {"role": "admin", "sub_category": sub_category}
+        assert is_tool_authorized(user, tool) is True, sub_category
+    assert is_tool_authorized({"role": "owner"}, tool) is True
+
+
+def test_everything_that_is_actually_the_schools_money_stays_shut():
+    """The rate card being public must not drag the ledger along with it.
+
+    Collections, arrears, individual payments and the finance report are a different
+    thing entirely, and so is CHANGING the rate card.
+    """
+    from ai.tool_access import is_tool_authorized
+    from ai.tool_functions_v2 import TOOL_REGISTRY
+
+    STILL_FINANCE_ONLY = [
+        "get_fee_summary",        # what has been collected
+        "get_fee_defaulters",     # who is behind
+        "get_fee_transactions",   # individual payments
+        "get_financial_report",
+        "create_fee_structure",   # writing the rate card is not reading it
+        "update_fee_structure",
+        "delete_fee_structure",
+    ]
+    for tool_name in STILL_FINANCE_ONLY:
+        tool = TOOL_REGISTRY[tool_name]
+        assert is_tool_authorized(MANAGEMENT_USER, tool) is False, tool_name
+        for sub_category in ("transport_head", "receptionist", "it_tech", "maintenance", "support_staff"):
+            assert is_tool_authorized(
+                {"role": "admin", "sub_category": sub_category}, tool
+            ) is False, f"{sub_category} / {tool_name}"
+
+
+def test_the_action_log_stays_with_the_school_owner_and_the_principal():
+    """Owner request 10, 2026-08-06, reconfirmed by Abhimanyu 2026-08-10.
+
+    Aman asked that only he and the Principal read the record of who changed what.
+    Nobody below them, including the accountant and management heads.
+    """
+    from ai.tool_access import is_tool_authorized
+    from ai.tool_functions_v2 import TOOL_REGISTRY
+
+    tool = TOOL_REGISTRY["query_audit_log"]
+    assert is_tool_authorized({"role": "owner"}, tool) is True
+    assert is_tool_authorized(PRINCIPAL_USER, tool) is True
+    for sub_category in (
+        "accountant", "management", "transport_head", "receptionist",
+        "it_tech", "maintenance", "support_staff",
+    ):
+        assert is_tool_authorized(
+            {"role": "admin", "sub_category": sub_category}, tool
+        ) is False, sub_category
+
+
 # ─── Smart Alerts: the fee rows never leave the server for him ─────────────────
 
 def test_smart_alerts_drops_the_fee_rows_for_the_management_head():

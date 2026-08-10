@@ -6750,7 +6750,8 @@ FINANCE_TOOL_NAMES = frozenset({
     "get_payroll", "upsert_salary_structure", "disburse_salary",
     "correct_salary_disbursement", "create_accounting_period",
     "change_accounting_period_status",
-    "get_financial_report", "get_fee_transactions", "get_fee_structures",
+    "get_financial_report", "get_fee_transactions",
+    # NOT "get_fee_structures" — see SHARED_LOOKUP_TOOL_NAMES. The rate card is public.
     "get_fee_defaulters", "query_fee_status", "get_expenses", "create_expense",
     "update_expense", "delete_expense", "apply_discount", "record_fee_payment",
     "create_fee_structure", "update_fee_structure", "delete_fee_structure",
@@ -6780,6 +6781,21 @@ SHARED_LOOKUP_TOOL_NAMES = frozenset({
     # daily job it is. Only the CREATE is shared — taking a child off the roll stays
     # with the school's leadership (R2-4, guarded in `student_service.delete_student`).
     "create_student",
+    # Abhimanyu, 2026-08-10: the fee RATE CARD is public. It is what a class is charged
+    # per year, printed on the school's own fee sheet and handed to any parent who
+    # asks. Everyone on the staff may look it up, including the management head, whose
+    # rule is that he never sees a rupee figure — this is the one exception, and it is
+    # an exception because it is not the school's money, it is the school's price list.
+    #
+    # `get_fee_structures` returns exactly that: class group, the named components,
+    # their amounts and the annual total. No child, no arrears, no payment history.
+    #
+    # Everything that IS the school's money stays finance-only and stays away from him:
+    # `get_fee_summary` (what has been collected), `get_fee_defaulters` (who is behind),
+    # `get_fee_transactions` (individual payments) and `get_financial_report`. Only
+    # WRITING the rate card is finance too — `create_fee_structure`,
+    # `update_fee_structure` and `delete_fee_structure` are all still in the list above.
+    "get_fee_structures",
 })
 
 LEADERSHIP_ONLY_TOOL_NAMES = frozenset({
