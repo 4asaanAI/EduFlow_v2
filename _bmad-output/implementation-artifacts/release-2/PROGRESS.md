@@ -33,8 +33,9 @@ Abhimanyu has approved writing it to the live database.
    the undo is deleting exactly what you inserted.
 5. Then R2-19: prove Flo can do the same work through the same services.
 
-Everything else in this file still applies. R2-1 is **done**; the next *permissions*
-job is R2-5, then R2-6.
+Everything else in this file still applies. The permission sub-parts R2-1 to R2-6,
+R2-12 and R2-13 are all **done and green**. The next *permissions* job is R2-9
+(certificate approval), then R2-7/R2-8.
 
 ---
 
@@ -97,14 +98,14 @@ body and are counted as unreachable by the script, so the route column understat
 | R2-2 | Close the nine money leaks to Lalit | **✅ BUILT, GATE GREEN** | Only THREE of the nine were still open; four were already closed and one was the opposite of a leak. Commit `7893726`. |
 | R2-3 | Close the owner-only hole in Flo | **✅ BUILT, GATE GREEN** | Commit `6a90cff`. The handoff's "all eight non-owner profiles" was wrong about the principal; see the session entry. |
 | R2-4 | People records: add/edit yes, delete/logins no | **✅ BUILT, GATE GREEN** | Guard in the service, so the screen and Flo give one answer. Commit `84e330d`. |
-| R2-5 | Sonu's full remit | PARTLY DONE | Decision 5 (create students) shipped in R2-4. Attendance read, vendors and transport are still to do. |
-| R2-6 | Fix the dead buttons, Adesh and support staff | NOT STARTED | Payroll for Adesh (§1.8); support staff has no menu list at all (§1.10). |
+| R2-5 | Sonu's full remit | **✅ BUILT, GATE GREEN** | Attendance and leave to read, vendors, transport in full until Release 3; Lalit loses vendors and transport. Commit `5eeb553`. |
+| R2-6 | Fix the dead buttons, Adesh and support staff | **✅ BUILT, GATE GREEN** | Adesh could open payroll and then be refused a payslip. Support staff closed in R2-1. Commit `ca701e5`. |
 | R2-7 | One vocabulary: same department groups for everyone | NOT STARTED | Pairs with R2-8. Do NOT invent per-person group names. |
 | R2-8 | Flo briefs per person | NOT STARTED | Pairs with R2-7. |
 | R2-9 | Certificates and ID cards need approval before printing | NOT STARTED | Read plan §1.6 twice. The two systems use different words for the same documents. |
 | R2-10 | Staff messaging: a real colleague directory | NOT STARTED | Diagnose RECONNECTING before fixing. May be infrastructure. |
 | R2-11 | Rename the two office logins, plus Adesh's display name | **BLOCKED** | On R2-0's reading tasks. Scope shrank 2026-08-10: only `accountant` → `sonu.ruhal` and `management` → `lalit.thomas`. **Aman's login is not touched.** Do not widen it back out. |
-| R2-12 | Transport head profile for Chaman Singh, dormant | NOT STARTED | He exists in staff already; no login. |
+| R2-12 | Transport head profile for Chaman Singh, dormant | **✅ BUILT, GATE GREEN** | Defined in the R2-1 matrix, six screens, zero tool domains, zero writes, dormant. Pinned by the R2-13 sweep. Still no login, by design. |
 | R2-13 | The proof: all-nine-profile sweep test | **✅ BUILT, GATE GREEN** | Found a real leak on its first run: all five dormant profiles could read the fee ledger and the action log. Commit `0c1cc9d`. |
 | R2-15 | A daily digest for Aman and Adesh | NOT STARTED | Reads `audit_logs`, records nothing new. Not WhatsApp yet: no production sender exists. |
 | R2-16 | What data is still missing, and who fills it | NOT STARTED | **Needs Abhimanyu's approval to read the live database.** Counts only, never an export of children's records. Start early: it waits on the school. |
@@ -483,3 +484,72 @@ key name** and never by searching for a rupee sign, and the screens rendered as 
 - **`frontend/src/lib/profileMatrix.generated.js` is generated.** Editing it by hand
   changes no permissions and only breaks the drift test. Run
   `backend/.venv/Scripts/python.exe scripts/generate_profile_matrix.py`.
+
+### 2026-08-10 — overnight run, continued: R2-5, R2-6, R2-12 (Claude, Opus 5)
+
+**The credentials answer above is unchanged and still stands.** These three sub-parts
+make Sonu's job whole and take two refusals off Adesh; none of them reopens anything.
+
+**Did.** R2-5 (Sonu's full remit), R2-6 (the dead buttons), and R2-12 fell out of the
+matrix work rather than needing a sub-part of its own.
+
+**R2-5. The four access domains could not express decision 2.** "Sonu yes, Lalit no"
+about a school bus route would have meant calling transport *finance*, which is a lie
+in the one file whose whole job is to say truthfully who may do what. So the matrix
+now names individual tools in both directions — `extra_tools` and `denied_tools` —
+which is what the handoff asked an entry to carry all along: screen ids, Flo tool
+names, and read versus write. A denial always beats a grant, because the safe answer
+to a contradiction is no.
+
+Read versus write is the substance of it. Sonu can now SEE attendance and leave; he
+cannot mark a register or approve leave. He needs the first to settle a fee or a
+transport charge; the second was never his.
+
+**Found while doing it.** `hubsForUser` had the accountant head's two hubs
+**hardcoded**, inside the very module written to stop there being a second copy of the
+answer. His menu would have stayed at two hubs while the matrix said six, and nobody
+would have seen it. Every profile below leadership now asks the same table.
+
+**R2-6. Adesh could open the payroll screen and then be refused a payslip.** The screen
+gate had been widened to include the principal; the payslip check twenty lines below it
+still used the older, narrower list. That is the dead-button shape exactly: he would
+have concluded the platform was broken rather than that he was not allowed. Both now
+ask one helper. Staff opening their own payslip still works, which is what the narrower
+check was for.
+
+**R2-12** needed nothing new. Chaman Singh's transport-head profile is defined in the
+matrix with six screens, no tool domains, no writes, dormant — and the R2-13 sweep is
+what now stops it drifting. He still has no login, by design.
+
+**Measured.**
+
+| Profile | Flo tools | writes | Hubs | Hub screens |
+|---|---|---|---|---|
+| accountant | 46 → **56** | 27 → **31** | 2 → **6** | 11 → **17** |
+| management | 102 → **97** | 63 → **59** | 7 → **6** | 37 → **34** |
+
+Everyone else unchanged, including all five dormant profiles and every route count.
+The accountant's ten new tools are the five attendance-and-leave reads and the five
+transport tools; his four new writes are the four transport writes. The management
+head's five losses are the same transport tools, and his three lost screens are the
+transport hub, the transport screens and the vendor log.
+
+**Three committed tests reversed, each with the reason written into it.** The clearest
+is `test_accountant_blocked_from_non_accountant_tool`, which pinned Sonu OUT of staff
+attendance. The school asked for the opposite. It now pins the read-versus-write split
+instead, which is the part that actually matters.
+
+**Proved.** Backend 2,812 passed / 0 failed / 15 deselected. Frontend 569 passed /
+0 failed. Production build passed with lint clean.
+
+**Left.** Unchanged from the entry above, minus R2-5, R2-6 and R2-12. Still open:
+R2-7/R2-8 (menu vocabulary and Flo briefs), R2-9 (certificate approval before
+printing — read plan §1.6 twice, the approval list and the printer use different words
+for the same documents), R2-10, R2-15 to R2-18, R2-19, and R2-11 last. The fee ledger
+still waits for Abhimanyu awake. Nothing deployed, nothing pushed, no production system
+touched.
+
+**One new thing to watch.** `extra_tools` and `denied_tools` are powerful and quiet: a
+name in either list silently overrides the domain rule for one profile. Use them only
+when the domains genuinely cannot say what the school meant, and write the reason on
+the same line — every entry there today has one.
