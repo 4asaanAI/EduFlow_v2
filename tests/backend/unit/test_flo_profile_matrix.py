@@ -40,6 +40,23 @@ def _open_to_any_admin(tool_def: dict) -> bool:
     return "admin" in set(tool_def.get("roles") or ())
 
 
+def _named_in_the_matrix(profile, tool_name, expected, open_to_admin):
+    """R2-5: the matrix may name a tool for or against a profile, overriding its domain.
+
+    Four domains cannot express "the accountant head yes, the management head no"
+    about a school bus route — both would have to be called finance. A denial always
+    wins over a grant, because the safe answer to a contradiction is no.
+    """
+    from services.profile_matrix import PROFILE_MATRIX
+
+    entry = PROFILE_MATRIX[profile]
+    if tool_name in entry["extra_tools"] and open_to_admin:
+        expected = True
+    if tool_name in entry["denied_tools"]:
+        expected = False
+    return expected
+
+
 def test_every_registry_tool_has_an_explicit_access_domain():
     assert {tool.get("access_domain") for tool in TOOL_REGISTRY.values()} <= {
         "finance", "non_finance", "shared", "leadership",
@@ -62,6 +79,7 @@ def test_accountant_gets_only_finance_and_required_shared_lookups():
     for name, tool in TOOL_REGISTRY.items():
         allowed = is_tool_authorized(ACCOUNTANT, tool)
         expected = _open_to_any_admin(tool) and tool["access_domain"] in {"finance", "shared"}
+        expected = _named_in_the_matrix("accountant", name, expected, _open_to_any_admin(tool))
         if allowed != expected:
             wrong.append((name, tool["access_domain"], allowed, expected))
     assert wrong == []
@@ -72,6 +90,7 @@ def test_management_gets_everything_except_finance_and_leadership_private_tools(
     for name, tool in TOOL_REGISTRY.items():
         allowed = is_tool_authorized(MANAGEMENT, tool)
         expected = _open_to_any_admin(tool) and tool["access_domain"] in {"non_finance", "shared"}
+        expected = _named_in_the_matrix("management", name, expected, _open_to_any_admin(tool))
         if allowed != expected:
             wrong.append((name, tool["access_domain"], allowed, expected))
     assert wrong == []

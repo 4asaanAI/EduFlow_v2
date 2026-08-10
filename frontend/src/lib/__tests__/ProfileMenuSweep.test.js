@@ -31,8 +31,8 @@ const PROFILE_NAMES = Object.keys(PROFILE_MATRIX);
 const EXPECTED_SCREEN_COUNT = {
   owner: ALL_SCREENS,
   principal: ALL_SCREENS,
-  accountant: 13,
-  management: 52,
+  accountant: 23,
+  management: 48,
   transport_head: 6,
   receptionist: 9,
   it_tech: 4,

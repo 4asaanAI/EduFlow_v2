@@ -107,12 +107,24 @@ def test_detect_tool_from_keywords_uses_user_dict(monkeypatch):
 
 
 def test_accountant_blocked_from_non_accountant_tool():
+    """R2-5 / decision 2, 2026-08-10: staff attendance is now his, to READ.
+
+    This used to assert the accountant head was refused `query_attendance_status`.
+    The school asked for the opposite: he needs to see who was in school to settle a
+    fee or a transport charge. He is granted it by name in the profile matrix, and
+    only the read — `mark_staff_attendance` and `correct_attendance` are still refused,
+    which is what this test now pins.
+    """
     from routes.chat import _is_tool_authorized
     from ai.tool_functions_v2 import TOOL_REGISTRY
-    # query_attendance_status requires principal, not accountant
-    tool_def = TOOL_REGISTRY["query_attendance_status"]
-    assert _is_tool_authorized(_make_user("admin", "accountant"), tool_def) is False
-    assert _is_tool_authorized(_make_user("admin", "principal"), tool_def) is True
+
+    accountant = _make_user("admin", "accountant")
+    assert _is_tool_authorized(accountant, TOOL_REGISTRY["query_attendance_status"]) is True
+    assert _is_tool_authorized(_make_user("admin", "principal"), TOOL_REGISTRY["query_attendance_status"]) is True
+
+    # Reading is not marking. He does not touch the register itself.
+    for write_tool in ("mark_staff_attendance", "mark_attendance", "correct_attendance", "approve_leave"):
+        assert _is_tool_authorized(accountant, TOOL_REGISTRY[write_tool]) is False, write_tool
 
 
 # ---------------------------------------------------------------------------

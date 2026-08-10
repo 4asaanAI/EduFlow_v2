@@ -33,7 +33,8 @@ Abhimanyu has approved writing it to the live database.
    the undo is deleting exactly what you inserted.
 5. Then R2-19: prove Flo can do the same work through the same services.
 
-Everything else in this file still applies. R2-1 remains the next *permissions* job.
+Everything else in this file still applies. R2-1 is **done**; the next *permissions*
+job is R2-5, then R2-6.
 
 ---
 

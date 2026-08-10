@@ -117,10 +117,12 @@ export const MANAGEMENT_HUB_IDS = MANAGEMENT_HUBS.map(hub => hub.id);
 export function hubsForUser(user) {
   if (user?.role === 'owner') return MANAGEMENT_HUBS;
   if (user?.role === 'admin' && user?.sub_category === 'principal') return MANAGEMENT_HUBS;
-  if (user?.role === 'admin' && user?.sub_category === 'accountant') {
-    return MANAGEMENT_HUBS.filter(hub => ['school-database-hub', 'finance-commercial-hub'].includes(hub.id));
-  }
-  if (user?.role === 'admin' && user?.sub_category === 'management') {
+  // R2-1/R2-5: every profile below leadership asks the same question of the same
+  // grant table. The accountant head used to have his two hubs hardcoded here — a
+  // second copy of the answer, sitting inside the module written to stop there being
+  // a second copy — so when decision 2 gave him attendance, vendors and transport,
+  // his menu would silently have stayed at two hubs.
+  if (user?.role === 'admin') {
     return MANAGEMENT_HUBS.filter(hub => canUseTool(user, hub.id));
   }
   return [];

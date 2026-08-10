@@ -17,11 +17,26 @@ export const ALL_SCREENS = "__all_screens__";
 
 export const PROFILE_MATRIX = {
   "accountant": {
+    "deniedTools": [],
+    "extraTools": [
+      "add_transport_vehicle",
+      "create_transport_route",
+      "delete_transport_route",
+      "get_attendance_overview",
+      "get_class_wise_attendance",
+      "get_leave_requests",
+      "get_today_class_attendance",
+      "get_transport_status",
+      "query_attendance_status",
+      "update_transport_route"
+    ],
     "mayDeletePeople": false,
     "mayWrite": true,
     "person": "Sonu Ruhal",
     "screens": [
       "accounting-periods",
+      "attendance-overview",
+      "campus-library-hub",
       "commercial-operations",
       "data-import",
       "expense-tracker",
@@ -30,10 +45,18 @@ export const PROFILE_MATRIX = {
       "fee-tracker",
       "finance-commercial-hub",
       "financial-reports",
+      "overview-hub",
       "payroll-manager",
+      "people-operations-hub",
       "school-database-hub",
       "smart-fee-defaulter",
-      "student-database"
+      "staff-attendance-tracker",
+      "staff-leave-manager",
+      "student-database",
+      "transport-hub",
+      "transport-manager",
+      "transport-optimisation",
+      "vendor-log"
     ],
     "status": "live",
     "title": "Accountant head",
@@ -43,6 +66,8 @@ export const PROFILE_MATRIX = {
     ]
   },
   "it_tech": {
+    "deniedTools": [],
+    "extraTools": [],
     "mayDeletePeople": false,
     "mayWrite": false,
     "person": null,
@@ -57,6 +82,8 @@ export const PROFILE_MATRIX = {
     "toolDomains": []
   },
   "maintenance": {
+    "deniedTools": [],
+    "extraTools": [],
     "mayDeletePeople": false,
     "mayWrite": false,
     "person": null,
@@ -70,6 +97,14 @@ export const PROFILE_MATRIX = {
     "toolDomains": []
   },
   "management": {
+    "deniedTools": [
+      "add_transport_vehicle",
+      "create_transport_route",
+      "delete_transport_route",
+      "get_transport_status",
+      "update_transport_route"
+    ],
+    "extraTools": [],
     "mayDeletePeople": false,
     "mayWrite": true,
     "person": "Lalit Thomas",
@@ -121,11 +156,7 @@ export const PROFILE_MATRIX = {
       "student-leave-manager",
       "student-transfer",
       "tech-issues",
-      "timetable-builder",
-      "transport-hub",
-      "transport-manager",
-      "transport-optimisation",
-      "vendor-log"
+      "timetable-builder"
     ],
     "status": "live",
     "title": "Management, day-to-day data",
@@ -135,6 +166,8 @@ export const PROFILE_MATRIX = {
     ]
   },
   "owner": {
+    "deniedTools": [],
+    "extraTools": [],
     "mayDeletePeople": true,
     "mayWrite": true,
     "person": "Aman Litt",
@@ -149,6 +182,8 @@ export const PROFILE_MATRIX = {
     ]
   },
   "principal": {
+    "deniedTools": [],
+    "extraTools": [],
     "mayDeletePeople": true,
     "mayWrite": true,
     "person": "Adesh Singh",
@@ -163,6 +198,8 @@ export const PROFILE_MATRIX = {
     ]
   },
   "receptionist": {
+    "deniedTools": [],
+    "extraTools": [],
     "mayDeletePeople": false,
     "mayWrite": false,
     "person": null,
@@ -182,6 +219,8 @@ export const PROFILE_MATRIX = {
     "toolDomains": []
   },
   "support_staff": {
+    "deniedTools": [],
+    "extraTools": [],
     "mayDeletePeople": false,
     "mayWrite": false,
     "person": null,
@@ -194,6 +233,8 @@ export const PROFILE_MATRIX = {
     "toolDomains": []
   },
   "transport_head": {
+    "deniedTools": [],
+    "extraTools": [],
     "mayDeletePeople": false,
     "mayWrite": false,
     "person": "Chaman Singh",

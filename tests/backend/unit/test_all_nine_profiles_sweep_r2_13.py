@@ -138,7 +138,15 @@ def test_each_profile_reaches_exactly_what_the_matrix_grants(profile_name):
             # A domain-widened profile (the accountant and management heads): the
             # registry must offer it to an admin at all, AND the profile must hold
             # its domain. Both, not either. That second half is R2-3.
+            #
+            # R2-5 then lets the matrix name individual tools in either direction,
+            # because four domains cannot say "the accountant head yes, the management
+            # head no" about a school bus route. A denial always wins over a grant.
             expected = "admin" in roles and domain in domains
+            if name in entry["extra_tools"] and "admin" in roles:
+                expected = True
+            if name in entry["denied_tools"]:
+                expected = False
         else:
             # A dormant profile is NOT domain-widened. It reaches what the plain
             # registry gives any admin — reads only, because the Phase-1 lockdown
@@ -246,8 +254,8 @@ def test_only_leadership_reaches_the_private_leadership_tools():
 EXPECTED_REACH = {
     "owner":          (155, 100),
     "principal":      (155, 100),
-    "accountant":     (46, 27),
-    "management":     (102, 63),
+    "accountant":     (56, 31),
+    "management":     (97, 59),
     "transport_head":(27, 0),
     "receptionist": (27, 0),
     "it_tech":      (27, 0),

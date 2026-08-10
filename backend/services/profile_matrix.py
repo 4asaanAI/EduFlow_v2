@@ -84,6 +84,8 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         "screens": ALL_SCREENS,
         "tool_domains": frozenset({FINANCE, NON_FINANCE, SHARED, LEADERSHIP}),
         "may_write": True,
+        "extra_tools": frozenset(),
+        "denied_tools": frozenset(),
         "may_delete_people": True,
         "notes": (
             "The school's proprietor. Holds everything, including the tools marked "
@@ -99,6 +101,8 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         "screens": ALL_SCREENS,
         "tool_domains": frozenset({FINANCE, NON_FINANCE, SHARED, LEADERSHIP}),
         "may_write": True,
+        "extra_tools": frozenset(),
+        "denied_tools": frozenset(),
         "may_delete_people": True,
         "notes": (
             "Stands directly below the owner in the school's own hierarchy "
@@ -131,9 +135,47 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
             "school-database-hub",
             "student-database",
             "data-import",
+            # R2-5 / decision 2: attendance and leave to READ, the vendor records in
+            # full, and transport in full until Release 3. Lalit loses the last two.
+            "overview-hub",
+            "attendance-overview",
+            "people-operations-hub",
+            "staff-attendance-tracker",
+            "staff-leave-manager",
+            # NOT 'student-leave-manager': it lives in the admissions hub, which he
+            # does not have, so granting it would leave a screen he owns and cannot
+            # reach. Decision 2 gives him student attendance to read, not student
+            # leave to manage.
+            "campus-library-hub",
+            "vendor-log",
+            "transport-hub",
+            "transport-manager",
+            "transport-optimisation",
         ),
         "tool_domains": frozenset({FINANCE, SHARED}),
         "may_write": True,
+        # R2-5 / decision 2, 2026-08-10. Named tool by tool, because the domains alone
+        # cannot express "Sonu yes, Lalit no": both would have to be called finance,
+        # and a school bus route is not money.
+        "extra_tools": frozenset({
+            # Attendance and leave: READ ONLY. He needs to see who was in school to
+            # settle a fee or a transport charge. He does not mark a register and he
+            # does not approve leave — `mark_attendance`, `mark_staff_attendance`,
+            # `correct_attendance` and `approve_leave` are deliberately absent.
+            "get_attendance_overview",
+            "get_class_wise_attendance",
+            "get_today_class_attendance",
+            "query_attendance_status",
+            "get_leave_requests",
+            # Transport, in full, until Release 3 hands it to the transport head.
+            # Reads and writes both: nobody else runs it in the meantime.
+            "get_transport_status",
+            "create_transport_route",
+            "update_transport_route",
+            "delete_transport_route",
+            "add_transport_vehicle",
+        }),
+        "denied_tools": frozenset(),
         "may_delete_people": False,
         "notes": (
             "Finance plus the lookups finance needs. Attendance and leave read-only, "
@@ -196,13 +238,9 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
             "procurement-inventory",
             "facility-requests",
             "maintenance-schedule",
-            "vendor-log",
             "raise-maintenance",
-            # Transport. Decision 2 hands transport to the accountant head until
-            # Release 3 and takes it off Lalit; that is R2-5, not this refactor.
-            "transport-hub",
-            "transport-manager",
-            "transport-optimisation",
+            # NOT 'vendor-log', and NOT the transport screens. Decision 2, 2026-08-10
+            # hands both to the accountant head until Release 3 (R2-5).
             # Reporting and the odds and ends.
             "custom-report-builder",
             "board-report",
@@ -225,6 +263,17 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         ),
         "tool_domains": frozenset({NON_FINANCE, SHARED}),
         "may_write": True,
+        "extra_tools": frozenset(),
+        # R2-5 / decision 2, 2026-08-10: transport moves to the accountant head until
+        # Release 3, and Lalit loses it. Vendors move too, but there is no vendor tool
+        # in the registry — vendors are a screen only — so that half is in `screens`.
+        "denied_tools": frozenset({
+            "get_transport_status",
+            "create_transport_route",
+            "update_transport_route",
+            "delete_transport_route",
+            "add_transport_vehicle",
+        }),
         "may_delete_people": False,
         "notes": (
             "Everything that is not money and not leadership-private. He may add and "
@@ -251,6 +300,8 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         ),
         "tool_domains": frozenset(),
         "may_write": False,
+        "extra_tools": frozenset(),
+        "denied_tools": frozenset(),
         "may_delete_people": False,
         "notes": (
             "Built now, switched on in Release 3 (decision 3). He exists in the staff "
@@ -274,6 +325,8 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         ),
         "tool_domains": frozenset(),
         "may_write": False,
+        "extra_tools": frozenset(),
+        "denied_tools": frozenset(),
         "may_delete_people": False,
         "notes": (
             "'id-card-generator' is deliberately absent (D-49): the server refuses a "
@@ -293,6 +346,8 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         ),
         "tool_domains": frozenset(),
         "may_write": False,
+        "extra_tools": frozenset(),
+        "denied_tools": frozenset(),
         "may_delete_people": False,
         "notes": "Awaiting the school owner's answers.",
     },
@@ -307,6 +362,8 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         ),
         "tool_domains": frozenset(),
         "may_write": False,
+        "extra_tools": frozenset(),
+        "denied_tools": frozenset(),
         "may_delete_people": False,
         "notes": "Awaiting the school owner's answers.",
     },
@@ -325,6 +382,8 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         ),
         "tool_domains": frozenset(),
         "may_write": False,
+        "extra_tools": frozenset(),
+        "denied_tools": frozenset(),
         "may_delete_people": False,
         "notes": (
             "Had no entry at all before R2-1 and therefore fell through to the whole "

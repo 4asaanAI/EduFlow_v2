@@ -94,6 +94,19 @@ def profile_authorization_decision(
     # grant table, and that is where the sub_category question is settled properly.
     if (user or {}).get("role") not in roles:
         return False
+    # R2-5: the matrix may name individual tools, in both directions. The four domains
+    # cannot express "the accountant head yes, the management head no" — both would
+    # have to be called finance, and a school bus route is not money. A denial wins
+    # over a grant, always, because the safe answer to a contradiction is no.
+    from services.profile_matrix import PROFILE_MATRIX, profile_of
+
+    matrix_row = PROFILE_MATRIX.get(profile_of(user)) or {}
+    tool_name = (tool_def or {}).get("tool_name")
+    if tool_name:
+        if tool_name in (matrix_row.get("denied_tools") or ()):
+            return False
+        if tool_name in (matrix_row.get("extra_tools") or ()):
+            return True
     if profile == "finance":
         return domain in {"finance", "shared"}
     return domain in {"non_finance", "shared"}

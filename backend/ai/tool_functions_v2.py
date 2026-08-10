@@ -6824,6 +6824,11 @@ EXPLICIT_CONFIRMATION_TOOL_NAMES = frozenset({
 }) | SECURITY_SENSITIVE_TOOL_NAMES
 
 for _tool_name, _tool_def in TOOL_REGISTRY.items():
+    # R2-5: every entry carries its own name, so a gate holding only the definition can
+    # still ask "which tool is this?". The profile matrix names individual tools in both
+    # directions, and without this the definition alone did not say what it was.
+    _tool_def["tool_name"] = _tool_name
+
     if _tool_name in LEADERSHIP_ONLY_TOOL_NAMES:
         _tool_def["access_domain"] = "leadership"
     elif _tool_name in FINANCE_TOOL_NAMES:

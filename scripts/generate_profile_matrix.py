@@ -57,6 +57,8 @@ def _entry_to_json(entry: dict) -> dict:
         "toolDomains": sorted(entry["tool_domains"]),
         "mayWrite": entry["may_write"],
         "mayDeletePeople": entry["may_delete_people"],
+        "extraTools": sorted(entry["extra_tools"]),
+        "deniedTools": sorted(entry["denied_tools"]),
     }
 
 
