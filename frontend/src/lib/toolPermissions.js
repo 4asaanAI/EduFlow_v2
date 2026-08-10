@@ -96,6 +96,30 @@ export function canUseTool(user, toolId) {
   return screens.includes(toolId);
 }
 
+/**
+ * May this person be shown a rupee figure?
+ *
+ * R2-2 / decision 1, 2026-08-10: the management head never sees an amount anywhere.
+ * He sees whether a child's fees are paid, as a flag, and that is all. So screens he
+ * shares with the office — School Pulse, Smart Alerts — must show him the attendance
+ * and staffing half and leave the money out, rather than being hidden from him
+ * entirely, because he needs the rest of what is on them.
+ *
+ * Derived from the matrix rather than listed again here: a profile sees money exactly
+ * when it holds the finance domain. Teachers, students and guardians are not in the
+ * matrix and are told no — their own screens show them their own fees through their
+ * own routes.
+ *
+ * This decides what is DISPLAYED. The server decides what is sent, and it is the one
+ * that matters: `tests/backend/api/test_management_money_leaks_r2_2.py` asserts the
+ * amounts never reach him in the first place.
+ */
+export function canSeeMoney(user) {
+  const profile = profileOf(user);
+  if (!profile) return false;
+  return PROFILE_MATRIX[profile].toolDomains.includes('finance');
+}
+
 /** Drop every tool this user may not use. Accepts ids or objects with an `id`. */
 export function filterToolsForUser(user, tools) {
   return (tools || []).filter((t) => canUseTool(user, typeof t === 'string' ? t : t?.id));

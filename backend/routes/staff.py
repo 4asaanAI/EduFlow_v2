@@ -114,6 +114,40 @@ def _public_staff(staff: dict) -> dict:
     return staff
 
 
+# Who may see another person's pay. Decision 9, 2026-08-10: the school's owner AND the
+# principal both see everyone's salary, and so does the accountant head, whose job it
+# is. Nobody else — and that includes the management head, who maintains the staff
+# directory and therefore opens these records all day.
+SALARY_READERS = ("principal", "accountant", "accounts")
+
+
+def _may_read_salary(user: dict) -> bool:
+    if (user or {}).get("role") == "owner":
+        return True
+    return (user or {}).get("role") == "admin" and (user or {}).get("sub_category") in SALARY_READERS
+
+
+def _staff_record_for(user: dict, staff: dict) -> dict:
+    """One person's record, with their pay removed unless the reader may see it.
+
+    R2-2: the staff LIST already stripped `salary` with a query projection. The single
+    record did not, so `GET /api/staff/{id}` handed the management head every
+    teacher's salary. Stripped at the response boundary rather than in the query, for
+    the reason `_own_profile` gives just below: a privacy guarantee should not depend
+    on a database option that a later caller can change without noticing what it
+    protected.
+
+    Your own record always keeps your own salary. Whatever else changes, nobody loses
+    sight of their own pay.
+    """
+    record = _public_staff(staff)
+    if _may_read_salary(user):
+        return record
+    if staff.get("user_id") and staff.get("user_id") == (user or {}).get("id"):
+        return record
+    return {k: v for k, v in record.items() if k != "salary"}
+
+
 def _own_profile(staff: dict) -> dict:
     """The self-service view. Salary is dropped here rather than relying on the
     query projection alone — a privacy guarantee should not depend on a database
@@ -562,7 +596,7 @@ async def get_staff(staff_id: str, request: Request):
         raise HTTPException(404, "Staff not found")
     if not _can_manage(user) and staff.get("user_id") != user.get("id"):
         raise HTTPException(403, "Forbidden")
-    return {"success": True, "data": _public_staff(staff)}
+    return {"success": True, "data": _staff_record_for(user, staff)}
 
 
 @router.patch("/{staff_id}")

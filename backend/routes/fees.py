@@ -389,8 +389,15 @@ async def get_fee_transactions(request: Request, student_id: str = None, status:
 
 
 @router.get("/class-summary")
-async def get_class_fee_summary(request: Request, user: dict = Depends(require_role("owner", "admin"))):
-    """Returns per-class fee collection summary."""
+async def get_class_fee_summary(request: Request, user: dict = Depends(require_finance_profile)):
+    """Returns per-class fee collection summary.
+
+    R2-2: this was `require_role("owner", "admin")`, which is ANY admin — so the
+    management head could read what every class had collected and what it still owed,
+    in rupees, for the whole school. He is not in the money side of the school
+    (decision 1, 2026-08-10). Narrowed to the same finance profiles as the rest of
+    this module.
+    """
     db = get_db()
     classes = await db.classes.find(_fee_query(), {"_id": 0}).to_list(50)
     result = []
@@ -652,7 +659,17 @@ async def fee_stream(request: Request, user: dict = Depends(require_finance_prof
 @router.get("/status/{student_id}")
 async def get_student_fee_status(student_id: str, request: Request, user: dict = Depends(require_role("owner", "admin", "teacher", "parent", "student"))):
     db = get_db()
-    if user.get("role") == "admin" and user.get("sub_category") not in ("principal", "accountant", "accounts"):
+    # R2-2 / decision 1, 2026-08-10: the management head sees WHETHER a child's fees
+    # are paid, never how much. This route is the one place that is safe to give him,
+    # because it returns a flag and nothing else — no amount, no balance, no due date.
+    # He needs it: chasing families is his job, and until now his student screens
+    # could not tell him who was in arrears at all.
+    #
+    # If an amount is ever added to this response, it must be stripped for him here.
+    # `tests/backend/api/test_management_money_leaks_r2_2.py` asserts that by key name.
+    if user.get("role") == "admin" and user.get("sub_category") not in (
+        "principal", "accountant", "accounts", "management",
+    ):
         raise HTTPException(403, "Forbidden")
     # Ownership check for student role — a student can only see their own fee status
     if user.get("role") == "student":

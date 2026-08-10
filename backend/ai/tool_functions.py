@@ -490,6 +490,19 @@ async def tool_get_attendance_overview(params: dict, user: dict, scope=None) -> 
     }, count=len(records))
 
 
+def _may_see_money(user: dict) -> bool:
+    """Whether this person may be shown a rupee figure at all.
+
+    Reads the one grant table (`services/profile_matrix.py`) rather than listing the
+    profiles again: a profile sees money exactly when it holds the finance domain.
+    Teachers, students and guardians are not in that table, and their own fee screens
+    reach their own routes, so they are told no here.
+    """
+    from services.profile_matrix import FINANCE, granted_domains
+
+    return FINANCE in granted_domains(user)
+
+
 async def tool_get_smart_alerts(params: dict, user: dict, scope=None) -> dict:
     db = get_db()
     today = date.today()
@@ -651,6 +664,15 @@ async def tool_get_smart_alerts(params: dict, user: dict, scope=None) -> dict:
     if stale_enq > 0:
         alerts.append({"type": "warning", "category": "Admissions",
                         "text": f"{stale_enq} enquiry/enquiries with no follow-up for 7+ days", "priority": "medium"})
+
+    # R2-2 / decision 1, 2026-08-10: the management head keeps Smart Alerts — the
+    # attendance, staff, maintenance and admissions half of it is his daily work — but
+    # never sees a rupee figure or a collection rate. The fee rows are dropped here,
+    # on the server, rather than hidden in the screen: an alert that is filtered in the
+    # browser has still been sent, and the same tool answers Flo in chat, where there
+    # is no screen to filter it.
+    if not _may_see_money(user):
+        alerts = [a for a in alerts if a.get("category") != "Fees"]
 
     # Sort: critical → warning → info → success, then high → medium → low
     _type_order = {"critical": 0, "warning": 1, "info": 2, "success": 3}
