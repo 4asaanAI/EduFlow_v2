@@ -9,6 +9,7 @@ import {
   setStudentEnrolment,
   getAllClasses,
   getStudent,
+  getStudentFeeStatus,
   getStudentEnrolmentSummary,
   getStudentStrengthStats,
   getStudents,
@@ -500,13 +501,25 @@ function StudentProfileModal({ classes, initialStudent, onClose, onSaved }) {
 function DetailPanel({ studentId, onClose, onEdit, canManage, canKeepNotes }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  // R2-2 / decision 1, 2026-08-10. The management head chases families about fees and
+  // until now his student screens could not tell him who was behind at all. This is
+  // the flag he was promised: paid or not, and never an amount. The route returns
+  // `{student_id, status}` and nothing else, for every caller, so there is no figure
+  // here to leak.
+  const [feeStatus, setFeeStatus] = useState(null);
 
   useEffect(() => {
     setLoading(true);
+    setFeeStatus(null);
     getStudent(studentId).then(res => {
       if (res.success) setData(res.data);
       setLoading(false);
     });
+    // Deliberately does not block the panel: a profile that is refused this route
+    // (a teacher, say) still gets the whole record, just without the row.
+    getStudentFeeStatus(studentId)
+      .then(res => { if (res?.success) setFeeStatus(res.data?.status || null); })
+      .catch(() => {});
   }, [studentId]);
 
   if (!studentId) return null;
@@ -564,6 +577,12 @@ function DetailPanel({ studentId, onClose, onEdit, canManage, canKeepNotes }) {
               <InfoRow label="Admission Date" value={data.admission_date || '—'} />
               {/* Owner request 11 (2026-08-06) */}
               <InfoRow label="Address" value={data.address || '—'} />
+              {feeStatus && (
+                <InfoRow
+                  label="Fees"
+                  value={feeStatus === 'paid' ? 'Paid' : feeStatus === 'overdue' ? 'Overdue' : 'Unpaid'}
+                />
+              )}
             </Section>
 
             {/* Medical */}
