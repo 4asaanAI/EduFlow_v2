@@ -12,9 +12,18 @@ the run failed. A run that changed code and left this file untouched is an incom
 
 ## ▶ NEXT SESSION STARTS HERE
 
-**Read the LAST session entry at the bottom of this file first.** All the permission
-sub-parts are done and the suite is green: R2-1 to R2-6, R2-12 and R2-13. The fee
-ledger below is the next job and it needs Abhimanyu awake.
+**Read the LAST session entry at the bottom of this file first.** The permission
+sub-parts are done and green (R2-1 to R2-6, R2-12, R2-13), and **R2-9 is now done too**.
+The fee ledger below still needs Abhimanyu awake.
+
+**The next permissions job is R2-7 and R2-8** — one menu vocabulary, and the Flo briefs
+for the seven profiles whose briefs are still untouched. Then R2-10, then R2-15 to
+R2-18, and R2-11 LAST because it revokes sessions.
+
+**One number changed and it was meant to.** The platform now has **484 API routes**,
+not 483: R2-9 added the ID-card approval request. The route column went up by one for
+the owner, the principal and the management head, and for nobody else. Everything
+else — every Flo tool count, every write count, every menu count — is untouched.
 
 **Do this next.** The school's fee ledger is the school's most urgent need and
 Abhimanyu has approved writing it to the live database.
@@ -32,8 +41,7 @@ Abhimanyu has approved writing it to the live database.
    the undo is deleting exactly what you inserted.
 5. Then R2-19: prove Flo can do the same work through the same services.
 
-Everything else in this file still applies. The next *permissions* job is R2-9
-(certificate approval), then R2-7/R2-8.
+Everything else in this file still applies.
 
 ---
 
@@ -100,7 +108,7 @@ body and are counted as unreachable by the script, so the route column understat
 | R2-6 | Fix the dead buttons, Adesh and support staff | **✅ BUILT, GATE GREEN** | Adesh could open payroll and then be refused a payslip. Support staff closed in R2-1. Commit `ca701e5`. |
 | R2-7 | One vocabulary: same department groups for everyone | NOT STARTED | Pairs with R2-8. Do NOT invent per-person group names. |
 | R2-8 | Flo briefs per person | PARTLY DONE | Sonu's and Lalit's rewritten (`73e02a6`) — both were telling them the wrong thing. The other seven profiles' briefs are untouched. |
-| R2-9 | Certificates and ID cards need approval before printing | NOT STARTED | Read plan §1.6 twice. The two systems use different words for the same documents. |
+| R2-9 | Certificates and ID cards need approval before printing | **✅ BUILT, GATE GREEN** | Commit `e19a124`. The vocabulary was reconciled first and that is where the real defect was: the screen's word `transfer` was on nobody's approval list, so Transfer Certificates were auto-issued. `backend/services/certificate_types.py` is now the one place that names a document. |
 | R2-10 | Staff messaging: a real colleague directory | NOT STARTED | Diagnose RECONNECTING before fixing. May be infrastructure. |
 | R2-11 | Rename the two office logins, plus Adesh's display name | **BLOCKED** | On R2-0's reading tasks. Scope shrank 2026-08-10: only `accountant` → `sonu.ruhal` and `management` → `lalit.thomas`. **Aman's login is not touched.** Do not widen it back out. |
 | R2-12 | Transport head profile for Chaman Singh, dormant | **✅ BUILT, GATE GREEN** | Defined in the R2-1 matrix, six screens, zero tool domains, zero writes, dormant. Pinned by the R2-13 sweep. Still no login, by design. |
@@ -623,3 +631,120 @@ The single +1 everywhere is the fee rate card. Writes, routes and menus unchange
 R2-9 (certificate approval before printing), R2-10, R2-14 to R2-19, and R2-11 last.
 The fee ledger still waits. Nothing deployed, nothing pushed, no production system
 touched.
+
+### 2026-08-11 — R2-9: nothing official prints until somebody has said yes (Claude, Opus 5)
+
+**Is it safe to hand Sonu and Lalit their credentials?** On the permission side, yes,
+and it is safer tonight than it was this morning. **Has any of it shipped? No.** Not one
+line of this work is on the live platform. It sits on the branch
+`release-2-person-profiles`, seventeen commits, nothing pushed and nothing deployed. The
+school's live system still behaves exactly as it did before any of this started, holes
+and all. That answer does not change until Abhimanyu approves a deploy.
+
+**Did.** R2-9 only. One sub-part, as instructed.
+
+**What was actually wrong was worse than the brief said.** The brief warned that the
+approval list and the printer use different words for the same documents. They do. What
+that mismatch was already causing, today, on the live platform:
+
+The Certificate Generator screen's dropdown uses the printer's word, `transfer`. The
+approval rule had never heard of `transfer` — it knew `tc` and `transfer_certificate`.
+So a **Transfer Certificate raised from that screen was issued immediately, to whoever
+asked, with nobody consulted.** The same is true of the Transfer Certificate the platform
+raises automatically when a child is withdrawn from the school. A Transfer Certificate is
+the document that ends a child's enrolment. It was the one document in the building that
+skipped the approval step entirely, and it skipped it because of a spelling.
+
+Migration Certificates had no approval rule of any kind. And two document types that
+could be approved, `tc` and `merit`, could never be printed at all.
+
+**So the vocabulary was reconciled first, as instructed.** There is now one file that
+decides what a school document is called, whether it needs approving, and what it is
+called on the page: `backend/services/certificate_types.py`. `transfer` and `tc` both
+mean the same thing as `transfer_certificate` and always did. It is **default deny** —
+a document type nobody has classified needs approval, because the safe answer for an
+unrecognised piece of paper carrying the school's name is to ask a person.
+
+**Which documents need approving.** Anything that asserts a fact about a child's
+standing: Transfer, Bonafide, Character, Migration, Merit, and ID cards. Not the awards:
+a Sports or Participation certificate records that a child took part, claims nothing
+about them, and needs nobody's permission. That is the recommendation in plan §1.6 and
+nothing was widened beyond it.
+
+**Then the printer was made to respect it.** Aman and Adesh print directly, as decision 6
+says. Lalit creates a request and prints once one of them has approved it. Three ways of
+getting round that are closed by name: an approval cannot be re-used for a different
+child, for a different document, or stretched to cover a bigger batch of ID cards than
+was approved. Without the last one an approval for four children could have printed the
+whole roll of 1,842.
+
+**ID cards go through the same queue, one request per batch.** Not one per child. A class
+of forty would otherwise put forty rows in front of the principal, which is how an
+approval step quietly becomes a rubber stamp.
+
+**Four things found and fixed while in there.**
+
+1. **A refused print used to spend one of the school's 200 documents for the day.** The
+   daily cap was counted before the question of whether the print was even allowed. It is
+   counted after now.
+2. **The school's owner was never told an approval was waiting.** The notification looked
+   for principals only, although Aman may approve and stands above Adesh in the school's
+   own hierarchy. Both are told now.
+3. **Every certificate the school has ever issued was shown on screen in red**, as though
+   it had been refused. The list looked for a status called `approved`; the status an
+   approved certificate actually carries is `generated`, and nothing has ever written
+   `approved`. It now reads "Issued", and one still waiting reads "Awaiting approval".
+4. **Flo told people the wrong thing about who approves.** Its message said a certificate
+   was "queued for principal approval". The owner approves these too.
+
+**The office is offered the right button, not a refusal.** Lalit now sees "Ask for
+approval" where he used to see "Download", and the PDF button on a request still waiting
+is greyed out with a reason on it. A button that says no when pressed reads as a broken
+platform, which is the same defect shape this initiative keeps turning up.
+
+**Measured.**
+
+| | Before | After | Why |
+|---|---|---|---|
+| API routes, total | 483 | **484** | The new ID-card approval request. |
+| routes: owner | 350 | **351** | Same route. |
+| routes: principal | 336 | **337** | Same route. |
+| routes: management | 220 | **221** | Same route. |
+| routes: accountant | 266 | 266 | Sonu cannot reach the ID card screen, so he is not given its request route either. |
+| routes: all five dormant | unchanged | unchanged | Deliberate. See below. |
+| Flo tools and writes, all nine | unchanged | unchanged | No tool was added or moved. |
+| Hubs and hub screens, all nine | unchanged | unchanged | No screen was added or moved. |
+
+**The one thing worth checking in that table.** The new route is gated to the three desks
+that can already reach the ID Card Generator — the owner, the principal and the admin
+office. The obvious spelling, `require_role("admin", "owner")`, is what the certificate
+routes beside it use, and it means *every admin desk in the school*. That would have
+handed a write route to the five dormant profiles, which today have none, and the handoff
+is explicit that Release 2 must not be what gives them any. A test names all six refused
+desks.
+
+**Two committed tests were reversed, each with the reason written into it.** Both
+asserted that the admin office could print a certificate and a set of ID cards outright.
+That was the settled rule until decision 6 changed it. They were not deleted, because the
+thing they were written to protect still matters: the office must REACH those routes, or
+its own screens become dead buttons. They now pin that it reaches them and is told what to
+do next.
+
+**Proved.** Backend 2,842 passed / 0 failed / 15 deselected. Frontend 575 passed /
+0 failed. Production build passed with lint clean. Gates run before the work and after it.
+
+**Not done, on purpose.**
+
+- **Flo has no ID-card tool** and did not gain one. It never had one, so no parity gap was
+  created. Adding one would have moved the pinned tool counts for a reason unrelated to
+  this sub-part.
+- **Sonu still cannot reach the certificate printer or the ID card screen.** Decision 6
+  says he creates and waits, and he does — through the certificate record, which he can
+  already raise. Giving him the print screens is a screen grant, which belongs to a
+  decision about his remit (R2-5, settled) rather than to this sub-part. Worth putting to
+  Abhimanyu if the school expects Sonu to hand a parent a printed Bonafide.
+
+**Left.** R2-7 and R2-8 (one menu vocabulary; the Flo briefs for the seven untouched
+profiles), R2-10, R2-15 to R2-18, R2-19, and R2-11 last because it revokes sessions. The
+fee ledger is untouched, as instructed, and still needs Abhimanyu awake and eight
+documents reconciled. Nothing deployed, nothing pushed, no live database read or written.
