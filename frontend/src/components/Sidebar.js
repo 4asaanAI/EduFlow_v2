@@ -3,6 +3,7 @@ import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getConversations, updateConversation, deleteConversation, getSchoolSettings } from '../lib/api';
 import { canUseTool, filterToolsForUser } from '../lib/toolPermissions';
+import { PROFILE_MATRIX } from '../lib/profileMatrix.generated';
 import {
   Activity, IndianRupee, Users, BarChart2, Bell, FileText, HeartPulse, Megaphone,
   CalendarDays, UserPlus, MessageSquare, Pin, Star, Trash2, Plus, BookOpen,
@@ -176,19 +177,26 @@ const reviewedAdminTools = (subCategory) => REVIEWED_ADMIN_TOOL_IDS.filter(
   id => canUseTool({ role: 'admin', sub_category: subCategory }, id),
 );
 
-const ADMIN_SUBCATEGORY_TOOLS = {
-  accountant: reviewedAdminTools('accountant'),
-  transport_head: ['student-database', 'transport-manager', 'transport-optimisation', 'asset-tracker', 'custom-form-builder', 'raise-maintenance'],
-  principal: reviewedAdminTools('principal'),
-  // D-49: 'id-card-generator' removed — the server refuses a receptionist, so
-  // offering the button only produced a refusal when they pressed it.
-  receptionist: ['student-database', 'enquiry-register', 'commercial-operations', 'parent-message', 'student-transfer', 'asset-tracker', 'incident-tracker', 'raise-maintenance', 'custom-form-builder'],
-  it_tech: ['tech-issues', 'raise-maintenance', 'custom-form-builder', 'query-section'],
-  maintenance: ['maintenance-schedule', 'vendor-log', 'raise-maintenance'],
-  // Owner request 10, 2026-08-06: 'audit-log' removed — the action log is owner
-  // and principal only now, on the server as well (routes/audit.py).
-  management: reviewedAdminTools('management'),
-};
+// R2-1: every one of these is now derived from the profile matrix rather than typed
+// out here. The five below management used to be hand-written arrays in this file —
+// a second copy of the answer, sitting next to the module written to stop there being
+// a second copy. `support_staff` had no entry at all, so it fell through to the whole
+// generic admin list; it is in the matrix now, with two screens.
+//
+// The order comes from REVIEWED_ADMIN_TOOL_IDS, so the sidebar reads the same way it
+// always did. The membership comes from the matrix.
+//
+// Rules previously recorded here, now living in `backend/services/profile_matrix.py`
+// alongside their reasoning:
+//   D-49 — a receptionist gets no 'id-card-generator'; the server refuses one, so the
+//          button only ever produced a refusal.
+//   Owner request 10, 2026-08-06 — 'audit-log' is owner and principal only, on the
+//          server too (routes/audit.py).
+const ADMIN_SUBCATEGORY_TOOLS = Object.fromEntries(
+  Object.keys(PROFILE_MATRIX)
+    .filter(sub => sub !== 'owner')
+    .map(sub => [sub, reviewedAdminTools(sub)]),
+);
 
 // ─── Grouped navigation config per role ──────────────────────────────────────
 const TOOL_GROUPS = {

@@ -37,7 +37,8 @@ const libDir = path.join(repoRoot, 'frontend', 'src', 'lib');
 // Node's ESM resolver rejects. Copy both into a temp dir and add the extension
 // rather than editing the real source.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'eduflow-menu-audit-'));
-fs.copyFileSync(path.join(libDir, 'toolPermissions.js'), path.join(tmp, 'toolPermissions.js'));
+fs.writeFileSync(path.join(tmp, 'toolPermissions.js'), fs.readFileSync(path.join(libDir, 'toolPermissions.js'), 'utf8').replace("'./profileMatrix.generated'", "'./profileMatrix.generated.js'"));
+fs.copyFileSync(path.join(libDir, 'profileMatrix.generated.js'), path.join(tmp, 'profileMatrix.generated.js'));
 fs.writeFileSync(
   path.join(tmp, 'managementHubs.js'),
   fs.readFileSync(path.join(libDir, 'managementHubs.js'), 'utf8')

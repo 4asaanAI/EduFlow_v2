@@ -74,6 +74,20 @@ def test_notes_come_back_newest_first(client, fake_db):
     _add(client, _bearer(OWNER), "The older one")
     _add(client, _bearer(OWNER), "The newer one")
 
+    # Give the two notes timestamps that are genuinely a minute apart before asking
+    # for them back. Writing them back to back does NOT reliably produce distinct
+    # `created_at` values: Windows' system clock has a resolution of about 15
+    # milliseconds, so both notes can be stamped with the same microsecond, the sort
+    # key ties, and "newest first" becomes whatever order the list happened to be in.
+    # That made this test pass or fail depending on how fast the machine ran, which
+    # is not what it is here to check. It is here to check the sort.
+    for doc in fake_db.profile_notes.docs:
+        doc["created_at"] = (
+            "2026-08-10T09:00:00+00:00"
+            if doc["body"] == "The older one"
+            else "2026-08-10T09:01:00+00:00"
+        )
+
     rows = _list(client, _bearer(OWNER)).json()["data"]
 
     assert [r["body"] for r in rows][0] == "The newer one"
