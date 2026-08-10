@@ -40,10 +40,22 @@ async def _audit_payroll_write(db, user: dict, action: str, entity_id: str, chan
     }, school_id=actor.school_id, branch_id=actor.branch_id or "")
 
 
+def _may_read_payroll(user: dict) -> bool:
+    """The school's owner, the principal, and the accountant head.
+
+    Decision 9, 2026-08-10: Aman and Adesh both see everyone's salary. The principal
+    was added to the screen gate below but NOT to the payslip check further down, so
+    Adesh could open the payroll screen and then be refused the moment he clicked a
+    payslip — the dead-button shape this sub-part exists to remove (R2-6, plan §1.8).
+    One helper now, so the screen and the record cannot disagree again.
+    """
+    is_principal = (user or {}).get("role") == "admin" and (user or {}).get("sub_category") == "principal"
+    return bool(_is_owner_or_accountant(user) or is_principal)
+
+
 def _require_owner_or_accountant(request: Request) -> dict:
     user = get_current_user(request)
-    is_principal = user.get("role") == "admin" and user.get("sub_category") == "principal"
-    if not (_is_owner_or_accountant(user) or is_principal):
+    if not _may_read_payroll(user):
         raise HTTPException(403, "Forbidden")
     return user
 
@@ -206,7 +218,7 @@ async def get_payslip(disbursement_id: str, request: Request):
     )
     if not disbursement:
         raise HTTPException(404, "Disbursement not found")
-    if not _is_owner_or_accountant(user):
+    if not _may_read_payroll(user):
         staff = await db.staff.find_one(
             scoped_query({"id": disbursement.get("staff_id"), "user_id": user.get("id")}, branch_id=bid),
             {"_id": 0, "id": 1},
