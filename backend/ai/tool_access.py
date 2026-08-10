@@ -46,6 +46,37 @@ def is_tool_authorized(user: Dict[str, Any], tool_def: Dict[str, Any]) -> bool:
     # services/ai_action_policy.py; Phase 2 (Epic H) widens it with no engine change.
     if not is_action_authorized_phase1(user, tool_def):
         return False
+    return _domain_floor_allows(user, tool_def)
+
+
+def _domain_floor_allows(user: Dict[str, Any], tool_def: Dict[str, Any]) -> bool:
+    """R2-13: the money and the action log stay behind the matrix, for everyone.
+
+    The domain overlay above only ever ran for the four privileged profiles. Every
+    other admin desk fell through to the plain registry check, which reads `roles` and
+    `sub_categories` and knows nothing about `access_domain` — so the five profiles
+    below the management head could read the school's fee summary, its fee
+    transactions, its defaulter list, its fee structures and `query_audit_log`, the
+    record of who changed what. Nobody had decided that; it was simply what happens
+    when a tool says `roles: ["owner", "admin"]` and nothing narrows it.
+
+    This is a floor, not a grant. It can only ever refuse, so it cannot be the thing
+    that hands a dormant profile something new — which matters, because those five
+    have zero write tools and Release 2 must not be what changes that.
+
+    The finance rule reads the one grant table, so a profile that is given the finance
+    domain tomorrow passes automatically. The leadership rule matches
+    `routes/audit.py`, where the same answer is already enforced for the HTTP door
+    (owner request 10, 2026-08-06).
+    """
+    from services.ai_action_policy import is_owner_or_principal
+    from services.profile_matrix import FINANCE, granted_domains
+
+    domain = (tool_def or {}).get("access_domain")
+    if domain == "finance":
+        return FINANCE in granted_domains(user)
+    if domain == "leadership":
+        return is_owner_or_principal(user)
     return True
 
 
