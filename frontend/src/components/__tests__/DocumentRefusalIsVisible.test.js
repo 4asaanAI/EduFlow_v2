@@ -18,7 +18,12 @@ import React from 'react';
 
 jest.mock('../../contexts/UserContext', () => ({
   useUser: () => ({
-    currentUser: { id: 'u-1', role: 'admin', sub_category: 'receptionist', name: 'R' },
+    // R2-9, 2026-08-10: this file used to act as a receptionist. Decision 6 now splits
+    // the screen in two — the owner and the principal get a Download button, everybody
+    // else gets an Ask-for-approval button — so the download path this file exists to
+    // test is only reachable as one of those two. The principal it is. What is under
+    // test has not changed: a refused download must say why, in a person's own words.
+    currentUser: { id: 'u-1', role: 'admin', sub_category: 'principal', name: 'Adesh' },
   }),
 }));
 jest.mock('../../contexts/ThemeContext', () => ({ useTheme: () => ({ isDark: true }) }));
@@ -59,7 +64,7 @@ function serverRefusingDocuments(status) {
 const realFetch = global.fetch;
 
 beforeEach(() => {
-  setAuthSession('a-valid-token', { id: 'u-1', role: 'admin', sub_category: 'receptionist' });
+  setAuthSession('a-valid-token', { id: 'u-1', role: 'admin', sub_category: 'principal' });
   resetAuthRedirectGuardForTests();
 });
 

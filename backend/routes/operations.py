@@ -2,7 +2,12 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, Request, HTTPException
 from database import get_db
-from middleware.auth import get_current_user, require_owner_or_principal, require_role
+from middleware.auth import (
+    get_current_user,
+    require_owner_or_admin_subcategories,
+    require_owner_or_principal,
+    require_role,
+)
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
 from services.actor_context import actor_ctx_from_user
@@ -62,6 +67,7 @@ from services.visitor_service import (
 )
 from services.certificate_service import (
     create_certificate as svc_create_certificate,
+    create_id_card_request as svc_create_id_card_request,
     approve_certificate as svc_approve_certificate,
     reject_certificate as svc_reject_certificate,
     delete_certificate as svc_delete_certificate,
@@ -406,6 +412,35 @@ async def create_cert(request: Request, user: dict = Depends(require_role("admin
     actor_ctx = actor_ctx_from_user(user)
     try:
         result = await svc_create_certificate(db, actor_ctx, body)
+    except CertificateValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["certificate"]}
+
+
+@router.post("/certificates/id-card-request")
+async def create_id_card_request(
+    request: Request,
+    # The same three desks that can reach the ID Card Generator screen and the print
+    # route: the owner, the principal and the admin office. Deliberately NOT
+    # `require_role("admin", "owner")`, which is every admin sub_category in the school
+    # and would hand a write route to the five dormant profiles that today have none.
+    user: dict = Depends(require_owner_or_admin_subcategories("principal", "management")),
+):
+    """Ask for a batch of student ID cards to be approved before printing.
+
+    R2-9 / decision 6, 2026-08-10. One request covers the whole batch and joins the same
+    approval list as certificates, so the school has one place to look and the principal
+    is not handed forty rows for one class.
+
+    The owner and the principal get an already-approved request back, which keeps the
+    screen's flow identical for everybody and means the print route has one rule to
+    apply rather than two.
+    """
+    db = get_db()
+    body = await request.json()
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_create_id_card_request(db, actor_ctx, body)
     except CertificateValidationError as e:
         raise HTTPException(400, str(e))
     return {"success": True, "data": result["certificate"]}

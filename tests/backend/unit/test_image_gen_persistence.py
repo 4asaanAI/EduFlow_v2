@@ -161,17 +161,43 @@ def test_id_cards_allowed_for_principal(client):
     assert resp.status_code == 200
 
 
-def test_certificate_allowed_for_management(client):
-    resp = client.post("/api/image-gen/certificate", json=_certificate_payload(),
+# R2-9, 2026-08-10 — these two tests used to assert that the admin office could print a
+# Bonafide Certificate and a set of ID cards outright, and they were reversed here
+# deliberately rather than deleted, because the DOOR they were written to protect is
+# still the point: the office must reach these routes, or the screens it owns are dead
+# buttons and it would look like the platform was broken.
+#
+# What changed is decision 6 of 2026-08-10: the office creates the request and the
+# school's owner or principal approves it. So the office reaching the route now means
+# "may print an award straight away, and may print anything else once it is approved" —
+# which is what these two now assert. `test_certificate_approval_r2_9.py` holds the full
+# set; these stay so that a future change narrowing the gate back to leadership-only is
+# still caught right here.
+
+def test_management_may_print_an_award_without_asking(client):
+    # Sports and participation certificates need nobody's permission — they record that
+    # a child took part, and assert nothing about their standing.
+    resp = client.post("/api/image-gen/certificate",
+                       json=_certificate_payload(cert_type="sports"),
                        headers=_headers(role="admin", sub_category="management"))
     assert resp.status_code == 200
 
 
-def test_id_cards_allowed_for_management(client):
+def test_management_reaches_the_certificate_route_and_is_told_to_get_approval(client):
+    # NOT the gate refusing them: the gate still admits the office. This is the approval
+    # step, and the difference matters — the message has to tell them what to do next.
+    resp = client.post("/api/image-gen/certificate", json=_certificate_payload(),
+                       headers=_headers(role="admin", sub_category="management"))
+    assert resp.status_code == 403
+    assert "approved" in resp.json()["detail"].lower()
+
+
+def test_management_reaches_the_id_card_route_and_is_told_to_get_approval(client):
     resp = client.post("/api/image-gen/id-cards",
                        json={"class_id": "class-1", "students": [{"student_id": "student-1"}]},
                        headers=_headers(role="admin", sub_category="management"))
-    assert resp.status_code == 200
+    assert resp.status_code == 403
+    assert "approved" in resp.json()["detail"].lower()
 
 
 # The decided rule is THREE profiles, so every one of them needs a test. Without these,

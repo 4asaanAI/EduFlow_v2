@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { API, apiFetch, getStudents, getAllStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, correctFeeTransaction, deleteFeeTransaction, getPendingLeaves, updateLeave, getWhatsappDefaulters, sendAttendanceAlerts, getSchoolSettings } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
+import { canIssueDocumentsDirectly } from '../../lib/toolPermissions';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, ErrorCard, LineChartWidget, useColumnSort, SortableHeaderRow } from './ToolPage';
 import { Search, Plus, CheckCircle, XCircle, Save, RefreshCw, X, FileDown, MessageSquare, Edit3, Trash2 } from 'lucide-react';
 import SearchablePicker from '../ui/SearchablePicker';
@@ -629,7 +630,17 @@ export function AttendanceWhatsAppAlerts() {
 }
 
 // 4. Certificate Generator
-const CERT_LABELS = { transfer: 'Transfer Certificate', bonafide: 'Bonafide Certificate', character: 'Character Certificate', sports: 'Sports Certificate', participation: 'Participation Certificate', migration: 'Migration Certificate' };
+// R2-9: these keys are the canonical document names in
+// `backend/services/certificate_types.py`. This dropdown used to say `transfer`, which
+// the approval rule had never heard of, so a Transfer Certificate raised here was
+// auto-issued to whoever asked — the school's most sensitive document was the one the
+// mismatch let through. `transfer` and `tc` are still accepted by the server as older
+// spellings of the same thing.
+const CERT_LABELS = { transfer_certificate: 'Transfer Certificate', bonafide: 'Bonafide Certificate', character: 'Character Certificate', sports: 'Sports Certificate', participation: 'Participation Certificate', migration: 'Migration Certificate' };
+// The documents the school's owner or principal must approve before they can be
+// printed. Mirrors APPROVAL_REQUIRED_TYPES on the server; the server is what enforces
+// it, this only decides whether to grey a button out rather than let it fail.
+const CERT_NEEDS_APPROVAL = new Set(['transfer_certificate', 'transfer', 'tc', 'bonafide', 'character', 'migration', 'merit']);
 
 // A refused or failed document download must SAY so. Both callers used to pass no
 // `onError`, so the failure was caught and dropped: the button went from "Generating…"
@@ -682,6 +693,9 @@ export function CertificateGenerator() {
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
   const [school, setSchool] = useState({});
+  // R2-9 / decision 6: the owner and the principal issue directly; the admin office
+  // creates a request and waits.
+  const canIssueDirectly = canIssueDocumentsDirectly(currentUser);
 
   // D-24: this table keeps its own <table> because a row can expand into a full-width
   // "reason for rejection" row underneath itself, which the shared DataTable (one array
@@ -764,6 +778,10 @@ export function CertificateGenerator() {
         student_id: cert.student_id,
         cert_type: cert.cert_type,
         serial_number: cert.serial_number || '',
+        // R2-9: which approved request this print is for. The owner and the principal
+        // print without one; for everybody else the server refuses the print unless
+        // this names a request it has approved, for this child and this document.
+        cert_id: cert.id || '',
       },
       filename,
       () => { setDownloadError(''); setDownloading(key); },
@@ -808,17 +826,26 @@ export function CertificateGenerator() {
 
           {generated && (
             <div style={{ background: 'var(--c-bg)', border: '1px solid var(--tool-hex-34d39930)', borderRadius: 11, padding: 16 }}>
-              <div style={{ fontSize: 11, color: 'var(--tool-hex-34d399)', fontWeight: 700, marginBottom: 10 }}>Certificate Generated!</div>
+              {/* R2-9: this said "Certificate Generated!" whatever had happened, so
+                  somebody whose request was queued for approval was told the document
+                  existed and then met a refusal on the download button. */}
+              <div style={{ fontSize: 11, color: 'var(--tool-hex-34d399)', fontWeight: 700, marginBottom: 10 }} data-testid="certificate-outcome">
+                {generated.status === 'pending_approval'
+                  ? 'Sent for approval — the owner or principal will review it'
+                  : 'Certificate issued'}
+              </div>
               <div style={{ fontSize: 12, color: 'var(--c-muted)', lineHeight: 1.8 }}>
-                <div><b style={{ color: 'var(--c-text)' }}>Type:</b> {CERT_LABELS[generated.cert_type]}</div>
+                <div><b style={{ color: 'var(--c-text)' }}>Type:</b> {CERT_LABELS[generated.cert_type] || generated.cert_type}</div>
                 <div><b style={{ color: 'var(--c-text)' }}>Serial:</b> <span style={{ fontFamily: 'monospace' }}>{generated.serial_number}</span></div>
                 <div><b style={{ color: 'var(--c-text)' }}>Student:</b> {generated.content_data?.student_name}</div>
-                <div><b style={{ color: 'var(--c-text)' }}>Date:</b> {generated.issued_date}</div>
+                <div><b style={{ color: 'var(--c-text)' }}>Date:</b> {generated.issued_date || '—'}</div>
               </div>
-              <div style={{ marginTop: 12 }}>
-                <ActionBtn label={downloading === generated.id ? 'Downloading...' : 'Download PDF'} icon={<FileDown size={11} />}
-                  onClick={() => downloadPdf(generated)} disabled={downloading === generated.id} />
-              </div>
+              {generated.status !== 'pending_approval' && (
+                <div style={{ marginTop: 12 }}>
+                  <ActionBtn label={downloading === generated.id ? 'Downloading...' : 'Download PDF'} icon={<FileDown size={11} />}
+                    onClick={() => downloadPdf(generated)} disabled={downloading === generated.id} />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -844,9 +871,14 @@ export function CertificateGenerator() {
               <tbody>
                 {certSort.items.map((c, i) => {
                   const isPending = c.status === 'pending_approval';
-                  const isApproved = c.status === 'approved';
+                  // R2-9: the status an approved certificate carries is 'generated' —
+                  // that is what approve_certificate writes and always has. This line
+                  // looked for 'approved', which nothing ever sets, so every issued
+                  // certificate in the school's history was shown in red as if it had
+                  // been refused.
+                  const isApproved = c.status === 'generated' || c.status === 'approved';
                   const statusColor = isApproved ? '#22c55e' : isPending ? '#fbbf24' : '#f87171';
-                  const statusLabel = isApproved ? 'Approved' : isPending ? 'Pending' : c.status === 'rejected' ? 'Rejected' : c.status || '—';
+                  const statusLabel = isApproved ? 'Issued' : isPending ? 'Awaiting approval' : c.status === 'rejected' ? 'Rejected' : c.status || '—';
                   return (
                   <React.Fragment key={c.id || i}>
                   <tr style={{ borderBottom: rejectingId === c.id ? 'none' : (i < certs.length - 1 ? '1px solid var(--tool-hex-242424)' : 'none') }}>
@@ -859,8 +891,13 @@ export function CertificateGenerator() {
                     </td>
                     <td style={{ padding: '9px 14px' }}>
                       <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-                        <button onClick={() => downloadPdf(c)} disabled={downloading === (c.id || c.serial_number)}
-                          style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '4px 9px', color: 'var(--tool-hex-93c5fd)', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
+                        {/* R2-9: a document still waiting for approval cannot be
+                            printed, and the server refuses it. Saying so on the button
+                            is better than letting somebody press it and read an error. */}
+                        <button onClick={() => downloadPdf(c)}
+                          disabled={downloading === (c.id || c.serial_number) || (isPending && !canIssueDirectly)}
+                          title={isPending && !canIssueDirectly ? 'Waiting for the owner or principal to approve this' : ''}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '4px 9px', color: 'var(--tool-hex-93c5fd)', fontSize: 11, cursor: 'pointer', fontWeight: 600, opacity: (isPending && !canIssueDirectly) ? 0.45 : 1 }}>
                           <FileDown size={11} />
                           {downloading === (c.id || c.serial_number) ? '...' : 'PDF'}
                         </button>
@@ -1826,7 +1863,10 @@ export function StudentTransfer() {
           method: 'POST', headers: h(),
           body: JSON.stringify({
             student_id: selectedStudent.id,
-            cert_type: 'transfer',
+            // R2-9: the canonical name. Written as 'transfer' until now, which the
+            // approval rule did not recognise, so the Transfer Certificate raised when a
+            // child leaves the school was issued without anybody being asked.
+            cert_type: 'transfer_certificate',
             content_data: {
               student_name: selectedStudent.name,
               class: cls ? `${cls.name}-${cls.section}` : 'N/A',
@@ -1988,6 +2028,11 @@ export function IdCardGenerator() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [printing, setPrinting] = useState(false);
   const [printError, setPrintError] = useState('');
+  // R2-9: the approval request behind this batch, once one has been asked for.
+  const [request, setRequest] = useState(null);
+  const [requesting, setRequesting] = useState(false);
+  const [batches, setBatches] = useState([]);
+  const canIssueDirectly = canIssueDocumentsDirectly(currentUser);
   // Owner note, 2026-08-07: "there should be a search option for the name among the
   // list". Picking one child out of 1,802 by scrolling is not a thing anyone does.
   const [search, setSearch] = useState('');
@@ -2001,9 +2046,20 @@ export function IdCardGenerator() {
       // Was a raw fetch, which bypassed api.js and so skipped the class ordering
       // applied in getAllClasses. Project convention is that all API calls go
       // through api.js for exactly this reason.
-      getAllClasses().then(r => { if (r.success) setClasses(r.data || []); })
+      getAllClasses().then(r => { if (r.success) setClasses(r.data || []); }),
+      // R2-9: batches this office already asked for and had approved. Without this the
+      // approval survives only as long as the browser tab, so a request approved an
+      // hour later could never be printed at all.
+      apiFetch(`${API}/ops/certificates`, { headers: h() })
+        .then(r => r.json())
+        .then(r => { if (r.success) setBatches(r.data || []); })
+        .catch(() => {}),
     ]).finally(() => setLoading(false));
   }, [currentUser]);
+
+  const approvedBatches = batches.filter(
+    b => b.cert_type === 'id_card' && b.status === 'generated' && (b.student_ids || []).length > 0,
+  );
 
   const filtered = students.filter(s => {
     if (filterClass && s.class_id !== filterClass) return false;
@@ -2017,22 +2073,57 @@ export function IdCardGenerator() {
   // somebody prints 1,802 cards while looking at a list of four.
   const toggleAll = () => {
     const allChosen = filtered.length > 0 && filtered.every(s => selectedIds.includes(s.id));
+    setRequest(null);
     setSelectedIds(allChosen ? [] : filtered.map(s => s.id));
   };
 
-  const printCards = () => {
+  // R2-9 / decision 6, 2026-08-10. An ID card carries the school's name and a child's
+  // identity, so it needs the same permission a certificate does. The owner and the
+  // principal print straight away. The admin office asks first, one request for the
+  // whole batch, and prints once it has been approved.
+  const requestApproval = async () => {
+    setPrintError('');
+    setRequesting(true);
+    try {
+      const r = await apiFetch(`${API}/ops/certificates/id-card-request`, {
+        method: 'POST', headers: h(),
+        body: JSON.stringify({ student_ids: selectedIds }),
+      }).then(r => r.json());
+      if (r.success) setRequest(r.data);
+      else setPrintError(r.detail || 'Could not send the request for approval');
+    } catch (e) {
+      setPrintError(e.message || 'Could not send the request for approval');
+    }
+    setRequesting(false);
+  };
+
+  const printCards = (approval) => {
     const selected = students
       .filter(s => selectedIds.includes(s.id))
       .map(s => ({ student_id: s.id }));
     const filename = `ID-Cards-${new Date().toISOString().slice(0, 10)}.pdf`;
     downloadBlobAsPdf(
       `${API}/image-gen/id-cards`,
-      { students: selected, school_name: 'The Aaryans School', academic_year: '2025-26' },
+      {
+        students: selected,
+        school_name: 'The Aaryans School',
+        academic_year: '2025-26',
+        // Empty for the owner and the principal, who need no approval.
+        request_id: approval?.id || '',
+      },
       filename,
       () => { setPrintError(''); setPrinting(true); },
       () => setPrinting(false),
       (e) => setPrintError(e.message),
     );
+  };
+
+  // Asking for approval and then changing the selection would print a batch nobody
+  // approved — the server refuses that, and dropping the stale request here means the
+  // person sees the right button instead of an error.
+  const chooseStudent = (id) => {
+    setRequest(null);
+    setSelectedIds(p => (p.includes(id) ? p.filter(x => x !== id) : [...p, id]));
   };
 
   return (
@@ -2051,16 +2142,42 @@ export function IdCardGenerator() {
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
         </select>
         <ActionBtn label={filtered.length > 0 && filtered.every(s => selectedIds.includes(s.id)) ? 'Deselect all shown' : 'Select all shown'} variant="secondary" onClick={toggleAll} />
-        <ActionBtn label={printing ? 'Generating PDF...' : `Download ${selectedIds.length} ID Cards PDF`} onClick={printCards} disabled={selectedIds.length === 0 || printing} />
+        {/* R2-9: one button or the other, never both. The owner and the principal print;
+            everybody else asks, and prints once the answer comes back. */}
+        {canIssueDirectly ? (
+          <ActionBtn label={printing ? 'Generating PDF...' : `Download ${selectedIds.length} ID Cards PDF`} onClick={() => printCards(null)} disabled={selectedIds.length === 0 || printing} />
+        ) : request && request.status === 'generated' ? (
+          <ActionBtn label={printing ? 'Generating PDF...' : `Download ${selectedIds.length} approved ID Cards`} onClick={() => printCards(request)} disabled={printing} />
+        ) : request ? (
+          <span data-testid="id-card-awaiting" style={{ fontSize: 12, color: 'var(--c-muted)' }}>
+            Sent for approval. The owner or principal will review it; you can print once they have.
+          </span>
+        ) : (
+          <ActionBtn label={requesting ? 'Sending...' : `Ask for approval for ${selectedIds.length} ID Cards`} onClick={requestApproval} disabled={selectedIds.length === 0 || requesting} />
+        )}
       </div>
       {printError && (
         <div data-testid="id-card-error" style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 12 }}>
           {printError}
         </div>
       )}
+      {!canIssueDirectly && approvedBatches.length > 0 && (
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 14, marginBottom: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', marginBottom: 8 }}>
+            Approved and ready to print
+          </div>
+          {approvedBatches.map(b => (
+            <div key={b.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '5px 0', fontSize: 12, color: 'var(--c-muted)' }}>
+              <span style={{ fontFamily: 'monospace' }}>{b.serial_number}</span>
+              <span>{(b.student_ids || []).length} student(s)</span>
+              <ActionBtn label="Download PDF" variant="secondary" onClick={() => { setSelectedIds(b.student_ids || []); setRequest(b); }} />
+            </div>
+          ))}
+        </div>
+      )}
       <DataTable headers={['', 'Name', 'Class', 'Adm No.', 'Roll']}
         rows={filtered.map(s => [
-          <input type="checkbox" checked={selectedIds.includes(s.id)} onChange={() => setSelectedIds(p => p.includes(s.id) ? p.filter(x => x !== s.id) : [...p, s.id])} />,
+          <input type="checkbox" checked={selectedIds.includes(s.id)} onChange={() => chooseStudent(s.id)} />,
           s.name,
           s.class_info ? `${s.class_info.name}-${s.class_info.section}` : 'N/A',
           s.admission_number || 'N/A',

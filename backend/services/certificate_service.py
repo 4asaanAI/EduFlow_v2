@@ -14,10 +14,33 @@ import uuid
 
 from services.actor_context import ActorContext
 from services.audit_service import write_audit_doc
+from services.certificate_types import (
+    APPROVAL_REQUIRED_TYPES,
+    ID_CARD_TYPE,
+    canonical_type,
+    document_label,
+    requires_approval,
+)
 from services.notification_service import create_notification, fan_out_notifications
 from tenant import scoped_query
 
-APPROVAL_REQUIRED_TYPES = {"bonafide", "tc", "transfer_certificate", "character", "merit"}
+# R2-9, 2026-08-10: this set used to be spelled out here and disagreed with the printer
+# and with Flo's tool schema, so a Transfer Certificate raised from the screen (stored as
+# `transfer`) matched nothing and was auto-issued to anybody. `services/certificate_types`
+# is now the one place that decides. Re-exported here because callers and tests import it
+# from this module.
+__all__ = [
+    "APPROVAL_REQUIRED_TYPES",
+    "CertificateValidationError",
+    "CertificateNotFoundError",
+    "CertificateStateError",
+    "create_certificate",
+    "create_id_card_request",
+    "approve_certificate",
+    "reject_certificate",
+    "delete_certificate",
+    "is_approved_for_printing",
+]
 
 
 class CertificateValidationError(Exception):
@@ -42,10 +65,13 @@ async def create_certificate(db, actor_ctx: ActorContext, params: dict) -> dict:
     """Create a certificate request. params: {student_id, cert_type?, content_data?}"""
     if not params.get("student_id"):
         raise CertificateValidationError("student_id is required")
-    cert_type = params.get("cert_type") or params.get("type", "bonafide")
-    requires_approval = cert_type in APPROVAL_REQUIRED_TYPES
+    # R2-9: store the CANONICAL name. Whatever the caller said — `transfer`, `tc`,
+    # `Transfer Certificate` — one word reaches the database, so the approval rule and
+    # the printer are asking about the same document.
+    cert_type = canonical_type(params.get("cert_type") or params.get("type") or "bonafide")
+    needs_approval = requires_approval(cert_type)
     approved_actor = _is_owner_or_principal(actor_ctx)
-    auto_issue = approved_actor or not requires_approval
+    auto_issue = approved_actor or not needs_approval
     now = actor_ctx.now()
     cert = {
         "id": str(uuid.uuid4()),
@@ -62,21 +88,120 @@ async def create_certificate(db, actor_ctx: ActorContext, params: dict) -> dict:
     }
     await db.certificates.insert_one({**cert, "_id": cert["id"]})
     if cert["status"] == "pending_approval":
-        principals = await db.users.find(
-            scoped_query({"role": "admin", "sub_category": "principal", "is_active": {"$ne": False}},
-                         branch_id=actor_ctx.branch_id),
-            {"_id": 0, "id": 1},
-        ).to_list(20)
-        await fan_out_notifications(
+        await _notify_approvers(db, actor_ctx, cert["id"], document_label(cert_type))
+    return {"certificate": cert}
+
+
+async def _notify_approvers(db, actor_ctx: ActorContext, cert_id: str, label: str) -> None:
+    """Tell the two people who may approve that something is waiting.
+
+    R2-9: this used to look for principals only, so the school's OWNER — who may approve
+    and who the school's hierarchy puts above the principal — was never told. Both are
+    asked now. The approve and reject routes already admitted both; only the tap on the
+    shoulder was missing.
+    """
+    approvers = await db.users.find(
+        scoped_query(
+            {
+                "$or": [
+                    {"role": "owner"},
+                    {"role": "admin", "sub_category": "principal"},
+                ],
+                "is_active": {"$ne": False},
+            },
+            branch_id=actor_ctx.branch_id,
+        ),
+        {"_id": 0, "id": 1},
+    ).to_list(20)
+    await fan_out_notifications(
+        db,
+        [a["id"] for a in approvers if a.get("id")],
+        notification_type="certificate_approval_requested",
+        title="Approval required",
+        message=f"{label} is waiting for approval.",
+        source_id=cert_id,
+        source_type="certificate",
+    )
+
+
+async def create_id_card_request(db, actor_ctx: ActorContext, params: dict) -> dict:
+    """Ask for a batch of student ID cards to be approved. params: {student_ids}
+
+    Decision 6 of 2026-08-10 puts ID cards under the same rule as certificates: the
+    owner and the principal print them directly, everybody else asks first. There is no
+    second approval queue — the request is a row in `certificates` with the canonical
+    type `id_card`, so `approve_certificate` and `reject_certificate` govern it
+    unchanged and the school has one list to look at.
+
+    A batch is ONE request, not one per child. A class of forty would otherwise put
+    forty rows in front of the principal, which is how an approval step turns into a
+    rubber stamp.
+    """
+    raw_ids = params.get("student_ids") or []
+    student_ids = [str(s).strip() for s in raw_ids if str(s or "").strip()]
+    # Same order, no duplicates.
+    student_ids = list(dict.fromkeys(student_ids))
+    if not student_ids:
+        raise CertificateValidationError("student_ids is required")
+
+    auto_issue = _is_owner_or_principal(actor_ctx)
+    now = actor_ctx.now()
+    cert = {
+        "id": str(uuid.uuid4()),
+        "schoolId": actor_ctx.school_id,
+        # An ID-card batch has no single child, so `student_id` stays empty and the
+        # list lives in `student_ids`. The certificate list screen resolves a name from
+        # `student_id` and shows "N/A" when there is none, which is honest for a batch.
+        "student_id": None,
+        "student_ids": student_ids,
+        "cert_type": ID_CARD_TYPE,
+        "serial_number": f"IDC{now.strftime('%Y%m%d')}{uuid.uuid4().hex[:6].upper()}",
+        "content_data": {"student_count": len(student_ids)},
+        "status": "generated" if auto_issue else "pending_approval",
+        "issued_date": now.strftime("%Y-%m-%d") if auto_issue else None,
+        "issued_by": actor_ctx.user_id if auto_issue else None,
+        "requested_by": actor_ctx.user_id,
+        "created_at": now.isoformat(),
+    }
+    await db.certificates.insert_one({**cert, "_id": cert["id"]})
+    if cert["status"] == "pending_approval":
+        await _notify_approvers(
             db,
-            [p["id"] for p in principals if p.get("id")],
-            notification_type="certificate_approval_requested",
-            title="Certificate approval required",
-            message=f"{cert_type.replace('_', ' ').title()} certificate is waiting for approval.",
-            source_id=cert["id"],
-            source_type="certificate",
+            actor_ctx,
+            cert["id"],
+            f"{document_label(ID_CARD_TYPE)} for {len(student_ids)} student(s)",
         )
     return {"certificate": cert}
+
+
+async def is_approved_for_printing(db, actor_ctx: ActorContext, cert_id: str) -> dict:
+    """The approved request behind a print, or raise.
+
+    Returns the certificate record when it exists in the caller's scope and has been
+    approved. `generated` is what an approved record's status is called — the field
+    records that the document now exists, and `approve_certificate` is what sets it.
+
+    Raises `CertificateNotFoundError` if there is no such record here, and
+    `CertificateStateError` if it is still waiting or was refused.
+    """
+    if not cert_id:
+        raise CertificateValidationError("cert_id is required")
+    cert = await db.certificates.find_one(
+        scoped_query({"id": cert_id}, branch_id=actor_ctx.branch_id), {"_id": 0}
+    )
+    if not cert:
+        raise CertificateNotFoundError(cert_id)
+    status = cert.get("status")
+    if status == "pending_approval":
+        raise CertificateStateError(
+            "This document is still waiting for the school's owner or principal to "
+            "approve it. It cannot be printed yet."
+        )
+    if status != "generated":
+        raise CertificateStateError(
+            f"This document was not approved (it is marked '{status}'), so it cannot be printed."
+        )
+    return cert
 
 
 async def approve_certificate(db, actor_ctx: ActorContext, params: dict) -> dict:

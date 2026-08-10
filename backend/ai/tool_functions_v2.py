@@ -193,6 +193,7 @@ from services.certificate_service import (
     CertificateNotFoundError,
     CertificateStateError,
 )
+from services.certificate_types import document_label as svc_document_label
 from services.query_ticket_service import (
     create_ticket as svc_create_query_ticket,
     resolve_ticket as svc_resolve_query_ticket,
@@ -3763,9 +3764,16 @@ async def tool_create_certificate(params: dict, user: dict, scope: dict = None) 
     except CertificateValidationError as e:
         return {"success": False, "message": str(e)}
     cert = result["certificate"]
-    state = "generated" if cert["status"] == "generated" else "queued for principal approval"
+    # R2-9: say who is being waited on, and use the one shared name for the document.
+    # "queued for principal approval" was also incomplete — the school's owner approves
+    # these too, and stands above the principal in the school's own hierarchy.
+    state = (
+        "issued"
+        if cert["status"] == "generated"
+        else "waiting for the school's owner or principal to approve it"
+    )
     return {"success": True, "data": cert,
-            "message": f"{cert['cert_type'].replace('_', ' ').title()} certificate {state} (serial {cert['serial_number']})."}
+            "message": f"{svc_document_label(cert['cert_type'])} {state} (serial {cert['serial_number']})."}
 
 
 async def tool_decide_certificate(params: dict, user: dict, scope: dict = None) -> dict:
@@ -6439,12 +6447,14 @@ TOOL_REGISTRY = {
     "create_certificate": {
         "fn": tool_create_certificate,
         "roles": ["owner", "admin"],
-        "description": "Request/generate a student certificate (bonafide, tc, character, merit, etc.). Owner/principal issues instantly; other types may queue for approval.",
+        "description": "Request a student certificate. The school's owner and principal issue one straight away; anybody else's request waits for one of them to approve it. Sports and participation certificates are awards and need no approval.",
         "dispatch_type": "write",
         "requires_confirmation": True,
         "params_schema": {
             "student_id": {"type": "string", "description": "Student ID (required — use search_students)"},
-            "cert_type": {"type": "string", "description": "bonafide | tc | transfer_certificate | character | merit | participation (default bonafide)"},
+            # R2-9: the canonical names in services/certificate_types.py. `transfer` and
+            # `tc` are accepted and both mean transfer_certificate.
+            "cert_type": {"type": "string", "description": "transfer_certificate | bonafide | character | migration | merit | sports | participation (default bonafide)"},
             "content_data": {"type": "object", "description": "Optional extra fields for the certificate body"},
         },
     },

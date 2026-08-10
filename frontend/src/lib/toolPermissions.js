@@ -120,6 +120,21 @@ export function canSeeMoney(user) {
   return PROFILE_MATRIX[profile].toolDomains.includes('finance');
 }
 
+/**
+ * May this person put the school's name on an official document without asking?
+ *
+ * R2-9 / decision 6, 2026-08-10: the school's owner and the principal issue a
+ * certificate or an ID card directly. Everybody else who can reach those screens
+ * creates a request and waits for one of those two to approve it.
+ *
+ * This decides only whether a button is offered or greyed out. `routes/image_gen.py`
+ * is what actually refuses the print, and it asks the same question in the same words.
+ */
+export function canIssueDocumentsDirectly(user) {
+  if (!user) return false;
+  return user.role === 'owner' || (user.role === 'admin' && user.sub_category === 'principal');
+}
+
 /** Drop every tool this user may not use. Accepts ids or objects with an `id`. */
 export function filterToolsForUser(user, tools) {
   return (tools || []).filter((t) => canUseTool(user, typeof t === 'string' ? t : t?.id));
