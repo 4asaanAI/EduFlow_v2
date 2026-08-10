@@ -24,6 +24,7 @@ from services.student_service import (
     ClassValidationError,
     StudentConflictError,
     StudentNotFoundError,
+    StudentAuthorizationError,
     StudentValidationError,
 )
 from services.s3_storage import (
@@ -612,6 +613,8 @@ async def delete_student(student_id: str, request: Request):
         await delete_student_service(db, actor_ctx, {"student_id": student_id})
     except StudentNotFoundError:
         raise HTTPException(404, "Student not found")
+    except StudentAuthorizationError as e:
+        raise HTTPException(403, str(e))
     except StudentValidationError as e:
         raise HTTPException(400, str(e))
     return {"success": True}

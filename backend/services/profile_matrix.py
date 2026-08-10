@@ -84,6 +84,7 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         "screens": ALL_SCREENS,
         "tool_domains": frozenset({FINANCE, NON_FINANCE, SHARED, LEADERSHIP}),
         "may_write": True,
+        "may_delete_people": True,
         "notes": (
             "The school's proprietor. Holds everything, including the tools marked "
             "owner-only in the registry: the branch records, the school settings and "
@@ -98,6 +99,7 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         "screens": ALL_SCREENS,
         "tool_domains": frozenset({FINANCE, NON_FINANCE, SHARED, LEADERSHIP}),
         "may_write": True,
+        "may_delete_people": True,
         "notes": (
             "Stands directly below the owner in the school's own hierarchy "
             "(Aman > Adesh > Sonu > Lalit) and holds the same school-management "
@@ -132,6 +134,7 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         ),
         "tool_domains": frozenset({FINANCE, SHARED}),
         "may_write": True,
+        "may_delete_people": False,
         "notes": (
             "Finance plus the lookups finance needs. Attendance and leave read-only, "
             "the full directory plus his own columns, vendor records in full, and "
@@ -222,6 +225,7 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         ),
         "tool_domains": frozenset({NON_FINANCE, SHARED}),
         "may_write": True,
+        "may_delete_people": False,
         "notes": (
             "Everything that is not money and not leadership-private. He may add and "
             "edit students and staff; he may NOT delete either, and he may not create "
@@ -247,6 +251,7 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         ),
         "tool_domains": frozenset(),
         "may_write": False,
+        "may_delete_people": False,
         "notes": (
             "Built now, switched on in Release 3 (decision 3). He exists in the staff "
             "records already and has no login."
@@ -269,6 +274,7 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         ),
         "tool_domains": frozenset(),
         "may_write": False,
+        "may_delete_people": False,
         "notes": (
             "'id-card-generator' is deliberately absent (D-49): the server refuses a "
             "receptionist, so offering the button only produced a refusal when it was "
@@ -287,6 +293,7 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         ),
         "tool_domains": frozenset(),
         "may_write": False,
+        "may_delete_people": False,
         "notes": "Awaiting the school owner's answers.",
     },
     "maintenance": {
@@ -300,6 +307,7 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         ),
         "tool_domains": frozenset(),
         "may_write": False,
+        "may_delete_people": False,
         "notes": "Awaiting the school owner's answers.",
     },
     "support_staff": {
@@ -317,6 +325,7 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         ),
         "tool_domains": frozenset(),
         "may_write": False,
+        "may_delete_people": False,
         "notes": (
             "Had no entry at all before R2-1 and therefore fell through to the whole "
             "generic admin menu. R2-6 settles what this profile should actually hold; "
@@ -331,6 +340,20 @@ LIVE_PROFILES = tuple(
 DORMANT_PROFILES = tuple(
     name for name, entry in PROFILE_MATRIX.items() if entry["status"] == "dormant"
 )
+
+
+def user_from_actor(actor_ctx: Any) -> Dict[str, Any]:
+    """An ActorContext in the shape the functions below read.
+
+    Services carry an `ActorContext`; routes carry the dict that came out of the JWT.
+    Both name the same two things, so rather than teach every caller which shape it is
+    holding, this converts the one into the other in a single place.
+    """
+    return {
+        "role": getattr(actor_ctx, "role", None),
+        "sub_category": getattr(actor_ctx, "sub_category", None),
+        "id": getattr(actor_ctx, "user_id", None),
+    }
 
 
 def profile_of(user: Dict[str, Any]) -> str:
@@ -373,3 +396,21 @@ def may_write(user: Dict[str, Any]) -> bool:
     if not profile:
         return False
     return bool(PROFILE_MATRIX[profile]["may_write"])
+
+
+def may_delete_people(user: Dict[str, Any]) -> bool:
+    """May this profile take a student or a colleague off the roll?
+
+    R2-4 / decision 4, 2026-08-10: the management head may add and edit people, and
+    may NOT delete them. Until now `DELETE /api/students/{id}` and
+    `DELETE /api/staff/{id}` asked only whether the caller's role was owner or admin,
+    which is every admin desk in the school.
+
+    Taking someone off the roll is recoverable — it records that they have left and
+    `set_enrolment_state` puts them back — but it removes a child from the school's
+    working roll, and that is a decision for the two people who run the school.
+    """
+    profile = profile_of(user)
+    if not profile:
+        return False
+    return bool(PROFILE_MATRIX[profile]["may_delete_people"])

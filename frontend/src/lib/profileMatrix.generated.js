@@ -17,6 +17,7 @@ export const ALL_SCREENS = "__all_screens__";
 
 export const PROFILE_MATRIX = {
   "accountant": {
+    "mayDeletePeople": false,
     "mayWrite": true,
     "person": "Sonu Ruhal",
     "screens": [
@@ -42,6 +43,7 @@ export const PROFILE_MATRIX = {
     ]
   },
   "it_tech": {
+    "mayDeletePeople": false,
     "mayWrite": false,
     "person": null,
     "screens": [
@@ -55,6 +57,7 @@ export const PROFILE_MATRIX = {
     "toolDomains": []
   },
   "maintenance": {
+    "mayDeletePeople": false,
     "mayWrite": false,
     "person": null,
     "screens": [
@@ -67,6 +70,7 @@ export const PROFILE_MATRIX = {
     "toolDomains": []
   },
   "management": {
+    "mayDeletePeople": false,
     "mayWrite": true,
     "person": "Lalit Thomas",
     "screens": [
@@ -131,6 +135,7 @@ export const PROFILE_MATRIX = {
     ]
   },
   "owner": {
+    "mayDeletePeople": true,
     "mayWrite": true,
     "person": "Aman Litt",
     "screens": "__all_screens__",
@@ -144,6 +149,7 @@ export const PROFILE_MATRIX = {
     ]
   },
   "principal": {
+    "mayDeletePeople": true,
     "mayWrite": true,
     "person": "Adesh Singh",
     "screens": "__all_screens__",
@@ -157,6 +163,7 @@ export const PROFILE_MATRIX = {
     ]
   },
   "receptionist": {
+    "mayDeletePeople": false,
     "mayWrite": false,
     "person": null,
     "screens": [
@@ -175,6 +182,7 @@ export const PROFILE_MATRIX = {
     "toolDomains": []
   },
   "support_staff": {
+    "mayDeletePeople": false,
     "mayWrite": false,
     "person": null,
     "screens": [
@@ -186,6 +194,7 @@ export const PROFILE_MATRIX = {
     "toolDomains": []
   },
   "transport_head": {
+    "mayDeletePeople": false,
     "mayWrite": false,
     "person": "Chaman Singh",
     "screens": [

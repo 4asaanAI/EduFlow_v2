@@ -6772,10 +6772,33 @@ SHARED_LOOKUP_TOOL_NAMES = frozenset({
     # non-finance ones, and any column outside a profile's segment is reported
     # back rather than written.
     "preview_data_import", "import_data_file",
+    # R2-5 / decision 5, 2026-08-10: the accountant head may put a new child on the
+    # roll, alongside the school's owner, the principal and the management head. A fee
+    # belongs to a child, and Sonu is the one who meets the family at admission.
+    #
+    # Shared, NOT finance: this must stay reachable by the management head too, whose
+    # daily job it is. Only the CREATE is shared — taking a child off the roll stays
+    # with the school's leadership (R2-4, guarded in `student_service.delete_student`).
+    "create_student",
 })
 
 LEADERSHIP_ONLY_TOOL_NAMES = frozenset({
     "recall_history", "query_audit_log", "get_profile_notes", "add_profile_note",
+    # R2-4 / decision 4, 2026-08-10: handing someone a way into the platform, or
+    # changing the password that guards 1,876 children's records, belongs to the two
+    # people who run the school. The management head maintains the people records —
+    # add and edit, yes — but he does not create or reset a login.
+    #
+    # These two were `non_finance` only because the loop below is a SUBTRACTION: the
+    # last branch is `else: non_finance`, so anything nobody classified became his by
+    # default. That is the same defect the R2-1 matrix exists to end, and it is why
+    # these had to be named rather than left to fall through.
+    #
+    # The narrower rules underneath are already correct and stay: management may only
+    # ever change a STUDENT's password, and nobody but the school's owner may change
+    # an owner's (`account_management_service.py`). This puts the outer door in front
+    # of them.
+    "create_student_login", "set_profile_password",
 })
 
 BULK_TOOL_NAMES = frozenset({

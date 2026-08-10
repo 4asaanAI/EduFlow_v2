@@ -56,6 +56,7 @@ def _entry_to_json(entry: dict) -> dict:
         "screens": ALL_SCREENS if screens == ALL_SCREENS else sorted(screens),
         "toolDomains": sorted(entry["tool_domains"]),
         "mayWrite": entry["may_write"],
+        "mayDeletePeople": entry["may_delete_people"],
     }
 
 

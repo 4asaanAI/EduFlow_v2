@@ -611,9 +611,19 @@ async def delete_staff(
     """
     from services import enrolment_status
 
+    from services.profile_matrix import may_delete_people, user_from_actor
+
     staff_id = params.get("staff_id")
     if not staff_id:
         raise StaffValidationError("staff_id is required")
+
+    # R2-4 / decision 4, 2026-08-10: the management head adds and edits colleagues; he
+    # does not take them off the roll. Guarded HERE and not on the route, because the
+    # route and the Flo `delete_staff` tool both come through this function.
+    if not may_delete_people(user_from_actor(actor_ctx)):
+        raise StaffAuthorizationError(
+            "Only the school's owner or the principal can take a colleague off the roll"
+        )
 
     result = await set_enrolment_state(
         db,

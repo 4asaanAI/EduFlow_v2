@@ -39,6 +39,14 @@ def test_phase1_lockdown_allows_owner_and_principal(tool_name):
 @pytest.mark.parametrize("actor", [ACCOUNTANT, TEACHER, STUDENT])
 def test_phase1_lockdown_blocks_everyone_else(tool_name, actor):
     tdef = TOOL_REGISTRY[tool_name]
+    if tool_name == "create_student" and actor is ACCOUNTANT:
+        # R2-5 / decision 5, 2026-08-10: the accountant head may now put a new child
+        # on the roll, alongside the school's owner, the principal and the management
+        # head. A fee belongs to a child, and Sonu is the one who meets the family at
+        # admission. Only the CREATE — removing a child from the roll stays with the
+        # school's leadership (R2-4).
+        assert _is_tool_authorized(actor, tdef) is True
+        return
     assert _is_tool_authorized(actor, tdef) is False
 
 

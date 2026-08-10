@@ -105,12 +105,25 @@ def test_confirmation_set_is_exactly_destructive_bulk_and_reversals():
 
 
 def test_profile_account_permissions_are_exact():
+    """R2-4 / decision 4, 2026-08-10: the management head no longer holds these.
+
+    This test previously asserted that MANAGEMENT could use both. That was the earlier
+    intent, and the narrower rules underneath it were sound — the service still limits
+    management to STUDENT passwords and lets nobody but the school's owner change an
+    owner's. It was reversed deliberately, not by accident: handing someone a way into
+    the platform, or changing a password guarding 1,876 children's records, belongs to
+    the two people who run the school.
+
+    The narrower service rules stay exactly as they are. This is the outer door in
+    front of them, and if the decision is ever reversed again, the way back is to take
+    these two names out of LEADERSHIP_ONLY_TOOL_NAMES — not to loosen the service.
+    """
     create_login = TOOL_REGISTRY["create_student_login"]
     set_password = TOOL_REGISTRY["set_profile_password"]
     for tool in (create_login, set_password):
         assert is_tool_authorized(OWNER, tool)
         assert is_tool_authorized(PRINCIPAL, tool)
-        assert is_tool_authorized(MANAGEMENT, tool)
+        assert not is_tool_authorized(MANAGEMENT, tool)
         assert not is_tool_authorized(ACCOUNTANT, tool)
 
 

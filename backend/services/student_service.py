@@ -93,6 +93,10 @@ class ClassValidationError(Exception):
     """Class not in current academic year → HTTP 400."""
 
 
+class StudentAuthorizationError(Exception):
+    """This profile may not do that → HTTP 403."""
+
+
 def _session_kwargs(session) -> dict:
     return _txn_session_kwargs(session)
 
@@ -502,6 +506,17 @@ async def delete_student(
     """
     if not params.get("student_id"):
         raise StudentValidationError("student_id is required")
+    # R2-4 / decision 4, 2026-08-10: the management head adds and edits students; he
+    # does not take them off the roll. The guard lives HERE rather than on the route
+    # because the route and the Flo `delete_student` tool both come through this
+    # function — a check on the route alone would leave the chat door open, which is
+    # exactly the drift the shared-service pattern exists to prevent.
+    from services.profile_matrix import may_delete_people, user_from_actor
+
+    if not may_delete_people(user_from_actor(actor_ctx)):
+        raise StudentAuthorizationError(
+            "Only the school's owner or the principal can take a student off the roll"
+        )
     return await set_enrolment_state(
         db,
         actor_ctx,
