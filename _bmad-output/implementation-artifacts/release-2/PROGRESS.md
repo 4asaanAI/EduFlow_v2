@@ -12,8 +12,13 @@ the run failed. A run that changed code and left this file untouched is an incom
 
 ## ▶ NEXT SESSION STARTS HERE
 
-**Do this first, before R2-1.** The school's fee ledger is the school's most urgent need
-and Abhimanyu has approved writing it to the live database.
+**Read the entry at the bottom of this file dated 2026-08-10 (overnight run) first.**
+Priorities 1 to 5 of the overnight handoff are done and the suite is green. The
+permission work is finished; the fee ledger below is the next job, and it needs
+Abhimanyu awake.
+
+**Do this next.** The school's fee ledger is the school's most urgent need and
+Abhimanyu has approved writing it to the live database.
 
 1. Read the eight fee documents in `aaryans_database/`, above all
    `Transport-Fees-Structure-Report-Summary-06-08-2026-16-58.pdf` (the missing transport
@@ -87,11 +92,11 @@ body and are counted as unreachable by the script, so the route column understat
 |---|---|---|---|
 | R2-0 | Who can log in right now | **✅ DONE** | Read from the live database 2026-08-10. **1,898 accounts, ALL active**, including 1,802 students and 88 teachers. Login has no role gate. Migration 031 has not run. Plan R2-0 has the full table. |
 | R2-19 | Flo can do the fee work too | NOT STARTED | Abhimanyu, 2026-08-10: anything done by hand, Flo must do on request. Parity tests required. |
-| R2-1 | The permission matrix (one source of truth) | NOT STARTED | All nine profiles, properly defined. The five below Lalit need Aman's answers first. |
-| R2-2 | Close the nine money leaks to Lalit | NOT STARTED | Biggest block. Plan §1.3. Three separate acceptance checks. |
-| R2-3 | Close the owner-only hole in Flo | NOT STARTED | Smallest, highest severity. Plan §1.4. |
-| R2-4 | People records: add/edit yes, delete/logins no | NOT STARTED | Plan §1.5, decisions 4 and 5. |
-| R2-5 | Sonu's full remit | NOT STARTED | Attendance read, vendors, transport, create students. |
+| R2-1 | The permission matrix (one source of truth) | **✅ BUILT, GATE GREEN** | `backend/services/profile_matrix.py` + checked-in JS mirror + drift test. All nine profiles. Default deny. Commit `72a4bed`. |
+| R2-2 | Close the nine money leaks to Lalit | **✅ BUILT, GATE GREEN** | Only THREE of the nine were still open; four were already closed and one was the opposite of a leak. Commit `7893726`. |
+| R2-3 | Close the owner-only hole in Flo | **✅ BUILT, GATE GREEN** | Commit `6a90cff`. The handoff's "all eight non-owner profiles" was wrong about the principal; see the session entry. |
+| R2-4 | People records: add/edit yes, delete/logins no | **✅ BUILT, GATE GREEN** | Guard in the service, so the screen and Flo give one answer. Commit `84e330d`. |
+| R2-5 | Sonu's full remit | PARTLY DONE | Decision 5 (create students) shipped in R2-4. Attendance read, vendors and transport are still to do. |
 | R2-6 | Fix the dead buttons, Adesh and support staff | NOT STARTED | Payroll for Adesh (§1.8); support staff has no menu list at all (§1.10). |
 | R2-7 | One vocabulary: same department groups for everyone | NOT STARTED | Pairs with R2-8. Do NOT invent per-person group names. |
 | R2-8 | Flo briefs per person | NOT STARTED | Pairs with R2-7. |
@@ -99,7 +104,7 @@ body and are counted as unreachable by the script, so the route column understat
 | R2-10 | Staff messaging: a real colleague directory | NOT STARTED | Diagnose RECONNECTING before fixing. May be infrastructure. |
 | R2-11 | Rename the two office logins, plus Adesh's display name | **BLOCKED** | On R2-0's reading tasks. Scope shrank 2026-08-10: only `accountant` → `sonu.ruhal` and `management` → `lalit.thomas`. **Aman's login is not touched.** Do not widen it back out. |
 | R2-12 | Transport head profile for Chaman Singh, dormant | NOT STARTED | He exists in staff already; no login. |
-| R2-13 | The proof: all-nine-profile sweep test | NOT STARTED | Nine, not four. The only thing guarding the five dormant profiles from silently losing or gaining access. |
+| R2-13 | The proof: all-nine-profile sweep test | **✅ BUILT, GATE GREEN** | Found a real leak on its first run: all five dormant profiles could read the fee ledger and the action log. Commit `0c1cc9d`. |
 | R2-15 | A daily digest for Aman and Adesh | NOT STARTED | Reads `audit_logs`, records nothing new. Not WhatsApp yet: no production sender exists. |
 | R2-16 | What data is still missing, and who fills it | NOT STARTED | **Needs Abhimanyu's approval to read the live database.** Counts only, never an export of children's records. Start early: it waits on the school. |
 | R2-17 | One page each for Sonu and Lalit | NOT STARTED | Plain language, no jargon. Write after the screens stop moving. |
@@ -333,3 +338,147 @@ write.** That is the first job of the next session.
 
 **Left.** Fee structure prepared but not written; approval is in hand. Class split not
 started. R2-1 still unbuilt.
+
+### 2026-08-10 — overnight run: Priorities 1 to 5 (Claude, Opus 5)
+
+## Is it safe to hand Sonu and Lalit their credentials?
+
+**Yes, on the permission side. The five things the handoff called Priorities 1 to 5
+are built and the whole suite is green.** Lalit can no longer see a single rupee
+figure, cannot run the year-end promotion that moves every child up a class, cannot
+take a student or a colleague off the roll, and cannot create or reset anybody's
+login. Sonu can no longer create or delete the school's legal entities. Every one of
+those was open when the night started, on accounts that are already live.
+
+**Three things Abhimanyu should know before he hands the passwords over.**
+
+1. **None of this is deployed.** It is committed on the branch and nothing has been
+   pushed or released. The live school platform tonight behaves exactly as it did
+   this morning, holes and all. Handing out credentials before this ships would hand
+   out the old behaviour.
+2. **The passwords are still the guessable ones**, by his own recorded decision. That
+   was fine while only he held them. The moment two more people have them, the
+   decision is worth taking again — it is item 11 in the plan and is due to be raised
+   at R2-14 anyway.
+3. **Sonu's remit is not finished.** R2-5 gives him attendance and leave to read,
+   vendor records and transport. He can do his fee work and the student record today;
+   the rest arrives in a later run. Nothing about that is unsafe, it is just
+   incomplete, and he should be told rather than left to find gaps.
+
+---
+
+**Did.** Priorities 1 to 5 in the order given, one sub-part per commit, gates run
+between each: R2-3, R2-1, R2-2, R2-4, R2-13. The fee loading was deliberately not
+touched, per the handoff.
+
+**Measured, start to finish.** Both committed scripts, before and after.
+
+| Profile | Flo tools | writes | API routes | Hubs | Hub screens |
+|---|---|---|---|---|---|
+| owner | 155 → **155** | 100 → **100** | 350 → **350** | 9 | 56 |
+| principal | 155 → **155** | 100 → **100** | 336 → **336** | 9 | 57 |
+| accountant | 48 → **46** | 29 → **27** | 266 → **266** | 2 | 11 |
+| management | 112 → **102** | 71 → **63** | 221 → **220** | 7 | 37 |
+| transport_head | 32 → **27** | 0 → **0** | 189 → **188** | 0 | flat list |
+| receptionist | 32 → **27** | 0 → **0** | 205 → **204** | 0 | flat list |
+| it_tech | 32 → **27** | 0 → **0** | 190 → **189** | 0 | flat list |
+| maintenance | 32 → **27** | 0 → **0** | 189 → **188** | 0 | flat list |
+| support_staff | 31 → **26** | 0 → **0** | 189 → **188** | 0 | flat list |
+
+**Every number that moved, and why.** No number moved that was not meant to.
+
+- **accountant −2 tools, −2 writes** — the legal-entity create, delete and
+  set-default were marked owner-only in the registry and reached him through the hole
+  R2-3 closed. He gained `create_student` back (decision 5), so the net is −2.
+- **management −10 tools, −8 writes** — `year_end_transition`, the three branch
+  tools, `update_school_settings`, `get_branch_comparison`, `query_dashboard_summary`
+  and `confirm_resolution` (R2-3), plus `create_student_login` and
+  `set_profile_password` (R2-4).
+- **management −1 route, and −1 for each of the five dormant profiles** — the
+  per-class fee summary was open to *every* admin desk. The three people who need it
+  keep it.
+- **the five dormant profiles, −5 tools each** — R2-13's first run found them all
+  able to read the fee summary, fee transactions, the defaulter list, the fee
+  structures and the action log. Closing that is a pure tightening.
+- **Hub menus: not one number moved.** R2-1 was a refactor and looks like one.
+
+**Two smaller narrowings no committed script measures, both deliberate.** Lalit was
+offered the School Settings screen, which is a dead button — the screen is backed by
+an owner-only tool, so it could only ever answer no. And `support_staff` had no menu
+list anywhere, so it fell through to most of the admin menu; it now has two screens.
+
+---
+
+**Found, and it contradicts the handoff. The code is the truth.**
+
+1. **The handoff said to refuse owner-only tools to "all eight non-owner profiles".
+   That would have stripped the principal of eleven tools**, including the branch
+   records and the year-end promotion. The platform's own committed tests say the
+   owner and the principal share the complete school-management surface by design,
+   and the handoff's own baseline agrees — it lists both at 155 tools. Adesh stands
+   directly below Aman in the school's hierarchy. I took the code's answer and left
+   leadership untouched. Worth a sentence from Abhimanyu confirming that is what he
+   meant.
+
+2. **Four of the nine "money leaks" were already closed.** The student discount
+   route, both accounting-period routes and the expense edit all refuse Lalit today.
+   So does payroll for Adesh — `routes/payroll.py` already admits the principal, so
+   the "principal is excluded from payroll" item is stale too. The register was
+   written before those were fixed and then copied forward.
+
+3. **One of the nine was the opposite of a leak.** `/api/fees/status/{id}` *refused*
+   Lalit, and returns a paid-or-unpaid flag with no amount in it at all — exactly what
+   decision 1 promises him. Without it his student screens could not tell him who was
+   in arrears, which is the work he is there to do. He is now allowed in.
+
+4. **`get_financial_report` was marked owner-only** and reached the principal and the
+   accountant head only through the hole. Both plainly need the fee-type breakdown, so
+   the registry now grants it to them by name instead of by accident.
+
+5. **A latent test flake, not a regression.** `test_notes_come_back_newest_first`
+   passed by luck: Windows' clock resolves to about 15 milliseconds, so two notes
+   written back to back can carry the same timestamp and "newest first" is a coin
+   toss. The test now sets the two timestamps and checks the sort, which is what it
+   was always for. Worth knowing that the same ambiguity exists in the product: two
+   notes written within the same moment have no defined order.
+
+---
+
+**Proved.** Backend 2,807 passed / 0 failed / 15 deselected. Frontend 569 passed /
+0 failed. Production build passed with lint clean. Every gate run after every
+sub-part, not once at the end.
+
+The three separate acceptance checks R2-2 asked for all exist: routes
+(`tests/backend/api/test_management_money_leaks_r2_2.py`), payload keys asserted **by
+key name** and never by searching for a rupee sign, and the screens rendered as Lalit
+(`frontend/src/components/__tests__/ManagementSeesNoMoney.test.js`).
+
+**Left.**
+
+- **Nothing is deployed and nothing was pushed.** No production system was touched, no
+  live database was read or written.
+- **R2-5** (Sonu's attendance, vendors, transport), **R2-6** (dead buttons, support
+  staff), **R2-7/R2-8** (menu vocabulary, Flo briefs), **R2-9** (certificate
+  approval), **R2-10** (staff messaging), **R2-12** (transport head), **R2-15** to
+  **R2-18**.
+- **R2-11**, the login rename, still last on purpose.
+- **The fee ledger.** Untouched, as instructed. Eight unreconciled documents in
+  `aaryans_database/` have to be read against the school's photographed fee sheet
+  first, and a wrong fee structure reaches 1,842 families. Fresh session, Abhimanyu
+  awake.
+- **The five dormant profiles still wait on Aman's nine questions.** Nothing tonight
+  guessed at his answers: every change to those five took access away, never gave it.
+
+**Watch out for.**
+
+- The classification loop at the bottom of `ai/tool_functions_v2.py` **still ends in
+  `else: non_finance`**. A new tool that nobody classifies still lands with Lalit by
+  default. R2-13 is what now catches that, and it will fail loudly — but read its
+  message rather than adjusting the number it prints.
+- **`EXPECTED_REACH`** in `tests/backend/unit/test_all_nine_profiles_sweep_r2_13.py`
+  and `EXPECTED_SCREEN_COUNT` in `frontend/src/lib/__tests__/ProfileMenuSweep.test.js`
+  are pinned counts. A number moving there is somebody's access changing. Never
+  silence one; explain it.
+- **`frontend/src/lib/profileMatrix.generated.js` is generated.** Editing it by hand
+  changes no permissions and only breaks the drift test. Run
+  `backend/.venv/Scripts/python.exe scripts/generate_profile_matrix.py`.
