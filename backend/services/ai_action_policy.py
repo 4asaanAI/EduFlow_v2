@@ -73,8 +73,27 @@ def profile_authorization_decision(
     if not roles.intersection({"owner", "admin"}):
         return False
     domain = (tool_def or {}).get("access_domain")
+    # Leadership (the school's owner and the principal) hold the complete
+    # school-management surface by design, pinned by test_epic_k_crud_guardrails and
+    # test_owner_part3_qa. The registry's `roles` list is not narrowed for them.
     if profile == "leadership":
         return True
+    # R2-3: for everyone below leadership, honour the registry's own `roles` list.
+    # This decision short-circuits the ordinary role check in `ai/tool_access.py`, so
+    # asking only whether `roles` *intersects* {owner, admin} let a tool marked
+    # roles=["owner"] through, after which the domain check handed it to whichever
+    # profile matched. That is how the management head reached year_end_transition
+    # (which moves every student up a class), the branch CRUD and
+    # update_school_settings, and how the accountant head reached the legal-entity
+    # CRUD. Owner-only stays owner-only whatever the access_domain says.
+    #
+    # `sub_categories` is deliberately still NOT honoured here: it is the narrow
+    # legacy tagging (mostly ["principal"]) that these domain profiles exist to widen,
+    # and enforcing it would strip the management head of the attendance and academic
+    # tools he is supposed to have. R2-1 replaces both mechanisms with one written
+    # grant table, and that is where the sub_category question is settled properly.
+    if (user or {}).get("role") not in roles:
+        return False
     if profile == "finance":
         return domain in {"finance", "shared"}
     return domain in {"non_finance", "shared"}

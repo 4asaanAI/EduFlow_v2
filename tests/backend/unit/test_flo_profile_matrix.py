@@ -20,7 +20,24 @@ MANAGEMENT = {"id": "lalit", "role": "admin", "sub_category": "management"}
 
 
 def _school_management_tool(tool_def: dict) -> bool:
+    """A tool the registry offers to the school's leadership at all.
+
+    Leadership (owner + principal) hold this whole surface, so "owner OR admin
+    appears in roles" is the right question for them.
+    """
     return bool(set(tool_def.get("roles") or ()).intersection({"owner", "admin"}))
+
+
+def _open_to_any_admin(tool_def: dict) -> bool:
+    """A tool the registry offers to admins, not to the school's owner alone.
+
+    R2-3: the accountant and management heads are widened by `access_domain`, but
+    only across tools the registry actually offers to an admin. A tool marked
+    roles=["owner"] is owner-only however its domain reads — that distinction is what
+    kept `year_end_transition`, the branch CRUD and the legal-entity CRUD out of
+    Sonu's and Lalit's hands.
+    """
+    return "admin" in set(tool_def.get("roles") or ())
 
 
 def test_every_registry_tool_has_an_explicit_access_domain():
@@ -44,7 +61,7 @@ def test_accountant_gets_only_finance_and_required_shared_lookups():
     wrong = []
     for name, tool in TOOL_REGISTRY.items():
         allowed = is_tool_authorized(ACCOUNTANT, tool)
-        expected = _school_management_tool(tool) and tool["access_domain"] in {"finance", "shared"}
+        expected = _open_to_any_admin(tool) and tool["access_domain"] in {"finance", "shared"}
         if allowed != expected:
             wrong.append((name, tool["access_domain"], allowed, expected))
     assert wrong == []
@@ -54,7 +71,7 @@ def test_management_gets_everything_except_finance_and_leadership_private_tools(
     wrong = []
     for name, tool in TOOL_REGISTRY.items():
         allowed = is_tool_authorized(MANAGEMENT, tool)
-        expected = _school_management_tool(tool) and tool["access_domain"] in {"non_finance", "shared"}
+        expected = _open_to_any_admin(tool) and tool["access_domain"] in {"non_finance", "shared"}
         if allowed != expected:
             wrong.append((name, tool["access_domain"], allowed, expected))
     assert wrong == []

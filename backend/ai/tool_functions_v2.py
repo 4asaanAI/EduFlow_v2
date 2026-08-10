@@ -5135,7 +5135,11 @@ TOOL_REGISTRY = {
     },
     "get_financial_report": {
         "fn": tool_get_financial_report,
-        "roles": ["owner"],
+        # R2-3: was roles=["owner"] only. The principal and the accountant head both
+        # need the fee-type breakdown; until R2-3 they reached it by accident, through
+        # a gate that ignored this list. Named here instead.
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "accountant"],
         "description": "Detailed financial report with fee-type breakdown.",
         "params_schema": {},
     },
@@ -5847,6 +5851,10 @@ TOOL_REGISTRY = {
     },
     "query_dashboard_summary": {
         "fn": tool_query_dashboard_summary,
+        # R2-3: stays owner-only. Widening `roles` to admin would hand it to the
+        # management head as well, because its access_domain is non_finance and the
+        # profile gate widens on domain — and this summary carries fee status.
+        # The principal's equivalent lives on the principal-daily screen.
         "roles": ["owner"],
         "description": "Composite summary of open incidents, pending approvals, attendance, and fee status.",
         "params_schema": {},
