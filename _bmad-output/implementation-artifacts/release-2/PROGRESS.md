@@ -41,7 +41,9 @@ up by three or four on the 2026-08-10 baseline. The accountant head's +1 tool an
 write is `update_staff`, salary only, explained in the last session entry. No dormant
 profile has gained anything at any point.
 
-**Do this next: `FINISHING-PLAN-2026-08-11.md`, in this folder, step 1.**
+**Do this next: `FINISHING-PLAN-2026-08-11.md`, step 5.** Steps 1 to 4 are DONE and
+four of them are live on the school's database. See the last session entry at the
+bottom of this file, which is the one that matters.
 
 That document replaces the five bullets that used to sit here. It breaks everything left
 in Release 2 into eleven steps, says what each needs from a person, and says what is
@@ -1217,3 +1219,137 @@ landed. Corrected rather than left to be misread as a movement today.
 
 **Left.** The fee ledger (eight documents to reconcile first, Abhimanyu has put it very
 last), R2-19 after it, the deploy, and R2-14 handover. Nothing else in Release 2 is open.
+
+### 2026-08-11 (sixth run) - the fee ledger starts: steps 1 to 4 (Claude, Opus 5)
+
+**Has the code shipped? No.** 38 commits on the branch, pushed to GitHub, nothing
+deployed. **But four things are now LIVE on the school's database**, which makes this the
+second run to touch production and by far the largest.
+
+**Did.** Steps 1, 2, 3 and 4 of the finishing plan, one per commit, all three gates green
+between each. **Steps 5 and 9 were NOT reached and were not started.** That is a shortfall
+against what was asked for and it is said plainly rather than buried: six steps were
+requested, four were delivered.
+
+**Why I stopped at four rather than starting the fine engine.** Step 9 decides what every
+family is billed for being late, and the whole point of it is that the previous system
+gets it wrong and overcharges people. Starting it with too little care left in the session
+would have produced exactly the kind of half-checked calculation this initiative keeps
+finding. Four finished steps with green gates and saved rollbacks is worth more than six
+started ones.
+
+---
+
+#### What is now live on the school's database
+
+| Migration | What it wrote | Rollback file (outside the repo) |
+|---|---|---|
+| **034** | `stream` on the six senior class records and on 186 of 190 senior students | `rollback-034-senior-streams-20260811-143825.json` |
+| **035** | **48 fee structures**, four quarterly instalments each. `fee_structures` was EMPTY | `rollback-035-fee-structures-20260811-145533.json` |
+| **036** | **48 transport routes, 185 stops**, and **1,376 children marked as bus riders** | `rollback-036-transport-20260811-151441.json` |
+
+All three were dry-run first, all three saved their rollback before writing, and all three
+are recorded in `_migrations` so nobody runs them twice.
+
+#### Step 1: the nine documents, and three corrections to the plan
+
+Full note: `step-1-fee-document-reconciliation-2026-08-11.md`. Re-run it with
+`scripts/reconcile_fee_documents.py`, which touches no database.
+
+**The fee structure is confirmed by a third independent source.** The per-student fee
+report gives the same quarterly figure as the payment ledger for **all seventeen classes,
+to the rupee**, and every class charges the same in all four quarters.
+
+**Three things the finishing plan says are wrong, and all three make the work smaller:**
+
+1. **The transport PDF is not the rate card.** The plan called it "exactly the missing
+   transport rate card". It is 22 pages of per-route collection totals with no monthly
+   rate anywhere. The real rate card was in `Students-06-08-2026-12-08-00.xlsx`, in two
+   columns nobody had opened.
+2. **189 senior students have a known stream, not 158.**
+3. **Step 4 needed nothing from the school.**
+
+**Worth reading, because the checking script nearly confirmed the right answer for a
+completely wrong reason.** It looked for the transport month as `(may)`; the ledger writes
+`transport fees may`. It matched nothing, so every month including June looked uncharged,
+and it read that as "June confirmed excluded". It would have confirmed any answer at all.
+It now counts the lines it failed to place and refuses to conclude anything unless that
+count is zero.
+
+#### Step 2: two deviations from the plan, both stated
+
+**No new class records.** The plan says create four. The live database already has **six**
+senior class records, one per section, each with its own id, and a fee structure is keyed
+by `class_id`. Four more would have meant ten senior classes and two places to look up one
+child's fee. The six now carry a stream.
+
+**No child moved.** Re-parenting changes `class_id`, which attendance, marks and timetable
+all hang off, and it is not needed.
+
+**186 of 190 placed. Four left alone** (admissions 211309, 19968, 211511, 17566) because
+no document names them. **One student is why section is not used as a rule:** sections do
+line up with streams, A is Science and B and C are Commerce, and that holds 185 times out
+of 186. It fails for **admission 263105**, in 11th section A while both documents say
+Commerce.
+
+#### Step 3: the price list, and one family who would be overbilled
+
+48 structures, four quarters each, due the 15th of April, July, October and January.
+
+**Registration and admission are recorded but NOT billed.** An instalment is charged to
+every child in the class, so a 12,000 admission fee in an instalment would bill families
+admitted years ago. They sit in `new_student_charges`. **Nothing reads that field yet and
+it must not be described to the school as working.**
+
+⚠️ **Admission 263105 is billed 4,800 a year too much** and the migration says so every
+time it runs. A structure is keyed by class, their section is Science, their own record is
+Commerce. Either the school moves the child, or billing must read the student's stream.
+**Settle it before any bill goes out.**
+
+#### Step 4: two silent bugs the dry run caught
+
+**Column 0 of the student export is `SID`, the previous system's internal id, not the
+admission number.** Keying on it matched **zero** students out of 1,375. The migration
+refused to run rather than marking nobody and reporting success.
+
+**Three children have a stop and no route number** (`( - SINORA)`, `( - JAMA PUR)`,
+`( - MOHANPUR)`). They get their flag, stop and rate and **no route**, because inventing
+one is a guess about which bus a child rides. **41 more get no monthly rate**: their annual
+figure is a part-year amount that does not divide by eleven.
+
+#### Measured
+
+**Nothing moved on any permission surface, all nine profiles, all four steps.** Not one
+Flo tool, write, route, hub or screen. That is what was expected: none of these steps
+touches permissions.
+
+| Gate | Result |
+|---|---|
+| Backend | **3,062 passed / 0 failed** / 15 deselected (was 2,999 at the start) |
+| Frontend | **592 passed / 0 failed** |
+| Build | clean, with lint |
+
+Run after every step, not once at the end.
+
+#### What still needs a person
+
+Unchanged from the finishing plan, plus three new ones from this run. **None of them
+blocks step 5 or step 9.**
+
+| Who | What |
+|---|---|
+| **The school** | The stream for four senior students: 211309, 19968, 211511, 17566 |
+| **The school** | **Admission 263105**: Commerce on record, sitting in a Science section, being billed 4,800 a year too much |
+| **Sonu** | Are 1,900 and 620 a month real transport rates, or old typing? |
+| **Sonu** | Four ledger lines billed at 1,170 and 1,680 that no child's record explains |
+| **The school** | A route for three bus children: 201153, 242305, 242439 |
+| **Sonu** | Confirm the 21 Right to Education children and settle admission 15067 |
+| **Sonu** | Confirm the proposed sibling groups |
+| **Abhimanyu** | What happens to the 1,844 unvouched fee figures |
+| **Abhimanyu** | The go-ahead to deploy |
+
+#### Left
+
+**Steps 5, 6, 7, 8, 9, 10 and 11.** Step 5 (concessions) and step 9 (the late fine engine)
+were asked for this run and not reached. Everything in the fee ledger from step 5 onward is
+untouched. Nothing is deployed.
