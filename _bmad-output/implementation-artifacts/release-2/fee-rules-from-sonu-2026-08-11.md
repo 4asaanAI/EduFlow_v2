@@ -100,20 +100,18 @@ overcharged. **Only one daily fine ever runs at a time: the current quarter's.**
 *Ledger evidence:* every one of the 1,217 fine lines in the school's ledger is an exact
 multiple of 10, across 992 children. Eight lines are exactly 1,000.
 
-### 2.1 The 1,000 repeats. UNRESOLVED, and it is money
+### 2.1 The 1,000 repeats. SETTLED
 
-Abhimanyu, 2026-08-11, answer 1: **a quarter that stays unpaid takes another 1,000 at
-every following quarter end**, not just the first one. So a Q1 left unpaid all session
-takes 1,000 on 1 July, again on 1 October, again on 1 January and again on 1 April.
+Abhimanyu, 2026-08-11, twice and the second time against a specific number: **a quarter
+that stays unpaid takes a fresh 1,000 at every following quarter end.** A family that pays
+nothing for the whole session is charged the 1,000 **four times**.
 
-**That answer contradicts the worked example it was answering.** The example ends at
-1 October with "1000 (of Q1) + 1000 (of Q2)", which is one apiece. Under the answer it
-should read 2,000 for Q1 and 1,000 for Q2.
+So an unpaid Q1 takes 1,000 on 1 July, again on 1 October, again on 1 January and again on
+1 April. Only the daily 10 stops when the next quarter starts; the 1,000 does not.
 
-**Do not implement either reading until Sonu settles it with a number.** For a Science
-student who has paid nothing, the total standing on 1 October is 38,920 one way and
-39,920 the other, and by 1 April the gap on Q1 alone is 3,000. Question put back to
-Abhimanyu on 2026-08-11; see the open questions.
+*This was queried because the worked example that first described it ended with one 1,000
+apiece, which reads the other way. The example was abbreviated. The rule above is the
+one to build.*
 
 ### 2.2 The fine is charged on the whole bill, transport included
 
@@ -141,6 +139,15 @@ folded into the total before the fine is worked out (section 2.2).
 The charge varies by distance, roughly 650 to 1,520 a month, and is billed monthly rather
 than quarterly. 1,235 children pay it.
 
+**Eleven months, not twelve. June is not charged**, because the school closes for the
+summer and the buses do not run, although staff are paid and the school fee is still
+charged for that quarter (Abhimanyu, 2026-08-11).
+
+*Ledger evidence, and it is exact:* the ledger holds transport lines for April, May, July,
+August, September, October, November, December, January, February and March. **There is
+not one June transport line in 5,587 rows.** An earlier note in this repository claimed
+the ledger showed all twelve months; that was wrong and is corrected here.
+
 **The platform currently says not one of its 1,876 students uses the bus.** That is wrong,
 and the ledger is what proves it.
 
@@ -152,15 +159,31 @@ Sonu, 2026-08-11. Some children hold a **Right to Education** place from the gov
 They **pay no school fee at all**. If they use the bus they pay the transport charge, and
 that charge is fined on the ordinary schedule if it is late.
 
+Their transport IS fined on the ordinary schedule, the 1,000 at quarter end included
+(Abhimanyu, 2026-08-11, having checked with Sonu).
+
 **The platform has no way of recording this today** and it is not a discount: the fee is
 not reduced, it does not apply. Recording it as a 100% discount would be wrong, because it
 would then interact with the concession rules and would be reversible by anyone who can
 edit a discount.
 
-**The school has to supply the list.** It cannot be inferred. The ledger shows 6 children
-whose only charges all session are transport, which is the right shape but far too few to
-be the whole list, and 405 children have at least one school-fee line written off in full,
-which is not the same thing at all and must not be mistaken for it.
+**The list already exists and does not need to be asked for.** The student export
+`Students-06-08-2026-12-08-00.xlsx` carries a column `IsRteStudent`, and **21 children are
+marked Yes**. Nobody had looked, and the plan was about to ask the school for a list it
+had already sent. The school marks them twice over: all 21 also carry "(RTE)" inside the
+child's own name.
+
+*Cross-checked against the ledger and it holds.* 13 of the 21 appear in it. **Not one was
+charged a school fee.** Six were charged transport only, six had their school fee written
+off in full, and the only other charge to any of them is a late fine of 140 on one child,
+which confirms rather than contradicts the rule above.
+
+**One discrepancy to put to Sonu.** Admission number **15067** has "RTE" written in the
+child's name but is marked `No` in the flag column. Either the flag is wrong or the name
+is, and one of those means a family is being billed for a place the government pays for.
+
+**Still confirm the 21 with the school** before loading, because the export is dated
+6 August and a Right to Education place is granted by the government, not the school.
 
 ---
 
@@ -210,13 +233,13 @@ the half being loaded.
 
 | # | Question | Why it matters |
 |---|---|---|
-| 1 | **Does an unpaid quarter take a fresh 1,000 at every later quarter end, or only its own?** Answer 1 says every one; the worked example it answered says only its own. | 1,000 a family by October and 3,000 by April, on Q1 alone. Nothing about late fines can be built until this is settled, which is why they are loaded last. |
-| 2 | **Which children hold a Right to Education place?** | Cannot be inferred, and getting it wrong bills a family that owes nothing. |
-| 3 | **Does the transport charge run for 11 months or 12?** The printed fee sheet says 11; the ledger has lines for all twelve month names. | Decides one month's charge for 1,235 families. |
-| 4 | **When a Right to Education child is late paying transport, does the 1,000 apply as well as the 10 a day?** | The 1,000 reads as a school-fee charge, and these children have no school fee. |
+| 1 | **Is the extra charge on a late Right to Education child 100 or 1,000?** Written as "100 also gets added along with 10perday" on 2026-08-11. Everywhere else the quarter-end charge is 1,000, so this is most likely a typo, **but it is money and was not assumed.** | Ten times the charge, on the families least able to pay it. |
+| 2 | **Confirm the 21 Right to Education children are still current and complete.** The list is in the 6 August export; the entitlement is granted by the government, not the school. | Billing a family that owes nothing. |
+| 3 | **Admission 15067 has "RTE" in the child's name but the flag says No.** | One of the two is wrong, and if it is the flag, that family is being billed for a free place. |
 
-**Answered and closed on 2026-08-11:** whether the 1,000 is the re-admission charge (no,
-separate), whether concessions stack (no, employee discount only), whether the 5% needs
-payment by 30 April (yes), whether transport is fined (yes, it is inside the total), and
-the ledger's billed-versus-outstanding disagreement (sidestepped by loading collections
-and normal fees only).
+**Answered and closed on 2026-08-11:** the 1,000 repeats every quarter end, four times in
+a full year of arrears (section 2.1); the 1,000 is not the re-admission charge; the
+concessions do not stack and the employee discount wins; the 5% requires payment by
+30 April; transport is fined because it sits inside the total; transport runs 11 months
+with June excluded; and the ledger's billed-versus-outstanding disagreement is sidestepped
+entirely by loading collections and normal fees only.
