@@ -74,6 +74,10 @@ MIGRATIONS = [
     # two spreadsheets out of `aaryans_database/` and does nothing without them. Like
     # everything above it, run it by itself and never through this runner.
     ("034_senior_streams", "Release 2 step 2: Commerce/Science stream on the six senior classes and 186 senior students (data-changing; ALREADY APPLIED 2026-08-11; run explicitly only)"),
+    # 035 creates the school's price list. It skips any class that already has a
+    # structure, so a second run creates nothing, but it is still listed here only
+    # because every migration file must be. Run it by itself.
+    ("035_load_fee_structures", "Release 2 step 3: 48 fee structures, four quarterly instalments each, from the school's 2026-27 fee sheet (data-changing; ALREADY APPLIED 2026-08-11; run explicitly only)"),
 ]
 
 
