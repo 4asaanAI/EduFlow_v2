@@ -119,14 +119,14 @@ body and are counted as unreachable by the script, so the route column understat
 | R2-7 | One vocabulary: same department groups for everyone | **✅ BUILT, GATE GREEN** | Commit `7770ffd`. The nine names were already shared; what was missing was that a granted screen could be opened. Lalit held seven screens inside a group he did not have. |
 | R2-8 | Flo briefs per person | **✅ BUILT, GATE GREEN** | Commit `7770ffd`. All five dormant briefs were wrong in both directions at once. Pinned against measured reach by `test_flo_briefs_match_reality_r2_8.py`. |
 | R2-9 | Certificates and ID cards need approval before printing | **✅ BUILT, GATE GREEN** | Commit `e19a124`. The vocabulary was reconciled first and that is where the real defect was: the screen's word `transfer` was on nobody's approval list, so Transfer Certificates were auto-issued. `backend/services/certificate_types.py` is now the one place that names a document. |
-| R2-10 | Staff messaging: a real colleague directory | NOT STARTED | Diagnose RECONNECTING before fixing. May be infrastructure. |
-| R2-11 | Rename the two office logins, plus Adesh's display name | **BLOCKED** | On R2-0's reading tasks. Scope shrank 2026-08-10: only `accountant` → `sonu.ruhal` and `management` → `lalit.thomas`. **Aman's login is not touched.** Do not widen it back out. |
+| R2-10 | Staff messaging: a real colleague directory | **BUILT, GATE GREEN** | Commit `a2cde0d`. The list joined on four hardcoded usernames that do not exist in production. RECONNECTING was diagnosed, not guessed: both sides are configured correctly, so it points at the network path and cannot be confirmed from here. |
+| R2-11 | Rename the two office logins, plus Adesh's display name | **PREPARED, NOT RUN** | `backend/migrations/033_rename_two_office_logins.py` is written, with a dry run by default, a preflight that refuses if anything looks wrong, and a rollback file. **It has not been run and needs Abhimanyu's explicit yes on the day, after the deploy.** Scope shrank 2026-08-10: only `accountant` → `sonu.ruhal` and `management` → `lalit.thomas`. **Aman's login is not touched.** Do not widen it back out. |
 | R2-12 | Transport head profile for Chaman Singh, dormant | **✅ BUILT, GATE GREEN** | Defined in the R2-1 matrix, six screens, zero tool domains, zero writes, dormant. Pinned by the R2-13 sweep. Still no login, by design. |
 | R2-13 | The proof: all-nine-profile sweep test | **✅ BUILT, GATE GREEN** | Found a real leak on its first run: all five dormant profiles could read the fee ledger and the action log. Commit `0c1cc9d`. |
-| R2-15 | A daily digest for Aman and Adesh | NOT STARTED | Reads `audit_logs`, records nothing new. Not WhatsApp yet: no production sender exists. |
+| R2-15 | A daily digest for Aman and Adesh | **BUILT, GATE GREEN** | Commit `a2cde0d`. Gated exactly like the action log. Data plus a plain-text rendering so WhatsApp can be added later without a rewrite. |
 | R2-16 | What data is still missing, and who fills it | NOT STARTED | **Needs Abhimanyu's approval to read the live database.** Counts only, never an export of children's records. Start early: it waits on the school. |
-| R2-17 | One page each for Sonu and Lalit | NOT STARTED | Plain language, no jargon. Write after the screens stop moving. |
-| R2-18 | Same-day undo of your own change | NOT STARTED | Buildable from audit rows, but verify the `changes` shape first: it is not consistent across write paths. |
+| R2-17 | One page each for Sonu and Lalit | **WRITTEN** | `guide-for-sonu.md` and `guide-for-lalit.md` in this folder. Re-read them if any screen moves before handover. |
+| R2-18 | Same-day undo of your own change | **BUILT, GATE GREEN** | Commit `a2cde0d`. The shape check found EIGHT shapes, most with no previous value at all, so it reads each row and refuses out loud rather than silently doing nothing. |
 | R2-14 | Accounts, handover, go-live | NOT STARTED | Definition of done is in the plan, R2-14. Now eight items, not five. |
 
 Statuses: `NOT STARTED` · `IN PROGRESS` · `BUILT, GATE GREEN` · `DEPLOYED` · `BLOCKED`.
@@ -871,3 +871,120 @@ be chased rather than re-run until it passes.
 may be infrastructure), **R2-15 to R2-18**, **R2-19**, and **R2-11 last** because it
 revokes sessions. The fee ledger is untouched, as instructed, and still needs Abhimanyu
 awake and eight documents reconciled first.
+
+### 2026-08-11 (later) - the rest of Release 2, Aman's answers, and no more long dashes (Claude, Opus 5)
+
+**Is it safe to hand Sonu and Lalit their credentials?** On the permission side, yes.
+**Has any of it shipped? No.** Twenty-three commits on the branch, nothing pushed, nothing
+deployed, no live database read or written. That answer does not change until Abhimanyu
+approves a deploy.
+
+**Done this run:** Sonu's document screens, R2-7, R2-8, R2-10, R2-15, R2-17, R2-18, the
+twelve answers from Abhimanyu, R2-11 prepared but deliberately not run, and the long-dash
+sweep.
+
+---
+
+#### Abhimanyu answered all twelve questions
+
+The register calls these "the nine questions". There were always **twelve**, across five
+roles. All twelve are now answered and written into the ANSWERS section at the foot of
+`staff-profiles-draft-for-aman-2026-08-10.md`, which wins wherever it disagrees with the
+draft above it.
+
+**Only the two answers that TAKE access away were acted on**, because Release 2 must not
+be what gives a dormant profile anything. The front desk loses Student Transfer and
+Commercial Operations. Every other answer is a grant and waits for its own release.
+
+**Three things from those answers that need saying out loud:**
+
+- **IT support today is a person from Vedmarg, the school's previous ERP supplier.** No IT
+  login should be issued while that is true. A standing login into a database of 1,876
+  children, held by a competing product's employee, is not a permission question the
+  platform can answer. It moves to a computer teacher, and it switches on then.
+- **Drivers and conductors are to get a profile of their own.** That is a **tenth**
+  profile and the platform has nine. It belongs with the transport release.
+- **The front desk does run the shop counter**, so she is to get the till and nothing
+  else. That screen also carries the school's legal entities, so it has to be split
+  first. Until then she has none of it.
+
+#### R2-10, staff messaging
+
+**The "0 colleagues available" screen was a lookup joining on four hardcoded usernames**
+(`aman.litt`, `adesh.singh`, `sonu.ruhal`, `lalit.thomas`). Production uses `accountant`
+and `management`, so it matched nobody and the screen was honestly reporting nothing.
+Renaming the logins in R2-11 would have fixed it **by accident**, which is the wrong
+reason for it to work: the next employee to join would still have been invisible. It now
+asks who somebody IS, which is the question the code already answered three lines lower.
+
+**RECONNECTING was diagnosed, not guessed at, as the plan insisted.** It is not the code.
+Keepalive is 30 seconds, inside both the 300-second load-balancer timeout and nginx's
+60-second one; every stream disables proxy buffering; the browser refreshes an expired
+login once and reopens rather than retrying into a wall. **So the remaining suspect is the
+network path, and that cannot be confirmed without watching it in production.** Said
+plainly rather than changing something and calling it fixed.
+
+#### R2-18, same-day undo, and why it refuses so much
+
+The plan said to verify the audit `changes` shape before designing around it. **Verifying
+found eight different shapes**, most carrying no previous value at all: bulk attendance
+records a count, a delete records the whole document, an import records a batch id.
+
+An undo written against the assumed shape would have **appeared to work and done nothing**
+on most paths, which is worse than no undo at all, because the person believes the mistake
+is fixed and walks away. So it reads each row and decides, and when it cannot honestly
+reverse something it says so in a sentence the person can act on. Only your own change,
+only today (in Indian time, or a 3am edit is refused as yesterday's), only a student or
+staff record, never money, never whether a child is on the roll, never a login. A row
+mixing a name and a salary restores the name only. Every undo writes its own entry.
+
+#### R2-11 is prepared and has NOT been run
+
+`backend/migrations/033_rename_two_office_logins.py`. Dry run by default, a preflight that
+stops if the account is missing or the target name already exists, and a rollback file.
+**It writes to the live database and it signs those two people out.** It needs Abhimanyu's
+explicit yes, on the day, after the deploy, with both people standing there to sign back
+in. Checked while writing it: nothing else in the platform still joins on a login name.
+
+#### No long dashes anywhere, and Flo cannot print one
+
+3,588 removed from 497 files across the platform. The archived planning folders (about
+12,000 more) were left alone deliberately: they are a historical record, not the product,
+and rewriting them would bury every real change in noise.
+
+**The sweep broke Flo's own rule, and a committed test caught it.** The instruction named
+the characters by printing them, so removing them rewrote it into "never use a hyphen".
+The rule had deleted itself. It now names them by unicode number, which no text sweep can
+touch.
+
+**And a prompt rule is only a request.** `backend/ai/writing_style.py` now replaces every
+long dash at the one point all model text passes through, covering replies and generated
+documents alike. Six dash characters, not one: a model reaching for "a long dash" does not
+always reach for the same one.
+
+#### Measured
+
+| | Before this run | Now | Why |
+|---|---|---|---|
+| API routes, total | 484 | **487** | The digest and the two undo routes. |
+| routes, every profile | +3 | | The same three. The undo routes are open to anyone signed in **and only ever show your own work**; the digest is refused inside the handler, which the audit script cannot see. |
+| screens: receptionist | 9 | **7** | Student Transfer and Commercial Operations, on Abhimanyu's answers. |
+| Flo tools and writes, all nine | unchanged | unchanged | **No Flo tool was added, moved or removed in this whole session.** |
+| hubs and screens, the four live | unchanged since the earlier entry | | |
+
+**Proved.** Backend 2,941 passed / 0 failed / 15 deselected. Frontend 592 passed /
+0 failed. Production build passed with lint clean.
+
+#### Left, and who it needs
+
+- **R2-16** (what data is still missing): needs Abhimanyu's approval to READ the live
+  database. Counts only, never an export of children's records.
+- **R2-19 and the fee ledger**: still needs him awake and eight documents reconciled
+  first. Untouched, as instructed.
+- **R2-11**: prepared, needs his yes on the day, after deploy.
+- **R2-14**, go-live: his.
+- **The till-only view** for the front desk, and the other grants from the twelve
+  answers, in each profile's own release.
+- **The unreproduced test flake** from the earlier entry has not recurred in any of the
+  eight full suite runs since. Still worth chasing if it reappears rather than re-running
+  until it passes.
