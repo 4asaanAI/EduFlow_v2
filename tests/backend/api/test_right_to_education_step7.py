@@ -94,3 +94,51 @@ def test_the_bus_is_untouched_by_the_mark(client, fake_db):
     child = [doc for doc in fake_db.students.docs if doc["id"] == "rte"][0]
     client.post("/api/fees/structures/str-3rd/charges/generate", json={}, headers=_owner_h())
     assert child["uses_transport"] is True
+
+
+# ── Release 2 audit: a child whose own record contradicts their section ─────
+
+
+def test_a_child_whose_stream_disagrees_is_not_billed_at_the_wrong_band(client, fake_db):
+    """Admission 263105 sits in a Science section while both of the school's documents
+    record that child as Commerce. A class-keyed bill charges that family 1,200 a quarter
+    too much, which is 4,800 a year.
+
+    They are left out and NAMED. Leaving them out means somebody has to settle it. A
+    wrong bill means the family pays money they do not owe and finds out from a receipt.
+    """
+    _seed(fake_db)
+    fake_db.fee_structures.docs[0]["stream"] = "Science"
+    fake_db.students.docs[0]["stream"] = "Commerce"     # the "paying" child
+
+    data = client.post("/api/fees/structures/str-3rd/charges/preview", json={},
+                       headers=_owner_h()).json()["data"]
+
+    assert [row["student_id"] for row in data["rows"]] == []
+    assert data["meta"]["stream_disagreement_count"] == 1
+    named = data["not_billed_stream_disagrees"][0]
+    assert named["admission_number"] == "adm-paying"
+    assert named["class_says"] == "Science"
+    assert named["their_record_says"] == "Commerce"
+
+
+def test_a_child_who_agrees_with_their_section_is_billed_normally(client, fake_db):
+    _seed(fake_db)
+    fake_db.fee_structures.docs[0]["stream"] = "Science"
+    fake_db.students.docs[0]["stream"] = "Science"
+
+    data = client.post("/api/fees/structures/str-3rd/charges/preview", json={},
+                       headers=_owner_h()).json()["data"]
+    assert [row["student_id"] for row in data["rows"]] == ["paying"]
+    assert data["meta"]["stream_disagreement_count"] == 0
+
+
+def test_a_class_with_no_stream_bills_everybody_as_before(client, fake_db):
+    # Every class below 11th. A child carrying a stray stream value must not fall out of
+    # the roll because of it.
+    _seed(fake_db)
+    fake_db.students.docs[0]["stream"] = "Commerce"
+
+    data = client.post("/api/fees/structures/str-3rd/charges/preview", json={},
+                       headers=_owner_h()).json()["data"]
+    assert [row["student_id"] for row in data["rows"]] == ["paying"]

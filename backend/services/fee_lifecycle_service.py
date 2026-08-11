@@ -126,12 +126,33 @@ async def build_charge_preview(db, actor_ctx: ActorContext, structure_id: str, *
             raise FeeLifecycleValidationError("One or more installment codes were not found")
     students = await db.students.find(
         scoped_query({"class_id": structure.get("class_id"), "is_active": True}, branch_id=actor_ctx.branch_id),
-        {"_id": 0, "id": 1, "name": 1, "admission_number": 1, "concessions": 1, "rte_place": 1},
+        {"_id": 0, "id": 1, "name": 1, "admission_number": 1, "concessions": 1,
+         "rte_place": 1, "stream": 1},
     ).to_list(5000)
     version = int(structure.get("version") or 1)
+    structure_stream = (structure.get("stream") or "").strip()
     rows = []
     rte_skipped = []
+    wrong_band = []
     for student in students:
+        # R2 audit, 2026-08-12. A fee structure is keyed by CLASS, so 11th and 12th are
+        # billed by their section's stream. Admission 263105 sits in a Science section
+        # while both of the school's own documents record that child as Commerce, and a
+        # class-keyed bill charges that family 1,200 a quarter too much.
+        #
+        # The child is left out of the run and named, rather than billed at a band their
+        # own record contradicts. Leaving them out means somebody has to settle it; a
+        # wrong bill means a family pays 4,800 a year they do not owe and finds out from
+        # the receipt.
+        student_stream = (student.get("stream") or "").strip()
+        if structure_stream and student_stream and student_stream != structure_stream:
+            wrong_band.append({
+                "student_id": student["id"],
+                "admission_number": student.get("admission_number"),
+                "class_says": structure_stream,
+                "their_record_says": student_stream,
+            })
+            continue
         # Release 2 step 7: a child holding a Right to Education place owes no school fee
         # at all. That is the absence of a charge, not a discount of 100%, so the charge
         # is never raised. Transport is billed separately and is unaffected.
@@ -191,9 +212,13 @@ async def build_charge_preview(db, actor_ctx: ActorContext, structure_id: str, *
         # Named rather than silently absent: a child who is not billed should be visible
         # as a decision, not as a missing row somebody notices months later.
         "right_to_education_not_billed": rte_skipped,
+        # Named, never silently absent and never billed at a band their own record
+        # contradicts. Settling it is the school's, and it has to be settled.
+        "not_billed_stream_disagrees": wrong_band,
         "meta": {
             "student_count": len(students),
             "right_to_education_count": len(rte_skipped),
+            "stream_disagreement_count": len(wrong_band),
             "charge_count": len(rows),
             "new_charge_count": sum(not row["already_generated"] for row in rows),
             "total_amount": sum(row["amount"] for row in rows if not row["already_generated"]),
