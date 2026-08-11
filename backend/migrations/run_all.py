@@ -78,6 +78,9 @@ MIGRATIONS = [
     # structure, so a second run creates nothing, but it is still listed here only
     # because every migration file must be. Run it by itself.
     ("035_load_fee_structures", "Release 2 step 3: 48 fee structures, four quarterly instalments each, from the school's 2026-27 fee sheet (data-changing; ALREADY APPLIED 2026-08-11; run explicitly only)"),
+    # 036 marks 1,376 children as bus riders. Listed here because every migration file
+    # must be. Run it by itself.
+    ("036_transport_routes_and_riders", "Release 2 step 4: 48 transport routes with 185 stops and rates, and 1,376 riders; eleven billed months with June excluded (data-changing; ALREADY APPLIED 2026-08-11; run explicitly only)"),
 ]
 
 
