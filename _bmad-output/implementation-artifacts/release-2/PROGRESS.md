@@ -16,14 +16,24 @@ the run failed. A run that changed code and left this file untouched is an incom
 sub-parts are done and green (R2-1 to R2-6, R2-12, R2-13), and **R2-9 is now done too**.
 The fee ledger below still needs Abhimanyu awake.
 
-**The next permissions job is R2-7 and R2-8** — one menu vocabulary, and the Flo briefs
-for the seven profiles whose briefs are still untouched. Then R2-10, then R2-15 to
-R2-18, and R2-11 LAST because it revokes sessions.
+**R2-7 and R2-8 are done too.** The next permissions job is **R2-10** (staff messaging;
+diagnose the RECONNECTING state before fixing, it may be infrastructure), then R2-15 to
+R2-18, and **R2-11 LAST** because it revokes sessions.
 
-**One number changed and it was meant to.** The platform now has **484 API routes**,
-not 483: R2-9 added the ID-card approval request. The route column went up by one for
-the owner, the principal and the management head, and for nobody else. Everything
-else — every Flo tool count, every write count, every menu count — is untouched.
+**The measured table below is the 2026-08-10 baseline and is now out of date in five
+places, all of them deliberate.** The current numbers, measured 2026-08-11:
+
+| Profile | Flo tools | writes | API routes | Hubs | Hub screens |
+|---|---|---|---|---|---|
+| owner | 155 | 100 | 351 | 9 | 57 |
+| principal | 155 | 100 | 337 | 9 | 58 |
+| accountant | 56 | 31 | 269 | 6 | 19 |
+| management | 98 | 59 | 221 | 7 | 39 |
+| the five dormant | unchanged | 0 | unchanged | 0 | flat list |
+
+Registry still 161 Flo tools. **API routes 483 → 484.** Every one of those movements is
+explained in the 2026-08-11 session entries at the bottom. No Flo tool was added, moved
+or removed all day, and no dormant profile gained anything.
 
 **Do this next.** The school's fee ledger is the school's most urgent need and
 Abhimanyu has approved writing it to the live database.
@@ -106,8 +116,8 @@ body and are counted as unreachable by the script, so the route column understat
 | R2-4 | People records: add/edit yes, delete/logins no | **✅ BUILT, GATE GREEN** | Guard in the service, so the screen and Flo give one answer. Commit `84e330d`. |
 | R2-5 | Sonu's full remit | **✅ BUILT, GATE GREEN** | Attendance and leave to read, vendors, transport in full until Release 3; Lalit loses vendors and transport. Commit `5eeb553`. |
 | R2-6 | Fix the dead buttons, Adesh and support staff | **✅ BUILT, GATE GREEN** | Adesh could open payroll and then be refused a payslip. Support staff closed in R2-1. Commit `ca701e5`. |
-| R2-7 | One vocabulary: same department groups for everyone | NOT STARTED | Pairs with R2-8. Do NOT invent per-person group names. |
-| R2-8 | Flo briefs per person | PARTLY DONE | Sonu's and Lalit's rewritten (`73e02a6`) — both were telling them the wrong thing. The other seven profiles' briefs are untouched. |
+| R2-7 | One vocabulary: same department groups for everyone | **✅ BUILT, GATE GREEN** | Commit `7770ffd`. The nine names were already shared; what was missing was that a granted screen could be opened. Lalit held seven screens inside a group he did not have. |
+| R2-8 | Flo briefs per person | **✅ BUILT, GATE GREEN** | Commit `7770ffd`. All five dormant briefs were wrong in both directions at once. Pinned against measured reach by `test_flo_briefs_match_reality_r2_8.py`. |
 | R2-9 | Certificates and ID cards need approval before printing | **✅ BUILT, GATE GREEN** | Commit `e19a124`. The vocabulary was reconciled first and that is where the real defect was: the screen's word `transfer` was on nobody's approval list, so Transfer Certificates were auto-issued. `backend/services/certificate_types.py` is now the one place that names a document. |
 | R2-10 | Staff messaging: a real colleague directory | NOT STARTED | Diagnose RECONNECTING before fixing. May be infrastructure. |
 | R2-11 | Rename the two office logins, plus Adesh's display name | **BLOCKED** | On R2-0's reading tasks. Scope shrank 2026-08-10: only `accountant` → `sonu.ruhal` and `management` → `lalit.thomas`. **Aman's login is not touched.** Do not widen it back out. |
@@ -748,3 +758,116 @@ do next.
 profiles), R2-10, R2-15 to R2-18, R2-19, and R2-11 last because it revokes sessions. The
 fee ledger is untouched, as instructed, and still needs Abhimanyu awake and eight
 documents reconciled. Nothing deployed, nothing pushed, no live database read or written.
+
+### 2026-08-11 — Sonu's documents, then R2-7 and R2-8 (Claude, Opus 5)
+
+**Is it safe to hand Sonu and Lalit their credentials?** On the permission side, yes.
+**Has any of it shipped? No.** Twenty commits on the branch, nothing pushed, nothing
+deployed, no live database read or written. The school's live platform still behaves as
+it did before any of this began.
+
+**Abhimanyu's instruction of 2026-08-11**, in his words: give Sonu the ability and the
+screen for certificates and ID cards, approval going through Adesh and Aman both, and
+the same for Lalit for whatever he makes.
+
+**How "both" was implemented, and what it does not mean.** Both Aman and Adesh are now
+told when a document is waiting, and **either one of them can approve it**. It is not two
+separate sign-offs on the same document. If the school wants a document to need both
+names, that is a real change and should be asked for on purpose rather than assumed.
+Lalit's half already worked that way from R2-9; the missing half was that only principals
+were being notified, so Aman was never told. That is fixed.
+
+**Sonu now has the two screens.** He was taken off the document routes on 2026-08-08,
+when reaching those routes MEANT issuing the document with nobody watching. After R2-9
+that is no longer what reaching them means: he creates a request and prints only once
+Aman or Adesh has approved. So the reason for keeping him out has gone. A test pins that
+he **cannot approve his own request**, which is the whole point of the rule.
+
+---
+
+**R2-7. The nine department names were already shared.** That part was done by R2-1 and
+R2-5. What nobody had checked was whether a screen a person is granted can actually be
+opened, and twice it could not:
+
+1. **Lalit was granted seven screens that live in Reports, AI & Governance, and did not
+   have that group.** Custom Reports, Board Report, Automated Reports, Incidents &
+   Visitors, Query & Support, Form Builder and Tech Issues: all granted, none reachable.
+   The group's name had been swept into the leadership-private list alongside the action
+   log and the AI screens, which is a decision about screens applied to a door. Holding
+   the group does not reveal the private rows; they are filtered one at a time, and a
+   test now proves that.
+2. **Tech Issues sat in no group at all**, so only the profiles that use the flat sidebar
+   could find it.
+
+**Two of those seven turned out to be money, and came off Lalit's list instead of being
+made reachable.** Board Report totals the school's expenses. Custom Reports offers Fee
+Transactions and Expenses as data sources, and the server already refused him six of its
+seven sources, so the screen was mostly buttons that answer no. Decision 1 says he never
+sees a rupee figure, so taking them away is the right direction and the safe one.
+
+**R2-8. The seven untouched briefs were measured against what each profile really holds.
+All five dormant ones were wrong in both directions at the same time.**
+
+- **They denied what the profile has.** Every one of the five can read the school
+  directory, attendance, the staff list and the day's brief. Every brief said some
+  version of "you CANNOT see student data". Flo would have refused work the platform
+  allows, which is exactly the failure that once had Flo telling the school's *owner* an
+  operation was not available to it.
+- **They promised what the profile does not have.** IT support was told it could reset
+  passwords and read system health: it has neither tool. Maintenance was told it could
+  update tickets, manage the schedule and edit the vendor directory: it has one read
+  tool. That is a dead button spoken out loud.
+
+Every rewritten brief now states plainly that the profile has no write tools, and names
+who to ask instead of stopping at "not available to me".
+
+**Also corrected in the leadership briefs.** The owner's called the finance report "owner
+exclusive", which stopped being true on 2026-08-10, and labelled school configuration
+"owner only" when the principal holds the identical surface. That last one was measured,
+not assumed: the two tool sets are exactly the same, 155 each, with nothing on either
+side that the other lacks. Both briefs now mention that they approve documents, which is
+the one action only those two can take.
+
+**Measured. Every movement was intended.**
+
+| | Before today | Now | Why |
+|---|---|---|---|
+| API routes, total | 483 | **484** | The ID-card approval request (R2-9). |
+| routes: owner / principal / management | 350 / 336 / 220 | **351 / 337 / 221** | That same route. |
+| routes: accountant | 266 | **269** | The two print routes and the request route, now his. |
+| hub screens: accountant | 17 | **19** | Certificates and ID Cards. |
+| hub screens: management | 34 | **39** | +7 he was granted and could not reach, -2 money screens removed. |
+| hub screens: owner / principal | 56 / 57 | **57 / 58** | The Tech Issues row they already had permission for. |
+| matrix screens: accountant | 23 | **25** | Same two screens. |
+| matrix screens: management | 48 | **47** | +governance-ai-hub, -board-report, -custom-report-builder. |
+| Flo tools and writes, all nine | unchanged | unchanged | **No Flo tool was added, moved or removed all day.** |
+| the five dormant profiles | unchanged | unchanged | Nothing was given to any of them. |
+
+**Proved.** Backend 2,885 passed / 0 failed / 15 deselected. Frontend 592 passed /
+0 failed. Production build passed with lint clean. Gates run after each piece.
+
+**⚠️ One thing to watch, reported rather than buried.** On one backend run out of six,
+a single unrelated test failed — `test_staff_erase_destroys_the_record_and_keeps_the_reason`
+in `tests/backend/api/test_staff_enrolment_state.py`, with a 403 creating a staff record.
+It has not repeated in five further full runs, nor in three runs of that file with today's
+changes stashed, and the file passes alone every time. **I could not reproduce it and I
+have not fixed it.** The shape fits the known trap that the `fake_db` fixture is shared
+across the whole session. If it appears again, that is the place to look, and it should
+be chased rather than re-run until it passes.
+
+**Two things worth Abhimanyu's attention, neither urgent.**
+
+- **The Automated Reports screen is a mock-up.** It shows two hardcoded rows ("Weekly
+  Attendance Report", "Monthly Fee Summary") and calls nothing. Nobody is receiving a
+  scheduled report. It is offered to Lalit and to leadership. Not touched today; it is
+  not a permission problem.
+- **The five dormant profiles can read more than their job needs.** Every one of them,
+  including support staff, can look up any child's record, attendance and the staff list
+  through Flo. That is the status quo the matrix recorded rather than anything given
+  today, and none of them has a login. It belongs with Aman's nine unanswered questions.
+  Nothing today widened it; the briefs now describe it accurately instead of denying it.
+
+**Left.** **R2-10** (staff messaging; diagnose the RECONNECTING state before fixing, it
+may be infrastructure), **R2-15 to R2-18**, **R2-19**, and **R2-11 last** because it
+revokes sessions. The fee ledger is untouched, as instructed, and still needs Abhimanyu
+awake and eight documents reconciled first.
