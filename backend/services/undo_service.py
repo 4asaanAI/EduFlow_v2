@@ -56,10 +56,31 @@ class UndoRefusedError(Exception):
     """The change exists and cannot be undone. Carries a reason for a person."""
 
 
-# The two records these two people type. Deliberately not "anything with an audit row":
-# an undo that can write back to any collection is a general-purpose write tool wearing
-# a friendly name.
-UNDOABLE_COLLECTIONS = {"students", "staff"}
+# The two records these two people type, and every name the platform's audit rows use
+# for them. Deliberately not "anything with an audit row": an undo that can write back
+# to any collection is a general-purpose write tool wearing a friendly name.
+#
+# The singular forms are not tidiness. `student_service` and `staff_service` write
+# `entity_type: "student"` and `"staff"`, while the collections are `students` and
+# `staff` - so an undo that matched only the collection names refused every real edit
+# on the platform while passing its own tests, which used the plural. The lookup below
+# is what makes the feature work rather than merely refuse safely.
+_COLLECTION_BY_ENTITY = {
+    "student": "students",
+    "students": "students",
+    "staff": "staff",
+    "staff_member": "staff",
+}
+UNDOABLE_COLLECTIONS = set(_COLLECTION_BY_ENTITY)
+
+
+def target_collection(entry: dict) -> str:
+    """Which collection this audit row's record actually lives in, or "" if not ours."""
+    for key in ("collection", "entity_type"):
+        name = str(entry.get(key) or "").strip().lower()
+        if name in _COLLECTION_BY_ENTITY:
+            return _COLLECTION_BY_ENTITY[name]
+    return ""
 
 # Fields an undo will never write back, whatever the audit row says. Each is somebody
 # else's decision, and a mistyped name is not a reason to reopen it.
@@ -76,8 +97,16 @@ PROTECTED_FIELDS = {
     "schoolId", "branch_id", "id", "_id",
 }
 
-# Actions whose audit rows describe something other than a field edit.
-NON_FIELD_ACTIONS = {"delete", "create", "erase", "import", "bulk"}
+# Actions whose audit rows describe something other than a field edit, so there is no
+# previous value to put back.
+#
+# `import` is deliberately NOT here any more. A spreadsheet import is the one thing Lalit
+# does in bulk and the most likely to need putting back, and since 2026-08-11 it records
+# what each field held before it ran, so it can be. What is left are the three that
+# genuinely cannot be reversed by writing a value back: creating a record (undoing that
+# means deleting, which decision 4 keeps with the owner and the principal), removing one,
+# and erasing one.
+NON_FIELD_ACTIONS = {"delete", "erase", "create"}
 
 
 def _is_reversible_shape(changes: Any) -> bool:
@@ -130,17 +159,18 @@ def explain_refusal(entry: dict, actor_ctx: ActorContext, now: datetime) -> str:
             "This change was not made today. Same-day mistakes can be put back by the "
             "person who made them; anything older goes to the principal."
         )
-    collection = entry.get("collection") or entry.get("entity_type") or ""
-    if collection not in UNDOABLE_COLLECTIONS:
+    collection = target_collection(entry)
+    if not collection:
+        named = entry.get("collection") or entry.get("entity_type") or "something else"
         return (
             f"Only a student or staff record can be put back this way, and this change "
-            f"was to {collection or 'something else'}. Ask the principal."
+            f"was to {named}. Ask the principal."
         )
     action = str(entry.get("action") or "").lower()
     if any(word in action for word in NON_FIELD_ACTIONS):
         return (
-            "This was not an edit to a field - it added, removed or imported a record, "
-            "and putting that back is the principal's to do."
+            "This change added or removed a record rather than editing a field, so "
+            "there is no earlier value to put back. Ask the principal."
         )
     changes = entry.get("changes")
     if not _is_reversible_shape(changes):
@@ -226,8 +256,7 @@ async def undo_change(db, actor_ctx: ActorContext, params: dict) -> dict:
             "There is nothing in this change that can be put back this way."
         )
 
-    collection = entry["collection"] if entry.get("collection") in UNDOABLE_COLLECTIONS \
-        else entry.get("entity_type")
+    collection = target_collection(entry)
     entity_id = entry.get("entity_id")
     target = getattr(db, collection)
     current = await target.find_one(scoped_query({"id": entity_id}, branch_id=bid), {"_id": 0})

@@ -294,6 +294,11 @@ async def _build_plan(db, actor_ctx: ActorContext, rows: List[Dict[str, str]],
             continue
 
         changes: Dict[str, str] = {}
+        # R2-18, 2026-08-11: the value each field held BEFORE the import, so the import
+        # can actually be undone. The audit row's own comment already claimed it
+        # "carries the BEFORE values"; it did not, it carried only the new ones, so an
+        # import was the one thing Lalit does in bulk that could never be put back.
+        previous: Dict[str, object] = {}
         for field, value in _mapped_values(row).items():
             # Out-of-scope columns are recorded and reported, never written. Dropping
             # them silently would let someone believe a column had been imported.
@@ -306,12 +311,14 @@ async def _build_plan(db, actor_ctx: ActorContext, rows: List[Dict[str, str]],
             if current == value:
                 continue
             changes[field] = value
+            previous[field] = student.get(field)
         if changes:
             updates.append({
                 "student_id": student.get("id"),
                 "admission_number": admission,
                 "name": student.get("name", ""),
                 "changes": changes,
+                "previous": previous,
             })
             for field in changes:
                 field_totals[field] = field_totals.get(field, 0) + 1
@@ -420,7 +427,15 @@ async def _apply_plan(db, actor_ctx: ActorContext, rows: List[Dict[str, str]], f
                     "action": "data_import_update",
                     "changed_by": actor_ctx.user_id,
                     "changed_by_role": actor_ctx.role or "",
-                    "changes": {"import_batch": batch_id, "fields": item["changes"]},
+                    # The canonical reversible shape, the same one `update_student`
+                    # writes, so one undo understands every path rather than each
+                    # path inventing its own record of what it did.
+                    "changes": {
+                        field: {"previous": (item.get("previous") or {}).get(field),
+                                "new": value}
+                        for field, value in item["changes"].items()
+                    },
+                    "import_batch": batch_id,
                     "timestamp": actor_ctx.now_iso(),
                 },
                 school_id=actor_ctx.school_id,

@@ -48,8 +48,10 @@ def _audit(fake_db, **overrides) -> str:
     row = {
         "id": overrides.pop("id", "aud-1"),
         "schoolId": SCHOOL,
-        "entity_type": "students",
-        "collection": "students",
+        # The names the platform's own services actually write: SINGULAR. The first
+        # version of this file used the plural, which is exactly why it passed while
+        # the feature refused every real edit on the platform.
+        "entity_type": "student",
         "entity_id": "stu-1",
         "action": "student_update",
         "changed_by": "u-lalit",
@@ -153,7 +155,7 @@ def test_a_deletion_is_not_undone_this_way(client, fake_db):
     audit_id = _audit(fake_db, action="student_delete", changes={"deleted": {"id": "stu-1"}})
     resp = client.post(f"/api/audit-log/my-changes-today/{audit_id}/undo", headers=_lalit())
     assert resp.status_code == 422
-    assert "added, removed or imported" in resp.json()["detail"]
+    assert "added or removed a record" in resp.json()["detail"]
 
 
 def test_money_is_never_put_back_this_way(client, fake_db):
@@ -248,3 +250,97 @@ def test_the_undo_routes_do_not_open_the_action_log(client, fake_db):
     resp = client.get("/api/audit-log/my-changes-today", headers=_lalit())
     assert resp.status_code == 200
     assert "aud-someone-else" not in {r["audit_id"] for r in resp.json()["data"]}
+
+
+# ---------------------------------------------------------------------------
+# The tests that matter most: undo against the platform's REAL write paths.
+#
+# Everything above builds an audit row by hand, which is how the first version of this
+# file passed while the feature refused every real edit on the platform: the fixture
+# used the plural "students" and the services write the singular "student". A test that
+# writes its own evidence proves only that the test and the code agree.
+#
+# These go through the actual service, then undo what it recorded.
+# ---------------------------------------------------------------------------
+
+def _actor(user_id="u-lalit", role="admin", sub_category="management"):
+    from services.actor_context import ActorContext
+    return ActorContext(
+        user_id=user_id, role=role, sub_category=sub_category,
+        school_id=SCHOOL, branch_id=None, actor_name="Lalit Thomas",
+    )
+
+
+async def test_a_real_student_edit_can_be_undone(client, fake_db):
+    from services.student_service import update_student
+    from services.undo_service import list_my_undoable_changes, undo_change
+
+    actor = _actor()
+    await update_student(fake_db, actor, {"student_id": "stu-1", "name": "Wrong Name"})
+
+    listed = await list_my_undoable_changes(fake_db, actor)
+    reversible = [row for row in listed["changes"] if row["can_undo"]]
+    assert reversible, (
+        "an ordinary edit made through the platform's own service could not be undone. "
+        f"reasons given: {[r['reason'] for r in listed['changes']]}"
+    )
+
+    await undo_change(fake_db, actor, {"audit_id": reversible[0]["audit_id"]})
+    student = next(s for s in fake_db.students.docs if s["id"] == "stu-1")
+    assert student["name"] == "Arav Sharma", "the name was not put back"
+
+
+async def test_a_real_staff_edit_can_be_undone(client, fake_db):
+    from services.staff_service import update_staff
+    from services.undo_service import list_my_undoable_changes, undo_change
+
+    fake_db.staff.docs.append({
+        "id": "stf-1", "schoolId": SCHOOL, "name": "Ramesh Kumar",
+        "staff_type": "teacher", "phone": "111", "is_active": True,
+    })
+    actor = _actor()
+    await update_staff(fake_db, actor, {"staff_id": "stf-1", "phone": "222"})
+
+    listed = await list_my_undoable_changes(fake_db, actor)
+    reversible = [r for r in listed["changes"] if r["can_undo"]]
+    assert reversible, [r["reason"] for r in listed["changes"]]
+
+    await undo_change(fake_db, actor, {"audit_id": reversible[0]["audit_id"]})
+    member = next(s for s in fake_db.staff.docs if s["id"] == "stf-1")
+    assert member["phone"] == "111"
+    fake_db.staff.docs[:] = [s for s in fake_db.staff.docs if s.get("id") != "stf-1"]
+
+
+async def test_a_real_spreadsheet_import_can_be_undone(client, fake_db):
+    # The one thing Lalit does in bulk, and the most likely to need putting back. Its
+    # audit row USED to record only the new values, while its own comment claimed it
+    # carried the before values, so an import was the single least reversible thing on
+    # the platform and nothing said so.
+    from services.undo_service import explain_refusal, undoable_fields
+    from datetime import datetime, timezone
+
+    row = {
+        "id": "aud-import", "schoolId": SCHOOL,
+        "entity_type": "student", "entity_id": "stu-1",
+        "action": "data_import_update",
+        "changed_by": "u-lalit", "changed_by_role": "admin",
+        "changes": {"phone": {"previous": "999", "new": "777"}},
+        "import_batch": "batch-1",
+        "created_at": _now_iso(),
+    }
+    reason = explain_refusal(row, _actor(), datetime.now(timezone.utc))
+    assert reason == "", f"an import can no longer be undone: {reason}"
+    assert undoable_fields(row) == {"phone": "999"}
+
+
+def test_the_import_service_records_what_each_field_held_before(fake_db):
+    # Pinned at the source, so the shape cannot drift back to new-values-only without
+    # this failing. The comment in that file claimed this was already true; it was not.
+    import inspect
+    from services import data_import_service
+
+    source = inspect.getsource(data_import_service)
+    assert '"previous": (item.get("previous") or {}).get(field)' in source, (
+        "the import no longer records the value each field held before it ran, so an "
+        "import cannot be undone"
+    )

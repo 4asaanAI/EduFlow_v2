@@ -231,4 +231,16 @@ async def test_each_change_is_audited_with_the_fields_it_set(fake_db):
     )
     rows = [a for a in fake_db.audit_logs.docs if a.get("action") == "data_import_update"]
     assert len(rows) == 2
-    assert all(r["changes"]["fields"] for r in rows)
+    # R2-18, 2026-08-11: the shape changed from {"import_batch": ..., "fields": {field:
+    # new_value}} to the canonical {field: {"previous": ..., "new": ...}} every other
+    # write path uses. The old shape recorded only the NEW values, while the comment
+    # above it claimed it carried the before values so an import "can be unpicked
+    # later" - it could not, and an import is the one thing done in bulk. The batch id
+    # moved to its own key rather than being mixed in with the fields.
+    assert all(r["changes"] for r in rows)
+    assert all(r.get("import_batch") for r in rows)
+    for row in rows:
+        for field, change in row["changes"].items():
+            assert set(change) == {"previous", "new"}, (
+                f"{field} was audited without the value it held before the import"
+            )
