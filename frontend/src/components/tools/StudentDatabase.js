@@ -583,6 +583,13 @@ function DetailPanel({ studentId, onClose, onEdit, canManage, canKeepNotes }) {
                   value={feeStatus === 'paid' ? 'Paid' : feeStatus === 'overdue' ? 'Overdue' : 'Unpaid'}
                 />
               )}
+              {/* R2 step 6, Sonu's request: the brothers and sisters in this school, by
+                  admission number, so the office can see at a glance who is owed the
+                  sibling concession. The links are the school's own, from its payment
+                  remarks; nothing here is inferred from surnames or phone numbers. */}
+              {data.siblings?.length > 0 && (
+                <InfoRow label="Brothers / sisters here" value={data.siblings.join(', ')} mono />
+              )}
             </Section>
 
             {/* Medical */}

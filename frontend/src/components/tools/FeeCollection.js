@@ -837,7 +837,18 @@ export default function FeeCollection() {
             <tbody>
               {overdueSort.items.map((txn, index) => (
                 <tr key={txn.id} style={{ borderTop: index ? '1px solid var(--color-border)' : 'none' }}>
-                  <td style={tdStyle}>{txn.student_name || txn.student_id}</td>
+                  <td style={tdStyle}>
+                    {txn.student_name || txn.student_id}
+                    {/* R2 step 6, Sonu's request: who else of this family is in the
+                        school, so the sibling concession is visible on the fee screen
+                        itself. The admission numbers are the school's own links. */}
+                    {txn.siblings?.length > 0 && (
+                      <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2 }}
+                        title="Brothers or sisters in this school, by admission number">
+                        Sibling of {txn.siblings.join(', ')}
+                      </div>
+                    )}
+                  </td>
                   <td style={tdStyle}>{txn.class_name || 'N/A'}</td>
                   <td style={tdStyle}>{txn.fee_head || txn.fee_type}</td>
                   <td style={{ ...tdStyle, color: 'var(--tool-hex-f87171)', fontWeight: 700 }}>{money(txn.amount)}</td>

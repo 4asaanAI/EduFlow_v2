@@ -155,7 +155,10 @@ async def _audit(db, *, action: str, entity_id: str, user: dict, changes: dict, 
 
 async def _student_map(db, txns):
     s_ids = list(set(t["student_id"] for t in txns if t.get("student_id")))
-    students = await db.students.find(_fee_query({"id": {"$in": s_ids}}), {"_id": 0, "id": 1, "name": 1, "class_id": 1}).to_list(len(s_ids)) if s_ids else []
+    # `siblings` is here for Sonu's request (R2 step 6): the fee screens show which other
+    # children of the same family are in the school, by admission number, so the office
+    # can see who is owed the sibling concession without opening each record.
+    students = await db.students.find(_fee_query({"id": {"$in": s_ids}}), {"_id": 0, "id": 1, "name": 1, "class_id": 1, "siblings": 1}).to_list(len(s_ids)) if s_ids else []
     s_map = {s["id"]: s for s in students}
     c_ids = list(set(s.get("class_id") for s in students if s.get("class_id")))
     classes = await db.classes.find(_fee_query({"id": {"$in": c_ids}}), {"_id": 0, "id": 1, "name": 1, "section": 1}).to_list(len(c_ids)) if c_ids else []
@@ -383,6 +386,7 @@ async def get_fee_transactions(request: Request, student_id: str = None, status:
     for t in txns:
         s = s_map.get(t["student_id"], {})
         t["student_name"] = s.get("name", "Unknown")
+        t["siblings"] = s.get("siblings") or []
         cls = c_map.get(s.get("class_id", ""), {})
         t["class_name"] = f"{cls['name']}-{cls['section']}" if cls else "N/A"
     return {"success": True, "data": txns}

@@ -81,6 +81,10 @@ MIGRATIONS = [
     # 036 marks 1,376 children as bus riders. Listed here because every migration file
     # must be. Run it by itself.
     ("036_transport_routes_and_riders", "Release 2 step 4: 48 transport routes with 185 stops and rates, and 1,376 riders; eleven billed months with June excluded (data-changing; ALREADY APPLIED 2026-08-11; run explicitly only)"),
+    # 037 tags brothers and sisters and copies the sibling concession the office actually
+    # gave. Listed here only because every migration file must be. It reads the payment
+    # ledger out of `aaryans_database/` and does nothing without it. Run it by itself.
+    ("037_sibling_links", "Release 2 step 6: 377 sibling families and 826 children tagged from the school's own payment remarks, with 445 sibling concessions copied from what the office gave (data-changing; run explicitly only)"),
 ]
 
 
