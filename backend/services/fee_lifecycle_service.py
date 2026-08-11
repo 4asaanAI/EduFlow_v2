@@ -6,6 +6,7 @@ from typing import Any
 
 from services.actor_context import ActorContext
 from services.audit_service import write_audit_doc
+from services.concession_service import ConcessionRuleError, compute_concessions
 from services.txn_context import session_kwargs
 from tenant import scoped_filter, scoped_query
 
@@ -125,7 +126,7 @@ async def build_charge_preview(db, actor_ctx: ActorContext, structure_id: str, *
             raise FeeLifecycleValidationError("One or more installment codes were not found")
     students = await db.students.find(
         scoped_query({"class_id": structure.get("class_id"), "is_active": True}, branch_id=actor_ctx.branch_id),
-        {"_id": 0, "id": 1, "name": 1, "admission_number": 1},
+        {"_id": 0, "id": 1, "name": 1, "admission_number": 1, "concessions": 1},
     ).to_list(5000)
     version = int(structure.get("version") or 1)
     rows = []
@@ -133,6 +134,24 @@ async def build_charge_preview(db, actor_ctx: ActorContext, structure_id: str, *
         for installment in installments:
             for head in installment["fee_heads"]:
                 charge_key = f"{student['id']}|{structure_id}|{version}|{installment['code']}|{head['name'].strip().lower()}"
+                # Release 2 step 5: the school's concessions are rules that recompute,
+                # so the amount billed is worked out here rather than re-typed each
+                # quarter. A child with no concession mark gets gross == net, which is
+                # every child on the platform until the marks are loaded.
+                try:
+                    concession = compute_concessions(
+                        student,
+                        quarterly_amount=head["amount"],
+                        installment_code=installment["code"],
+                        fee_head=head["name"],
+                    )
+                except ConcessionRuleError as exc:
+                    # A rule that cannot be applied honestly stops the whole preview
+                    # with the reason on it, rather than quietly billing one child the
+                    # wrong figure among hundreds of right ones.
+                    raise FeeLifecycleValidationError(
+                        f"{student.get('admission_number') or student['id']}: {exc}"
+                    )
                 rows.append({
                     "charge_key": charge_key,
                     "student_id": student["id"],
@@ -143,7 +162,10 @@ async def build_charge_preview(db, actor_ctx: ActorContext, structure_id: str, *
                     "installment_code": installment["code"],
                     "fee_period": installment["code"],
                     "fee_head": head["name"],
-                    "amount": head["amount"],
+                    "amount": concession["net"],
+                    "gross_amount": concession["gross"],
+                    "concession_total": concession["total"],
+                    "concession_lines": concession["lines"],
                     "due_date": installment["due_date"],
                 })
     existing = await db.fee_transactions.find(
@@ -190,6 +212,18 @@ async def generate_charges(db, actor_ctx: ActorContext, structure_id: str, *, in
             scoped_query({"charge_key": row["charge_key"]}, branch_id=actor_ctx.branch_id),
             {"$setOnInsert": {**doc, "_id": doc["id"]}}, upsert=True,
         )
+        # The one-time concession agreed at admission is consumed by the first
+        # instalment it is billed against, and is stamped here so a later quarter
+        # cannot hand the family the same money a second time.
+        for line in row.get("concession_lines") or []:
+            if line.get("rule") == "admission_one_time" and line.get("amount"):
+                await db.students.update_one(
+                    scoped_query({"id": row["student_id"]}, branch_id=actor_ctx.branch_id),
+                    {"$set": {
+                        "concessions.admission_discount.applied_to": row["installment_code"],
+                        "concessions.admission_discount.applied_at": now,
+                    }},
+                )
         created.append(doc)
     await write_audit_doc(db, {
         "id": str(uuid.uuid4()), "_id": str(uuid.uuid4()), "schoolId": actor_ctx.school_id,
