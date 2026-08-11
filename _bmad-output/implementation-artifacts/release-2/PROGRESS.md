@@ -41,9 +41,9 @@ up by three or four on the 2026-08-10 baseline. The accountant head's +1 tool an
 write is `update_staff`, salary only, explained in the last session entry. No dormant
 profile has gained anything at any point.
 
-**Do this next: `FINISHING-PLAN-2026-08-11.md`, step 5.** Steps 1 to 4 are DONE and
-four of them are live on the school's database. See the last session entry at the
-bottom of this file, which is the one that matters.
+**Do this next: `FINISHING-PLAN-2026-08-11.md`, step 6.** Steps 1 to 5 and step 9 are
+DONE; three of them wrote to the school's database. Steps 6, 7, 8, 10 and 11 remain.
+See the last session entry at the bottom of this file, which is the one that matters.
 
 That document replaces the five bullets that used to sit here. It breaks everything left
 in Release 2 into eleven steps, says what each needs from a person, and says what is
@@ -1353,3 +1353,132 @@ blocks step 5 or step 9.**
 **Steps 5, 6, 7, 8, 9, 10 and 11.** Step 5 (concessions) and step 9 (the late fine engine)
 were asked for this run and not reached. Everything in the fee ledger from step 5 onward is
 untouched. Nothing is deployed.
+
+### 2026-08-11 (seventh run) - the concessions and the late fine engine: steps 5 and 9 (Claude, Opus 5)
+
+**Has the code shipped? No.** 40 commits on the branch, nothing deployed. **Nothing was
+written to the live database this run**, and nothing was read from it either. The three
+migrations from the sixth run (034, 035, 036) are still the only fee work on production.
+
+**Did.** Step 5 (the four concessions) and step 9 (the late fine engine), one per commit,
+all three gates green between them. Both were asked for and both are finished.
+
+---
+
+#### Step 5: three of the four concessions are rules, not rows
+
+`backend/services/concession_service.py`. The platform already had a discount mechanism:
+somebody types an amount against one child, once. Three of the school's four concessions
+are not that shape at all. Recording the sibling concession that way would mean somebody
+re-typing it for roughly 500 children four times a year, and every re-typing is a chance
+to give money away or to overcharge a family.
+
+So the sibling concession, the employee one and the 5% are **computed from marks on the
+child's record**, and only the one-time admission amount is stored. That one stores who
+authorised it and which instalment consumed it.
+
+- **Sibling.** Flat per quarter, from the discounted child's own band. The seven values
+  were already loaded and correct and were **not recreated**; the rule carries its own
+  copy of the seven-band table and a test pins it to exactly those seven and no others.
+- **Employee's child.** 50%, and it **beats the sibling one by rule rather than by size**.
+  A test walks all seven bands to prove the employee figure wins every time, so nobody
+  later "improves" it into "the better of the two".
+- **5% for the whole year.** Only if paid on or before 30 April. The August payer does not
+  qualify. Its entry point is the payment path, so it is built and tested and will be
+  called by step 8.
+- **One-time at admission.** Refuses to give money away with nobody's name against it, and
+  once an instalment has consumed it every later quarter charges in full. Pinned by a test
+  that generates Q1, checks the child's record was stamped, then generates Q2.
+
+**Transport carries no concession, and a caller who passes a transport charge in fails
+loudly** rather than quietly handing a family a discount the school does not give.
+
+**It is wired into the bill, not left as a rule nobody calls.** The charge preview and
+charge generation now bill the net figure and record why. That is the defect shape this
+initiative keeps finding: a permission or a rule that exists, reads as authoritative, and
+never reaches the database.
+
+**No family's bill changes today.** Not one child on the platform carries a concession
+mark yet, so gross equals net for all 1,842, and a test says exactly that.
+
+**Sibling ASSIGNMENT was deliberately left**, as instructed. It needs to know who is a
+sibling, which is step 6 and waits on Sonu confirming the family groups. The rule is
+built and waiting for them.
+
+**One decision worth reading.** If a child is marked as a sibling but their class band is
+not one of the school's seven, the whole preview **refuses**, with the admission number in
+the message. Billing hundreds of children correctly and one child a figure nobody agreed
+is worse than billing nobody and saying why.
+
+#### Step 9: the late fine, and the place the old supplier overcharges families
+
+`backend/services/late_fine_service.py`. 10 a day from the 16th until the quarter ends,
+then 1,000 when the next quarter begins, and **the daily fine stops there for that
+quarter**. The 1,000 then repeats at every following quarter end: four times on Q1 over a
+full year of arrears, three on Q2, two on Q3, one on Q4.
+
+**Sonu's own worked example is a test.** An unpaid Q1 stands at 760 on 30 June and 1,760
+on 1 July, and its daily figure never moves again after that.
+
+**The fault in the previous system is pinned by name.** Vedmarg keeps the old quarter's
+daily fine running after the new quarter starts, so two accrue at once. On 1 September
+with Q1 and Q2 both unpaid, Vedmarg's answer for Q1 is 1,390 and the correct one is 760.
+Here the windows structurally cannot overlap, and the whole-child assessment reports which
+single quarter is accruing and **refuses out loud** if it is ever more than one.
+
+**The fine is on the whole bill, transport included.** The daily figure is flat rupees
+rather than a percentage, so the bill decides only *whether* a fine runs: one fine per
+child per quarter, never one per fee head. Right to Education children have no school fee,
+so theirs falls on transport alone, and that needed no special case.
+
+**No ledger support is claimed for the repeat**, exactly as instructed. All 1,217 fine
+lines in the school's ledger are exact multiples of ten, which is consistent with the rule
+and is not proof of it: the ledger stops on 7 August, before the session's second quarter
+end. The repeat rests on Abhimanyu's confirmation and the service says so in writing.
+
+**Nothing about fines is loaded or billed.** The engine computes; no fine reaches a family
+until the money actually collected is loaded, which is step 8.
+
+#### Measured
+
+| Surface | Before | After |
+|---|---|---|
+| Flo tools and writes, all nine profiles | unchanged | **unchanged** |
+| API routes, all nine profiles | 487 total | **487 total, no profile moved** |
+| Hubs and hub screens, all nine | unchanged | **unchanged** |
+
+**Not one permission number moved on either step**, which is what was expected: neither
+step touches permissions, and neither adds a route or a Flo tool. Flo parity for this work
+is step 10 and adding it here would have moved the pinned counts for an unrelated reason.
+
+| Gate | Result |
+|---|---|
+| Backend | **3,117 passed / 0 failed** / 15 deselected (3,062 at the start of the run) |
+| Frontend | **592 passed / 0 failed** |
+| Build | clean, with lint |
+
+Run after each step, not once at the end.
+
+#### What still needs a person. Unchanged, plus one new question
+
+**Nothing here was guessed at.** The blocked items were left and are named.
+
+| Who | What |
+|---|---|
+| **The school** | **Admission 263105**: Commerce on record, sitting in a Science section, billed 4,800 a year too much. Settle before any bill goes out. |
+| **The school** | The stream for four senior students: 211309, 19968, 211511, 17566 |
+| **The school** | A route for three bus children: 201153, 242305, 242439 |
+| **Sonu** | Are 1,900 and 620 a month real transport rates, or old typing? |
+| **Sonu** | Four ledger lines at 1,170 and 1,680 that no child's record explains |
+| **Sonu** | Confirm the 21 Right to Education children and settle admission 15067 |
+| **Sonu** | Confirm the sibling groups. **This is what step 6 needs and what the sibling rule waits on.** |
+| **Sonu, NEW** | A family paying on the 20th: is that five days of fine or four? The rule says "10 a day from the 16th" and does not say whether the day of payment counts. Built as five, inclusive, which is what the office would do by hand. One day's fine either way. |
+| **Abhimanyu** | What happens to the 1,844 unvouched fee figures |
+| **Abhimanyu** | The go-ahead to deploy |
+
+#### Left
+
+**Steps 6, 7, 8, 10 and 11.** Step 6 (sibling links) is the next one and its finishing
+half waits on Sonu; step 7 (Right to Education) waits on Sonu confirming the 21; step 8
+(loading what has been paid) is the biggest write in the release; step 10 is Flo parity;
+step 11 is the deploy and handover. Nothing is deployed.
