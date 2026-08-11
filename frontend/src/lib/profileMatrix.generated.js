@@ -28,6 +28,7 @@ export const PROFILE_MATRIX = {
       "get_today_class_attendance",
       "get_transport_status",
       "query_attendance_status",
+      "update_staff",
       "update_transport_route"
     ],
     "mayDeletePeople": false,

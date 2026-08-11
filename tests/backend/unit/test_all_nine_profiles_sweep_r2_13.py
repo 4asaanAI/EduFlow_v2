@@ -254,7 +254,10 @@ def test_only_leadership_reaches_the_private_leadership_tools():
 EXPECTED_REACH = {
     "owner":          (155, 100),
     "principal":      (155, 100),
-    "accountant":     (56, 31),
+    # 56/31 until 2026-08-11. +1 tool, +1 write: update_staff, named in
+    # PROFILE_MATRIX["accountant"]["extra_tools"], scoped by the SERVICE to salary
+    # only (Abhimanyu, relaying Aman's and Adesh's instruction).
+    "accountant":     (57, 32),
     "management":     (98, 59),
     "transport_head": (28, 0),
     "receptionist":   (28, 0),

@@ -16,24 +16,30 @@ the run failed. A run that changed code and left this file untouched is an incom
 sub-parts are done and green (R2-1 to R2-6, R2-12, R2-13), and **R2-9 is now done too**.
 The fee ledger below still needs Abhimanyu awake.
 
-**R2-7 and R2-8 are done too.** The next permissions job is **R2-10** (staff messaging;
-diagnose the RECONNECTING state before fixing, it may be infrastructure), then R2-15 to
-R2-18, and **R2-11 LAST** because it revokes sessions.
+**Every permission sub-part is now built and green, R2-11 included and applied live.**
+What is left is the fee ledger, R2-19, the deploy and R2-14 (handover).
 
-**The measured table below is the 2026-08-10 baseline and is now out of date in five
-places, all of them deliberate.** The current numbers, measured 2026-08-11:
+**The measured table below is the 2026-08-10 baseline and is out of date in several
+places, all of them deliberate.** The current numbers, measured 2026-08-11 at the end of
+the fourth run:
 
 | Profile | Flo tools | writes | API routes | Hubs | Hub screens |
 |---|---|---|---|---|---|
-| owner | 155 | 100 | 351 | 9 | 57 |
-| principal | 155 | 100 | 337 | 9 | 58 |
-| accountant | 56 | 31 | 269 | 6 | 19 |
-| management | 98 | 59 | 221 | 7 | 39 |
-| the five dormant | unchanged | 0 | unchanged | 0 | flat list |
+| owner | 155 | 100 | 354 | 9 | 57 |
+| principal | 155 | 100 | 340 | 9 | 58 |
+| accountant | **57** | **32** | 272 | 6 | 19 |
+| management | 98 | 59 | 224 | 7 | 39 |
+| transport_head | 28 | 0 | 191 | 0 | flat list |
+| receptionist | 28 | 0 | 207 | 0 | flat list |
+| it_tech | 28 | 0 | 192 | 0 | flat list |
+| maintenance | 28 | 0 | 191 | 0 | flat list |
+| support_staff | 27 | 0 | 191 | 0 | flat list |
 
-Registry still 161 Flo tools. **API routes 483 → 484.** Every one of those movements is
-explained in the 2026-08-11 session entries at the bottom. No Flo tool was added, moved
-or removed all day, and no dormant profile gained anything.
+Registry still 161 Flo tools. **API routes 483 to 487** (the ID-card approval request,
+the daily digest and the two undo routes), which is why every profile's route count is
+up by three or four on the 2026-08-10 baseline. The accountant head's +1 tool and +1
+write is `update_staff`, salary only, explained in the last session entry. No dormant
+profile has gained anything at any point.
 
 **Do this next.** The school's fee ledger is the school's most urgent need and
 Abhimanyu has approved writing it to the live database.
@@ -1080,3 +1086,65 @@ clean with lint.
 4. **R2-14**, the handover itself.
 
 Everything else in Release 2 is built and green.
+
+### 2026-08-11 (fourth run) - Sonu gets the salary figure, and a grant that had never worked (Claude, Opus 5)
+
+**Has the code shipped? No.** Still nothing pushed and nothing deployed. The deploy
+happens when Release 2 is finished, per Abhimanyu.
+
+**Did.** Finished and proved the one piece of work left half-done in the working folder
+from the previous session: the accountant head can now correct a colleague's base salary.
+Abhimanyu's instruction, relaying Aman's and Adesh's: Sonu already knows and handles
+everyone's pay, so the platform should say so.
+
+**What was already true and was not touched.** Sonu has run payroll in full since this
+project began - salary structures, disbursements, corrections and payslips - and he could
+already READ the salary on a colleague's record when he opened it. The gap was the one
+figure that sits outside the payroll system, the base salary on the staff record itself.
+
+**The defect underneath it, which is the part worth reading.** The code already contained
+a line granting the accountant head that field. It had never once worked. Three lines
+below it, the owner-only strip removed `salary` from the update unconditionally, undoing
+the grant it had just made. So a permission had been written, read as authoritative by
+anyone reviewing the file, and silently taken back before it reached the database. Nothing
+caught it because no test had ever driven a real write through that path. There are tests
+now, and they call the real service rather than asserting against hand-built rows.
+
+**Two more inconsistencies fixed while in there.**
+
+1. **The same field answered two different ways depending on which door was used.** Sonu
+   could see a colleague's pay by opening their record, and not see it in the table listing
+   all of them - the list view stripped salary from everybody regardless of who was asking.
+2. **Flo could not reach the tool at all**, so the fix would have been a dead door on the
+   chat side while working on the screen.
+
+**Deliberately narrow.** An accountant caller of `update_staff` may change `salary` and
+nothing else; a name, phone or department correction is silently dropped and stays with
+Lalit and Adesh. The instruction was about salary, not about staff records generally.
+Granting the role, the sub-category or whether somebody is still employed remains the
+school's owner alone, for everyone, with no exception.
+
+**One committed test reversed, with the reason written into it.**
+`test_phase1_lockdown_blocks_everyone_else` pinned the accountant head OUT of
+`update_staff`. That was the settled rule until this instruction. It now records that he
+reaches the tool and points at the file proving how narrow his reach is, in the same shape
+as the `create_student` exception beside it from R2-5.
+
+**Measured.**
+
+| | Before | Now | Why |
+|---|---|---|---|
+| Flo tools: accountant | 56 | **57** | `update_staff`, salary only. |
+| writes: accountant | 31 | **32** | The same tool. |
+| every other profile, all three surfaces | unchanged | unchanged | Nobody else gained or lost anything. |
+| API routes | 487 | 487 | No route added; the salary change reuses `PATCH /api/staff/{id}`. |
+
+The route counts in the summary table at the top of this file were stale by three - they
+still read 484 from two entries ago while the digest and the two undo routes had already
+landed. Corrected rather than left to be misread as a movement today.
+
+**Proved.** Backend 2,962 passed / 0 failed / 15 deselected. Frontend 592 passed /
+0 failed. Production build passed with lint clean.
+
+**Left.** The fee ledger (eight documents to reconcile first, Abhimanyu has put it very
+last), R2-19 after it, the deploy, and R2-14 handover. Nothing else in Release 2 is open.

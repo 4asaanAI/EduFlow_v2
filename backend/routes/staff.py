@@ -311,7 +311,21 @@ async def list_staff(
             query["$or"] = name_or_id
     sort_field, sort_dir = SORT_FIELDS.get(sort, SORT_FIELDS["name"])
     scoped = _staff_query(query)
-    staff = await db.staff.find(scoped, {"_id": 0, "salary": 0}).sort(sort_field, sort_dir).skip((page - 1) * per_page).limit(per_page).to_list(per_page)
+    # 2026-08-11: the single-record view (`_staff_record_for`) already showed salary to
+    # whoever `_may_read_salary` allows (decision 9, which includes the accountant
+    # head). This list view excluded it from EVERYONE regardless, so the same person's
+    # pay answered differently depending on which door was used - visible if he opened
+    # one colleague's record, invisible in the table listing all of them.
+    #
+    # Stripped in Python rather than with a query projection, on purpose, matching
+    # `_staff_record_for` just above: the comment there already explains why - "a
+    # privacy guarantee should not depend on a database option that a later caller can
+    # change without noticing what it protected."
+    may_see_salary = _may_read_salary(user)
+    staff = await db.staff.find(scoped, {"_id": 0}).sort(sort_field, sort_dir).skip((page - 1) * per_page).limit(per_page).to_list(per_page)
+    if not may_see_salary:
+        for member in staff:
+            member.pop("salary", None)
     total = await db.staff.count_documents(scoped)
     for member in staff:
         state = enrolment_status.normalise(member)

@@ -5617,8 +5617,26 @@ TOOL_REGISTRY = {
     "update_staff": {
         "fn": tool_update_staff,
         "roles": ["owner", "admin"],
+        # `sub_categories` here governs only the five DORMANT profiles - the four
+        # reviewed ones (owner, principal, accountant, management) are routed through
+        # `profile_authorization_decision` in services/ai_action_policy.py before this
+        # field is ever read, so adding "accountant" here would do nothing and would
+        # mislead the next reader into thinking it was the mechanism.
+        #
+        # The accountant head's access to THIS tool (2026-08-11, for salary only) is
+        # granted in services/profile_matrix.py, PROFILE_MATRIX["accountant"]
+        # ["extra_tools"] - read that comment for why a named exception rather than a
+        # domain change. The service this calls (services/staff_service.update_staff,
+        # the same write path as PATCH /api/staff/{id}) narrows an accountant caller
+        # to `salary` only and silently drops anything else in the body, whichever
+        # door was used to reach it.
         "sub_categories": ["principal"],
-        "description": "Update an existing staff member's profile. role/sub_category/salary are owner-only and silently ignored otherwise.",
+        "description": (
+            "Update an existing staff member's profile. role/sub_category/is_active "
+            "are owner-only and silently ignored otherwise. salary is owner or "
+            "accountant-head only; every other caller has it silently ignored too, "
+            "and an accountant caller may change ONLY salary here, nothing else."
+        ),
         "dispatch_type": "write",
         "requires_confirmation": True,
         "params_schema": {
@@ -5628,6 +5646,7 @@ TOOL_REGISTRY = {
             "email": {"type": "string", "description": "Email"},
             "department": {"type": "string", "description": "Department"},
             "qualification": {"type": "string", "description": "Qualification"},
+            "salary": {"type": "number", "description": "Base salary. Owner or the accountant head only."},
         },
     },
     # ---- Epic K.1: fee-config CRUD (Owner + Principal only; Phase-1 lockdown) ----

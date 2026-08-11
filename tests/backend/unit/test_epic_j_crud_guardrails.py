@@ -47,6 +47,15 @@ def test_phase1_lockdown_blocks_everyone_else(tool_name, actor):
         # school's leadership (R2-4).
         assert _is_tool_authorized(actor, tdef) is True
         return
+    if tool_name == "update_staff" and actor is ACCOUNTANT:
+        # 2026-08-11, Abhimanyu relaying Aman's and Adesh's instruction: the accountant
+        # head reaches this tool now, for the base salary figure and nothing else. The
+        # narrowing is in `staff_service.update_staff`, which accepts only `salary`
+        # from an accountant caller and silently drops every other field, whichever
+        # door was used. Reaching the tool is not the same as holding it in full; see
+        # tests/backend/api/test_accountant_salary_access_2026_08_11.py.
+        assert _is_tool_authorized(actor, tdef) is True
+        return
     assert _is_tool_authorized(actor, tdef) is False
 
 

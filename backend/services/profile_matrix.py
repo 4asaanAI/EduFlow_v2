@@ -181,6 +181,20 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
             "update_transport_route",
             "delete_transport_route",
             "add_transport_vehicle",
+            # Abhimanyu, 2026-08-11, relaying Aman's and Adesh's instruction: Sonu
+            # already runs payroll in full (salary_structures/salary_disbursements,
+            # both finance-domain and his since this project began) and now also
+            # corrects the base salary figure on a colleague's staff record.
+            #
+            # `update_staff` is classified non_finance (general staff editing is
+            # Lalit's and Adesh's job), so the domain floor alone would refuse this -
+            # named here for exactly the reason the module docstring gives: the four
+            # domains cannot say "Sonu may touch ONE field of a non-finance tool".
+            # The tool itself stays narrow regardless of how it is reached:
+            # `staff_service.update_staff` accepts only `salary` from an accountant
+            # caller and silently drops everything else, so this line opens the door
+            # without handing him the rest of the room.
+            "update_staff",
         }),
         "denied_tools": frozenset(),
         "may_delete_people": False,

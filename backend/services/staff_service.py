@@ -436,17 +436,37 @@ async def update_staff(
         allowed -= {"role", "sub_category", "salary"}
     if _is_owner_or_principal(actor_ctx):
         allowed |= LEAVE_BALANCE_FIELDS
+    # Abhimanyu, 2026-08-11, relaying Aman's and Adesh's instruction: the accountant
+    # head already runs payroll in full - salary_structures and salary_disbursements
+    # have been his since this project began - and now gets the one figure that sat
+    # outside that system, the base salary on a colleague's staff record.
+    #
+    # Scoped to ONLY that field, overwriting rather than adding to `allowed`: a name,
+    # phone or department change is Lalit's and Adesh's remit (decisions 2 and 4), and
+    # this instruction was about salary, not people generally. Widening it further
+    # would be assuming something nobody asked for.
     if _is_accounts(actor_ctx) and not _is_owner(actor_ctx):
-        allowed |= {"salary"}
+        allowed = {"salary"}
     if not _is_owner_or_principal(actor_ctx) and any(f in body for f in LEAVE_BALANCE_FIELDS):
         raise StaffAuthorizationError("Forbidden")
 
     update = {k: v for k, v in body.items() if k in allowed}
 
-    # EC-9.4: OWNER_ONLY_FIELDS - non-owners cannot change role/sub_category/salary/is_active.
+    # EC-9.4: OWNER_ONLY_FIELDS - role/sub_category/is_active stay owner-only for
+    # everybody, no exceptions. `salary` is the one field that can be in `allowed` for
+    # someone other than the owner (the accountant head, as of 2026-08-11), so the
+    # strip below defers to `allowed` rather than repeating OWNER_ONLY_FIELDS blindly.
+    #
+    # Before 2026-08-11 this loop stripped `salary` unconditionally, which silently
+    # undid the `allowed |= {"salary"}` line above the moment it was reached - the
+    # accountant exception was written and never actually took effect. It had no test
+    # driving a real write through it, so nothing caught a permission granted in one
+    # line and taken back three lines later.
     body_had_owner_only = any(f in body for f in OWNER_ONLY_FIELDS)
     if not _is_owner(actor_ctx):
         for field in OWNER_ONLY_FIELDS:
+            if field in allowed:
+                continue
             update.pop(field, None)  # silent strip - EC-9.4
 
     # Story 1.2 - validate exactly what will be WRITTEN, and only that: values
