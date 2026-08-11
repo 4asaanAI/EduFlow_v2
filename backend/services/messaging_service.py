@@ -551,8 +551,16 @@ async def resolve_recipients(db, actor_ctx: ActorContext, params: dict) -> list:
 
     students = await db.students.find(
         scoped_query({"id": {"$in": student_ids}}, branch_id=bid),
+        # Both spellings of each number, deliberately. Guardian records use
+        # `whatsapp_phone` / `father_phone` / `mother_phone`; the 1,878 student records
+        # loaded from the school's own export on 2026-08-06 use `whatsapp`,
+        # `father_mobile` and `mother_mobile`. Asking for only the first set meant the
+        # WhatsApp number the school actually holds for 1,096 children was never seen,
+        # and the send quietly fell through to the general contact number instead.
+        # Corrected 2026-08-11.
         {"_id": 0, "id": 1, "name": 1, "class_id": 1, "section": 1,
          "phone": 1, "whatsapp_phone": 1, "father_phone": 1, "mother_phone": 1,
+         "whatsapp": 1, "father_mobile": 1, "mother_mobile": 1,
          "guardian_phone": 1},
     ).to_list(MAX_RECIPIENTS_PER_SEND)
     smap = {s["id"]: s for s in students}
@@ -578,8 +586,10 @@ async def resolve_recipients(db, actor_ctx: ActorContext, params: dict) -> list:
         g = gmap.get(sid, {})
         phone = normalize_phone(
             g.get("whatsapp_phone") or g.get("phone")
-            or s.get("whatsapp_phone") or s.get("guardian_phone")
-            or s.get("father_phone") or s.get("mother_phone") or s.get("phone") or ""
+            or s.get("whatsapp_phone") or s.get("whatsapp") or s.get("guardian_phone")
+            or s.get("father_phone") or s.get("father_mobile")
+            or s.get("mother_phone") or s.get("mother_mobile")
+            or s.get("phone") or ""
         )
         if not phone:
             continue

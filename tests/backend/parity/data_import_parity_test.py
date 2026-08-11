@@ -130,7 +130,10 @@ async def test_existing_information_is_never_overwritten_by_default(fake_db):
     )
     aryan = next(s for s in fake_db.students.docs if s["admission_number"] == "ADM-1")
     assert aryan["phone"] == "9999999999", "the existing mobile was overwritten"
-    assert aryan["whatsapp_phone"] == "9000000011", "the blank was not filled"
+    # `whatsapp`, not `whatsapp_phone`: corrected 2026-08-11 along with ten other
+    # import targets that named a field the student record does not have. See
+    # tests/backend/unit/test_student_column_coverage_2026_08_11.py.
+    assert aryan["whatsapp"] == "9000000011", "the blank was not filled"
 
 
 async def test_overwrite_is_possible_when_asked_for_explicitly(fake_db):

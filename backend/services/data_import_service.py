@@ -71,19 +71,33 @@ def _now() -> datetime:
 # The school's export uses its previous vendor's headers. Mapping them here (rather
 # than asking the model to guess per row) is what makes the import repeatable.
 
+# ⚠️ THE TARGET NAME ON THE RIGHT MUST BE THE NAME THE RECORD ALREADY USES.
+#
+# Corrected 2026-08-11, and this was a live defect rather than tidying. Eleven entries
+# here pointed at invented names for facts the student records already hold under the
+# names the 2026-08-06 load gave them: `whatsapp_phone` beside the real `whatsapp`,
+# `father_phone` beside `father_mobile`, `aadhaar_number` beside `aadhaar_no`, and so
+# on. Importing the school's own export would have written a SECOND copy of each,
+# leaving the record with two Aadhaar numbers and every screen reading the empty one.
+#
+# That is not hypothetical. It is exactly what made the first missing-data report claim
+# all 1,842 children had no date of birth when 1,055 had one under a different name.
+# Before adding a row here, confirm the target against
+# `student_service.UPDATABLE_FIELDS`; a name that is not in that set is a new field and
+# needs a deliberate decision, not a guess.
 STUDENT_FIELD_MAP: Dict[str, str] = {
     "name": "name",
     "mobile": "phone",
-    "whatsapp": "whatsapp_phone",
-    "alternatenumber": "alternate_phone",
+    "whatsapp": "whatsapp",
+    "alternatenumber": "alternate_number",
     "email": "email",
     "gender": "gender",
     "dob": "dob",
     "dateofbirth": "dob",
     "fathername": "father_name",
     "mothername": "mother_name",
-    "fathermobile": "father_phone",
-    "mothermobile": "mother_phone",
+    "fathermobile": "father_mobile",
+    "mothermobile": "mother_mobile",
     "address": "address",
     "admissiondate": "admission_date",
     "nationality": "nationality",
@@ -91,28 +105,128 @@ STUDENT_FIELD_MAP: Dict[str, str] = {
     "category": "category",
     "caste": "caste",
     "bloodgroup": "blood_group",
-    "aadharno": "aadhaar_number",
-    "aadhaarno": "aadhaar_number",
-    "penno": "pen_number",
+    "aadharno": "aadhaar_no",
+    "aadhaarno": "aadhaar_no",
+    "penno": "pen_no",
     "apaarid": "apaar_id",
-    "registrationno": "registration_number",
-    # Both are the PREVIOUS vendor's identifiers, kept under clearly external names.
-    # `username` in particular must NOT land on a field of that name: EduFlow has its
-    # own logins in `auth_users`, and a second "username" on the student record would
-    # eventually be read as the one people sign in with.
-    "sid": "external_sid",
-    "username": "legacy_username",
+    "registrationno": "registration_no",
+    # `SID` and `Username` were mapped here until 2026-08-11 and are now refused
+    # outright (see DELIBERATELY_NOT_IMPORTED). They are the PREVIOUS vendor's
+    # identifiers; `student_service` already records that editing them makes them a
+    # lie, and an import is an edit. `Username` is the more dangerous of the two:
+    # EduFlow has its own logins in `auth_users`, and a second "username" on a student
+    # record would eventually be read as the one people sign in with.
     "transport": "bus_route",
     "house": "house",
-    "previousschool": "previous_school",
+    "previousschool": "attended_school",
     "motherqualification": "mother_qualification",
     "fatherqualification": "father_qualification",
     "motheroccupation": "mother_occupation",
     "fatheroccupation": "father_occupation",
     "bankname": "bank_name",
-    "bankaccountno": "bank_account_number",
+    "bankaccountno": "bank_account_no",
     "ifsccode": "bank_ifsc",
+
+    # ── Added 2026-08-11 (Abhimanyu): the rest of the school's export ──────────
+    # The 2026-08-06 load put 71 of these columns onto the records and they have been
+    # editable one at a time ever since, but the IMPORT path never learned their
+    # headers, so a re-export of the school's own file reported them as columns it did
+    # not recognise. The record and the door into it now agree.
+    "bankifsc": "bank_ifsc",
+    "bankbranch": "bank_branch",
+    "accountholder": "account_holder",
+    "srno": "sr_no",
+    "rollno": "roll_number",
+    "tcno": "tc_no",
+    "tcdate": "tc_date",
+    "attendedschool": "attended_school",
+    "attendedclass": "attended_class",
+    "enrolledclass": "enrolled_class",
+    "enrolledsession": "enrolled_session",
+    "lastsession": "last_session",
+    "schoolaffiliated": "school_affiliated",
+    "dobapplicationno": "dob_application_no",
+    "fatheraadharno": "father_aadhaar_no",
+    "motheraadharno": "mother_aadhaar_no",
+    "city": "city",
+    "state": "state",
+    "country": "country",
+    "pincode": "pincode",
+    "placeofbirth": "place_of_birth",
+    "medium": "medium",
+    "remark": "remark",
+    "admissiontype": "admission_type",
+    "type": "admission_type",
+    "isbplstudent": "is_bpl_student",
+    "hasdisability": "has_disability",
+    "rteapplicationno": "rte_application_no",
+    # Empty in every export so far, and kept anyway because the school intends to fill
+    # them THROUGH this platform (Abhimanyu, 2026-08-11). A column that is blank today
+    # is not the same as a column nobody wants.
+    "stream": "stream",
+    "height": "height_cm",
+    "weight": "weight_kg",
+    # Parent detail. The father's side carries data and the mother's does not, which is
+    # a reason to keep both rather than half a pair: a school that can record one
+    # parent's email and not the other's has a gap that looks like a rule.
+    "fatherresidentialaddress": "father_residential_address",
+    "motherresidentialaddress": "mother_residential_address",
+    "fatherofficialaddress": "father_official_address",
+    "motherofficialaddress": "mother_official_address",
+    "fatheremail": "father_email",
+    "motheremail": "mother_email",
+    "enrolledyear": "enrolled_year",
+    # Empty today. Kept because they are the same kind of thing as the birth-certificate
+    # and Right to Education application numbers, which DO carry data, and because 646
+    # of the school's children are recorded as OBC or SC, for whom these are what a
+    # government scholarship is claimed against.
+    "domicileapplicationno": "domicile_application_no",
+    "incomeapplicationno": "income_application_no",
+    "casteapplicationno": "caste_application_no",
 }
+
+# Headers seen in the school's export that are deliberately NOT imported, so that
+# "unrecognised column" means something. Reported as out of scope rather than silently
+# ignored, and each one has a reason (2026-08-11):
+#
+#   Fee columns (TransportFees, SchoolTotalFees, TotalDiscount, GrossTotalFees, Fine,
+#     PaidFees, Discount, BalanceFees) - money is reconciled through the fee ledger and
+#     `PROTECTED_FIELDS` below already refuses it. A spreadsheet must never be able to
+#     change what a family owes.
+#   IsRteStudent - decides whether a child owes ANY school fee. Same reasoning as the
+#     fee columns: it is a government entitlement, set deliberately per child, never in
+#     bulk from a stale sheet. It stays editable one record at a time.
+#   Class, Section, Status, Dropout, DropoutDate, DropoutReason - a child's standing at
+#     the school. Already protected; naming them here stops the next reader re-adding
+#     them "for completeness".
+#   Photo, FatherPhoto, MotherPhoto, GuardianPhoto - file paths inside the PREVIOUS
+#     vendor's storage. They do not resolve here and would render as broken images.
+#   Guardian* - EduFlow keeps guardians as their own records, one per guardian. Landing
+#     them on the student would create a second, disagreeing copy.
+#   CreatedAt, LastActive - when the record was made and last touched in the previous
+#     system. `created_at` on an EduFlow record means something different, and the
+#     2026-08-06 load had to rename this column to avoid destroying it.
+#   ScholarshipId, ScholarshipPassword - a credential. Never.
+#   SamagraId - a Madhya Pradesh scheme identifier on a Uttar Pradesh school's export.
+#   GeneralRegistrationNo, EnrollmentNo, SrnNo, BiometricCode, Reference, PanNo,
+#     GovtStudentId, GovtFamilyId, Official* bank fields, *Income - empty in every
+#     export, no school process behind them, and no request for them. These are the
+#     "random columns offered by the previous vendor" that must not be carried across
+#     empty (Abhimanyu, 2026-08-11).
+DELIBERATELY_NOT_IMPORTED = frozenset({
+    "transportfees", "schooltotalfees", "totaldiscount", "grosstotalfees", "fine",
+    "paidfees", "discount", "balancefees", "isrtestudent", "class", "section",
+    "status", "dropout", "dropoutdate", "dropoutreason", "photo", "fatherphoto",
+    "motherphoto", "guardianphoto", "guardianname", "guardianmobile", "guardianemail",
+    "guardianaadharno", "guardianoccupation", "guardianqualification",
+    "guardianincome", "guardianresidentialaddress", "guardianofficialaddress",
+    "createdat", "lastactive", "sid", "username",
+    "scholarshipid", "scholarshippassword", "samagraid",
+    "generalregistrationno", "enrollmentno", "srnno", "biometriccode", "reference",
+    "panno", "govtstudentid", "govtfamilyid", "officialbankname", "officialbankbranch",
+    "officialbankaccountno", "officialbankifsc", "officialaccountholder", "officialupi",
+    "motherincome", "fatherincome", "houseblock",
+})
 
 ADMISSION_HEADERS = ("admissionno", "admissionnumber", "admno")
 
@@ -128,12 +242,14 @@ ADMISSION_HEADERS = ("admissionno", "admissionnumber", "admno")
 # The accountant's segment: the money-adjacent identifiers, plus the contact
 # numbers fee reminders are actually sent to (that profile already sends them).
 FINANCE_IMPORT_FIELDS = frozenset({
-    "bank_name", "bank_account_number", "bank_ifsc",
-    "phone", "whatsapp_phone", "alternate_phone", "father_phone", "mother_phone",
+    "bank_name", "bank_account_no", "bank_ifsc", "bank_branch", "account_holder",
+    "phone", "whatsapp", "alternate_number", "father_mobile", "mother_mobile",
 })
 
 # Bank details are the accountant's alone; management gets everything else.
-_FINANCE_ONLY_FIELDS = frozenset({"bank_name", "bank_account_number", "bank_ifsc"})
+_FINANCE_ONLY_FIELDS = frozenset({
+    "bank_name", "bank_account_no", "bank_ifsc", "bank_branch", "account_holder",
+})
 NON_FINANCE_IMPORT_FIELDS = frozenset(STUDENT_FIELD_MAP.values()) - _FINANCE_ONLY_FIELDS
 
 # None means "no field restriction" - not "no access". Access itself is decided

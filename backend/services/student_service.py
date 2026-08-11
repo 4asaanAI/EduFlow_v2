@@ -56,6 +56,28 @@ UPDATABLE_FIELDS = {
 #     editable they could disagree, and a child who is status=active but
 #     is_active=False disappears from every list while looking fine on their profile.
 EXTRA_SOURCE_FIELDS = {
+    # ── Added 2026-08-11 (Abhimanyu) ──────────────────────────────────────────
+    # The rule he gave: carry a column across if it HOLDS data, or if it matters even
+    # while empty, because the school intends to fill exactly these gaps through this
+    # platform. A column that is blank today is not a column nobody wants. What is NOT
+    # carried across is the previous vendor's empty filler, listed by name in
+    # `data_import_service.DELIBERATELY_NOT_IMPORTED`.
+    #
+    # `stream` is the one that is urgently needed: 11th and 12th are charged 4,800 a
+    # year apart depending on Commerce or Science, and the only place that fact is
+    # recorded today is a class name inside the fee ledger.
+    "stream",
+    # These carry real data in the school's export and were loaded on 2026-08-06, but
+    # were left out of this set, so nobody could correct one without a developer.
+    # `source_created_at` is deliberately NOT here, for the reason given above: it
+    # belongs to the previous system and editing it makes it a lie.
+    "alternate_number", "apaar_id", "caste", "email", "medium", "pen_no",
+    "place_of_birth", "religion", "rte_application_no",
+    "father_occupation", "father_qualification", "mother_occupation",
+    "mother_qualification", "father_residential_address",
+    "mother_residential_address", "father_email", "father_official_address",
+    "mother_email", "mother_official_address", "enrolled_year",
+    "domicile_application_no", "income_application_no", "caste_application_no",
     "aadhaar_no", "account_holder", "admission_date", "admission_type",
     "attended_class", "attended_school", "bank_account_no", "bank_branch",
     "bank_ifsc", "bank_name", "category", "city",

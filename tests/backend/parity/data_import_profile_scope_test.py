@@ -103,7 +103,8 @@ async def test_accountant_imports_bank_and_contact_but_not_family_details(fake_d
     assert result["success"] is True
     aryan = _by_admission(fake_db, "ADM-1")
     assert aryan["bank_name"] == "State Bank"
-    assert aryan["whatsapp_phone"] == "9000000011"
+    # `whatsapp`, not `whatsapp_phone` - the name the student records actually use.
+    assert aryan["whatsapp"] == "9000000011"
     assert "father_name" not in aryan, "the accountant wrote a non-finance column"
 
 
@@ -114,7 +115,7 @@ async def test_management_imports_family_and_contact_but_not_bank_details(fake_d
     assert result["success"] is True
     aryan = _by_admission(fake_db, "ADM-1")
     assert aryan["father_name"] == "Rakesh"
-    assert aryan["whatsapp_phone"] == "9000000011"
+    assert aryan["whatsapp"] == "9000000011"
     assert "bank_name" not in aryan, "management wrote a finance column"
 
 
