@@ -41,10 +41,18 @@ child's class.
 
 ### 1.3 Paying the whole year at once
 
-**5% off the session's fee** when a parent pays the full year rather than by quarter.
+**5% off the session's fee**, and **only if the whole year is paid on or before 30 April**
+(Abhimanyu, 2026-08-11, answer 3). A parent paying the full year in August does not
+qualify. The printed fee sheet and Sonu agree on this.
 
-*Not yet confirmed from the ledger*, because a 5% line cannot be told apart from an
-ordinary custom amount by its value alone. See the open questions.
+*Ledger evidence:* 446 lines across 41 children carry a remark saying so in the office's
+own words, most often "FULL FEES PAID 5 PER DISCOUNT", "5 PER DIS" and "5 DISC.".
+
+### 1.2b The concessions do NOT stack
+
+**A child entitled to both the employee discount and the sibling discount keeps the
+employee discount only** (Abhimanyu, 2026-08-11, answer 2). Not both, and not the better
+of the two by calculation: the employee one, by rule.
 
 ### 1.4 One-time discounts at admission
 
@@ -92,14 +100,43 @@ overcharged. **Only one daily fine ever runs at a time: the current quarter's.**
 *Ledger evidence:* every one of the 1,217 fine lines in the school's ledger is an exact
 multiple of 10, across 992 children. Eight lines are exactly 1,000.
 
-**All of section 2 applies to school fees only. Transport is not fined.**
+### 2.1 The 1,000 repeats. UNRESOLVED, and it is money
+
+Abhimanyu, 2026-08-11, answer 1: **a quarter that stays unpaid takes another 1,000 at
+every following quarter end**, not just the first one. So a Q1 left unpaid all session
+takes 1,000 on 1 July, again on 1 October, again on 1 January and again on 1 April.
+
+**That answer contradicts the worked example it was answering.** The example ends at
+1 October with "1000 (of Q1) + 1000 (of Q2)", which is one apiece. Under the answer it
+should read 2,000 for Q1 and 1,000 for Q2.
+
+**Do not implement either reading until Sonu settles it with a number.** For a Science
+student who has paid nothing, the total standing on 1 October is 38,920 one way and
+39,920 the other, and by 1 April the gap on Q1 alone is 3,000. Question put back to
+Abhimanyu on 2026-08-11; see the open questions.
+
+### 2.2 The fine is charged on the whole bill, transport included
+
+Corrected by Sonu on 2026-08-11, reversing what was said an hour earlier. **Transport is
+added into the total before the fine is worked out.** There is no separate transport fine
+and no separate transport due date: one outstanding figure, one daily fine, one 1,000.
+
+So transport carries **no concession but the full fine**.
+
+### 2.3 The 1,000 is NOT the re-admission charge
+
+Two different things (Abhimanyu, 2026-08-11, answer 4). The 1,000 at quarter end is
+automatic. The "1,000 per instalment" on the printed fee sheet is part of what a
+struck-off child pays to be re-admitted, at the Principal's discretion. A family in
+arrears can therefore meet both, and that is correct rather than double billing.
 
 ---
 
 ## 3. Transport
 
 **No concession of any kind, for anybody.** No sibling discount, no employee discount, no
-5% for paying the year up front.
+5% for paying the year up front. **But it is fined like everything else**, because it is
+folded into the total before the fine is worked out (section 2.2).
 
 The charge varies by distance, roughly 650 to 1,520 a month, and is billed monthly rather
 than quarterly. 1,235 children pay it.
@@ -109,15 +146,38 @@ and the ledger is what proves it.
 
 ---
 
+## 3.1 Right to Education children
+
+Sonu, 2026-08-11. Some children hold a **Right to Education** place from the government.
+They **pay no school fee at all**. If they use the bus they pay the transport charge, and
+that charge is fined on the ordinary schedule if it is late.
+
+**The platform has no way of recording this today** and it is not a discount: the fee is
+not reduced, it does not apply. Recording it as a 100% discount would be wrong, because it
+would then interact with the concession rules and would be reversible by anyone who can
+edit a discount.
+
+**The school has to supply the list.** It cannot be inferred. The ledger shows 6 children
+whose only charges all session are transport, which is the right shape but far too few to
+be the whole list, and 405 children have at least one school-fee line written off in full,
+which is not the same thing at all and must not be mistaken for it.
+
+---
+
 ## 4. Sonu's feature request: sibling tags
 
 He asked for a child with a brother or sister in the school to be **tagged as a sibling,
 with the other children's admission numbers shown on the record and on the fee screen**,
 so the office can see at a glance who is owed which discount.
 
-**Feasible, and the ledger gives a strong starting list.** Grouping the 1,723 children in
-it by father's name and mobile number finds **764 children in a family of two or more**:
-300 pairs, 44 threes, 6 fours and one family of eight.
+**The office is already doing this by hand, in the remarks column.** 2,308 payment lines
+across 441 children carry a remark naming the sibling, usually in the form
+`SIB NO - 221858`. That yields **414 sibling links stated explicitly by the school
+itself**, which is evidence rather than inference and is the seed list to start from.
+
+Beyond those, grouping the 1,723 children by father's name and mobile number finds **764
+in a family of two or more**: 300 pairs, 44 threes, 6 fours and one family of eight. Those
+are candidates, not facts.
 
 **But it cannot be switched on unattended, for two reasons.**
 
@@ -134,13 +194,29 @@ them**, which also gives Sonu the screen he asked for.
 
 ---
 
-## 5. Open questions. Do not guess at these
+## 5. What order to load this in
+
+Abhimanyu, 2026-08-11, answer 6: **load the money actually collected and each child's
+normal fee. Do not calculate any late fine yet.** The fines come last, once section 2.1 is
+settled.
+
+That instruction also disposes of the ledger's internal disagreement, which was only ever
+about billed and outstanding totals. **Money collected agrees to the rupee**, and that is
+the half being loaded.
+
+---
+
+## 6. Still open. Do not guess at these
 
 | # | Question | Why it matters |
 |---|---|---|
-| 1 | Does a quarter left unpaid take **one** 1,000 only, or another 1,000 at every following quarter end? | Sonu's example shows Q1 taking one and then standing still, but the phrase "only quarter end fine keeps on going" could mean the opposite. Over a year the difference is 3,000 per family. |
-| 2 | Do the concessions **stack**? An employee with two children: 50% and the sibling discount, or the better of the two? | It changes real bills today. |
-| 3 | Is the 5% conditional on paying **before 30 April**, as the school's printed fee sheet says, or available whenever a parent pays the year up front, as Sonu described it? | Decides whether a payment in August qualifies. |
-| 4 | Is the 1,000 at quarter end the **same charge** as the "1,000 per instalment" the printed fee sheet attaches to re-admission after a strike-off, or two different charges? | If they are the same thing, one of the two descriptions is wrong and a family could be billed twice. |
-| 5 | Are unpaid **transport** dues fined at all? | Sonu said the fine rules are school fees only, which may mean transport is never fined or may simply not have been covered. |
-| 6 | The ledger's own summary line disagrees with its own rows: 4.29 crore billed against 4.12 crore, and about 9 lakh outstanding against 3.5 lakh. Collected money agrees exactly. | An outstanding figure becomes a family's bill. Still open from the previous session. |
+| 1 | **Does an unpaid quarter take a fresh 1,000 at every later quarter end, or only its own?** Answer 1 says every one; the worked example it answered says only its own. | 1,000 a family by October and 3,000 by April, on Q1 alone. Nothing about late fines can be built until this is settled, which is why they are loaded last. |
+| 2 | **Which children hold a Right to Education place?** | Cannot be inferred, and getting it wrong bills a family that owes nothing. |
+| 3 | **Does the transport charge run for 11 months or 12?** The printed fee sheet says 11; the ledger has lines for all twelve month names. | Decides one month's charge for 1,235 families. |
+| 4 | **When a Right to Education child is late paying transport, does the 1,000 apply as well as the 10 a day?** | The 1,000 reads as a school-fee charge, and these children have no school fee. |
+
+**Answered and closed on 2026-08-11:** whether the 1,000 is the re-admission charge (no,
+separate), whether concessions stack (no, employee discount only), whether the 5% needs
+payment by 30 April (yes), whether transport is fined (yes, it is inside the total), and
+the ledger's billed-versus-outstanding disagreement (sidestepped by loading collections
+and normal fees only).
