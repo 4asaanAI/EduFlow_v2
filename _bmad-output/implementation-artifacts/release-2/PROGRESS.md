@@ -43,7 +43,9 @@ profile has gained anything at any point.
 
 **Do this next: `FINISHING-PLAN-2026-08-11.md`, step 11, the deploy and handover.** The
 audit of the four live profiles is also done (2026-08-12, last entry): sixteen findings,
-thirteen fixed, one a correction, one needing the school, one unreproduced.
+thirteen fixed, one a correction, one needing the school, one unreproduced. The two
+decisions it left are also settled and built (2026-08-12, last entry): the school's
+joining charges are raised automatically, and Aman and Adesh have the school on one page.
 Steps 1 to 10 are DONE. Three migrations are live on the school's database (034, 035,
 036) and **four more are written, dry-run and waiting to be applied on the day** (037,
 038, 039, 040). See the last session entry at the bottom of this file, which is the one
@@ -1776,3 +1778,98 @@ goes over with the logins.
 **Two things are decisions rather than defects, and both are Abhimanyu's:** whether the
 platform should raise registration and admission charges automatically when a child joins,
 and whether scheduled reports get built. Neither blocks anything.
+
+### 2026-08-12 (tenth run) - the two decisions Abhimanyu settled (Claude, Opus 5)
+
+**Has the code shipped? No.** 53 commits on the branch, nothing deployed. **Nothing was
+written to the live database this run.** The four migrations 037 to 040 are still written,
+dry-run and waiting.
+
+**Did.** The two things the audit left as decisions rather than defects, both now answered
+by Abhimanyu: raise the school's joining charges automatically, and build the scheduled
+report so Aman and Adesh have everything in one place.
+
+---
+
+#### The joining charges are raised automatically now
+
+The school charges a registration fee and an admission fee to a new admission. Migration
+035 loaded both onto every fee structure and **nothing read them**, so the office had to
+remember to raise them by hand every time a child joined.
+
+**`services/admission_charge_service.py` is its own file on purpose**, because the rule
+that matters had to be written down somewhere rather than implied by a call site:
+
+> The difference between "a child joined today" and "a child was typed into the platform
+> today" is invisible to the database, and worth 13,000 to a family.
+
+1,842 children on the roll were typed in during a bulk load in August. Had this existed
+then, every one of those families would have been billed for joining years ago. So it runs
+from the single-student create path only, never from the spreadsheet import, which inserts
+students directly and is **pinned that way by a test** so the day somebody refactors that
+to use the service is the day the test fails rather than the day 1,842 families are billed.
+
+It can also be turned off per call for a data load, it is idempotent by charge key so a
+repeated create cannot bill twice, it raises nothing for a Right to Education child, and it
+**never stops a child being admitted**: a fee problem must not be the thing that keeps a
+child off the roll.
+
+**One defect found by its own test, and it is the interesting one.** The safety flag was
+only in the service, and the request model silently dropped it, so the bulk-load case
+billed anyway. **A safety flag that the door quietly discards is not a safety flag.** It is
+on the model now.
+
+#### The school on one page, for Aman and Adesh
+
+The screen that claimed to do this showed **two hardcoded rows with green "Active" badges**
+for reports that had never existed and were never sent.
+
+It is now real: the roll, today's attendance, what was collected and what is outstanding,
+everything waiting for them to approve, and what everyone changed. Reachable three ways
+(the screen, the web address and asking Flo), all behind the same gate as the action log.
+**The accountant head does not get it**, deliberately: he has the money half already, and
+this is the whole school.
+
+**What "scheduled" honestly means here** is written into the service and said on the screen
+in those words. There is no scheduler on this platform and no sender the school can use, so
+**the day's page is produced and KEPT the first time either of them opens it**, and an
+earlier day is never rebuilt from today's figures, which would quietly rewrite history. In
+practice that gives them what they asked for: one page a day, and a history. Delivery is a
+small piece of work on top the day a real sender exists.
+
+**Two wrong collection names, both caught by their tests before anyone saw a wrong figure.**
+The register is `student_attendance`, not `attendance`, and leave lives in `leave_requests`.
+The first version reported "not marked yet" on a day the register had been taken. A summary
+that is quietly wrong is worse than no summary at all.
+
+#### Measured
+
+| | Before | Now | Why |
+|---|---|---|---|
+| Flo tools: owner / principal | 160 / 160 | **161 / 161** | `get_school_summary`, a read. |
+| writes, all nine profiles | unchanged | unchanged | Neither feature adds a Flo write. |
+| API routes, **every** profile | +2 | | The summary and its history. |
+| hubs and screens, all nine | unchanged | unchanged | The summary reuses the screen that was the mock-up. |
+| accountant / management / the five dormant | **no tool gained** | | Neither feature is theirs. |
+
+**The +2 routes on every profile needs its sentence.** Both routes carry
+`require_role("owner", "admin")` at the door and refuse everybody except the owner and the
+principal *inside* the handler, which is the same shape as the daily digest beside them and
+one of the 106 routes the sweep already counts that way. **It was proved by CALLING them as
+seven profiles**, not by reading the count.
+
+| Gate | Result |
+|---|---|
+| Backend | **3,330 passed / 0 failed** / 15 deselected |
+| Frontend | **604 passed / 0 failed** |
+| Build | clean, with lint |
+
+#### Left
+
+**Step 11 only: the deploy, then the handover.** Everything else in Release 2 is built and
+green. The four migrations are applied on the day, one at a time, never through
+`run_all.py`, and `QUESTIONS-FOR-THE-SCHOOL-2026-08-11.md` goes over with the logins.
+
+**One thing to watch on the day.** The joining charges only fire for children admitted from
+now on. Nobody already on the roll is billed, which is correct and is also the thing to say
+out loud to the school, so nobody expects to see 1,842 registration fees appear.
