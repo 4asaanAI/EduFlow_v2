@@ -41,9 +41,11 @@ up by three or four on the 2026-08-10 baseline. The accountant head's +1 tool an
 write is `update_staff`, salary only, explained in the last session entry. No dormant
 profile has gained anything at any point.
 
-**Do this next: `FINISHING-PLAN-2026-08-11.md`, step 6.** Steps 1 to 5 and step 9 are
-DONE; three of them wrote to the school's database. Steps 6, 7, 8, 10 and 11 remain.
-See the last session entry at the bottom of this file, which is the one that matters.
+**Do this next: `FINISHING-PLAN-2026-08-11.md`, step 11, the deploy and handover.**
+Steps 1 to 10 are DONE. Three migrations are live on the school's database (034, 035,
+036) and **four more are written, dry-run and waiting to be applied on the day** (037,
+038, 039, 040). See the last session entry at the bottom of this file, which is the one
+that matters.
 
 That document replaces the five bullets that used to sit here. It breaks everything left
 in Release 2 into eleven steps, says what each needs from a person, and says what is
@@ -1482,3 +1484,179 @@ Run after each step, not once at the end.
 half waits on Sonu; step 7 (Right to Education) waits on Sonu confirming the 21; step 8
 (loading what has been paid) is the biggest write in the release; step 10 is Flo parity;
 step 11 is the deploy and handover. Nothing is deployed.
+
+### 2026-08-12 (eighth run) - steps 6, 7, 8 and 10: the fee ledger finished, bar the deploy (Claude, Opus 5)
+
+**Has the code shipped? No.** 45 commits on the branch, nothing deployed. **Nothing was
+written to the live database this run.** The three migrations from the sixth run (034,
+035, 036) are still the only fee work on production. Four new migrations are written,
+dry-run and waiting: 037, 038, 039 and 040.
+
+**Did.** Steps 6, 7, 8 and 10 of the finishing plan, one per commit, all three gates green
+between each. **Every step Abhimanyu asked for this run is done.** Only the deploy and the
+handover are left in the whole of Release 2.
+
+**Abhimanyu's five instructions, 2026-08-12:** use only the siblings the school has itself
+defined and log the rest in a file for the school; the 21 Right to Education children are
+confirmed; use only the current and latest data and ask where it disputes; make Flo this
+powerful because the chat is the flagship of the product; report back before the deploy.
+
+---
+
+#### Step 6: 377 sibling families, all of them stated by the school
+
+The office has written the link by hand for years, in the remark on a payment, as
+`SIB NO - 221858`. **Only those were used.** Grouping children by father's name and mobile
+would find more families and every one would be a guess, and a wrong guess either
+overcharges a family or gives the school's money away.
+
+**377 families covering 826 children**, and each child's record now carries the admission
+numbers of their brothers and sisters. That is the tag Sonu asked for and it shows on the
+child's record and on the fee screen.
+
+**Who keeps the concession was copied from what the office actually did**, never worked out
+from who looks youngest: 787 children have no date of birth. 445 children were given the
+sibling concession in the ledger and keep it. The strongest evidence that the reading is
+right is that **349 of the 377 families show exactly one child paying full**, which is the
+school's own youngest-pays-full rule appearing in its own data without anyone asking it to.
+
+**Two real traps in that column, both now pinned by tests.**
+
+1. **`SBI` is a bank and `SIB` is a sibling**, and they appear in the same sentence. A
+   pattern that is not anchored on the whole word invents families out of bank references.
+2. **The office spells it eleven ways**, including `SIB N0` with a zero. That stray digit
+   defeats any "the number comes straight after" rule, and the first version of the reader
+   silently missed those families. It now scans a short window either side of the word.
+
+Every number found must also be a real admission number and must not be the child's own.
+
+#### Step 7: a Right to Education place is never billed, and 15067 was never a discrepancy
+
+The 21 children the school marks are recorded as owing **no school fee at all**. Not
+discounted to nothing: never charged. A 100% discount would interact with the concession
+rules, could be edited away by anyone who may edit discounts, and would leave a zero-rupee
+bill on the record reading as something owed.
+
+The billing path skips them and **names them in the result** rather than leaving a row
+quietly missing. Their bus is untouched and is fined normally.
+
+**Admission 15067 was carried for days as a discrepancy and is not one, and this is worth
+reading.** It was recorded as a child whose name said "RTE" while the flag said No. The
+child is **PIRTEEK CHOUDHARY**. The letters r-t-e are inside the spelling of the name. The
+check that raised it was matching letters rather than whole words. All 21 genuine children
+write it in brackets, and the school's flag column and its naming agree everywhere. Both
+the fee rules document and the school's questions file are corrected.
+
+#### Step 8: 3.56 crore of collections, and one bug caught before any money moved
+
+The platform recorded **one payment for the entire school**. Migration 039 loads **10,720
+fee lines, 3,177 receipts, 1,722 children**.
+
+**Only the halves of the ledger that agree with themselves are loaded.** Counting the file
+shows exactly where its summary disagrees with its own rows:
+
+| figure | the summary says | the rows add up to | agrees? |
+|---|---|---|---|
+| money collected | 3,56,23,748 | 3,56,23,748 | **yes** |
+| discount given | 52,69,692 | 52,69,692 | **yes** |
+| total billed | 4,12,46,380 | 4,29,39,500 | no |
+| balance outstanding | 3,52,940 | 10,75,327 | no |
+
+So collections and discounts are loaded and billed and balance are not. What a family
+should have been billed comes from the fee structures of step 3, which three independent
+documents agree on. That is Abhimanyu's instruction and it sidesteps the disagreement
+rather than picking a side of it.
+
+**The bug the tests caught.** The school writes its fourth quarter as
+`composite fee 4 qtr (jan, feb, march) 2 (jan)`. Reading the first digit in the line finds
+the stray 2, so **122 payments would have been filed under the second quarter**. The
+quarter number now has to be the digit in front of the word quarter.
+
+**Two more things it refuses to do.** Reading stops at the ledger's summary row, because
+the file has a second table below it with entirely different columns; reading on would
+load a payment-mode breakdown as receipts. And if more than 5% of the money cannot be
+placed on a real child, the whole migration refuses: loading most of a school's
+collections and reporting success is worse than loading none, because nobody goes looking
+for the rest.
+
+**Migration 040 retires the 1,844 unvouched figures**, on the instruction to use only the
+current and latest data. Moved to `superseded_fee_snapshot`, not deleted, and nothing reads
+that field. It reports how far the old figures sit from the ledger before retiring
+anything, and refuses unless 039 has run.
+
+#### Step 10: Flo can now do the fee work, in words
+
+Five tools, each a thin adapter over the **same service function** the matching screen
+route calls:
+
+- **`explain_student_fee`** answers the question the office actually asks: why is this
+  family charged this much. Band, every concession and what each is worth, Right to
+  Education, brothers and sisters, the bus, and everything paid.
+- **`calculate_late_fine`** works the fine out and says which single quarter is still
+  gathering the daily 10.
+- **`set_student_concession`**, **`record_admission_concession`** and
+  **`set_right_to_education`** are the writes, each behind a confirm card.
+
+`concession_parity_test.py` pins that the screen and the chat leave the student record and
+the audit trail identical, and that both refuse the same things: a one-time concession
+with nobody named, a second helping of it, and removing a Right to Education place with no
+reason given.
+
+**Flo's own instructions now carry the rules**, including the sentence that the previous
+supplier's double daily fine must never be described or reproduced.
+
+**Five committed guards fired and every one of them was right.** The most important: all
+five tools are classified as finance **by name**. The classification loop at the bottom of
+`tool_functions_v2.py` still ends in `else: non_finance`, so an unclassified tool lands
+with the management head by default, and these five would have reopened the money leaks
+R2-2 closed.
+
+#### Measured
+
+| | Before this run | Now | Why |
+|---|---|---|---|
+| Flo tools: owner / principal | 155 / 155 | **160 / 160** | The five step 10 tools. |
+| writes: owner / principal | 100 / 100 | **103 / 103** | The three step 10 writes. |
+| Flo tools / writes: accountant | 57 / 32 | **62 / 35** | The same five and three. |
+| routes: owner / principal / accountant | 354 / 340 / 272 | **359 / 345 / 277** | The five step 10 routes. |
+| registry total | 161 | **166** | The same five. |
+| **management, all surfaces** | unchanged | **unchanged** | Every new tool is finance by name. |
+| **the five dormant profiles** | unchanged | **unchanged** | Nothing was given to any of them. |
+| hubs and hub screens, all nine | unchanged | unchanged | No screen moved. |
+
+**Steps 6, 7 and 8 moved nothing at all.** Every movement above belongs to step 10 and was
+the point of it.
+
+| Gate | Result |
+|---|---|
+| Backend | **3,150 passed / 0 failed** / 15 deselected (3,062 at the start of the run) |
+| Frontend | **592 passed / 0 failed** |
+| Build | clean, with lint |
+
+#### The four migrations that are written and NOT applied
+
+None of these has touched the live database. Each is dry-run by default and saves a
+rollback file outside the repository before writing.
+
+| Migration | What it would write |
+|---|---|
+| **037** | 826 children tagged with their brothers and sisters, 445 sibling concessions |
+| **038** | The 21 Right to Education children |
+| **039** | 10,720 payment lines, 3.56 crore collected |
+| **040** | Retires the 1,844 unvouched fee figures (needs 039 first) |
+
+#### What still needs a person
+
+`QUESTIONS-FOR-THE-SCHOOL-2026-08-11.md` is the file to hand over with the logins, written
+for the school to read rather than for an engineer. Ten items, what each means and who can
+answer it. The urgent one is **admission 263105**, being overcharged 4,800 a year today.
+
+Two items came OFF that list this run: the 21 Right to Education children are confirmed,
+and 15067 was never a discrepancy.
+
+#### Left
+
+**Step 11 only: the deploy, then the handover.** Everything else in Release 2 is built and
+green. The deploy needs the `claude-hosting` IAM user and Abhimanyu's explicit go-ahead,
+and the four migrations above need applying on the day, one at a time, never through
+`run_all.py`.
