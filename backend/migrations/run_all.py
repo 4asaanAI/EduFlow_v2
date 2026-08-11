@@ -89,6 +89,12 @@ MIGRATIONS = [
     # every migration file must be. It reads the school's student export and refuses if
     # the number of marked children has drifted from the 21 the school confirmed.
     ("038_right_to_education", "Release 2 step 7: the 21 children holding a government-paid Right to Education place, marked so they are never billed a school fee (data-changing; run explicitly only)"),
+    # 039 loads 3.56 crore of the school's collections and 040 retires the figures that
+    # were standing in for them. Both are listed only because every migration file must
+    # be, both are the largest writes in the release, and 040 refuses unless 039 has run.
+    # Run each one by itself.
+    ("039_load_payments_from_ledger", "Release 2 step 8: 10,720 payment lines from the school's ledger of 11 August, 3.56 crore collected across 3,177 receipts (data-changing; run explicitly only)"),
+    ("040_supersede_unvouched_fee_snapshots", "Release 2 step 8: retire the fee figures on 1,844 children that their own label says are not the fee ledger; moved, not deleted (data-changing; run explicitly only)"),
 ]
 
 
