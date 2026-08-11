@@ -49,6 +49,16 @@ from services.fee_lifecycle_service import (
     replace_installments,
 )
 from services.contact_log_service import log_contact_event, ContactLogValidationError
+from services.student_concession_service import (
+    ConcessionConflictError,
+    ConcessionNotFoundError,
+    ConcessionValidationError,
+    explain_student_fee as svc_explain_student_fee,
+    record_admission_concession as svc_record_admission_concession,
+    set_concession as svc_set_concession,
+    set_right_to_education as svc_set_right_to_education,
+)
+from services.late_fine_service import LateFineError, assess_quarters as svc_assess_quarters
 from services.payroll_service import disburse_salary, upsert_salary_structure
 from services.razorpay_service import create_school_fee_checkout
 from services.sse import KEEPALIVE_SECONDS, connect as sse_connect, disconnect as sse_disconnect, encode_sse, normalize_session_id, publish
@@ -899,6 +909,88 @@ async def get_student_discounts(student_id: str, request: Request, user: dict = 
         if not link:
             raise HTTPException(403, "Forbidden")
     return {"success": True, "data": await _discount_breakdown(db, student_id)}
+
+
+# ── The school's own concessions (Release 2 steps 5 to 7, made reachable in step 10) ──
+# Every one of these goes through services/student_concession_service.py, which is the
+# same function the matching Flo tool calls. A parity test pins that the screen and the
+# chat produce identical writes; that is what stops the two doors drifting apart.
+
+@router.get("/concessions/{student_id}/explain")
+async def explain_student_fee_route(student_id: str, request: Request,
+                                    user: dict = Depends(require_finance_profile)):
+    """Why this family's bill is this figure: band, concessions, Right to Education,
+    brothers and sisters, transport and what has been paid."""
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_explain_student_fee(db, actor_ctx, {"student_id": student_id})
+    except ConcessionNotFoundError as exc:
+        raise HTTPException(404, str(exc))
+    return {"success": True, "data": result}
+
+
+@router.post("/concessions/set")
+async def set_student_concession_route(request: Request,
+                                       user: dict = Depends(require_finance_profile)):
+    db = get_db()
+    body = await request.json()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_set_concession(db, actor_ctx, body)
+    except ConcessionValidationError as exc:
+        raise HTTPException(400, str(exc))
+    except ConcessionNotFoundError as exc:
+        raise HTTPException(404, str(exc))
+    return {"success": True, "data": result}
+
+
+@router.post("/concessions/admission")
+async def record_admission_concession_route(request: Request,
+                                            user: dict = Depends(require_finance_profile)):
+    db = get_db()
+    body = await request.json()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_record_admission_concession(db, actor_ctx, body)
+    except ConcessionValidationError as exc:
+        raise HTTPException(400, str(exc))
+    except ConcessionNotFoundError as exc:
+        raise HTTPException(404, str(exc))
+    except ConcessionConflictError as exc:
+        raise HTTPException(409, str(exc))
+    return {"success": True, "data": result}
+
+
+@router.post("/concessions/right-to-education")
+async def set_right_to_education_route(request: Request,
+                                       user: dict = Depends(require_finance_profile)):
+    db = get_db()
+    body = await request.json()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_set_right_to_education(db, actor_ctx, body)
+    except ConcessionValidationError as exc:
+        raise HTTPException(400, str(exc))
+    except ConcessionNotFoundError as exc:
+        raise HTTPException(404, str(exc))
+    return {"success": True, "data": result}
+
+
+@router.post("/late-fine/calculate")
+async def calculate_late_fine_route(request: Request,
+                                    user: dict = Depends(require_finance_profile)):
+    """What a child owes in late fines, by the school's rule and not the old supplier's."""
+    body = await request.json()
+    try:
+        result = svc_assess_quarters(
+            body.get("quarters") or [],
+            session_start_year=int(body.get("session_start_year") or 2026),
+            as_of=body.get("as_of"),
+        )
+    except (LateFineError, KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(400, str(exc))
+    return {"success": True, "data": result}
 
 
 @router.get("/discount-summary")

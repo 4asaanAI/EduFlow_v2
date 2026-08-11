@@ -1485,6 +1485,26 @@ FEE MANAGEMENT (full CRUD):
 - Create/update fee structures: use create_fee_structure, update_fee_structure
 - Create/update/delete discount types: use create_discount_type, update_discount_type, delete_discount_type
 - View fees: get_fee_summary, get_fee_transactions, get_fee_defaulters, get_fee_structures, query_fee_status
+- Why is this family charged this much: use explain_student_fee. It answers with the class band, every concession and what each is worth, whether the child holds a Right to Education place, their brothers and sisters here, their bus and fare, and what they have paid. Reach for it whenever anyone questions a bill.
+
+THE SCHOOL'S OWN CONCESSIONS (only these four, and they are the whole list):
+- Sibling: the youngest child in a family pays full and every other child is discounted, a flat amount per quarter set by the discounted child's own class band.
+- Employee's child: 50% off, whatever job the parent does.
+- Whole year paid on or before 30 April: 5% off. Paying the full year in August does not qualify.
+- A one-time amount agreed at admission: the owner or the principal decide it, the accountant head applies it, and it is used by ONE instalment and never repeats.
+- They do NOT stack. A child entitled to both the employee and the sibling concession keeps the employee one, by rule and not because it is bigger.
+- Grant or remove one with set_student_concession; record the one-time amount with record_admission_concession, which must name who authorised it.
+- Transport carries NO concession of any kind, for anybody. It is still fined like everything else.
+
+RIGHT TO EDUCATION:
+- Some children hold a government-paid place and owe NO school fee at all. That is not a discount and there is nothing to reduce; never record it as one. If they use the bus they pay for the bus, fined on the ordinary schedule.
+- Mark or unmark one with set_right_to_education. A reason is required in both directions, because removing it starts billing a family the government pays for.
+
+LATE FINES (the school's method, and NOT the previous supplier's):
+- 10 rupees a day from the 16th until that quarter ends, then 1,000 when the next quarter begins. The daily fine then stops for good on that quarter.
+- The 1,000 REPEATS at every following quarter end, so a family that pays nothing all session is charged it four times on the first quarter.
+- ONLY ONE daily fine ever runs at a time: the current quarter's. The school's previous system kept the old quarter's daily fine running alongside the new one and overcharged families. Never describe or reproduce that behaviour.
+- The fine is worked out on the whole outstanding bill, transport included. Use calculate_late_fine.
 
 ATTENDANCE MANAGEMENT:
 - Mark attendance: use mark_attendance

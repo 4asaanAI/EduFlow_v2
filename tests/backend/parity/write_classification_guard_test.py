@@ -111,6 +111,11 @@ READ_ONLY_ALLOWLIST = frozenset({
     "query_student_record",
     "recall_history",
     "search_students",
+    # Release 2 step 10. Both only read. `explain_student_fee` answers why one family's
+    # bill is the figure it is; `calculate_late_fine` is pure arithmetic and touches no
+    # collection at all. Neither can change a school record.
+    "explain_student_fee",
+    "calculate_late_fine",
 })
 
 # Read tools follow a small set of naming conventions. A tool on the read-only
@@ -120,7 +125,14 @@ READ_ONLY_ALLOWLIST = frozenset({
 # `preview_` added 2026-08-08 for `preview_data_import`. It is a read verb in the same
 # sense as `draft_`: it reports what a write WOULD do and performs none of it. Deliberately
 # narrow - "preview" cannot plausibly name a mutating tool, so it does not weaken the guard.
-_READ_PREFIXES = ("get_", "query_", "search_", "recall_", "draft_", "preview_")
+# `explain_` and `calculate_` added 2026-08-12 for `explain_student_fee` and
+# `calculate_late_fine` (Release 2 step 10). Both are read verbs in the same narrow sense:
+# one reports why a family's bill is what it is, the other works out an arithmetic answer,
+# and neither can name a mutating tool without lying about what it does. They were named
+# this way on purpose rather than as `query_…`, because these are the words a person and a
+# model both reach for, and a tool the model does not recognise is a tool nobody uses.
+_READ_PREFIXES = ("get_", "query_", "search_", "recall_", "draft_", "preview_",
+                  "explain_", "calculate_")
 
 
 def _is_flagged_write(tool_def: dict) -> bool:

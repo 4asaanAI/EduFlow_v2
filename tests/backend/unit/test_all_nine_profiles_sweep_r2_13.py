@@ -251,13 +251,20 @@ def test_only_leadership_reaches_the_private_leadership_tools():
 # A number here moving is not a test failure to be silenced. It means somebody's
 # access changed. If you meant it, edit the number and say why in the commit message
 # and in PROGRESS.md. If you did not, you have found a defect.
+# Release 2 step 10, 2026-08-12: +5 tools and +3 writes for the owner, the principal and
+# the accountant head, and NOBODY else. They are the school's own fee work made askable in
+# words: explain_student_fee and calculate_late_fine (reads), and set_student_concession,
+# record_admission_concession and set_right_to_education (writes, each behind a confirm
+# card). All five are in FINANCE_TOOL_NAMES by name, which is why the management head and
+# the five dormant profiles are unchanged: every one of them either names a rupee figure on
+# a family's bill or decides whether one is owed.
 EXPECTED_REACH = {
-    "owner":          (155, 100),
-    "principal":      (155, 100),
+    "owner":          (160, 103),
+    "principal":      (160, 103),
     # 56/31 until 2026-08-11. +1 tool, +1 write: update_staff, named in
     # PROFILE_MATRIX["accountant"]["extra_tools"], scoped by the SERVICE to salary
     # only (Abhimanyu, relaying Aman's and Adesh's instruction).
-    "accountant":     (57, 32),
+    "accountant":     (62, 35),
     "management":     (98, 59),
     "transport_head": (28, 0),
     "receptionist":   (28, 0),

@@ -184,6 +184,14 @@ WRITE_TOOL_REQUIRED_PARAMS = {
     # send with either one guessed reaches the wrong families on the wrong channel.
     "send_parent_message": ("channel", "audience"),
     "import_data_file": ("file_id",),
+    # Release 2 step 10. Each of these names a rupee figure on a family's bill or
+    # decides whether one is owed, so none of them may be called on a guessed subject.
+    # `authorised_by` is required because the owner or the principal decide a one-time
+    # concession and the accountant head applies it; `reason` because taking a Right to
+    # Education place off starts billing a family the government pays for.
+    "set_student_concession": ("student_id", "concession"),
+    "record_admission_concession": ("student_id", "amount", "authorised_by"),
+    "set_right_to_education": ("student_id", "reason"),
     "create_message_template": ("name", "channel", "body"),
     "update_message_template": ("template_id",),
     "delete_message_template": ("template_id",),

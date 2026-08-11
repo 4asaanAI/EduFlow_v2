@@ -30,6 +30,10 @@ PARITY_CORPUS = {
     "initiate_substitution": "substitution_parity_test.py",
     "record_fee_payment": "fees_parity_test.py",
     "apply_discount": "discount_parity_test.py",
+    # Release 2 step 10 - the school's own concessions, through both doors.
+    "set_student_concession": "concession_parity_test.py",
+    "record_admission_concession": "concession_parity_test.py",
+    "set_right_to_education": "concession_parity_test.py",
     "award_house_points": "house_points_parity_test.py",
     "assign_followup": "incident_parity_test.py",
     "add_thread_entry": "incident_parity_test.py",

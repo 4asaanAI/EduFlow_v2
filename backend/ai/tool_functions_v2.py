@@ -75,6 +75,16 @@ from services.announcement_service import (
     AnnouncementValidationError,
 )
 from services.contact_log_service import log_contact_event, ContactLogValidationError
+from services.student_concession_service import (
+    ConcessionConflictError,
+    ConcessionNotFoundError,
+    ConcessionValidationError,
+    explain_student_fee as svc_explain_student_fee,
+    record_admission_concession as svc_record_admission_concession,
+    set_concession as svc_set_concession,
+    set_right_to_education as svc_set_right_to_education,
+)
+from services.late_fine_service import LateFineError, assess_quarters as svc_assess_quarters
 from services.student_service import (
     create_student as svc_create_student,
     update_student as svc_update_student,
@@ -2001,6 +2011,96 @@ async def tool_update_staff(params: dict, user: dict, scope: dict = None) -> dic
 
 
 # ──────────────── Epic K.1: fee-config CRUD (Owner + Principal only) ─────────────
+
+
+# ── The school's concessions and its late fine, through Flo (Release 2 step 10) ──
+# Every one of these is a thin adapter over the SAME service function the matching REST
+# route calls, so what the office can do on a screen it can also just ask for. That is
+# the point of this product rather than a nicety: the chat is the difference between
+# this and an ordinary school ERP.
+
+async def tool_explain_student_fee(params: dict, user: dict, scope: dict = None) -> dict:
+    if not params.get("student_id"):
+        return {"success": False, "denied": False, "data": None, "meta": {"count": 0},
+                "message": "student_id is required."}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_explain_student_fee(db, actor_ctx, params)
+    except ConcessionNotFoundError:
+        return _empty_result("No student with that id.")
+    return {"success": True, "denied": False, "data": result,
+            "meta": {"count": 1},
+            "message": "Everything that decides this child's fee."}
+
+
+async def tool_set_student_concession(params: dict, user: dict, scope: dict = None) -> dict:
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_set_concession(db, actor_ctx, params)
+    except ConcessionNotFoundError:
+        return _empty_result("No student with that id.")
+    except ConcessionValidationError as e:
+        return {"success": False, "message": str(e)}
+    word = "now applies to" if result["granted"] else "no longer applies to"
+    return {"success": True, "data": result,
+            "message": f"The {result['concession'].replace('_', ' ')} concession {word} this child."}
+
+
+async def tool_record_admission_concession(params: dict, user: dict, scope: dict = None) -> dict:
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_record_admission_concession(db, actor_ctx, params)
+    except ConcessionNotFoundError:
+        return _empty_result("No student with that id.")
+    except ConcessionValidationError as e:
+        return {"success": False, "message": str(e)}
+    except ConcessionConflictError as e:
+        return {"success": False, "message": str(e)}
+    return {"success": True, "data": result,
+            "message": (f"Recorded a one-time concession of "
+                        f"{result['admission_discount']['amount']:,.0f}, authorised by "
+                        f"{result['admission_discount']['authorised_by']}. It applies to one "
+                        "instalment and cannot repeat.")}
+
+
+async def tool_set_right_to_education(params: dict, user: dict, scope: dict = None) -> dict:
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_set_right_to_education(db, actor_ctx, params)
+    except ConcessionNotFoundError:
+        return _empty_result("No student with that id.")
+    except ConcessionValidationError as e:
+        return {"success": False, "message": str(e)}
+    message = ("This child holds a government-paid place and owes no school fee at all. "
+               "The bus, if they use it, is still charged and fined normally."
+               if result["holds_place"] else
+               "This child no longer holds a Right to Education place and will be billed "
+               "school fees from the next charge raised.")
+    return {"success": True, "data": result, "message": message}
+
+
+async def tool_calculate_late_fine(params: dict, user: dict, scope: dict = None) -> dict:
+    try:
+        result = svc_assess_quarters(
+            params.get("quarters") or [],
+            session_start_year=int(params.get("session_start_year") or 2026),
+            as_of=params.get("as_of"),
+        )
+    except (LateFineError, KeyError, TypeError, ValueError) as e:
+        return {"success": False, "denied": False, "data": None,
+                "meta": {"count": 0}, "message": str(e)}
+    running = result["daily_running"]
+    return {"success": True, "denied": False, "data": result,
+            "meta": {"count": len(result["quarters"])},
+            "message": (f"{result['total']:,.0f} in late fines. "
+                        + (f"Only {running.upper()} is still gathering the daily 10; "
+                           "an earlier quarter's daily fine stops when its quarter ends."
+                           if running else
+                           "No daily fine is running."))}
 
 
 async def tool_create_fee_structure(params: dict, user: dict, scope: dict = None) -> dict:
@@ -5456,6 +5556,101 @@ TOOL_REGISTRY = {
             "note": {"type": "string", "description": "Contact note"},
         },
     },
+    # ── Release 2 step 10: the fee work of steps 5 to 9, askable in words ──
+    # Same service functions as /api/fees/concessions/* and /api/fees/late-fine/calculate,
+    # pinned by tests/backend/parity/concession_parity_test.py.
+    "explain_student_fee": {
+        "fn": tool_explain_student_fee,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "accountant", "accounts"],
+        "dispatch_type": "read",
+        "description": (
+            "Why one child's fee is the figure it is. Returns the class band, every "
+            "concession and what each is worth, whether the child holds a government-paid "
+            "Right to Education place, their brothers and sisters in the school, their bus "
+            "and fare, and everything they have paid. Use this whenever anyone asks why a "
+            "family is being charged what they are being charged."
+        ),
+        "params_schema": {
+            "student_id": {"type": "string", "description": "Student ID"},
+            "installment_code": {"type": "string", "description": "Optional quarter: q1, q2, q3 or q4. Default q1."},
+        },
+    },
+    "set_student_concession": {
+        "fn": tool_set_student_concession,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "accountant", "accounts"],
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "description": (
+            "Turn a recurring concession on or off for one child: `employee_child` (50% "
+            "for the child of any employee) or `sibling` (a flat amount per quarter by the "
+            "child's own class band; the youngest child in a family always pays full). "
+            "They do not stack: a child entitled to both keeps the employee one."
+        ),
+        "params_schema": {
+            "student_id": {"type": "string", "description": "Student ID"},
+            "concession": {"type": "string", "description": "employee_child or sibling"},
+            "granted": {"type": "boolean", "description": "true to grant, false to remove"},
+        },
+    },
+    "record_admission_concession": {
+        "fn": tool_record_admission_concession,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "accountant", "accounts"],
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "description": (
+            "Record the one-time amount agreed with a family at admission. It must name "
+            "who authorised it, because the owner or the principal decide these and the "
+            "accountant head applies them. It is used by one instalment and can never "
+            "repeat in a later quarter."
+        ),
+        "params_schema": {
+            "student_id": {"type": "string", "description": "Student ID"},
+            "amount": {"type": "number", "description": "The agreed amount in rupees"},
+            "authorised_by": {"type": "string", "description": "Who agreed it, by name"},
+            "note": {"type": "string", "description": "Optional reason"},
+        },
+    },
+    "set_right_to_education": {
+        "fn": tool_set_right_to_education,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "accountant", "accounts"],
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "description": (
+            "Mark or unmark a government-paid Right to Education place. This is NOT a "
+            "discount: the child owes no school fee at all. If they use the bus they pay "
+            "for the bus, fined on the ordinary schedule. A reason is required in both "
+            "directions, because removing it starts billing a family the government pays "
+            "for."
+        ),
+        "params_schema": {
+            "student_id": {"type": "string", "description": "Student ID"},
+            "holds_place": {"type": "boolean", "description": "true to mark, false to remove"},
+            "reason": {"type": "string", "description": "Required, in both directions"},
+        },
+    },
+    "calculate_late_fine": {
+        "fn": tool_calculate_late_fine,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal", "accountant", "accounts"],
+        "dispatch_type": "read",
+        "description": (
+            "Work out late fines the school's way: 10 a day from the 16th until the "
+            "quarter ends, then 1,000 when the next quarter begins, and that 1,000 again "
+            "at every following quarter end. Only ONE daily fine ever runs at a time, "
+            "which is where the school's previous system is wrong and overcharges "
+            "families. The fine is worked out on the whole outstanding bill, transport "
+            "included."
+        ),
+        "params_schema": {
+            "quarters": {"type": "array", "description": "[{quarter: 'q1', outstanding_amount: 9750, settled_on: null}]"},
+            "as_of": {"type": "string", "description": "The date to work it out at, YYYY-MM-DD"},
+            "session_start_year": {"type": "number", "description": "The April the session started, default 2026"},
+        },
+    },
     "apply_discount": {
         "fn": tool_apply_discount,
         "roles": ["owner", "admin"],
@@ -6789,6 +6984,12 @@ FINANCE_TOOL_NAMES = frozenset({
     "get_fee_sync_status", "create_legal_entity", "set_default_legal_entity",
     "delete_legal_entity", "create_retail_product", "delete_retail_product",
     "open_pos_shift", "close_pos_shift", "post_pos_sale", "post_pos_return",
+    # Release 2 step 10. All five are finance: every one of them either names a rupee
+    # figure on a family's bill or decides whether one is owed. Classified here BY NAME
+    # rather than left to the `else` at the bottom of this module, which would drop them
+    # on the management head by default and reopen the money leaks R2-2 closed.
+    "explain_student_fee", "set_student_concession", "record_admission_concession",
+    "set_right_to_education", "calculate_late_fine",
 })
 
 SHARED_LOOKUP_TOOL_NAMES = frozenset({
