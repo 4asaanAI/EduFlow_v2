@@ -190,3 +190,24 @@ def test_nobody_below_the_principal_can_read_the_digest(client, fake_db, sub_cat
 def test_a_teacher_cannot_read_the_digest(client, fake_db):
     headers = _bearer({"user_id": "d-t", "role": "teacher", "name": "T"})
     assert client.get("/api/audit-log/daily-digest", headers=headers).status_code == 403
+
+
+def test_somebody_with_a_login_but_no_staff_profile_is_still_named(client, fake_db):
+    # Checked against the live school records on 2026-08-11: Sonu's and Lalit's accounts
+    # exist in `auth_users` and have NO `users` record at all. A digest reading only
+    # `users` would have told Aman that "Somebody no longer on the platform" made forty
+    # changes, about the two people he had just handed credentials to.
+    fake_db.auth_users.docs.append({
+        "id": "auth-sonu", "schoolId": SCHOOL, "username": "sonu.ruhal",
+        "user_info": {"id": "u-login-only", "name": "Sonu Ruhal",
+                      "role": "admin", "sub_category": "accountant"},
+    })
+    _row(fake_db, changed_by="u-login-only")
+
+    data = client.get("/api/audit-log/daily-digest", headers=_owner()).json()["data"]
+
+    assert data["by_person"][0]["name"] == "Sonu Ruhal"
+    assert "Sonu Ruhal" in data["text"]
+    fake_db.auth_users.docs[:] = [
+        d for d in fake_db.auth_users.docs if d.get("id") != "auth-sonu"
+    ]

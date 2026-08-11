@@ -88,6 +88,42 @@ def _since(hours: int, now: datetime) -> str:
     return (now - timedelta(hours=hours)).isoformat()
 
 
+async def _resolve_names(db, actor_ctx, actor_ids) -> Dict[str, str]:
+    """Turn the ids in the audit log into names people recognise.
+
+    Reads BOTH `users` and `auth_users`, and that is not belt-and-braces. Checked
+    against the live school records on 2026-08-11: Sonu's and Lalit's accounts exist in
+    `auth_users` and have NO `users` record at all. A digest that read only `users`
+    would have told Aman that "Somebody no longer on the platform" made 40 changes,
+    about the two people he had just handed credentials to.
+
+    Everyone who can change anything has a login, so `auth_users` is the reliable half.
+    `users` is read first because it is where a full staff profile lives.
+    """
+    if not actor_ids:
+        return {}
+    names: Dict[str, str] = {}
+    people = await db.users.find(
+        scoped_query({"id": {"$in": actor_ids}}, branch_id=actor_ctx.branch_id),
+        {"_id": 0, "id": 1, "name": 1},
+    ).to_list(len(actor_ids))
+    for person in people:
+        if person.get("id") and person.get("name"):
+            names[person["id"]] = person["name"]
+
+    still_unknown = [i for i in actor_ids if i not in names]
+    if still_unknown:
+        logins = await db.auth_users.find(
+            {"schoolId": actor_ctx.school_id, "user_info.id": {"$in": still_unknown}},
+            {"_id": 0, "user_info": 1},
+        ).to_list(len(still_unknown))
+        for row in logins:
+            info = row.get("user_info") or {}
+            if info.get("id") and info.get("name"):
+                names[info["id"]] = info["name"]
+    return names
+
+
 async def build_daily_digest(db, actor_ctx, hours: int = 24) -> Dict[str, Any]:
     """The last day's activity, grouped by person and by kind.
 
@@ -106,13 +142,7 @@ async def build_daily_digest(db, actor_ctx, hours: int = 24) -> Dict[str, Any]:
     # Who did what. Names are resolved in one query rather than one per row: the audit
     # log is the highest-volume collection on the platform and an N+1 here would be felt.
     actor_ids = sorted({r.get("changed_by") for r in rows if r.get("changed_by")})
-    names: Dict[str, str] = {}
-    if actor_ids:
-        people = await db.users.find(
-            scoped_query({"id": {"$in": actor_ids}}, branch_id=actor_ctx.branch_id),
-            {"_id": 0, "id": 1, "name": 1, "role": 1, "sub_category": 1},
-        ).to_list(len(actor_ids))
-        names = {p["id"]: p.get("name") or "Somebody" for p in people if p.get("id")}
+    names: Dict[str, str] = await _resolve_names(db, actor_ctx, actor_ids)
 
     by_person: Dict[str, Dict[str, Any]] = {}
     by_area: Dict[str, int] = {}

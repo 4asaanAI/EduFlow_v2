@@ -215,9 +215,16 @@ async def _main() -> int:
     parser.add_argument("--rollback", help="path to a rollback file written by a previous --apply")
     args = parser.parse_args()
 
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from database import get_db  # imported late so --help works without a DB
+    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    sys.path.insert(0, os.path.join(repo_root, "backend"))
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(os.path.join(repo_root, "backend", ".env"))
+    except ImportError:
+        pass
+    from database import connect_db, get_db  # imported late so --help works without a DB
 
+    await connect_db()
     db = get_db()
 
     if args.rollback:
