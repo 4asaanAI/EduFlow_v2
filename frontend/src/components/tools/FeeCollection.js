@@ -615,7 +615,21 @@ export default function FeeCollection() {
 
       <div className="fee-section-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: 14, marginBottom: 18 }}>
         <section style={panelStyle}>
-          <h2 style={panelTitle}><Percent size={16} />Discount type</h2>
+          <h2 style={panelTitle}><Percent size={16} />One-off discount type</h2>
+          {/* R2 audit finding 5, 2026-08-12. This section is the OLD hand-typed
+              mechanism, and the school's four real concessions are not in it. Somebody
+              looking here would conclude the sibling and employee concessions do not
+              exist, or worse, re-type them here, where the figure is fixed and would be
+              wrong next quarter. Saying which is which is the fix; the section itself is
+              still needed for genuine one-offs. */}
+          <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 10, lineHeight: 1.5 }}>
+            For a one-off amount you type in yourself. <strong>The school&apos;s four
+            standing concessions do not belong here:</strong> the sibling and
+            employee&apos;s child concessions, the 5% for paying the year by 30 April and
+            the one-time amount agreed at admission all work themselves out each quarter.
+            Set those on the child&apos;s own record in the School Directory, or just ask
+            Flo. Typing one in here fixes the figure and it will be wrong next quarter.
+          </div>
           <input value={discountTypeForm.name} onChange={e => setDiscountTypeForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Discount name" style={inputStyle} />
           <div style={twoCol}>
             <input value={discountTypeForm.value} onChange={e => setDiscountTypeForm(prev => ({ ...prev, value: e.target.value }))} placeholder="Value" type="number" style={inputStyle} />

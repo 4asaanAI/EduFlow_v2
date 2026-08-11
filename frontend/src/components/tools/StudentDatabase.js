@@ -10,6 +10,10 @@ import {
   getAllClasses,
   getStudent,
   getStudentFeeStatus,
+  explainStudentFee,
+  setStudentConcession,
+  recordAdmissionConcession,
+  setRightToEducation,
   getStudentEnrolmentSummary,
   getStudentStrengthStats,
   getStudents,
@@ -507,10 +511,46 @@ function DetailPanel({ studentId, onClose, onEdit, canManage, canKeepNotes }) {
   // `{student_id, status}` and nothing else, for every caller, so there is no figure
   // here to leak.
   const [feeStatus, setFeeStatus] = useState(null);
+  // R2 audit, 2026-08-12. The concessions, the Right to Education mark and the fee band
+  // existed on the platform and Flo could explain them, while the screens showed none of
+  // it. A rule nobody can see on the record is a rule the office cannot check. The three
+  // finance desks get this row; every other profile is refused the route and simply does
+  // not see it, exactly like the fee status row above.
+  const [feeExplain, setFeeExplain] = useState(null);
+  // R2 audit finding 6, 2026-08-12. Flo could grant a concession and no screen could,
+  // which is backwards for this platform: the screen is where the office works. These
+  // three controls call the same service Flo's tools call, so the two doors cannot give
+  // different answers. Only the three finance desks are allowed the routes; for anyone
+  // else `feeExplain` is null and none of this renders.
+  const [busy, setBusy] = useState('');
+  const [problem, setProblem] = useState('');
+  const [oneTime, setOneTime] = useState({ open: false, amount: '', authorised_by: '' });
+
+  const reloadFees = useCallback(() => {
+    explainStudentFee(studentId)
+      .then(res => { if (res?.success) setFeeExplain(res.data || null); })
+      .catch(() => {});
+  }, [studentId]);
+
+  async function runFeeChange(label, call) {
+    setBusy(label);
+    setProblem('');
+    try {
+      const res = await call();
+      if (res?.success) reloadFees();
+      else setProblem(res?.detail || res?.message || 'That did not go through.');
+    } catch {
+      setProblem('That did not go through.');
+    }
+    setBusy('');
+  }
 
   useEffect(() => {
     setLoading(true);
     setFeeStatus(null);
+    setFeeExplain(null);
+    setProblem('');
+    setOneTime({ open: false, amount: '', authorised_by: '' });
     getStudent(studentId).then(res => {
       if (res.success) setData(res.data);
       setLoading(false);
@@ -519,6 +559,9 @@ function DetailPanel({ studentId, onClose, onEdit, canManage, canKeepNotes }) {
     // (a teacher, say) still gets the whole record, just without the row.
     getStudentFeeStatus(studentId)
       .then(res => { if (res?.success) setFeeStatus(res.data?.status || null); })
+      .catch(() => {});
+    explainStudentFee(studentId)
+      .then(res => { if (res?.success) setFeeExplain(res.data || null); })
       .catch(() => {});
   }, [studentId]);
 
@@ -591,6 +634,164 @@ function DetailPanel({ studentId, onClose, onEdit, canManage, canKeepNotes }) {
                 <InfoRow label="Brothers / sisters here" value={data.siblings.join(', ')} mono />
               )}
             </Section>
+
+            {/* What this family is actually charged, and why. Only the three finance
+                desks are allowed the route behind this, so for everybody else the whole
+                section is simply absent rather than showing a refusal. */}
+            {feeExplain && (
+              <Section title="Fees, and why">
+                {feeExplain.right_to_education ? (
+                  <InfoRow
+                    label="School fee"
+                    value="None. This child holds a government-paid Right to Education place."
+                  />
+                ) : (
+                  <>
+                    <InfoRow
+                      label="Class fee"
+                      value={feeExplain.band?.quarterly_amount
+                        ? `₹${feeExplain.band.quarterly_amount.toLocaleString('en-IN')} a quarter (₹${feeExplain.band.annual_amount.toLocaleString('en-IN')} a year)`
+                        : 'No fee structure is loaded for this class yet'}
+                    />
+                    {feeExplain.concessions?.lines?.length > 0 ? (
+                      feeExplain.concessions.lines.map((line, i) => (
+                        <InfoRow
+                          key={i}
+                          label={line.label}
+                          value={line.amount
+                            ? `-₹${line.amount.toLocaleString('en-IN')} · ${line.why}`
+                            : line.why}
+                        />
+                      ))
+                    ) : (
+                      <InfoRow label="Concessions" value="None" />
+                    )}
+                    {feeExplain.concessions?.total > 0 && (
+                      <InfoRow
+                        label="Payable"
+                        value={`₹${feeExplain.concessions.net.toLocaleString('en-IN')} a quarter`}
+                      />
+                    )}
+                  </>
+                )}
+                {feeExplain.transport?.uses_the_bus && (
+                  <InfoRow
+                    label="School bus"
+                    value={`${feeExplain.transport.route || 'route not recorded'}${
+                      feeExplain.transport.monthly_fare
+                        ? ` · ₹${feeExplain.transport.monthly_fare.toLocaleString('en-IN')} a month, 11 months (no June)`
+                        : ''}`}
+                  />
+                )}
+                <InfoRow
+                  label="Paid so far"
+                  value={`₹${(feeExplain.total_paid || 0).toLocaleString('en-IN')}`}
+                />
+
+                {/* The four concessions the school gives, and nothing else. Each button
+                    calls the same service Flo calls. The wording says what the school
+                    says: the youngest child pays full, and the employee one wins. */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                  {[
+                    ['employee_child', "Employee's child (50%)"],
+                    ['sibling', 'Sibling concession'],
+                  ].map(([key, label]) => {
+                    const on = feeExplain.concessions?.lines?.some(
+                      l => l.rule === key && l.amount > 0
+                    );
+                    return (
+                      <Btn
+                        key={key}
+                        variant="secondary"
+                        disabled={!!busy || feeExplain.right_to_education}
+                        title={feeExplain.right_to_education
+                          ? 'This child owes no school fee, so there is nothing to reduce'
+                          : `${on ? 'Remove' : 'Give'} the ${label.toLowerCase()}`}
+                        onClick={() => runFeeChange(key, () => setStudentConcession({
+                          student_id: data.id, concession: key, granted: !on,
+                        }))}
+                      >
+                        {on ? `Remove ${label}` : `Give ${label}`}
+                      </Btn>
+                    );
+                  })}
+                  <Btn
+                    variant="secondary"
+                    disabled={!!busy}
+                    title="A government-paid place. Not a discount: no school fee applies at all."
+                    onClick={() => {
+                      const reason = window.prompt(
+                        feeExplain.right_to_education
+                          ? 'Why is this child no longer on a Right to Education place? They will be billed school fees from the next bill raised.'
+                          : 'Why does this child hold a Right to Education place? (for the record)'
+                      );
+                      if (!reason) return;
+                      runFeeChange('rte', () => setRightToEducation({
+                        student_id: data.id,
+                        holds_place: !feeExplain.right_to_education,
+                        reason,
+                      }));
+                    }}
+                  >
+                    {feeExplain.right_to_education
+                      ? 'Remove Right to Education place'
+                      : 'Mark Right to Education place'}
+                  </Btn>
+                  {!feeExplain.concessions?.lines?.some(l => l.rule === 'admission_one_time') && (
+                    <Btn
+                      variant="secondary"
+                      disabled={!!busy || feeExplain.right_to_education}
+                      onClick={() => setOneTime(o => ({ ...o, open: !o.open }))}
+                    >
+                      One-time amount agreed at admission
+                    </Btn>
+                  )}
+                </div>
+
+                {oneTime.open && (
+                  <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ fontSize: 11, color: 'var(--c-muted)' }}>
+                      The school&apos;s owner or the Principal decide this amount and the
+                      accountant head applies it. It is used by one instalment and never
+                      repeats, so record who agreed to it.
+                    </div>
+                    <input
+                      type="number"
+                      placeholder="Amount in rupees"
+                      value={oneTime.amount}
+                      onChange={e => setOneTime(o => ({ ...o, amount: e.target.value }))}
+                      style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-text)', fontSize: 12 }}
+                    />
+                    <input
+                      placeholder="Who agreed it, by name"
+                      value={oneTime.authorised_by}
+                      onChange={e => setOneTime(o => ({ ...o, authorised_by: e.target.value }))}
+                      style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-text)', fontSize: 12 }}
+                    />
+                    <Btn
+                      disabled={!!busy || !oneTime.amount || !oneTime.authorised_by.trim()}
+                      onClick={() => runFeeChange('one-time', async () => {
+                        const res = await recordAdmissionConcession({
+                          student_id: data.id,
+                          amount: Number(oneTime.amount),
+                          authorised_by: oneTime.authorised_by.trim(),
+                        });
+                        if (res?.success) setOneTime({ open: false, amount: '', authorised_by: '' });
+                        return res;
+                      })}
+                    >
+                      Record it
+                    </Btn>
+                  </div>
+                )}
+
+                {problem && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: 'var(--tool-hex-f87171)' }}>
+                    {problem}
+                  </div>
+                )}
+              </Section>
+            )}
 
             {/* Medical */}
             {(data.blood_group || data.height_cm || data.weight_kg || data.medical_notes || data.emergency_contact) && (

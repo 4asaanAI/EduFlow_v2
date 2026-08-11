@@ -80,6 +80,19 @@ _SYNONYMS = {
     "visitor": ("log_visitor",),
     "complaint": ("query_incidents", "update_incident_status"),
     "incident": ("query_incidents", "update_incident_status"),
+    # Release 2 audit, 2026-08-12. The office calls the school's four named concessions
+    # "discounts", and the ranking is name-weighted, so "the employee discount" was
+    # putting `apply_discount` first. That tool types a figure in by hand and would be
+    # wrong the next quarter, which is the whole reason the concessions were built as
+    # rules. These entries point the everyday words at the tool that recomputes.
+    "concession": ("set_student_concession", "explain_student_fee",
+                   "record_admission_concession"),
+    "sibling": ("set_student_concession", "explain_student_fee"),
+    "employee": ("set_student_concession",),
+    "rte": ("set_right_to_education", "explain_student_fee"),
+    "fine": ("calculate_late_fine",),
+    "late": ("calculate_late_fine",),
+    "overdue": ("calculate_late_fine", "get_fee_defaulters"),
 }
 
 _WORD_RE = re.compile(r"[a-z0-9]+")

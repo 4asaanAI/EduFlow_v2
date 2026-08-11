@@ -750,6 +750,42 @@ export async function getStudentFeeStatus(studentId) {
   return res.json();
 }
 
+// R2 step 10. Why one family's bill is the figure it is: band, concessions and what each
+// is worth, Right to Education, brothers and sisters, the bus, and what has been paid.
+// Finance profiles only - the same service Flo's explain_student_fee calls.
+export async function explainStudentFee(studentId) {
+  const res = await apiFetch(`${API}/fees/concessions/${studentId}/explain`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function setStudentConcession(data) {
+  const res = await apiFetch(`${API}/fees/concessions/set`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function recordAdmissionConcession(data) {
+  const res = await apiFetch(`${API}/fees/concessions/admission`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function setRightToEducation(data) {
+  const res = await apiFetch(`${API}/fees/concessions/right-to-education`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function calculateLateFine(data) {
+  const res = await apiFetch(`${API}/fees/late-fine/calculate`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
 export async function createFeeContactLog(data) {
   const res = await apiFetch(`${API}/fees/contact-log`, {
     method: 'POST', headers: getHeaders(), body: JSON.stringify(data),

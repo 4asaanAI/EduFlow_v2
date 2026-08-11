@@ -5586,7 +5586,10 @@ TOOL_REGISTRY = {
             "Turn a recurring concession on or off for one child: `employee_child` (50% "
             "for the child of any employee) or `sibling` (a flat amount per quarter by the "
             "child's own class band; the youngest child in a family always pays full). "
-            "They do not stack: a child entitled to both keeps the employee one."
+            "They do not stack: a child entitled to both keeps the employee one. "
+            "The office often calls these DISCOUNTS - the employee discount, the sibling "
+            "discount. Use this tool for them, NOT apply_discount, which is the generic "
+            "one-off mechanism and does not recompute itself each quarter."
         ),
         "params_schema": {
             "student_id": {"type": "string", "description": "Student ID"},
@@ -7068,6 +7071,18 @@ EXPLICIT_CONFIRMATION_TOOL_NAMES = frozenset({
     "post_pos_return", "correct_fee_transaction", "correct_salary_disbursement",
     "change_accounting_period_status",
 }) | SECURITY_SENSITIVE_TOOL_NAMES
+
+# Release 2 audit, 2026-08-12, recorded because it was nearly decided the other way.
+# The three step 10 writes (`set_student_concession`, `record_admission_concession`,
+# `set_right_to_education`) are deliberately NOT in the set above. They were briefly added
+# on the argument that they decide money on a family's bill and cannot be taken back, and
+# that argument does not survive checking: all three are single-record, all three are
+# reversible by one further call before any quarter is billed, and `apply_discount` - the
+# closest tool this platform already has, which puts a real discount on a real child - has
+# always been an ordinary write. They execute immediately through the same token-bound,
+# transactional, kill-switched, rate-limited and write-ahead-audited dispatcher as every
+# other single-record write. Widening the confirm set past destructive, bulk, reversal and
+# security-sensitive is a design change and belongs to a decision, not to a tidy-up.
 
 for _tool_name, _tool_def in TOOL_REGISTRY.items():
     # R2-5: every entry carries its own name, so a gate holding only the definition can
