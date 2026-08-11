@@ -120,11 +120,11 @@ body and are counted as unreachable by the script, so the route column understat
 | R2-8 | Flo briefs per person | **✅ BUILT, GATE GREEN** | Commit `7770ffd`. All five dormant briefs were wrong in both directions at once. Pinned against measured reach by `test_flo_briefs_match_reality_r2_8.py`. |
 | R2-9 | Certificates and ID cards need approval before printing | **✅ BUILT, GATE GREEN** | Commit `e19a124`. The vocabulary was reconciled first and that is where the real defect was: the screen's word `transfer` was on nobody's approval list, so Transfer Certificates were auto-issued. `backend/services/certificate_types.py` is now the one place that names a document. |
 | R2-10 | Staff messaging: a real colleague directory | **BUILT, GATE GREEN** | Commit `a2cde0d`. The list joined on four hardcoded usernames that do not exist in production. RECONNECTING was diagnosed, not guessed: both sides are configured correctly, so it points at the network path and cannot be confirmed from here. |
-| R2-11 | Rename the two office logins, plus Adesh's display name | **PREPARED, NOT RUN** | `backend/migrations/033_rename_two_office_logins.py` is written, with a dry run by default, a preflight that refuses if anything looks wrong, and a rollback file. **It has not been run and needs Abhimanyu's explicit yes on the day, after the deploy.** Scope shrank 2026-08-10: only `accountant` → `sonu.ruhal` and `management` → `lalit.thomas`. **Aman's login is not touched.** Do not widen it back out. |
+| R2-11 | Rename the two office logins, plus Adesh's display name | **DONE, LIVE** | Applied to the live database 2026-08-11 with Abhimanyu's approval, after a dry run. `accountant` -> `sonu.ruhal`, `management` -> `lalit.thomas`, Adesh's display name fixed from ALL CAPS. Aman's login untouched. **Passwords NOT changed**, so each is still the one tied to the OLD account name. Migration 033, recorded in `_migrations`. |
 | R2-12 | Transport head profile for Chaman Singh, dormant | **✅ BUILT, GATE GREEN** | Defined in the R2-1 matrix, six screens, zero tool domains, zero writes, dormant. Pinned by the R2-13 sweep. Still no login, by design. |
 | R2-13 | The proof: all-nine-profile sweep test | **✅ BUILT, GATE GREEN** | Found a real leak on its first run: all five dormant profiles could read the fee ledger and the action log. Commit `0c1cc9d`. |
 | R2-15 | A daily digest for Aman and Adesh | **BUILT, GATE GREEN** | Commit `a2cde0d`. Gated exactly like the action log. Data plus a plain-text rendering so WhatsApp can be added later without a rewrite. |
-| R2-16 | What data is still missing, and who fills it | NOT STARTED | **Needs Abhimanyu's approval to read the live database.** Counts only, never an export of children's records. Start early: it waits on the school. |
+| R2-16 | What data is still missing, and who fills it | **DONE** | Read from the live database 2026-08-11, counts only, no child named. `what-the-school-still-owes-2026-08-11.md` is the report for Aman. Four lists are entirely empty. Re-run any time with `scripts/missing_data_report.py`. |
 | R2-17 | One page each for Sonu and Lalit | **WRITTEN** | `guide-for-sonu.md` and `guide-for-lalit.md` in this folder. Re-read them if any screen moves before handover. |
 | R2-18 | Same-day undo of your own change | **BUILT, GATE GREEN** | Commit `a2cde0d`. The shape check found EIGHT shapes, most with no previous value at all, so it reads each row and refuses out loud rather than silently doing nothing. |
 | R2-14 | Accounts, handover, go-live | NOT STARTED | Definition of done is in the plan, R2-14. Now eight items, not five. |
@@ -988,3 +988,95 @@ always reach for the same one.
 - **The unreproduced test flake** from the earlier entry has not recurred in any of the
   eight full suite runs since. Still worth chasing if it reappears rather than re-running
   until it passes.
+
+### 2026-08-11 (third run) - the undo made to work, the logins renamed for real, and the school's data measured (Claude, Opus 5)
+
+**Is it safe to hand Sonu and Lalit their credentials? Yes, and their logins have now
+actually changed**, so this is the first entry where the answer involves the live system.
+**Has the CODE shipped? No.** Twenty-six commits on the branch, nothing pushed, nothing
+deployed. Abhimanyu's instruction is that the deploy happens when Release 2 is finished.
+
+**Abhimanyu's four instructions this run**, all done: make the undo work rather than
+refuse; go ahead with the login rename; the fee ledger comes very last; the missing-data
+read is approved.
+
+---
+
+#### THE LOGINS HAVE CHANGED. This is live.
+
+| Was | Is now | Shown as |
+|---|---|---|
+| `accountant` | **`sonu.ruhal`** | Sonu Ruhal (was the generic "Accountant") |
+| `management` | **`lalit.thomas`** | Lalit Thomas (was "Management Desk") |
+| `Adesh` | **unchanged** | Adesh Singh (was "ADESH SINGH", all capitals) |
+| `Aman Litt` | **unchanged, not written to at all** | Aman Litt |
+
+**The passwords were not changed**, deliberately, per decision 11. So each password is
+still the one that goes with the OLD account name. Anyone signing in as `sonu.ruhal` uses
+the password that used to go with `accountant`. Both old logins now resolve to nothing,
+which is what signed those two sessions out.
+
+Dry run first, then applied, verified afterwards by reading the accounts back, rollback
+file saved outside the repository. Migration 033 is recorded in `_migrations` so nobody
+runs it twice. **If it ever has to be undone**, the previous values were exactly
+`accountant` / "Accountant" and `management` / "Management Desk".
+
+#### The undo now works, rather than refusing safely
+
+It had **two** defects, and the first is the one that matters.
+
+1. **It refused every real edit on the platform.** It looked for the collection names
+   `students` and `staff`; the services write `student` and `staff`, singular. So an
+   ordinary edit by Lalit was answered with "only a student or staff record can be put
+   back this way", about a student record. Its own tests passed because they built their
+   audit rows by hand using the plural, which proves only that the test agrees with
+   itself. There are now tests that drive the real services and undo what those services
+   recorded. Those are the ones that would have caught it.
+2. **A spreadsheet import could never be undone, and a comment claimed it could.** The
+   audit row said `{"import_batch": ..., "fields": {field: new_value}}` under a comment
+   reading "carrying the BEFORE values, so an import can be unpicked later". It carried
+   only the new ones. An import is the single thing Lalit does in bulk and was the least
+   reversible thing on the platform. It now records the same shape every other write path
+   uses.
+
+#### What the school still owes, measured from the live records
+
+Full report for Aman: `what-the-school-still-owes-2026-08-11.md`. Counts only, no child
+named anywhere. **Four lists are entirely empty**: fee structures, transport routes,
+vendors and message templates. Every one of the 110 staff is missing a joining date and a
+salary. 787 children have no date of birth, all 1,842 have no blood group, and 11th and
+12th are not split into Commerce and Science.
+
+**The first version of that report was wrong, and it is worth knowing why.** It said all
+1,842 children had no date of birth and no contact number. The platform has stored the
+same thing under different names over time: 1,055 have a date of birth under `dob` and
+1,833 have a number under `phone`. Publishing that would have sent the school hunting for
+1,842 dates of birth it already holds. The report now counts a gap only when the value is
+missing under **every** name, and prints where the records that have it keep it.
+
+#### One defect the live data exposed, which nothing else would have
+
+**Sonu and Lalit have no person record at all, only a login.** The daily digest built the
+previous run resolved names from the person records, so on day one it would have told Aman
+that "Somebody no longer on the platform" made forty changes, about the two people he had
+just handed credentials to. It now reads the login records too, which everybody who can
+change anything has by definition. Pinned by a test.
+
+#### Measured
+
+Nothing moved. No profile gained or lost a screen, a Flo tool or a route this run. Backend
+**2,946 passed / 0 failed / 15 deselected**, frontend **592 passed / 0 failed**, build
+clean with lint.
+
+#### What is left before Release 2 can ship
+
+1. **The fee ledger**, which Abhimanyu has put very last. Eight documents to reconcile
+   first, and the report above shows exactly how much waits on it: every child is on no
+   fee plan and there is one payment in the whole system.
+2. **R2-19**, proving Flo can do the same fee work through the same services. Follows the
+   ledger.
+3. **The deploy**, which Abhimanyu has said happens when everything else is done. It needs
+   the `claude-hosting` IAM user.
+4. **R2-14**, the handover itself.
+
+Everything else in Release 2 is built and green.
