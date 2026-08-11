@@ -206,14 +206,12 @@ export const PROFILE_MATRIX = {
     "person": null,
     "screens": [
       "asset-tracker",
-      "commercial-operations",
       "custom-form-builder",
       "enquiry-register",
       "incident-tracker",
       "parent-message",
       "raise-maintenance",
-      "student-database",
-      "student-transfer"
+      "student-database"
     ],
     "status": "dormant",
     "title": "Front desk",

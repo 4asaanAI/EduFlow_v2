@@ -36,9 +36,34 @@ LEADERSHIP_PROFILES = {
     ("admin", "accountant"),
     ("admin", "management"),
 }
-LEADERSHIP_USERNAMES = {
-    "aman.litt", "adesh.singh", "sonu.ruhal", "lalit.thomas",
-}
+# R2-10, 2026-08-11 — REMOVED, and do not bring it back.
+#
+# This used to be a set of four usernames — aman.litt, adesh.singh, sonu.ruhal,
+# lalit.thomas — matched against `username_lower`. The logins actually in production are
+# `accountant` and `management`, and the other two are whatever they were created as, so
+# the lookup matched NOBODY and the colleague list truthfully reported "0 colleagues
+# available". That is the empty screen in the owner's screenshots.
+#
+# Renaming the logins (R2-11) would have made this work again by accident, which is
+# precisely the wrong reason for it to work: the next employee to join would still have
+# been invisible, and nobody would have known why.
+#
+# The lookup now asks the question the code actually wanted, which is the same question
+# `LEADERSHIP_PROFILES` two lines up already answers: WHO HOLDS THIS JOB. A login name is
+# a way of typing your name in, not a statement of who somebody is.
+#
+# Both document shapes are matched. `auth_users` normally carries the person inside
+# `user_info`, and `routes/auth.py` falls back to a top-level `role` for older records
+# (see `login`), so a lookup that read only one of the two would drop whoever happens to
+# be stored the other way. Every row is checked against LEADERSHIP_PROFILES afterwards
+# regardless, so a loose query cannot widen who appears.
+_LEADERSHIP_SUBS = ["principal", "accountant", "management"]
+LEADERSHIP_ROLE_FILTER = [
+    {"user_info.role": "owner"},
+    {"user_info.role": "admin", "user_info.sub_category": {"$in": _LEADERSHIP_SUBS}},
+    {"role": "owner"},
+    {"role": "admin", "sub_category": {"$in": _LEADERSHIP_SUBS}},
+]
 MAX_MESSAGE_LENGTH = 4000
 MAX_GROUP_NAME_LENGTH = 80
 
@@ -146,7 +171,7 @@ async def _leadership_contacts(db, user: dict) -> list[dict]:
     query = {
         "schoolId": get_school_id(),
         "is_active": {"$ne": False},
-        "username_lower": {"$in": list(LEADERSHIP_USERNAMES)},
+        "$or": LEADERSHIP_ROLE_FILTER,
     }
     if user.get("branch_id"):
         query["user_info.branch_id"] = user["branch_id"]

@@ -333,9 +333,22 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         "screens": _screens(
             "student-database",
             "enquiry-register",
-            "commercial-operations",
             "parent-message",
-            "student-transfer",
+            # NOT 'student-transfer' and NOT 'commercial-operations'. Removed
+            # 2026-08-11 on Abhimanyu's answers to questions 3 and 4 of the staff
+            # profiles draft. Both are takeaways, which is why they were applied while
+            # this profile is still dormant; every OTHER answer about these five
+            # profiles was a grant and waits for its own release.
+            #
+            # Student Transfer is how a Transfer Certificate is issued, and ending a
+            # child's enrolment is not a front-desk decision.
+            #
+            # Commercial Operations is more nuanced: the front desk DOES run the shop
+            # counter, so she is to get the till and nothing else. The screen is one
+            # screen today, covering the till, the school's legal entities and the
+            # commercial reporting, so it has to be split before she can hold half of
+            # it. Until then she holds none of it. Giving her the whole screen to reach
+            # the till would hand the front desk the school's legal-entity records.
             "asset-tracker",
             "incident-tracker",
             "raise-maintenance",

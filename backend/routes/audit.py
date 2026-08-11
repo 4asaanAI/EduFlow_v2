@@ -85,6 +85,78 @@ async def list_audit_log(
     return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
 
 
+@router.get("/daily-digest")
+async def daily_digest(
+    request: Request,
+    hours: int = 24,
+    user: dict = Depends(require_role("owner", "admin")),
+):
+    """R2-15 — the day in one page, for the two people who run the school.
+
+    Gated the same way the action log is: the school's owner and the principal only
+    (Aman's request 10 of 2026-08-06, reconfirmed 2026-08-10). This summarises exactly
+    the rows they can already read one at a time, so anybody else reaching it would be
+    reading the action log through a different door.
+    """
+    from services.actor_context import actor_ctx_from_user
+    from services.daily_digest_service import build_daily_digest, render_digest_text
+
+    if user.get("role") != "owner" and user.get("sub_category") not in AUDIT_READER_SUB_CATEGORIES:
+        raise HTTPException(403, "Forbidden")
+    hours = max(1, min(int(hours or 24), 168))
+
+    db = get_db()
+    digest = await build_daily_digest(db, actor_ctx_from_user(user), hours=hours)
+    return {"success": True, "data": {**digest, "text": render_digest_text(digest)}}
+
+
+# ── R2-18 — same-day undo of your own change ─────────────────────────────────
+#
+# Deliberately in this file and NOT behind `AUDIT_READER_SUB_CATEGORIES`. The action log
+# itself stays with the owner and the principal (Aman's request 10 of 2026-08-06,
+# reconfirmed 2026-08-10), and these two routes do not open it: they show a person only
+# their OWN changes from today and let them put one back. Seeing what you did yourself is
+# not the same as reading the school's action log, and conflating the two would either
+# hand Lalit the log or leave him with no way to correct a typo he is not allowed to
+# delete his way out of.
+
+@router.get("/my-changes-today")
+async def my_changes_today(request: Request, user: dict = Depends(get_current_user)):
+    """Today's changes made by the person asking, each marked reversible or not."""
+    from services.actor_context import actor_ctx_from_user
+    from services.undo_service import list_my_undoable_changes
+
+    db = get_db()
+    result = await list_my_undoable_changes(db, actor_ctx_from_user(user))
+    return {"success": True, "data": result["changes"], "meta": {"count": result["count"]}}
+
+
+@router.post("/my-changes-today/{audit_id}/undo")
+async def undo_my_change(audit_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Put back one of your own changes from today. Refuses with a reason, never silently."""
+    from services.actor_context import actor_ctx_from_user
+    from services.undo_service import (
+        UndoNotFoundError,
+        UndoRefusedError,
+        undo_change,
+    )
+
+    db = get_db()
+    try:
+        result = await undo_change(db, actor_ctx_from_user(user), {"audit_id": audit_id})
+    except UndoNotFoundError:
+        raise HTTPException(404, "That change could not be found")
+    except UndoRefusedError as e:
+        # 422, not 403: the person is allowed to ask, and this particular change cannot
+        # be put back. The message says which, and is written to be read by a person.
+        raise HTTPException(422, str(e))
+    return {"success": True, "data": result}
+
+
+# NOTE: the two R2-18 routes above are declared BEFORE this one deliberately.
+# `/{record_id}` matches any single path segment, so a route registered after it
+# is never reached — `/my-changes-today` was answered by this handler and refused
+# with the action log's own 403. FastAPI matches in declaration order.
 @router.get("/{record_id}")
 @router.get("/record/{record_id}")
 async def get_record_history(
@@ -117,3 +189,4 @@ async def get_record_history(
     async with TimedQuery(collection_name="audit_logs", operation="find", query_shape="record_history"):
         items = await db.audit_logs.find(scoped, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
+

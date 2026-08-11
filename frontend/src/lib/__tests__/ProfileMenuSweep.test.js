@@ -39,7 +39,10 @@ const EXPECTED_SCREEN_COUNT = {
   // money, decision 1). See the named tests below.
   management: 47,
   transport_head: 6,
-  receptionist: 9,
+  // 9 until 2026-08-11. Abhimanyu's answers 3 and 4: Student Transfer and Commercial
+  // Operations both come off the front desk. See the ANSWERS section of
+  // staff-profiles-draft-for-aman-2026-08-10.md.
+  receptionist: 7,
   it_tech: 4,
   maintenance: 3,
   support_staff: 2,

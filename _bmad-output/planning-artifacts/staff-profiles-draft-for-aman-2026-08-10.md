@@ -208,3 +208,81 @@ tell us which one and why, and we will open exactly that and nothing more.
    receptionist does handle the shop" is exactly the kind of answer we need.
 2. We build all five profiles and test them.
 3. Nothing switches on until you tell us to, one release at a time, starting with Chaman.
+
+---
+
+# ANSWERS — given by Abhimanyu on 2026-08-11
+
+**Read this section before the draft above.** Where the two disagree, this wins. All
+twelve questions are answered. (The register elsewhere calls these "the nine questions";
+there were always twelve, across five roles. Corrected here rather than in five places.)
+
+**What was acted on immediately:** only the two answers that TAKE access away from the
+front desk. Everything else is a grant to a profile that is dormant, and Release 2 must
+not be what gives a dormant profile anything. Each is recorded here for its own release.
+
+## 1. Transport head — Chaman Singh
+
+1. **He moves a child between routes on his own.** No approval step. The change is
+   recorded in the action log like any other.
+2. **He arranges vehicle servicing and repairs; Sonu pays.** So at Release 3 he needs the
+   maintenance calendar and the contractors' phone numbers, and **no amount anywhere** —
+   not a quote, not a bill, not a total. That is the narrowest form of the screen and it
+   has to be built that way rather than granted whole.
+
+## 2. Front desk
+
+3. **Student Transfer is removed.** Agreed: issuing a Transfer Certificate is not a
+   front-desk decision. ✅ **Done 2026-08-11.**
+4. **Commercial Operations is removed, but she does run the shop counter.** She gets the
+   till and nothing else: no legal entities, no reporting, no totals. The screen is one
+   screen today and has to be split before she can have the till half, so for now the
+   whole thing is off her list. ✅ **Removal done 2026-08-11; the till-only view is
+   outstanding work for her release.**
+5. **She gets the paid-or-unpaid flag**, the same one Lalit has: cleared or outstanding,
+   never a figure. A grant, so it lands in her release, not this one.
+
+## 3. IT and technical support
+
+6. **IT today is a person from Vedmarg, the school's previous ERP supplier.** It will move
+   to a computer teacher or another school employee. ⚠️ **No IT login is issued while an
+   outside supplier's staff hold the role.** A standing login into a database of 1,876
+   children, held by a competing product's employee, is not a permission question that
+   the platform can answer. When a school employee takes the role, the profile switches
+   on for them.
+7. **The person who raised a ticket confirms it is fixed.** IT marks it done; the teacher
+   who reported the broken projector closes it. A queue that looks clean while the
+   projector is still broken is worse than a long queue.
+
+## 4. Maintenance and upkeep
+
+8. **He can ADD new contractors**, not only see them. This is wider than the draft
+   proposed. Sonu still owns every rupee: adding a contractor is not paying one. A grant,
+   so it lands in the maintenance release.
+9. **Adesh or Aman approves a repair before a contractor is called.** Either of the two,
+   not both — the same shape as the certificate approval built in R2-9, and it should
+   reuse it rather than becoming a second approval system.
+
+## 5. Office helpers and support staff
+
+10. **The profile covers peons and office attendants, cleaning and canteen staff, and
+    guards and gate staff.** **Drivers and conductors are NOT in it** — they get a profile
+    of their own, named as drivers and conductors. ⚠️ **That is a TENTH profile and the
+    platform does not have one today**; it recognises eight admin desks plus the owner.
+    Building it belongs with the transport release.
+11. **Defined now, no logins.**
+12. **No logins for these people at all, for now** (Aman's decision, relayed 2026-08-11).
+    What actually matters for them is their **data**: their record, their attendance and
+    their salary, held correctly in the live database. The profile stays defined purely as
+    a contingency, so that if Aman later asks for it, switching them on is one step rather
+    than another round of decisions. Staff chat therefore does not arise yet.
+
+## What these answers change about the plan
+
+- **Two dormant profiles gained work, none gained access today.** The front desk needs a
+  till-only view of Commercial Operations and the paid-or-unpaid flag. Maintenance needs
+  a contractor-add that touches no money. Transport needs a costless maintenance calendar.
+- **A tenth profile is now on the list**: drivers and conductors.
+- **One thing to carry into R2-16 and the data work**: for support staff the DATA matters
+  more than the login. Their records, attendance and salary need to be right in the live
+  database even though none of them will ever sign in.
