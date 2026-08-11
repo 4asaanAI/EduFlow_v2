@@ -148,3 +148,31 @@ def test_the_management_brief_still_promises_no_rupee_figure():
     assert "never see a rupee figure" in brief
     for name in STEP_10_TOOLS:
         assert name not in brief, f"Lalit's brief offers {name}, which he cannot reach"
+
+
+# ── Release 2 audit finding 8: the owner's daily summary and money ──────────
+
+
+@pytest.mark.parametrize("action,expected", [
+    ("concession_set", "changed a fee concession"),
+    ("admission_concession_recorded", "changed a fee concession"),
+    ("right_to_education_set", "changed a Right to Education place"),
+    ("fee_charges_reworked_after_concession_change",
+     "re-worked a family's bills after a concession changed"),
+])
+def test_the_daily_summary_says_what_happened_in_plain_words(action, expected):
+    # Before this they all read as "changed something", which is a poor way to tell the
+    # school's owner that a family's bill moved.
+    from services.daily_digest_service import _describe_action
+
+    assert _describe_action(action) == expected
+
+
+def test_a_concession_change_counts_as_money_even_though_it_sits_on_the_child():
+    # It is recorded against the student, so by collection alone the owner's money figure
+    # missed it. Deciding a child owes no school fee at all is money by any reading.
+    from services.daily_digest_service import FINANCE_ACTIONS, FINANCE_COLLECTIONS
+
+    assert "student" not in FINANCE_COLLECTIONS
+    for action in ("concession_set", "right_to_education_set"):
+        assert any(word in action for word in FINANCE_ACTIONS)

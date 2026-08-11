@@ -43,6 +43,15 @@ _ACTION_WORDS = [
     ("import", "imported"),
     ("payment", "recorded a payment"),
     ("attendance", "marked attendance"),
+    # R2 audit finding 8, 2026-08-12. These read as "changed something" before, which is
+    # a poor way to tell the school's owner that a family's bill moved. Ordered above the
+    # generic words on purpose: "concession_set" contains no other word in this list, but
+    # "right_to_education_set" would otherwise never match anything at all.
+    # "reworked" sits FIRST of the three: the rework action's own name contains the word
+    # "concession", so the more specific phrase has to be matched before the general one.
+    ("reworked", "re-worked a family's bills after a concession changed"),
+    ("concession", "changed a fee concession"),
+    ("right_to_education", "changed a Right to Education place"),
 ]
 
 # Things the two of them should look at rather than merely count. Each is here because
@@ -66,6 +75,12 @@ FINANCE_COLLECTIONS = {
     "fee_transactions", "fee_structures", "expenses", "payroll", "salaries",
     "discounts", "accounting_periods", "commercial",
 }
+
+# R2 audit finding 8. A concession and a Right to Education place are recorded against the
+# CHILD, so by collection alone they counted as student edits and the owner's money figure
+# missed them entirely. Giving a family a 6,000 concession, or deciding a child owes no
+# school fee at all, is money by any reading. Matched on the action instead.
+FINANCE_ACTIONS = ("concession", "right_to_education")
 
 
 def _describe_action(action: str) -> str:
@@ -175,6 +190,11 @@ async def build_daily_digest(db, actor_ctx, hours: int = 24) -> Dict[str, Any]:
             })
 
     money_changes = sum(count for area, count in by_area.items() if area in FINANCE_COLLECTIONS)
+    money_changes += sum(
+        1 for row in rows
+        if (row.get("entity_type") or row.get("collection") or "") not in FINANCE_COLLECTIONS
+        and any(word in str(row.get("action") or "").lower() for word in FINANCE_ACTIONS)
+    )
 
     return {
         "window_hours": hours,

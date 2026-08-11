@@ -40,6 +40,7 @@ from services.concession_service import (
     employee_child_amount,
     sibling_amount,
 )
+from services.fee_lifecycle_service import recompute_open_charges
 from services.late_fine_service import LateFineError, assess_quarters
 from services.txn_context import session_kwargs as _txn_session_kwargs
 from tenant import scoped_filter
@@ -121,7 +122,11 @@ async def set_concession(db, actor_ctx: ActorContext, params: dict, *, session=N
     )
     await _audit(db, actor_ctx, student_id=student_id, action="concession_set",
                  changes={concession: {"previous": before, "new": granted}})
-    return {"student_id": student_id, "concession": concession, "granted": granted}
+    # A concession that does not reach a bill already raised is a concession the family
+    # never gets. Bills with money against them are never touched and are reported back.
+    reworked = await recompute_open_charges(db, actor_ctx, student_id, session=session)
+    return {"student_id": student_id, "concession": concession, "granted": granted,
+            "bills_reworked": reworked}
 
 
 async def record_admission_concession(db, actor_ctx: ActorContext, params: dict, *, session=None) -> dict:
@@ -172,7 +177,9 @@ async def record_admission_concession(db, actor_ctx: ActorContext, params: dict,
     await _audit(db, actor_ctx, student_id=student_id, action="admission_concession_recorded",
                  changes={"admission_discount": {"previous": existing or None, "new": record}},
                  reason=params.get("note"))
-    return {"student_id": student_id, "admission_discount": record}
+    reworked = await recompute_open_charges(db, actor_ctx, student_id, session=session)
+    return {"student_id": student_id, "admission_discount": record,
+            "bills_reworked": reworked}
 
 
 async def set_right_to_education(db, actor_ctx: ActorContext, params: dict, *, session=None) -> dict:
@@ -208,7 +215,9 @@ async def set_right_to_education(db, actor_ctx: ActorContext, params: dict, *, s
     )
     await _audit(db, actor_ctx, student_id=student_id, action="right_to_education_set",
                  changes={"rte_place": {"previous": before, "new": holds}}, reason=reason)
-    return {"student_id": student_id, "holds_place": holds, "reason": reason}
+    reworked = await recompute_open_charges(db, actor_ctx, student_id, session=session)
+    return {"student_id": student_id, "holds_place": holds, "reason": reason,
+            "bills_reworked": reworked}
 
 
 async def explain_student_fee(db, actor_ctx: ActorContext, params: dict) -> dict:

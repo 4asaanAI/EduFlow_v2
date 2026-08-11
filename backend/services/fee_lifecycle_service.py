@@ -246,3 +246,116 @@ async def generate_charges(db, actor_ctx: ActorContext, structure_id: str, *, in
         "changes": {"created_count": len(created), "skipped_count": skipped}, "created_at": now,
     }, school_id=actor_ctx.school_id, branch_id=actor_ctx.branch_id)
     return {"created_count": len(created), "skipped_count": skipped, "charges": created}
+
+
+# ── Release 2 audit finding 7, 2026-08-12 ─────────────────────────────────────
+#
+# A concession was worked out when a bill was raised, and changing it afterwards left
+# the old figure sitting on the bill. Charge generation skips anything it has already
+# generated, so nothing ever went back and corrected it. The family would have been
+# asked for the wrong amount and nobody would have known until they complained.
+#
+# So every concession change now runs this. It has one hard rule: **a bill that has
+# been paid, even in part, is never touched.** That is a receipt, and rewriting it
+# would rewrite the school's record of what a family was asked for and what they gave.
+# Those are reported back instead, by name, for a person to settle.
+
+# Statuses that mean "raised and not yet settled", so the amount is still a question
+# rather than a record of something that happened.
+_OPEN_STATUSES = {"pending", "unpaid", "overdue"}
+
+
+async def recompute_open_charges(db, actor_ctx: ActorContext, student_id: str, *, session=None) -> dict:
+    """Re-work every unpaid bill for one child after their concessions changed.
+
+    Returns ``{"updated": [...], "cancelled": [...], "left_alone": [...]}`` where
+    ``left_alone`` names the bills that have money against them and were deliberately
+    not touched.
+    """
+    student = await db.students.find_one(
+        scoped_filter({"id": student_id}, actor_ctx.school_id), {"_id": 0}, **_session(session)
+    )
+    if not student:
+        return {"updated": [], "cancelled": [], "left_alone": []}
+
+    charges = await db.fee_transactions.find(
+        scoped_filter({"student_id": student_id}, actor_ctx.school_id), {"_id": 0},
+        **_session(session),
+    ).to_list(2000)
+
+    holds_rte = bool(student.get("rte_place"))
+    updated, cancelled, left_alone = [], [], []
+
+    for charge in charges:
+        head = charge.get("fee_head") or charge.get("fee_type") or ""
+        # Transport is never concessioned and a Right to Education place does not cover
+        # it, so a bus charge is left exactly as it is in every case.
+        if "transport" in head.strip().lower():
+            continue
+        if str(charge.get("status") or "").lower() not in _OPEN_STATUSES:
+            left_alone.append(charge.get("id"))
+            continue
+        if float(charge.get("paid_amount") or 0) > 0:
+            left_alone.append(charge.get("id"))
+            continue
+
+        if holds_rte:
+            # No school fee applies at all. The row is CANCELLED rather than deleted or
+            # set to zero: a zero-rupee bill still reads as something the family owes
+            # nothing on, and a deleted row loses the fact that it was ever raised.
+            await db.fee_transactions.update_one(
+                scoped_filter({"id": charge["id"]}, actor_ctx.school_id),
+                {"$set": {
+                    "status": "cancelled",
+                    "amount": 0,
+                    "cancelled_reason": "the child holds a government-paid Right to "
+                                        "Education place, so no school fee applies",
+                    "cancelled_at": actor_ctx.now_utc().isoformat(),
+                }},
+                **_session(session),
+            )
+            cancelled.append(charge.get("id"))
+            continue
+
+        gross = float(charge.get("gross_amount") if charge.get("gross_amount") is not None
+                      else charge.get("amount") or 0)
+        try:
+            worked = compute_concessions(
+                student,
+                quarterly_amount=gross,
+                installment_code=charge.get("installment_code") or charge.get("fee_period") or "",
+                fee_head=head or "Composite Fee",
+            )
+        except ConcessionRuleError:
+            # An amount the concession table has no value for. Better to leave the bill
+            # exactly as it is and say so than to put a figure on it nobody agreed.
+            left_alone.append(charge.get("id"))
+            continue
+
+        if float(charge.get("amount") or 0) == worked["net"]:
+            continue
+        await db.fee_transactions.update_one(
+            scoped_filter({"id": charge["id"]}, actor_ctx.school_id),
+            {"$set": {
+                "amount": worked["net"],
+                "gross_amount": worked["gross"],
+                "concession_total": worked["total"],
+                "concession_lines": worked["lines"],
+                "reworked_at": actor_ctx.now_utc().isoformat(),
+            }},
+            **_session(session),
+        )
+        updated.append(charge.get("id"))
+
+    if updated or cancelled:
+        await write_audit_doc(db, {
+            "id": str(uuid.uuid4()), "_id": str(uuid.uuid4()), "schoolId": actor_ctx.school_id,
+            "entity_type": "fee_transaction", "entity_id": student_id,
+            "action": "fee_charges_reworked_after_concession_change",
+            "changed_by": actor_ctx.user_id,
+            "changes": {"updated": len(updated), "cancelled": len(cancelled),
+                        "left_alone_because_money_is_against_them": len(left_alone)},
+            "created_at": actor_ctx.now_utc().isoformat(),
+        }, school_id=actor_ctx.school_id, branch_id=actor_ctx.branch_id)
+
+    return {"updated": updated, "cancelled": cancelled, "left_alone": left_alone}
