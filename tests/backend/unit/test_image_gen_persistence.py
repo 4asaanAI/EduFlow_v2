@@ -127,7 +127,10 @@ def test_certificate_denied_for_receptionist_admin(client):
 # expects 403 — and the allowed profiles (owner, principal) each have their own named
 # test below. Deriving the list is the point: NEW-01 happened because a permission
 # widened and a hand-maintained list did not notice.
-_ISSUER_ADMIN_SUBS = frozenset({"principal", "management"})
+# 2026-08-11: the accountant head joins the desks that may REACH these routes. What he
+# may do there is narrower than the principal — see the approval tests in
+# tests/backend/api/test_certificate_approval_r2_9.py.
+_ISSUER_ADMIN_SUBS = frozenset({"principal", "management", "accountant"})
 _NON_ISSUER_ADMIN_SUBS = sorted(
     SUB_CATEGORIES_BY_ROLE["admin"] - _ISSUER_ADMIN_SUBS
 )

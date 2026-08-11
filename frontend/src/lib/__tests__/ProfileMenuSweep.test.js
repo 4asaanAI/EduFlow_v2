@@ -31,7 +31,9 @@ const PROFILE_NAMES = Object.keys(PROFILE_MATRIX);
 const EXPECTED_SCREEN_COUNT = {
   owner: ALL_SCREENS,
   principal: ALL_SCREENS,
-  accountant: 23,
+  // 23 until 2026-08-11; +2 = the certificate and ID-card screens Abhimanyu gave the
+  // accountant head, which he may open and request from but not issue (R2-9).
+  accountant: 25,
   management: 48,
   transport_head: 6,
   receptionist: 9,

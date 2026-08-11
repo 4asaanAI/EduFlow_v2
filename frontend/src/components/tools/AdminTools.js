@@ -649,10 +649,12 @@ const CERT_NEEDS_APPROVAL = new Set(['transfer_certificate', 'transfer', 'tc', '
 // (NEW-01) — office staff who still see these tiles now get a refusal here.
 function explainDownloadFailure(status) {
   if (status === 403) {
-    // D-53 widened the server gate to owner, principal AND accountant
-    // (require_owner_principal_or_accountant). This message still named only two of
-    // the three, so it told the reader to go and ask the wrong people.
-    return 'Only the school owner, the principal or the accounts staff can issue this. Please ask one of them.';
+    // R2-9, 2026-08-11: a 403 here now means one of two things, and both end with the
+    // same instruction, so the message says both rather than guessing which. It used to
+    // say only "you are not allowed", which is now wrong for the office and the accounts
+    // desk: they ARE allowed, once the document has been approved.
+    return 'Only the school owner or the principal can issue this document directly. '
+      + 'Anyone else has to send it for approval first and print it once one of them has approved it.';
   }
   if (status === 429) {
     return "Today's limit for generated documents has been reached. Please try tomorrow.";

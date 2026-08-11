@@ -420,11 +420,14 @@ async def create_cert(request: Request, user: dict = Depends(require_role("admin
 @router.post("/certificates/id-card-request")
 async def create_id_card_request(
     request: Request,
-    # The same three desks that can reach the ID Card Generator screen and the print
-    # route: the owner, the principal and the admin office. Deliberately NOT
-    # `require_role("admin", "owner")`, which is every admin sub_category in the school
-    # and would hand a write route to the five dormant profiles that today have none.
-    user: dict = Depends(require_owner_or_admin_subcategories("principal", "management")),
+    # The same desks that can reach the ID Card Generator screen and the print route:
+    # the owner, the principal, the admin office and (from 2026-08-11) the accountant
+    # head. Deliberately NOT `require_role("admin", "owner")`, which is every admin
+    # sub_category in the school and would hand a write route to the five dormant
+    # profiles that today have none.
+    user: dict = Depends(
+        require_owner_or_admin_subcategories("principal", "management", "accountant")
+    ),
 ):
     """Ask for a batch of student ID cards to be approved before printing.
 

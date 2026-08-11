@@ -85,12 +85,13 @@ test('a refused ID-card download tells the person why, in their own words', asyn
   fireEvent.click(await screen.findByText(/Download 1 ID Cards PDF/i));
 
   const error = await screen.findByTestId('id-card-error');
-  // D-53 widened the server gate to owner, principal AND accountant. The message used
-  // to name only the first two, which sent the reader to ask the wrong people. It must
-  // name all three, or it is telling someone their accounts colleague cannot help them.
+  // R2-9, 2026-08-11: it must name who can issue directly AND say what everybody else
+  // does instead, because the office and the accounts desk are not refused outright —
+  // they send the document for approval. A message that only says "not allowed" sends
+  // them away from work they are entitled to do.
   expect(error).toHaveTextContent(/school owner/i);
   expect(error).toHaveTextContent(/principal/i);
-  expect(error).toHaveTextContent(/accounts/i);
+  expect(error).toHaveTextContent(/approval/i);
   // Not a status code, not a stack trace, not silence.
   expect(error).not.toHaveTextContent(/403|Forbidden|Error:/);
 });

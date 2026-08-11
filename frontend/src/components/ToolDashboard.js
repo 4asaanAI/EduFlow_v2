@@ -110,6 +110,10 @@ const TOOL_SETS = {
   // certificates and ID cards (owner decision 2026-08-04, decision 2).
   admin_accountant: [
     'student-database','fee-tracker','smart-fee-defaulter','fee-collection','accounting-periods','payroll-manager',
+    // Abhimanyu, 2026-08-11: the accountant head hands parents printed documents too.
+    // He opens these two and sends what he makes for approval; the owner or the
+    // principal issues it. Same terms as the admin office (R2-9).
+    'certificate-generator','id-card-generator',
   ],
   admin_management: [
     'student-database','attendance-recorder','certificate-generator','circular-sender',

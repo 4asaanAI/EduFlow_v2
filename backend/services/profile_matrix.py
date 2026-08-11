@@ -135,6 +135,13 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
             "school-database-hub",
             "student-database",
             "data-import",
+            # Abhimanyu, 2026-08-11: the accountant head hands parents printed documents
+            # too, so he gets the same two screens the admin office has. He does NOT get
+            # to issue them: like Lalit he creates a request and waits for the school's
+            # owner or the principal to approve it (R2-9, decision 6). Both of them are
+            # notified, and either can approve.
+            "certificate-generator",
+            "id-card-generator",
             # R2-5 / decision 2: attendance and leave to READ, the vendor records in
             # full, and transport in full until Release 3. Lalit loses the last two.
             "overview-hub",
@@ -181,8 +188,9 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
             "Finance plus the lookups finance needs. Attendance and leave read-only, "
             "the full directory plus his own columns, vendor records in full, and "
             "transport in full until Release 3 — those widenings are R2-5 and are not "
-            "in this table yet. He may create students. He creates certificates and "
-            "waits for approval rather than issuing them."
+            "in this table yet. He may create students. He creates certificates and ID "
+            "cards and waits for approval rather than issuing them (Abhimanyu, "
+            "2026-08-11)."
         ),
     },
     "management": {

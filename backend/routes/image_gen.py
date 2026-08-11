@@ -40,7 +40,17 @@ from services.certificate_types import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/image-gen", tags=["image-gen"])
-require_document_issuer = require_owner_or_admin_subcategories("principal", "management")
+# Who may reach the document routes at all. Reaching them is not the same as being
+# allowed to issue: since R2-9 everyone here except the owner and the principal has to
+# name an approved request before anything prints.
+#
+# Abhimanyu, 2026-08-11: the accountant head is back on this list. He was taken off on
+# 2026-08-08, when reaching the route MEANT issuing the document and the school did not
+# want him doing that unwatched. That is no longer what it means — he creates a request
+# and the owner or the principal approves it — so the reason for excluding him has gone.
+require_document_issuer = require_owner_or_admin_subcategories(
+    "principal", "management", "accountant"
+)
 
 # R9.5 (X9 AC3): per-school, per-kind daily generation cap (abuse guard).
 DAILY_GEN_CAP = 200

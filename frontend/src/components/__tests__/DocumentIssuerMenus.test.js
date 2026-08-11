@@ -7,9 +7,14 @@
  * (the sidebar's flat list, the sidebar's sub-role allow-lists, the tool dashboard,
  * and the ⌘K palette), each with its own copy of the answer.
  *
- * The reviewed profile rule: school owner, admin+principal, and admin+management.
- * Accountant is finance-only. It is restated here in ONE place and every menu is checked
- * against it, so a menu can no longer drift on its own.
+ * The reviewed profile rule: school owner, admin+principal, admin+management and, from
+ * 2026-08-11, admin+accountant. It is restated here in ONE place and every menu is
+ * checked against it, so a menu can no longer drift on its own.
+ *
+ * Being OFFERED these screens is not the same as being allowed to issue the document.
+ * Since R2-9 only the owner and the principal issue directly; the office and the
+ * accounts desk send what they make for approval. That half is pinned on the server, in
+ * tests/backend/api/test_certificate_approval_r2_9.py.
  */
 import { canUseTool, DOCUMENT_ISSUER_TOOLS } from '../../lib/toolPermissions';
 import { TOOL_SETS, OWNER_TOOLS } from '../ToolDashboard';
@@ -27,11 +32,12 @@ const ALLOWED_PROFILES = [
   { id: 'u-owner', role: 'owner', sub_category: 'owner' },
   { id: 'u-principal', role: 'admin', sub_category: 'principal' },
   { id: 'u-management', role: 'admin', sub_category: 'management' },
+  { id: 'u-accountant', role: 'admin', sub_category: 'accountant' },
 ];
 
 const REFUSED_PROFILES = [
   ...ADMIN_SUB_CATEGORIES
-    .filter(sc => sc !== 'principal' && sc !== 'management')
+    .filter(sc => !['principal', 'management', 'accountant'].includes(sc))
     .map(sc => ({ id: `u-${sc}`, role: 'admin', sub_category: sc })),
   { id: 'u-admin-none', role: 'admin' },              // admin with no sub_category
   { id: 'u-teacher', role: 'teacher', sub_category: 'class_teacher' },
@@ -76,7 +82,7 @@ describe('the sidebar never offers a document tool to someone the server refuses
     });
   });
 
-  ['principal', 'management'].forEach((sub) => {
+  ['principal', 'management', 'accountant'].forEach((sub) => {
     DOCUMENT_ISSUER_TOOLS.forEach((toolId) => {
       test(`the ${sub} IS offered ${toolId}`, () => {
         expect(idsOf(getSidebarTools({ id: `u-${sub}`, role: 'admin', sub_category: sub })))
@@ -111,7 +117,7 @@ describe('the tool dashboard sets match the server gate', () => {
     });
   });
 
-  test('only the principal and management admin sets carry them', () => {
+  test('only the principal, management and accountant admin sets carry them', () => {
     Object.entries(TOOL_SETS).forEach(([key, ids]) => {
       if (!key.startsWith('admin_')) return;
       const sub = key.slice('admin_'.length);
