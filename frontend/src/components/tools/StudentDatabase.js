@@ -687,6 +687,20 @@ function DetailPanel({ studentId, onClose, onEdit, canManage, canKeepNotes }) {
                   label="Paid so far"
                   value={`₹${(feeExplain.total_paid || 0).toLocaleString('en-IN')}`}
                 />
+                {/* R2 audit finding, 2026-08-12. The late fine was worked out only when
+                    somebody asked Flo for it, so in practice nobody saw one. It is the
+                    school's own rule: 10 a day from the 16th until the quarter ends,
+                    then 1,000 at each following quarter end, and only one daily fine
+                    ever runs. */}
+                {feeExplain.late_fines?.total > 0 && (
+                  <InfoRow
+                    label="Late fine today"
+                    value={`₹${feeExplain.late_fines.total.toLocaleString('en-IN')}${
+                      feeExplain.late_fines.daily_running
+                        ? ` · ${feeExplain.late_fines.daily_running.toUpperCase()} is still adding ₹10 a day`
+                        : ' · no daily fine is running'}`}
+                  />
+                )}
 
                 {/* The four concessions the school gives, and nothing else. Each button
                     calls the same service Flo calls. The wording says what the school

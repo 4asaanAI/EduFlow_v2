@@ -220,6 +220,49 @@ async def set_right_to_education(db, actor_ctx: ActorContext, params: dict, *, s
             "bills_reworked": reworked}
 
 
+# The quarter each transport month is billed inside. The fine is worked out on ONE
+# outstanding figure per quarter with transport folded into it (fee rules section 2.2),
+# so a bus charge has to be placed in the quarter it belongs to rather than counted apart.
+# June is absent on purpose: the buses do not run and no June transport is ever charged.
+_QUARTER_OF_MONTH = {
+    "april": "q1", "may": "q1",
+    "july": "q2", "august": "q2", "september": "q2",
+    "october": "q3", "november": "q3", "december": "q3",
+    "january": "q4", "february": "q4", "march": "q4",
+}
+
+_OPEN = {"pending", "unpaid", "overdue"}
+
+
+def outstanding_by_quarter(charges: list[dict]) -> list[dict]:
+    """What is still owed on each quarter, transport included, from the child's bills.
+
+    A cancelled bill is not owed and a paid one is settled, so neither counts. Anything
+    part paid counts for the part still outstanding.
+    """
+    totals: dict[str, float] = {}
+    for charge in charges:
+        if str(charge.get("status") or "").lower() not in _OPEN:
+            continue
+        period = str(charge.get("installment_code") or charge.get("fee_period") or "").lower()
+        if period.startswith("transport-"):
+            quarter = _QUARTER_OF_MONTH.get(period.split("-", 1)[1])
+        elif period in ("q1", "q2", "q3", "q4"):
+            quarter = period
+        else:
+            # Registration, admission, last session's dues and anything the office worded
+            # its own way. Real money, and not on the quarterly clock, so it is left out
+            # of the fine rather than attached to a quarter it may not belong to.
+            quarter = None
+        if not quarter:
+            continue
+        owed = float(charge.get("amount") or 0) - float(charge.get("paid_amount") or 0)
+        if owed > 0:
+            totals[quarter] = totals.get(quarter, 0.0) + owed
+    return [{"quarter": q, "outstanding_amount": round(amount, 2)}
+            for q, amount in sorted(totals.items())]
+
+
 async def explain_student_fee(db, actor_ctx: ActorContext, params: dict) -> dict:
     """Everything that decides one child's fee, in one answer.
 
@@ -253,23 +296,24 @@ async def explain_student_fee(db, actor_ctx: ActorContext, params: dict) -> dict
         except ConcessionRuleError as exc:
             note = str(exc)
 
-    paid = await db.fee_transactions.find(
-        scoped_filter({"student_id": student["id"]}, actor_ctx.school_id),
-        {"_id": 0, "fee_head": 1, "fee_period": 1, "paid_amount": 1, "discount_amount": 1,
-         "payment_date": 1, "receipt_number": 1},
-    ).to_list(500)
+    charges = await db.fee_transactions.find(
+        scoped_filter({"student_id": student["id"]}, actor_ctx.school_id), {"_id": 0},
+    ).to_list(2000)
+    paid = [
+        {k: row.get(k) for k in ("fee_head", "fee_period", "paid_amount",
+                                 "discount_amount", "payment_date", "receipt_number")}
+        for row in charges
+    ]
 
-    fines = None
-    as_of = params.get("as_of")
-    if as_of and params.get("outstanding_by_quarter"):
-        try:
-            fines = assess_quarters(
-                params["outstanding_by_quarter"],
-                session_start_year=int(params.get("session_start_year") or 2026),
-                as_of=as_of,
-            )
-        except LateFineError as exc:
-            fines = {"could_not_be_worked_out": str(exc)}
+    # R2 audit finding, 2026-08-12. The fine used to be worked out ONLY if the caller
+    # handed in the outstanding figures, and no caller ever did, so in practice nobody
+    # ever saw one. It is now worked out from the child's own unpaid bills, which is the
+    # only version of this anybody can actually use.
+    fines = assess_quarters(
+        outstanding_by_quarter(charges),
+        session_start_year=int(params.get("session_start_year") or 2026),
+        as_of=params.get("as_of") or actor_ctx.now().date().isoformat(),
+    )
 
     return {
         "student": {
@@ -286,6 +330,19 @@ async def explain_student_fee(db, actor_ctx: ActorContext, params: dict) -> dict
             "from": "the class's fee structure" if structure else
                     "no fee structure is loaded for this child's class",
         },
+        # R2 audit finding, 2026-08-12. The school's registration and admission charges
+        # were loaded onto every fee structure in step 3 and NOTHING read them, so they
+        # were invisible: the office could not even see the school's own figures. They
+        # are still not billed by the platform, and that is said here in the same breath
+        # rather than left for somebody to assume either way. Charging them automatically
+        # would bill families admitted years ago, so it is a decision, not a tidy-up.
+        "new_admission_charges": (
+            {**(structure.get("new_student_charges") or {}),
+             "raised_by_the_platform": False,
+             "note": "These are the school's charges for a NEW admission. The platform "
+                     "does not raise them: they are entered by hand when a family joins."}
+            if structure and structure.get("new_student_charges") else None
+        ),
         "right_to_education": holds_rte,
         "concessions": concessions,
         "what_each_concession_is_worth": {

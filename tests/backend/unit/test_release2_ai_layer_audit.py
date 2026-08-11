@@ -235,3 +235,58 @@ def test_the_undo_will_not_put_a_billing_decision_back(field):
     from services.undo_service import PROTECTED_FIELDS
 
     assert field in PROTECTED_FIELDS
+
+
+# ── Release 2 audit finding: what "ready to send" is allowed to mean ────────
+
+
+def test_whatsapp_says_the_real_obstacle_and_not_just_a_missing_setting(monkeypatch):
+    """Naming a missing variable reads as "fill this in and it works". For WhatsApp that
+    is untrue: there is no sender registered to the school and no approved school
+    templates, so somebody would have set the variable, pressed send, and found out from
+    a parent."""
+    from services import messaging_service
+
+    monkeypatch.setenv("TWILIO_ACCOUNT_SID", "AC-real")
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN", "token")
+    monkeypatch.delenv("TWILIO_WHATSAPP_FROM", raising=False)
+
+    status = messaging_service.channel_status("whatsapp")
+    assert status["ready"] is False
+    joined = " ".join(status["warnings"]).lower()
+    assert "sandbox" in joined
+    assert "approve" in joined
+
+
+def test_the_sandbox_number_is_called_out_even_when_it_is_set(monkeypatch):
+    from services import messaging_service
+
+    monkeypatch.setenv("TWILIO_ACCOUNT_SID", "AC-real")
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN", "token")
+    monkeypatch.setenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
+
+    status = messaging_service.channel_status("whatsapp")
+    assert status["ready"] is True          # the settings ARE filled in
+    assert any("SANDBOX" in w for w in status["warnings"])
+
+
+def test_an_american_sms_sender_is_called_out_for_an_indian_school(monkeypatch):
+    from services import messaging_service
+
+    monkeypatch.setenv("TWILIO_ACCOUNT_SID", "AC-real")
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN", "token")
+    monkeypatch.setenv("TWILIO_PHONE_NUMBER", "+12286410951")
+
+    status = messaging_service.channel_status("sms")
+    assert status["ready"] is True
+    assert any("not an Indian number" in w for w in status["warnings"])
+
+
+def test_an_indian_sender_draws_no_warning(monkeypatch):
+    from services import messaging_service
+
+    monkeypatch.setenv("TWILIO_ACCOUNT_SID", "AC-real")
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN", "token")
+    monkeypatch.setenv("TWILIO_PHONE_NUMBER", "+919876543210")
+
+    assert messaging_service.channel_status("sms")["warnings"] == []

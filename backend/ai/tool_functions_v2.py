@@ -3150,11 +3150,17 @@ async def tool_get_messaging_status(params: dict, user: dict, scope: dict = None
     t0 = time.time()
     rows = [_msg.channel_status("whatsapp"), _msg.channel_status("sms")]
     unready = [r["channel"] for r in rows if not r["ready"]]
-    msg = (
-        "Both WhatsApp and SMS are ready to send."
-        if not unready
-        else f"NOT configured (nothing would be delivered): {', '.join(unready)}."
-    )
+    # R2 audit finding, 2026-08-12. "Ready" only ever meant the settings were filled in,
+    # and both channels have a real obstacle that no setting fixes: WhatsApp has no
+    # school sender and no approved school templates, and the SMS numbers are American.
+    # Saying "ready to send" without those was how somebody would find out from a parent.
+    warnings = [w for row in rows for w in row.get("warnings", [])]
+    if unready:
+        msg = f"NOT configured (nothing would be delivered): {', '.join(unready)}."
+    elif warnings:
+        msg = "The settings are in place, but read this before sending: " + " ".join(warnings)
+    else:
+        msg = "Both WhatsApp and SMS are ready to send."
     return _ok(rows, (time.time() - t0) * 1000, msg)
 
 

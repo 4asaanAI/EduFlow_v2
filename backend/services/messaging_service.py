@@ -114,6 +114,16 @@ def sms_config() -> dict:
     }
 
 
+# Twilio's shared WhatsApp sandbox. It can only message people who have texted it a join
+# code, so it can never reach a school's families, whatever the settings say.
+SANDBOX_NUMBER = "14155238886"
+
+
+def _looks_indian(number: str) -> bool:
+    digits = "".join(ch for ch in str(number or "") if ch.isdigit())
+    return digits.startswith("91") and len(digits) >= 12
+
+
 def channel_status(channel: str) -> dict:
     """Report whether a channel can actually send, and what is missing if not.
 
@@ -128,7 +138,40 @@ def channel_status(channel: str) -> dict:
         missing.append("TWILIO_AUTH_TOKEN")
     if not cfg["from_number"]:
         missing.append("TWILIO_WHATSAPP_FROM" if channel == "whatsapp" else "TWILIO_PHONE_NUMBER")
-    return {"channel": channel, "ready": not missing, "missing": missing}
+
+    # R2 audit finding, 2026-08-12. Reporting a missing setting by its variable name
+    # reads as "fill this in and it works", and for both channels that is untrue.
+    # Somebody would have set the variable, pressed send, and found out from a parent.
+    warnings = []
+    if channel == "whatsapp":
+        if missing:
+            warnings.append(
+                "There is no WhatsApp sender for the school yet. The only number on the "
+                "account is Twilio's shared sandbox, which can only message people who "
+                "have themselves texted a join code, so it can never reach families. A "
+                "real sender has to be registered to the school's WhatsApp Business "
+                "Account first."
+            )
+        if cfg["from_number"] and SANDBOX_NUMBER in cfg["from_number"]:
+            warnings.append(
+                "This is Twilio's shared SANDBOX number. It reaches only people who have "
+                "texted a join code, so families will not receive anything."
+            )
+        warnings.append(
+            "WhatsApp wording is not free: Meta must approve each template before it can "
+            "be sent, and fee and attendance reminders are a different category from the "
+            "marketing templates already on the account."
+        )
+    elif not missing and not _looks_indian(cfg["from_number"]):
+        warnings.append(
+            f"Messages would go out from {cfg['from_number']}, which is not an Indian "
+            "number. To parents here that arrives as an international sender, costs more "
+            "per message, and is the kind of number Indian carriers filter. A "
+            "DLT-registered Indian sender is what school SMS needs."
+        )
+
+    return {"channel": channel, "ready": not missing, "missing": missing,
+            "warnings": warnings}
 
 
 def get_twilio_client():

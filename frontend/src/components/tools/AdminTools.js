@@ -2685,24 +2685,27 @@ export function TransportManager() {
   );
 }
 export function AutomatedReport() {
-  const { currentUser } = useUser();
-  const [schedules, setSchedules] = useState([{ name: 'Weekly Attendance Report', frequency: 'weekly', day: 'Monday', time: '08:00', active: true }, { name: 'Monthly Fee Summary', frequency: 'monthly', day: '1', time: '09:00', active: true }]);
+  // R2 audit finding, 2026-08-12. This screen showed two rows, "Weekly Attendance Report"
+  // and "Monthly Fee Summary", each with a green "Active" badge. Both were hardcoded. No
+  // schedule existed, nothing was ever sent, and the screen told the school's owner and
+  // the admin office that two reports were running. A green badge on something that does
+  // not exist is worse than an empty screen, because nobody goes looking for what they
+  // believe they already have.
+  //
+  // The rows are gone. The screen now says plainly that nothing is scheduled and where
+  // the same figures can be had today. Building the real thing is its own piece of work.
   return (
-    <ToolPage title="Automated Reports" subtitle="Schedule recurring reports">
+    <ToolPage title="Automated Reports" subtitle="Scheduled reports">
       <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16, maxWidth: 600 }}>
-        <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Scheduled Reports</h3>
-        {schedules.map((s, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--tool-hex-242424)' }}>
-            <div>
-              <div style={{ fontSize: 13, color: 'var(--c-text)', fontWeight: 500 }}>{s.name}</div>
-              <div style={{ fontSize: 11, color: 'var(--c-faint)' }}>{s.frequency} · {s.day} at {s.time}</div>
-            </div>
-            <Badge text={s.active ? 'Active' : 'Paused'} color={s.active ? 'green' : 'gray'} />
-          </div>
-        ))}
-        <div style={{ marginTop: 14 }}>
-          <p style={{ fontSize: 11, color: 'var(--c-faint)' }}>Full scheduling system with email delivery coming in Phase 3. Reports are available via Export section.</p>
-        </div>
+        <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 10 }}>Nothing is scheduled yet</h3>
+        <p style={{ fontSize: 12, color: 'var(--c-muted)', lineHeight: 1.6, marginBottom: 10 }}>
+          No report is being sent to anyone on a schedule, and nobody is receiving one.
+          Scheduled delivery has not been built yet.
+        </p>
+        <p style={{ fontSize: 12, color: 'var(--c-muted)', lineHeight: 1.6 }}>
+          The same figures are available now: the daily summary on the dashboard, the
+          Export buttons on each screen, and asking Flo for any report you want as a file.
+        </p>
       </div>
     </ToolPage>
   );
