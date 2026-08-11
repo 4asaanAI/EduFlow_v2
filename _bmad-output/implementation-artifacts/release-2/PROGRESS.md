@@ -41,7 +41,9 @@ up by three or four on the 2026-08-10 baseline. The accountant head's +1 tool an
 write is `update_staff`, salary only, explained in the last session entry. No dormant
 profile has gained anything at any point.
 
-**Do this next: `FINISHING-PLAN-2026-08-11.md`, step 11, the deploy and handover.**
+**Do this next: `FINISHING-PLAN-2026-08-11.md`, step 11, the deploy and handover.** The
+audit of the four live profiles is also done (2026-08-12, last entry): sixteen findings,
+thirteen fixed, one a correction, one needing the school, one unreproduced.
 Steps 1 to 10 are DONE. Three migrations are live on the school's database (034, 035,
 036) and **four more are written, dry-run and waiting to be applied on the day** (037,
 038, 039, 040). See the last session entry at the bottom of this file, which is the one
@@ -1660,3 +1662,117 @@ and 15067 was never a discrepancy.
 green. The deploy needs the `claude-hosting` IAM user and Abhimanyu's explicit go-ahead,
 and the four migrations above need applying on the day, one at a time, never through
 `run_all.py`.
+
+### 2026-08-12 (ninth run) - the audit of the four live profiles, and its thirteen fixes (Claude, Opus 5)
+
+**Has the code shipped? No.** 51 commits on the branch, nothing deployed. **Nothing was
+written to the live database this run**, and nothing was read from it. The four migrations
+037 to 040 are still written, dry-run and waiting.
+
+**Did.** Abhimanyu asked for every tool and the whole AI layer of the four live profiles to
+be checked before the deploy. The audit found sixteen things. Three needed no code (one was
+a correction to something I had told him, one needs the school, one could not be
+reproduced). **The other thirteen are fixed**, in six commits, gates green between each.
+
+---
+
+#### How the audit was done
+
+Mechanically first, then by reading what the checks flagged. Every tool the owner, the
+principal, Sonu and Lalit reach was checked for a working implementation, a description
+that matches what it does, a classification, and a confirm rule. Every screen each profile
+is granted was checked against the menus and the components. The doors were checked by
+CALLING them as each of seven profiles rather than by counting.
+
+**Two of my own checks were wrong before they were right**, which is worth recording: the
+first read confirmation flags off the registry entries rather than off the loop that
+overwrites them, and the second treated hub containers as missing screens. A check that
+reports a false alarm wastes a day; one that reports a false all-clear costs more.
+
+#### The correction that matters most
+
+**I told Abhimanyu the three new Flo writes sit behind a confirm card. They do not.** They
+run immediately, like every other single-record change here, still audited and still under
+the kill switch. I tried to add the confirm cards, found a committed rule saying only
+destructive, bulk and reversal actions stop for a decision, and that `apply_discount` (which
+puts a real discount on a real child) has always been immediate, and put it back. The
+behaviour is right; my sentence was wrong.
+
+#### The thirteen fixes
+
+**The fee rules were invisible, and unsettable, on every screen.** The concessions, the
+band, the Right to Education mark and the bus fare existed and only Flo could explain them.
+The record now shows all of it and carries the controls, calling the SAME services Flo
+calls. And the Fee Collection screen, which presented the old hand-typed discount machinery
+and said nothing about the school's four real concessions, now says which is which: typing
+a sibling concession in there fixes the figure and it is wrong next quarter.
+
+**A concession did not reach a bill already raised.** Bills are worked out when generated
+and generation skips what it has already done, so nothing went back. The family would have
+been asked for the wrong amount and nobody would have known until they complained. Every
+concession change now re-works the open bills, with one hard rule: **a bill with money
+against it is never touched**, because that is a receipt of what a family was asked for and
+what they gave. Those are reported by name instead. A Right to Education place cancels the
+unpaid school-fee bills rather than deleting them or zeroing them, and never touches the bus.
+
+**The owner's daily summary called all of this "changed something"** and counted it as a
+student edit rather than money, because a concession is recorded against the child. Giving a
+family 6,000 or deciding a child owes no school fee at all is money by any reading.
+
+**An unclassified tool was handed to Lalit by default.** The loop ended in
+`else: non_finance`, so a new fee tool added in a hurry would silently reopen the money
+leaks R2-2 closed. Flipping the default alone would have stripped him of 106 tools, so all
+106 are now named and only the DEFAULT changed, to leadership. Nothing moved; what changed
+is what the next tool gets.
+
+**The same-day undo could put back a Right to Education mark.** Now protected, with the
+concessions and the sibling links, for a second reason too: those three re-work bills, so
+restoring the field alone would leave re-worked bills describing a rule that no longer
+applies.
+
+**The late fine was worked out only if the caller handed in the figures, and no caller
+did.** It is now worked out from the child's own unpaid bills and shows on their record.
+Transport folds into the quarter its month belongs to, because the fine is one figure per
+quarter with the bus inside it. A June transport bill would not be placed at all.
+
+**Registration and admission charges were loaded in step 3 and nothing read them.** Now
+shown, in the same breath as the fact that the platform does not raise them.
+
+**The Automated Reports screen showed two hardcoded rows with green Active badges.** No
+schedule existed and nothing was ever sent. A green badge on something that does not exist
+is worse than an empty screen, because nobody goes looking for what they believe they have.
+
+**"Ready to send" only ever meant the settings were filled in.** WhatsApp has no sender
+registered to the school and no approved school templates; the SMS numbers are American.
+Both now say so in words, before anyone presses send.
+
+**No child is billed at a band their own record contradicts.** Admission 263105 sits in a
+Science section while both school documents say Commerce. They are left out of the charge
+run and named. An unbilled child who is reported beats a wrongly billed family who is not.
+
+#### Measured
+
+**Not one permission number moved across the whole audit**, all nine profiles, all three
+surfaces: 160/160/62/98 tools, 103/103/35/59 writes, 359/345/277/224 routes, and every
+hub and screen unchanged. That is the expected result: the audit changed what the existing
+permissions SHOW and DO, and granted nobody anything.
+
+| Gate | Result |
+|---|---|
+| Backend | **3,309 passed / 0 failed** / 15 deselected (3,264 at the start of the audit) |
+| Frontend | **599 passed / 0 failed** |
+| Build | clean, with lint |
+
+**⚠️ One frontend run out of eight reported 3 failures and printed no test names.** Seven
+further full runs are clean, including three back to back. **Not reproduced and not
+fixed.** If it returns, that is the thread to pull rather than re-running until it passes.
+
+#### Left
+
+**Step 11 only: the deploy, then the handover.** The four migrations are applied on the
+day, one at a time, never through `run_all.py`. `QUESTIONS-FOR-THE-SCHOOL-2026-08-11.md`
+goes over with the logins.
+
+**Two things are decisions rather than defects, and both are Abhimanyu's:** whether the
+platform should raise registration and admission charges automatically when a child joins,
+and whether scheduled reports get built. Neither blocks anything.
