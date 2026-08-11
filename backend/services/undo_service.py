@@ -90,8 +90,17 @@ def target_collection(entry: dict) -> str:
 # `status`, `is_active`, `enrolment_*` - whether a child is on the roll. Decision 4 puts
 #                              that with the owner and the principal.
 # `username`, `password*`, `role`, `sub_category` - who somebody is and what they may do.
+# `rte_place`, `concessions`  - R2 audit, 2026-08-12. Both decide what a family is
+#                              billed, and a Right to Education place decides whether
+#                              they are billed at all. They are money by any reading, and
+#                              they are also now the only writes that RE-WORK bills
+#                              already raised; putting the field back would leave those
+#                              re-worked bills describing a rule that no longer applies.
+#                              Change them the way they were set, on the child's record
+#                              or through Flo, which re-works the bills to match.
 PROTECTED_FIELDS = {
     "fees", "fee_status", "fee_snapshot", "fee_structure_id", "salary", "amount",
+    "rte_place", "concessions", "siblings",
     "status", "is_active", "enrolment_state", "enrolment_status",
     "username", "password", "password_hash", "role", "sub_category",
     "schoolId", "branch_id", "id", "_id",

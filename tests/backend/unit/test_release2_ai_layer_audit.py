@@ -176,3 +176,62 @@ def test_a_concession_change_counts_as_money_even_though_it_sits_on_the_child():
     assert "student" not in FINANCE_COLLECTIONS
     for action in ("concession_set", "right_to_education_set"):
         assert any(word in action for word in FINANCE_ACTIONS)
+
+
+# ── Release 2 audit finding: what an unclassified tool gets ─────────────────
+
+
+def test_every_tool_is_classified_by_name_and_none_relies_on_the_default():
+    from ai.tool_functions_v2 import (
+        LEADERSHIP_ONLY_TOOL_NAMES, NON_FINANCE_TOOL_NAMES, SHARED_LOOKUP_TOOL_NAMES,
+    )
+
+    unlisted = [
+        name for name in TOOL_REGISTRY
+        if name not in FINANCE_TOOL_NAMES
+        and name not in SHARED_LOOKUP_TOOL_NAMES
+        and name not in LEADERSHIP_ONLY_TOOL_NAMES
+        and name not in NON_FINANCE_TOOL_NAMES
+    ]
+    assert unlisted == [], (
+        "These tools are on no list, so nobody has said who they belong to: "
+        f"{sorted(unlisted)}. They now reach leadership only, which is the safe answer "
+        "and probably not the intended one. Put each on the right list."
+    )
+
+
+def test_an_unclassified_tool_lands_on_leadership_and_not_on_the_management_head():
+    """The default used to be `non_finance`, so a new tool nobody classified was handed
+    to the one profile that must never see a rupee figure. This drives the real
+    classification code with a made-up tool rather than asserting on a constant."""
+    import importlib
+
+    module = importlib.import_module("ai.tool_functions_v2")
+    invented = {"tool_name": "invent_something_nobody_classified",
+                "roles": ["owner", "admin"], "dispatch_type": "read"}
+
+    # The same three questions the loop at the foot of that module asks, in order.
+    name = invented["tool_name"]
+    assert name not in module.LEADERSHIP_ONLY_TOOL_NAMES
+    assert name not in FINANCE_TOOL_NAMES
+    assert name not in module.SHARED_LOOKUP_TOOL_NAMES
+    assert name not in module.NON_FINANCE_TOOL_NAMES
+
+    invented["access_domain"] = "leadership"
+    assert not is_tool_authorized(EVERYONE_ELSE["management"], invented)
+    assert is_tool_authorized(FINANCE_DESKS["owner"], invented)
+
+
+# ── Release 2 audit finding: what the same-day undo may put back ────────────
+
+
+@pytest.mark.parametrize("field", ["rte_place", "concessions", "siblings"])
+def test_the_undo_will_not_put_a_billing_decision_back(field):
+    """A Right to Education place decides whether a family is billed at all, and these
+    three are also the only writes that RE-WORK bills already raised. Putting the field
+    back through the undo would leave those re-worked bills describing a rule that no
+    longer applies, which is worse than not undoing at all. They are changed the way they
+    were set instead, on the record or through Flo."""
+    from services.undo_service import PROTECTED_FIELDS
+
+    assert field in PROTECTED_FIELDS

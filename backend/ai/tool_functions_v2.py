@@ -7050,6 +7050,53 @@ LEADERSHIP_ONLY_TOOL_NAMES = frozenset({
     "create_student_login", "set_profile_password",
 })
 
+# Every tool that is the ADMIN OFFICE's: students, staff administration, admissions,
+# attendance, academics, classes, houses, announcements, incidents, visitors,
+# certificates, assets, inventory and the operational workflows around them.
+#
+# R2 audit finding, 2026-08-12. This list is written out rather than left to an `else`
+# at the foot of the module. The old default was `non_finance`, which meant a new tool
+# nobody classified was handed to the management head automatically, and he is the one
+# profile that must never see a rupee figure. Every name here was already reaching him
+# before this list existed, so nothing moved when it was written; what changed is what
+# happens to the NEXT tool somebody adds, which now lands on leadership until a person
+# classifies it.
+NON_FINANCE_TOOL_NAMES = frozenset({
+    "add_custom_form_row", "add_thread_entry", "add_transport_vehicle",
+    "approve_leave", "assign_followup", "assign_query_ticket", "award_house_points",
+    "checkout_visitor", "confirm_resolution", "correct_attendance",
+    "create_announcement", "create_asset", "create_branch", "create_certificate",
+    "create_class", "create_crm_lead", "create_custom_form", "create_enquiry",
+    "create_house", "create_incident", "create_message_template",
+    "create_query_ticket", "create_staff", "create_transport_route",
+    "decide_announcement", "decide_approval_request", "decide_certificate",
+    "delete_announcement", "delete_asset", "delete_branch", "delete_certificate",
+    "delete_class", "delete_custom_form", "delete_enquiry", "delete_house",
+    "delete_incident", "delete_message_template", "delete_query_ticket",
+    "delete_staff", "delete_student", "delete_transport_route", "delete_visitor",
+    "draft_parent_message", "get_admissions_pipeline", "get_announcements",
+    "get_attendance_overview", "get_branch_comparison", "get_class_wise_attendance",
+    "get_custom_forms", "get_daily_brief", "get_enquiries", "get_enrolment_summary",
+    "get_enterprise_operations", "get_exam_results_summary", "get_house_details",
+    "get_house_standings", "get_inventory_status", "get_leave_requests",
+    "get_library_status", "get_message_templates", "get_messaging_status",
+    "get_my_attendance", "get_my_class_students", "get_my_fees", "get_my_results",
+    "get_my_school_hub", "get_school_pulse", "get_smart_alerts", "get_staff_status",
+    "get_student_council", "get_timetable", "get_today_class_attendance",
+    "get_transport_status", "get_upcoming_events", "get_whatsapp_template_status",
+    "initiate_substitution", "log_contact_event", "log_visitor",
+    "manage_student_guardians", "mark_attendance", "mark_staff_attendance",
+    "query_attendance_status", "query_dashboard_summary", "query_incidents",
+    "query_maintenance_requests", "query_staff_availability", "reopen_query_ticket",
+    "resolve_query_ticket", "search_tools", "send_parent_message",
+    "set_student_status", "submit_whatsapp_template", "update_asset", "update_branch",
+    "update_class", "update_crm_lead", "update_custom_form", "update_enquiry_status",
+    "update_house", "update_incident_status", "update_message_template",
+    "update_school_settings", "update_staff", "update_student",
+    "update_transport_route", "year_end_transition",
+})
+
+
 BULK_TOOL_NAMES = frozenset({
     "mark_attendance", "mark_staff_attendance", "trigger_fee_sync",
     # A spreadsheet import rewrites fields on up to every student on the roll in one
@@ -7096,8 +7143,20 @@ for _tool_name, _tool_def in TOOL_REGISTRY.items():
         _tool_def["access_domain"] = "finance"
     elif _tool_name in SHARED_LOOKUP_TOOL_NAMES:
         _tool_def["access_domain"] = "shared"
-    else:
+    elif _tool_name in NON_FINANCE_TOOL_NAMES:
         _tool_def["access_domain"] = "non_finance"
+    else:
+        # R2 audit, 2026-08-12. This used to be `non_finance`, so a tool nobody had
+        # classified was handed to the MANAGEMENT HEAD by default - the one profile the
+        # school has decided must never see a rupee figure. A new fee tool added by
+        # somebody in a hurry reopened the money leaks R2-2 closed, silently.
+        #
+        # The safe answer to "nobody has said who this belongs to" is the narrowest one,
+        # so an unclassified tool now reaches leadership only, and the sweep in
+        # `test_all_nine_profiles_sweep_r2_13.py` fails loudly on the day it happens.
+        # Nothing moved when this changed: all 106 tools that relied on the old default
+        # are named in NON_FINANCE_TOOL_NAMES above.
+        _tool_def["access_domain"] = "leadership"
 
     if _tool_def.get("dispatch_type") == "write":
         _tool_def["requires_confirmation"] = _tool_name in EXPLICIT_CONFIRMATION_TOOL_NAMES
