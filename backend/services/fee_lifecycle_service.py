@@ -126,11 +126,21 @@ async def build_charge_preview(db, actor_ctx: ActorContext, structure_id: str, *
             raise FeeLifecycleValidationError("One or more installment codes were not found")
     students = await db.students.find(
         scoped_query({"class_id": structure.get("class_id"), "is_active": True}, branch_id=actor_ctx.branch_id),
-        {"_id": 0, "id": 1, "name": 1, "admission_number": 1, "concessions": 1},
+        {"_id": 0, "id": 1, "name": 1, "admission_number": 1, "concessions": 1, "rte_place": 1},
     ).to_list(5000)
     version = int(structure.get("version") or 1)
     rows = []
+    rte_skipped = []
     for student in students:
+        # Release 2 step 7: a child holding a Right to Education place owes no school fee
+        # at all. That is the absence of a charge, not a discount of 100%, so the charge
+        # is never raised. Transport is billed separately and is unaffected.
+        if student.get("rte_place"):
+            rte_skipped.append({
+                "student_id": student["id"],
+                "admission_number": student.get("admission_number"),
+            })
+            continue
         for installment in installments:
             for head in installment["fee_heads"]:
                 charge_key = f"{student['id']}|{structure_id}|{version}|{installment['code']}|{head['name'].strip().lower()}"
@@ -178,8 +188,12 @@ async def build_charge_preview(db, actor_ctx: ActorContext, structure_id: str, *
     return {
         "structure": {"id": structure_id, "name": structure.get("name"), "version": version},
         "rows": rows,
+        # Named rather than silently absent: a child who is not billed should be visible
+        # as a decision, not as a missing row somebody notices months later.
+        "right_to_education_not_billed": rte_skipped,
         "meta": {
             "student_count": len(students),
+            "right_to_education_count": len(rte_skipped),
             "charge_count": len(rows),
             "new_charge_count": sum(not row["already_generated"] for row in rows),
             "total_amount": sum(row["amount"] for row in rows if not row["already_generated"]),

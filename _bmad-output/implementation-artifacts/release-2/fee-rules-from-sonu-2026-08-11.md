@@ -178,12 +178,13 @@ charged a school fee.** Six were charged transport only, six had their school fe
 off in full, and the only other charge to any of them is a late fine of 140 on one child,
 which confirms rather than contradicts the rule above.
 
-**One discrepancy to put to Sonu.** Admission number **15067** has "RTE" written in the
-child's name but is marked `No` in the flag column. Either the flag is wrong or the name
-is, and one of those means a family is being billed for a place the government pays for.
+**The 15067 discrepancy was closed on 2026-08-12 and was never real.** It was recorded
+here as a child whose name said "RTE" while the flag said `No`. The child is **PIRTEEK
+CHOUDHARY**: the letters r-t-e sit inside the spelling of the name, and the check that
+found it was matching letters rather than whole words. All 21 genuine children write it in
+brackets. The school's flag column and its naming agree everywhere.
 
-**Still confirm the 21 with the school** before loading, because the export is dated
-6 August and a Right to Education place is granted by the government, not the school.
+**The 21 are confirmed** (Abhimanyu, 2026-08-11) and are loaded by migration 038.
 
 ---
 
@@ -234,8 +235,8 @@ the half being loaded.
 | # | Question | Why it matters |
 |---|---|---|
 | 1 | **Is the extra charge on a late Right to Education child 100 or 1,000?** Written as "100 also gets added along with 10perday" on 2026-08-11. Everywhere else the quarter-end charge is 1,000, so this is most likely a typo, **but it is money and was not assumed.** | Ten times the charge, on the families least able to pay it. |
-| 2 | **Confirm the 21 Right to Education children are still current and complete.** The list is in the 6 August export; the entitlement is granted by the government, not the school. | Billing a family that owes nothing. |
-| 3 | **Admission 15067 has "RTE" in the child's name but the flag says No.** | One of the two is wrong, and if it is the flag, that family is being billed for a free place. |
+| ~~2~~ | ~~Confirm the 21 Right to Education children~~ | **Confirmed by Abhimanyu, 2026-08-11.** |
+| ~~3~~ | ~~Admission 15067 has "RTE" in the child's name but the flag says No~~ | **Closed 2026-08-12: never real.** The child is PIRTEEK CHOUDHARY and the letters are inside the name. |
 
 **Answered and closed on 2026-08-11:** the 1,000 repeats every quarter end, four times in
 a full year of arrears (section 2.1); the 1,000 is not the re-admission charge; the

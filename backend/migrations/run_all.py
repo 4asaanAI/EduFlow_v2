@@ -85,6 +85,10 @@ MIGRATIONS = [
     # gave. Listed here only because every migration file must be. It reads the payment
     # ledger out of `aaryans_database/` and does nothing without it. Run it by itself.
     ("037_sibling_links", "Release 2 step 6: 377 sibling families and 826 children tagged from the school's own payment remarks, with 445 sibling concessions copied from what the office gave (data-changing; run explicitly only)"),
+    # 038 decides whether a child owes any school fee at all. Listed here only because
+    # every migration file must be. It reads the school's student export and refuses if
+    # the number of marked children has drifted from the 21 the school confirmed.
+    ("038_right_to_education", "Release 2 step 7: the 21 children holding a government-paid Right to Education place, marked so they are never billed a school fee (data-changing; run explicitly only)"),
 ]
 
 

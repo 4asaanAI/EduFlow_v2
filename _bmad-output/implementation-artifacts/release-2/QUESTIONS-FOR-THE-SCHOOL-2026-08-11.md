@@ -67,17 +67,13 @@ Those 21 are confirmed and are being recorded as owing **no school fee at all**.
 use the school bus, they pay for the bus, and a late bus payment is fined normally. That
 is all correct and needs nothing further from you.
 
-**One child does not fit, and we have not decided it: admission number 15067.**
-
-This child's name has "RTE" written inside it, the way the school writes it for every
-other Right to Education child. But the tick-box column on the same record says **No**.
-
-**What we need:** does this child hold a Right to Education place or not?
-
-- If **yes**, they should not be charged school fees, and we should check whether they
-  have been charged any this year.
-- If **no**, the "RTE" should probably come out of their name, so nobody is confused by it
-  again.
+**Admission number 15067 was on this list and has come off it. Nothing is needed from
+you.** We had it down as a child whose name said "RTE" while the tick-box said No. The
+child is **PIRTEEK CHOUDHARY**, and the letters r-t-e are simply inside the spelling of
+the name. Our own check was matching letters rather than words. Every one of the school's
+21 Right to Education children writes it in brackets, as "(RTE)", and the school's records
+agree with themselves everywhere. Apologies for the question; it should never have been
+asked.
 
 ---
 
@@ -208,7 +204,6 @@ difference and then clear the old figures, so there is one set of numbers rather
 |---|---|---|
 | 1 | Admission 263105: Commerce or Science? Being overcharged 4,800 a year now. | The school |
 | 2 | The stream for four senior students | The school |
-| 3 | Admission 15067: Right to Education place or not? | Sonu |
 | 4a | The sibling for 58 children who got the concession | Sonu |
 | 4b | 33 families where the fee does not follow the youngest-pays-full rule | Sonu |
 | 5a | Are 1,900 and 620 a month real bus rates? | Sonu |
