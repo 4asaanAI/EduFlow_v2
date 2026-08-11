@@ -1,4 +1,4 @@
-"""Epic R10.2 — Feedback loop: Helpful/Improve capture + candidate corrections.
+"""Epic R10.2 - Feedback loop: Helpful/Improve capture + candidate corrections.
 
 Covers the feedback-capture foundation: records are persisted tenant-scoped, an
 "Improve" reason becomes a PENDING candidate correction (never auto-active), the
@@ -129,7 +129,7 @@ async def test_activate_non_pending_row_returns_none():
 
 async def test_activate_leaves_row_pending_when_no_memory_created(monkeypatch):
     """Review fix: if add_memory drops the text (returns None), the correction must
-    NOT be silently consumed — it stays pending and activate returns None."""
+    NOT be silently consumed - it stays pending and activate returns None."""
     from services.memory import feedback_store as fs
     from services.memory import store as memory_store
 

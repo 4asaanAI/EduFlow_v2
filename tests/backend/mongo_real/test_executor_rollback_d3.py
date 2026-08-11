@@ -1,4 +1,4 @@
-"""D.3 — a forced mid-write failure leaves ZERO committed changes (real txn).
+"""D.3 - a forced mid-write failure leaves ZERO committed changes (real txn).
 
 The executor wraps a multi-write plan in one transaction; if a later step raises,
 the earlier writes must roll back. FakeDb cannot prove this (no real transaction),
@@ -39,7 +39,7 @@ async def test_forced_mid_write_failure_rolls_back_everything(mongo_real_db, mon
         with pytest.raises(RuntimeError):
             await plan_executor.run(plan, db=mongo_real_db)
 
-        # Nothing committed — both writes rolled back, idempotency claim rolled back.
+        # Nothing committed - both writes rolled back, idempotency claim rolled back.
         assert await mongo_real_db.col_a.count_documents({}) == 0
         assert await mongo_real_db.col_b.count_documents({}) == 0
         assert await mongo_real_db.ai_write_idempotency.count_documents({}) == 0

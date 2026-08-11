@@ -81,7 +81,7 @@ def _serialize(model) -> dict:
 
 
 def _fee_query(extra: dict | None = None) -> dict:
-    return scoped_filter(extra or {}, get_school_id())  # branch-scope: intentional — this file's school-scope helper; it scopes to the school only, and callers pass branch_id through scoped_query where a query is branch-sensitive
+    return scoped_filter(extra or {}, get_school_id())  # branch-scope: intentional - this file's school-scope helper; it scopes to the school only, and callers pass branch_id through scoped_query where a query is branch-sensitive
 
 
 def _parse_date(value: str | None):
@@ -115,7 +115,7 @@ def _require_fee_write(user: dict):
 
 
 def _normalize_fee_key(student_id: str | None, fee_period: str | None, fee_head: str | None) -> str:
-    # D-review fix: single source of truth — AI path (fees_service.normalize_fee_key)
+    # D-review fix: single source of truth - AI path (fees_service.normalize_fee_key)
     # and REST must derive the IDENTICAL content idempotency key (AD14). Delegate
     # rather than duplicate the f-string so the two can never silently drift.
     from services.fees_service import normalize_fee_key
@@ -239,7 +239,7 @@ async def get_fee_structures(request: Request, user: dict = Depends(require_fina
 async def create_fee_structure(request: Request, user: dict = Depends(require_finance_profile)):
     """Create a fee structure for a class.
 
-    Thin adapter over services.fee_config_service.create_fee_structure — the SAME
+    Thin adapter over services.fee_config_service.create_fee_structure - the SAME
     write path as the AI `create_fee_structure` tool (Story K.1 / AD7)."""
     db = get_db()
     body = await request.json()
@@ -270,7 +270,7 @@ async def delete_fee_structure(structure_id: str, request: Request,
                                user: dict = Depends(require_finance_profile)):
     """Delete a fee structure. Refused once charges have been raised against it.
 
-    Owner instruction 2026-08-07 — parity reference for the AI `delete_fee_structure`
+    Owner instruction 2026-08-07 - parity reference for the AI `delete_fee_structure`
     tool, which calls the same service.
     """
     db = get_db()
@@ -392,7 +392,7 @@ async def get_fee_transactions(request: Request, student_id: str = None, status:
 async def get_class_fee_summary(request: Request, user: dict = Depends(require_finance_profile)):
     """Returns per-class fee collection summary.
 
-    R2-2: this was `require_role("owner", "admin")`, which is ANY admin — so the
+    R2-2: this was `require_role("owner", "admin")`, which is ANY admin - so the
     management head could read what every class had collected and what it still owed,
     in rupees, for the whole school. He is not in the money side of the school
     (decision 1, 2026-08-10). Narrowed to the same finance profiles as the rest of
@@ -402,7 +402,7 @@ async def get_class_fee_summary(request: Request, user: dict = Depends(require_f
     classes = await db.classes.find(_fee_query(), {"_id": 0}).to_list(50)
     result = []
     # NEW-04/T7: two batched reads for every class, then group in memory (was two
-    # queries per class — 100 round trips for a 50-class school).
+    # queries per class - 100 round trips for a 50-class school).
     all_class_ids = [c["id"] for c in classes if c.get("id")]
     students_by_class: dict = {}
     txns_by_student: dict = {}
@@ -580,7 +580,7 @@ async def correct_fee_transaction(
     request: Request,
     user: dict = Depends(require_finance_profile),
 ):
-    # AD7 shared write path — same service as the AI `correct_fee_transaction` tool.
+    # AD7 shared write path - same service as the AI `correct_fee_transaction` tool.
     db = get_db()
     _require_fee_write(user)
     body = await request.json()
@@ -661,7 +661,7 @@ async def get_student_fee_status(student_id: str, request: Request, user: dict =
     db = get_db()
     # R2-2 / decision 1, 2026-08-10: the management head sees WHETHER a child's fees
     # are paid, never how much. This route is the one place that is safe to give him,
-    # because it returns a flag and nothing else — no amount, no balance, no due date.
+    # because it returns a flag and nothing else - no amount, no balance, no due date.
     # He needs it: chasing families is his job, and until now his student screens
     # could not tell him who was in arrears at all.
     #
@@ -671,7 +671,7 @@ async def get_student_fee_status(student_id: str, request: Request, user: dict =
         "principal", "accountant", "accounts", "management",
     ):
         raise HTTPException(403, "Forbidden")
-    # Ownership check for student role — a student can only see their own fee status
+    # Ownership check for student role - a student can only see their own fee status
     if user.get("role") == "student":
         student_record = await db.students.find_one(
             scoped_query({"user_id": user["id"]}, branch_id=user.get("branch_id"))
@@ -693,7 +693,7 @@ async def get_student_fee_status(student_id: str, request: Request, user: dict =
 
 @router.delete("/transactions/{transaction_id}")
 async def delete_fee_transaction(transaction_id: str, request: Request, user: dict = Depends(require_finance_profile)):
-    # AD7 shared write path — same service as the AI `delete_fee_transaction` tool.
+    # AD7 shared write path - same service as the AI `delete_fee_transaction` tool.
     db = get_db()
     _require_fee_write(user)
     actor_ctx = actor_ctx_from_user(user)
@@ -795,7 +795,7 @@ async def list_pending_discount_approvals(request: Request, user: dict = Depends
     """List pending large-discount approval requests."""
     db = get_db()
     bid = user.get("branch_id")
-    # NEW-07/T13: returned straight to the caller — exclude the internal id.
+    # NEW-07/T13: returned straight to the caller - exclude the internal id.
     pending = await db.pending_discount_approvals.find(
         scoped_query({"status": "pending"}, branch_id=bid), {"_id": 0}
     ).to_list(100)
@@ -1031,7 +1031,7 @@ SYNC_JOB_TIMEOUT_MINUTES = int(os.environ.get("SYNC_JOB_TIMEOUT_MINUTES", "30"))
 
 @router.post("/sync/trigger")
 async def trigger_fee_sync(request: Request, user: dict = Depends(require_finance_profile)):
-    # AD7 shared write path — same service as the AI `trigger_fee_sync` tool.
+    # AD7 shared write path - same service as the AI `trigger_fee_sync` tool.
     db = get_db()
     actor_ctx = actor_ctx_from_user(user)
     try:

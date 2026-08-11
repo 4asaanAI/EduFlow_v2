@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-"""POST /api/staff/{id}/enrolment — the three states for staff and teachers.
+"""POST /api/staff/{id}/enrolment - the three states for staff and teachers.
 
 Owner request 10 decision 2, Abhimanyu 2026-08-06: NSO applies to students, staff AND
 teachers, with the same three stages for all of them. Before this, `DELETE /api/staff/{id}`
-switched a colleague off and nothing in the product could switch them back on — the same
+switched a colleague off and nothing in the product could switch them back on - the same
 one-way door that lost a student during the 2026-08-05 demo.
 """
 

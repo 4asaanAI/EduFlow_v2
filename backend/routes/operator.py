@@ -1,4 +1,4 @@
-"""Operator endpoints — owner-only platform controls.
+"""Operator endpoints - owner-only platform controls.
 
 Currently holds AI rate-limit override management and per-session AI action
 count read API used by Story 7-43 (operator health dashboard).
@@ -31,10 +31,10 @@ router = APIRouter(prefix="/api/operator", tags=["operator"])
 
 # Part 1.5 Patch O: must match the canonical top-level user `role` field that
 # resolve_limit / get_current_count look up. `principal`/`accountant` were
-# previously allowed as override keys but no user has role=principal — those
+# previously allowed as override keys but no user has role=principal - those
 # values are sub_categories, and an override targeting them silently never
 # matches. If a school needs a sub_category-specific ceiling the schema needs
-# a new (role, sub_category) tuple — out of scope for Part 1.5.
+# a new (role, sub_category) tuple - out of scope for Part 1.5.
 ALLOWED_ROLES = {"owner", "admin", "teacher", "student"}
 
 # ─── School onboarding helpers ────────────────────────────────────────────────
@@ -63,7 +63,7 @@ def send_welcome_email(owner_email: str, username: str, temp_password: str) -> N
     """Best-effort onboarding notice to a new school owner.
 
     EduFlow has no SMTP service on `main` (``services/email_service.py`` was
-    intentionally removed — the temporary password is returned directly in the
+    intentionally removed - the temporary password is returned directly in the
     provisioning API response, and owners/admins manage passwords from there).
     This is therefore a log-only hook kept as a module-level function so a real
     provider can be wired in later and so tests can monkeypatch it. Never logs
@@ -76,7 +76,7 @@ def send_welcome_email(owner_email: str, username: str, temp_password: str) -> N
 
 
 def send_operator_completion_email(school_name: str) -> None:
-    """Best-effort 'onboarding complete' notice (log-only — see send_welcome_email)."""
+    """Best-effort 'onboarding complete' notice (log-only - see send_welcome_email)."""
     logger.info("school onboarding complete: %s", school_name)
 
 
@@ -120,7 +120,7 @@ async def upsert_ai_rate_limit_override(
 
     Body: { role, limit, reason, expires_at? }. expires_at may be omitted or
     null for a non-expiring override (it can still be removed by writing a
-    fresh override later — older rows are ignored once a newer one exists).
+    fresh override later - older rows are ignored once a newer one exists).
     """
     db = get_db()
     body = await request.json()
@@ -169,7 +169,7 @@ async def upsert_ai_rate_limit_override(
         )
     except Exception:
         logger.exception("Failed to supersede prior overrides school=%s role=%s", school_id, role)
-        # Continue anyway — resolver's deterministic sort still picks the newest.
+        # Continue anyway - resolver's deterministic sort still picks the newest.
 
     try:
         await db.ai_rate_limit_overrides.insert_one({**document, "_id": document["id"]})
@@ -229,7 +229,7 @@ async def get_ai_action_counts(
 async def create_school(request: Request, user: dict = Depends(require_owner)):
     """Provision a new school (owner-only): registry + settings + owner account.
 
-    The generated temporary password is returned in the response — that IS the
+    The generated temporary password is returned in the response - that IS the
     delivery channel (see send_welcome_email). Welcome-email failure is fail-open:
     provisioning must not roll back because a best-effort notice raised.
     """
@@ -259,7 +259,7 @@ async def create_school(request: Request, user: dict = Depends(require_owner)):
         owner_row = await raw_db.auth_users.find_one({"schoolId": school_id, "role": "owner"})
         if owner_row:
             raise HTTPException(status_code=409, detail=f"School '{school_id}' already exists")
-        # Partial failure — clean up the stub so we can re-provision cleanly.
+        # Partial failure - clean up the stub so we can re-provision cleanly.
         await raw_db.schools.delete_one({"school_id": school_id})
         await raw_db.school_settings.delete_one({"schoolId": school_id})
 
@@ -272,7 +272,7 @@ async def create_school(request: Request, user: dict = Depends(require_owner)):
     owner_initials = "".join(p[0].upper() for p in owner_name.split()[:2])
     owner_user_id = f"user-{uuid.uuid4()}"
 
-    # R12.4: wrap all three inserts in a transaction — on failure none is committed.
+    # R12.4: wrap all three inserts in a transaction - on failure none is committed.
     session = await get_txn_session()
     async with session:
         async with session.start_transaction():
@@ -315,7 +315,7 @@ async def create_school(request: Request, user: dict = Depends(require_owner)):
                 "created_at": now,
             }, session=session)
 
-    # Welcome notice is best-effort — provisioning must not fail if it raises.
+    # Welcome notice is best-effort - provisioning must not fail if it raises.
     try:
         send_welcome_email(owner_email, owner_email, temp_password)
     except Exception:
@@ -489,9 +489,9 @@ async def get_platform_health(user: dict = Depends(require_owner)):
     }
 
     # ── Fee sync last job (school-wide, not branch-scoped) ──────────────────
-    # branch-scope: intentional — fee sync is a school-wide operation
+    # branch-scope: intentional - fee sync is a school-wide operation
     jobs = await db.fee_sync_jobs.find(
-        scoped_filter({}, school_id),  # branch-scope: intentional — see the note directly above this line
+        scoped_filter({}, school_id),  # branch-scope: intentional - see the note directly above this line
         {"_id": 0},
     ).sort("started_at", -1).to_list(1)
     job = jobs[0] if jobs else None
@@ -505,10 +505,10 @@ async def get_platform_health(user: dict = Depends(require_owner)):
         }
 
     # ── Error rate (last 60 min, school-wide) ───────────────────────────────
-    # branch-scope: intentional — operator health is a school-wide aggregate view
+    # branch-scope: intentional - operator health is a school-wide aggregate view
     now = datetime.now(timezone.utc)
     sixty_min_ago = now - timedelta(minutes=60)
-    error_query = scoped_filter(  # branch-scope: intentional — see the note directly above this line
+    error_query = scoped_filter(  # branch-scope: intentional - see the note directly above this line
         {
             "created_at": {"$gte": sixty_min_ago},
             "action": {"$regex": "fail|error", "$options": "i"},
@@ -518,9 +518,9 @@ async def get_platform_health(user: dict = Depends(require_owner)):
     error_count = await db.audit_logs.count_documents(error_query)
 
     # ── Active user count (school-wide) ────────────────────────────────────
-    # branch-scope: intentional — operator health is a school-wide aggregate view
+    # branch-scope: intentional - operator health is a school-wide aggregate view
     active_user_count = await db.auth_users.count_documents(
-        scoped_filter({"is_active": True}, school_id)  # branch-scope: intentional — see the note directly above this line
+        scoped_filter({"is_active": True}, school_id)  # branch-scope: intentional - see the note directly above this line
     )
 
     return {

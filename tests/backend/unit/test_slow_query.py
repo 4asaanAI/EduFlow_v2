@@ -12,7 +12,7 @@ from logging_config import request_id_ctx
 @pytest.mark.asyncio
 async def test_timed_query_logs_when_elapsed_exceeds_threshold(monkeypatch, caplog):
     monkeypatch.setenv("SLOW_QUERY_MS", "50")
-    # Use a cycle that never exhausts — logging formatter may call time.time() extra times
+    # Use a cycle that never exhausts - logging formatter may call time.time() extra times
     _calls = [100.0, 100.15]; _i = [0]
     def _tick(): v = _calls[min(_i[0], len(_calls)-1)]; _i[0] += 1; return v
     monkeypatch.setattr(database.time, "time", _tick)

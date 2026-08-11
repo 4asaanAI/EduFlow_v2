@@ -1,5 +1,5 @@
 /**
- * UI Sweep Epic 5 — the streaming turn.
+ * UI Sweep Epic 5 - the streaming turn.
  *
  * 5.1: one progress account, one left edge (owner item 12, UX-DR8).
  * 5.2: a stall says so instead of spinning forever (owner item 13, NFR-P3).
@@ -13,14 +13,14 @@ jest.mock('../../contexts/ThemeContext', () => ({ useTheme: () => ({ isDark: tru
 jest.mock('../../lib/api', () => {
   // D-60: the stub is derived from the REAL module's export list rather than hand-written.
   // A hand-written list names a handful of helpers while `lib/api` exports over a hundred,
-  // and a factory mock does NOT fall through to the real module — so the first time this
+  // and a factory mock does NOT fall through to the real module - so the first time this
   // screen calls a helper nobody thought to name, it gets `undefined` and React reports an
   // error that points nowhere near the cause. That is exactly how D-48/T12 cost an hour.
   const actual = jest.requireActual('../../lib/api');
   const stub = {};
   Object.keys(actual).forEach((key) => {
     // PLAIN functions, deliberately NOT jest.fn(). CRA's jest preset sets `resetMocks: true`,
-    // which wipes any implementation supplied in a module factory before every test — a
+    // which wipes any implementation supplied in a module factory before every test - a
     // jest.fn() default would quietly become a do-nothing that returns undefined.
     stub[key] = typeof actual[key] === 'function'
       ? async () => ({ success: true, data: [] })
@@ -79,7 +79,7 @@ function holdStreamOpen(onReady) {
   });
 }
 
-// ── Story 5.1 — one progress account, one left edge ─────────────────────────────
+// ── Story 5.1 - one progress account, one left edge ─────────────────────────────
 
 test('a running tool is announced once, by the panel, not also by a badge', async () => {
   // The panel is fed tool_start/tool_done, so rendering ToolCallBadge alongside it
@@ -120,7 +120,7 @@ test('everything stacked in the turn shares one left edge', async () => {
   // desktop, where Flo's avatar occupies that space, and 0 on a phone, where the
   // avatar is hidden (owner request 7) and indenting past a face nobody can see would
   // waste the width the change was made to reclaim. jsdom does not resolve variables,
-  // so what matters here — and what this now asserts — is that every stacked element
+  // so what matters here - and what this now asserts - is that every stacked element
   // reads the SAME one. STREAM_GUTTER remains the desktop value it resolves to.
   let emit;
   holdStreamOpen((onEvent) => { emit = onEvent; });
@@ -150,7 +150,7 @@ test('the typing indicator and the progress panel are never both shown', async (
   expect(screen.queryByTestId('flo-typing-avatar')).not.toBeInTheDocument();
 });
 
-// ── Story 5.2 — a stall says so ────────────────────────────────────────────────
+// ── Story 5.2 - a stall says so ────────────────────────────────────────────────
 
 test('silence eventually says Flo is taking longer than usual', async () => {
   jest.useFakeTimers();

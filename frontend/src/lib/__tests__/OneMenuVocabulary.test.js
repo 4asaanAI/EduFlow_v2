@@ -1,9 +1,9 @@
 /**
- * R2-7 — one vocabulary. Everybody in the school navigates by the same nine department
+ * R2-7 - one vocabulary. Everybody in the school navigates by the same nine department
  * names, and sees only the rows their profile grants.
  *
  * Decided 2026-08-10: Sonu and Lalit keep the same department groups Aman and Adesh
- * see, by name. Do not invent per-person group names — one word for one thing across
+ * see, by name. Do not invent per-person group names - one word for one thing across
  * the school, so Releases 3 to 7 slot straight in rather than each adding its own
  * dialect. The problem this fixes was never the names themselves: it was that Sonu got
  * 2 of the 9 groups and Lalit got 18 rows meant for other people.
@@ -13,7 +13,7 @@
  *
  *   1. The names are shared and nobody has a private set.
  *   2. A group with nothing in it does not appear at all, rather than opening onto an
- *      empty page. An empty group is the same defect as a dead button — the person
+ *      empty page. An empty group is the same defect as a dead button - the person
  *      concludes the platform is broken rather than that the row was not theirs.
  *   3. Every screen a profile is granted is actually reachable from a group. A granted
  *      screen that appears in no group is a screen nobody can find.

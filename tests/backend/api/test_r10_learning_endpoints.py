@@ -1,4 +1,4 @@
-"""Epic R10.4 — "What I've learned" control-surface endpoints.
+"""Epic R10.4 - "What I've learned" control-surface endpoints.
 
 Covers AC1 (list + activate/reject + edit/deactivate/delete + two-step bulk delete),
 AC3 (401 unauthenticated + 403 wrong-role on every endpoint; cross-tenant + cross-user
@@ -49,7 +49,7 @@ def _seed(fake_db):
         {"id": "fb-1", "_id": "fb-1", "schoolId": SCHOOL, "user_id": "owner-1", "verdict": 0,
          "candidate_correction": "always include branch breakdown", "status": "pending",
          "conversation_id": "c1", "message_id": "m1", "tool_names": [], "created_at": "2026-07-10T00:00:00+00:00"},
-        # another staff member's pending Improve note — must NOT surface to owner-1
+        # another staff member's pending Improve note - must NOT surface to owner-1
         {"id": "fb-other", "_id": "fb-other", "schoolId": SCHOOL, "user_id": "someone-else", "verdict": 0,
          "candidate_correction": "someone else private note", "status": "pending",
          "tool_names": [], "created_at": "2026-07-10T00:00:00+00:00"},

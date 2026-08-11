@@ -13,8 +13,8 @@ import { ArrowRight, RefreshCw, Search, Users } from 'lucide-react';
 // The staff attendance register uses PRIN / NTT / PRT / TGT / PGT / Other. The
 // owner asked to see those codes rather than the machine `role / sub_category`.
 //
-// HONESTY CONSTRAINT (the D-15b / Epic 4 lesson). The teacher tier — NTT, PRT,
-// TGT, PGT — is NOT stored anywhere in the platform. Only `designation`
+// HONESTY CONSTRAINT (the D-15b / Epic 4 lesson). The teacher tier - NTT, PRT,
+// TGT, PGT - is NOT stored anywhere in the platform. Only `designation`
 // ("Class Teacher" / "Teacher" / "Principal"), `staff_type`, `role` and
 // `sub_category` exist. So a code is shown ONLY where it can be derived without
 // inventing data (Principal → PRIN); every other teacher falls back to the
@@ -37,14 +37,14 @@ function registerCode(profile) {
     profile.role === 'owner' ||
     String(profile.designation || '').trim().toLowerCase() === 'principal';
   if (isPrincipal) return { code: 'PRIN', full: REGISTER_CODES.PRIN };
-  return null; // teacher tier is not in the data — do not invent it
+  return null; // teacher tier is not in the data - do not invent it
 }
 
 // The readable job title a human would say, mirroring StaffTracker.designationOf.
 function designationOf(profile) {
   if (profile.designation) return profile.designation;
   const raw = profile.sub_category || profile.role || profile.staff_type;
-  if (!raw) return '—';
+  if (!raw) return '-';
   return String(raw)
     .split('_')
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
@@ -98,11 +98,11 @@ export default function SchoolDirectory() {
           <Users size={20} /> School Directory
         </h1>
         <div style={{ color: 'var(--c-faint)', fontSize: 12, marginTop: 3 }}>
-          Find any person in the school — students and staff, in one place.
+          Find any person in the school - students and staff, in one place.
         </div>
       </div>
 
-      {/* Tabs — reflected in the URL */}
+      {/* Tabs - reflected in the URL */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid var(--c-border)' }}>
         {TABS.map((t) => (
           <button
@@ -132,7 +132,7 @@ export default function SchoolDirectory() {
           // carry the things that only live on the full screen: adding a student, the
           // recycle bin, class strength. Without this the merge would strand them.
           onOpenFullScreen={() => setSearchParams({ tool: 'student-database' })}
-          // Deep-link straight to this student's profile — StudentDatabase reads
+          // Deep-link straight to this student's profile - StudentDatabase reads
           // `focus` and opens the detail panel (fetches by id, so the student
           // need not be on that screen's current page).
           onOpen={(s) => setSearchParams({ tool: 'student-database', focus: s.id })}
@@ -201,7 +201,7 @@ function StudentsTab({ user, onOpen, onOpenFullScreen }) {
     // Field names match what the students LIST endpoint actually returns (the
     // same accessors StudentDatabase's own table uses): class via `class_info`,
     // the primary contact via `primary_phone`. Guardian name is not on the list
-    // payload — it loads with the profile — so it is deliberately not a column
+    // payload - it loads with the profile - so it is deliberately not a column
     // here rather than a column that always reads "not recorded". Sort is
     // server-side (sortKey: 'class').
     { key: 'class', label: 'Class', sortKey: 'class', render: (s) => (s.class_info ? `${s.class_info.name}-${s.class_info.section}` : cellValue(null)) },
@@ -341,7 +341,7 @@ function StaffTab({ onOpen, onOpenFullScreen }) {
   return (
     <>
       {error && <ErrorBanner text={error} />}
-      {/* Legend — the register codes, and the honest note that the teacher tier
+      {/* Legend - the register codes, and the honest note that the teacher tier
           is not yet recorded (Track 2 / D-09), so its absence is visible. */}
       <div
         data-testid="directory-staff-legend"
@@ -460,7 +460,7 @@ export { registerCode, designationOf, REGISTER_CODES };
  * (`tools/StudentDatabase`) can host it as its Staff tab (D-44 cluster D, done
  * 2026-08-07 on the owner's instruction).
  *
- * The school's owner reported "two views of the student database for some reason" —
+ * The school's owner reported "two views of the student database for some reason" -
  * this screen and the Student Database both listed every student, one read-only and
  * one with the buttons. There is now one screen, and this is the half of this file
  * that had no equivalent over there.

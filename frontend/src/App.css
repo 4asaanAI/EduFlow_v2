@@ -10,7 +10,7 @@
   --c-border: #4d4d4d;
   --c-text:   #f5f5f5;
   --c-muted:  #A8A8A8;
-  /* was #666666 at 3.03:1 on the page — under the 4.5:1 body-text minimum */
+  /* was #666666 at 3.03:1 on the page - under the 4.5:1 body-text minimum */
   --c-faint:  #8A8A8A;
   --c-input:  #262626;
 }
@@ -160,7 +160,7 @@ body { background: var(--c-app, #141414); }
      These used to be remapped to dark text colours here, on the reasoning that
      a near-white value must be text. It is not: the tool screens write
      `isDark ? '--tool-hex-252525' : '--tool-hex-fafafa'`, so the LIGHT branch
-     wants a LIGHT value — a card, an input, a hover fill.
+     wants a LIGHT value - a card, an input, a hover fill.
 
      Darkening them turned every such surface into a dark slab on a white page.
      Abhimanyu reported it on Query & Support, where the whole "Submit New
@@ -202,7 +202,7 @@ body { background: var(--c-app, #141414); }
   --tool-hex-7f1d1d: #FDE7EB;   /* dark red surface → light red tint */
   --tool-hex-444:    #B9C8E4;   /* dark border → light border */
   --tool-hex-171717: #16203A;   /* a dark value by name; stays dark. */
-  /* f0f0f0 and d5d5d5 were briefly remapped dark here too. Reverted — see the
+  /* f0f0f0 and d5d5d5 were briefly remapped dark here too. Reverted - see the
      near-white note above; they are surfaces, not text. */
   /* brand + status: deepen where the colour has to carry text on white */
   --tool-hex-4f8ff7: #1A6FCE;

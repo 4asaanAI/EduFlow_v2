@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import StaffTracker from '../StaffTracker';
 
 /**
- * D-44 (deep-link half) — a Directory row opens that PERSON, not just the list.
+ * D-44 (deep-link half) - a Directory row opens that PERSON, not just the list.
  *
  * The Directory sends `?tool=staff-tracker&focus=<id>`. Staff Tracker paginates on
  * the server, so it cannot assume the person is on whatever page is loaded: it has

@@ -1,5 +1,5 @@
-"""Expense domain service — the single shared write path for expense records
-(AI Layer Hardening, AD7 — drift-gate remediation for `create_expense` plus the
+"""Expense domain service - the single shared write path for expense records
+(AI Layer Hardening, AD7 - drift-gate remediation for `create_expense` plus the
 new `update_expense` / `delete_expense` AI tools).
 
 Both the REST routes (`POST/PATCH/DELETE /api/ops/expenses*`) and the AI tools
@@ -35,7 +35,7 @@ class ExpenseNotFoundError(Exception):
     """Unknown expense id within the caller's scope → HTTP 404."""
 
 
-# PATCH whitelist — the legacy REST route $set the raw body; the service pins the
+# PATCH whitelist - the legacy REST route $set the raw body; the service pins the
 # mutable surface so neither entrypoint can flip schoolId/branch_id/audit fields.
 _MUTABLE_FIELDS = {"category", "description", "amount", "date", "vendor"}
 
@@ -177,6 +177,6 @@ async def delete_expense(db, actor_ctx: ActorContext, params: dict, *, session=N
     await db.expenses.delete_one(
         scoped_query({"id": expense_id}, branch_id=actor_ctx.branch_id), **_session_kwargs(session)
     )
-    # F.10: actor-tagged deletion audit — who deleted what, when.
+    # F.10: actor-tagged deletion audit - who deleted what, when.
     await _audit(db, actor_ctx, action="delete", expense_id=expense_id, changes={"deleted": existing}, session=session)
     return {"deleted": True, "expense": existing}

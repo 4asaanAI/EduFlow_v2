@@ -1,4 +1,4 @@
-"""D.1 — sample transaction commit/rollback proof on the real-Mongo tier.
+"""D.1 - sample transaction commit/rollback proof on the real-Mongo tier.
 
 Pins the baseline capability AD12 exists to provide: a Motor multi-document
 transaction that COMMITS atomically and ROLLS BACK atomically. Later Epic-D
@@ -28,6 +28,6 @@ async def test_transaction_rolls_back_both_writes_on_error(mongo_real_db, mongo_
                 await mongo_real_db.a.insert_one({"_id": "1", "v": 1}, session=session)
                 await mongo_real_db.b.insert_one({"_id": "1", "v": 2}, session=session)
                 raise RuntimeError("forced mid-transaction failure")
-    # Nothing committed — both collections empty.
+    # Nothing committed - both collections empty.
     assert await mongo_real_db.a.count_documents({}) == 0
     assert await mongo_real_db.b.count_documents({}) == 0

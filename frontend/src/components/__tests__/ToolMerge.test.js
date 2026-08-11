@@ -1,5 +1,5 @@
 /**
- * D-44 part 2 — the tool merges.
+ * D-44 part 2 - the tool merges.
  *
  * What was wrong: 'fee-receipts' and 'fee-collection' were two names for ONE screen
  * (both loaded tools/FeeCollection), and the school's owner was offered both of them
@@ -7,8 +7,8 @@
  *
  * What this test protects, now that the duplicate name is retired:
  *   1. No menu offers the retired name again.
- *   2. Anything that still SAYS the retired name — an old bookmark, a notification
- *      deep link, Flo being asked "open fee receipts" — still lands on the screen.
+ *   2. Anything that still SAYS the retired name - an old bookmark, a notification
+ *      deep link, Flo being asked "open fee receipts" - still lands on the screen.
  *   3. Every id a menu offers actually resolves to a component, so a merge can never
  *      leave a live menu entry pointing at "Loading tool…" forever.
  *
@@ -140,7 +140,7 @@ describe('the tools that were examined and left alone', () => {
   };
 
   Object.entries(KEPT).forEach(([id, why]) => {
-    test(`${id} is still offered somewhere — ${why}`, () => {
+    test(`${id} is still offered somewhere - ${why}`, () => {
       const offered = everyOfferedIdList().some(([, ids]) => ids.includes(id));
       expect(offered).toBe(true);
       expect(TOOL_ALIASES[id]).toBeUndefined();

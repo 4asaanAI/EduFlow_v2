@@ -6,7 +6,7 @@ the tool-panel endpoint (`routes/tools.py`). Story 4.5 made them share the *gate
 twice: looking the tool up, deciding whether writes are allowed here, resolving the
 caller's branch scope, working out whether the function takes `scope`, calling it, and
 turning a failure into something safe to show. Two copies that agree today is exactly
-how the double-envelope defect survived the R4 hardening epic — nobody greps for the
+how the double-envelope defect survived the R4 hardening epic - nobody greps for the
 second caller, because it is thought of as "the tools API" rather than as a caller.
 
 This module is that end state: `invoke_tool(name, params, user, scope) -> envelope`.

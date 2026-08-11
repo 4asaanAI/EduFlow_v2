@@ -4,7 +4,7 @@ UI Sweep Epic 10, Story 10.5.
 
 Abhimanyu chose this over a paid vision service for printed paper, 2026-07-22:
 "make the ability or skill of using Tesseract or PaddleOCR for printed paper available
-to Flo — free, private, on your own server."
+to Flo - free, private, on your own server."
 
 WHY TESSERACT AND NOT PADDLEOCR OR EASYOCR. PaddleOCR pulls PaddlePaddle and EasyOCR
 pulls Torch: hundreds of megabytes of model and a memory footprint this Elastic
@@ -12,14 +12,14 @@ Beanstalk instance does not have. Tesseract is a small C++ binary with a thin Py
 wrapper. Recorded so the choice is not revisited blind.
 
 WHY THIS IS THE RIGHT DEFAULT FOR A SCHOOL. Most of what a school photographs is
-PRINTED — fee slips, admission forms, circulars, mark sheets. Tesseract reads those
+PRINTED - fee slips, admission forms, circulars, mark sheets. Tesseract reads those
 accurately, costs nothing per page, and **the image never leaves this server**. For
 photographs that may contain children, that privacy property is worth more than the
 accuracy a hosted model would add.
 
 WHAT IT CANNOT DO, and must never pretend to. OCR reads letters. It does not see. Ask
 it what is happening in a photograph of a classroom and it will return nothing, which
-is the correct answer for a tool that only reads text — not evidence the page was
+is the correct answer for a tool that only reads text - not evidence the page was
 blank. `ocr_available()` and the `reason` on every result exist so callers can tell
 "there was no text" from "this server cannot do OCR yet".
 """
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 PREFERRED_LANGUAGES = ("eng+hin", "eng")
 
 # A photograph from a modern phone is a few megabytes. Well past that and it is not a
-# page of A4 — it is someone trying to make the server do a lot of work.
+# page of A4 - it is someone trying to make the server do a lot of work.
 MAX_IMAGE_BYTES = 12 * 1024 * 1024
 
 # Content sniffing, NOT the file extension. A `.png` that is really a 200 MB archive
@@ -108,7 +108,7 @@ def extract_text(data: bytes, *, languages: Optional[Tuple[str, ...]] = None) ->
     """Read the text off an image. Never raises for an unreadable page.
 
     An unavailable engine and an genuinely blank page are DIFFERENT ANSWERS and are
-    reported differently — returning "" for both would be the Epic 4 defect (a
+    reported differently - returning "" for both would be the Epic 4 defect (a
     failure that looks like a real result) in a new place.
     """
     available, why = ocr_available()
@@ -141,7 +141,7 @@ def extract_text(data: bytes, *, languages: Optional[Tuple[str, ...]] = None) ->
         image.load()
     except Exception:
         logger.warning("OCR could not open an image that passed content sniffing")
-        return OcrResult(text="", available=True, reason="That image could not be opened — it may be damaged.")
+        return OcrResult(text="", available=True, reason="That image could not be opened - it may be damaged.")
 
     last_error = ""
     for lang in (languages or PREFERRED_LANGUAGES):

@@ -60,7 +60,7 @@ function classifyConfirmError(httpStatus, body) {
         kind: code,
         message: serverMsg
           || 'The approved plan could not be verified. Please ask me to prepare it again, then confirm.',
-        // The token is spent/invalid — re-posting it can't help. Re-ask instead.
+        // The token is spent/invalid - re-posting it can't help. Re-ask instead.
         retryable: false,
       };
     case 'plan_stale':
@@ -81,7 +81,7 @@ function classifyConfirmError(httpStatus, body) {
       return {
         kind: code,
         message: serverMsg
-          || 'Part of this could not be completed safely. Nothing was applied — this needs manual attention in the relevant panel.',
+          || 'Part of this could not be completed safely. Nothing was applied - this needs manual attention in the relevant panel.',
         retryable: false,
       };
     case 'side_effect_failed':
@@ -333,7 +333,7 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
       });
 
       if (res.status === 429) {
-        // Rate-limited. Read Retry-After header (seconds) — fall back to body.
+        // Rate-limited. Read Retry-After header (seconds) - fall back to body.
         const errData = await res.json().catch(() => null);
         const headerRetry = parseInt(res.headers.get('Retry-After') || '', 10);
         const bodyRetry = parseInt(errData?.retry_after_seconds, 10);
@@ -365,7 +365,7 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
         onComplete(data);
       }
     } catch (err) {
-      // Network/transport failure (fetch rejected) — no server response to
+      // Network/transport failure (fetch rejected) - no server response to
       // classify. Safe to re-attempt with the same token.
       setErrorMsg(err.message || 'Something went wrong. Please try again.');
       setErrorRetryable(true);
@@ -628,7 +628,7 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
         }}>
           <WarningIcon />
           <span>
-            Too many AI actions — please wait {Math.max(1, Math.ceil(rateLimitSecondsLeft / 60))} minute{Math.max(1, Math.ceil(rateLimitSecondsLeft / 60)) === 1 ? '' : 's'}
+            Too many AI actions - please wait {Math.max(1, Math.ceil(rateLimitSecondsLeft / 60))} minute{Math.max(1, Math.ceil(rateLimitSecondsLeft / 60)) === 1 ? '' : 's'}
             {rateLimitInfo?.limit != null && (
               <span style={{ opacity: 0.7 }}> (limit: {rateLimitInfo.limit}/hour)</span>
             )}

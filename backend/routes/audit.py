@@ -1,5 +1,5 @@
 from __future__ import annotations
-"""Audit Log UI — Story 33"""
+"""Audit Log UI - Story 33"""
 import re
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import TimedQuery, get_db
@@ -77,7 +77,7 @@ async def list_audit_log(
         ]
 
     skip = (page - 1) * limit
-    scoped = scoped_filter(query, get_school_id())  # branch-scope: intentional — the audit trail is a school-wide record; role-based narrowing is applied to `query` above, not here
+    scoped = scoped_filter(query, get_school_id())  # branch-scope: intentional - the audit trail is a school-wide record; role-based narrowing is applied to `query` above, not here
     async with TimedQuery(collection_name="audit_logs", operation="count_documents", query_shape="audit_log_list"):
         total = await db.audit_logs.count_documents(scoped)
     async with TimedQuery(collection_name="audit_logs", operation="find", query_shape="audit_log_list"):
@@ -91,7 +91,7 @@ async def daily_digest(
     hours: int = 24,
     user: dict = Depends(require_role("owner", "admin")),
 ):
-    """R2-15 — the day in one page, for the two people who run the school.
+    """R2-15 - the day in one page, for the two people who run the school.
 
     Gated the same way the action log is: the school's owner and the principal only
     (Aman's request 10 of 2026-08-06, reconfirmed 2026-08-10). This summarises exactly
@@ -110,7 +110,7 @@ async def daily_digest(
     return {"success": True, "data": {**digest, "text": render_digest_text(digest)}}
 
 
-# ── R2-18 — same-day undo of your own change ─────────────────────────────────
+# ── R2-18 - same-day undo of your own change ─────────────────────────────────
 #
 # Deliberately in this file and NOT behind `AUDIT_READER_SUB_CATEGORIES`. The action log
 # itself stays with the owner and the principal (Aman's request 10 of 2026-08-06,
@@ -155,7 +155,7 @@ async def undo_my_change(audit_id: str, request: Request, user: dict = Depends(g
 
 # NOTE: the two R2-18 routes above are declared BEFORE this one deliberately.
 # `/{record_id}` matches any single path segment, so a route registered after it
-# is never reached — `/my-changes-today` was answered by this handler and refused
+# is never reached - `/my-changes-today` was answered by this handler and refused
 # with the action log's own 403. FastAPI matches in declaration order.
 @router.get("/{record_id}")
 @router.get("/record/{record_id}")
@@ -182,7 +182,7 @@ async def get_record_history(
     is_principal = user.get("role") == "admin" and user.get("sub_category") == "principal"
     if is_principal and user.get("branch_id"):
         query["branch_id"] = user.get("branch_id")
-    scoped = scoped_filter(query, get_school_id())  # branch-scope: intentional — a principal is already pinned to their own branch_id a few lines above; the owner reads the school
+    scoped = scoped_filter(query, get_school_id())  # branch-scope: intentional - a principal is already pinned to their own branch_id a few lines above; the owner reads the school
     skip = (page - 1) * limit
     async with TimedQuery(collection_name="audit_logs", operation="count_documents", query_shape="record_history"):
         total = await db.audit_logs.count_documents(scoped)

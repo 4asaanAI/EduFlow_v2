@@ -1,12 +1,12 @@
 """Canonical state normalizer for the dual-entrypoint parity harness (Story F.6).
 
-The parity harness drives the SAME seed through both write entrypoints — the REST
-handler (via TestClient) and the AI tool (via real dispatch) — and asserts the DB
+The parity harness drives the SAME seed through both write entrypoints - the REST
+handler (via TestClient) and the AI tool (via real dispatch) - and asserts the DB
 blast radius is identical. Volatile fields (ids, timestamps, request-correlation)
 legitimately differ between two independent runs, so they are masked before diffing.
 
 This module centralizes the masking RULESET so every per-tool parity test (and the
-F.5 dry-run-vs-real comparison) uses ONE definition of "equivalent state" — the
+F.5 dry-run-vs-real comparison) uses ONE definition of "equivalent state" - the
 ruleset itself is unit-tested in `test_normalizer.py`. The CI drift gate
 (`test_parity_corpus.py`) fails if a write tool ships without a corpus entry.
 """

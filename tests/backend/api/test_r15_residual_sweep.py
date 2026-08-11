@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""R15 — Residual Confirmatory Sweep: HTTP-level regressions.
+"""R15 - Residual Confirmatory Sweep: HTTP-level regressions.
 
   * R15.5 (P-L7) manual attendance duplicate → idempotent / 409, never a 500
   * R15.5 (P-L8) house seeding is idempotent (no duplicate houses)

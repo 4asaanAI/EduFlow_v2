@@ -29,7 +29,7 @@ def test_scoped_filter_does_not_wrap_existing_school_filter():
     }
 
 
-# ─── scoped_query — Part 1.5 Patch I ────────────────────────────────────────
+# ─── scoped_query - Part 1.5 Patch I ────────────────────────────────────────
 
 import pytest
 
@@ -94,7 +94,7 @@ def test_scoped_query_detects_nested_branch_id_in_or():
 
 
 def test_scoped_query_empty_string_branch_id_skipped(monkeypatch):
-    """Empty string is treated as None — no false-safe `{branch_id: ""}` clause."""
+    """Empty string is treated as None - no false-safe `{branch_id: ""}` clause."""
     monkeypatch.setenv("SCHOOL_ID", "school-1")
     result = scoped_query({}, branch_id="")
     # No branch_id clause should appear anywhere.
@@ -119,7 +119,7 @@ def test_scoped_query_both_axes(monkeypatch):
     assert "b1" in flat
 
 
-# ─── validate_school_id — Part 4 Story 4.1 ──────────────────────────────────
+# ─── validate_school_id - Part 4 Story 4.1 ──────────────────────────────────
 
 def test_validate_school_id_passes_in_development(monkeypatch):
     """SCHOOL_ID unset + ENVIRONMENT=development must not raise."""

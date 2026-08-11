@@ -1,7 +1,7 @@
 """
 Migration 016: Backfill admin sub_category for legacy rows.
 
-Story: Part 1 (Auth + RBAC hardening) — closes the "no sub_category → type=all"
+Story: Part 1 (Auth + RBAC hardening) - closes the "no sub_category → type=all"
 permissive fallback in scope_resolver. Before this change, an admin row that
 predates the sub_category field would silently get full operational access.
 After this change, scope_resolver denies-by-default for missing sub_category,
@@ -10,7 +10,7 @@ so any legacy row MUST be backfilled or the user will see nothing.
 Strategy:
   1. For legacy admin rows where designation maps to a known sub_category
      (e.g. designation="Principal"), promote designation→sub_category first
-     (Part 1.5 Patch J — scope_resolver no longer reads designation).
+     (Part 1.5 Patch J - scope_resolver no longer reads designation).
   2. Any remaining admin row with no sub_category gets "support_staff"
      (self-only scope). An operator can manually promote later.
 

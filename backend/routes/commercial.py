@@ -110,7 +110,7 @@ async def patch_default_entity(entity_id: str, request: Request, user: dict = De
 async def delete_entity(entity_id: str, request: Request, user: dict = Depends(require_commercial_reporter)):
     """Delete a legal entity. Owner only, and refused while anything is booked to it.
 
-    Owner instruction 2026-08-07 — parity reference for the AI `delete_legal_entity`
+    Owner instruction 2026-08-07 - parity reference for the AI `delete_legal_entity`
     tool, which calls the same service.
     """
     try:
@@ -178,7 +178,7 @@ async def patch_crm_lead(enquiry_id: str, request: Request,
 async def delete_lead(enquiry_id: str, request: Request, user: dict = Depends(require_admissions_operator)):
     """Delete an admission enquiry entered in error.
 
-    Owner instruction 2026-08-07 — parity reference for the AI `delete_enquiry` tool.
+    Owner instruction 2026-08-07 - parity reference for the AI `delete_enquiry` tool.
     Refused once the enquiry has become an application or an enrolled student.
     """
     try:
@@ -289,7 +289,7 @@ async def delete_retail_product(product_id: str, request: Request,
                                 user: dict = Depends(require_retail_configurator)):
     """Delete a shop product. Refused once it appears on any sale.
 
-    Owner instruction 2026-08-07 — parity reference for the AI `delete_retail_product`
+    Owner instruction 2026-08-07 - parity reference for the AI `delete_retail_product`
     tool.
     """
     try:

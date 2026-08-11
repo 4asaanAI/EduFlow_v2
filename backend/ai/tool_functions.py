@@ -7,7 +7,7 @@ argument and routes every Mongo read through ``_tenant_query`` (which
 composes scope.branch_id with the env-canonical schoolId via
 ``tenant.scoped_query``). Tests that still call these tools with the
 legacy two-arg signature get ``scope=None`` and therefore no branch
-filter — acceptable for unit tests that already isolate their fake DB to a
+filter - acceptable for unit tests that already isolate their fake DB to a
 single tenant. Production call sites in ``routes/chat.py`` always pass the
 resolved Scope.
 """
@@ -68,7 +68,7 @@ def _tenant_query(scope, base: dict | None = None) -> dict:
     """Compose ``base`` with the requester's branch_id and schoolId.
 
     This is the canonical helper used by every v1 tool. It deliberately
-    does NOT call ``scope.filter()`` — that helper is collection-aware and
+    does NOT call ``scope.filter()`` - that helper is collection-aware and
     would, for example, splice ``{"id": student_id}`` into a
     ``student_attendance`` query for a self-only student. v1 tools already
     hand-craft the right student/class restrictions; here we only need to
@@ -110,7 +110,7 @@ async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
     present = sum(1 for a in att_today if a.get("status") == "present")
     absent = sum(1 for a in att_today if a.get("status") == "absent")
     att_rate = round(present / total_marked * 100, 1) if total_marked > 0 else 0
-    # Epic 4 / Story 4.2: with nothing marked yet, this reported "0%" — which reads
+    # Epic 4 / Story 4.2: with nothing marked yet, this reported "0%" - which reads
     # as "the school is empty" to a principal opening the report on a Monday morning.
     # Nought marked is not nought present. Both the screens and the assistant read
     # this field, so both are corrected by correcting the number once.
@@ -128,7 +128,7 @@ async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
         if st:
             staff_absent_names.append(st.get("name", "Unknown"))
 
-    # Fee stats — canonical shared helper (R7.1/M5).
+    # Fee stats - canonical shared helper (R7.1/M5).
     _fee = await compute_fee_totals(db, _tenant_query(scope, {}))
     total_paid = _fee["collected"]
     total_outstanding = _fee["outstanding"]
@@ -150,7 +150,7 @@ async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
             "reason": lr.get("reason", ""),
         })
 
-    # Students absent 3+ consecutive days — M4/AC2: batched, covers ALL students
+    # Students absent 3+ consecutive days - M4/AC2: batched, covers ALL students
     # (the old [:50] cap made the result wrong, not just slow).
     check_date = date.today()
     date_window = [(check_date - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(5)]
@@ -214,7 +214,7 @@ async def tool_get_school_pulse(params: dict, user: dict, scope=None) -> dict:
 
 
 async def tool_get_fee_summary(params: dict, user: dict, scope=None) -> dict:
-    """Canonical fee summary — identical formula to _fee_summary_payload (REST API).
+    """Canonical fee summary - identical formula to _fee_summary_payload (REST API).
 
     collected   = SUM(amount WHERE paid) + SUM(paid_amount WHERE partial)
     outstanding = SUM(amount WHERE overdue/pending/unpaid) + SUM(amount-paid_amount WHERE partial)
@@ -285,7 +285,7 @@ async def tool_get_fee_summary(params: dict, user: dict, scope=None) -> dict:
             except Exception:
                 pass
         # R4.4/DPDP: mask guardian phones AT SOURCE (defense in depth, matching
-        # get_transport_status / redaction.py) — never emit raw numbers from a tool.
+        # get_transport_status / redaction.py) - never emit raw numbers from a tool.
         phone = _mask_phone(guardian_phone_map.get(sid) or student.get("phone", ""))
         defaulters.append({
             "student_name": student.get("name", "Unknown"),
@@ -308,7 +308,7 @@ async def tool_get_fee_summary(params: dict, user: dict, scope=None) -> dict:
         return f"₹{a:,.0f}"
 
     # Epic 4 / Story 4.2: how many fee records exist at all. The school has ONE
-    # transaction for 1,802 students, so "Total Collected ₹0" is true — and
+    # transaction for 1,802 students, so "Total Collected ₹0" is true - and
     # indistinguishable from a failed request unless the screen can say why.
     transactions_on_file = await db.fee_transactions.count_documents(_tenant_query(scope, {}))
 
@@ -364,7 +364,7 @@ async def tool_get_staff_status(params: dict, user: dict, scope=None) -> dict:
 
     # Late arrivals in last 5 days
     # NEW-04/T7: one read for all staff across all 5 days (was 5 × staff-count
-    # round trips — ~450 queries for a 90-person school, inside a chat turn).
+    # round trips - ~450 queries for a 90-person school, inside a chat turn).
     late_patterns = []
     last_5_days = [(date.today() - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(5)]
     staff_ids = [s.get("id") for s in all_staff if s.get("id")]
@@ -509,7 +509,7 @@ async def tool_get_smart_alerts(params: dict, user: dict, scope=None) -> dict:
     today_str = today.strftime("%Y-%m-%d")
     alerts = []
 
-    # ── 1. Chronic absentees — batched (fixes N+1 and 100-student cap) ──────
+    # ── 1. Chronic absentees - batched (fixes N+1 and 100-student cap) ──────
     date_window = [(today - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(5)]
     raw_att = await db.student_attendance.find(
         _tenant_query(scope, {"date": {"$in": date_window}})
@@ -557,10 +557,10 @@ async def tool_get_smart_alerts(params: dict, user: dict, scope=None) -> dict:
         rate_today = present_today / len(today_att)
         if rate_today >= 0.95:
             alerts.append({"type": "success", "category": "Attendance",
-                            "text": f"Excellent attendance today — {rate_today*100:.0f}% students present", "priority": "info"})
+                            "text": f"Excellent attendance today - {rate_today*100:.0f}% students present", "priority": "info"})
         elif rate_today < 0.70:
             alerts.append({"type": "warning", "category": "Attendance",
-                            "text": f"Today's attendance only {rate_today*100:.0f}% — below 70% threshold", "priority": "medium"})
+                            "text": f"Today's attendance only {rate_today*100:.0f}% - below 70% threshold", "priority": "medium"})
 
     # ── 4. Staff absence ─────────────────────────────────────────────────────
     total_staff = await db.staff.count_documents(_tenant_query(scope, {"is_active": True}))
@@ -576,7 +576,7 @@ async def tool_get_smart_alerts(params: dict, user: dict, scope=None) -> dict:
             alerts.append({"type": "warning", "category": "Staff",
                             "text": f"{staff_absent} staff absent today", "priority": "medium"})
 
-    # ── 5. Fee overdue — split 30-59 days (warning) and 60+ days (critical) ──
+    # ── 5. Fee overdue - split 30-59 days (warning) and 60+ days (critical) ──
     overdue_txns = await db.fee_transactions.find(
         _tenant_query(scope, {"status": "overdue"})
     ).to_list(1000)
@@ -604,12 +604,12 @@ async def tool_get_smart_alerts(params: dict, user: dict, scope=None) -> dict:
         coll_rate = _fee["collection_rate"]
         if coll_rate >= 80:
             alerts.append({"type": "success", "category": "Fees",
-                            "text": f"Fee collection at {coll_rate:.1f}% — excellent!", "priority": "info"})
+                            "text": f"Fee collection at {coll_rate:.1f}% - excellent!", "priority": "info"})
         elif coll_rate < 30:
             alerts.append({"type": "critical", "category": "Fees",
                             "text": f"Fee collection critically low at {coll_rate:.1f}%", "priority": "high"})
 
-    # ── 7. Leave requests — stale (3+ days) vs fresh pending ────────────────
+    # ── 7. Leave requests - stale (3+ days) vs fresh pending ────────────────
     pending_leaves = await db.leave_requests.find(
         _tenant_query(scope, {"status": "pending"})
     ).to_list(200)
@@ -617,7 +617,7 @@ async def tool_get_smart_alerts(params: dict, user: dict, scope=None) -> dict:
     stale_leaves = [l for l in pending_leaves if l.get("created_at", "9999") < stale_cutoff]
     if stale_leaves:
         alerts.append({"type": "warning", "category": "Leaves",
-                        "text": f"{len(stale_leaves)} leave request(s) pending 3+ days — decision overdue", "priority": "medium"})
+                        "text": f"{len(stale_leaves)} leave request(s) pending 3+ days - decision overdue", "priority": "medium"})
     elif pending_leaves:
         alerts.append({"type": "info", "category": "Leaves",
                         "text": f"{len(pending_leaves)} leave request(s) pending approval", "priority": "low"})
@@ -654,7 +654,7 @@ async def tool_get_smart_alerts(params: dict, user: dict, scope=None) -> dict:
     )
     if visitors_in > 0:
         alerts.append({"type": "info", "category": "Visitors",
-                        "text": f"{visitors_in} visitor(s) still checked in — checkout not recorded", "priority": "low"})
+                        "text": f"{visitors_in} visitor(s) still checked in - checkout not recorded", "priority": "low"})
 
     # ── 12. Stale admissions enquiries (new, no follow-up 7+ days) ───────────
     enq_cutoff = (today - timedelta(days=7)).isoformat()
@@ -665,8 +665,8 @@ async def tool_get_smart_alerts(params: dict, user: dict, scope=None) -> dict:
         alerts.append({"type": "warning", "category": "Admissions",
                         "text": f"{stale_enq} enquiry/enquiries with no follow-up for 7+ days", "priority": "medium"})
 
-    # R2-2 / decision 1, 2026-08-10: the management head keeps Smart Alerts — the
-    # attendance, staff, maintenance and admissions half of it is his daily work — but
+    # R2-2 / decision 1, 2026-08-10: the management head keeps Smart Alerts - the
+    # attendance, staff, maintenance and admissions half of it is his daily work - but
     # never sees a rupee figure or a collection rate. The fee rows are dropped here,
     # on the server, rather than hidden in the screen: an alert that is filtered in the
     # browser has still been sent, and the same tool answers Flo in chat, where there
@@ -761,10 +761,10 @@ async def tool_get_fee_transactions(params: dict, user: dict, scope=None) -> dic
 
 
 async def tool_approve_leave(params: dict, user: dict, scope=None) -> dict:
-    # Thin adapter over services.leave_service.decide_leave — the SAME write path
+    # Thin adapter over services.leave_service.decide_leave - the SAME write path
     # as PATCH /api/staff/leaves/{id}. Story A.2: the AI decision now notifies the
     # staff member, writes the audit row, enforces the pending-only guard, requires
-    # a rejection reason, and stamps a UTC approved_at — identical to the panel.
+    # a rejection reason, and stamps a UTC approved_at - identical to the panel.
     leave_id = params.get("leave_id")
     if not leave_id:
         return _env(None, success=False, message="leave_id is required", count=0)
@@ -967,7 +967,7 @@ async def tool_get_daily_brief(params: dict, user: dict, scope=None) -> dict:
     today = date.today().strftime("%Y-%m-%d")
     day_name = date.today().strftime("%A, %d %B %Y")
 
-    # Get core data in parallel-style sequence — propagate scope to each sub-tool.
+    # Get core data in parallel-style sequence - propagate scope to each sub-tool.
     # R4.2: sub-tools now return the envelope, so read their payloads from `data`.
     pulse = (await tool_get_school_pulse({}, user, scope)).get("data", {})
     alerts = (await tool_get_smart_alerts({}, user, scope)).get("data", {})

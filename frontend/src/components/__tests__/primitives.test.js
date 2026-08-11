@@ -1,5 +1,5 @@
 /**
- * Shared UI primitives — Epic 9, Story 9.2.
+ * Shared UI primitives - Epic 9, Story 9.2.
  *
  * These guard the two rules that are easiest to break by accident, because
  * breaking either LOOKS like a tidy-up:
@@ -11,7 +11,7 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { Button, Pill, EmptyState, Field, VARIANTS } from '../ui/primitives';
 
-describe('Button — contrast contract', () => {
+describe('Button - contrast contract', () => {
   // Asserted against the VARIANTS map, not the rendered DOM. jsdom's CSS
   // parser silently drops `color` and `background` when the value is a
   // `var()`, so a rendered button reports neither and a DOM assertion would
@@ -33,7 +33,7 @@ describe('Button — contrast contract', () => {
     expect(VARIANTS.primary.background).not.toContain('#2B8FF0');
   });
 
-  it('no variant hard-codes a colour — every one goes through a token', () => {
+  it('no variant hard-codes a colour - every one goes through a token', () => {
     for (const [name, v] of Object.entries(VARIANTS)) {
       for (const key of ['background', 'color']) {
         expect(`${name}.${key}: ${v[key]}`).not.toMatch(/#[0-9a-f]{3,8}/i);
@@ -42,7 +42,7 @@ describe('Button — contrast contract', () => {
   });
 });
 
-describe('Button — the press never reflows the row', () => {
+describe('Button - the press never reflows the row', () => {
   it('moves with transform, and leaves layout properties untouched', () => {
     render(<Button data-testid="b">Press</Button>);
     const el = screen.getByTestId('b');
@@ -85,7 +85,7 @@ describe('Button — the press never reflows the row', () => {
   });
 });
 
-describe('Button — disabled is more than a colour', () => {
+describe('Button - disabled is more than a colour', () => {
   it('carries the real disabled attribute, not just a faded style', () => {
     render(<Button disabled data-testid="b">Press</Button>);
     expect(screen.getByTestId('b')).toBeDisabled();

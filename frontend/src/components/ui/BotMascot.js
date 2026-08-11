@@ -2,7 +2,7 @@ import React, { useId } from 'react';
 import './BotMascot.css';
 
 /* ============================================================
-   "Flo" — EduFlow's AI mascot.
+   "Flo" - EduFlow's AI mascot.
 
    COPIED VERBATIM from the marketing site so the assistant has one
    face across the website and the product:
@@ -12,28 +12,28 @@ import './BotMascot.css';
                                         BotMascot.css alongside this file)
 
    If Flo is ever redrawn on the landing page, re-copy BOTH files rather
-   than hand-editing this one — two subtly different robots is worse than
+   than hand-editing this one - two subtly different robots is worse than
    no robot.
 
    WHERE IT BELONGS: this is the assistant's FACE. It is Flo on the sign-in
    screen, on the chat greeting, beside every one of Flo's replies, and on
-   empty and error states. It does NOT belong on daily working screens —
+   empty and error states. It does NOT belong on daily working screens -
    Abhimanyu asked for "playful but calm", and a teacher marking forty
    attendance rows every morning does not need a robot watching. If you are
    adding this to a table, a form or a tool panel, that is the rule you are
    about to break.
 
    Props:
-     size     — pixel width (height scales to ~1.08x for the full body)
-     mood     — 'happy' (default) | 'wink' | 'think'
-     wave     — render a raised waving arm (hero)
-     variant  — 'full' (default) | 'avatar'
+     size     - pixel width (height scales to ~1.08x for the full body)
+     mood     - 'happy' (default) | 'wink' | 'think'
+     wave     - render a raised waving arm (hero)
+     variant  - 'full' (default) | 'avatar'
 
    `variant="avatar"` is head-and-antenna only, for the 28px square beside
    each chat message (Abhimanyu, 2026-07-22: Flo there rather than the star).
    A whole robot shrunk to 28px is an unreadable smudge, and the float
    animation repeated down a long conversation is a room full of bobbing
-   heads — so the avatar crops to the face and holds still.
+   heads - so the avatar crops to the face and holds still.
    ============================================================ */
 export default function BotMascot({ size = 180, mood = 'happy', wave = false, variant = 'full', className = '', style, ...rest }) {
   const uid = useId().replace(/[:]/g, '');
@@ -53,7 +53,7 @@ export default function BotMascot({ size = 180, mood = 'happy', wave = false, va
           `<svg> attribute height: Expected length, "auto"` on every render.
           The viewBox plus a width of 100% already preserves the aspect ratio. */}
       {/* The avatar crops to the antenna tip and the head; the full body keeps
-          the original frame. Same artwork either way — one Flo, two crops. */}
+          the original frame. Same artwork either way - one Flo, two crops. */}
       <svg
         viewBox={isAvatar ? '38 0 164 182' : '0 0 240 264'}
         width="100%"
@@ -78,12 +78,12 @@ export default function BotMascot({ size = 180, mood = 'happy', wave = false, va
           </radialGradient>
         </defs>
 
-        {/* contact shadow — the avatar has no ground to cast onto */}
+        {/* contact shadow - the avatar has no ground to cast onto */}
         {!isAvatar && (
           <ellipse className="eh-mascot-shadow" cx="120" cy="250" rx="62" ry="11" fill="#000" opacity="0.28" />
         )}
 
-        {/* floating group — the avatar holds still (see the note above) */}
+        {/* floating group - the avatar holds still (see the note above) */}
         <g className={isAvatar ? undefined : 'eh-mascot-float'}>
           {/* antenna */}
           <g className="eh-mascot-antenna">
@@ -101,7 +101,7 @@ export default function BotMascot({ size = 180, mood = 'happy', wave = false, va
           <rect x="190" y="118" width="20" height="40" rx="10" fill="#1c6fd0" />
           <circle cx="200" cy="138" r="6" fill="#f2811d" />
 
-          {/* Body, chest screen and arms — omitted from the avatar crop. They sit
+          {/* Body, chest screen and arms - omitted from the avatar crop. They sit
               below the head, so leaving them in would only render as a blue smear
               at the bottom edge of a 28px square. */}
           {!isAvatar && (

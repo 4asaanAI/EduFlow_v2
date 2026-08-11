@@ -60,7 +60,7 @@ async def _get_fee_outstanding(db) -> str:
 
 
 async def _get_fee_defaulter_count(db) -> int:
-    """Distinct students carrying any outstanding balance (R7.1/AC3 — canonical
+    """Distinct students carrying any outstanding balance (R7.1/AC3 - canonical
     defaulter definition, not only status='overdue')."""
     rows = await db.fee_transactions.find(
         _tenant_query({"status": {"$in": list(DEFAULTER_STATUSES)}}),
@@ -418,7 +418,7 @@ async def _build_coordinator_context(db, today: str, user_id: str) -> dict:
     class_attendance = []
     shown_classes = classes[:8]  # cap at 8 classes to keep context size manageable
     # NEW-04/T7: two batched reads for all 8 classes, then group in memory
-    # (was 2 count_documents per class — 16 round trips on every context build).
+    # (was 2 count_documents per class - 16 round trips on every context build).
     shown_ids = [c["id"] for c in shown_classes if c.get("id")]
     present_by_class: dict = {}
     roll_by_class: dict = {}
@@ -581,7 +581,7 @@ async def _build_school_context(role: str, user_id: str) -> dict:
     today = date.today().strftime("%Y-%m-%d")
 
     # Load school settings once for all roles
-    # Epic 4 / Story 4.4: the projection is widened, NOT joined by a second query —
+    # Epic 4 / Story 4.4: the projection is widened, NOT joined by a second query -
     # this runs once per chat turn, so an extra round trip would cost every user of
     # the assistant permanently. `principal` (not `principal_name`) is the field the
     # record actually stores; the prompt builder used to look for the wrong one.
@@ -640,13 +640,13 @@ async def _build_school_context(role: str, user_id: str) -> dict:
         # explicit operational context (it_tech, maintenance, management,
         # support_staff, or an unrecognised/legacy value) must NOT inherit the
         # principal's school-wide view. scope_resolver already denies them
-        # principal-level tool access; the chat context is aligned to that —
+        # principal-level tool access; the chat context is aligned to that -
         # minimal, not principal (was a silent over-exposure of school-wide data).
         return _with_school({
             "role": "admin",
             "sub_category": sub_category,
             "note": (
-                "Limited administrative access — no school-wide operational data "
+                "Limited administrative access - no school-wide operational data "
                 "in context. Ask the principal or owner for school-wide reports."
             ),
         })

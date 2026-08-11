@@ -7,7 +7,7 @@ SCHOOL = "aaryans-joya"
 
 # The FakeDb is a session-wide singleton with no auto-reset. Snapshot every
 # collection this module touches, clear it for the test, then restore the exact
-# prior state on teardown — so seeded docs never leak into (or wipe state from)
+# prior state on teardown - so seeded docs never leak into (or wipe state from)
 # unrelated tests that share the same singleton.
 _TOUCHED = ("classes", "subjects", "students", "exam_results", "student_attendance", "guardians")
 
@@ -103,7 +103,7 @@ def test_classes_list_scoped_to_assigned_classes_for_teacher(client, fake_db):
     resp = client.get("/api/settings/classes", headers=_teacher_h())
     assert resp.status_code == 200
     ids = {c["id"] for c in resp.json()["data"]}
-    # cls-1 (class teacher) + cls-2 (subject) only — never cls-3.
+    # cls-1 (class teacher) + cls-2 (subject) only - never cls-3.
     assert ids == {"cls-1", "cls-2"}
 
 

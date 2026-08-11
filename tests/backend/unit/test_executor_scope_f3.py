@@ -1,8 +1,8 @@
-"""Story F.3 — per-step re-scoping in the executor.
+"""Story F.3 - per-step re-scoping in the executor.
 
 A plan is bound to one (school_id, branch_id) derived from the authenticated actor.
 A later step that names a different branch/school must abort the WHOLE plan
-(no partial write) — step 3 cannot widen scope vs step 1.
+(no partial write) - step 3 cannot widen scope vs step 1.
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ async def test_in_scope_plan_runs(fake_db):
 
 
 async def test_owner_plan_branch_none_allows_any_branch_step(fake_db):
-    # Owner authority (branch_id=None) is school-wide — a step may target a branch.
+    # Owner authority (branch_id=None) is school-wide - a step may target a branch.
     steps = [Step(tool="mark_attendance", params={"branch_id": "branch-c"}, idx=0, runner=_ok_runner)]
     plan = _make_plan(steps, branch_id=None)
     result = await plan_executor.run(plan, db=fake_db)

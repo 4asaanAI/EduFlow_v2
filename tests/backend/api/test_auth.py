@@ -1,8 +1,8 @@
 """
-API Tests: Authentication — EduFlow Backend
+API Tests: Authentication - EduFlow Backend
 
 Tests for POST /api/auth/login and GET /api/auth/me endpoints.
-Uses pytest with FastAPI's TestClient (sync) — no real DB required for
+Uses pytest with FastAPI's TestClient (sync) - no real DB required for
 most tests since auth route validates credentials against MongoDB.
 
 For CI: requires TEST_ADMIN_USERNAME + TEST_ADMIN_PASSWORD env vars,

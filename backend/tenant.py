@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SCHOOL_ID = "aaryans-joya"
 
-# Per-request school context — set by SchoolContextMiddleware for authenticated requests
+# Per-request school context - set by SchoolContextMiddleware for authenticated requests
 _school_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("school_id", default=None)
 
 
@@ -27,7 +27,7 @@ def validate_school_id() -> None:
         )
     if not school_id:
         logger.warning(
-            "SCHOOL_ID not set — using dev default 'aaryans-joya'. "
+            "SCHOOL_ID not set - using dev default 'aaryans-joya'. "
             "Set SCHOOL_ID in .env for a consistent dev environment."
         )
 
@@ -52,7 +52,7 @@ def scoped_filter(query: dict | None, school_id: str | None = None) -> dict:
     current_school_id = school_id or get_school_id()
     if "schoolId" in base:
         return base
-    # Strict filter — no $exists:False fallback (Story 1-3 backfilled all docs)
+    # Strict filter - no $exists:False fallback (Story 1-3 backfilled all docs)
     school_clause = {"schoolId": current_school_id}
     if not base:
         return school_clause
@@ -92,12 +92,12 @@ def scoped_query(
 ) -> dict:
     """Single helper enforcing BOTH tenancy axes (schoolId + branch_id).
 
-    Part 1 (Auth + RBAC) — replaces ad-hoc branch_id additions to MongoDB
+    Part 1 (Auth + RBAC) - replaces ad-hoc branch_id additions to MongoDB
     queries that historically forgot one or the other. Pass the caller's
     branch_id explicitly (typically from `user["branch_id"]`); the school_id
     defaults to the env-canonical tenant.
 
-    The schoolId clause is strict (no $exists:False fallback) — Story 1-3
+    The schoolId clause is strict (no $exists:False fallback) - Story 1-3
     backfilled all documents. branch_id is matched exactly with the same
     strict guarantee.
 
@@ -110,7 +110,7 @@ def scoped_query(
         * If the caller's query already pins the same branch_id, return the
           query unchanged (no double-clause).
     """
-    # Empty string is just as wrong as None — fail closed instead of injecting
+    # Empty string is just as wrong as None - fail closed instead of injecting
     # `{"branch_id": ""}` which matches no documents but pretends to scope.
     if branch_id == "":
         branch_id = None
@@ -128,7 +128,7 @@ def scoped_query(
                     "scoped_query branch_id conflict: query has %r, parameter has %r"
                     % (value, branch_id)
                 )
-        # All occurrences match — caller already scoped correctly.
+        # All occurrences match - caller already scoped correctly.
         return base
 
     # Compose: existing $and with branch_id, or wrap a fresh $and.

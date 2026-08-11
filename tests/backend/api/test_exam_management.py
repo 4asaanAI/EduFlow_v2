@@ -1,5 +1,5 @@
 from __future__ import annotations
-"""Tests: Exam management CRUD — permissions, teacher scope gate, PATCH/DELETE."""
+"""Tests: Exam management CRUD - permissions, teacher scope gate, PATCH/DELETE."""
 
 import pytest
 from middleware.auth import create_jwt

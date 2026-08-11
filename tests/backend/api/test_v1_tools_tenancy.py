@@ -1,4 +1,4 @@
-"""Part 2 Patch P1 — verify v1 tools in `ai/tool_functions.py` enforce
+"""Part 2 Patch P1 - verify v1 tools in `ai/tool_functions.py` enforce
 branch tenancy when given a Scope.
 
 Two branches (A and B) under one school; a teacher scoped to branch A must

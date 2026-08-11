@@ -6,7 +6,7 @@ Owner request 4, 2026-08-06, decision 3: notes are PRIVATE TO EACH AUTHOR. The o
 and the principal may both keep notes about the same child and neither can read the
 other's. Abhimanyu was shown that consequence in plain words and chose it deliberately.
 
-These tests exist to stop a future change quietly turning this into a shared feed —
+These tests exist to stop a future change quietly turning this into a shared feed -
 which would hand each of them everything the other had written about a child, without
 anyone noticing that a rule had been reversed.
 """

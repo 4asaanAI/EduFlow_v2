@@ -1,4 +1,4 @@
-"""Drift-gate remediation parity — operations CRUD tools added post-Phase-1.
+"""Drift-gate remediation parity - operations CRUD tools added post-Phase-1.
 
 Same seed through both write entrypoints (REST routes in `routes/operations.py`
 via TestClient, and the AI tools via their real dispatch fns) → the domain doc
@@ -32,7 +32,7 @@ def _owner_headers():
 
 
 def _scrub(value):
-    """Recursive mask — nested docs (audit `changes`, enquiry `timeline`) carry
+    """Recursive mask - nested docs (audit `changes`, enquiry `timeline`) carry
     volatile ids/timestamps too."""
     if isinstance(value, dict):
         return {k: _scrub(v) for k, v in value.items() if k not in _VOLATILE}

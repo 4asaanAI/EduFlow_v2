@@ -6,11 +6,11 @@ Sources (cross-checked by hand, 2026-06-27):
   * Subjects_and_PeriodLinks_Only.pdf → 303 class x subject x teacher rows
 
 What it writes:
-  * users / auth_users  — 83 directory teachers + 5 allocation-only teachers
+  * users / auth_users  - 83 directory teachers + 5 allocation-only teachers
                           (Yachika, Sapna Pandey, Pramod, B S Yadav, Shilpa)
-  * subjects            — one row per Part-A assignment (293 of 303; PGT/Phy skipped)
-  * period_links        — one row per seeded subject (schedule columns left blank,
-                          matching the source — populate once the timetable is set)
+  * subjects            - one row per Part-A assignment (293 of 303; PGT/Phy skipped)
+  * period_links        - one row per seeded subject (schedule columns left blank,
+                          matching the source - populate once the timetable is set)
 
 Decisions baked in (confirmed by Shubham):
   * PGT / Phy rows (placeholders, 10 rows) are NOT seeded.
@@ -61,7 +61,7 @@ def initials(name: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Teacher directory — 83 rows: (first, last, mobile, gender, class_teacher)
+# Teacher directory - 83 rows: (first, last, mobile, gender, class_teacher)
 # Transcribed verbatim from Teacher_Directory.pdf. "" = blank cell in source.
 # ─────────────────────────────────────────────────────────────────────────────
 DIRECTORY = [
@@ -150,7 +150,7 @@ DIRECTORY = [
     ("SOFIYA", "MAM", "8126968888", "female", True),         # 83
 ]
 
-# Allocation-only teachers (not in directory) — confirmed: create records too.
+# Allocation-only teachers (not in directory) - confirmed: create records too.
 EXTRA_TEACHERS = ["Yachika", "Sapna Pandey", "Pramod", "B S Yadav", "Shilpa"]
 
 # Subject-doc short name -> directory row (1-based index above).
@@ -178,7 +178,7 @@ ROMAN_TO_NAME = {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Part A subject rows — (roman_class | None, section | None, teacher_short_name)
+# Part A subject rows - (roman_class | None, section | None, teacher_short_name)
 # grouped by subject name. None class => Social Science / Commerce (class_id blank).
 # ─────────────────────────────────────────────────────────────────────────────
 SUBJECTS: dict[str, list[tuple]] = {
@@ -347,9 +347,9 @@ async def seed() -> None:
                 if key not in class_by_key:
                     missing_classes.add(key)
     if unknown_names:
-        raise SystemExit(f"ABORT — teacher names with no mapping: {sorted(unknown_names)}")
+        raise SystemExit(f"ABORT - teacher names with no mapping: {sorted(unknown_names)}")
     if missing_classes:
-        raise SystemExit(f"ABORT — class+section not found in DB: {sorted(missing_classes)}")
+        raise SystemExit(f"ABORT - class+section not found in DB: {sorted(missing_classes)}")
     print("Validation passed: all teachers mapped, all classes resolve.")
 
     # ── 1. Wipe previous output of this script ───────────────────────────────
@@ -401,7 +401,7 @@ async def seed() -> None:
                 taken_lower.add(cand.lower())
                 renamed.append((name, cand))
                 return cand
-        raise SystemExit(f"ABORT — cannot disambiguate username {name!r}")
+        raise SystemExit(f"ABORT - cannot disambiguate username {name!r}")
 
     def add_teacher(name: str, mobile: str, gender: str, is_ct: bool) -> str:
         nonlocal emp_seq
@@ -468,7 +468,7 @@ async def seed() -> None:
             return dir_uuid[NAME_TO_DIR[tname]]
         if tname in NAME_TO_EXTRA:
             return extra_uuid[tname]
-        raise SystemExit(f"ABORT — unresolved teacher {tname!r}")
+        raise SystemExit(f"ABORT - unresolved teacher {tname!r}")
 
     # ── 4. Build subjects + matching period_links ────────────────────────────
     subject_docs: list[dict] = []

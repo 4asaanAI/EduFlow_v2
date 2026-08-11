@@ -1,11 +1,11 @@
-"""Transport domain service — single shared write path (AD7).
+"""Transport domain service - single shared write path (AD7).
 
 Both the REST routes (`POST/PATCH/DELETE /api/transport*`) and the AI tools
 (`create_transport_route`, `update_transport_route`, `delete_transport_route`,
 `add_transport_vehicle`) call these functions.
 
-**Parity decisions:** the legacy PATCH `$set` the raw body — the service pins a
-mutable whitelist; the legacy DELETE removed a route blindly — the service now
+**Parity decisions:** the legacy PATCH `$set` the raw body - the service pins a
+mutable whitelist; the legacy DELETE removed a route blindly - the service now
 blocks deletion while active students are assigned to the zone (same safety rule
 the K-epic review mandated for classes/houses/branches) and writes the F.10
 deletion audit.
@@ -130,10 +130,10 @@ async def delete_route(db, actor_ctx: ActorContext, params: dict) -> dict:
     )
     if assigned:
         raise TransportConflictError(
-            f"{assigned} active student(s) are assigned to this route — reassign them first"
+            f"{assigned} active student(s) are assigned to this route - reassign them first"
         )
     await db.transport_routes.delete_one(scoped_query({"id": route_id}, branch_id=bid))
-    # F.10: actor-tagged deletion audit — who deleted what, when.
+    # F.10: actor-tagged deletion audit - who deleted what, when.
     await _audit(db, actor_ctx, action="delete", entity_type="transport_route",
                  entity_id=route_id, changes={"deleted": existing})
     return {"deleted": True, "route": existing}

@@ -5,7 +5,7 @@ Corrections 1, 2, 9 and 10 change only the question document, not the platform, 
 made there. The three handled here are:
 
   3.  The 28 children who are on EduFlow but absent from the school's new export go on
-      the NSO list — off the roll, but STILL on the daily register, because that is
+      the NSO list - off the roll, but STILL on the daily register, because that is
       exactly what NSO means at this school (see services/enrolment_status.py). A
       teacher keeps marking them, which is how the school notices if one walks back in.
       They are NOT deleted and NOT marked as having left.
@@ -17,8 +17,8 @@ made there. The three handled here are:
   8.  The 4 children in the class "12TH PASS OUT OLD DUE 25-26" are KEPT. They passed
       12th but have not paid their fees and have not collected their marksheets. They
       were never created (anomaly A3) precisely because putting them on a live class
-      list would have overstated the roll. They are created here as TC_ISSUED — off the
-      roll AND off the daily register — so no head count, class list or attendance
+      list would have overstated the roll. They are created here as TC_ISSUED - off the
+      roll AND off the daily register - so no head count, class list or attendance
       register picks them up, while the record and the debt still exist. Each carries a
       plain-English remark saying why, and financial year 2025-26.
 
@@ -60,7 +60,7 @@ TC_ISSUED = "tc_issued"
 
 
 def fields_for(state: str) -> dict:
-    """Mirror of services/enrolment_status.fields_for — is_active and status, together."""
+    """Mirror of services/enrolment_status.fields_for - is_active and status, together."""
     return {"is_active": state == "active", "status": state}
 
 
@@ -105,7 +105,7 @@ async def main(apply: bool) -> int:
     now = datetime.now(timezone.utc).isoformat()
     try:
         print("=" * 68)
-        print("OWNER CORRECTIONS 3, 7, 8 — 2026-08-06")
+        print("OWNER CORRECTIONS 3, 7, 8 - 2026-08-06")
         print("=" * 68)
 
         # ---- 3. NSO -------------------------------------------------------------
@@ -164,12 +164,12 @@ async def main(apply: bool) -> int:
         print(f"   already on the platform      : {po_exists}")
         print(f"   class ids resolved           : {classes}")
         if any(v is None for v in classes.values()):
-            print("   ABORT: could not resolve a 12th class — refusing to create orphan records.")
+            print("   ABORT: could not resolve a 12th class - refusing to create orphan records.")
             return 1
         print(f"   they are created OFF the roll and OFF the register (status={TC_ISSUED})")
 
         if not apply:
-            print("\nDRY RUN — nothing written. Re-run with --apply to write.")
+            print("\nDRY RUN - nothing written. Re-run with --apply to write.")
             return 0
 
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -230,7 +230,7 @@ async def main(apply: bool) -> int:
         on_roll = await db.students.count_documents({"schoolId": SCHOOL_ID, "is_active": True})
         on_register = await db.students.count_documents(
             {"schoolId": SCHOOL_ID, "$or": [{"is_active": True}, {"status": NSO}]})
-        print(f"\nverify — student records total : {total}")
+        print(f"\nverify - student records total : {total}")
         print(f"        on the roll (head count): {on_roll}")
         print(f"        on the daily register   : {on_register}")
         return 0

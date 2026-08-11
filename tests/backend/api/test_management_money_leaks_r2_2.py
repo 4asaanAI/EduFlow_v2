@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""R2-2 — the management head never sees a rupee figure.
+"""R2-2 - the management head never sees a rupee figure.
 
 Lalit Thomas keeps the school's day-to-day data current. He is not in the money side
 of the school at all, and decision 1 of 2026-08-10 is explicit: he sees whether a
@@ -157,7 +157,7 @@ def test_a_person_can_still_see_their_own_salary(client, fake_db):
 def test_fee_status_gives_the_management_head_a_flag_and_no_amounts(client, fake_db):
     """Decision 1: a paid-or-unpaid flag, as a visible field, and no rupee figure.
 
-    He needs to know a child is a defaulter — that is why families are chased — but
+    He needs to know a child is a defaulter - that is why families are chased - but
     not by how much.
     """
     fake_db.fee_transactions.docs[:] = [{
@@ -269,7 +269,7 @@ def test_smart_alerts_money_rule_reads_the_one_grant_table():
     """It must not become a second hand-written list of profiles.
 
     If somebody adds a profile to the matrix with the finance domain, this answer has
-    to follow automatically — that is the whole reason the matrix exists.
+    to follow automatically - that is the whole reason the matrix exists.
     """
     from ai.tool_functions import _may_see_money
     from services.profile_matrix import FINANCE, PROFILE_MATRIX
@@ -293,7 +293,7 @@ def test_fee_status_reads_the_same_for_everyone_who_may_call_it(client, fake_db)
     Worth pinning: the reason it is safe to open to the management head is that it
     returns `{student_id, status}` and nothing else. Nobody loses anything by his
     being added, because there was never an amount in here to lose. The day somebody
-    adds one, the test above starts failing for him — which is the intended alarm.
+    adds one, the test above starts failing for him - which is the intended alarm.
     """
     fake_db.fee_transactions.docs[:] = [{
         "id": "txn-1", "schoolId": "aaryans-joya", "branch_id": "branch-joya",

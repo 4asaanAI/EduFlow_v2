@@ -1,4 +1,4 @@
-"""Story F.6 — unit tests for the parity normalizer ruleset."""
+"""Story F.6 - unit tests for the parity normalizer ruleset."""
 
 from __future__ import annotations
 

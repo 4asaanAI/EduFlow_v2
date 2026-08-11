@@ -20,7 +20,7 @@ const loadTool = async (rawToolId) => {
     return () => <ManagementHub hubId={toolId} />;
   }
   if (toolId === 'commercial-operations') return (await import('./tools/CommercialOperations')).default;
-  // Phase 3 dedicated tool panels — loaded directly
+  // Phase 3 dedicated tool panels - loaded directly
   if (toolId === 'facility-requests') return (await import('./tools/MaintenanceTools')).MaintenanceFacilityTracker;
   if (toolId === 'tech-issues') return (await import('./tools/MaintenanceTools')).ITTechIssueTracker;
   if (toolId === 'all-issues') return (await import('./tools/MaintenanceTools')).AllIssuesView;
@@ -37,7 +37,7 @@ const loadTool = async (rawToolId) => {
   if (toolId === 'what-ive-learned') return (await import('./tools/LearningTools')).default;
   if (toolId === 'conversation-trace') return (await import('./tools/ConversationTrace')).default;
   // Epic 6. Reached from the bell panel's footer and the sidebar's Recent Chats
-  // header rather than from a per-role nav list — both of those live in the
+  // header rather than from a per-role nav list - both of those live in the
   // shell, so the pages are reachable from every screen (FR81) without editing
   // eight navigation configs.
   if (toolId === 'all-notifications') return (await import('./tools/AllNotifications')).default;
@@ -51,7 +51,7 @@ const loadTool = async (rawToolId) => {
   if (toolId === 'fee-collection') return (await import('./tools/FeeCollection')).default;
   if (toolId === 'fee-sync') return (await import('./tools/FeeSync')).default;
   if (toolId === 'student-database') return (await import('./tools/StudentDatabase')).default;
-  // Epic 7 — the School Directory (Owner + Principal only, via their tool sets).
+  // Epic 7 - the School Directory (Owner + Principal only, via their tool sets).
   // Reads the existing students/staff endpoints; adds no new server surface.
   if (toolId === 'school-activities') return (await import('./tools/SchoolActivities')).default;
   if (toolId === 'transport-optimisation') return (await import('./tools/TransportOptimisation')).default;
@@ -117,7 +117,7 @@ export default function Layout() {
   const { isDark } = useTheme();
   const [searchParams, setSearchParams] = useSearchParams();
   // Resolved here, not deeper in, so a retired id (see TOOL_ALIASES) also lights up
-  // the right sidebar row and puts the right name in the header — not just the right
+  // the right sidebar row and puts the right name in the header - not just the right
   // screen in the middle.
   const activeTool = resolveToolId(searchParams.get('tool'));
   const [activeConvId, setActiveConvId] = useState(null);
@@ -160,7 +160,7 @@ export default function Layout() {
    *
    * Back used to clear `?tool=` outright, which dropped you into the chat from
    * wherever you were. That is wrong the moment a screen is reached THROUGH another
-   * screen — which is now the normal case, because the nine management hubs exist
+   * screen - which is now the normal case, because the nine management hubs exist
    * to be opened and then drilled into. Open School Database, open Students &
    * Guardians, press Back, and you were in the chat rather than back at School
    * Database, with no way to the hub except starting again from the menu.
@@ -208,7 +208,7 @@ export default function Layout() {
    * choice. On desktop it sits beside the content, so it stays.
    *
    * The rule, set by Abhimanyu 2026-07-22: close on anything that takes you
-   * somewhere — New Chat, a tool, a conversation, Profile, Settings. Do NOT
+   * somewhere - New Chat, a tool, a conversation, Profile, Settings. Do NOT
    * close on anything that merely EXPANDS in place: a tool group opening its
    * children, or Help & Support opening its submenu. Closing there would shut
    * the drawer at the exact moment the user was drilling into it.
@@ -257,8 +257,8 @@ export default function Layout() {
     try {
       // D-64: NEVER pass the signed-in person here. This helper turns its argument
       // into the query string, so handing it the user object wrote that person's id,
-      // name, email and role into the request URL — and from there into the server
-      // and CloudFront access logs — on every single chat load. The screen looked
+      // name, email and role into the request URL - and from there into the server
+      // and CloudFront access logs - on every single chat load. The screen looked
       // correct throughout, which is why it survived. The caller is already
       // authenticated by the bearer token; the server knows who is asking.
       // Guarded by lib/__tests__/apiDeadArgs.test.js, whose exemption list is empty.
@@ -292,7 +292,7 @@ export default function Layout() {
    *
    * `ToolView` renders tool components with no props, so a page cannot call
    * `handleSelectConv` directly. This mirrors the `open-tool` event above rather
-   * than restructuring `ToolView` to thread props through — reshaping the shell
+   * than restructuring `ToolView` to thread props through - reshaping the shell
    * inside a UI-defect epic is the scope creep D-25 warns about.
    */
   useEffect(() => {
@@ -328,12 +328,12 @@ export default function Layout() {
   }, []);
 
   /**
-   * Someone else signed in on this computer — drop the previous person's open tool.
+   * Someone else signed in on this computer - drop the previous person's open tool.
    *
    * D-59 (owner decision 2026-08-04, decision 3): a link that points straight at a
    * screen must work when it is opened in a fresh browser tab. The old version of
    * this check cleared `?tool=` whenever the tab held no record of the current user,
-   * and a brand new tab NEVER holds one — so a pasted deep link always landed on the
+   * and a brand new tab NEVER holds one - so a pasted deep link always landed on the
    * chat screen instead of the tool it named.
    *
    * The distinction that was missing:
@@ -367,7 +367,7 @@ export default function Layout() {
   }, [currentUser.id, setActiveToolParam]);
 
   // Tapping outside the open drawer closes it. Same 768px breakpoint as
-  // closeDrawerOnNavigate and as the drawer's own CSS — all three must agree.
+  // closeDrawerOnNavigate and as the drawer's own CSS - all three must agree.
   useEffect(() => {
     const handleClick = (e) => {
       if (window.innerWidth <= MOBILE_BREAKPOINT && sidebarOpen) {
@@ -384,7 +384,7 @@ export default function Layout() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [sidebarOpen]);
 
-  // Epic 9: this used to be `isDark ? '#111111' : '#f5f5f5'` — a pair of
+  // Epic 9: this used to be `isDark ? '#111111' : '#f5f5f5'` - a pair of
   // literals computed in JS, which meant the app shell painted its own
   // background and was the one surface the design tokens could not reach.
   // Switching themes recoloured the text and left this white. Read the token

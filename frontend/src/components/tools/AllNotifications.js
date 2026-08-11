@@ -1,5 +1,5 @@
 /**
- * All Notifications — Epic 6, Story 6.3. Owner item 14, the "View all" half.
+ * All Notifications - Epic 6, Story 6.3. Owner item 14, the "View all" half.
  *
  * Until this page existed, the bell panel fetched page 1 and offered no way to
  * ask for page 2, and there was no notification screen anywhere in the product.
@@ -14,7 +14,7 @@
  * 2. It requests `include_digest=false`. The endpoint synthesises digest rows on
  *    page 1 and, when there is nothing at all, a fabricated "All Good" row. That
  *    is a sensible empty state inside a dropdown and a made-up record inside a
- *    table with a row count and a page indicator — an empty list would render as
+ *    table with a row count and a page indicator - an empty list would render as
  *    a notification telling you everything is fine.
  */
 
@@ -153,7 +153,7 @@ export default function AllNotifications() {
     },
     {
       // The sortable heading FR82 requires. It is a real <button> inside its
-      // <th> with aria-sort on the <th> — DataTable handles both — and the
+      // <th> with aria-sort on the <th> - DataTable handles both - and the
       // SERVER re-orders the whole result set and hands back page 1. Ordering
       // only the rows already on screen would be a lie on 300 notifications.
       key: 'created_at', label: 'When', sortKey: 'created_at',
@@ -242,13 +242,13 @@ export default function AllNotifications() {
       {/* The bell shows two kinds of thing and this page shows one of them, so it
           will legitimately hold FEWER items than the panel the reader just came
           from. Unsaid, this is the screen on which something appears to have been
-          lost — on a page called Nothing Gets Lost. */}
+          lost - on a page called Nothing Gets Lost. */}
       <p style={{
         margin: '0 0 16px', maxWidth: 720,
         fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)', lineHeight: 1.5,
       }}>
-        This is everything the platform has saved for you. Live summaries — pending approvals,
-        overdue fees, today's announcements — are worked out fresh each time and shown in the
+        This is everything the platform has saved for you. Live summaries - pending approvals,
+        overdue fees, today's announcements - are worked out fresh each time and shown in the
         bell, so they are not stored here.
       </p>
 
@@ -285,7 +285,7 @@ export default function AllNotifications() {
             icon={CheckCheck}
             data-testid="all-notifications-none-unread"
             title="Nothing unread"
-            message="You have read everything. Switch to All to see them again — nothing is ever deleted."
+            message="You have read everything. Switch to All to see them again - nothing is ever deleted."
             action={<Button variant="secondary" onClick={() => changeFilter(false)}>Show all</Button>}
           />
         ) : (
@@ -294,7 +294,7 @@ export default function AllNotifications() {
             icon={Inbox}
             data-testid="all-notifications-empty"
             title="No notifications yet"
-            message="When the platform needs to tell you something — an approval, a payment, an incident — it will be saved here."
+            message="When the platform needs to tell you something - an approval, a payment, an incident - it will be saved here."
           />
         )
       ) : (

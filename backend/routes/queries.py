@@ -1,6 +1,6 @@
 from __future__ import annotations
 """
-Support Ticket / Query routes — accessible by all roles.
+Support Ticket / Query routes - accessible by all roles.
 Tickets are visible across all users.
 """
 import uuid
@@ -43,7 +43,7 @@ def _is_support_admin(user: dict) -> bool:
     if user.get("role") == "owner":
         return True
     if user.get("role") == "admin" and user.get("sub_category") in ("principal", "it_tech", "receptionist"):
-        # rbac: intentional — receptionist is front-desk triage, sees all school tickets
+        # rbac: intentional - receptionist is front-desk triage, sees all school tickets
         return True
     return False
 
@@ -51,8 +51,8 @@ def _is_support_admin(user: dict) -> bool:
 def _ticket_scope(user: dict, query: dict | None = None) -> dict:
     query = query or {}
     if _is_support_admin(user):
-        return scoped_filter(query, get_school_id())  # branch-scope: intentional — a support admin triages every ticket in the school; branch is not the boundary here, role is
-    return scoped_filter(  # branch-scope: intentional — everyone else sees only tickets they raised or were assigned, which is narrower than any branch
+        return scoped_filter(query, get_school_id())  # branch-scope: intentional - a support admin triages every ticket in the school; branch is not the boundary here, role is
+    return scoped_filter(  # branch-scope: intentional - everyone else sees only tickets they raised or were assigned, which is narrower than any branch
         {"$and": [query, {"$or": [{"created_by": user.get("id")}, {"assigned_to": user.get("id")}]}]},
         get_school_id(),
     )
@@ -94,7 +94,7 @@ async def create_query(
             raise HTTPException(400, f"File too large. Max {MAX_FILE_MB}MB")
         upload = {"data": contents, "type": ext.lstrip(".")}
 
-    # AD7 shared write path — same service as the AI `create_query_ticket` tool;
+    # AD7 shared write path - same service as the AI `create_query_ticket` tool;
     # only the multipart attachment handling above is route-specific.
     db = get_db()
     actor_ctx = actor_ctx_from_user(user)
@@ -119,7 +119,7 @@ async def resolve_query(ticket_id: str, request: Request):
     user = get_user(request)
     if not (_is_it_tech(user) or user.get("role") == "owner"):
         raise HTTPException(403, "Forbidden")
-    # AD7 shared write path — same service as the AI `resolve_query_ticket` tool.
+    # AD7 shared write path - same service as the AI `resolve_query_ticket` tool.
     db = get_db()
     actor_ctx = actor_ctx_from_user(user)
     try:
@@ -138,7 +138,7 @@ async def unresolve_query(ticket_id: str, request: Request):
     user = get_user(request)
     if not (_is_it_tech(user) or user.get("role") == "owner"):
         raise HTTPException(403, "Forbidden")
-    # AD7 shared write path — same service as the AI `reopen_query_ticket` tool.
+    # AD7 shared write path - same service as the AI `reopen_query_ticket` tool.
     db = get_db()
     actor_ctx = actor_ctx_from_user(user)
     try:
@@ -157,7 +157,7 @@ async def assign_query(ticket_id: str, request: Request):
     user = get_user(request)
     if not _is_support_admin(user):
         raise HTTPException(403, "Forbidden")
-    # AD7 shared write path — same service as the AI `assign_query_ticket` tool.
+    # AD7 shared write path - same service as the AI `assign_query_ticket` tool.
     db = get_db()
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user)
@@ -177,7 +177,7 @@ async def delete_query(ticket_id: str, request: Request):
     user = get_user(request)
     if not (_is_it_tech(user) or user.get("role") == "owner"):
         raise HTTPException(403, "Forbidden")
-    # AD7 shared write path — same service as the AI `delete_query_ticket` tool.
+    # AD7 shared write path - same service as the AI `delete_query_ticket` tool.
     db = get_db()
     actor_ctx = actor_ctx_from_user(user)
     try:

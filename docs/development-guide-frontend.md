@@ -1,4 +1,4 @@
-# Development Guide — Frontend
+# Development Guide - Frontend
 
 _Generated: 2026-05-15 | Scan: deep | Part: frontend_
 
@@ -62,7 +62,7 @@ to publish `frontend/build/`.
 import { Button } from '@/components/ui/button'
 import api from '@/lib/api'
 
-// Wrong — fragile relative paths
+// Wrong - fragile relative paths
 import { Button } from '../../components/ui/button'
 ```
 
@@ -109,7 +109,7 @@ export default function MyNewTool() {
 Add to `frontend/src/lib/api.js`:
 
 ```js
-// For JSON endpoints — use native fetch()
+// For JSON endpoints - use native fetch()
 export const myDomain = {
   list: async (token) => {
     const res = await fetch(`${API_BASE}/api/my-domain`, {
@@ -118,7 +118,7 @@ export const myDomain = {
     return res.json()
   },
 
-  // File uploads only — use axios
+  // File uploads only - use axios
   upload: async (token, file) => {
     const form = new FormData()
     form.append('file', file)
@@ -185,7 +185,7 @@ format(new Date(), 'yyyy-MM-dd')
 parseISO('2026-01-15')
 ```
 
-**Do NOT upgrade** to date-fns v4 — it breaks `react-day-picker 8.x`.
+**Do NOT upgrade** to date-fns v4 - it breaks `react-day-picker 8.x`.
 
 ---
 
@@ -235,8 +235,8 @@ function MyForm() {
 
 | Convention | Rule |
 |-----------|------|
-| Files | `.js` / `.jsx` only — never `.ts` / `.tsx` |
-| Imports | Use `@/` alias — never relative `../../` |
+| Files | `.js` / `.jsx` only - never `.ts` / `.tsx` |
+| Imports | Use `@/` alias - never relative `../../` |
 | HTTP | `fetch()` for all endpoints; `axios` for file uploads only |
 | Icons | Lucide React only |
 | Styling | Tailwind v3 utility classes; do not write custom CSS except for `App.css`/`index.css`/`theme.css` |

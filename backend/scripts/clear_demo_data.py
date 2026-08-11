@@ -1,6 +1,6 @@
 """
 Clear seeded demo data from EduFlow.
-SAFE — never touches: users, auth_users, students, staff, classes, subjects,
+SAFE - never touches: users, auth_users, students, staff, classes, subjects,
 period_links, guardians, school_settings, branches, academic_years.
 """
 from __future__ import annotations

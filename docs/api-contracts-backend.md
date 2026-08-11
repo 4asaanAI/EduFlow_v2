@@ -1,4 +1,4 @@
-# API Contracts — Backend
+# API Contracts - Backend
 
 _Generated: 2026-05-15 | Scan: deep | Part: backend_
 
@@ -28,20 +28,20 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 
 | Role | sub_category | Description |
 |------|-------------|-------------|
-| `owner` | — | Full school owner |
+| `owner` | - | Full school owner |
 | `admin` | `principal` | Principal (school head) |
 | `admin` | `accountant` | Finance staff |
 | `admin` | `receptionist` | Front-desk staff |
 | `admin` | `it_tech` | IT/Tech support |
 | `admin` | `maintenance` | Facilities staff |
-| `teacher` | — | Class teacher |
-| `student` | — | Student self-service |
+| `teacher` | - | Class teacher |
+| `student` | - | Student self-service |
 
 ---
 
 ## Endpoints by Domain
 
-### Auth — `/api/auth`
+### Auth - `/api/auth`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -53,7 +53,7 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 | `GET` | `/me` | Bearer | Get current user's profile. |
 | `GET` | `/seed-status` | No | Check seed data counts (public debug endpoint). |
 
-### Chat / Conversations — `/api/chat`
+### Chat / Conversations - `/api/chat`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -67,13 +67,13 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 | `POST` | `/confirm` | Bearer | Confirm a pending AI action (legacy). |
 | `POST` | `/conversations/{conv_id}/confirm` | Bearer | Confirm a pending AI action. |
 
-### Chat Uploads — `/api/chat`
+### Chat Uploads - `/api/chat`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `POST` | `/upload` | Bearer | Upload file attachment for chat context. |
 
-### Students — `/api/students`
+### Students - `/api/students`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -90,7 +90,7 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 | `POST` | `/{student_id}/guardians/{guardian_id}/photo` | Bearer | Upload guardian photo. |
 | `POST` | `/{student_id}/erase` | Bearer | GDPR-style data erasure request. |
 
-### Staff — `/api/staff`
+### Staff - `/api/staff`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -104,7 +104,7 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 | `GET` | `/leaves/pending` | Bearer | Get pending leave requests (principal/owner). |
 | `PATCH` | `/leaves/{leave_id}` | Bearer | Approve/reject a leave request. |
 
-### Fees — `/api/fees`
+### Fees - `/api/fees`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -124,7 +124,7 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 | `PATCH` | `/discount-types/{discount_type_id}` | Bearer | Update a discount type. |
 | `POST` | `/discounts/apply` | Bearer | Apply discount to a student's fee. |
 
-### Attendance — `/api/attendance`
+### Attendance - `/api/attendance`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -141,7 +141,7 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 | `GET` | `/export` | Bearer | Export attendance as CSV. |
 | `GET` | `/staff` | Bearer | Query staff attendance records. |
 
-### Academics — `/api/academics`
+### Academics - `/api/academics`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -161,7 +161,7 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 | `GET` | `/question-papers` | Bearer | List question papers. |
 | `GET` | `/question-papers/{paper_id}` | Bearer | Get a specific question paper. |
 
-### Operations — `/api/ops`, `/api/operations`, `/api/transport`
+### Operations - `/api/ops`, `/api/operations`, `/api/transport`
 
 | Method | Prefix | Path | Description |
 |--------|--------|------|-------------|
@@ -181,7 +181,7 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 | `POST` | `/api/ops` | `/visitors` | Log a visitor. |
 | `PATCH` | `/api/ops` | `/visitors/{visitor_id}/checkout` | Check out a visitor. |
 
-### Settings — `/api/settings`
+### Settings - `/api/settings`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -200,7 +200,7 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 | `GET` | `/forms/{form_id}/responses` | Bearer | List form responses. |
 | `DELETE` | `/forms/{form_id}` | Bearer | Delete a form. |
 
-### Exports — `/api/export`
+### Exports - `/api/export`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -212,17 +212,17 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 | `GET` | `/enquiries` | Bearer | Export enquiry records. |
 | `GET` | `/exam-results` | Bearer | Export exam results. |
 
-### AI Tools — `/api/tools`
+### AI Tools - `/api/tools`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `POST` | `/{tool_id}/execute` | Bearer | Execute a named AI tool. |
 
 > **Removed (2026-07-10):** the standalone in-app help assistant (`POST /api/assistant`)
-> was retired — it duplicated the main AI chat (`/api/chat`), which every dashboard
+> was retired - it duplicated the main AI chat (`/api/chat`), which every dashboard
 > profile already has. Use `/api/chat` for all assistant interactions.
 
-### Tokens / AI Budget — `/api/tokens`
+### Tokens / AI Budget - `/api/tokens`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -233,21 +233,21 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 | `PUT` | `/limits` | Bearer (owner) | Set per-user token limits. |
 | `GET` | `/packs` | Bearer | List available token packs. |
 
-### Operator (Super-admin) — `/api/operator`
+### Operator (Super-admin) - `/api/operator`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `PATCH` | `/schools/{school_id}/ai-rate-limit` | Bearer (owner) | Override AI rate limit for a school. |
 | `GET` | `/ai-action-counts` | Bearer (owner) | Get AI action usage counts. |
 
-### Reports — `/api/reports`
+### Reports - `/api/reports`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/attendance-trends` | Bearer | Attendance trend data for charts. |
 | `GET` | `/fee-collection-summary` | Bearer | Fee collection chart data. |
 
-### Notifications — `/api/notifications`
+### Notifications - `/api/notifications`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -257,7 +257,7 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 | `PATCH` | `/mark-all-read` | Bearer | Mark all notifications read. |
 | `POST` | `/` | Bearer | Create a notification (internal). |
 
-### Queries (Support Tickets) — `/api/queries`
+### Queries (Support Tickets) - `/api/queries`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -268,13 +268,13 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 | `DELETE` | `/{ticket_id}` | Bearer | Delete a ticket. |
 | `GET` | `/{ticket_id}/attachment` | Bearer | Download ticket attachment. |
 
-### Search — `/api/search`
+### Search - `/api/search`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/` | Bearer | Full-text search across students, staff, etc. |
 
-### SMS — `/api/sms`
+### SMS - `/api/sms`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -284,7 +284,7 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 | `GET` | `/logs` | Bearer | Get SMS send logs. |
 | `GET` | `/config-status` | Bearer | Check SMS config (Twilio). |
 
-### Uploads — `/api/uploads`
+### Uploads - `/api/uploads`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -293,14 +293,14 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 | `GET` | `/` | Bearer | List uploads. |
 | `DELETE` | `/{file_id}` | Bearer | Delete an uploaded file. |
 
-### Import — `/api/import`
+### Import - `/api/import`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `POST` | `/validate` | Bearer | Validate import CSV before committing. |
 | `POST` | `/commit` | Bearer | Commit validated import. |
 
-### Issues (Facility/Tech/Maintenance) — `/api/issues`
+### Issues (Facility/Tech/Maintenance) - `/api/issues`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -319,7 +319,7 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 | `POST` | `/maintenance/vendors` | Bearer | Add vendor. |
 | `PATCH` | `/maintenance/vendors/{vendor_id}` | Bearer | Update vendor. |
 
-### Audit Log — `/api/audit-log`
+### Audit Log - `/api/audit-log`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -327,7 +327,7 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 | `GET` | `/{record_id}` | Bearer | Get audit log entry. |
 | `GET` | `/record/{record_id}` | Bearer | Get full audit record (alternative path). |
 
-### Activities (Houses/Positions/Teams) — `/api/activities`
+### Activities (Houses/Positions/Teams) - `/api/activities`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -342,7 +342,7 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 | `PATCH` | `/teams/{team_id}` | Bearer | Update a team. |
 | `DELETE` | `/teams/{team_id}` | Bearer | Delete a team. |
 
-### Image Generation — `/api/image-gen`
+### Image Generation - `/api/image-gen`
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -380,8 +380,8 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 ## SSE Streams
 
 Several endpoints stream Server-Sent Events:
-- `GET /api/fees/stream` — real-time fee update stream
-- `GET /api/attendance/stream` — real-time attendance stream  
-- `POST /api/chat/conversations/{conv_id}/messages` — AI response stream
+- `GET /api/fees/stream` - real-time fee update stream
+- `GET /api/attendance/stream` - real-time attendance stream  
+- `POST /api/chat/conversations/{conv_id}/messages` - AI response stream
 
 Client must set `X-SSE-Session-ID` header for SSE connections.

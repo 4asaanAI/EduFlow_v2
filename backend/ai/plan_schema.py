@@ -2,16 +2,16 @@
 
 Epic D introduces the executor and runs it on **length-1** plans built from a single
 confirmed write token (`_execute_confirmed_dispatch`). Epic E's planner (`ai/planner.py`)
-will populate multi-step plans + per-write `precondition`s using this SAME schema — the
+will populate multi-step plans + per-write `precondition`s using this SAME schema - the
 executor is intentionally agnostic to who built the plan.
 
 A `Step` carries enough for the executor to be safe:
-- `kind` ∈ {read, write} — only write steps run inside the transaction.
-- `precondition` (AD5/D.6) — re-read-and-compare inside the txn; mismatch ⇒ plan_stale.
-- `destructive` (AD15/F.10) — flagged for the two-step destructive gate (Epic F).
-- `runner` — the async callable that performs the write (the chat adapter wraps the
+- `kind` ∈ {read, write} - only write steps run inside the transaction.
+- `precondition` (AD5/D.6) - re-read-and-compare inside the txn; mismatch ⇒ plan_stale.
+- `destructive` (AD15/F.10) - flagged for the two-step destructive gate (Epic F).
+- `runner` - the async callable that performs the write (the chat adapter wraps the
   existing tool fn; tests pass a closure). The executor never imports tools directly.
-- `side_effect` / `compensate` (AD4/D.5) — a NON-Mongo side effect (SMS/email) run
+- `side_effect` / `compensate` (AD4/D.5) - a NON-Mongo side effect (SMS/email) run
   AFTER commit, with a compensating action for saga rollback.
 """
 
@@ -33,7 +33,7 @@ class Step:
     idx: int = 0
     precondition: Optional[dict] = None
     destructive: bool = False
-    # Forward action — performs the Mongo write(s). Enlists in the txn via the
+    # Forward action - performs the Mongo write(s). Enlists in the txn via the
     # ambient session contextvar (services/txn_context.py).
     runner: Optional[Callable[[], Awaitable[Any]]] = None
     # Non-Mongo side effect run AFTER commit + its compensating action (D.5 saga).
@@ -68,7 +68,7 @@ def single_write_plan(
 ) -> Plan:
     """Build the length-1 plan used by `_execute_confirmed_dispatch` (D.3).
 
-    This is the ONE execution path for a confirmed single write — there is no
+    This is the ONE execution path for a confirmed single write - there is no
     `len==1` fork; a single legacy write is just a one-step plan.
     """
     step = Step(tool=tool, params=params, kind=WRITE, idx=0, runner=runner, destructive=destructive)
@@ -87,7 +87,7 @@ def plan_from_steps(
 
     `steps` are the canonical resolved dicts stored on the confirm token
     (`{idx, tool, kind, params, precondition?, destructive?}`). `runner_factory`
-    maps each WRITE step dict to the async callable that performs its write —
+    maps each WRITE step dict to the async callable that performs its write -
     chat.py wires this to the tool registry; tests pass a closure. Read steps
     (already executed inline during planning) carry no runner and never re-run.
     """

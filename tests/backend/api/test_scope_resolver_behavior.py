@@ -1,7 +1,7 @@
-"""Behavior tests for scope_resolver — Part 1.5 Patch H.
+"""Behavior tests for scope_resolver - Part 1.5 Patch H.
 
 The existing 50 unit tests in tests/backend/services/test_scope_resolver.py
-exercise `scope.filter()` shape only — they would still pass even if a future
+exercise `scope.filter()` shape only - they would still pass even if a future
 refactor silently dropped `scope.filter()` from a production query path.
 
 These tests close that gap: they seed a fake DB with rows belonging to

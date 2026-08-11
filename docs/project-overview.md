@@ -1,4 +1,4 @@
-# Project Overview — EduFlow
+# Project Overview - EduFlow
 
 _Generated: 2026-05-15 | Scan: deep_
 
@@ -6,7 +6,7 @@ _Generated: 2026-05-15 | Scan: deep_
 
 ## What is EduFlow?
 
-EduFlow is a **school management platform** built around an AI chat assistant. School staff (owners, principals, teachers, accountants, etc.) interact with the system primarily through natural language — asking the AI to show student data, record attendance, collect fees, generate reports, and more. Structured tool panels provide direct CRUD access for bulk operations.
+EduFlow is a **school management platform** built around an AI chat assistant. School staff (owners, principals, teachers, accountants, etc.) interact with the system primarily through natural language - asking the AI to show student data, record attendance, collect fees, generate reports, and more. Structured tool panels provide direct CRUD access for bulk operations.
 
 ---
 
@@ -53,8 +53,8 @@ EduFlow is a **school management platform** built around an AI chat assistant. S
 
 EduFlow uses **dual-axis tenancy**:
 
-1. **School** — `schoolId` field on every document; value from `SCHOOL_ID` env var. Currently single-school per deployment.
-2. **Branch** — `branch_id` field on operational docs; value from JWT claim. The live school currently has one active Joya branch; scoping remains for future expansion.
+1. **School** - `schoolId` field on every document; value from `SCHOOL_ID` env var. Currently single-school per deployment.
+2. **Branch** - `branch_id` field on operational docs; value from JWT claim. The live school currently has one active Joya branch; scoping remains for future expansion.
 
 All MongoDB queries are automatically scoped by `ScopedDatabase` (schoolId) and explicitly by `scoped_query()` (branch_id).
 
@@ -64,14 +64,14 @@ All MongoDB queries are automatically scoped by `ScopedDatabase` (schoolId) and 
 
 | Role | Sub-category | Capabilities |
 |------|-------------|-------------|
-| `owner` | — | Full access: all settings, AI budget, year-end transition |
+| `owner` | - | Full access: all settings, AI budget, year-end transition |
 | `admin` | `principal` | Staff management, approvals, leave decisions |
 | `admin` | `accountant` | Fee collection, financial reports |
 | `admin` | `receptionist` | Visitor log, queries, notifications |
 | `admin` | `it_tech` | Tech support issues |
 | `admin` | `maintenance` | Facility requests, maintenance schedule, vendors |
-| `teacher` | — | Attendance, assignments, exams, lesson plans |
-| `student` | — | Own profile, own fees, own attendance, own assignments |
+| `teacher` | - | Attendance, assignments, exams, lesson plans |
+| `student` | - | Own profile, own fees, own attendance, own assignments |
 
 ---
 

@@ -1,12 +1,12 @@
 /**
- * The account button and its menu — now in the top bar, not the sidebar.
+ * The account button and its menu - now in the top bar, not the sidebar.
  *
  * Moved out of Sidebar.js on 2026-08-06 at the owner's request (items 5, 6 and 15).
  * Three things were asked for and they are all one job:
  *
  *   15. Put it in the header, right of the search and bell icons. On a phone the
- *       drawer was so full of fixed furniture — logo, school card, New Chat, the
- *       token bar, this block — that Tools and Recent Chats had about two rows each
+ *       drawer was so full of fixed furniture - logo, school card, New Chat, the
+ *       token bar, this block - that Tools and Recent Chats had about two rows each
  *       to share. Moving this out gives that height back to the two lists people
  *       actually navigate with.
  *   5.  The AI token bar moves in here as a row called "Usage". It was a permanent
@@ -15,7 +15,7 @@
  *       was empty.
  *
  * There is no photograph on a user record in this product, so the button shows the
- * person's initials on their role colour — the same mark the sidebar used.
+ * person's initials on their role colour - the same mark the sidebar used.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -160,7 +160,7 @@ export default function AccountMenu({ onOpenProfile, onOpenSettings, onSelectToo
             <User size={14} /><span>Profile</span>
           </button>
 
-          {/* Usage — owner request 5. Expands in place rather than navigating, so the
+          {/* Usage - owner request 5. Expands in place rather than navigating, so the
               number is readable without leaving whatever screen you were on. */}
           {usage && (
             <>

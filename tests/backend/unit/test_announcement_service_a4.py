@@ -1,8 +1,8 @@
-"""Story A.4 — announcement moderation gate: centralized decision + AI honors it.
+"""Story A.4 - announcement moderation gate: centralized decision + AI honors it.
 
 Pins the SERVICE gate decision and proves the AI `create_announcement` tool now
 honors the EC-9.1 role exemption (owner/principal broadcast directly) it previously
-ignored — bringing it into parity with the REST route.
+ignored - bringing it into parity with the REST route.
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ def _clean(fake_db):
 
 
 async def test_ai_owner_announcement_now_broadcasts_directly(fake_db, monkeypatch, _clean):
-    """Regression: the old AI tool over-moderated — an owner's all-audience announcement
+    """Regression: the old AI tool over-moderated - an owner's all-audience announcement
     was held for approval. It now publishes directly (active), matching the panel."""
     monkeypatch.setattr(tool_functions_v2, "get_db", lambda: fake_db)
     out = await tool_functions_v2.tool_create_announcement(

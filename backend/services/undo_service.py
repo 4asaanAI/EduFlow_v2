@@ -1,4 +1,4 @@
-"""R2-18 — undo your own change, on the same day.
+"""R2-18 - undo your own change, on the same day.
 
 Lalit types the school's day-to-day data all day and, by decision 4 of 2026-08-10, he
 cannot delete anything. He will make mistakes. So he and Sonu get a way to put back what
@@ -13,7 +13,7 @@ The plan said an undo is "a write-back of the previous value", because audit row
 that shape before designing around it. Verifying it found **at least eight different
 shapes** across the write paths, and most of them cannot be reversed at all:
 
-    {field: {"previous": …, "new": …}}          reversible — this is the one
+    {field: {"previous": …, "new": …}}          reversible - this is the one
     {"deleted": {…the whole document…}}          a restore, not an undo
     {"created": {…the whole document…}}          undoing it means deleting
     {"count_marked": 41, "date": …}              a summary. No before-value exists.
@@ -31,7 +31,7 @@ It is deliberately narrow:
 * only the person who made the change,
 * only today,
 * only the field/previous/new shape,
-* only a student or staff record — the two things Lalit and Sonu type,
+* only a student or staff record - the two things Lalit and Sonu type,
 * never a field that carries money, an enrolment decision or a login,
 * and an undo writes its OWN audit row, because reversing a change is itself a change
   and it has to appear in Aman's digest beside the original.
@@ -64,11 +64,11 @@ UNDOABLE_COLLECTIONS = {"students", "staff"}
 # Fields an undo will never write back, whatever the audit row says. Each is somebody
 # else's decision, and a mistyped name is not a reason to reopen it.
 #
-# `fees`, `fee_*`, `salary`  — money. Decision 1: the management head never even sees
+# `fees`, `fee_*`, `salary`  - money. Decision 1: the management head never even sees
 #                              these, so he certainly does not restore one.
-# `status`, `is_active`, `enrolment_*` — whether a child is on the roll. Decision 4 puts
+# `status`, `is_active`, `enrolment_*` - whether a child is on the roll. Decision 4 puts
 #                              that with the owner and the principal.
-# `username`, `password*`, `role`, `sub_category` — who somebody is and what they may do.
+# `username`, `password*`, `role`, `sub_category` - who somebody is and what they may do.
 PROTECTED_FIELDS = {
     "fees", "fee_status", "fee_snapshot", "fee_structure_id", "salary", "amount",
     "status", "is_active", "enrolment_state", "enrolment_status",
@@ -139,7 +139,7 @@ def explain_refusal(entry: dict, actor_ctx: ActorContext, now: datetime) -> str:
     action = str(entry.get("action") or "").lower()
     if any(word in action for word in NON_FIELD_ACTIONS):
         return (
-            "This was not an edit to a field — it added, removed or imported a record, "
+            "This was not an edit to a field - it added, removed or imported a record, "
             "and putting that back is the principal's to do."
         )
     changes = entry.get("changes")

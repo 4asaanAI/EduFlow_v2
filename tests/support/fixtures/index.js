@@ -1,5 +1,5 @@
 /**
- * Fixture Index — EduFlow Playwright Test Fixtures
+ * Fixture Index - EduFlow Playwright Test Fixtures
  *
  * Merges all custom fixtures using Playwright's `test.extend()` / `mergeTests()`.
  * Import `{ test, expect }` from this file in all e2e tests instead of
@@ -15,7 +15,7 @@ const { createApiFixture } = require('./api-fixture');
 // ─── API Request Fixture ─────────────────────────────────────────────────────
 const withApi = base.extend({
   /**
-   * `apiRequest` — pre-configured APIRequestContext pointing at the backend.
+   * `apiRequest` - pre-configured APIRequestContext pointing at the backend.
    *
    * Usage in test:
    *   test('...', async ({ apiRequest }) => {
@@ -38,7 +38,7 @@ const withApi = base.extend({
 // ─── Auth Fixture (already-authenticated page) ───────────────────────────────
 const withAuth = withApi.extend({
   /**
-   * `authedPage` — a page that already has the admin auth session loaded.
+   * `authedPage` - a page that already has the admin auth session loaded.
    * Uses the storage state saved by auth.setup.js.
    */
   authedPage: async ({ page }, use) => {

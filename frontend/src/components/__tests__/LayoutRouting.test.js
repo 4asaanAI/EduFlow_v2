@@ -3,7 +3,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import Layout from '../Layout';
 
 // The signed-in user is a mutable module-level value so a test can render the shell
-// as a SECOND person — which is what D-59's safety property is about. Reset in
+// as a SECOND person - which is what D-59's safety property is about. Reset in
 // beforeEach so one test cannot leak its user into the next. The `mock` prefix is
 // required: jest.mock() factories may only reference out-of-scope names spelled that way.
 let mockCurrentUser = { id: 'owner-1', role: 'owner', name: 'Owner User' };
@@ -25,7 +25,7 @@ jest.mock('../../contexts/MessagingContext', () => ({
 
 // D-48: a hand-written mock factory does NOT fall through to the real module, so
 // every export the factory forgets is `undefined`. The shell calls ~15 API helpers
-// across Sidebar/Header/ChatInterface, and the old factory listed 8 — the missing
+// across Sidebar/Header/ChatInterface, and the old factory listed 8 - the missing
 // ones threw inside effects and surfaced as an unreadable AggregateError at render().
 // Derive the stub from the real module's export list instead, so API helpers added
 // later cannot silently break this suite again.
@@ -51,7 +51,7 @@ jest.mock('../../lib/api', () => {
 
 // D-59, fixed 2026-08-04: this used to seed `eduflow_session_user` before every test,
 // because Layout cleared `?tool=` whenever the tab held no record of the current user
-// — which on a fresh tab is always. That seeding was a workaround for the bug, and the
+// - which on a fresh tab is always. That seeding was a workaround for the bug, and the
 // bug is gone: a first visit now records the user and leaves the URL alone. Seeding it
 // here would hide a regression of exactly that behaviour, so storage starts EMPTY, the
 // way a real new tab does. The "different person" case seeds deliberately, in the test
@@ -88,7 +88,7 @@ test('restores active tool from URL search param', async () => {
 
   // The tool named in the URL is the one that actually mounted. This test id
   // belongs to AttendanceRecorder itself, so it can only appear if that specific
-  // panel rendered — not a spinner, not a placeholder, not a different tool.
+  // panel rendered - not a spinner, not a placeholder, not a different tool.
   expect(await screen.findByTestId('attendance-recorder-tool')).toBeInTheDocument();
   expect(screen.queryByText('Loading tool...')).not.toBeInTheDocument();
   expect(screen.queryByText(/Something went wrong/i)).not.toBeInTheDocument();
@@ -111,7 +111,7 @@ test('tool selection updates URL search param', async () => {
   expect(await screen.findByTestId('management-hub-finance-commercial-hub')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Open Fee Sync' }));
 
-  // The address bar follows the selection — this is what D-44's deep linking
+  // The address bar follows the selection - this is what D-44's deep linking
   // is going to build on, so it has to be nailed down.
   await waitFor(() => {
     expect(screen.getByTestId('location-search')).toHaveTextContent('tool=fee-sync');

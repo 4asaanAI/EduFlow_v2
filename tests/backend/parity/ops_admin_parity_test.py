@@ -1,4 +1,4 @@
-"""Wave-2 dual-entrypoint parity — assets, visitor log, certificates.
+"""Wave-2 dual-entrypoint parity - assets, visitor log, certificates.
 
 Same seed through both write entrypoints (REST routes in `routes/operations.py`
 via TestClient, and the AI tools via their real dispatch fns) → identical DB

@@ -1,4 +1,4 @@
-"""Certificate domain service — single shared write path (AD7).
+"""Certificate domain service - single shared write path (AD7).
 
 Both the REST routes (`POST /api/ops/certificates`, `PATCH .../approve`,
 `PATCH .../reject`) and the AI tools call these functions: same
@@ -65,8 +65,8 @@ async def create_certificate(db, actor_ctx: ActorContext, params: dict) -> dict:
     """Create a certificate request. params: {student_id, cert_type?, content_data?}"""
     if not params.get("student_id"):
         raise CertificateValidationError("student_id is required")
-    # R2-9: store the CANONICAL name. Whatever the caller said — `transfer`, `tc`,
-    # `Transfer Certificate` — one word reaches the database, so the approval rule and
+    # R2-9: store the CANONICAL name. Whatever the caller said - `transfer`, `tc`,
+    # `Transfer Certificate` - one word reaches the database, so the approval rule and
     # the printer are asking about the same document.
     cert_type = canonical_type(params.get("cert_type") or params.get("type") or "bonafide")
     needs_approval = requires_approval(cert_type)
@@ -95,8 +95,8 @@ async def create_certificate(db, actor_ctx: ActorContext, params: dict) -> dict:
 async def _notify_approvers(db, actor_ctx: ActorContext, cert_id: str, label: str) -> None:
     """Tell the two people who may approve that something is waiting.
 
-    R2-9: this used to look for principals only, so the school's OWNER — who may approve
-    and who the school's hierarchy puts above the principal — was never told. Both are
+    R2-9: this used to look for principals only, so the school's OWNER - who may approve
+    and who the school's hierarchy puts above the principal - was never told. Both are
     asked now. The approve and reject routes already admitted both; only the tap on the
     shoulder was missing.
     """
@@ -129,7 +129,7 @@ async def create_id_card_request(db, actor_ctx: ActorContext, params: dict) -> d
 
     Decision 6 of 2026-08-10 puts ID cards under the same rule as certificates: the
     owner and the principal print them directly, everybody else asks first. There is no
-    second approval queue — the request is a row in `certificates` with the canonical
+    second approval queue - the request is a row in `certificates` with the canonical
     type `id_card`, so `approve_certificate` and `reject_certificate` govern it
     unchanged and the school has one list to look at.
 
@@ -178,7 +178,7 @@ async def is_approved_for_printing(db, actor_ctx: ActorContext, cert_id: str) ->
     """The approved request behind a print, or raise.
 
     Returns the certificate record when it exists in the caller's scope and has been
-    approved. `generated` is what an approved record's status is called — the field
+    approved. `generated` is what an approved record's status is called - the field
     records that the document now exists, and `approve_certificate` is what sets it.
 
     Raises `CertificateNotFoundError` if there is no such record here, and
@@ -276,7 +276,7 @@ async def reject_certificate(db, actor_ctx: ActorContext, params: dict) -> dict:
 async def delete_certificate(db, actor_ctx: ActorContext, params: dict) -> dict:
     """Delete a certificate record. Owner or principal only.
 
-    Owner instruction 2026-08-07 — a certificate raised in error (wrong pupil, wrong
+    Owner instruction 2026-08-07 - a certificate raised in error (wrong pupil, wrong
     type, a duplicate request) could be rejected but never removed.
 
     A certificate that has been **issued** is a document the family may be holding in
@@ -297,7 +297,7 @@ async def delete_certificate(db, actor_ctx: ActorContext, params: dict) -> dict:
         raise CertificateNotFoundError(cert_id)
     if cert.get("status") == "generated":
         raise CertificateStateError(
-            "This certificate has already been issued and may be in the family's hands — "
+            "This certificate has already been issued and may be in the family's hands - "
             "it cannot be deleted"
         )
     await db.certificates.delete_one(scoped_query({"id": cert_id}, branch_id=bid))

@@ -19,7 +19,7 @@ def _principal_h():
 
 
 def test_discount_below_threshold_applied_immediately(client, fake_db):
-    """Small discount (500) applied immediately — no pending approval created."""
+    """Small discount (500) applied immediately - no pending approval created."""
     fake_db.fee_discount_types.docs = [
         {
             "id": "dt-1",

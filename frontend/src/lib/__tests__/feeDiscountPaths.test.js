@@ -1,9 +1,9 @@
 /**
- * NEW-11 — the fee-discount approval address the app uses must be one the server serves.
+ * NEW-11 - the fee-discount approval address the app uses must be one the server serves.
  *
  * `lib/api.js` used to export `approveFeeDiscount` / `rejectFeeDiscount`, which called
  * POST /api/fees/discounts/{id}/approve|reject. The server has only ever served
- * PATCH /api/fees/discounts/pending-approvals/{approval_id}/approve|reject — wrong path
+ * PATCH /api/fees/discounts/pending-approvals/{approval_id}/approve|reject - wrong path
  * AND wrong method. Nothing called them, so nothing broke; they were leftovers that
  * looked ready to use and would have 404'd the first time anyone reached for them.
  *

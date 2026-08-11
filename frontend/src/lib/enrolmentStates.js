@@ -4,14 +4,14 @@
  * Owner request 10, 2026-08-06. Aman described what the school actually does and the
  * platform had no word for the middle of it:
  *
- *   "There are students who stop reporting to the school without any contact — they
+ *   "There are students who stop reporting to the school without any contact - they
  *   get transferred to another region and do not come to take the TC. The school puts
  *   those students into a list called NSO. Their names STILL APPEAR in everyday
  *   attendance. After the TC, the name is removed from attendance."
  *
  * Decision 2 of the same night (Abhimanyu): this applies to students, staff AND
  * teachers, with the same three stages for all of them. That is why this file talks
- * about "a person" and is imported by both the student screen and the staff screen —
+ * about "a person" and is imported by both the student screen and the staff screen -
  * two copies of these words is exactly how the two screens would drift apart.
  *
  * The server half is `backend/services/enrolment_status.py`. The state names and the
@@ -33,14 +33,14 @@ export const ENROLMENT_STATES = [
   },
   {
     value: NSO,
-    label: 'NSO — stopped attending',
-    forStaff: 'NSO — stopped reporting',
+    label: 'NSO - stopped attending',
+    forStaff: 'NSO - stopped reporting',
     help: 'No longer attending and no TC issued yet. Still appears on the daily register every day, so a teacher marks them absent and the school notices if they come back.',
     tone: 'orange',
   },
   {
     value: TC_ISSUED,
-    label: 'TC issued — left the school',
+    label: 'TC issued - left the school',
     forStaff: 'Left the school',
     help: 'The leaving certificate is out. Off the daily register, and the record is kept in the recycle bin so it can still be brought back.',
     tone: 'neutral',
@@ -92,10 +92,10 @@ export const ALL_VIEW = 'all';
  */
 export const ENROLMENT_VIEWS = [
   { value: ON_ROLL_VIEW, label: 'On the roll', help: 'Everyone attending as normal.' },
-  { value: ON_REGISTER_VIEW, label: 'On the daily register', help: 'On the roll plus the NSO list — the names marked every morning.' },
+  { value: ON_REGISTER_VIEW, label: 'On the daily register', help: 'On the roll plus the NSO list - the names marked every morning.' },
   { value: NSO_VIEW, label: 'NSO list', help: 'Stopped attending, no TC yet.' },
   { value: TC_ISSUED_VIEW, label: 'Left the school', help: 'TC issued.' },
-  { value: OFF_ROLL_VIEW, label: 'Recycle bin', help: 'Everyone off the roll — NSO and left — so they can be put back or removed for good.' },
+  { value: OFF_ROLL_VIEW, label: 'Recycle bin', help: 'Everyone off the roll - NSO and left - so they can be put back or removed for good.' },
   { value: ALL_VIEW, label: 'Everyone', help: 'Every record, whatever state it is in.' },
 ];
 
@@ -106,7 +106,7 @@ export const RESTRICTED_VIEWS = [NSO_VIEW, TC_ISSUED_VIEW, OFF_ROLL_VIEW, ALL_VI
  * The shortest reason the server will accept before it destroys a record for good.
  *
  * Both erase routes refuse anything under ten characters. The screen has to say so
- * BEFORE the button is pressed — owner request 10 — or a person types "x", is
+ * BEFORE the button is pressed - owner request 10 - or a person types "x", is
  * refused, and learns nothing about why the box was there.
  */
 export const MIN_ERASE_REASON = 10;

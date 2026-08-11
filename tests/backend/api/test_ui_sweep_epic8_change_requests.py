@@ -1,11 +1,11 @@
-"""UI Sweep Epic 8 — Ask, Don't Just Change.
+"""UI Sweep Epic 8 - Ask, Don't Just Change.
 
 Story 8.1  a member of staff asks for their name/phone/email to be corrected
 Story 8.2  the Owner or the Principal decides; only then does anything change
 
 The rule this feature must never break: asking is not changing. Every test that
 checks a refusal also checks that the underlying staff record and login record
-are untouched — a request route that quietly wrote through would be worse than
+are untouched - a request route that quietly wrote through would be worse than
 the direct editing it replaced, because it would look supervised.
 """
 
@@ -320,7 +320,7 @@ def test_a_settled_request_cannot_be_decided_twice(client, fake_db):
 
 def test_a_principal_cannot_approve_their_own_request(client, fake_db):
     """Without this the Principal is an administrator who can approve their own
-    change — exactly the self-editing this feature exists to prevent."""
+    change - exactly the self-editing this feature exists to prevent."""
     _seed_principal(fake_db)
     raised = client.post(
         "/api/staff/me/change-requests", json={"phone": "9777777777"}, headers=_principal_headers()

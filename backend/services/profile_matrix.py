@@ -1,4 +1,4 @@
-"""R2-1 — the one written-down statement of what each school profile may reach.
+"""R2-1 - the one written-down statement of what each school profile may reach.
 
 Before this file, nobody's access was written down anywhere. It was granted by
 SUBTRACTION: "management" meant *everything not tagged finance*, computed in
@@ -91,7 +91,7 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
             "The school's proprietor. Holds everything, including the tools marked "
             "owner-only in the registry: the branch records, the school settings and "
             "the year-end promotion. Nobody else reaches those, not even the "
-            "principal — see R2-3."
+            "principal - see R2-3."
         ),
     },
     "principal": {
@@ -167,7 +167,7 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         "extra_tools": frozenset({
             # Attendance and leave: READ ONLY. He needs to see who was in school to
             # settle a fee or a transport charge. He does not mark a register and he
-            # does not approve leave — `mark_attendance`, `mark_staff_attendance`,
+            # does not approve leave - `mark_attendance`, `mark_staff_attendance`,
             # `correct_attendance` and `approve_leave` are deliberately absent.
             "get_attendance_overview",
             "get_class_wise_attendance",
@@ -187,7 +187,7 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         "notes": (
             "Finance plus the lookups finance needs. Attendance and leave read-only, "
             "the full directory plus his own columns, vendor records in full, and "
-            "transport in full until Release 3 — those widenings are R2-5 and are not "
+            "transport in full until Release 3 - those widenings are R2-5 and are not "
             "in this table yet. He may create students. He creates certificates and ID "
             "cards and waits for approval rather than issuing them (Abhimanyu, "
             "2026-08-11)."
@@ -251,7 +251,7 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
             # hands both to the accountant head until Release 3 (R2-5).
             # Reporting and the odds and ends. R2-7, 2026-08-11: the GROUP these live in
             # was missing, so all seven were granted and none could be opened. Holding
-            # the group is not the same as seeing everything in it — the rows are
+            # the group is not the same as seeing everything in it - the rows are
             # filtered one by one, so the four leadership-private screens below stay
             # hidden from him exactly as before.
             "governance-ai-hub",
@@ -284,7 +284,7 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         "extra_tools": frozenset(),
         # R2-5 / decision 2, 2026-08-10: transport moves to the accountant head until
         # Release 3, and Lalit loses it. Vendors move too, but there is no vendor tool
-        # in the registry — vendors are a screen only — so that half is in `screens`.
+        # in the registry - vendors are a screen only - so that half is in `screens`.
         "denied_tools": frozenset({
             "get_transport_status",
             "create_transport_route",
@@ -404,7 +404,7 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         "status": "dormant",
         "screens": _screens(
             # Deliberately the narrowest useful set. Until R2-1 this profile had NO
-            # list of its own anywhere, so it fell through to most of the admin menu —
+            # list of its own anywhere, so it fell through to most of the admin menu -
             # the single widest unintended grant on the platform, and pure subtraction
             # in its purest form. Closing it properly is R2-6; this entry stops it
             # widening any further in the meantime.
@@ -496,8 +496,8 @@ def may_delete_people(user: Dict[str, Any]) -> bool:
     `DELETE /api/staff/{id}` asked only whether the caller's role was owner or admin,
     which is every admin desk in the school.
 
-    Taking someone off the roll is recoverable — it records that they have left and
-    `set_enrolment_state` puts them back — but it removes a child from the school's
+    Taking someone off the roll is recoverable - it records that they have left and
+    `set_enrolment_state` puts them back - but it removes a child from the school's
     working roll, and that is a decision for the two people who run the school.
     """
     profile = profile_of(user)

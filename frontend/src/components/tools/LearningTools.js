@@ -1,5 +1,5 @@
 /**
- * R10.4 — "What I've Learned" transparency & control surface (Owner/Principal).
+ * R10.4 - "What I've Learned" transparency & control surface (Owner/Principal).
  *
  * Lists everything Flo has learned about you: active memories, saved
  * routines (skills), and pending correction candidates from 👎 Improve feedback.
@@ -147,7 +147,7 @@ export default function LearningTools() {
         ))}
       </Section>
 
-      {/* Deactivated memories — kept for history, reactivatable */}
+      {/* Deactivated memories - kept for history, reactivatable */}
       {data.deactivated_memories.length > 0 && (
         <Section title="Deactivated notes" icon={EyeOff} count={data.deactivated_memories.length} isDark={isDark}>
           {data.deactivated_memories.map(m => (

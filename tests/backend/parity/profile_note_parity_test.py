@@ -1,9 +1,9 @@
-"""Owner request 4 — dual-entrypoint parity for private profile notes.
+"""Owner request 4 - dual-entrypoint parity for private profile notes.
 
 Same seed and the same actor through `POST /api/profile-notes` and the AI
 `add_profile_note` tool must land the same note and the same audit row, apart from
 the volatile fields. If they ever drift, Flo becomes a second, differently-behaved
-way to write on a child's record — and this one is about privacy, so a difference
+way to write on a child's record - and this one is about privacy, so a difference
 here is not cosmetic.
 """
 
@@ -90,7 +90,7 @@ async def test_ai_and_rest_profile_note_identical(client, auth_headers, fake_db,
 
 async def test_the_ai_tool_cannot_read_somebody_elses_note(fake_db, monkeypatch):
     """The privacy rule is the point of the feature, so it is proved on the AI side
-    too — Flo must not become the way around it."""
+    too - Flo must not become the way around it."""
     monkeypatch.setattr(tool_functions_v2, "get_db", lambda: fake_db)
     fake_db.profile_notes.docs.append({
         "id": "note-principal", "schoolId": "aaryans-joya", "branch_id": None,

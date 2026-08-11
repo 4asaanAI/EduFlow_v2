@@ -296,11 +296,11 @@ export default function IncidentTracker() {
             headers={['Name', 'Purpose', 'Person Visited', 'Time In', 'Time Out', 'Outcome']}
             rows={visitors.map(v => [
               v.name,
-              v.purpose || '—',
-              v.student_or_staff_involved || '—',
-              v.time_in?.slice(11, 16) || v.created_at?.slice(11, 16) || '—',
-              v.time_out?.slice(11, 16) || '—',
-              v.outcome || '—',
+              v.purpose || '-',
+              v.student_or_staff_involved || '-',
+              v.time_in?.slice(11, 16) || v.created_at?.slice(11, 16) || '-',
+              v.time_out?.slice(11, 16) || '-',
+              v.outcome || '-',
             ])}
           />
         )

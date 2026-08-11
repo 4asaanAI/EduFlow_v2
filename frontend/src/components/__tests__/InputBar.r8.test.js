@@ -1,5 +1,5 @@
 /**
- * Epic R8 — FH2 (R8.1 AC2): a send that can't start must not eat the user's text.
+ * Epic R8 - FH2 (R8.1 AC2): a send that can't start must not eat the user's text.
  */
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 

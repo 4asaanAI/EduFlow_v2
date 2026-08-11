@@ -1,5 +1,5 @@
 /**
- * Rows-per-page preference — Epic 3, Story 3.2 (UX-DR10).
+ * Rows-per-page preference - Epic 3, Story 3.2 (UX-DR10).
  *
  * The point of most of these cases: reading localStorage is parsing UNTRUSTED
  * input. The value can be absent, a string, a size an older build offered, or

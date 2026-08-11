@@ -104,7 +104,7 @@ def same_text(a, b):
 
     Owner correction 6 (2026-08-06): the "records where your file differs" list was
     reporting entries whose information was plainly identical. 16 of the 24 reported
-    differences were nothing but whitespace — the platform stores addresses with a LINE
+    differences were nothing but whitespace - the platform stores addresses with a LINE
     BREAK inside them (they were captured from a wrapped form field), so
     "…RAJNAGAR. IKONDA\\nROAD NARAN" was being compared raw against
     "…RAJNAGAR. IKONDA ROAD NARAN" and called a disagreement.
@@ -113,7 +113,7 @@ def same_text(a, b):
     never applied to addresses. Collapsing whitespace before comparing leaves 8 real
     differences (6 phone numbers, 1 roll number, 1 address) out of the 24.
 
-    Comparison only — the stored values are not rewritten by this.
+    Comparison only - the stored values are not rewritten by this.
     """
     na = re.sub(r"\s+", " ", str(a if a is not None else "")).strip().upper()
     nb = re.sub(r"\s+", " ", str(b if b is not None else "")).strip().upper()
@@ -232,7 +232,7 @@ for a in matched:
                 if len(fill_examples[f]) < 5:
                     fill_examples[f].append((a, exp["name"], old[f]))
             elif old.get(f) and has_live and not same_text(liv.get(f), old[f]):
-                changes[f"{f}: platform and workbook disagree — leave alone, do not overwrite"] += 1
+                changes[f"{f}: platform and workbook disagree - leave alone, do not overwrite"] += 1
 
 live_labels = {(str(c.get("name")), str(c.get("section"))) for c in classes.values()}
 needed = Counter((current[a]["class"], current[a]["section"]) for a in to_add)
@@ -248,7 +248,7 @@ w("whether anything gets written to real student records.")
 w("")
 w("Sources: `aaryans_database/Students-22-06-2026-02-35-08.xlsx` (the current export,")
 w("22 June 2026) and `aaryans_database/DETAINEES LIST 2025-26.xlsx` (last year's).")
-w("Students were matched on **admission number only** — never on name.")
+w("Students were matched on **admission number only** - never on name.")
 w("")
 w("## The short version")
 w("")
@@ -351,7 +351,7 @@ w("These are the real prize in the folder. Samples:")
 w("")
 for f in FILL:
     n = changes.get(f"{f}: blank on platform, available from the 2025-26 workbook", 0)
-    w(f"**{f}** — {n} students")
+    w(f"**{f}** - {n} students")
     for a, nm, v in fill_examples.get(f) or []:
         w(f"  - {a} {nm}: {v}")
     w("")
@@ -374,7 +374,7 @@ for f in ("dob", "admission_date"):
 w("")
 w('The "unknowable" ones are entries like `09.03.2019`, where 3 September and 9 March are')
 w("both possible and the spreadsheet does not say which. A wrong birthday is worse than a")
-w("blank one — it follows a child through certificates and records. **Those are counted")
+w("blank one - it follows a child through certificates and records. **Those are counted")
 w("here and would be left blank, not guessed.** The handful that are not dates at all")
 w('(a year typed as "224") would also be skipped.')
 w("")
@@ -415,7 +415,7 @@ if phone_diffs:
     w("")
 w("## What we would like from you")
 w("")
-w("1. The stream question above — leave it, rename, or record it properly.")
+w("1. The stream question above - leave it, rename, or record it properly.")
 w("2. Whether the two fee-recovery entries should be added as students. We suggest not.")
 w("3. A yes to filling in the blank dates of birth, admission dates, houses and genders")
 w("   for the students already on the platform, on the terms above: blanks only, nothing")

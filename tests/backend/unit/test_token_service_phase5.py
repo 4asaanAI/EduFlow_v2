@@ -132,7 +132,7 @@ async def test_record_usage_personal_topup_floors_at_zero(token_db):
     ]
     user = {"id": "teacher-1", "role": "teacher"}
 
-    # Debit 200 against a 30-token balance — must floor at 0, never -170.
+    # Debit 200 against a 30-token balance - must floor at 0, never -170.
     await token_service.record_usage(user, "branch-1", 200, "personal_topup", conversation_id="c1")
 
     assert token_db.token_balances.docs[0]["personal_topups"]["teacher-1"] == 0

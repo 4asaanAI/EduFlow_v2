@@ -31,7 +31,7 @@ def test_an_nso_student_reads_as_nso_even_though_they_are_switched_off():
 def test_a_legacy_withdrawn_row_reads_as_tc_issued():
     # Every student deactivated before this existed carries status "withdrawn" and no
     # NSO concept. Reading those as TC issued keeps them off the register, which is
-    # exactly how they behaved the day before — no existing row changes meaning.
+    # exactly how they behaved the day before - no existing row changes meaning.
     assert es.normalise({"is_active": False, "status": "withdrawn"}) == es.TC_ISSUED
 
 
@@ -73,7 +73,7 @@ def test_an_unknown_state_is_refused_rather_than_written():
 
 def test_erasure_is_not_a_settable_state():
     # Permanent erasure destroys the record and demands a written reason. It is a
-    # different operation in a different, owner-only route — not a fourth position on
+    # different operation in a different, owner-only route - not a fourth position on
     # this switch.
     assert "erased" not in es.SETTABLE_STATES
     assert set(es.SETTABLE_STATES) == {es.ACTIVE, es.NSO, es.TC_ISSUED}

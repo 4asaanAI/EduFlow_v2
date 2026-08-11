@@ -1,4 +1,4 @@
-"""Story J.1 — dual-entrypoint parity for student CRUD.
+"""Story J.1 - dual-entrypoint parity for student CRUD.
 
 Same seed + same actor (owner) through the REST routes (POST /api/students/,
 PATCH /api/students/{id}, PUT /api/students/{id}/guardians) and the AI tools
@@ -18,7 +18,7 @@ import pytest
 from ai import tool_functions_v2
 
 # student_id/entity_id/record_id are foreign-key references to the volatile
-# student UUID (re-generated each run) — mask them like ids.
+# student UUID (re-generated each run) - mask them like ids.
 _VOLATILE = {"id", "_id", "student_id", "entity_id", "record_id",
              "created_at", "updated_at", "admission_date", "timestamp"}
 OWNER_USER = {"id": "admin-1", "role": "owner", "name": "Admin User"}
@@ -166,7 +166,7 @@ async def test_set_status_ai_and_rest_identical(client, auth_headers, fake_db, m
 
 
 def test_no_ai_student_erase_tool():
-    """AD15: permanent erasure stays UI-only — never AI-reachable.
+    """AD15: permanent erasure stays UI-only - never AI-reachable.
 
     Restated 2026-08-07. The rule used to be written as "no `delete_student` tool
     either", and on the owner's instruction a `delete_student` tool now exists. That is
@@ -198,7 +198,7 @@ async def test_ai_delete_student_takes_off_the_roll_and_destroys_nothing(fake_db
 
     assert out["success"] is True
     surviving = [s for s in fake_db.students.docs if s["id"] == "stu-del-1"]
-    assert surviving, "the AI must never destroy a student record — only take them off the roll"
+    assert surviving, "the AI must never destroy a student record - only take them off the roll"
     assert surviving[0]["is_active"] is False
     # And the way back still exists.
     back = await tool_functions_v2.tool_set_student_status(

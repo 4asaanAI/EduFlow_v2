@@ -1,13 +1,13 @@
-"""Academic-structure domain service — the single shared write path for classes
+"""Academic-structure domain service - the single shared write path for classes
 (incl. their section field) and houses (AI Layer Hardening, AD7 / Epic K, Story K.2).
 
 Classes and houses had **no** write REST routes before this story (classes came
 only from `seed.py`/import; houses had a GET-with-auto-seed + a points route).
 Per the approved K.2 scope, this service is the single write path and BOTH a new
 minimal service-backed REST route (the parity reference) and the matching
-Owner/Principal AI tool call it — adding backend capability with **no new UI**.
+Owner/Principal AI tool call it - adding backend capability with **no new UI**.
 
-"Sections" are not a separate collection — a section is the `section` field on a
+"Sections" are not a separate collection - a section is the `section` field on a
 class record, managed via `create_class`/`update_class`.
 
 Services raise domain exceptions, never `HTTPException`. The adapters map them.

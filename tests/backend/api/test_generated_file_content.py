@@ -76,7 +76,7 @@ def _put(fake_db, *, file_id: str, uploaded_by: str, school: str = SCHOOL, html:
     fake_db.file_uploads.docs.append(record)
 
 
-# ── Authentication and entitlement — the same gate as the download ───────────────
+# ── Authentication and entitlement - the same gate as the download ───────────────
 
 def test_unauthenticated_cannot_read_a_document(client, fake_db):
     _put(fake_db, file_id="f1", uploaded_by="c-owner")

@@ -46,7 +46,7 @@ class LLMResult:
 
     Kills the old tuple|dict dual return that caused audit X1 (a tuple/dict was
     persisted as question-paper content). Callers read `.text`/`.tokens` and
-    branch on `.ok` — never isinstance/tuple/dict gymnastics.
+    branch on `.ok` - never isinstance/tuple/dict gymnastics.
 
     R11.2: `tool_calls` carries structured native function calls. When present,
     the turn is a tool-request turn (text is usually empty) and is still `ok`.
@@ -67,7 +67,7 @@ def get_azure_key() -> str:
     """Read the Azure OpenAI key, accepting BOTH documented names (R9.1/C2).
 
     The incident-class config bug: code read only ``AZURE_OPENAI_API_KEY`` while
-    CLAUDE.md/.env.example documented ``AZURE_OPENAI_KEY`` — a mismatch that left
+    CLAUDE.md/.env.example documented ``AZURE_OPENAI_KEY`` - a mismatch that left
     the client silently unconfigured (every turn degraded, no error). Accept
     either, preferring the SDK-native ``AZURE_OPENAI_API_KEY``.
     """
@@ -83,7 +83,7 @@ def validate_ai_config() -> None:
     so we raise here and refuse to boot.
 
     NOTE (confidentiality): env-var names retain the historical AZURE_* prefix
-    for ops continuity, but no user-facing surface ever names the provider — the
+    for ops continuity, but no user-facing surface ever names the provider - the
     assistant is "Layaa AI" to every client.
     """
     env = os.environ.get("ENVIRONMENT", "development").strip().lower()
@@ -101,6 +101,9 @@ def validate_ai_config() -> None:
             + ". The AI assistant cannot function without it; refusing to start "
             "rather than degrade silently."
         )
+
+
+from ai.writing_style import plain_dashes
 
 
 class LLMClient:
@@ -217,7 +220,11 @@ class LLMClient:
                 kwargs["tool_choice"] = tool_choice
             response = self._client.chat.completions.create(**kwargs)
             choice = response.choices[0]
-            text = choice.message.content or ""
+            # Same rule as the streaming path: Flo never prints a long dash, and
+            # this is the non-streaming half. Generated documents come through
+            # here, and a question paper the school prints is exactly what the
+            # owner meant by "not in her replies OR GENERATED DOCUMENTS".
+            text = plain_dashes(choice.message.content or "")
             tool_calls = self._extract_tool_calls(choice.message)
             finish_reason = getattr(choice, "finish_reason", None)
             input_tok = output_tok = 0
@@ -239,7 +246,7 @@ class LLMClient:
             )
             # R1.6 AC1: an empty reply truncated by the token ceiling ("length")
             # is almost always the reasoning family exhausting budget before any
-            # visible content. Retry ONCE with more headroom — but not when the
+            # visible content. Retry ONCE with more headroom - but not when the
             # model legitimately returned tool_calls (empty text is expected then).
             if not text.strip() and not tool_calls and finish_reason == "length":
                 logger.warning(
@@ -267,7 +274,7 @@ class LLMClient:
             if tool_calls:
                 return LLMResult(text=text, tokens=tokens, ok=True, reason=finish_reason, tool_calls=tool_calls)
             # R1.6 AC3: empty content (even after retry) is a typed FAILURE, never
-            # a "successful" empty string — the turn contract (R1.3) surfaces a
+            # a "successful" empty string - the turn contract (R1.3) surfaces a
             # fallback instead of a silent blank.
             if not text.strip():
                 return LLMResult(text="", tokens=tokens, ok=False, reason=f"empty_{finish_reason or 'unknown'}")
@@ -302,7 +309,7 @@ class LLMClient:
         """Stream a final-answer completion token-by-token (R11.3).
 
         Yields dicts:
-          {"type": "delta", "text": "..."}         — a visible text chunk
+          {"type": "delta", "text": "..."}         - a visible text chunk
           {"type": "done", "tokens": N, "reason": "stop", "ok": True}
           {"type": "error", "reason": "...", "ok": False, "text": "<partial>"}
 
@@ -349,7 +356,7 @@ class LLMClient:
                     if getattr(ch, "finish_reason", None):
                         finish_reason = ch.finish_reason
                 q.put(("done", (input_tok + output_tok, finish_reason)))
-            except Exception as e:  # noqa: BLE001 — surfaced to caller as an error event
+            except Exception as e:  # noqa: BLE001 - surfaced to caller as an error event
                 q.put(("error", e))
             finally:
                 q.put((None, None))
@@ -365,6 +372,12 @@ class LLMClient:
                 if kind is None:
                     break
                 if kind == "delta":
+                    # Flo never prints a long dash. The /stop-slop habit asks her not to
+                    # write one; this is what makes it true. Every reply, every generated
+                    # document and every drafted parent message passes through here, which
+                    # is why it is done once here rather than at each place that emits a
+                    # frame. See ai/writing_style.py.
+                    payload = plain_dashes(payload)
                     buffered.append(payload)
                     yield {"type": "delta", "text": payload}
                 elif kind == "done":

@@ -1,4 +1,4 @@
-"""Fee-sync domain service — single shared write path for triggering an
+"""Fee-sync domain service - single shared write path for triggering an
 external fee synchronization job (AI Layer Hardening, AD7).
 
 Both `POST /api/fees/sync/trigger` (REST) and the AI `trigger_fee_sync` tool
@@ -26,7 +26,7 @@ SYNC_JOB_TIMEOUT_MINUTES = int(os.environ.get("SYNC_JOB_TIMEOUT_MINUTES", "30"))
 
 
 class FeeSyncUpstreamError(Exception):
-    """The external fee API failed — job is marked failed; carries the detail."""
+    """The external fee API failed - job is marked failed; carries the detail."""
 
 
 def _external_key(record: dict):
@@ -111,7 +111,7 @@ async def trigger_sync(
     except Exception as exc:
         detail = getattr(exc, "detail", None) or f"Fee sync failed: {exc}"
         await db.fee_sync_jobs.update_one(
-            # branch-scope: intentional — job id is a fresh uuid created above; school scope suffices
+            # branch-scope: intentional - job id is a fresh uuid created above; school scope suffices
             scoped_filter({"id": job_id}, school_id),
             {"$set": {"status": "failed", "error": detail, "completed_at": actor_ctx.now_iso()}},
         )
@@ -128,9 +128,9 @@ async def trigger_sync(
             continue
         existing = await db.fee_transactions.find_one(
             # NEW-04/T7 audit: NOT an N+1 to batch away. This is the read-before-write
-            # of an upsert loop — the check must see the effect of the rows already
+            # of an upsert loop - the check must see the effect of the rows already
             # written in this same run, so a pre-fetched snapshot would be wrong.
-            # branch-scope: intentional — matches the legacy _fee_query school-wide
+            # branch-scope: intentional - matches the legacy _fee_query school-wide
             # duplicate check; fee txns are keyed (student, period, head) per school
             scoped_filter({"student_id": student_id, "fee_period": period, "fee_head": fee_head}, school_id),
             {"_id": 0},
@@ -173,7 +173,7 @@ async def trigger_sync(
         "conflicts": conflicts,
         "completed_at": actor_ctx.now_iso(),
     }
-    # branch-scope: intentional — job id is a fresh uuid created above; school scope suffices
+    # branch-scope: intentional - job id is a fresh uuid created above; school scope suffices
     await db.fee_sync_jobs.update_one(scoped_filter({"id": job_id}, school_id), {"$set": update})
     await _audit(db, actor_ctx, action="fee_sync_completed", entity_id=job_id, changes=update)
     if synced and publish_fn is not None:

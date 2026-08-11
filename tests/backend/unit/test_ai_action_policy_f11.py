@@ -1,4 +1,4 @@
-"""Story F.11 — Phase-1 action-authorization lockdown (Owner + Principal only)."""
+"""Story F.11 - Phase-1 action-authorization lockdown (Owner + Principal only)."""
 
 from __future__ import annotations
 
@@ -59,6 +59,6 @@ def test_is_tool_authorized_preserves_subcategory_gate():
 
 
 def test_lockdown_single_switch_widens_in_phase2(monkeypatch):
-    # Phase 2 (Epic H) flips one flag — no engine change. Verify the switch lifts.
+    # Phase 2 (Epic H) flips one flag - no engine change. Verify the switch lifts.
     monkeypatch.setattr(ai_action_policy, "LOCKDOWN_ENABLED", False)
     assert is_action_authorized_phase1(TEACHER, WRITE_TOOL) is True

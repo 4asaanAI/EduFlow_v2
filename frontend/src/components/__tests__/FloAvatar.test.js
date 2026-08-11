@@ -1,5 +1,5 @@
 /**
- * UI Sweep — Flo's face beside every reply, not a star.
+ * UI Sweep - Flo's face beside every reply, not a star.
  *
  * Abhimanyu reported on 2026-07-22 that the star was still there. The code was
  * already correct; nothing had been deployed. These tests exist so that next time

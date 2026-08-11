@@ -1,5 +1,5 @@
 """
-API Tests: Staff — EduFlow Backend
+API Tests: Staff - EduFlow Backend
 
 Tests staff profile CRUD and session invalidation behavior.
 """

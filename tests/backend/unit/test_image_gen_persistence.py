@@ -23,7 +23,7 @@ def _clean_image_gen_state(fake_db, monkeypatch):
     fake_db.image_gen_quota.docs[:] = []
     # `fake_db` is a shared module singleton that other test files mutate; ensure
     # the student/class our DB-resolved cert & ID-card tests need are present
-    # (non-destructive — R9.5 resolves identity from the DB, not the payload).
+    # (non-destructive - R9.5 resolves identity from the DB, not the payload).
     if not any(s.get("id") == "student-1" for s in fake_db.students.docs):
         fake_db.students.docs.append({
             "id": "student-1", "schoolId": "aaryans-joya", "name": "Demo Student",
@@ -35,7 +35,7 @@ def _clean_image_gen_state(fake_db, monkeypatch):
             "id": "class-1", "schoolId": "aaryans-joya", "name": "Class 5", "section": "A",
         })
 
-    # R9.5 AC2: the Gemini/Imagen leg was removed — backgrounds are drawn locally.
+    # R9.5 AC2: the Gemini/Imagen leg was removed - backgrounds are drawn locally.
     monkeypatch.setattr(
         image_gen_routes,
         "upload_bytes",
@@ -84,7 +84,7 @@ def test_certificate_persist_true_stores_pdf_and_returns_json(client, fake_db):
 
 
 def test_certificate_requires_student_id(client):
-    # R9.5 AC1: no client-supplied identity — a missing student_id is a 400.
+    # R9.5 AC1: no client-supplied identity - a missing student_id is a 400.
     resp = client.post("/api/image-gen/certificate",
                        json={"cert_type": "bonafide", "student_name": "Forged Name"},
                        headers=_headers())
@@ -101,7 +101,7 @@ def test_certificate_unknown_student_is_404(client):
 def test_certificate_denied_for_receptionist_admin(client):
     # A named refusal for one ordinary office role, alongside the derived sweep below.
     # (This test used to name the accountant; owner decision 2026-08-04 moved the
-    # accountant to the ALLOWED side, so it now names the receptionist instead — the
+    # accountant to the ALLOWED side, so it now names the receptionist instead - the
     # refusal it was written to protect is still asserted, just for a role that is
     # still refused.)
     resp = client.post("/api/image-gen/certificate", json=_certificate_payload(),
@@ -109,11 +109,11 @@ def test_certificate_denied_for_receptionist_admin(client):
     assert resp.status_code == 403
 
 
-# ── NEW-01 / NEW-02 / D-49 — who may issue an official school document ───────
-# Owner decision 2026-08-04: the school's owner, the principal, AND the accountant —
+# ── NEW-01 / NEW-02 / D-49 - who may issue an official school document ───────
+# Owner decision 2026-08-04: the school's owner, the principal, AND the accountant -
 # the third office position Abhimanyu said he would name (decision 2). Commit 1011034
 # had widened both routes to every admin sub_category; nothing but a single accountant
-# test noticed, and the ID-card route had NO permission test at all — which is why the
+# test noticed, and the ID-card route had NO permission test at all - which is why the
 # widening survived. These tests encode the decided rule on BOTH routes so the next
 # change to either gate has to argue with a red suite.
 
@@ -123,12 +123,12 @@ def test_certificate_denied_for_receptionist_admin(client):
 #
 # DELIBERATE DEVIATION from CLAUDE.md's "never parametrize across security boundaries".
 # That rule exists so an ALLOWED case and a REFUSED case are never averaged into one
-# test. These parametrised cases are all on the SAME side of the boundary — every one
-# expects 403 — and the allowed profiles (owner, principal) each have their own named
+# test. These parametrised cases are all on the SAME side of the boundary - every one
+# expects 403 - and the allowed profiles (owner, principal) each have their own named
 # test below. Deriving the list is the point: NEW-01 happened because a permission
 # widened and a hand-maintained list did not notice.
 # 2026-08-11: the accountant head joins the desks that may REACH these routes. What he
-# may do there is narrower than the principal — see the approval tests in
+# may do there is narrower than the principal - see the approval tests in
 # tests/backend/api/test_certificate_approval_r2_9.py.
 _ISSUER_ADMIN_SUBS = frozenset({"principal", "management", "accountant"})
 _NON_ISSUER_ADMIN_SUBS = sorted(
@@ -164,7 +164,7 @@ def test_id_cards_allowed_for_principal(client):
     assert resp.status_code == 200
 
 
-# R2-9, 2026-08-10 — these two tests used to assert that the admin office could print a
+# R2-9, 2026-08-10 - these two tests used to assert that the admin office could print a
 # Bonafide Certificate and a set of ID cards outright, and they were reversed here
 # deliberately rather than deleted, because the DOOR they were written to protect is
 # still the point: the office must reach these routes, or the screens it owns are dead
@@ -172,13 +172,13 @@ def test_id_cards_allowed_for_principal(client):
 #
 # What changed is decision 6 of 2026-08-10: the office creates the request and the
 # school's owner or principal approves it. So the office reaching the route now means
-# "may print an award straight away, and may print anything else once it is approved" —
+# "may print an award straight away, and may print anything else once it is approved" -
 # which is what these two now assert. `test_certificate_approval_r2_9.py` holds the full
 # set; these stay so that a future change narrowing the gate back to leadership-only is
 # still caught right here.
 
 def test_management_may_print_an_award_without_asking(client):
-    # Sports and participation certificates need nobody's permission — they record that
+    # Sports and participation certificates need nobody's permission - they record that
     # a child took part, and assert nothing about their standing.
     resp = client.post("/api/image-gen/certificate",
                        json=_certificate_payload(cert_type="sports"),
@@ -188,7 +188,7 @@ def test_management_may_print_an_award_without_asking(client):
 
 def test_management_reaches_the_certificate_route_and_is_told_to_get_approval(client):
     # NOT the gate refusing them: the gate still admits the office. This is the approval
-    # step, and the difference matters — the message has to tell them what to do next.
+    # step, and the difference matters - the message has to tell them what to do next.
     resp = client.post("/api/image-gen/certificate", json=_certificate_payload(),
                        headers=_headers(role="admin", sub_category="management"))
     assert resp.status_code == 403
@@ -205,7 +205,7 @@ def test_management_reaches_the_id_card_route_and_is_told_to_get_approval(client
 
 # The decided rule is THREE profiles, so every one of them needs a test. Without these,
 # a later change that narrowed the gate to principal-only would lock the school's owner
-# out of issuing any certificate — with a fully green suite. That is the same shape of
+# out of issuing any certificate - with a fully green suite. That is the same shape of
 # miss that let NEW-01 through: a permission moved and no test was watching that
 # direction. The owner case is the sharpest of the three, because the obvious-looking
 # `require_access("owner", "admin", sub_category=(...))` construct passes every other

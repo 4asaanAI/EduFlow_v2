@@ -1,4 +1,4 @@
-"""Epic R3 — Prompt ↔ Registry Parity (behavior tier).
+"""Epic R3 - Prompt ↔ Registry Parity (behavior tier).
 
 Covers the runtime behavior behind the parity fixes: the newly-implemented
 get_announcements tool (H2), the canonical accountant sub_category routing for
@@ -62,7 +62,7 @@ async def test_get_announcements_empty_is_not_a_crash(monkeypatch):
     result = await tool_get_announcements(
         params={}, user={"id": "s1", "role": "student"}, scope=None,
     )
-    # _empty_result convention — no exception, clear message.
+    # _empty_result convention - no exception, clear message.
     assert "announcement" in result.get("message", "").lower()
 
 

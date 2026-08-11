@@ -1,4 +1,4 @@
-"""Export routes — CSV export for major data entities"""
+"""Export routes - CSV export for major data entities"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Request, HTTPException, Depends
@@ -42,7 +42,7 @@ def make_export_response(rows: list, headers: list, basename: str, fmt: str = "c
 
     Epic 10 / Story 10.4. A fee sheet as raw commas loses its columns the moment it
     is opened; the same data as a workbook opens readable. The data, the query and
-    above all the ROLE GATE are untouched — this changes packaging only, which is
+    above all the ROLE GATE are untouched - this changes packaging only, which is
     why it needed no product decision.
 
     An unrecognised format falls back to CSV rather than erroring, matching how

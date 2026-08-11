@@ -1,4 +1,4 @@
-"""R2.3 AC2 — dry-run/shadow mode commits NOTHING on a real session.
+"""R2.3 AC2 - dry-run/shadow mode commits NOTHING on a real session.
 
 Shadow mode runs the writes inside a real transaction and then aborts it, so the
 would-be effect can be reported without persisting anything. FakeDb's no-op session

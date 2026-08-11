@@ -6,7 +6,7 @@ Every photograph the school brought over from its previous software vendor is st
 as an absolute `https://cdn.vedmarg.com/...` URL. Those links need no login: anyone who
 has one can open a photograph of a child. There are 1,423 children, 13 staff and 256
 parents in that position. The exposure exists on the vendor's CDN whether or not EduFlow
-points at it — but handing that link to a browser makes this platform a participant in
+points at it - but handing that link to a browser makes this platform a participant in
 it, and it also means every photograph breaks the day the school stops paying that
 vendor.
 
@@ -20,13 +20,13 @@ browser: the screens render photographs with a plain `<img src=...>`, and an `<i
 cannot send an `Authorization` header. Repointing 1,423 children's photographs at an
 authenticated route would have replaced a working photograph with a broken image for
 every one of them. (The same latent fault already affects photos uploaded through the
-product — see `resolve_many`, which repairs those too.)
+product - see `resolve_many`, which repairs those too.)
 
 WHAT THIS DOES INSTEAD
 ----------------------
 The stored record keeps its own history, and the API answers with a freshly signed,
 short-lived S3 link at read time. A signed link carries its own credential in the query
-string, so `<img src=...>` works untouched — no frontend change — while the link expires
+string, so `<img src=...>` works untouched - no frontend change - while the link expires
 on its own and the public CDN address never leaves the server.
 
 Failure is deliberately soft: if a key is missing or S3 cannot be reached, the caller
@@ -60,7 +60,7 @@ def resolve_one(doc: dict | None, field: str = "photo_url") -> str | None:
 
     Order of preference:
       1. the copy in the school's own bucket, signed fresh;
-      2. nothing — a vendor CDN link is never returned, even if it still works.
+      2. nothing - a vendor CDN link is never returned, even if it still works.
     """
     if not doc:
         return None

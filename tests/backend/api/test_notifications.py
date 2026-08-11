@@ -66,7 +66,7 @@ def test_get_notifications_page_two_has_no_digest(client, auth_headers, fake_db)
 
 def test_get_notifications_all_good_fallback_meta(client, auth_headers, fake_db):
     # Epic 6 (D-14): this asserted the whole `meta` dict by equality, which made
-    # ADDING a key a failure. `unread_total` and `sort` were added in Story 6.2 —
+    # ADDING a key a failure. `unread_total` and `sort` were added in Story 6.2 -
     # so the assertion is rewritten to the contract it was really guarding (the
     # paging figures and the fallback flag) rather than to the dict's exact size.
     _reset_notification_state(fake_db)

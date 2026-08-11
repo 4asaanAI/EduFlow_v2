@@ -1,4 +1,4 @@
-"""UI Sweep Epic 10, Story 10.4 — existing exports, now also as Excel.
+"""UI Sweep Epic 10, Story 10.4 - existing exports, now also as Excel.
 
 The important tests here are the ones asserting NOTHING ELSE MOVED. This story
 changes packaging only. A format option that quietly widened who can download the
@@ -84,7 +84,7 @@ def test_students_as_xlsx_is_a_real_workbook_with_the_data(client, fake_db):
 
 
 def test_csv_is_still_the_default(client, fake_db):
-    """Every existing caller — buttons, scripts, bookmarks — keeps working."""
+    """Every existing caller - buttons, scripts, bookmarks - keeps working."""
     _seed_students(fake_db)
     resp = client.get("/api/export/students", headers=_owner())
 

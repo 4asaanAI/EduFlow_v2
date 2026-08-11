@@ -1,4 +1,4 @@
-"""Teacher teaching-scope resolver — the single source of truth for "what classes
+"""Teacher teaching-scope resolver - the single source of truth for "what classes
 and subjects is this teacher assigned to".
 
 Assignments come from the **Academic Structure** (Owner/Principal/Management edit
@@ -10,7 +10,7 @@ these in the panel), NOT the legacy seed-only staff fields:
 
 A teacher's "assigned classes" is the union of the classes they are class teacher
 of and the classes they teach a subject in. Attendance is intentionally narrower
-(class-teacher only) — callers pick the field they need.
+(class-teacher only) - callers pick the field they need.
 
 This module is shared by ``routes/academics.py``, ``routes/attendance.py`` and
 ``routes/students.py`` so every surface enforces the same, current definition.
@@ -25,12 +25,12 @@ async def compute_teacher_scope(db, user: dict, school_id: str) -> dict:
     """Resolve a teacher's assigned classes & subjects from the Academic Structure.
 
     Returns a dict with:
-      * ``class_teacher_class_ids`` — classes where the user is the class teacher
-      * ``subject_class_ids``       — classes where the user teaches a subject
-      * ``all_class_ids``           — union of the two above
-      * ``subject_ids``             — subjects the user teaches
-      * ``classes``                 — full docs for ``all_class_ids`` (for dropdowns)
-      * ``subjects``                — full docs for the subjects the user teaches
+      * ``class_teacher_class_ids`` - classes where the user is the class teacher
+      * ``subject_class_ids``       - classes where the user teaches a subject
+      * ``all_class_ids``           - union of the two above
+      * ``subject_ids``             - subjects the user teaches
+      * ``classes``                 - full docs for ``all_class_ids`` (for dropdowns)
+      * ``subjects``                - full docs for the subjects the user teaches
     """
     uid = user.get("id")
     branch_id = user.get("branch_id")

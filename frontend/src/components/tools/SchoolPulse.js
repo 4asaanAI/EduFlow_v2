@@ -102,8 +102,8 @@ export default function SchoolPulse() {
         <div className="pulse-stats responsive-stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
           <StatCard value={summary.total_students || 0} label="Enrolled Students" color="var(--color-accent-blue)" />
           <StatCard value={summary.attendance_rate || 'N/A'} label="Today's Attendance" color="var(--color-success)" />
-          {/* R2-2 / decision 1: the management head keeps School Pulse — the
-              attendance and staffing half of it is his daily work — but never sees a
+          {/* R2-2 / decision 1: the management head keeps School Pulse - the
+              attendance and staffing half of it is his daily work - but never sees a
               rupee figure. He gets the two counts that matter to him instead of the
               two money tiles, so the screen stays four tiles wide and still tells him
               something. */}
@@ -196,7 +196,7 @@ export default function SchoolPulse() {
                 <AlertItem type="info" text={`${data.pending_leave_requests.length} leave request${data.pending_leave_requests.length !== 1 ? 's' : ''} awaiting approval`} />
               )}
               {!(data?.staff_absent_today?.length) && !(data?.chronic_absent_students?.length) && !(data?.pending_leave_requests?.length) && (
-                <AlertItem type="success" text="All good — no active alerts today!" />
+                <AlertItem type="success" text="All good - no active alerts today!" />
               )}
             </div>
           </div>

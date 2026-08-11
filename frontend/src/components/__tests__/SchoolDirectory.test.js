@@ -1,12 +1,12 @@
 /**
- * Epic 7 — A Directory Shaped Like The School.
+ * Epic 7 - A Directory Shaped Like The School.
  *
  * Two things are pinned here:
  *  1. The staff-vocabulary HONESTY rule (Story 7.1). A register code is shown
  *     ONLY where confidently derivable (Principal → PRIN). The teacher tier
  *     (NTT/PRT/TGT/PGT) is not in the data and must NOT be invented.
  *  2. The nav gating and consolidation (Stories 7.2/7.3), restated 2026-08-07 when
- *     'school-directory' merged into 'student-database' — one screen instead of two
+ *     'school-directory' merged into 'student-database' - one screen instead of two
  *     listing the same students. The old id resolves through lib/toolAliases, and the
  *     Owner+Principal limit now guards the Staff TAB inside the merged screen. The
  *     consolidated maintenance set still does not silently regain its duplicate
@@ -19,7 +19,7 @@ import { registerCode, designationOf } from '../tools/SchoolDirectory';
 import { resolveToolId } from '../../lib/toolAliases';
 import { OWNER_TOOLS, TOOL_SETS } from '../ToolDashboard';
 
-describe('staff vocabulary — honest register codes', () => {
+describe('staff vocabulary - honest register codes', () => {
   it('derives PRIN for a principal by sub_category', () => {
     expect(registerCode({ sub_category: 'principal' })).toEqual({
       code: 'PRIN',
@@ -31,7 +31,7 @@ describe('staff vocabulary — honest register codes', () => {
     expect(registerCode({ designation: 'Principal' })?.code).toBe('PRIN');
   });
 
-  it('NEVER invents a teacher-tier code — it is not in the data', () => {
+  it('NEVER invents a teacher-tier code - it is not in the data', () => {
     // A class teacher has no stored NTT/PRT/TGT/PGT distinction. Returning a
     // guessed code would be the failure-that-looks-like-a-fact defect.
     expect(registerCode({ designation: 'Class Teacher', sub_category: 'class_teacher' })).toBeNull();
@@ -41,7 +41,7 @@ describe('staff vocabulary — honest register codes', () => {
   it('falls back to the readable designation, never role / sub_category', () => {
     expect(designationOf({ designation: 'Class Teacher' })).toBe('Class Teacher');
     expect(designationOf({ sub_category: 'transport_head' })).toBe('Transport Head');
-    expect(designationOf({})).toBe('—');
+    expect(designationOf({})).toBe('-');
   });
 });
 
@@ -54,7 +54,7 @@ describe('nav gating after the merge (2026-08-07)', () => {
   //
   // The merged screen reaches MORE roles than the Directory did, because the Student
   // Database always did. That is why the Staff tab inside it is gated separately, to
-  // owner and principal — the roles the Directory itself was limited to. Losing that
+  // owner and principal - the roles the Directory itself was limited to. Losing that
   // gate would hand the staff list to the accountant and the receptionist.
   const MERGED = 'student-database';
 
@@ -75,7 +75,7 @@ describe('nav gating after the merge (2026-08-07)', () => {
     expect(TOOL_SETS.admin_principal).toContain(MERGED);
   });
 
-  it('the owner is offered it exactly once — the merge removed a duplicate', () => {
+  it('the owner is offered it exactly once - the merge removed a duplicate', () => {
     expect(OWNER_TOOLS.filter((id) => id === MERGED)).toHaveLength(1);
   });
 
@@ -84,7 +84,7 @@ describe('nav gating after the merge (2026-08-07)', () => {
   });
 });
 
-describe('consolidation — no silent re-introduction of duplicates', () => {
+describe('consolidation - no silent re-introduction of duplicates', () => {
   it('the maintenance set keeps the queue and drops the duplicate report shortcut', () => {
     expect(TOOL_SETS.admin_maintenance).toContain('facility-requests');
     expect(TOOL_SETS.admin_maintenance).not.toContain('raise-maintenance');

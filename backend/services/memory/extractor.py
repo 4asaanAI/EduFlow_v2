@@ -2,7 +2,7 @@
 
 Cloned/adapted from Odysseus `memory_extractor.py` + `skill_extractor.py`, re-homed
 onto EduFlow's `ai.llm_client`. Both are best-effort and must NEVER raise into the
-chat turn — on any failure they return an empty result and the turn proceeds.
+chat turn - on any failure they return an empty result and the turn proceeds.
 
 Importance policy (G.4): clearly-durable info is saved automatically (no prompt);
 genuinely-uncertain items are returned as a yes/no question for the assistant to ask
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 _MEMORY_PROMPT = (
     "You analyze ONE turn of a school administrator's chat with an AI assistant and "
-    "decide what — if anything — is worth durably remembering ABOUT THE ADMINISTRATOR "
+    "decide what - if anything - is worth durably remembering ABOUT THE ADMINISTRATOR "
     "(their preferences, recurring instructions, standing decisions, ongoing concerns, "
     "or how they like work done).\n\n"
     "Return STRICT JSON: an object with a single key \"items\", an array (possibly empty) "
@@ -119,14 +119,14 @@ async def extract_memory_items(user_text: str, assistant_text: str, *, session_i
 # ── Inline command (Odysseus parity): "remember: X" ──────────────────────────
 
 # R6.1 (X3): inline memory SAVE requires an EXPLICIT memory cue. Bare imperatives
-# — "save …", "note …", "store …" — are NOT memory commands; they belong to the
+# - "save …", "note …", "store …" - are NOT memory commands; they belong to the
 # normal tool/LLM pipeline (e.g. "note attendance for class 5", "save the draft").
 # Only an explicit remember/memorize verb, or an explicit "note/make a note … to
 # self / a note" phrasing, saves a memory.
 _INLINE_RE = re.compile(r"^(?:remember|memorize|memorise)\b[:\-]?\s+(?:that\s+)?(.+)$", re.IGNORECASE)
 _INLINE_NOTE_RE = re.compile(
     r"^(?:"
-    # Explicit note-noun / to-self phrasings — self-evidently a memory save.
+    # Explicit note-noun / to-self phrasings - self-evidently a memory save.
     r"(?:note to self|make a note|take a note|save a note)(?:\s+(?:that|to|about|of))?"
     # Bare "jot down"/"note down" are ambiguous with operational commands
     # ("note down attendance for class 5", "jot down the marks"): only treat
@@ -150,7 +150,7 @@ _FORGET_RE = re.compile(
 )
 # Affirmative replies that confirm a pending uncertain memory. Anchored as a
 # FULL-MESSAGE match (only trailing courtesy words/punctuation allowed) so a real
-# request that merely starts with "ok" — e.g. "ok show me the fees" — is NOT
+# request that merely starts with "ok" - e.g. "ok show me the fees" - is NOT
 # mistaken for a bare confirmation and does not swallow the user's actual ask.
 _AFFIRM_RE = re.compile(
     r"^\s*(yes|yeah|yep|sure|ok|okay|please do|go ahead|save it|remember it|do it)"
@@ -159,7 +159,7 @@ _AFFIRM_RE = re.compile(
 )
 # Correction openers (G.8). Deliberately CONSERVATIVE and anchored to the START of
 # the message: only explicit "that's wrong / not right / no that's not" phrasings.
-# A bare mid-sentence "actually" is intentionally excluded — it is far too common
+# A bare mid-sentence "actually" is intentionally excluded - it is far too common
 # in normal requests and would otherwise silently delete a relevant memory.
 _CORRECT_RE = re.compile(
     r"^\s*(no[,\s]+)?(that'?s|that is|that was|thats)\s+(not right|wrong|not correct|incorrect|not true)\b",

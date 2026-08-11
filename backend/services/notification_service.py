@@ -50,7 +50,7 @@ async def create_notification(
     try:
         # AI Layer Hardening D-review: enlist in the AI plan executor's transaction
         # when one is active (ambient txn_context session) so a notification for a
-        # write that gets rolled back is itself rolled back (AD14 — "a rolled-back
+        # write that gets rolled back is itself rolled back (AD14 - "a rolled-back
         # plan sends nothing"). Outside the executor this is {} → unchanged behavior.
         await db.notifications.insert_one(doc, **session_kwargs())
     except Exception:

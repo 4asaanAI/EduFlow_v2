@@ -1,9 +1,9 @@
-"""Attendance-correction service — the single shared write path for correcting a
+"""Attendance-correction service - the single shared write path for correcting a
 student attendance record (AI Layer Hardening, AD7 / Epic A, Story A.7).
 
 Both `PATCH /api/attendance/{id}/correct` (REST) and the AI `correct_attendance`
-tool call `correct_attendance(...)`. The two collection writes — inserting the
-`attendance_corrections` snapshot and updating `student_attendance` — are
+tool call `correct_attendance(...)`. The two collection writes - inserting the
+`attendance_corrections` snapshot and updating `student_attendance` - are
 encapsulated in this single service call (true transactional atomicity arrives when
 the executor wraps services in a Motor transaction, Epic D; `session=` is already
 threaded for that).
@@ -68,7 +68,7 @@ async def correct_attendance(
     if not attendance_id:
         raise AttendanceCorrectionValidationError("attendance_id is required")
 
-    # branch-scope: intentional — student_attendance carries no branch_id (school-wide).
+    # branch-scope: intentional - student_attendance carries no branch_id (school-wide).
     original = await db.student_attendance.find_one(
         scoped_filter({"id": attendance_id}, actor_ctx.school_id), {"_id": 0}
     )
@@ -92,7 +92,7 @@ async def correct_attendance(
     }
     await db.attendance_corrections.insert_one(correction, **_session_kwargs(session))
     await db.student_attendance.update_one(
-        # branch-scope: intentional — see above (school-wide attendance).
+        # branch-scope: intentional - see above (school-wide attendance).
         scoped_filter({"id": attendance_id}, actor_ctx.school_id),
         {"$set": {"status": new_status, "corrected": True, "updated_at": corrected_at}},
         **_session_kwargs(session),

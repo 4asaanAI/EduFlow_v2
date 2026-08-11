@@ -1,4 +1,4 @@
-"""R2-13 — the proof. All nine profiles, every Flo tool, every screen in the matrix.
+"""R2-13 - the proof. All nine profiles, every Flo tool, every screen in the matrix.
 
 This is the thing that keeps Releases 3 to 7 honest. Everything else in Release 2 is a
 fix; this is what stops the fixes rotting.
@@ -11,7 +11,7 @@ file is what makes the table true rather than aspirational.
 
 NINE profiles, not the four in this release. `middleware/auth.py` recognises eight
 admin sub-categories plus the school's owner. A sweep covering only the four under
-discussion cannot see the other five being silently stripped or silently widened —
+discussion cannot see the other five being silently stripped or silently widened -
 which is exactly what a four-profile matrix would have done on the day it shipped.
 
 WHAT FAILS THIS FILE, on purpose:
@@ -149,8 +149,8 @@ def test_each_profile_reaches_exactly_what_the_matrix_grants(profile_name):
                 expected = False
         else:
             # A dormant profile is NOT domain-widened. It reaches what the plain
-            # registry gives any admin — reads only, because the Phase-1 lockdown
-            # refuses it every write — with the R2-13 floor underneath: no money, and
+            # registry gives any admin - reads only, because the Phase-1 lockdown
+            # refuses it every write - with the R2-13 floor underneath: no money, and
             # no action log.
             sub_categories = tool.get("sub_categories")
             expected = (

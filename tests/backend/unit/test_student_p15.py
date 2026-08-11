@@ -121,7 +121,7 @@ def test_student_get_consents_returns_list(client, fake_db):
 
 
 def test_student_cannot_access_staff_endpoints(client):
-    """Student role is blocked from staff management endpoints — returns 403."""
+    """Student role is blocked from staff management endpoints - returns 403."""
     from middleware.auth import create_jwt
     t = create_jwt({"user_id": "u-stu", "role": "student", "name": "S"})
     resp = client.get("/api/staff/", headers={"Authorization": f"Bearer {t}"})
@@ -129,7 +129,7 @@ def test_student_cannot_access_staff_endpoints(client):
 
 
 def test_non_student_cannot_call_consent_endpoint(client, fake_db):
-    """Non-student role cannot POST /students/me/consent — returns 403."""
+    """Non-student role cannot POST /students/me/consent - returns 403."""
     from middleware.auth import create_jwt
     t = create_jwt({"user_id": "u-admin", "role": "admin", "name": "Admin"})
     resp = client.post(

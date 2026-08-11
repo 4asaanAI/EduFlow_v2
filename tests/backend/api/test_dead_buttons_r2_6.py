@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""R2-6 — a screen somebody is offered must actually work for them.
+"""R2-6 - a screen somebody is offered must actually work for them.
 
 A button that answers "no" is worse than a button that is not there. The person
 believes the platform is broken rather than that they are not allowed, and they ring
@@ -8,13 +8,13 @@ somebody about it.
 
 Two were found on 2026-08-10 and both are fixed here or in R2-1:
 
-  The principal could open the payroll screen — `_require_owner_or_accountant`
-  admits him — and was then refused the moment he clicked a payslip, because the
+  The principal could open the payroll screen - `_require_owner_or_accountant`
+  admits him - and was then refused the moment he clicked a payslip, because the
   payslip route checked a NARROWER list that had never been updated. Decision 9 is
   explicit that Aman and Adesh both see everyone's salary.
 
   The management head was offered the School Settings screen, which is backed by
-  `update_school_settings` — owner-only in the registry. Closed in R2-1 by leaving it
+  `update_school_settings` - owner-only in the registry. Closed in R2-1 by leaving it
   out of his matrix entry.
 """
 

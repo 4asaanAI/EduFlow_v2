@@ -1,5 +1,5 @@
 /**
- * UI Sweep Epic 4, Story 4.2 — a figure that failed to load must not look like a zero.
+ * UI Sweep Epic 4, Story 4.2 - a figure that failed to load must not look like a zero.
  *
  * These assert the text a person actually READS, not that a promise resolved. The
  * previous epic's lesson was that a fixture shaped to match whatever the component

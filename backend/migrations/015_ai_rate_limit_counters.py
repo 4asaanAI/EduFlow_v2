@@ -3,10 +3,10 @@ Migration 015: AI rate-limit counters + overrides.
 
 Creates two collections backing Story 7-48 (AI Write Rate Limiting):
 
-  * ai_rate_limit_counters — per (user_id, session_id, hour_bucket) counter
+  * ai_rate_limit_counters - per (user_id, session_id, hour_bucket) counter
     rows. Auto-purged ~5 min after the bucket closes via TTL on expires_at.
 
-  * ai_rate_limit_overrides — operator-set per-school role ceilings that
+  * ai_rate_limit_overrides - operator-set per-school role ceilings that
     win over the YAML defaults. Rows with expires_at in the past are
     auto-purged via TTL; rows with expires_at=null persist forever.
 
@@ -38,7 +38,7 @@ async def migrate(db=None):
         print("=" * 60)
 
         # ── counters ──────────────────────────────────────────────────────
-        # Counter key is (user_id, hour_bucket) — per-user, NOT per-session,
+        # Counter key is (user_id, hour_bucket) - per-user, NOT per-session,
         # so session_id rotation cannot bypass the limit.
         await db.ai_rate_limit_counters.create_index(
             [("user_id", 1), ("hour_bucket", 1)],
@@ -57,7 +57,7 @@ async def migrate(db=None):
             [("school_id", 1), ("role", 1), ("created_at", -1)],
             name="school_role_recent",
         )
-        # sparse TTL — only rows with expires_at set are auto-purged
+        # sparse TTL - only rows with expires_at set are auto-purged
         await db.ai_rate_limit_overrides.create_index(
             "expires_at",
             expireAfterSeconds=0,

@@ -1,8 +1,8 @@
-"""R11.5 — conversation trace viewer for support.
+"""R11.5 - conversation trace viewer for support.
 
 A per-turn diagnostic timeline that makes the "the AI didn't reply" incident
 class diagnosable from the panel alone (AC3), gated owner-only + school-scoped
-(AC2), and — critically — never revealing the underlying LLM provider/model to a
+(AC2), and - critically - never revealing the underlying LLM provider/model to a
 client (Layaa AI confidentiality).
 """
 from __future__ import annotations
@@ -38,7 +38,7 @@ def _seed_trace(fake_db, *, outcome="answered", school=SCHOOL, error_type=None):
         "conversation_id": CONV_ID, "message_id": "m1", "user_id": "u1", "role": "owner",
         "outcome": outcome, "language": "en",
         "tools": [{"tool": "get_fee_summary", "status": "done"}],
-        # internal-only provider/model — the endpoint must NOT surface these
+        # internal-only provider/model - the endpoint must NOT surface these
         "llm": {"provider": "azure_openai", "model": "gpt-4.1", "finish_reason": "stop",
                 "ok": error_type is None, "error_type": error_type, "tokens": 42},
         "created_at": "2026-07-10T10:00:00+00:00",

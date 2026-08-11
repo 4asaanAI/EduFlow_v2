@@ -1,4 +1,4 @@
-"""Epic J — adversarial & edge-case regression guards for student/staff CRUD tools.
+"""Epic J - adversarial & edge-case regression guards for student/staff CRUD tools.
 
 Covers the STEP-4 review findings: privilege-escalation blocks, OWNER_ONLY_FIELDS
 silent-strip on the AI path, no-op short-circuits, duplicate detection, and the
@@ -43,7 +43,7 @@ def test_phase1_lockdown_blocks_everyone_else(tool_name, actor):
         # R2-5 / decision 5, 2026-08-10: the accountant head may now put a new child
         # on the roll, alongside the school's owner, the principal and the management
         # head. A fee belongs to a child, and Sonu is the one who meets the family at
-        # admission. Only the CREATE — removing a child from the roll stays with the
+        # admission. Only the CREATE - removing a child from the roll stays with the
         # school's leadership (R2-4).
         assert _is_tool_authorized(actor, tdef) is True
         return
@@ -96,7 +96,7 @@ async def test_principal_owner_only_fields_silently_stripped_on_update(fake_db):
 
 
 async def test_principal_granting_owner_role_raises_not_stripped(fake_db):
-    """UI-Sweep Story 1.1 — an attempt to GRANT owner is refused outright.
+    """UI-Sweep Story 1.1 - an attempt to GRANT owner is refused outright.
 
     Was previously folded into the silent-strip test above and returned a no-op
     "success". Escalation and "you may not edit salary" are different events and

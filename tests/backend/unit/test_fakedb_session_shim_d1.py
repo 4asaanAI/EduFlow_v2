@@ -1,4 +1,4 @@
-"""D.1 — FakeDb session shim: FakeCollection tolerates `session=` and ignores it.
+"""D.1 - FakeDb session shim: FakeCollection tolerates `session=` and ignores it.
 
 The transaction executor threads `session=` through the shared service layer. On
 the FakeDb tier there is no real transaction, so the shim must ACCEPT the kwarg on
@@ -16,7 +16,7 @@ pytestmark = pytest.mark.asyncio
 
 async def test_all_ops_accept_session_kwarg():
     col = FakeCollection()
-    sentinel = object()  # stands in for a Motor session — must be ignored
+    sentinel = object()  # stands in for a Motor session - must be ignored
 
     await col.insert_one({"_id": "1", "id": "1", "v": 1}, session=sentinel)
     assert await col.find_one({"id": "1"}, session=sentinel) is not None
@@ -32,7 +32,7 @@ async def test_all_ops_accept_session_kwarg():
 
 
 async def test_session_shim_does_not_assert_atomicity():
-    """A 'rolled back' (errored) sequence still leaves writes — FakeDb is NOT
+    """A 'rolled back' (errored) sequence still leaves writes - FakeDb is NOT
     transactional. This documents that atomicity must be proven on mongo_real."""
     col = FakeCollection()
     sentinel = object()

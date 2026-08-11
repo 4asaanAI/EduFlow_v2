@@ -77,7 +77,7 @@ def _install_fake_client(monkeypatch, *, response=None, raises=None):
 def test_the_token_ceiling_is_sent_as_max_completion_tokens(monkeypatch):
     """THE bug. `max_tokens` is rejected outright by the current model family.
 
-    If this assertion ever fails, no photograph anyone sends Flo can be read —
+    If this assertion ever fails, no photograph anyone sends Flo can be read -
     the request 400s before the model ever looks at the image.
     """
     captured = _install_fake_client(monkeypatch, response=_Response("A fee receipt."))
@@ -88,7 +88,7 @@ def test_the_token_ceiling_is_sent_as_max_completion_tokens(monkeypatch):
         "the token ceiling must be sent as max_completion_tokens"
     )
     assert "max_tokens" not in captured, (
-        "max_tokens is rejected with HTTP 400 unsupported_parameter — this is the "
+        "max_tokens is rejected with HTTP 400 unsupported_parameter - this is the "
         "exact defect that stopped every image from being read"
     )
 
@@ -120,7 +120,7 @@ def test_a_malformed_request_says_re_uploading_will_not_help(monkeypatch):
     """A 400 on our own parameter names is a code defect, not a bad picture.
 
     The old handler let this fall through to "could not be examined just now", and the
-    screen then advised saving the image again as a new JPG — advice that could never
+    screen then advised saving the image again as a new JPG - advice that could never
     have worked, because nothing about the image was wrong.
     """
     _install_fake_client(monkeypatch, raises=Exception(
@@ -163,7 +163,7 @@ def test_a_text_only_deployment_admits_it_rather_than_inventing(monkeypatch):
 
 def test_a_content_filter_refusal_is_not_mislabelled_as_a_text_only_model(monkeypatch):
     """"content" used to be a match-word, so a content-filter error was reported as
-    "this model only accepts text" — a wrong and permanent-sounding answer to a
+    "this model only accepts text" - a wrong and permanent-sounding answer to a
     per-image refusal."""
     _install_fake_client(monkeypatch, raises=Exception(
         "The response was filtered due to the prompt triggering content management policy."

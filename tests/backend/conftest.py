@@ -1,11 +1,11 @@
 """
-pytest Configuration — EduFlow Backend Tests
+pytest Configuration - EduFlow Backend Tests
 
 Shared fixtures for all backend tests:
-  - `client` — FastAPI TestClient (sync, no real DB)
-  - `async_client` — httpx AsyncClient (async tests)
-  - `auth_headers` — pre-authenticated admin Bearer token headers
-  - `db` — async Motor test database (isolated per test session)
+  - `client` - FastAPI TestClient (sync, no real DB)
+  - `async_client` - httpx AsyncClient (async tests)
+  - `auth_headers` - pre-authenticated admin Bearer token headers
+  - `db` - async Motor test database (isolated per test session)
 
 Usage:
     from tests.backend.conftest import ...  # fixtures auto-discovered by pytest
@@ -23,7 +23,7 @@ from pymongo.errors import DuplicateKeyError
 # Must run BEFORE the setdefault() calls below, and before any app import.
 #
 # `setdefault` does not override a value that is already present, so an exported
-# MONGO_URL — or one the app loads from backend/.env — silently wins and the whole
+# MONGO_URL - or one the app loads from backend/.env - silently wins and the whole
 # suite runs against live data. backend/.env now holds the production connection
 # string (pulled from Elastic Beanstalk on 2026-07-22), which makes this a live
 # hazard rather than a theoretical one: the school has 1,802 students, 88 staff and
@@ -47,7 +47,7 @@ _env_url = os.environ.get("MONGO_URL", "")
 if _looks_like_production(_env_url):
     _offenders.append("the MONGO_URL environment variable")
 
-# Only inspect backend/.env when the environment does not already pin MONGO_URL —
+# Only inspect backend/.env when the environment does not already pin MONGO_URL -
 # in that case the app would fall back to the file, and the file may hold production.
 if not _env_url:
     _dotenv = Path(__file__).resolve().parents[2] / "backend" / ".env"
@@ -86,7 +86,7 @@ os.environ.setdefault("CORS_ORIGINS", "http://localhost:3000")
 try:
     from fastapi.testclient import TestClient
     import httpx
-    # Import the FastAPI app — adjust path if needed
+    # Import the FastAPI app - adjust path if needed
     import sys
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'backend'))
     from server import app
@@ -125,7 +125,7 @@ try:
     import routes.commercial as commercial_routes
     import routes.messaging as messaging_routes
     # UI Sweep Epic 4: `routes.tools` was never wired into the harness, so the
-    # endpoint behind every tool screen had no tests at all — which is how a double
+    # endpoint behind every tool screen had no tests at all - which is how a double
     # result envelope survived a whole initiative. It is registered here so it can be.
     import routes.tools as tools_routes
     import ai.tool_functions as tool_functions_v1
@@ -147,13 +147,13 @@ def _get_nested(doc, key):
     Mongo matches `{"lines.product_id": "p1"}` against a document whose `lines` is an
     ARRAY of sub-documents, by testing every element. Before 2026-08-07 this returned
     None the moment a path crossed a list, so any query of that shape silently matched
-    nothing here while matching correctly in production — which is exactly backwards
+    nothing here while matching correctly in production - which is exactly backwards
     for a test double, because it turns a working guard into a test failure and a
     broken one into a pass. Found while proving that deleting a shop product is refused
     once it appears on a sale (`lines.product_id`).
 
     A list-valued step yields a list of the values found, which `_matches` then treats
-    as "any element matches" — Mongo's own semantics.
+    as "any element matches" - Mongo's own semantics.
     """
     value = doc
     for part in key.split("."):
@@ -325,7 +325,7 @@ class FakeAggregateCursor:
 class FakeCollection:
     # AI Layer Hardening D.1: every mutating/read method accepts `**kwargs` so the
     # transaction executor can pass `session=` through the shared service layer.
-    # The FakeDb shim is deliberately session-AGNOSTIC — it accepts `session=` and
+    # The FakeDb shim is deliberately session-AGNOSTIC - it accepts `session=` and
     # ignores it, asserting NOTHING about atomicity (real transaction/rollback
     # guarantees are verified only on the @pytest.mark.mongo_real tier, never here).
     def __init__(self, docs=None):
@@ -721,18 +721,18 @@ class FakeDb:
         self.study_plans = FakeCollection()
         self.visitors = FakeCollection()
         self.schools = FakeCollection()
-        # AI Layer Hardening — Epic F
+        # AI Layer Hardening - Epic F
         self.system_flags = FakeCollection()
         self.ai_metrics = FakeCollection()
         self.ai_memories = FakeCollection()
         self.ai_skills = FakeCollection()
-        # AI Reliability — R9.5 image-gen daily quota counter
+        # AI Reliability - R9.5 image-gen daily quota counter
         self.image_gen_quota = FakeCollection()
-        # AI Reliability — R10.2 feedback (Helpful/Improve) store
+        # AI Reliability - R10.2 feedback (Helpful/Improve) store
         self.ai_feedback = FakeCollection()
-        # AI Reliability — R11.5 conversation trace viewer
+        # AI Reliability - R11.5 conversation trace viewer
         self.ai_turn_traces = FakeCollection()
-        # UI Sweep — Epic 8: staff ask, Owner/Principal approve
+        # UI Sweep - Epic 8: staff ask, Owner/Principal approve
         self.profile_change_requests = FakeCollection()
 
     async def command(self, command_name):

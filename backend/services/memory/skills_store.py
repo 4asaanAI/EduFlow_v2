@@ -1,8 +1,8 @@
-"""MongoDB-backed skills store (Story G.6) — cloned from Odysseus `skills.py`.
+"""MongoDB-backed skills store (Story G.6) - cloned from Odysseus `skills.py`.
 
 A "skill" is a distilled, reusable procedure the assistant learned from a complex
 run (>=2 rounds or >=2 tool calls). Scoped by `(user_id, schoolId)` like memories
-(FR34). No UI (FR32) — extraction is automatic, feedback is an in-chat signal.
+(FR34). No UI (FR32) - extraction is automatic, feedback is an in-chat signal.
 
 Collection: `ai_skills`. Document shape:
     id, user_id, schoolId, title, problem, solution, steps[], tags[],
@@ -22,7 +22,7 @@ from services.actor_context import ActorContext
 from services.audit_service import write_audit
 from services.memory.retrieval import score_memories
 
-# Below this the extractor's own reliability estimate reads as a one-off — drop it.
+# Below this the extractor's own reliability estimate reads as a one-off - drop it.
 MIN_CONFIDENCE = 0.6
 
 
@@ -163,7 +163,7 @@ async def recall_skills(db, ctx: ActorContext, query: str, *, k: int = 3) -> Lis
 
 
 async def record_feedback(db, ctx: ActorContext, *, skill_id: str, helpful: bool) -> bool:
-    """In-chat feedback signal — mark a recalled skill helpful/not (G.6, no UI)."""
+    """In-chat feedback signal - mark a recalled skill helpful/not (G.6, no UI)."""
     if not ctx.user_id or not skill_id:
         return False
     field = "helpful" if helpful else "not_helpful"

@@ -1,4 +1,4 @@
-"""House-points domain service — the single shared write path for awarding (or
+"""House-points domain service - the single shared write path for awarding (or
 deducting) house points (AI Layer Hardening, AD7 / Epic B, Story B.3).
 
 Both `POST /api/activities/houses/{id}/points` (REST) and the AI `award_house_points`
@@ -8,7 +8,7 @@ an audit row.
 
 **Parity decision (case-by-case, canonical = REST):** the old AI `tool_award_house_points`
 inserted into a different, un-audited `house_points` collection and never updated
-`houses.points` — so AI-awarded points did not show in standings (found defect B.3).
+`houses.points` - so AI-awarded points did not show in standings (found defect B.3).
 The AI path now resolves the student's `house_id` and calls this service.
 
 Services raise domain exceptions, never `HTTPException`. The adapters map them.

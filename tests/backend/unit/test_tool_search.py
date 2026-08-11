@@ -1,4 +1,4 @@
-"""Deferred tool loading — the token saving, and the guarantees that make it safe.
+"""Deferred tool loading - the token saving, and the guarantees that make it safe.
 
 The one thing this must never do is turn a cost optimisation into a permission change,
 or into Flo claiming it cannot do something it can. Both have happened here before: the
@@ -59,7 +59,7 @@ def test_deferring_does_not_change_authorization():
 
 
 def test_search_never_returns_a_tool_the_caller_cannot_use():
-    """A student searching for fee writes must find nothing — deferral is not a door."""
+    """A student searching for fee writes must find nothing - deferral is not a door."""
     available = {n: d for n, d in TOOL_REGISTRY.items()
                  if is_tool_authorized(STUDENT, d) and not tool_search.is_core(n)}
     for name in tool_search.rank("record fee payment delete student", available, limit=10):
@@ -201,7 +201,7 @@ async def test_student_search_cannot_reach_owner_tools():
     assert result["data"] == []
 
 
-# ─── "Nothing gets lost" — the guarantee, across EVERY role ──────────────────
+# ─── "Nothing gets lost" - the guarantee, across EVERY role ──────────────────
 
 ALL_PROFILES = [
     ({"id": "u", "role": "owner", "branch_id": "branch-joya"}, "owner"),
@@ -221,7 +221,7 @@ ALL_PROFILES = [
 def test_nothing_is_lost_every_authorized_tool_stays_reachable(user, label):
     """THE guarantee: for every role, each tool the person may use is either loaded
     up front or named in the catalogue AND retrievable by search. A tool that is
-    neither would be invisible — Flo would deny a capability it actually has, which
+    neither would be invisible - Flo would deny a capability it actually has, which
     is precisely the failure the old hide-by-role trim caused."""
     names = _authorized_tool_names(user)
     advertised = {t["function"]["name"] for t in _build_llm_tools(user)}
@@ -253,5 +253,5 @@ def test_authorized_set_is_byte_identical_with_and_without_deferral(user, label)
         _os.environ["EDUFLOW_TOOL_SEARCH"] = "1"
     assert before == after
     # With deferral off, the advertised list is the full authorized-and-advertisable
-    # set — proving the catalogue path is the ONLY thing deferral changes.
+    # set - proving the catalogue path is the ONLY thing deferral changes.
     assert full <= before

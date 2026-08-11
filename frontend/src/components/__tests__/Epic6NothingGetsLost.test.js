@@ -1,5 +1,5 @@
 /**
- * UI Sweep Epic 6 — Nothing Gets Lost.
+ * UI Sweep Epic 6 - Nothing Gets Lost.
  *
  * 6.1: the bell counts what is actually unread (owner item 14).
  * 6.3: every notification is reachable, not just the newest twenty.
@@ -19,14 +19,14 @@ jest.mock('../../contexts/MessagingContext', () => ({
 jest.mock('../../lib/api', () => {
   // D-60: the stub is derived from the REAL module's export list rather than hand-written.
   // A hand-written list names a handful of helpers while `lib/api` exports over a hundred,
-  // and a factory mock does NOT fall through to the real module — so the first time this
+  // and a factory mock does NOT fall through to the real module - so the first time this
   // screen calls a helper nobody thought to name, it gets `undefined` and React reports an
   // error that points nowhere near the cause. That is exactly how D-48/T12 cost an hour.
   const actual = jest.requireActual('../../lib/api');
   const stub = {};
   Object.keys(actual).forEach((key) => {
     // PLAIN functions, deliberately NOT jest.fn(). CRA's jest preset sets `resetMocks: true`,
-    // which wipes any implementation supplied in a module factory before every test — a
+    // which wipes any implementation supplied in a module factory before every test - a
     // jest.fn() default would quietly become a do-nothing that returns undefined.
     stub[key] = typeof actual[key] === 'function'
       ? async () => ({ success: true, data: [] })
@@ -146,7 +146,7 @@ describe('6.1 the bell tells the truth about what is waiting', () => {
     await screen.findByTestId('notif-badge');
 
     // "Nothing is waiting" claimed on the strength of a network error is the
-    // Epic 4 defect — a failure that looks like a figure — in a new place.
+    // Epic 4 defect - a failure that looks like a figure - in a new place.
     getUnreadNotificationCount.mockRejectedValue(new Error('offline'));
     fireEvent.click(screen.getByTestId('notifications-btn'));
     fireEvent.click(screen.getByTestId('notifications-btn'));
@@ -161,7 +161,7 @@ describe('6.1 the bell tells the truth about what is waiting', () => {
     renderHeader();
     fireEvent.click(await screen.findByTestId('notifications-btn'));
 
-    // It used to say "2 unread" here — the number of rows in front of it.
+    // It used to say "2 unread" here - the number of rows in front of it.
     expect(await screen.findByTestId('notif-panel-subtitle')).toHaveTextContent('60 unread');
   });
 
@@ -184,7 +184,7 @@ describe('6.1 the bell tells the truth about what is waiting', () => {
     fireEvent.click(await screen.findByTestId('notifications-btn'));
     await screen.findByText('Mark all read');
 
-    // mark-all-read deliberately spares whatever arrived mid-request. Correct —
+    // mark-all-read deliberately spares whatever arrived mid-request. Correct -
     // and a bare non-zero number afterwards reads as "the button failed".
     getNotifications.mockResolvedValue(listResponse([notif(9)], { total: 6, unread_total: 1 }));
     fireEvent.click(screen.getByText('Mark all read'));
@@ -224,7 +224,7 @@ describe('6.3 every notification is reachable', () => {
     expect(getNotifications.mock.calls[0][0]).toMatchObject({ include_digest: 'false' });
   });
 
-  test('the server pages — the size goes to the API, not a client-side slice', async () => {
+  test('the server pages - the size goes to the API, not a client-side slice', async () => {
     getNotifications.mockResolvedValue(listResponse([notif(1)], { total: 300, unread_total: 0 }));
     render(<AllNotifications />);
     await screen.findByTestId('notifications-datatable');
@@ -309,11 +309,11 @@ describe('6.3 every notification is reachable', () => {
     render(<AllNotifications />);
 
     // Otherwise this is the screen on which the leave-approval you saw in the
-    // bell appears to have been lost — on a page called Nothing Gets Lost.
+    // bell appears to have been lost - on a page called Nothing Gets Lost.
     expect(await screen.findByText(/shown in the\s+bell, so they are not stored here/i)).toBeTruthy();
   });
 
-  test('offers no way to delete a notification — the Owner said never', async () => {
+  test('offers no way to delete a notification - the Owner said never', async () => {
     getNotifications.mockResolvedValue(listResponse([notif(1)], { total: 1 }));
     render(<AllNotifications />);
     await screen.findByTestId('notifications-datatable');
@@ -440,7 +440,7 @@ describe('6.5 every chat is reachable and clearable', () => {
     const dialog = await screen.findByTestId('bulk-delete-dialog');
     expect(dialog).toHaveAttribute('role', 'alertdialog');
     // The heading interpolates the count, so it is several text nodes rather
-    // than one — match on the assembled text.
+    // than one - match on the assembled text.
     expect(within(dialog).getByRole('heading').textContent).toMatch(/Delete 3 chats\?/);
     expect(screen.getByTestId('bulk-delete-confirm')).toBeDisabled();
 
@@ -458,7 +458,7 @@ describe('6.5 every chat is reachable and clearable', () => {
     fireEvent.click(screen.getByTestId('chats-select-all'));
     fireEvent.click(await screen.findByTestId('chats-bulk-delete'));
 
-    // Not protected — the Owner chose plain bulk delete — but silently
+    // Not protected - the Owner chose plain bulk delete - but silently
     // destroying something deliberately kept is the difference between a fast
     // tool and a trap.
     const dialog = await screen.findByTestId('bulk-delete-dialog');
@@ -523,8 +523,8 @@ describe('6.5 every chat is reachable and clearable', () => {
   });
 
   test('deleting ONE chat is confirmed exactly like deleting many', async () => {
-    // The sidebar deletes a chat on one unguarded click. Copying that here —
-    // beside a bulk action gated by a typed count — would mean the careful gate
+    // The sidebar deletes a chat on one unguarded click. Copying that here -
+    // beside a bulk action gated by a typed count - would mean the careful gate
     // is the one you get for many and the bare click is the one you get for the
     // chat you are actually looking at.
     getConversations.mockResolvedValue(chatList([conv(1)], 1));
@@ -558,7 +558,7 @@ describe('6.5 every chat is reachable and clearable', () => {
 
   test('emptying the last page steps back rather than saying "no chats yet"', async () => {
     // Deleting the last rows on page 2 of 2 leaves the reader on a page that no
-    // longer exists — which renders as "No chats yet" while they still have 300.
+    // longer exists - which renders as "No chats yet" while they still have 300.
     getConversations.mockResolvedValue(chatList([conv(1)], 16));
     render(<AllChats />);
     await screen.findByTestId('chats-datatable');
@@ -585,7 +585,7 @@ describe('6.5 every chat is reachable and clearable', () => {
   test('a selection can never exceed what the server accepts', () => {
     // Selection is page-only, so the largest possible selection is the largest
     // page size THIS table offers. This is the test that notices if either number
-    // moves — and it is what caught the 2026-08-06 change that added 250, 500 and
+    // moves - and it is what caught the 2026-08-06 change that added 250, 500 and
     // All to the shared menu for the student list. This page takes the bulk-safe
     // menu instead, precisely because its rows can be ticked and deleted.
     expect(Math.max(...BULK_SAFE_PAGE_SIZES)).toBeLessThanOrEqual(MAX_BULK_DELETE);

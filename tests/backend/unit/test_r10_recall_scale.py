@@ -1,4 +1,4 @@
-"""Epic R10.1 AC2 — indexed/paginated recall (no blind full-collection scans).
+"""Epic R10.1 AC2 - indexed/paginated recall (no blind full-collection scans).
 
 Recall reads candidates via the (schoolId, user_id, updated_at_ts) index, paginated
 freshest-first, up to a documented + logged ceiling. Memories beyond a single page
@@ -30,14 +30,14 @@ async def test_recall_pages_beyond_one_page(monkeypatch):
     ctx = _ctx()
     for i in range(5):
         await memory_store.add_memory(db, ctx, text=f"owner likes report style {i}")
-    # A query that matches all five — they span 3 pages of size 2. All must be scored.
+    # A query that matches all five - they span 3 pages of size 2. All must be scored.
     hits = await memory_store.recall(db, ctx, "owner likes report style", k=10)
     assert len(hits) == 5
 
 
 async def test_recall_uses_indexed_query_not_full_scan(monkeypatch):
     """The candidate fetch must go through the sort/skip/limit cursor path, never a
-    single unbounded .to_list — regression guard that the hot path stays indexed."""
+    single unbounded .to_list - regression guard that the hot path stays indexed."""
     monkeypatch.setattr(memory_store, "_SWEEP_PAGE", 2)
     db = FakeDb()
     ctx = _ctx()

@@ -1,4 +1,4 @@
-# EduFlow — Project Documentation Index
+# EduFlow - Project Documentation Index
 
 _Generated: 2026-05-15 | Mode: initial_scan | Scan level: deep_
 
@@ -32,34 +32,34 @@ _Generated: 2026-05-15 | Mode: initial_scan | Scan level: deep_
 ## Generated Documentation
 
 ### Core
-- [Project Overview](./project-overview.md) — Platform summary, capabilities, user roles, quality status
-- [Source Tree Analysis](./source-tree-analysis.md) — Annotated directory tree + critical entry points
+- [Project Overview](./project-overview.md) - Platform summary, capabilities, user roles, quality status
+- [Source Tree Analysis](./source-tree-analysis.md) - Annotated directory tree + critical entry points
 
 ### Architecture
-- [Architecture — Frontend](./architecture-frontend.md) — React SPA architecture, component structure, auth flow, role-based rendering
-- [Architecture — Backend](./architecture-backend.md) — FastAPI architecture, multi-tenancy, auth, AI layer, security controls
+- [Architecture - Frontend](./architecture-frontend.md) - React SPA architecture, component structure, auth flow, role-based rendering
+- [Architecture - Backend](./architecture-backend.md) - FastAPI architecture, multi-tenancy, auth, AI layer, security controls
 
 ### API & Data
-- [API Contracts — Backend](./api-contracts-backend.md) — All 180+ endpoints by domain with auth requirements
-- [Data Models — Backend](./data-models-backend.md) — All MongoDB collections, fields, indexes, migration history
+- [API Contracts - Backend](./api-contracts-backend.md) - All 180+ endpoints by domain with auth requirements
+- [Data Models - Backend](./data-models-backend.md) - All MongoDB collections, fields, indexes, migration history
 
 ### Integration
-- [Integration Architecture](./integration-architecture.md) — Frontend↔Backend REST+SSE, Backend↔MongoDB/S3/OpenAI/Gemini/Twilio
+- [Integration Architecture](./integration-architecture.md) - Frontend↔Backend REST+SSE, Backend↔MongoDB/S3/OpenAI/Gemini/Twilio
 
 ### Development Guides
-- [Development Guide — Backend](./development-guide-backend.md) — Python setup, env vars, running tests, migrations, code conventions
-- [Development Guide — Frontend](./development-guide-frontend.md) — Node/Yarn setup, path aliases, adding tools/API calls, shadcn/ui usage
+- [Development Guide - Backend](./development-guide-backend.md) - Python setup, env vars, running tests, migrations, code conventions
+- [Development Guide - Frontend](./development-guide-frontend.md) - Node/Yarn setup, path aliases, adding tools/API calls, shadcn/ui usage
 
 ---
 
 ## Existing Documentation
 
-- [README.md](../README.md) — Minimal (placeholder only)
-- [DEPLOYMENT_READINESS.md](../DEPLOYMENT_READINESS.md) — AWS EB readiness assessment (dated 2026-04-30; S3 migration since completed)
-- [DEPLOYMENT_AWS_SETUP.md](../DEPLOYMENT_AWS_SETUP.md) — AWS infrastructure setup guide
-- [tests/README.md](../tests/README.md) — Test suite documentation
-- [_bmad-output/project-context.md](../_bmad-output/project-context.md) — AI agent context (34 critical patterns, last refreshed 2026-05-15) ⭐
-- [_bmad-output/platform-quality-sweep.md](../_bmad-output/platform-quality-sweep.md) — Quality sweep master tracker ⭐
+- [README.md](../README.md) - Minimal (placeholder only)
+- [DEPLOYMENT_READINESS.md](../DEPLOYMENT_READINESS.md) - AWS EB readiness assessment (dated 2026-04-30; S3 migration since completed)
+- [DEPLOYMENT_AWS_SETUP.md](../DEPLOYMENT_AWS_SETUP.md) - AWS infrastructure setup guide
+- [tests/README.md](../tests/README.md) - Test suite documentation
+- [_bmad-output/project-context.md](../_bmad-output/project-context.md) - AI agent context (34 critical patterns, last refreshed 2026-05-15) ⭐
+- [_bmad-output/platform-quality-sweep.md](../_bmad-output/platform-quality-sweep.md) - Quality sweep master tracker ⭐
 
 ---
 

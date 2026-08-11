@@ -47,7 +47,7 @@ def _make_db(**collections):
 # ---------------------------------------------------------------------------
 
 async def test_build_owner_context_uses_get_db(monkeypatch):
-    """School-scoped only — branch_id intentionally omitted per architecture ADR-003."""
+    """School-scoped only - branch_id intentionally omitted per architecture ADR-003."""
     from ai import context_builder
 
     today = date.today().strftime("%Y-%m-%d")
@@ -60,7 +60,7 @@ async def test_build_owner_context_uses_get_db(monkeypatch):
 
     await context_builder._build_owner_context(db, today)
 
-    # context_builder helpers receive db directly — no explicit get_db call
+    # context_builder helpers receive db directly - no explicit get_db call
     # inside sub-helpers; the school-wide scoping is confirmed by the
     # _tenant_query helper using scoped_filter (not scoped_query with branch_id).
     # The key assertion: no branch_id field appears in any query on the students col.
@@ -74,7 +74,7 @@ async def test_build_owner_context_uses_get_db(monkeypatch):
 # ---------------------------------------------------------------------------
 
 async def test_build_principal_context_uses_school_wide_scope(monkeypatch):
-    """School-scoped only — branch_id intentionally omitted per architecture ADR-003."""
+    """School-scoped only - branch_id intentionally omitted per architecture ADR-003."""
     from ai import context_builder
 
     today = date.today().strftime("%Y-%m-%d")
@@ -100,7 +100,7 @@ async def test_build_principal_context_uses_school_wide_scope(monkeypatch):
     # Principal gets school-wide student and staff counts
     assert "total_students" in ctx
     assert "total_staff" in ctx
-    # No branch_id key in context output — not filtered by branch
+    # No branch_id key in context output - not filtered by branch
     assert "branch_id" not in ctx
 
 
@@ -109,7 +109,7 @@ async def test_build_principal_context_uses_school_wide_scope(monkeypatch):
 # ---------------------------------------------------------------------------
 
 async def test_build_accounts_context_uses_school_wide_scope(monkeypatch):
-    """School-scoped only — branch_id intentionally omitted per architecture ADR-003."""
+    """School-scoped only - branch_id intentionally omitted per architecture ADR-003."""
     from ai import context_builder
 
     today = date.today().strftime("%Y-%m-%d")
@@ -128,7 +128,7 @@ async def test_build_accounts_context_uses_school_wide_scope(monkeypatch):
 
     assert "fee_outstanding" in ctx
     assert "todays_collections" in ctx
-    # All fee transactions from all branches are included — school-wide
+    # All fee transactions from all branches are included - school-wide
     assert ctx["fee_defaulters"] >= 1
 
 
@@ -137,7 +137,7 @@ async def test_build_accounts_context_uses_school_wide_scope(monkeypatch):
 # ---------------------------------------------------------------------------
 
 async def test_build_transport_head_context_uses_school_wide_scope(monkeypatch):
-    """School-scoped only — branch_id intentionally omitted per architecture ADR-003."""
+    """School-scoped only - branch_id intentionally omitted per architecture ADR-003."""
     from ai import context_builder
 
     today = date.today().strftime("%Y-%m-%d")
@@ -167,7 +167,7 @@ async def test_build_transport_head_context_uses_school_wide_scope(monkeypatch):
     assert "total_vehicles" in ctx
     assert "active_routes" in ctx
     assert "students_using_transport" in ctx
-    # School-wide scoping — transport stats span the whole school
+    # School-wide scoping - transport stats span the whole school
     assert "branch_id" not in ctx
     # Both vehicles across the school appear (not filtered by branch)
     assert ctx["total_vehicles"] == 2
@@ -178,7 +178,7 @@ async def test_build_transport_head_context_uses_school_wide_scope(monkeypatch):
 # ---------------------------------------------------------------------------
 
 async def test_build_student_context_uses_school_wide_scope(monkeypatch):
-    """School-scoped only — branch_id intentionally omitted per architecture ADR-003."""
+    """School-scoped only - branch_id intentionally omitted per architecture ADR-003."""
     from ai import context_builder
 
     today = date.today().strftime("%Y-%m-%d")
@@ -206,7 +206,7 @@ async def test_build_student_context_uses_school_wide_scope(monkeypatch):
 
     assert "student_id" in ctx
     assert ctx["student_id"] == "s1"
-    # School-wide context — no branch_id filter applied
+    # School-wide context - no branch_id filter applied
     assert "branch_id" not in ctx
 
 
@@ -215,7 +215,7 @@ async def test_build_student_context_uses_school_wide_scope(monkeypatch):
 # ---------------------------------------------------------------------------
 
 async def test_build_receptionist_context_uses_school_wide_scope(monkeypatch):
-    """School-scoped only — branch_id intentionally omitted per architecture ADR-003."""
+    """School-scoped only - branch_id intentionally omitted per architecture ADR-003."""
     from ai import context_builder
 
     today = date.today().strftime("%Y-%m-%d")
@@ -235,7 +235,7 @@ async def test_build_receptionist_context_uses_school_wide_scope(monkeypatch):
     assert "new_enquiries_today" in ctx
     assert "pending_enquiries" in ctx
     assert "todays_visitor_count" in ctx
-    # School-wide — receptionists see all school enquiries/visitors
+    # School-wide - receptionists see all school enquiries/visitors
     assert ctx["pending_enquiries"] >= 1
 
 
@@ -293,7 +293,7 @@ async def test_coordinator_context_range_does_not_match_class_ten(monkeypatch):
 # ---------------------------------------------------------------------------
 
 async def test_build_class_teacher_context_uses_school_wide_scope(monkeypatch):
-    """School-scoped only — branch_id intentionally omitted per architecture ADR-003."""
+    """School-scoped only - branch_id intentionally omitted per architecture ADR-003."""
     from ai import context_builder
 
     today = date.today().strftime("%Y-%m-%d")
@@ -314,5 +314,5 @@ async def test_build_class_teacher_context_uses_school_wide_scope(monkeypatch):
 
     assert "assigned_class" in ctx
     assert ctx["assigned_class"] == "5A"
-    # School-wide context — class teacher gets school-scoped class data, no branch_id filter
+    # School-wide context - class teacher gets school-scoped class data, no branch_id filter
     assert "branch_id" not in ctx

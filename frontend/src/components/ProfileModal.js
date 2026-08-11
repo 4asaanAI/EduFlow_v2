@@ -10,7 +10,7 @@ import StudentProfileEditor from './StudentProfileEditor';
 import { userInitials } from '../lib/initials';
 
 // The school's city. Single literal, so correcting it is a one-line change
-// rather than a hunt — it was wrong ("Lucknow") in four separate places.
+// rather than a hunt - it was wrong ("Lucknow") in four separate places.
 const SCHOOL_CITY = 'Joya, Amroha';
 
 const ROLE_COLORS = { owner: '#fb923c', admin: '#4f8ff7', teacher: '#34d399', student: '#a78bfa' };
@@ -73,7 +73,7 @@ function TokenCard({ isDark, currentUser }) {
   );
 }
 
-// Story 1.3 as revised by the owner, 2026-07-22 — your own details are shown
+// Story 1.3 as revised by the owner, 2026-07-22 - your own details are shown
 // but NOT editable here. Changing your own name or phone is itself a way to
 // misuse an account, so a correction has to be approved by an administrator.
 // The request-and-approve flow is planned (Epic 8); until it exists, the honest
@@ -146,7 +146,7 @@ function OwnProfile({ currentUser }) {
   );
 }
 
-// Epic 8 — ask for a correction. This form never changes anything on its own;
+// Epic 8 - ask for a correction. This form never changes anything on its own;
 // it records the ask, and the Owner or Principal decides.
 function RequestACorrection({ currentValues, hasStaffRecord }) {
   const [pending, setPending] = useState(null);
@@ -209,7 +209,7 @@ function RequestACorrection({ currentValues, hasStaffRecord }) {
       }}>
         <Clock size={13} style={{ color: '#f59e0b', flexShrink: 0, marginTop: 2 }} />
         <div style={{ fontSize: 12, color: 'var(--c-faint)', lineHeight: 1.55 }}>
-          Waiting for approval —{' '}
+          Waiting for approval -{' '}
           <span style={{ color: 'var(--c-text)', fontWeight: 600 }}>
             {Object.entries(pending.requested || {})
               .map(([field, value]) => `${field}: ${value}`).join(', ')}
@@ -342,7 +342,7 @@ export default function ProfileModal({ onClose }) {
           maxHeight: '90vh',
           overflowY: 'auto',
           boxShadow: 'var(--shadow-xl)',
-          /* no padding for students — hero owns the top */
+          /* no padding for students - hero owns the top */
           padding: isStudent ? 0 : 32,
         }}
       >

@@ -1,10 +1,10 @@
-"""R3.4 (audit XM8) — the prompt ↔ registry parity gate.
+"""R3.4 (audit XM8) - the prompt ↔ registry parity gate.
 
 The LLM only ever sees the tool catalogue embedded in its system prompt
 (`ai/prompts.py:TOOLS_BY_ROLE`). Dispatch/authorization is driven by the separate
 `ai/tool_functions_v2.py:TOOL_REGISTRY`. When the two drift, the model is taught a
 tool that doesn't exist (H2), isn't authorized for its role (C4), or has the wrong
-required params (H1/H3/L4) — every such attempt fails at runtime. This gate makes
+required params (H1/H3/L4) - every such attempt fails at runtime. This gate makes
 that drift a merge-blocking CI failure.
 
 Assertions (architecture §4), for EVERY (role, sub_category) prompt variant:
@@ -20,7 +20,7 @@ Assertions (architecture §4), for EVERY (role, sub_category) prompt variant:
 Note on authorization: this gate checks REGISTRY-level authorization (role +
 sub_category) only. The Phase-1 action lockdown (`ai_action_policy`) is an
 orthogonal, temporary policy overlay that restricts *execution* of write tools to
-Owner/Principal — it does not change which tools *exist* for a role, so the prompt
+Owner/Principal - it does not change which tools *exist* for a role, so the prompt
 legitimately advertises the eventual (Phase-2) capability and the gate must not
 fold the lockdown in.
 """
@@ -32,12 +32,12 @@ from ai.tool_access import is_tool_authorized
 from ai.tool_functions_v2 import TOOL_REGISTRY
 from middleware.auth import VALID_SUB_CATEGORIES
 
-# All assertions here are pure/synchronous — no asyncio marker needed.
+# All assertions here are pure/synchronous - no asyncio marker needed.
 
 
 # Known name→id resolution aliases applied by chat._resolve_params before dispatch.
 # A prompt may advertise the friendly name (class_name) while the registry/impl
-# consumes the resolved id (class_id) — that is correct, not drift.
+# consumes the resolved id (class_id) - that is correct, not drift.
 RESOLUTION_ALIASES = {
     "class_name": "class_id",
     "student_name": "student_id",
@@ -50,7 +50,7 @@ RESOLUTION_ALIASES = {
 # Registry tools deliberately NOT surfaced in any AI prompt (panel-driven CRUD /
 # ops actions). These are the architecture's "explicitly allow-listed as
 # unadvertised". A NEW authorized-but-unadvertised tool that isn't added here
-# fails assertion 4a — forcing a conscious decision.
+# fails assertion 4a - forcing a conscious decision.
 UNADVERTISED_OK = frozenset({
     "add_transport_vehicle", "assign_query_ticket", "checkout_visitor",
     "correct_fee_transaction", "create_asset", "create_certificate",
@@ -177,7 +177,7 @@ def test_assertion5_prompt_sub_categories_are_canonical():
             unknown.append((role, sub))
     assert not unknown, (
         "Prompt tool-list keys use non-canonical sub_categories (would silently route "
-        f"to a fallback list — audit C4). Fix the key or VALID_SUB_CATEGORIES: {unknown}"
+        f"to a fallback list - audit C4). Fix the key or VALID_SUB_CATEGORIES: {unknown}"
     )
 
 
@@ -188,5 +188,5 @@ def test_accountant_gets_accounts_not_principal_tools():
     assert "record_fee_payment" in tools
     assert "upsert_salary_structure" in tools
     assert "create_accounting_period" in tools
-    assert "approve_leave" not in tools  # principal-only — must not leak
+    assert "approve_leave" not in tools  # principal-only - must not leak
     assert "mark_attendance" not in tools

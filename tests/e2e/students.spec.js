@@ -1,5 +1,5 @@
 /**
- * E2E Tests: Student Management — EduFlow
+ * E2E Tests: Student Management - EduFlow
  *
  * Tests the student-related tool panel and chat-driven queries.
  * Verifies that admin can view, search, and interact with student data.

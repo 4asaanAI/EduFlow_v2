@@ -1,9 +1,9 @@
-"""Parent messaging REST routes — the panel entrance to `services/messaging_service`.
+"""Parent messaging REST routes - the panel entrance to `services/messaging_service`.
 
 ⚠️  NOT to be confused with `routes/messaging.py`, which is the STAFF-to-staff internal
 chat (threads, groups, read receipts, SSE). Different feature, different audience,
 different prefix: that one owns `/api/messaging`, this one owns `/api/parent-messaging`.
-Named apart deliberately — the two were briefly conflated during this build.
+Named apart deliberately - the two were briefly conflated during this build.
 
 Flo's `send_parent_message` tool calls the SAME service functions, so a message sent
 from a screen and a message sent through Flo are produced by identical code. The
@@ -62,7 +62,7 @@ def _raise(exc: Exception):
 
 @router.get("/status")
 async def get_status(request: Request, user: dict = Depends(require_owner_accountant_or_principal)):
-    """Whether each channel can actually send — asked BEFORE a send, not after."""
+    """Whether each channel can actually send - asked BEFORE a send, not after."""
     return {"success": True, "data": {
         "whatsapp": channel_status("whatsapp"),
         "sms": channel_status("sms"),

@@ -38,13 +38,13 @@ RETENTION_DAYS = 540
 # R6.4 (XM10): a hard, DOCUMENTED per-owner memory cap. Recall scans all of an
 # owner's memories, so an unbounded store is a latency/cost cliff. When the cap is
 # exceeded the least-valuable memories (lowest confidence, then least-recently
-# updated) are evicted — logged + audited, never a silent hard wall.
+# updated) are evicted - logged + audited, never a silent hard wall.
 MAX_MEMORIES_PER_USER = 500
-# Page size for full-collection sweeps (erase/purge) — replaces the old hard
+# Page size for full-collection sweeps (erase/purge) - replaces the old hard
 # `.to_list(5000)` truncation that silently skipped memories past 5000 (XM5).
 _SWEEP_PAGE = 1000
 # R10.1 AC2: recall reads candidates via the (schoolId, user_id, updated_at_ts)
-# compound index, paginated freshest-first — NOT a blind full-collection
+# compound index, paginated freshest-first - NOT a blind full-collection
 # `.to_list(2000)`. The per-owner cap (MAX_MEMORIES_PER_USER) bounds the active set,
 # so this ceiling is not reached in practice; it is a DOCUMENTED, LOGGED upper bound
 # (never a silent hard wall, XM10) so a mis-set/raised cap can't turn recall into an
@@ -55,7 +55,7 @@ RECALL_SCAN_CEILING = 2000
 
 
 async def _paged_find(db, query: Dict[str, Any], projection: Dict[str, Any]) -> List[Dict]:
-    """Fetch ALL docs matching `query`, page by page — no silent 5000 cap (XM5)."""
+    """Fetch ALL docs matching `query`, page by page - no silent 5000 cap (XM5)."""
     out: List[Dict] = []
     skip = 0
     while True:
@@ -98,7 +98,7 @@ async def _recall_candidates(db, ctx: ActorContext) -> List[Dict]:
         skip += _SWEEP_PAGE
     if len(out) >= RECALL_SCAN_CEILING:
         logger.warning(
-            "memory recall hit the scan ceiling (%d) for user=%s — ranking over the "
+            "memory recall hit the scan ceiling (%d) for user=%s - ranking over the "
             "freshest %d; raise the cap or enable vector recall if this is expected",
             RECALL_SCAN_CEILING, ctx.user_id, RECALL_SCAN_CEILING,
         )
@@ -127,7 +127,7 @@ async def add_memory(
     """Persist a single memory for this owner. Returns the stored doc (or None).
 
     - Empty/whitespace text is ignored (returns None).
-    - Text is redacted BEFORE persistence (DPDP) — raw Aadhaar/phone/email scrubbed.
+    - Text is redacted BEFORE persistence (DPDP) - raw Aadhaar/phone/email scrubbed.
     - Exact-text duplicates for the same owner are de-duplicated (uses bumped instead).
     """
     if not ctx.user_id:
@@ -193,7 +193,7 @@ async def _enforce_user_cap(db, ctx: ActorContext) -> int:
     """R6.4 (XM10): keep an owner's active memory count at/under MAX_MEMORIES_PER_USER.
 
     Evicts the least-valuable surplus (lowest confidence, then least-recently
-    updated) — logged + audited so eviction is never silent. Returns count evicted.
+    updated) - logged + audited so eviction is never silent. Returns count evicted.
     """
     q = {**_scope(ctx), "superseded": {"$ne": True}}
     total = await db.ai_memories.count_documents(q)
@@ -264,7 +264,7 @@ async def recall(db, ctx: ActorContext, query: str, *, k: int = RECALL_K) -> Lis
         # silent so operators can see when the semantic index is unavailable.
         # Only WARN when vectors are meant to be on but the index is down (a real
         # degradation); when the path is intentionally disabled (the default),
-        # keyword-only is expected — log at debug so we don't spam every turn.
+        # keyword-only is expected - log at debug so we don't spam every turn.
         if vector_enabled():
             logger.warning(
                 "memory recall degraded to keyword-only (MEMORY_VECTOR_ENABLED "
@@ -380,7 +380,7 @@ async def correct_memory(
 async def find_memories_matching(db, ctx: ActorContext, match_text: str) -> List[Dict]:
     """R6.2: return the memories whose text contains `match_text` (case-insensitive).
 
-    Discovery-only — used by the two-step forget flow to SHOW the owner exactly
+    Discovery-only - used by the two-step forget flow to SHOW the owner exactly
     what would be deleted before anything is removed. Never mutates.
     """
     if not ctx.user_id or not match_text or not match_text.strip():
@@ -392,7 +392,7 @@ async def find_memories_matching(db, ctx: ActorContext, match_text: str) -> List
 async def delete_memories(db, ctx: ActorContext, ids: List[str]) -> int:
     """R6.2: delete a SPECIFIC set of memories by id (never a broad substring sweep).
 
-    This is the second step of the destructive forget flow — the ids come from a
+    This is the second step of the destructive forget flow - the ids come from a
     set the owner was shown and explicitly confirmed.
     """
     if not ctx.user_id or not ids:

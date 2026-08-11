@@ -1,4 +1,4 @@
-# Development Guide — Backend
+# Development Guide - Backend
 
 _Generated: 2026-05-15 | Scan: deep | Part: backend_
 
@@ -8,7 +8,7 @@ _Generated: 2026-05-15 | Scan: deep | Part: backend_
 
 | Tool | Version | Notes |
 |------|---------|-------|
-| Python | 3.9.x | Exactly 3.9 — 3.10+ syntax breaks test conftest |
+| Python | 3.9.x | Exactly 3.9 - 3.10+ syntax breaks test conftest |
 | pip / venv | Any | Use a virtual environment |
 | MongoDB | Atlas or local | `MONGO_URL` env var |
 
@@ -48,7 +48,7 @@ SCHOOL_ID=aaryans-joya
 CORS_ORIGINS=http://localhost:3000
 ENVIRONMENT=development
 
-# AI (optional in dev — degraded mode if absent)
+# AI (optional in dev - degraded mode if absent)
 AZURE_OPENAI_ENDPOINT=https://...
 AZURE_OPENAI_KEY=...
 GOOGLE_API_KEY=...
@@ -193,10 +193,10 @@ flake8 backend/
 | Convention | Rule |
 |-----------|------|
 | DB access | Always `async`/`await` with Motor; never use pymongo sync client in routes |
-| Auth | Import `get_current_user`, `require_role` from `middleware/auth` — never define locally |
+| Auth | Import `get_current_user`, `require_role` from `middleware/auth` - never define locally |
 | Tenancy | Use `get_db()` (returns ScopedDatabase) for operational collections; `get_raw_db()` for system collections only |
 | Branch scope | Pass `branch_id=user["branch_id"]` to `scoped_query()` for branch-scoped reads |
-| Validators | Use `@field_validator` (Pydantic v2) — `@validator` is deprecated |
-| Error format | Raise `HTTPException(status_code=..., detail="message")` — framework handles JSON serialization |
+| Validators | Use `@field_validator` (Pydantic v2) - `@validator` is deprecated |
+| Error format | Raise `HTTPException(status_code=..., detail="message")` - framework handles JSON serialization |
 | Python version | `from __future__ import annotations` at top of any file using `str \| None` |
-| Logging | Use `logger = logging.getLogger(__name__)` — do not use `print()` in production code |
+| Logging | Use `logger = logging.getLogger(__name__)` - do not use `print()` in production code |

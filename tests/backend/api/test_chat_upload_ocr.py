@@ -1,4 +1,4 @@
-"""UI Sweep Epic 10, Story 10.5 — Flo reads a photographed page.
+"""UI Sweep Epic 10, Story 10.5 - Flo reads a photographed page.
 
 OCR runs at the UPLOAD boundary, so Flo receives ordinary text and the chat pipeline
 needs no knowledge of images at all. These tests cover the access rule and the three
@@ -49,7 +49,7 @@ def _clean(fake_db):
     ({"role": "admin", "sub_category": "receptionist"}, True),
     ({"role": "admin", "sub_category": "transport_head"}, True),
     # Narrowed by the owner on 2026-07-22 AFTER an earlier draft included teachers.
-    # Removed deliberately — this is paperwork handling, and it belongs to the office.
+    # Removed deliberately - this is paperwork handling, and it belongs to the office.
     ({"role": "teacher"}, False),
     ({"role": "student"}, False),
     ({}, False),
@@ -107,11 +107,11 @@ def test_an_unavailable_engine_never_reads_as_a_blank_page(client, monkeypatch):
 
 
 def test_a_server_without_the_free_reader_still_gets_the_picture_looked_at(client, monkeypatch):
-    """Owner request 16, 2026-08-06 — the defect this file did not previously cover.
+    """Owner request 16, 2026-08-06 - the defect this file did not previously cover.
 
     The fallback used to be reached ONLY when the free reader ran and found nothing.
-    When the reader was absent — which is the state of the live Elastic Beanstalk
-    server — the code returned "not available" and stopped, so an attached photo was
+    When the reader was absent - which is the state of the live Elastic Beanstalk
+    server - the code returned "not available" and stopped, so an attached photo was
     never looked at by anything at all. Aman sent Flo a picture and was told image
     text extraction was not available, while the paid path built for exactly this
     case sat unused.
@@ -168,7 +168,7 @@ def test_a_page_with_no_text_falls_back_to_describing_the_picture(client, monkey
 
 
 def test_the_paid_path_is_NOT_used_when_the_text_was_read(client, monkeypatch):
-    """THE test for Story 10.6. It is a fallback, not a parallel attempt — this is
+    """THE test for Story 10.6. It is a fallback, not a parallel attempt - this is
     what keeps printed paper free."""
     _patch_ocr(monkeypatch, text="ADMISSION FORM", available=True, char_count=14)
     calls = _patch_vision(monkeypatch, description="should never be called", available=True)
@@ -182,7 +182,7 @@ def test_the_paid_path_is_NOT_used_when_the_text_was_read(client, monkeypatch):
 def test_a_deployment_that_cannot_see_says_so_rather_than_inventing(client, monkeypatch):
     _patch_ocr(monkeypatch, text="", available=True, reason="No text was found on that page.")
     _patch_vision(monkeypatch, description="", available=False,
-                  reason="This server cannot look at pictures yet — its AI model only accepts text.")
+                  reason="This server cannot look at pictures yet - its AI model only accepts text.")
 
     body = _upload(client, _bearer({"user_id": "o1", "role": "owner", "name": "O"})).json()
 

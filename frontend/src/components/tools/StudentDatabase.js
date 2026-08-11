@@ -474,7 +474,7 @@ function StudentProfileModal({ classes, initialStudent, onClose, onSaved }) {
               </div>
               <div style={{ gridColumn: '1 / -1' }}>
                 <Field label="Emergency Contact (outside parents)">
-                  <input value={medical.emergency_contact} onChange={setM('emergency_contact')} style={inputStyle} placeholder="Name: Phone — e.g. Uncle Ramesh: 9876543210" />
+                  <input value={medical.emergency_contact} onChange={setM('emergency_contact')} style={inputStyle} placeholder="Name: Phone - e.g. Uncle Ramesh: 9876543210" />
                 </Field>
               </div>
             </div>
@@ -571,12 +571,12 @@ function DetailPanel({ studentId, onClose, onEdit, canManage, canKeepNotes }) {
 
             {/* Personal Info */}
             <Section title="Personal">
-              <InfoRow label="Admission No." value={data.admission_number || '—'} mono />
-              <InfoRow label="Date of Birth" value={data.dob ? `${data.dob}${age ? ` (${age}y)` : ''}` : '—'} />
-              <InfoRow label="Gender" value={data.gender ? data.gender.charAt(0).toUpperCase() + data.gender.slice(1) : '—'} />
-              <InfoRow label="Admission Date" value={data.admission_date || '—'} />
+              <InfoRow label="Admission No." value={data.admission_number || '-'} mono />
+              <InfoRow label="Date of Birth" value={data.dob ? `${data.dob}${age ? ` (${age}y)` : ''}` : '-'} />
+              <InfoRow label="Gender" value={data.gender ? data.gender.charAt(0).toUpperCase() + data.gender.slice(1) : '-'} />
+              <InfoRow label="Admission Date" value={data.admission_date || '-'} />
               {/* Owner request 11 (2026-08-06) */}
-              <InfoRow label="Address" value={data.address || '—'} />
+              <InfoRow label="Address" value={data.address || '-'} />
               {feeStatus && (
                 <InfoRow
                   label="Fees"
@@ -620,7 +620,7 @@ function DetailPanel({ studentId, onClose, onEdit, canManage, canKeepNotes }) {
             {/* Transport */}
             {data.uses_transport && (
               <Section title="Transport">
-                <InfoRow label="Bus Route" value={data.bus_route || '—'} />
+                <InfoRow label="Bus Route" value={data.bus_route || '-'} />
               </Section>
             )}
 
@@ -717,10 +717,10 @@ export default function StudentDatabase() {
   const [detailId, setDetailId] = useState(null);
   const [eraseTarget, setEraseTarget] = useState(null);
 
-  // Epic 7 — deep-link from the School Directory. A row there opens
+  // Epic 7 - deep-link from the School Directory. A row there opens
   // `?tool=student-database&focus=<id>`; open that student's profile once, then
   // strip the param so closing it (or a reload) does not reopen, and the URL
-  // stays tidy. Applied a single time via the ref — not on every param change.
+  // stays tidy. Applied a single time via the ref - not on every param change.
   const [searchParams, setSearchParams] = useSearchParams();
   const appliedFocusRef = useRef(false);
   useEffect(() => {
@@ -792,7 +792,7 @@ export default function StudentDatabase() {
     {
       // Owner request 12 (2026-08-06). House was already stored on every student,
       // already editable on the Add and Edit forms, and already shown on the profile
-      // panel in its house colour — it was simply never a column, so the one place
+      // panel in its house colour - it was simply never a column, so the one place
       // you would look to see who is in which house did not say.
       key: 'house', label: 'House', sortKey: 'house',
       render: (s) => {
@@ -818,7 +818,7 @@ export default function StudentDatabase() {
     {
       // Owner request 9 (2026-08-06): "the buttons at the end of each row don't have
       // any symbols to them". Two of the four were icon-only, drawn at 12px in the
-      // muted grey — on a phone they read as empty boxes, and the third said
+      // muted grey - on a phone they read as empty boxes, and the third said
       // "Deactivate" in words beside them, so the row offered no clue that the blank
       // ones did anything at all.
       //
@@ -838,7 +838,7 @@ export default function StudentDatabase() {
           )}
           {/* Owner or principal: one button for all three states, in either
               direction. Restore is simply "back on the roll", which is why it stays
-              as its own button on an off-roll row — it is the one move somebody is
+              as its own button on an off-roll row - it is the one move somebody is
               looking for in a hurry when a name has vanished. */}
           {canRestore && (
             <Btn variant="secondary" onClick={() => setStateTarget(student)} title="Change where this student stands" aria-label={`Change status for ${student.name}`}>
@@ -885,7 +885,7 @@ export default function StudentDatabase() {
     const { key, direction } = strengthSort;
     const factor = direction === 'descending' ? -1 : 1;
     rows.sort((a, b) => {
-      // Class is ordered the way the school reads it — NUR, LKG, UKG, 1st … 12th —
+      // Class is ordered the way the school reads it - NUR, LKG, UKG, 1st … 12th -
       // never alphabetically, which would put 10th above 1st (owner item 5).
       if (key === 'class_label') {
         return factor * compareClassLabels(a.class_label, b.class_label);
@@ -897,7 +897,7 @@ export default function StudentDatabase() {
 
   // Gender was never captured for any of the 1,802 students, so every one of them
   // lands in "not recorded". Boys 0 / Girls 0 are therefore NOT counts of zero
-  // children — they are the absence of a record, and must not read as a figure.
+  // children - they are the absence of a record, and must not read as a figure.
   const genderEverRecorded = useMemo(
     () => strengthStats.some(r => (r.boys || 0) + (r.girls || 0) + (r.other || 0) > 0),
     [strengthStats],
@@ -999,8 +999,8 @@ export default function StudentDatabase() {
    * Put a student back on the roll (owner request 9, 2026-08-06).
    *
    * The button this sits behind is the answer to "a student was deleted during a demo
-   * and we cannot get them back". They were never deleted — deactivating only switches
-   * a student off — but until the enrolment endpoint existed nothing in the product
+   * and we cannot get them back". They were never deleted - deactivating only switches
+   * a student off - but until the enrolment endpoint existed nothing in the product
    * could switch one back on, so a mistake was permanent in practice.
    *
    * Owner and principal only, which is why the button is gated on `canRestore` rather
@@ -1052,8 +1052,8 @@ export default function StudentDatabase() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <div>
           {/* Renamed on the owner's instruction, 2026-08-07. There used to be two
-              screens listing every student — this one, and a read-only "School
-              Directory" — and the owner reported them as "two views of the student
+              screens listing every student - this one, and a read-only "School
+              Directory" - and the owner reported them as "two views of the student
               database for some reason". They are one screen now, under the name that
               says what it is: everyone in the school, in one place. */}
           <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--c-text)', margin: 0 }}>School Directory</h1>
@@ -1111,7 +1111,7 @@ export default function StudentDatabase() {
                   { label: 'Total Students', value: strengthStats.reduce((a, r) => a + r.total, 0), color: '#4f8ff7', real: true },
                   { label: 'Classes', value: strengthStats.length, color: '#34d399', real: true },
                   // "Boys 0" when nobody's gender was ever captured is the same lie
-                  // this epic exists to remove — it reads as "this school has no
+                  // this epic exists to remove - it reads as "this school has no
                   // boys" rather than "we never wrote it down".
                   { label: 'Boys', value: strengthStats.reduce((a, r) => a + r.boys, 0), color: '#60a5fa', real: genderEverRecorded },
                   { label: 'Girls', value: strengthStats.reduce((a, r) => a + r.girls, 0), color: '#f472b6', real: genderEverRecorded },
@@ -1138,7 +1138,7 @@ export default function StudentDatabase() {
                 ))}
               </div>
               {/* The shared sortable table (FR82/UX-DR5). Every one of the 48 rows
-                  is already in memory here — this is an aggregate, not a page — so
+                  is already in memory here - this is an aggregate, not a page - so
                   ordering the whole array locally IS ordering the whole result set.
                   That is why sorting is done here and not asked of the server. */}
               <DataTable

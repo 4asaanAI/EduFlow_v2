@@ -1,4 +1,4 @@
-"""R11.1 — unit tests for the LLM-judge harness LOGIC (no credentials needed).
+"""R11.1 - unit tests for the LLM-judge harness LOGIC (no credentials needed).
 
 Locks the scoring/threshold maths and the full orchestration with a FAKE judge, so
 the credentialed nightly run can trust the plumbing. The real-model run lives in

@@ -509,7 +509,7 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
           accept=".txt,.md,.html,.htm,.csv,.json,.xml,.pdf,.doc,.docx,.xlsx,.xls,.pptx,.png,.jpg,.jpeg,.heic,.webp,.gif,.zip,.py,.js,.ts,.sql,.log"
         />
 
-        {/* .composer-shell owns the focus indication for the whole pill —
+        {/* .composer-shell owns the focus indication for the whole pill -
             see index.css. The textarea inside opts out of the global ring. */}
         <div className="composer-shell" style={{
           background: inputBg,

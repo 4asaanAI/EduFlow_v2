@@ -1,4 +1,4 @@
-"""Story A.5 — dual-entrypoint parity for fee contact-log.
+"""Story A.5 - dual-entrypoint parity for fee contact-log.
 
 Same seed + same actor (owner) through REST POST /api/fees/contact-log and the AI
 `log_contact_event` tool → fee_contact_logs record + contact_log audit byte-identical

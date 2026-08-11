@@ -15,21 +15,21 @@ RULES, all agreed with Abhimanyu on 2026-08-06 and none of them optional:
      nothing. Anything that WOULD have overwritten is counted and reported instead.
   3. Class and section are never changed for an existing student. (Verified safe
      anyway: all 1774 matched students are already in the same class, and only 5
-     differ by section — this file is the same session as the platform.)
+     differ by section - this file is the same session as the platform.)
   4. Nothing is ever deleted. Students and staff on the platform but absent from the
      export are listed, never removed.
 
-WHAT IS DELIBERATELY NOT IMPORTED, and why — each of these was checked, not assumed:
+WHAT IS DELIBERATELY NOT IMPORTED, and why - each of these was checked, not assumed:
 
-  * Photo — the column contains the literal word "View" for every filled row. It is a
+  * Photo - the column contains the literal word "View" for every filled row. It is a
     link label from an HTML export, not a photograph. Writing it would put the string
     "View" in 1,427 photo fields.
-  * Transport — the column holds a BUS ROUTE NAME ("8( - JOYA)"), not a yes/no. It
+  * Transport - the column holds a BUS ROUTE NAME ("8( - JOYA)"), not a yes/no. It
     needs mapping to `transport_routes`, and the platform is inconsistent about the
     flag itself: `context_builder.py` counts `transport_opted` while
     `student_service.py` writes `uses_transport`. Setting one and not the other would
     make Flo's transport figure disagree with the student records. Own piece of work.
-  * Fees — the platform's fee ledger is empty (0 heads, 0 structures, 1 transaction).
+  * Fees - the platform's fee ledger is empty (0 heads, 0 structures, 1 transaction).
     Importing means building the ledger from scratch, ~11,000 line items of money
     data. Own piece of work, with the figures shown to a human first.
   * The other ~71 columns (Aadhaar, caste, PEN/APAAR, bank, parent occupation and
@@ -67,7 +67,7 @@ SCHOOL_ID = os.environ.get("SCHOOL_ID", "aaryans-joya")
 BRANCH_ID = "branch-joya"          # the only branch; matches all 1802 existing students
 ACADEMIC_YEAR_ID = "ay-2025-26"    # is_current=True on the live platform
 
-# A class name in the export that is not a class at all — a fee-recovery bucket for
+# A class name in the export that is not a class at all - a fee-recovery bucket for
 # students who have already left. Creating these would put people who have gone onto
 # class lists and head counts.
 PSEUDO_CLASSES = {"12TH PASS OUT OLD DUE 25-26"}
@@ -106,7 +106,7 @@ def norm_gender(v):
 
 
 def parse_date(v, bounds):
-    """Every date in this export is '06 Aug, 2026' — a NAMED month, so there is no
+    """Every date in this export is '06 Aug, 2026' - a NAMED month, so there is no
     day/month ambiguity to guess at. (The 2025-26 workbook was not like this; that is
     what the earlier attempt tripped on.) Anything that does not parse, or lands
     outside `bounds`, is returned as None and counted."""
@@ -202,7 +202,7 @@ def main():
                 elif str(doc.get(field)) != str(value):
                     # RULE 2: reported, never written.
                     overwrite[field] += 1
-            # Fields the platform already holds — counted so the school can see what
+            # Fields the platform already holds - counted so the school can see what
             # its file would have changed, and decide separately.
             for xl_col, field in (("Mobile", "phone"), ("Address", "address"),
                                   ("RollNo", "roll_number")):
@@ -285,7 +285,7 @@ def main():
         print(f"  {k:18s} {v}")
     print(f"  students receiving at least one value: {len(updates)}")
 
-    print("\nWOULD HAVE OVERWRITTEN — reported, NOT written (rule 2)")
+    print("\nWOULD HAVE OVERWRITTEN - reported, NOT written (rule 2)")
     if overwrite:
         for k, v in overwrite.items():
             print(f"  {k:18s} {v}")
@@ -306,7 +306,7 @@ def main():
     # Rollback manifest FIRST, before a single write. Every field written here was
     # blank beforehand (rule 2), so undoing an update is `$unset` of those same
     # fields, and undoing a create is deleting that id. The manifest holds ids and
-    # FIELD NAMES only — never a child's name, number or date — so it can sit on disk
+    # FIELD NAMES only - never a child's name, number or date - so it can sit on disk
     # without being a copy of the school's data.
     rollback_path = Path(os.environ.get(
         "ROLLBACK_DIR", Path.home())) / f"aaryans_import_rollback_{datetime.datetime.now():%Y%m%d_%H%M%S}.json"

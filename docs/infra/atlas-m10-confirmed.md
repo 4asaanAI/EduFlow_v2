@@ -1,7 +1,7 @@
-# MongoDB Atlas M10+ Replica Set — Confirmation Record
+# MongoDB Atlas M10+ Replica Set - Confirmation Record
 
 > **Status:** Pending operator verification  
-> **Story:** 6-34 — MongoDB Atlas M10+ Replica Set Confirmation  
+> **Story:** 6-34 - MongoDB Atlas M10+ Replica Set Confirmation  
 > **Go-live blocker:** Blocker B2  
 
 ---
@@ -26,8 +26,8 @@ Screenshot: `docs/infra/atlas-m10-confirmed.png` (taken from Atlas Cluster Overv
 | Check | Status |
 |-------|--------|
 | `MONGO_URL` starts with `mongodb+srv://` | ✅ Confirmed (local `.env` + EB console) |
-| `retryWrites=True` set at driver level | ✅ Confirmed — `database.py:142` |
-| No hardcoded host in `database.py` | ✅ Confirmed — `os.environ.get("MONGO_URL")` |
+| `retryWrites=True` set at driver level | ✅ Confirmed - `database.py:142` |
+| No hardcoded host in `database.py` | ✅ Confirmed - `os.environ.get("MONGO_URL")` |
 | `MONGO_URL` set in EB production env | _(fill in: confirmed via AWS console Y/N)_ |
 
 ---
@@ -44,8 +44,8 @@ Screenshot: `docs/infra/atlas-m10-confirmed.png` (taken from Atlas Cluster Overv
 
 **Steps:**
 1. Open Atlas → Clusters → `…` (three dots) → **Test Failover**
-2. Watch application logs: Motor 3.3.1 reconnects automatically — expect reconnect messages, no crash
-3. Run `GET /api/health/ready` — should return `{"overall": "ready"}` within 30 seconds of failover
+2. Watch application logs: Motor 3.3.1 reconnects automatically - expect reconnect messages, no crash
+3. Run `GET /api/health/ready` - should return `{"overall": "ready"}` within 30 seconds of failover
 4. Note the elapsed time and record above
 
 ---
@@ -56,7 +56,7 @@ Screenshot: `docs/infra/atlas-m10-confirmed.png` (taken from Atlas Cluster Overv
 |-------|-------|
 | **Test date** | _(fill in: YYYY-MM-DD)_ |
 | **Insert time** | _(fill in: HH:MM:SS UTC)_ |
-| **Document deleted at** | _(fill in: HH:MM:SS UTC — expected within 120s of expires_at)_ |
+| **Document deleted at** | _(fill in: HH:MM:SS UTC - expected within 120s of expires_at)_ |
 | **TTL fired?** | _(fill in: Yes / No)_ |
 
 **Steps (run via `mongosh` or Atlas Data Explorer on staging cluster):**
@@ -93,11 +93,11 @@ db.confirm_tokens.deleteOne({ token: "ttl-test-token" })
 
 ## Go-Live Clearance
 
-- [ ] AC1 — Atlas tier M10+ confirmed (screenshot at `docs/infra/atlas-m10-confirmed.png`)
-- [ ] AC2 — Replica set topology confirmed (PRIMARY + 2 SECONDARY)
-- [ ] AC3 — Connection string uses `mongodb+srv://`, `retryWrites=True` active
-- [ ] AC4 — Failover test passed (reconnect ≤ 30s)
-- [ ] AC5 — TTL smoke test passed (document removed within 120s)
-- [ ] AC6 — This document fully completed with all fields filled in
+- [ ] AC1 - Atlas tier M10+ confirmed (screenshot at `docs/infra/atlas-m10-confirmed.png`)
+- [ ] AC2 - Replica set topology confirmed (PRIMARY + 2 SECONDARY)
+- [ ] AC3 - Connection string uses `mongodb+srv://`, `retryWrites=True` active
+- [ ] AC4 - Failover test passed (reconnect ≤ 30s)
+- [ ] AC5 - TTL smoke test passed (document removed within 120s)
+- [ ] AC6 - This document fully completed with all fields filled in
 
 Once all six boxes are checked, **Blocker B2 is cleared** and Story 37 (Production Deployment) may proceed.

@@ -1,5 +1,5 @@
 from __future__ import annotations
-"""Canonical payroll service — single source of truth for disbursements and structures.
+"""Canonical payroll service - single source of truth for disbursements and structures.
 
 R12.5: Consolidates the two divergent disbursement implementations in payroll.py and
 fees.py into one service with a canonical schema, correct idempotency, and a single
@@ -30,7 +30,7 @@ def _now_iso() -> str:
 
 
 def is_owner_or_accountant(user: dict) -> bool:
-    """R12.5 AC3: canonical accountant check — drops legacy 'accounts' sub_category."""
+    """R12.5 AC3: canonical accountant check - drops legacy 'accounts' sub_category."""
     if user.get("role") == "owner":
         return True
     return (
@@ -94,7 +94,7 @@ async def disburse_salary(
     try:
         await db.salary_disbursements.insert_one(doc)
     except DuplicateKeyError:
-        # Concurrent double-submit — return the winner's row.
+        # Concurrent double-submit - return the winner's row.
         existing = await db.salary_disbursements.find_one(
             scoped_query(
                 {"staff_id": staff_id, "month": month},

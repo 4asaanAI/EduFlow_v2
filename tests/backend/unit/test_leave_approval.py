@@ -76,7 +76,7 @@ def test_approve_missing_leave_returns_404(client, fake_db):
 
 
 def test_accountant_cannot_approve_leave(client, fake_db):
-    """Accountant sub_category cannot approve leaves — only owner/principal."""
+    """Accountant sub_category cannot approve leaves - only owner/principal."""
     fake_db.leave_requests.docs = [{"id": "lr-4", "schoolId": "aaryans-joya", "status": "pending"}]
     resp = client.patch("/api/staff/leaves/lr-4", json={"status": "approved"}, headers=_accountant_headers())
     assert resp.status_code == 403

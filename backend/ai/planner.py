@@ -1,9 +1,9 @@
-"""Agentic planner (AI Layer Hardening — Epic E, AD1/AD2/P3).
+"""Agentic planner (AI Layer Hardening - Epic E, AD1/AD2/P3).
 
 The model *proposes* an ordered plan of EXISTING tools; the server *authorizes,
 resolves, and executes*. This module turns one instruction into a resolved,
 authorized `steps[]` (the canonical P3 shape) that chat.py binds into a single
-plan-confirm token. It is NOT a new tool and it NEVER writes — write steps are
+plan-confirm token. It is NOT a new tool and it NEVER writes - write steps are
 collected and deferred to `plan_executor` after one confirmation.
 
 Determinism (AD10/NFR23): `build_plan` takes the raw model plan via
@@ -12,7 +12,7 @@ Azure call lives behind that seam, so the planner's logic is unit-tested without
 a network call.
 
 Borrowed from Odysseus (clone-from-Odysseus directive): the plan-mode shape and
-the server-side `ask_user`/disambiguation pattern — adapted to EduFlow's scoped
+the server-side `ask_user`/disambiguation pattern - adapted to EduFlow's scoped
 `resolve_params` and tool registry rather than cloned wholesale.
 """
 
@@ -35,7 +35,7 @@ WRITE = "write"
 
 # Planner outcome statuses.
 PLAN = "plan"  # a resolved, authorized, executable plan
-DISAMBIGUATION = "disambiguation"  # a name matched >1 record — ask the user
+DISAMBIGUATION = "disambiguation"  # a name matched >1 record - ask the user
 UNAUTHORIZED = "unauthorized"  # a step is outside the user's role/sub_category
 TOO_LONG = "too_long"  # plan exceeds MAX_PLAN_STEPS
 CANNOT_PLAN = "cannot_plan"  # the model produced nothing actionable (E.6)
@@ -114,7 +114,7 @@ async def build_plan(
     Steps in resolution order:
       1. Get the raw ordered plan from the model (or a recorded fixture).
       2. Bound plan size (MAX_PLAN_STEPS).
-      3. Authorize EVERY step up-front — any unauthorized step rejects the
+      3. Authorize EVERY step up-front - any unauthorized step rejects the
          WHOLE plan with which-step feedback (AD14: never silently truncated).
       4. Resolve entity names server-side; a name matching >1 record returns a
          disambiguation prompt and issues NO token (E.4).
@@ -158,7 +158,7 @@ async def build_plan(
             )
 
     # ── 4 + 5. Resolve, classify, attach preconditions ──
-    # XM2: the executor runs ONLY write steps — read steps in a confirmed plan
+    # XM2: the executor runs ONLY write steps - read steps in a confirmed plan
     # never execute. Advertising them on the confirm card is a false promise, so
     # read steps are dropped from the resolved plan entirely and write steps are
     # re-indexed sequentially (idempotency keys derive from `idx`).
@@ -176,7 +176,7 @@ async def build_plan(
                 message=resolved["_resolution_error"],
                 options=resolved.get("_resolution_options") or [],
             )
-        # Public params only — drop resolution-internal keys (prefixed `_`) so
+        # Public params only - drop resolution-internal keys (prefixed `_`) so
         # the plan_hash binds exactly what executes and the card shows nothing
         # internal.
         public = {k: v for k, v in resolved.items() if not k.startswith("_")}
@@ -187,7 +187,7 @@ async def build_plan(
             step["precondition"] = pre
         else:
             logger.warning(
-                "planner: no precondition derivable for write tool %s — "
+                "planner: no precondition derivable for write tool %s - "
                 "executor will stale-guard on existence only",
                 tool,
             )

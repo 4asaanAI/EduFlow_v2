@@ -1,5 +1,5 @@
 /**
- * R2-2 — the screens half of "Lalit never sees a rupee figure".
+ * R2-2 - the screens half of "Lalit never sees a rupee figure".
  *
  * Decision 1, 2026-08-10: the management head sees whether a child's fees are paid,
  * as a flag, and never an amount anywhere. Two shared screens showed him money:
@@ -10,7 +10,7 @@
  * both, every day. So this checks the variant: the money tiles are gone and the rest
  * of the screen is still there and still useful.
  *
- * The server is the real guarantee — the amounts never reach him in the first place,
+ * The server is the real guarantee - the amounts never reach him in the first place,
  * which `tests/backend/api/test_management_money_leaks_r2_2.py` and the fee-category
  * filter in `ai/tool_functions.py` assert. This is the second lock, not the only one.
  */
@@ -27,7 +27,7 @@ jest.mock('../../lib/authSession', () => ({ getAuthHeaders: () => ({}) }));
 
 const mockExecuteTool = jest.fn();
 jest.mock('../../lib/api', () => {
-  // D-60: derived from the real export list rather than hand-written — a factory mock
+  // D-60: derived from the real export list rather than hand-written - a factory mock
   // does not fall through, so any name nobody thought to stub comes back undefined and
   // React reports an error pointing nowhere near the cause.
   const actual = jest.requireActual('../../lib/api');

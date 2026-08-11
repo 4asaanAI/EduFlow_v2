@@ -1,4 +1,4 @@
-"""RETIRED (2026-07-10) — this script is intentionally disabled.
+"""RETIRED (2026-07-10) - this script is intentionally disabled.
 
 It previously seeded a demo "Rohit Management" admin account (user +
 auth login + staff record, ids user-admin-007 / staff-017). That was dummy

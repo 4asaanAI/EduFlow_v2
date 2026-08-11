@@ -1,10 +1,10 @@
 /**
- * R2-9 — what the two new people actually see when they try to print a document.
+ * R2-9 - what the two new people actually see when they try to print a document.
  *
  * Decision 6, 2026-08-10: the school's owner (Aman) and the principal (Adesh) issue a
  * certificate or a set of ID cards directly. The admin office (Lalit) asks first.
  *
- * The server is what enforces this — `tests/backend/api/test_certificate_approval_r2_9.py`
+ * The server is what enforces this - `tests/backend/api/test_certificate_approval_r2_9.py`
  * proves the print is refused. These tests are about the other half: the office must be
  * OFFERED the right button, rather than pressing a Download button that answers no. A
  * button that refuses when pressed reads as a broken platform, which is the exact defect

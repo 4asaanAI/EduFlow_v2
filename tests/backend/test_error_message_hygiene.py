@@ -1,6 +1,6 @@
 """Meta-test: enforce sanitized 403 error messages across the codebase.
 
-Part 1.5 Patch B — three routes still leaked `"Owner only"` strings,
+Part 1.5 Patch B - three routes still leaked `"Owner only"` strings,
 which let an attacker enumerate owner-gated endpoints from a generic 403.
 This meta-test fails if any future code introduces a fresh leak.
 """

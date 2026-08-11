@@ -1,11 +1,11 @@
-"""Keyword relevance scoring for memory recall — cloned from Odysseus `src/memory.py`.
+"""Keyword relevance scoring for memory recall - cloned from Odysseus `src/memory.py`.
 
 This is the ALWAYS-AVAILABLE retrieval path (FR33: hybrid recall must degrade
 gracefully to keyword-only when the vector store is unavailable). The optional
 vector path lives in `vector.py`; `store.recall()` blends the two.
 
 Kept deliberately dependency-free (pure-Python token math) so it works on the
-Python-3.9 / Elastic Beanstalk stack with zero extra packages — exactly the
+Python-3.9 / Elastic Beanstalk stack with zero extra packages - exactly the
 fallback the G.1 infra spike mandates.
 """
 
@@ -64,7 +64,7 @@ def score_memories(
     Returns the input dicts (sorted best-first) for those scoring >= threshold,
     each annotated with a `_score` key. Confidence and recency act as multipliers
     so a stale, low-confidence memory ranks below a fresh, high-confidence one with
-    the same lexical overlap (G.8 decay) — but neither can zero the score out, so a
+    the same lexical overlap (G.8 decay) - but neither can zero the score out, so a
     strong lexical match still surfaces.
     """
     if not memories or not query or not query.strip():

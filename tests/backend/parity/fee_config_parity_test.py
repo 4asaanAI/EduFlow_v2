@@ -1,4 +1,4 @@
-"""Story K.1 — dual-entrypoint parity for fee-config CRUD.
+"""Story K.1 - dual-entrypoint parity for fee-config CRUD.
 
 Same seed + same actor (owner) through the REST routes
 (POST/PATCH /api/fees/structures, POST/PATCH/DELETE /api/fees/discount-types) and

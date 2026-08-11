@@ -1,6 +1,6 @@
-"""Story F.1 / F.2 — PII minimization to the LLM + trace PII scan.
+"""Story F.1 / F.2 - PII minimization to the LLM + trace PII scan.
 
-F.1: `redact_for_llm` ships the model the minimum personal data — special-category
+F.1: `redact_for_llm` ships the model the minimum personal data - special-category
 fields (DOB/contact/health/full-address/Aadhaar) are masked; identifiers/names pass.
 F.2: `contains_unredacted_pii` finds zero unredacted PII in a redacted payload.
 """
@@ -39,7 +39,7 @@ def test_special_category_fields_are_masked():
         "medical_conditions", "father_medical_history",
     ):
         assert out[masked_key] == REDACTED, masked_key
-    # R9.2 AC3: blood_group is intentionally NOT restricted — it's standard,
+    # R9.2 AC3: blood_group is intentionally NOT restricted - it's standard,
     # low-sensitivity operational data (printed on physical ID cards) that
     # get_student_profile legitimately surfaces; permanently masking it was an
     # over-block. Genuine health data (medical_*, above) stays masked.
@@ -50,7 +50,7 @@ def test_special_category_fields_are_masked():
 
 
 def test_identifiers_and_task_fields_pass_through():
-    # Calibration: redaction must NOT over-block — names/ids/counts/amounts remain
+    # Calibration: redaction must NOT over-block - names/ids/counts/amounts remain
     # so the assistant can still answer normally.
     out = redact_for_llm(_STUDENT)
     assert out["id"] == "stu-1"

@@ -1,7 +1,7 @@
-"""API integration tests for AI write rate limiting — Story 7-48.
+"""API integration tests for AI write rate limiting - Story 7-48.
 
 Covers AC2 (429 + Retry-After), AC4 (audit log captures rate_limit_hit),
-AC8 (backward compatibility — successful dispatches still write rate_limit_hit=False).
+AC8 (backward compatibility - successful dispatches still write rate_limit_hit=False).
 """
 
 from __future__ import annotations
@@ -63,7 +63,7 @@ async def test_confirm_returns_429_with_retry_after_when_limit_exceeded(client, 
     headers = {"Authorization": f"Bearer {token}"}
 
     # Pre-seed the counter at 50 (limit) so the next call trips it. We attach
-    # the counter row directly — exercising the read-path of the limiter.
+    # the counter row directly - exercising the read-path of the limiter.
     fake_db.ai_rate_limit_counters.docs.append({
         "user_id": "admin-1",
         "hour_bucket": "2026-05-15T14:00:00Z",
@@ -198,7 +198,7 @@ async def test_invalid_token_does_not_burn_rate_slot(client, fake_db, monkeypatc
 
 
 async def test_session_rotation_cannot_bypass_user_limit(client, fake_db, monkeypatch):
-    """Patch-fix: counter is per-(user, hour) — rotating session_id does NOT reset it."""
+    """Patch-fix: counter is per-(user, hour) - rotating session_id does NOT reset it."""
     from services import ai_rate_limiter
 
     ai_rate_limiter.reset_config_cache()
@@ -218,7 +218,7 @@ async def test_session_rotation_cannot_bypass_user_limit(client, fake_db, monkey
     token = _login_owner(client)
     headers = {"Authorization": f"Bearer {token}"}
 
-    # Issue tokens in two distinct sessions — both must trip the same limit.
+    # Issue tokens in two distinct sessions - both must trip the same limit.
     confirm_a = _build_confirm_token(fake_db, user_id="admin-1", session_id="sess-A")
     confirm_b = _build_confirm_token(fake_db, user_id="admin-1", session_id="sess-B")
 
@@ -265,7 +265,7 @@ async def test_counter_does_not_inflate_past_limit_on_rejected_retries(client, f
         )
         assert resp.status_code == 429
 
-    # Counter stays at 50 — pre-check prevents past-limit inflation.
+    # Counter stays at 50 - pre-check prevents past-limit inflation.
     counter_row = next(c for c in fake_db.ai_rate_limit_counters.docs
                        if c.get("user_id") == "admin-1"
                        and c.get("hour_bucket") == "2026-05-15T14:00:00Z")
@@ -302,6 +302,6 @@ async def test_counter_resets_at_top_of_next_hour(client, fake_db, monkeypatch):
         headers=headers,
         json={"token": confirm_token, "session_id": "sess-RST", "confirmed": True},
     )
-    # Either succeeds or fails for an unrelated reason — what matters is that
+    # Either succeeds or fails for an unrelated reason - what matters is that
     # it is NOT 429 (the previous-hour counter must not apply).
     assert resp.status_code != 429, f"new hour bucket should not inherit old counter; got {resp.text}"

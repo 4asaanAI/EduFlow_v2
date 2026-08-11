@@ -1,5 +1,5 @@
 from __future__ import annotations
-"""Epic 6, Story 6.2 — the notification list can be asked for more than page 1.
+"""Epic 6, Story 6.2 - the notification list can be asked for more than page 1.
 
 The compatibility pins here (test_panel_call_*) were written and shown green
 against the OLD endpoint before the parameters existed, then again after. A pin
@@ -188,7 +188,7 @@ def test_unread_count_unauthenticated_returns_401(client):
 def test_one_user_cannot_read_or_count_anothers_notifications(client, fake_db):
     """Stands in for the usual 403-wrong-role test. These endpoints are scoped to
     the caller's own user_id rather than gated by role, so there is no wrong role
-    to send — the boundary being defended is between users, not between roles."""
+    to send - the boundary being defended is between users, not between roles."""
     fake_db.notifications.docs.extend([
         _notif(1, user_id="admin-1", read=False),
         _notif(2, user_id="admin-1", read=False),

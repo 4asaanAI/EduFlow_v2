@@ -49,7 +49,7 @@ def _intent_summary(doc: dict[str, Any]) -> dict[str, Any]:
 
     Attached to post-consume validation-failure responses so the frontend can
     offer a one-tap "ask again" without the user re-typing. Only tool/action
-    labels are echoed — never resolved params (which may carry student PII)."""
+    labels are echoed - never resolved params (which may carry student PII)."""
     plan = doc.get("plan")
     if plan:
         tools = [
@@ -71,7 +71,7 @@ def compute_plan_hash(
 
     The SAME helper is used at issue and consume so a tampered persisted plan
     (DB-level edit, mismatched tenant) is detected. Prior to XM6 this was an
-    UNKEYED sha256 stored beside the plan — anyone able to edit the stored plan
+    UNKEYED sha256 stored beside the plan - anyone able to edit the stored plan
     could recompute a matching digest. It is now an HMAC keyed with the server's
     `JWT_SECRET`, so a valid MAC cannot be forged without the secret.
     Canonicalization is a sorted-key, separator-tight JSON dump; entity IDs
@@ -158,7 +158,7 @@ async def peek_confirm_token(
     context when a request is rejected.
 
     Returns the token document if it belongs to (user_id, session_id), else
-    None. Already-used tokens ARE returned — for replay forensics, the action
+    None. Already-used tokens ARE returned - for replay forensics, the action
     and params remain valuable even after consumption. The caller is
     responsible for treating used tokens correctly (consume_confirm_token
     raises 409 on replay).
@@ -228,7 +228,7 @@ async def consume_confirm_token(
         doc = await token_db.confirm_tokens.find_one({"token": token})
         if not doc:
             raise HTTPException(status_code=400, detail="Confirmation token not found")
-        # P9: Tenant binding check — reject if the request context drifted from
+        # P9: Tenant binding check - reject if the request context drifted from
         # the tenant context at token-issue time.
         if school_id is not None and doc.get("school_id") is not None:
             if doc["school_id"] != school_id:
@@ -251,17 +251,17 @@ async def consume_confirm_token(
                     },
                 )
         # Epic E (AD3/P4): plan-hash revalidation. A token carrying a multi-step
-        # `plan` must hash to exactly what was stored at issue — a tampered
+        # `plan` must hash to exactly what was stored at issue - a tampered
         # persisted plan (or a tenant the plan was not bound to) is rejected with
         # the distinct `plan_tampered` 409 the frontend maps to "re-confirm".
-        # A legacy token (no `plan`) skips this — it consumes as a length-1 plan.
+        # A legacy token (no `plan`) skips this - it consumes as a length-1 plan.
         if doc.get("plan") is not None:
             expected_hash = compute_plan_hash(
                 doc.get("plan"),
                 school_id=doc.get("school_id"),
                 branch_id=doc.get("branch_id"),
             )
-            # Constant-time compare — the MAC is a secret-derived value (XM6).
+            # Constant-time compare - the MAC is a secret-derived value (XM6).
             if not hmac.compare_digest(expected_hash, str(doc.get("plan_hash") or "")):
                 raise HTTPException(
                     status_code=409,
@@ -292,7 +292,7 @@ async def consume_confirm_token(
     if doc.get("used"):
         raise HTTPException(status_code=409, detail="Confirmation token has already been used")
     if doc.get("user_id") != user_id or doc.get("session_id") != session_id:
-        # 403, NOT 401. The caller IS authenticated — it is the TOKEN that belongs to
+        # 403, NOT 401. The caller IS authenticated - it is the TOKEN that belongs to
         # someone else or to an earlier browser session. Answering 401 told the client
         # "your login expired", which was harmless while the confirm card used a bare
         # fetch, and became a real defect the moment every call went through the
@@ -366,7 +366,7 @@ async def audit_ai_dispatch_pending(
         "school_id": school_id,
         "branch_id": branch_id,
     }
-    # Allow the insert to raise — caller must abort the tool if audit fails.
+    # Allow the insert to raise - caller must abort the tool if audit fails.
     await audit_db.ai_dispatch_audit_log.insert_one({**document, "_id": audit_id})
     return audit_id
 

@@ -1,4 +1,4 @@
-"""R2-1 — the checked-in JS mirror must still match the Python matrix.
+"""R2-1 - the checked-in JS mirror must still match the Python matrix.
 
 `backend/services/profile_matrix.py` is the source of truth for who may reach what.
 `frontend/src/lib/profileMatrix.generated.js` is a generated mirror, checked in so
@@ -9,7 +9,7 @@ stale. That is this test. If it fails, the fix is to run:
 
     backend/.venv/Scripts/python.exe scripts/generate_profile_matrix.py
 
-and commit the result — never to hand-edit the JS, which changes nothing about
+and commit the result - never to hand-edit the JS, which changes nothing about
 permissions and only hides the drift.
 """
 

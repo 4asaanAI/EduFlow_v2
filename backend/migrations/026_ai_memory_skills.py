@@ -18,7 +18,7 @@ async def migrate(db) -> None:
     except Exception:
         pass
     try:
-        # TTL retention anchor — Mongo deletes a memory once its `expire_at` Date passes.
+        # TTL retention anchor - Mongo deletes a memory once its `expire_at` Date passes.
         await db.ai_memories.create_index("expire_at", expireAfterSeconds=0)
     except Exception:
         pass

@@ -5,7 +5,7 @@ import { getAuthHeaders } from '../../lib/authSession';
 import { API, apiFetch } from '../../lib/api';
 
 // Normalize FastAPI error shapes into a plain string.
-// FastAPI 422 returns {"detail": [{msg, loc, type}]} — not a string.
+// FastAPI 422 returns {"detail": [{msg, loc, type}]} - not a string.
 // FastAPI 400/404 returns {"detail": "string"}.
 function extractDetail(data, fallback = 'An error occurred') {
   if (!data) return fallback;
@@ -17,7 +17,7 @@ function extractDetail(data, fallback = 'An error occurred') {
 }
 
 // Reads the response as JSON and turns a failure into a plain sentence. It is NOT
-// a second fetch wrapper — it delegates to the shared `apiFetch`, which is what
+// a second fetch wrapper - it delegates to the shared `apiFetch`, which is what
 // refreshes an expired login and retries. This function used to be CALLED `apiFetch`
 // and called bare `fetch` itself, so every screen in this file looked like it was
 // using the shared wrapper and was not. Renamed so the two can never be confused
@@ -192,7 +192,7 @@ function HousesTab({ canManage }) {
           <div style={{ background: 'var(--c-input)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 24, width: 380, maxWidth: '100%' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
               <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--c-text)' }}>
-                {parseInt(delta) >= 0 ? 'Award' : 'Deduct'} Points — {pointsModal.name} House
+                {parseInt(delta) >= 0 ? 'Award' : 'Deduct'} Points - {pointsModal.name} House
               </h3>
               <button onClick={() => setPointsModal(null)} style={{ border: 'none', background: 'none', color: 'var(--c-faint)', cursor: 'pointer' }}><X size={16} /></button>
             </div>
@@ -454,7 +454,7 @@ function TeamsTab({ canManage }) {
         setError(res.detail || 'Failed to create team');
       }
     } catch {
-      setError('Network error — please try again');
+      setError('Network error - please try again');
     }
     setSaving(false);
   };

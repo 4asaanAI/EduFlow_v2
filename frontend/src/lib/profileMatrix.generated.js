@@ -1,5 +1,5 @@
 /**
- * GENERATED FILE — DO NOT EDIT BY HAND.
+ * GENERATED FILE - DO NOT EDIT BY HAND.
  *
  * Mirror of `backend/services/profile_matrix.py`, which is the source of truth for
  * who may reach what. Regenerate with:

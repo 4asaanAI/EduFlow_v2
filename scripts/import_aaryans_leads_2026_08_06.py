@@ -1,6 +1,6 @@
 """
 Import the school's ENQUIRY / LEAD list (`aaryans_database/Leads-06-08-2026-16-55.xlsx`)
-into the `enquiries` collection — owner request B, 2026-08-06.
+into the `enquiries` collection - owner request B, 2026-08-06.
 
 These are admission-form leads: a child, the class applied for, both parents' names and
 a contact number. All 102 rows are marked ACTIVE in the school's system, and the platform
@@ -8,7 +8,7 @@ had ZERO enquiries before this load, so nothing here can collide with existing w
 
 WHAT IS DELIBERATELY NOT DONE
   * No lead is matched to, or merged with, an enrolled student. 53 lead names also match
-    the name of a child already on the roll, but a name is not an identity — that is the
+    the name of a child already on the roll, but a name is not an identity - that is the
     single rule this data transfer has been strictest about. They are loaded as enquiries
     and left for the school to link if they choose.
   * 5 of these leads share a name with the 30 applicants the owner said FAILED the
@@ -16,7 +16,7 @@ WHAT IS DELIBERATELY NOT DONE
     file has them (ACTIVE), because overriding a live school record on the strength of a
     name match would be the same mistake. The overlap is reported instead.
 
-The Enquiry model carries only name/parent/phone/class. The file has much more — both
+The Enquiry model carries only name/parent/phone/class. The file has much more - both
 parents' names, qualifications, occupations, the previous school, address. Those are kept
 on the document under clearly-named keys rather than thrown away; the enquiries routes
 return raw documents, so they flow through the API without a model change.
@@ -64,7 +64,7 @@ REJECTED_FILE = ROOT / "aaryans_database" / "_rejected_applicants.json"
 
 def load_rejected() -> list[str]:
     if not REJECTED_FILE.exists():
-        print(f"WARNING: {REJECTED_FILE.name} not found — skipping the rejected-applicant "
+        print(f"WARNING: {REJECTED_FILE.name} not found - skipping the rejected-applicant "
               f"overlap check. The load itself is unaffected.")
         return []
     return json.loads(REJECTED_FILE.read_text()).get("names", [])
@@ -118,7 +118,7 @@ async def main(apply: bool) -> int:
     leads = read_leads()
 
     print("=" * 68)
-    print("ENQUIRY / LEAD IMPORT — source: Leads-06-08-2026-16-55.xlsx")
+    print("ENQUIRY / LEAD IMPORT - source: Leads-06-08-2026-16-55.xlsx")
     print("=" * 68)
     print(f"rows in the file          : {len(leads)}")
     applied = collections.Counter(s(d.get("Applied For")) or "(blank)" for d in leads)
@@ -156,12 +156,12 @@ async def main(apply: bool) -> int:
 
         (ROOT / "aaryans_database" / "_leads_overlap_with_rejected.txt").write_text(
             "Leads whose NAME matches one of the 30 rejected applicants.\n"
-            "Loaded as ACTIVE per the school's own file — please confirm which is right.\n\n"
+            "Loaded as ACTIVE per the school's own file - please confirm which is right.\n\n"
             + "\n".join(overlap))
         print("  (overlap names -> aaryans_database/_leads_overlap_with_rejected.txt)")
 
         if not apply:
-            print("\nDRY RUN — nothing written. Re-run with --apply to write.")
+            print("\nDRY RUN - nothing written. Re-run with --apply to write.")
             return 0
 
         now = datetime.now(timezone.utc).isoformat()
@@ -178,7 +178,7 @@ async def main(apply: bool) -> int:
                 "phone": re.sub(r"\D", "", s(d.get("Mobile No."))) or None,
                 "class_applying": s(d.get("Applied For")),
                 # every row in the file reads ACTIVE, i.e. a live enquiry nobody has
-                # progressed yet — which is exactly what the platform calls "new"
+                # progressed yet - which is exactly what the platform calls "new"
                 "status": "new",
                 "source": "admission_form",
                 "assigned_to": None,

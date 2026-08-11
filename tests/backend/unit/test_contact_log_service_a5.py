@@ -1,4 +1,4 @@
-"""Story A.5 — fee contact-log service: write + canonical audit + AI mapping."""
+"""Story A.5 - fee contact-log service: write + canonical audit + AI mapping."""
 
 from __future__ import annotations
 

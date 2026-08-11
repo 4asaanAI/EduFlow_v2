@@ -1,5 +1,5 @@
 /**
- * R2-13 — the menu half of the all-nine-profile sweep.
+ * R2-13 - the menu half of the all-nine-profile sweep.
  *
  * The Flo-tool and API-route halves are
  * `tests/backend/unit/test_all_nine_profiles_sweep_r2_13.py`. This is the third
@@ -54,7 +54,7 @@ test('all nine profiles are in the matrix, four live and five dormant', () => {
   expect(DORMANT_PROFILES.length).toBe(5);
 });
 
-test('the matrix is default deny — an unknown screen reaches nobody but leadership', () => {
+test('the matrix is default deny - an unknown screen reaches nobody but leadership', () => {
   // Leadership holds everything by design, so it is the one exception. Every other
   // profile must refuse a screen nobody has granted it, which is what stops a screen
   // built next month landing in the management head's menu silently.
@@ -136,7 +136,7 @@ test('the management head is offered no finance screen at all', () => {
 
 test('the management head is offered no leadership-private screen', () => {
   // R2-7, 2026-08-11: 'governance-ai-hub' came OFF this list. It is the department
-  // GROUP, not a screen — the four screens above are what is private, and holding the
+  // GROUP, not a screen - the four screens above are what is private, and holding the
   // group does not reveal them because the rows inside are filtered one by one. While
   // the group was on this list the management head was granted seven screens that live
   // inside it and could open none of them: the grant was real and the door was missing.

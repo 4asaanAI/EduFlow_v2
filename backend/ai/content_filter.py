@@ -33,7 +33,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# 1. BLOCKED TOPICS — any match replaces the entire response
+# 1. BLOCKED TOPICS - any match replaces the entire response
 # ---------------------------------------------------------------------------
 
 BLOCKED_TOPICS: list[dict] = [
@@ -178,7 +178,7 @@ for topic in BLOCKED_TOPICS:
             (topic["name"], re.compile(pat, re.IGNORECASE))
         )
 
-# Hindi/Devanagari blocked topic patterns — critical for UP school context
+# Hindi/Devanagari blocked topic patterns - critical for UP school context
 BLOCKED_TOPICS_HINDI: list[str] = [
     # Suicide / self-harm
     r"आत्महत्या",
@@ -219,7 +219,7 @@ _BLOCKED_HINDI_COMPILED: list[re.Pattern] = [
 ]
 
 # ---------------------------------------------------------------------------
-# 2. SENSITIVE TOPICS — allowed with textbook-appropriate language only
+# 2. SENSITIVE TOPICS - allowed with textbook-appropriate language only
 # ---------------------------------------------------------------------------
 
 SENSITIVE_TOPICS: list[dict] = [

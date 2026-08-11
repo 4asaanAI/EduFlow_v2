@@ -198,7 +198,7 @@ async def upload_file(
 def _can_access_upload(record: dict, user: dict) -> bool:
     """Is this caller entitled to this specific stored file?
 
-    This is the existing file-access permission — a person's own uploads, plus
+    This is the existing file-access permission - a person's own uploads, plus
     owner and admin+principal reaching any file in their school. It introduces no
     NEW permission: a generated document's `uploaded_by` is whoever asked Flo for
     it, and that person could have exported the same data directly.
@@ -217,9 +217,9 @@ async def serve_file(filename: str, user: dict = Depends(get_current_user)):
     if ".." in filename or "/" in filename:
         raise HTTPException(400, "Invalid filename")
     record = await db.file_uploads.find_one(
-        # branch-scope: intentional — file_uploads is school-scoped; a file belongs to
+        # branch-scope: intentional - file_uploads is school-scoped; a file belongs to
         # its uploader and the school, not to a branch.
-        scoped_filter({"safe_filename": filename}, get_school_id())  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+        scoped_filter({"safe_filename": filename}, get_school_id())  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     )
     if not record:
         raise HTTPException(404, "File not found")
@@ -243,18 +243,18 @@ async def generated_file_link(file_id: str, user: dict = Depends(get_current_use
     A language model cannot reproduce 1,000 random characters byte-for-byte, so the link
     arrived with a character altered and S3 answered `SignatureDoesNotMatch`. Now the
     model only carries the short `file_id`; the signed URL is minted here when the person
-    taps download, so it is always fresh — and Story 10.3's expiry problem disappears.
+    taps download, so it is always fresh - and Story 10.3's expiry problem disappears.
 
     It returns JSON rather than redirecting to S3 so that a missing or forbidden file is
     answered in our own words. A 307 straight to S3 would render any S3 error as raw XML
-    with the school's bucket name and account number on screen — the very defect Story
+    with the school's bucket name and account number on screen - the very defect Story
     10.3 forbids.
     """
     db = get_db()
     record = await db.file_uploads.find_one(
-        # branch-scope: intentional — file_uploads is school-scoped; a file belongs to
+        # branch-scope: intentional - file_uploads is school-scoped; a file belongs to
         # its uploader and the school, not to a branch.
-        scoped_filter({"id": file_id}, get_school_id())  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+        scoped_filter({"id": file_id}, get_school_id())  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     )
     if not record:
         raise HTTPException(404, "That file could not be found. Please ask for it again.")
@@ -286,14 +286,14 @@ async def generated_file_content(file_id: str, user: dict = Depends(get_current_
     one, because the original is what the audit row already refers to.
 
     Access is the SAME check the download link uses. Anyone who may download the file
-    may read its text, and nobody else — a separate, looser rule here would be a way
+    may read its text, and nobody else - a separate, looser rule here would be a way
     round the download gate.
     """
     db = get_db()
     record = await db.file_uploads.find_one(
-        # branch-scope: intentional — file_uploads is school-scoped; a file belongs to
+        # branch-scope: intentional - file_uploads is school-scoped; a file belongs to
         # its uploader and the school, not to a branch.
-        scoped_filter({"id": file_id}, get_school_id())  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+        scoped_filter({"id": file_id}, get_school_id())  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     )
     if not record:
         raise HTTPException(404, "That file could not be found. Please ask for it again.")
@@ -345,8 +345,8 @@ async def list_uploads(
             query["linked_table"] = entity_type
         if entity_id:
             query["linked_id"] = entity_id
-    # branch-scope: intentional — file_uploads is school-scoped, not branch-scoped.
-    query = scoped_filter(query, get_school_id())  # branch-scope: intentional — see the note directly above this line
+    # branch-scope: intentional - file_uploads is school-scoped, not branch-scoped.
+    query = scoped_filter(query, get_school_id())  # branch-scope: intentional - see the note directly above this line
     skip = (page - 1) * limit
     total = await db.file_uploads.count_documents(query)
     files = await db.file_uploads.find(
@@ -369,14 +369,14 @@ async def list_uploads(
 async def delete_file(file_id: str, request: Request):
     db = get_db()
     user = get_user(request)
-    # branch-scope: intentional — file_uploads is school-scoped, not branch-scoped.
-    record = await db.file_uploads.find_one(scoped_filter({"id": file_id}, get_school_id()), {"data": 0})  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+    # branch-scope: intentional - file_uploads is school-scoped, not branch-scoped.
+    record = await db.file_uploads.find_one(scoped_filter({"id": file_id}, get_school_id()), {"data": 0})  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     if not record:
         raise HTTPException(404, "File not found")
     if record["uploaded_by"] != user["id"] and user["role"] not in ["owner", "admin"]:
         raise HTTPException(403, "Forbidden")
     if record.get("s3_key"):
         delete_object(record["s3_key"])
-    # branch-scope: intentional — file_uploads is school-scoped, not branch-scoped.
-    await db.file_uploads.delete_one(scoped_filter({"id": file_id}, get_school_id()))  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+    # branch-scope: intentional - file_uploads is school-scoped, not branch-scoped.
+    await db.file_uploads.delete_one(scoped_filter({"id": file_id}, get_school_id()))  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     return {"success": True}

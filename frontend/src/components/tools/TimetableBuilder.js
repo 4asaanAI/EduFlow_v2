@@ -1,5 +1,5 @@
 /**
- * Story 17: Timetable Management — weekly grid with CRUD
+ * Story 17: Timetable Management - weekly grid with CRUD
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { useUser } from '../../contexts/UserContext';
@@ -140,12 +140,12 @@ export default function TimetableBuilder() {
     if (s) return s.name;
     // Try to get from slots
     const slot = slots.find(sl => sl.subject_id === id);
-    return slot?.subject_name || id?.slice(0, 8) || '—';
+    return slot?.subject_name || id?.slice(0, 8) || '-';
   };
 
   const teacherName = (id) => {
     const t = staff.find(s => s.id === id);
-    return t ? t.name : (id?.slice(0, 8) || '—');
+    return t ? t.name : (id?.slice(0, 8) || '-');
   };
 
   return (
@@ -174,7 +174,7 @@ export default function TimetableBuilder() {
 
               D-24 (deliberate exception): this table is NOT sortable and must not become
               sortable. Its rows are periods 1..N and its columns are the days of the
-              week — the order IS the information. A timetable re-ordered by "Subject"
+              week - the order IS the information. A timetable re-ordered by "Subject"
               would still be a grid of the right cells and would be read as the school's
               actual schedule, which is the worst possible outcome. The same rule is
               written on `DataTable`'s `sortable={false}` option in ToolPage.js. */}
@@ -247,7 +247,7 @@ export default function TimetableBuilder() {
               <div style={{ background: 'var(--c-bg)', borderRadius: 14, padding: 24, width: 380, maxWidth: '90vw', border: '1px solid var(--c-border)', boxShadow: 'var(--shadow-lg)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
                   <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text)', margin: 0 }}>
-                    {DAYS[editSlot.day]} — Period {editSlot.period}
+                    {DAYS[editSlot.day]} - Period {editSlot.period}
                   </h3>
                   <button onClick={() => setEditSlot(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: muted }}><X size={16} /></button>
                 </div>

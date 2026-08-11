@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 """
-Chat file upload endpoint — extract text from uploaded files for AI context.
+Chat file upload endpoint - extract text from uploaded files for AI context.
 
 Files uploaded here are processed in-memory and never stored to S3 or the
 database. This is intentional: chat uploads are ephemeral AI context, not
@@ -38,7 +38,7 @@ router = APIRouter(prefix="/api/chat", tags=["chat-upload"])
 
 MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
 MAX_TEXT_LENGTH = 40_000                # chars forwarded to LLM context
-# R9.4 (X8): zip-bomb guards — a single member and the total decompressed size
+# R9.4 (X8): zip-bomb guards - a single member and the total decompressed size
 # are both capped using the archive DIRECTORY's declared sizes, BEFORE any member
 # is actually decompressed.
 MAX_ZIP_MEMBER_BYTES = 5 * 1024 * 1024      # 5 MB uncompressed per member
@@ -69,7 +69,7 @@ def _read_plain_text(data: bytes, filename: str) -> str:
 
 def _extract_pdf(data: bytes, filename: str) -> str:
     try:
-        import pypdf  # noqa: F401 — optional dep
+        import pypdf  # noqa: F401 - optional dep
         reader = pypdf.PdfReader(io.BytesIO(data))
         pages = []
         for page in reader.pages:
@@ -78,13 +78,13 @@ def _extract_pdf(data: bytes, filename: str) -> str:
                 pages.append(text.strip())
         if pages:
             return "\n\n".join(pages)
-        return f"[PDF: {filename} — no extractable text found (may be scanned)]"
+        return f"[PDF: {filename} - no extractable text found (may be scanned)]"
     except ImportError:
         logger.warning("pypdf not installed; cannot extract PDF text")
-        return f"[PDF: {filename} — install pypdf to enable text extraction]"
+        return f"[PDF: {filename} - install pypdf to enable text extraction]"
     except Exception as exc:
         logger.warning("PDF extraction error for %s: %s", filename, exc)
-        return f"[PDF: {filename} — extraction error: {exc}]"
+        return f"[PDF: {filename} - extraction error: {exc}]"
 
 
 def _extract_docx(data: bytes, filename: str) -> str:
@@ -98,13 +98,13 @@ def _extract_docx(data: bytes, filename: str) -> str:
                 cells = [c.text.strip() for c in row.cells if c.text.strip()]
                 if cells:
                     paragraphs.append(" | ".join(cells))
-        return "\n\n".join(paragraphs) if paragraphs else f"[DOCX: {filename} — no text found]"
+        return "\n\n".join(paragraphs) if paragraphs else f"[DOCX: {filename} - no text found]"
     except ImportError:
         logger.warning("python-docx not installed; cannot extract .docx text")
-        return f"[DOCX: {filename} — install python-docx to enable text extraction]"
+        return f"[DOCX: {filename} - install python-docx to enable text extraction]"
     except Exception as exc:
         logger.warning("DOCX extraction error for %s: %s", filename, exc)
-        return f"[DOCX: {filename} — extraction error: {exc}]"
+        return f"[DOCX: {filename} - extraction error: {exc}]"
 
 
 def _extract_xlsx(data: bytes, filename: str) -> str:
@@ -121,13 +121,13 @@ def _extract_xlsx(data: bytes, filename: str) -> str:
                     rows.append(" | ".join(row_vals))
             if rows:
                 sheets.append(f"=== Sheet: {sheet_name} ===\n" + "\n".join(rows))
-        return "\n\n".join(sheets) if sheets else f"[XLSX: {filename} — no data found]"
+        return "\n\n".join(sheets) if sheets else f"[XLSX: {filename} - no data found]"
     except ImportError:
         logger.warning("openpyxl not installed; cannot extract .xlsx text")
-        return f"[XLSX: {filename} — install openpyxl to enable text extraction]"
+        return f"[XLSX: {filename} - install openpyxl to enable text extraction]"
     except Exception as exc:
         logger.warning("XLSX extraction error for %s: %s", filename, exc)
-        return f"[XLSX: {filename} — extraction error: {exc}]"
+        return f"[XLSX: {filename} - extraction error: {exc}]"
 
 
 def _sheet_row_count(data: bytes, filename: str) -> int:
@@ -162,20 +162,20 @@ def _extract_pptx(data: bytes, filename: str) -> str:
                     texts.append(shape.text.strip())
             if texts:
                 slides.append(f"--- Slide {i} ---\n" + "\n".join(texts))
-        return "\n\n".join(slides) if slides else f"[PPTX: {filename} — no text found]"
+        return "\n\n".join(slides) if slides else f"[PPTX: {filename} - no text found]"
     except ImportError:
         logger.warning("python-pptx not installed; cannot extract .pptx text")
-        return f"[PPTX: {filename} — install python-pptx to enable text extraction]"
+        return f"[PPTX: {filename} - install python-pptx to enable text extraction]"
     except Exception as exc:
         logger.warning("PPTX extraction error for %s: %s", filename, exc)
-        return f"[PPTX: {filename} — extraction error: {exc}]"
+        return f"[PPTX: {filename} - extraction error: {exc}]"
 
 
 def _extract_zip(data: bytes, filename: str) -> str:
     try:
         zf = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile:
-        return f"[ZIP: {filename} — invalid or corrupted archive]"
+        return f"[ZIP: {filename} - invalid or corrupted archive]"
 
     parts = [f"[ZIP archive: {filename}]", "Contents:"]
     members = zf.namelist()
@@ -183,7 +183,7 @@ def _extract_zip(data: bytes, filename: str) -> str:
     parts.append("")
 
     # R9.4 (X8) AC2: guard against a zip bomb using the archive DIRECTORY's declared
-    # uncompressed sizes (ZipInfo.file_size) — checked BEFORE any member is read, so
+    # uncompressed sizes (ZipInfo.file_size) - checked BEFORE any member is read, so
     # a 10 KB archive that expands to gigabytes is never decompressed. Both a
     # per-member cap and a running total cap apply.
     info_by_name = {i.filename: i for i in zf.infolist()}
@@ -202,7 +202,7 @@ def _extract_zip(data: bytes, filename: str) -> str:
         try:
             member_data = zf.read(member)
             if len(member_data) > 200_000:
-                text = f"[{member} — too large to display]"
+                text = f"[{member} - too large to display]"
             else:
                 text = _read_plain_text(member_data, member)[:5000]
             parts.append(f"=== {member} ===\n{text}")
@@ -235,9 +235,9 @@ def _extract_text(data: bytes, filename: str, suffix: str) -> str:
             from docx import Document
             doc = Document(io.BytesIO(data))
             paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-            return "\n\n".join(paragraphs) if paragraphs else f"[DOC: {filename} — no text found]"
+            return "\n\n".join(paragraphs) if paragraphs else f"[DOC: {filename} - no text found]"
         except Exception:
-            return f"[DOC: {filename} — old .doc format could not be read. Please save as .docx and re-upload.]"
+            return f"[DOC: {filename} - old .doc format could not be read. Please save as .docx and re-upload.]"
 
     if suffix == ".zip":
         return _extract_zip(data, filename)
@@ -259,19 +259,19 @@ def _extract_text(data: bytes, filename: str, suffix: str) -> str:
             "Note: Media files cannot be transcribed in this version."
         )
 
-    return f"[File: {filename} — unsupported format '{suffix}']"
+    return f"[File: {filename} - unsupported format '{suffix}']"
 
 
 def may_read_images(user: dict) -> bool:
     """Who may have Flo read a photograph.
 
     Settled by Abhimanyu, 2026-07-22 (revised the same day): **Owner, Principal and
-    the other office staff — accountant, receptionist and the rest of the admin
+    the other office staff - accountant, receptionist and the rest of the admin
     roles. NOT teachers, and NOT students.**
 
     The revision is the point. An earlier draft included teachers on the reasoning
     that they photograph forms; the owner narrowed it to the office. This is
-    paperwork handling — fee slips, admission forms, circulars — and it belongs with
+    paperwork handling - fee slips, admission forms, circulars - and it belongs with
     the people who do the paperwork. Teachers were removed deliberately, so do not
     "restore" them on the assumption it was an oversight.
 
@@ -285,7 +285,7 @@ def may_read_images(user: dict) -> bool:
 @router.post("/upload")
 async def upload_chat_file(request: Request, file: UploadFile = File(...)):
     """Accept a file and return extracted text for inclusion in the AI conversation context."""
-    user = get_current_user(request)  # auth guard — raises 401 if not authenticated
+    user = get_current_user(request)  # auth guard - raises 401 if not authenticated
 
     filename = file.filename or "uploaded_file"
     suffix = Path(filename).suffix.lower()
@@ -293,7 +293,7 @@ async def upload_chat_file(request: Request, file: UploadFile = File(...)):
         raise HTTPException(415, f"File type {suffix} is not permitted")
 
     # R9.4 (X8) AC1: reject early on the declared Content-Length, then read in
-    # bounded chunks and abort the moment the cap is exceeded — so an oversized
+    # bounded chunks and abort the moment the cap is exceeded - so an oversized
     # (or lying-about-its-size) upload is never fully buffered into memory.
     content_length = request.headers.get("content-length")
     if content_length and content_length.isdigit() and int(content_length) > MAX_FILE_SIZE_BYTES:
@@ -343,11 +343,11 @@ async def upload_chat_file(request: Request, file: UploadFile = File(...)):
                 # Fall back to the paid service. TWO ways of getting here, and the
                 # second one is the bug fixed on 2026-08-06 (owner request 16):
                 #
-                #   1. Tesseract ran and found no words. Story 10.6's original case —
+                #   1. Tesseract ran and found no words. Story 10.6's original case -
                 #      a handwritten note, or "what is in this picture".
                 #   2. Tesseract is NOT INSTALLED on this server. This branch used to
                 #      return `result.reason` and stop, so on a machine without the
-                #      binary — which is what Elastic Beanstalk is running — an
+                #      binary - which is what Elastic Beanstalk is running - an
                 #      attached photo was never looked at by anything. Aman sent Flo a
                 #      picture and was told "image text extraction is not available",
                 #      while the paid fallback that was built for exactly this sat
@@ -360,7 +360,7 @@ async def upload_chat_file(request: Request, file: UploadFile = File(...)):
                     used_paid_vision = True
                     extracted = f"[Description of the image {filename}]\n{vision.description}"
                 else:
-                    # Both routes failed. Say so plainly and say WHICH — an empty
+                    # Both routes failed. Say so plainly and say WHICH - an empty
                     # answer here would read as "this form is blank", which is the
                     # Epic 4 defect (a failure that looks like a figure) in a new
                     # place. Prefer the vision service's reason when the free reader
@@ -369,7 +369,7 @@ async def upload_chat_file(request: Request, file: UploadFile = File(...)):
                     extracted = f"[Image attached: {filename}. {ocr_note}]"
 
             # Reading an image is a read of school records and may involve a child.
-            # Ids and counts only (NFR-S2) — never the text that was read.
+            # Ids and counts only (NFR-S2) - never the text that was read.
             try:
                 await write_audit(
                     get_db(),
@@ -396,7 +396,7 @@ async def upload_chat_file(request: Request, file: UploadFile = File(...)):
     #
     # Before 2026-08-08 the bytes were read, turned into at most 40,000 characters of
     # text, and thrown away. For a 1,878-row student export that meant Flo saw 63
-    # children (3.4%) and had no way to reach the rest — so "check my spreadsheet
+    # children (3.4%) and had no way to reach the rest - so "check my spreadsheet
     # against the database" was answered from a fragment, confidently. Storing the
     # file gives the import tools a handle on 100% of the rows; the conversation still
     # only ever carries the readable summary below.
@@ -445,11 +445,11 @@ async def upload_chat_file(request: Request, file: UploadFile = File(...)):
             extracted[:MAX_TEXT_LENGTH]
             + f"\n\n[!! INCOMPLETE EXTRACT !! You are seeing only {MAX_TEXT_LENGTH:,} of "
             f"{full_char_count:,} characters"
-            + (f" — roughly the first {min(row_count, MAX_TEXT_LENGTH * row_count // max(full_char_count,1))} "
+            + (f" - roughly the first {min(row_count, MAX_TEXT_LENGTH * row_count // max(full_char_count,1))} "
                f"of {row_count} rows" if row_count else "")
             + ".\nDO NOT answer questions about the whole file from this fragment, and do "
             "NOT state that anything is present or missing overall. The COMPLETE file is "
-            f"stored as file_id '{file_id}' — use the spreadsheet import tools "
+            f"stored as file_id '{file_id}' - use the spreadsheet import tools "
             "(preview_data_import / import_data_file) which read every row.]"
         )
 

@@ -36,10 +36,10 @@ LEADERSHIP_PROFILES = {
     ("admin", "accountant"),
     ("admin", "management"),
 }
-# R2-10, 2026-08-11 — REMOVED, and do not bring it back.
+# R2-10, 2026-08-11 - REMOVED, and do not bring it back.
 #
-# This used to be a set of four usernames — aman.litt, adesh.singh, sonu.ruhal,
-# lalit.thomas — matched against `username_lower`. The logins actually in production are
+# This used to be a set of four usernames - aman.litt, adesh.singh, sonu.ruhal,
+# lalit.thomas - matched against `username_lower`. The logins actually in production are
 # `accountant` and `management`, and the other two are whatever they were created as, so
 # the lookup matched NOBODY and the colleague list truthfully reported "0 colleagues
 # available". That is the empty screen in the owner's screenshots.

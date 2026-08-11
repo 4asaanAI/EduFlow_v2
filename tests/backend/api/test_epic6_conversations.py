@@ -1,12 +1,12 @@
 from __future__ import annotations
-"""Epic 6, Story 6.4 — the chat archive can be paged, searched and cleared out.
+"""Epic 6, Story 6.4 - the chat archive can be paged, searched and cleared out.
 
 Two tests here guard traps rather than features, and both would pass against a
 plausible-looking wrong implementation of the neighbouring code:
 
-  * test_bulk_delete_refuses_a_query_operator_as_an_id — an untyped body turns
+  * test_bulk_delete_refuses_a_query_operator_as_an_id - an untyped body turns
     "delete these three" into "delete everything you own".
-  * test_bulk_delete_does_not_touch_another_users_messages — the messages filter
+  * test_bulk_delete_does_not_touch_another_users_messages - the messages filter
     carries no user_id. It is safe in the single-delete path only because
     ownership is proven one id at a time first.
 """
@@ -210,7 +210,7 @@ def test_bulk_delete_counts_from_the_database_not_the_request(client, fake_db):
 
 def test_bulk_delete_refuses_a_query_operator_as_an_id(client, fake_db):
     """THE TRAP. Against an untyped body, {"$gt": ""} inside `ids` produces
-    {"id": {"$in": [{"$gt": ""}]}} — a query matching every conversation the
+    {"id": {"$in": [{"$gt": ""}]}} - a query matching every conversation the
     caller owns. The request reads "delete this one" and executes as "delete
     everything". Typing the body makes it a 422 before any query is built."""
     fake_db.conversations.docs.extend([_conv(i) for i in range(5)])
@@ -248,7 +248,7 @@ def test_bulk_delete_skips_another_users_conversation(client, fake_db):
         json={"ids": ["c-conv-owner-0", "c-conv-other-0"]},
     ).json()
 
-    # "not found" and "someone else's" are reported identically — from outside
+    # "not found" and "someone else's" are reported identically - from outside
     # they must be indistinguishable.
     assert body["data"] == {"deleted": 1, "not_found": 1}
     assert [c["id"] for c in fake_db.conversations.docs] == ["c-conv-other-0"]
@@ -257,7 +257,7 @@ def test_bulk_delete_skips_another_users_conversation(client, fake_db):
 def test_bulk_delete_does_not_touch_another_users_messages(client, fake_db):
     """THE SECOND TRAP. The messages filter carries no user_id. Deleting on the
     caller's RAW id list destroys another user's messages while leaving their
-    conversation standing — a chat they can still open and find empty, with
+    conversation standing - a chat they can still open and find empty, with
     nothing in any log to explain it."""
     fake_db.conversations.docs.extend([_conv(0, user_id="conv-owner"), _conv(0, user_id="conv-other")])
     fake_db.messages.docs.extend([_msg(0, "c-conv-owner-0"), _msg(0, "c-conv-other-0"), _msg(1, "c-conv-other-0")])

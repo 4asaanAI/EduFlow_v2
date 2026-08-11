@@ -1,7 +1,7 @@
-"""Atomic plan executor (AI Layer Hardening, AD4/AD5/AD6 — Epics D).
+"""Atomic plan executor (AI Layer Hardening, AD4/AD5/AD6 - Epics D).
 
 `_execute_confirmed_dispatch` (routes/chat.py) builds a Plan (length-1 for a single
-confirmed write) and calls `run()` **unconditionally** — one execution path, no
+confirmed write) and calls `run()` **unconditionally** - one execution path, no
 `len==1` fork. Strategy:
 
 - **Transaction-first (D.3):** every Mongo write runs inside ONE Motor multi-document
@@ -40,14 +40,14 @@ logger = logging.getLogger(__name__)
 
 IDEMPOTENCY_COLLECTION = "ai_write_idempotency"
 
-# 409 taxonomy (P7) — distinct codes the frontend maps to distinct messages.
+# 409 taxonomy (P7) - distinct codes the frontend maps to distinct messages.
 PLAN_STALE = "plan_stale"
 NEEDS_MANUAL_RECONCILIATION = "needs_manual_reconciliation"
 
 
 class PlanStaleError(Exception):
     """A write step's precondition changed between planning and confirmation (D.6).
-    Maps to HTTP 409 {code: 'plan_stale'} — 'data changed, re-plan'."""
+    Maps to HTTP 409 {code: 'plan_stale'} - 'data changed, re-plan'."""
 
     code = PLAN_STALE
 
@@ -57,14 +57,14 @@ class PlanStaleError(Exception):
 
 
 class NeedsManualReconciliationError(Exception):
-    """A saga compensation itself failed — the plan is in an indeterminate state
+    """A saga compensation itself failed - the plan is in an indeterminate state
     requiring an operator (D.5). Never a silent partial success."""
 
     code = NEEDS_MANUAL_RECONCILIATION
 
 
 class StepExecutionError(Exception):
-    """A write step's runner reported failure — either it returned a failure
+    """A write step's runner reported failure - either it returned a failure
     envelope (`success is False`) or its write raised a domain uniqueness
     collision (X2/X4). The transaction is aborted; NOTHING was applied. The
     caller composes a user reply naming the failed step + "no changes were
@@ -79,7 +79,7 @@ class StepExecutionError(Exception):
 
 class _IdempotentReplay(Exception):
     """Internal sentinel: the per-step idempotency-claim insert raised
-    DuplicateKeyError — this (plan_token, step_idx) was already applied by a
+    DuplicateKeyError - this (plan_token, step_idx) was already applied by a
     prior/concurrent confirm. Distinct from a DOMAIN unique-index collision on
     the write itself, which is a genuine failure (X4)."""
 
@@ -151,9 +151,9 @@ async def _revalidate_precondition(db, step: Step, branch_id: Optional[str]) -> 
     record_id = pre.get("id")
     if not collection or not record_id:
         # D-review fix: a precondition the planner intended but that is unusable must
-        # NOT silently disable the stale-guard — surface it loudly (a planner bug).
+        # NOT silently disable the stale-guard - surface it loudly (a planner bug).
         logger.warning(
-            "malformed precondition on step=%s (missing collection/id): %r — stale-guard skipped",
+            "malformed precondition on step=%s (missing collection/id): %r - stale-guard skipped",
             step.idx, pre,
         )
         return
@@ -182,7 +182,7 @@ class PlanScopeViolationError(Exception):
     The plan is bound to a single (school_id, branch_id) derived from the
     authenticated actor at confirm time. A step whose params carry a DIFFERENT
     schoolId/branch_id is a cross-tenant/branch leak attempt and aborts the whole
-    plan — never partially applied."""
+    plan - never partially applied."""
 
     def __init__(self, message: str, *, step_idx: int):
         super().__init__(message)
@@ -195,7 +195,7 @@ def _assert_step_scope(plan: Plan, step: Step) -> None:
     Every step in a chain is re-checked against the plan's (school_id, branch_id)
     so step 3 cannot widen scope vs step 1. A step param that names a different
     branch/school than the plan's binding aborts the plan. (The forward tools
-    additionally inject schoolId/branch_id from the actor's scope — this is a
+    additionally inject schoolId/branch_id from the actor's scope - this is a
     second, explicit barrier at the executor level.)
     """
     params = step.params or {}
@@ -229,7 +229,7 @@ async def _claim_idempotency(db, plan: Plan, step: Step, key: str) -> None:
     """Insert the per-step idempotency key inside the txn (D.4).
 
     DuplicateKey ⇒ this (plan_token, step_idx) already applied (replay or concurrent
-    confirm) — propagated so the txn aborts and the caller reports `already_applied`.
+    confirm) - propagated so the txn aborts and the caller reports `already_applied`.
     """
     await getattr(db, IDEMPOTENCY_COLLECTION).insert_one(
         {
@@ -287,11 +287,11 @@ async def _run_side_effects(plan: Plan, audit_recon: Optional[Callable] = None) 
 
             for done in reversed(completed):
                 # D-review fix: a completed side effect with NO compensator cannot be
-                # undone — escalating to needs_manual_reconciliation is correct; silently
+                # undone - escalating to needs_manual_reconciliation is correct; silently
                 # skipping it while claiming "compensated" is a false success.
                 if done.compensate is None:
                     logger.error(
-                        "no compensator for completed side-effect step=%s — needs manual reconciliation",
+                        "no compensator for completed side-effect step=%s - needs manual reconciliation",
                         done.idx,
                     )
                     raise await _recon(done.idx)
@@ -299,7 +299,7 @@ async def _run_side_effects(plan: Plan, audit_recon: Optional[Callable] = None) 
                     await done.compensate()
                 except Exception:
                     logger.error(
-                        "compensation_failed step=%s — needs manual reconciliation",
+                        "compensation_failed step=%s - needs manual reconciliation",
                         done.idx, exc_info=True,
                     )
                     raise await _recon(done.idx)
@@ -340,7 +340,7 @@ async def run(
                             await _claim_idempotency(db, plan, step, key)
                         except DuplicateKeyError:
                             # X4: ONLY the idempotency-claim insert maps to
-                            # already_applied — a replay/concurrent confirm.
+                            # already_applied - a replay/concurrent confirm.
                             raise _IdempotentReplay()
                         claimed.append(key)
                     try:
@@ -360,7 +360,7 @@ async def run(
                             result={"success": False, "error": "duplicate_key", "message": detail},
                         )
                     # X2: a runner that RETURNS a failure envelope (success is False)
-                    # aborts the whole transaction — a confirmed action never commits
+                    # aborts the whole transaction - a confirmed action never commits
                     # around a failed step and never reports "completed" on failure.
                     if isinstance(result, dict) and result.get("success") is False:
                         msg = (
@@ -382,14 +382,14 @@ async def run(
             return ExecutionResult(status="dry_run", step_results=step_results, dry_run=True)
         except _IdempotentReplay:
             # Idempotency claim lost → exactly-once. Nothing committed this round.
-            logger.info("idempotent_replay plan_token=%s — already applied", plan.plan_token)
+            logger.info("idempotent_replay plan_token=%s - already applied", plan.plan_token)
             return ExecutionResult(status="already_applied", step_results=step_results)
         except OperationFailure as exc:
             # A concurrent confirm may abort this txn with a WriteConflict /
             # TransientTransactionError rather than a surfaced DuplicateKey (the conflict
             # can land on the claim insert itself, before `claimed` is appended). If the
             # first step's key was already committed by the winner, this is an idempotent
-            # replay too — map it to already_applied instead of leaking a 500.
+            # replay too - map it to already_applied instead of leaking a 500.
             first_key = _idempotency_key(plan, write_steps[0]) if write_steps else None
             if _is_write_conflict(exc) and first_key and await _idempotency_key_committed(db, first_key):
                 logger.info("idempotent_replay (write-conflict) plan_token=%s", plan.plan_token)

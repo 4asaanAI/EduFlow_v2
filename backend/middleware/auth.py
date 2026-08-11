@@ -27,7 +27,7 @@ if not JWT_SECRET:
 
     # Part 1.5 Patch N: a per-process random secret is fine for a single
     # dev worker but silently breaks multi-worker setups (each worker would
-    # issue tokens the others reject — unreproducible 401s). Refuse to start
+    # issue tokens the others reject - unreproducible 401s). Refuse to start
     # if the configuration looks like staging or `gunicorn -w N`.
     _env = os.environ.get("ENVIRONMENT", "").lower()
     try:
@@ -62,11 +62,11 @@ if not JWT_SECRET:
             except OSError:
                 pass
     except OSError:
-        # Cache directory unwritable — fall back to ephemeral per-process secret.
+        # Cache directory unwritable - fall back to ephemeral per-process secret.
         JWT_SECRET = secrets.token_urlsafe(48)
 
     logger.warning(
-        "JWT_SECRET not set — using a dev secret cached at %s. "
+        "JWT_SECRET not set - using a dev secret cached at %s. "
         "Set JWT_SECRET in .env to override or in production environments.",
         _cache_file,
     )
@@ -77,12 +77,12 @@ JWT_EXPIRY_MINUTES = 60
 # ─── Canonical sub_category identifiers ───────────────────────────────────────
 # The single source of truth for every `sub_category` the platform recognizes,
 # grouped by the role it qualifies. The AI prompt↔registry parity gate imports
-# this set and asserts that every prompt tool-list key is a subset — so a legacy
+# this set and asserts that every prompt tool-list key is a subset - so a legacy
 # or typo'd key (e.g. "accounts" vs the canonical "accountant") can never again
 # silently route an accountant to a fallback tool list / over-exposed context
 # (audit C4). Add new sub_categories here first.
 # UI-Sweep Story 1.2: the same set, but grouped by the role each sub_category
-# qualifies. Grouping is not decoration — a sub_category paired with the wrong
+# qualifies. Grouping is not decoration - a sub_category paired with the wrong
 # role matches no permission rule, so the holder silently gets nothing. The
 # staff write path rejects such a pairing, and it can only do that if the
 # role→sub_category relationship is written down somewhere. This is that place.
@@ -103,7 +103,7 @@ SUB_CATEGORIES_BY_ROLE = {
 VALID_SUB_CATEGORIES = frozenset().union(*SUB_CATEGORIES_BY_ROLE.values())
 
 # Every role the platform issues a token for. `VALID_ROLES` answers "does this
-# string mean anything?"; it does NOT answer "may this be assigned here" —
+# string mean anything?"; it does NOT answer "may this be assigned here" -
 # `owner` is a valid role that the staff API refuses to grant (Story 1.1).
 VALID_ROLES = frozenset(SUB_CATEGORIES_BY_ROLE)
 
@@ -197,12 +197,12 @@ def require_role(*roles: str):
         async def admin_endpoint(user: dict = Depends(require_role("owner", "admin"))):
             ...
     Returns the user dict so handlers don't need a separate get_current_user call.
-    Error message does NOT leak the allowed-role list — clients only learn
+    Error message does NOT leak the allowed-role list - clients only learn
     "forbidden", not which roles would have worked.
     """
     # Part 1.5 hardening (Patch K): reject empty-tuple at factory time. A
     # `Depends(require_role())` with no args silently denied every request
-    # before this guard — surfaced as a generic 403 instead of a programmer
+    # before this guard - surfaced as a generic 403 instead of a programmer
     # error.
     if not roles:
         raise ValueError("require_role() requires at least one role argument")
@@ -332,7 +332,7 @@ def require_owner_principal_or_accountant(request: Request):
     NOTE for anyone tempted to "simplify" this into a single
     ``require_access("owner", "admin", sub_category=(...))`` call: that would ALSO
     apply the sub_category check to the owner, and the owner's sub_category is
-    'owner' — so the school's owner would be locked out of their own certificates.
+    'owner' - so the school's owner would be locked out of their own certificates.
     The role check must short-circuit for owner BEFORE any sub_category test, which
     is exactly what this helper does.
     """
@@ -364,7 +364,7 @@ def require_exam_manager(request: Request):
 
 
 def require_exam_editor(request: Request):
-    """Exam *write* gate — admin+principal, admin+management, or teacher.
+    """Exam *write* gate - admin+principal, admin+management, or teacher.
 
     Differs from ``require_exam_manager`` by EXCLUDING the owner: the owner is
     view-only for exam editing (scheduling subject dates, entering marks). Used

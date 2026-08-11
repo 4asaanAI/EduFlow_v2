@@ -7,9 +7,9 @@
  * the three, rather than two screens that slowly stop agreeing.
  *
  * Three pieces:
- *   ViewPicker         — "Who to show": on the roll, NSO, left, recycle bin, everyone.
- *   EnrolmentStateModal — move one person between the three states, with a note.
- *   EraseConfirmModal   — destroy a record for good. The reason is compulsory and
+ *   ViewPicker         - "Who to show": on the roll, NSO, left, recycle bin, everyone.
+ *   EnrolmentStateModal - move one person between the three states, with a note.
+ *   EraseConfirmModal   - destroy a record for good. The reason is compulsory and
  *                         the screen says so BEFORE the button, which is the half
  *                         that was missing: the server already refused anything
  *                         under ten characters, silently, after the fact.
@@ -135,7 +135,7 @@ export function EnrolmentStateModal({ person, currentState, kind = 'student', on
         </div>
 
         <label style={{ display: 'block', color: 'var(--c-muted)', fontSize: 12, margin: '14px 0 5px' }}>
-          Note (optional) — kept in the action log next to your name
+          Note (optional) - kept in the action log next to your name
         </label>
         <textarea
           value={reason}

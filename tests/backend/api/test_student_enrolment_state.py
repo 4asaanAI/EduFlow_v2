@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""POST /api/students/{id}/enrolment — the way out of the roll and the way back.
+"""POST /api/students/{id}/enrolment - the way out of the roll and the way back.
 
 Owner requests 9 and 10, 2026-08-06.
 
@@ -99,7 +99,7 @@ def test_a_missing_student_is_a_404_not_a_silent_success(client):
     assert resp.status_code == 404
 
 
-# ─── The way back — owner request 9 ─────────────────────────────────────────────
+# ─── The way back - owner request 9 ─────────────────────────────────────────────
 
 def test_a_deactivated_student_can_be_restored(client, auth_headers, student_data):
     """THE test for owner request 9. Deactivate exactly as the row button does, then

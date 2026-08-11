@@ -1,4 +1,4 @@
-"""Story B.2 — dual-entrypoint parity + approval-gate guard for fee discounts.
+"""Story B.2 - dual-entrypoint parity + approval-gate guard for fee discounts.
 
 Below-threshold discounts apply identically through REST and the AI tool; above-threshold
 discounts park in `pending_discount_approvals` on BOTH paths (closing the AI bypass).

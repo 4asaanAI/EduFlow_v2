@@ -196,7 +196,7 @@ async def test_school_wide_tool_no_branch_filter(monkeypatch):
     monkeypatch.setattr(tool_functions_v2, "get_db", lambda: db)
     monkeypatch.setenv("SCHOOL_ID", "aaryans-joya")
 
-    # Owner has no branch_id — school-wide scope
+    # Owner has no branch_id - school-wide scope
     user = {"id": "owner-1", "role": "owner"}
     scope = None
 
@@ -204,6 +204,6 @@ async def test_school_wide_tool_no_branch_filter(monkeypatch):
 
     assert result["success"] is True
     class_names = [r["class_name"] for r in result["data"]]
-    # Owner sees all classes across branches — branch_id is NOT filtered
+    # Owner sees all classes across branches - branch_id is NOT filtered
     assert "Class 1" in class_names, f"Class 1 missing from owner view: {class_names}"
     assert "Class 2" in class_names, f"Class 2 missing from owner view: {class_names}"

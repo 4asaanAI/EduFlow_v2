@@ -1,4 +1,4 @@
-"""Story A.6 — dual-entrypoint parity for substitutions.
+"""Story A.6 - dual-entrypoint parity for substitutions.
 
 Same actor (owner) + equivalent inputs (REST passes period_number/subject_id directly;
 the AI resolves them from a timetable slot) → substitution doc + audit + notification

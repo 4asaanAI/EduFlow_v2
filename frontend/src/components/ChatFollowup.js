@@ -51,7 +51,7 @@ export default function ChatFollowup({ followup, onPick, onOpenPanel, isDark }) 
 
   if (followup.kind === 'disambiguation') {
     const options = Array.isArray(followup.options) ? followup.options.filter(Boolean) : [];
-    // No candidates to pick from — the streamed assistant text already carries
+    // No candidates to pick from - the streamed assistant text already carries
     // the question; rendering an empty card would be a dead-end.
     if (options.length === 0) return null;
     return (

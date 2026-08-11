@@ -1,4 +1,4 @@
-"""Part 4 Story 4.2: Audit write-ahead gate — fail-open tests.
+"""Part 4 Story 4.2: Audit write-ahead gate - fail-open tests.
 
 Ensures that a failure in the pre-write audit insert does NOT block AI
 responses. The request must still succeed (200) and a warning must be logged

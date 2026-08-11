@@ -199,8 +199,8 @@ function CrmPanel({ entityId, leads, opportunities, onChanged, setError }) {
       <div style={{ alignSelf: 'end' }}><ActionBtn label="Add lead" type="submit" /></div>
     </form>
     <DataTable headers={['Student', 'Contact', 'Class', 'Age', 'Value', 'Follow-up', 'Stage', 'Open']}
-      rows={leads.map(lead => [lead.student_name, lead.phone || lead.email || '—', lead.class_applying || '—',
-        `${Math.max(0, Math.floor((Date.now() - new Date(lead.created_at || Date.now()).getTime()) / 86400000))}d`, money(lead.estimated_value_paise), lead.next_follow_up || '—',
+      rows={leads.map(lead => [lead.student_name, lead.phone || lead.email || '-', lead.class_applying || '-',
+        `${Math.max(0, Math.floor((Date.now() - new Date(lead.created_at || Date.now()).getTime()) / 86400000))}d`, money(lead.estimated_value_paise), lead.next_follow_up || '-',
         <select aria-label={`Change stage for ${lead.student_name}`} value={lead.status || 'new'} onChange={event => changeStatus(lead, event.target.value)} style={smallSelect}>
           {['new', 'contacted', 'visit_scheduled', 'visited', 'documents_submitted', 'fee_paid', 'enrolled', 'lost'].map(value => <option key={value}>{value}</option>)}
         </select>, <button type="button" style={linkButton} onClick={() => setSelectedLeadId(lead.id)}>Activity & opportunity</button>])} emptyMsg="No CRM leads for this entity" />
@@ -226,7 +226,7 @@ function CrmPanel({ entityId, leads, opportunities, onChanged, setError }) {
       </form>
     </div>}
     <DataTable headers={['Opportunity', 'Lead', 'Stage', 'Amount', 'Probability', 'Expected close']}
-      rows={opportunities.map(row => [row.title, leads.find(lead => lead.id === row.enquiry_id)?.student_name || row.enquiry_id, row.stage, money(row.amount_paise), `${row.probability || 0}%`, row.expected_close_date || '—'])} emptyMsg="No CRM opportunities" />
+      rows={opportunities.map(row => [row.title, leads.find(lead => lead.id === row.enquiry_id)?.student_name || row.enquiry_id, row.stage, money(row.amount_paise), `${row.probability || 0}%`, row.expected_close_date || '-'])} emptyMsg="No CRM opportunities" />
   </>;
 }
 
@@ -373,9 +373,9 @@ function EntitiesPanel({ currentUser, entities, onChanged, setError }) {
       <div style={{ alignSelf: 'end' }}><ActionBtn label="Add entity" type="submit" /></div>
     </form>}
     <DataTable headers={['Name', 'Code', 'Type', 'Parent', 'Currency', 'Status', 'Default']}
-      rows={entities.map(row => [row.name, row.code, row.entity_type, entities.find(item => item.id === row.parent_entity_id)?.name || '—', row.currency,
+      rows={entities.map(row => [row.name, row.code, row.entity_type, entities.find(item => item.id === row.parent_entity_id)?.name || '-', row.currency,
         <Badge text={row.is_group ? 'consolidation only' : row.is_active ? 'active' : 'inactive'} color={row.is_group ? 'blue' : 'green'} />,
-        row.is_default ? <Badge text="default" color="green" /> : (!row.is_group && currentUser?.role === 'owner' ? <button type="button" style={linkButton} onClick={() => makeDefault(row.id)}>Make default</button> : '—')])} emptyMsg="No legal entities configured" />
+        row.is_default ? <Badge text="default" color="green" /> : (!row.is_group && currentUser?.role === 'owner' ? <button type="button" style={linkButton} onClick={() => makeDefault(row.id)}>Make default</button> : '-')])} emptyMsg="No legal entities configured" />
   </>;
 }
 

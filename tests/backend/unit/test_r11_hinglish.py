@@ -1,9 +1,9 @@
-"""R11.4 AC3 — content filter + PII redaction are non-degraded on Hindi
+"""R11.4 AC3 - content filter + PII redaction are non-degraded on Hindi
 (Devanagari) and Hinglish (romanized) input.
 
 Two properties must hold together:
   * benign Hindi/Hinglish must NOT be over-blocked (a school in UP types this
-    all day — a false block would break normal use); and
+    all day - a false block would break normal use); and
   * genuinely harmful Devanagari requests must STILL be blocked for students
     (the guardrail is not weaker just because the script changed).
 """
@@ -50,9 +50,9 @@ def test_harmful_devanagari_still_blocked_for_students(msg):
 def test_redaction_preserves_devanagari_names_but_masks_sensitive():
     doc = {
         "data": [{
-            "name": "राहुल शर्मा",            # a name — must pass through
+            "name": "राहुल शर्मा",            # a name - must pass through
             "class_name": "5A",
-            "date_of_birth": "2013-04-09",     # special-category — must be masked
+            "date_of_birth": "2013-04-09",     # special-category - must be masked
         }]
     }
     out = redact_for_llm(doc)

@@ -35,7 +35,7 @@ def _make_db(**overrides):
 
 async def test_reversed_coordinator_range_resolves_to_no_classes():
     """A range like "5-1" produced an empty alternation regex ("^()\\b") that
-    matched EVERY class name — widening the coordinator to the whole branch.
+    matched EVERY class name - widening the coordinator to the whole branch.
     It must now resolve to zero classes (deny by default)."""
     from ai import scope_resolver as rl
     db = _make_db(

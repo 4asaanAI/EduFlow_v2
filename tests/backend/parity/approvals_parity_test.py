@@ -1,4 +1,4 @@
-"""Story A.3 — dual-entrypoint parity for approval decisions.
+"""Story A.3 - dual-entrypoint parity for approval decisions.
 
 Same seed + same actor (owner) through REST PATCH .../decide and the AI
 `decide_approval_request` tool → approval doc + audit row + notification are

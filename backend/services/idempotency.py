@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 IDEMPOTENCY_TTL_HOURS = 24
 # R15.4 (P-L2): cap the stored response body so a large payload can't bloat the
 # idempotency doc past MongoDB's 16MB BSON limit (which would raise on write and
-# leave the key unstored). An oversized response is simply not cached — the retry
+# leave the key unstored). An oversized response is simply not cached - the retry
 # re-executes normally rather than replaying a truncated (corrupt) body.
 MAX_IDEMPOTENCY_BODY_BYTES = 512 * 1024  # 512 KB
 MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
@@ -66,7 +66,7 @@ async def get_replay_response(db, key: str) -> Response | None:
     # R11.6: the key hash already embeds the school, but re-assert schoolId on the
     # replay read too (defence-in-depth) so a key-hash reuse can never replay one
     # school's response into another. store_response persists schoolId, so this
-    # only tightens matching — it never drops a legitimate replay.
+    # only tightens matching - it never drops a legitimate replay.
     doc = await db.idempotency_keys.find_one(
         {"key": key, "schoolId": get_school_id(), "expires_at": {"$gt": now}}
     )
@@ -93,12 +93,12 @@ async def store_response(
         return
     if "text/event-stream" in content_type:
         return
-    # R15.4 (P-L2): never store an oversized body — cap, don't truncate. A
+    # R15.4 (P-L2): never store an oversized body - cap, don't truncate. A
     # truncated JSON body would replay as corrupt; skipping storage just makes
     # the (rare) large response non-idempotent, which is the safe failure mode.
     if len(body) > MAX_IDEMPOTENCY_BODY_BYTES:
         logger.warning(
-            "idempotency response too large to cache (%d bytes > %d) — not stored",
+            "idempotency response too large to cache (%d bytes > %d) - not stored",
             len(body), MAX_IDEMPOTENCY_BODY_BYTES,
         )
         return

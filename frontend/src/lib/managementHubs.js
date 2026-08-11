@@ -18,7 +18,7 @@ export const MANAGEMENT_HUBS = [
       // The Directory already listed everyone; it now carries the full information
       // and the search, and opening a row still leads to the same profile screens for
       // editing. `student-database` and `staff-tracker` remain reachable by deep link
-      // (the Directory's own rows point at them) and stay in the permission lists —
+      // (the Directory's own rows point at them) and stay in the permission lists -
       // only the duplicate front doors are gone.
       ['student-database', 'School Directory', 'Every student, guardian and staff member in one place', 'both'],
       ['data-import', 'Data Import', 'Update records from a sheet, or add new students', 'both'],
@@ -123,9 +123,9 @@ export function hubsForUser(user) {
   if (user?.role === 'owner') return MANAGEMENT_HUBS;
   if (user?.role === 'admin' && user?.sub_category === 'principal') return MANAGEMENT_HUBS;
   // R2-1/R2-5: every profile below leadership asks the same question of the same
-  // grant table. The accountant head used to have his two hubs hardcoded here — a
+  // grant table. The accountant head used to have his two hubs hardcoded here - a
   // second copy of the answer, sitting inside the module written to stop there being
-  // a second copy — so when decision 2 gave him attendance, vendors and transport,
+  // a second copy - so when decision 2 gave him attendance, vendors and transport,
   // his menu would silently have stayed at two hubs.
   if (user?.role === 'admin') {
     return MANAGEMENT_HUBS.filter(hub => canUseTool(user, hub.id));
@@ -142,7 +142,7 @@ export function hubsForUser(user) {
  * thirteen tagged `principal`.
  *
  * The list is deliberately ONE entry long. Most of those thirteen are not
- * duplicates of anything — Timetable, Academic Structure, marking attendance,
+ * duplicates of anything - Timetable, Academic Structure, marking attendance,
  * Transport, Parent Messages, Student Transfer exist only in the principal's set,
  * and hiding them would take real screens away from the owner to answer a
  * complaint about one. Principal Daily is different: it is the principal's own

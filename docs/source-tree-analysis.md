@@ -1,4 +1,4 @@
-# Source Tree Analysis — EduFlow
+# Source Tree Analysis - EduFlow
 
 _Generated: 2026-05-15 | Scan: deep_
 
@@ -19,7 +19,7 @@ eduflow/                            # Repository root
 ├── Makefile                        # Dev shortcut commands
 │
 ├── backend/                        # FastAPI API server
-│   ├── server.py                   # ★ Entry point — FastAPI app, all routers, middleware
+│   ├── server.py                   # ★ Entry point - FastAPI app, all routers, middleware
 │   ├── database.py                 # MongoDB connection + ScopedDatabase/ScopedCollection
 │   ├── tenant.py                   # Multi-tenancy helpers: scoped_filter(), scoped_query()
 │   ├── logging_config.py           # Structured JSON logging with contextvars
@@ -28,32 +28,32 @@ eduflow/                            # Repository root
 │   ├── middleware/
 │   │   └── auth.py                 # JWT decode, get_current_user, require_role, require_owner
 │   │
-│   ├── routes/                     # One file per domain — all import from middleware/auth.py
-│   │   ├── auth.py                 # /api/auth — login, refresh, logout, forgot/reset password
-│   │   ├── students.py             # /api/students — CRUD + guardians + photo + erase
-│   │   ├── staff.py                # /api/staff — CRUD + leave management
-│   │   ├── attendance.py           # /api/attendance — student + staff + bulk + SSE stream
-│   │   ├── fees.py                 # /api/fees — structures, transactions, discounts + SSE
-│   │   ├── academics.py            # /api/academics — assignments, exams, results, lesson plans, AI Q-papers
-│   │   ├── operations.py           # /api/ops, /api/operations, /api/transport — ops + workflow + transport
-│   │   ├── settings.py             # /api/settings — school config, forms, year-end transition
-│   │   ├── exports.py              # /api/export — CSV/Excel exports for all domains
-│   │   ├── notifications.py        # /api/notifications — CRUD + unread count
-│   │   ├── queries.py              # /api/queries — support ticket management
-│   │   ├── search.py               # /api/search — cross-entity search
-│   │   ├── sms.py                  # /api/sms — Twilio SMS sending + logs
-│   │   ├── upload.py               # /api/uploads — S3-backed file upload/serve/delete
-│   │   ├── chat.py                 # /api/chat — conversation CRUD + AI message stream
-│   │   ├── chat_upload.py          # /api/chat/upload — file attachment for AI chat
-│   │   ├── tools.py                # /api/tools/{tool_id}/execute — AI tool executor
-│   │   ├── tokens.py               # /api/tokens — AI token budget management
-│   │   ├── operator.py             # /api/operator — super-admin: rate limit overrides
-│   │   ├── reports.py              # /api/reports — attendance trends, fee summary charts
-│   │   ├── issues.py               # /api/issues — facility/tech/maintenance issue tracking
-│   │   ├── audit.py                # /api/audit-log — audit trail read access
-│   │   ├── activities.py           # /api/activities — houses, positions, teams
-│   │   ├── image_gen.py            # /api/image-gen — AI certificate/ID card generation
-│   │   └── import_data.py          # /api/import — CSV data import (validate + commit)
+│   ├── routes/                     # One file per domain - all import from middleware/auth.py
+│   │   ├── auth.py                 # /api/auth - login, refresh, logout, forgot/reset password
+│   │   ├── students.py             # /api/students - CRUD + guardians + photo + erase
+│   │   ├── staff.py                # /api/staff - CRUD + leave management
+│   │   ├── attendance.py           # /api/attendance - student + staff + bulk + SSE stream
+│   │   ├── fees.py                 # /api/fees - structures, transactions, discounts + SSE
+│   │   ├── academics.py            # /api/academics - assignments, exams, results, lesson plans, AI Q-papers
+│   │   ├── operations.py           # /api/ops, /api/operations, /api/transport - ops + workflow + transport
+│   │   ├── settings.py             # /api/settings - school config, forms, year-end transition
+│   │   ├── exports.py              # /api/export - CSV/Excel exports for all domains
+│   │   ├── notifications.py        # /api/notifications - CRUD + unread count
+│   │   ├── queries.py              # /api/queries - support ticket management
+│   │   ├── search.py               # /api/search - cross-entity search
+│   │   ├── sms.py                  # /api/sms - Twilio SMS sending + logs
+│   │   ├── upload.py               # /api/uploads - S3-backed file upload/serve/delete
+│   │   ├── chat.py                 # /api/chat - conversation CRUD + AI message stream
+│   │   ├── chat_upload.py          # /api/chat/upload - file attachment for AI chat
+│   │   ├── tools.py                # /api/tools/{tool_id}/execute - AI tool executor
+│   │   ├── tokens.py               # /api/tokens - AI token budget management
+│   │   ├── operator.py             # /api/operator - super-admin: rate limit overrides
+│   │   ├── reports.py              # /api/reports - attendance trends, fee summary charts
+│   │   ├── issues.py               # /api/issues - facility/tech/maintenance issue tracking
+│   │   ├── audit.py                # /api/audit-log - audit trail read access
+│   │   ├── activities.py           # /api/activities - houses, positions, teams
+│   │   ├── image_gen.py            # /api/image-gen - AI certificate/ID card generation
+│   │   └── import_data.py          # /api/import - CSV data import (validate + commit)
 │   │
 │   ├── services/                   # Standalone service modules
 │   │   ├── ai_rate_limiter.py      # Per-action AI rate limiting with Redis-like counters
@@ -72,7 +72,7 @@ eduflow/                            # Repository root
 │   │   ├── content_filter.py       # Content safety filter
 │   │   ├── prompts.py              # System prompt templates per role
 │   │   ├── tool_functions.py       # AI tool implementations (v1)
-│   │   └── tool_functions_v2.py    # AI tool implementations (v2 — active)
+│   │   └── tool_functions_v2.py    # AI tool implementations (v2 - active)
 │   │
 │   ├── config/
 │   │   └── ai_rate_limits.yaml     # Per-role AI action rate limit configuration
@@ -85,7 +85,7 @@ eduflow/                            # Repository root
 │   ├── models/
 │   │   └── schemas.py              # Pydantic models / request/response schemas
 │   │
-│   └── uploads/                    # (Legacy) local file storage — replaced by S3
+│   └── uploads/                    # (Legacy) local file storage - replaced by S3
 │
 ├── frontend/                       # React SPA
 │   ├── package.json                # Frontend dependencies
@@ -107,7 +107,7 @@ eduflow/                            # Repository root
 │       │   └── use-toast.js        # Toast notification hook (sonner)
 │       │
 │       ├── lib/
-│       │   ├── api.js              # ★ Central API client — all fetch() calls
+│       │   ├── api.js              # ★ Central API client - all fetch() calls
 │       │   ├── authSession.js      # Auth session persistence helpers
 │       │   └── utils.js            # Shared utility functions (cn() etc.)
 │       │
@@ -166,7 +166,7 @@ eduflow/                            # Repository root
 │   └── support/                    # Shared test utilities
 │
 ├── _bmad-output/                   # BMAD planning artifacts
-│   ├── project-context.md          # ★ AI agent context (34 patterns) — keep current
+│   ├── project-context.md          # ★ AI agent context (34 patterns) - keep current
 │   ├── platform-quality-sweep.md   # Master quality sweep tracker
 │   └── parts/                      # Per-part PRDs, stories, test artifacts
 │

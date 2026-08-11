@@ -10,11 +10,11 @@ The quality-regression gate for the AI layer. Three tiers:
 
 ## The corpus
 
-`_bmad-output/test-artifacts/eval-corpus/corpus.json` — ≥40 golden conversations
+`_bmad-output/test-artifacts/eval-corpus/corpus.json` - ≥40 golden conversations
 covering every role/sub_category, plus the production incident, follow-ups, ambiguous
 asks, denials, and Hinglish. Each entry declares its `expected_tool`,
 `expected_outcome` (`answer|confirm|denial|disambiguation|chat`), `language`, `tags`,
-and a `rubric` (for the judge). Edit the JSON to add cases — the structural tier
+and a `rubric` (for the judge). Edit the JSON to add cases - the structural tier
 validates coherence automatically.
 
 ## Running
@@ -31,11 +31,11 @@ The LLM-judge tier runs the corpus through the **real** prompt pipeline + a real
 judge, scores correctness/completeness/tone per rubric, and **blocks release** if any
 dimension drops more than the threshold (`judge.DEFAULT_THRESHOLD`, 0.05) below the
 recorded baseline in `scores-baseline.json`. The first credentialed run writes that
-baseline. A turn that produces no reply (the incident class) scores zero — it can
+baseline. A turn that produces no reply (the incident class) scores zero - it can
 never be silently excused.
 
 ## When to run the LLM-judge tier
 
 Any change to `ai/prompts.py`, `ai/tool_functions*.py`, `ai/context_builder.py`,
 `ai/llm_client.py`, or the chat tool-loop should trigger a credentialed eval run
-before merge — see the AI-reliability execution protocol.
+before merge - see the AI-reliability execution protocol.

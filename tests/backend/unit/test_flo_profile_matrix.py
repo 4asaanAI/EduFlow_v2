@@ -33,7 +33,7 @@ def _open_to_any_admin(tool_def: dict) -> bool:
 
     R2-3: the accountant and management heads are widened by `access_domain`, but
     only across tools the registry actually offers to an admin. A tool marked
-    roles=["owner"] is owner-only however its domain reads — that distinction is what
+    roles=["owner"] is owner-only however its domain reads - that distinction is what
     kept `year_end_transition`, the branch CRUD and the legal-entity CRUD out of
     Sonu's and Lalit's hands.
     """
@@ -44,7 +44,7 @@ def _named_in_the_matrix(profile, tool_name, expected, open_to_admin):
     """R2-5: the matrix may name a tool for or against a profile, overriding its domain.
 
     Four domains cannot express "the accountant head yes, the management head no"
-    about a school bus route — both would have to be called finance. A denial always
+    about a school bus route - both would have to be called finance. A denial always
     wins over a grant, because the safe answer to a contradiction is no.
     """
     from services.profile_matrix import PROFILE_MATRIX
@@ -127,7 +127,7 @@ def test_profile_account_permissions_are_exact():
     """R2-4 / decision 4, 2026-08-10: the management head no longer holds these.
 
     This test previously asserted that MANAGEMENT could use both. That was the earlier
-    intent, and the narrower rules underneath it were sound — the service still limits
+    intent, and the narrower rules underneath it were sound - the service still limits
     management to STUDENT passwords and lets nobody but the school's owner change an
     owner's. It was reversed deliberately, not by accident: handing someone a way into
     the platform, or changing a password guarding 1,876 children's records, belongs to
@@ -135,7 +135,7 @@ def test_profile_account_permissions_are_exact():
 
     The narrower service rules stay exactly as they are. This is the outer door in
     front of them, and if the decision is ever reversed again, the way back is to take
-    these two names out of LEADERSHIP_ONLY_TOOL_NAMES — not to loosen the service.
+    these two names out of LEADERSHIP_ONLY_TOOL_NAMES - not to loosen the service.
     """
     create_login = TOOL_REGISTRY["create_student_login"]
     set_password = TOOL_REGISTRY["set_profile_password"]

@@ -1,4 +1,4 @@
-"""Epic F dispatch-level integration — F.4 kill-switch, F.5 dry-run, F.10
+"""Epic F dispatch-level integration - F.4 kill-switch, F.5 dry-run, F.10
 two-step destructive + deletion audit, F.11 lockdown, F.2 minor-read audit.
 
 Drives the real `/api/chat/confirm` dispatch path with seeded confirm tokens.

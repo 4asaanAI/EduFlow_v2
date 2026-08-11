@@ -1,4 +1,4 @@
-"""Part 1 (Auth + RBAC) — direct unit tests for ai/scope_resolver.py.
+"""Part 1 (Auth + RBAC) - direct unit tests for ai/scope_resolver.py.
 
 Coverage target: every role × sub_category × scope-type combination,
 every fallback path, every Scope helper method.
@@ -251,7 +251,7 @@ async def test_resolve_rejects_empty_user():
         await rl.resolve_scope({}, _make_db())
 
 
-# ─── Scope.filter() — per-collection behaviour ─────────────────────────────
+# ─── Scope.filter() - per-collection behaviour ─────────────────────────────
 
 
 def test_scope_filter_all_type_returns_empty():
@@ -470,7 +470,7 @@ def test_scope_rejects_empty_user_id():
     """Part 1.5 Patch E: empty-string user_id must fail closed at construction.
 
     Without this guard `can_see_personal_info` matched empty-vs-empty and the
-    self-only filter became {"user_id": ""} — a permissive oracle.
+    self-only filter became {"user_id": ""} - a permissive oracle.
     """
     rl = _import_resolver()
     with pytest.raises(ValueError):
@@ -510,7 +510,7 @@ async def test_resolve_scope_propagates_branch_id_from_jwt():
 
 @_async
 async def test_resolve_scope_owner_branch_id_is_none():
-    """Owner intentionally crosses branches — branch_id stays None."""
+    """Owner intentionally crosses branches - branch_id stays None."""
     rl = _import_resolver()
     db = _make_db()
     scope = await rl.resolve_scope(

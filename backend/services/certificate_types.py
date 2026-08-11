@@ -1,4 +1,4 @@
-"""R2-9 — one vocabulary for the school's official documents.
+"""R2-9 - one vocabulary for the school's official documents.
 
 Before this file there were **three** different names for the same piece of paper, in
 three places that all had to agree and never did:
@@ -15,8 +15,8 @@ Only ``bonafide`` and ``character`` appeared in all of them. The consequences we
 not theoretical:
 
 * The Certificate Generator screen's dropdown uses the **printer's** words, so a Transfer
-  Certificate raised from that screen was stored as ``transfer`` — which is not in the
-  approval list — and was therefore **auto-issued to anybody**, including the two people
+  Certificate raised from that screen was stored as ``transfer`` - which is not in the
+  approval list - and was therefore **auto-issued to anybody**, including the two people
   the school explicitly wanted to hold back. The single most sensitive document the
   school produces was the one the mismatch let through.
 * ``migration``, ``sports`` and ``participation`` could be printed and had no approval
@@ -43,7 +43,7 @@ from typing import Dict, FrozenSet
 #
 # The rule for which documents need it, agreed in plan §1.6: a document that asserts a
 # FACT ABOUT A CHILD'S STANDING needs approving, because the school is vouching for it.
-# An award for taking part does not — nobody is harmed by an unapproved certificate
+# An award for taking part does not - nobody is harmed by an unapproved certificate
 # saying a child ran in the sports day.
 #
 # `printable` says whether `routes/image_gen.py` has a template for it. `merit` is a

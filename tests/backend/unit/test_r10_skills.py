@@ -1,8 +1,8 @@
-"""Epic R10.3 — Skill acquisition from repeated usage.
+"""Epic R10.3 - Skill acquisition from repeated usage.
 
 - AC1: a routine is PROPOSED (never silently saved); saved only on explicit confirm;
        write-embedding routines get a two-step, gate-preserving disclosure.
-- AC2: saved routines are recalled as FENCED reference data — they never bypass the
+- AC2: saved routines are recalled as FENCED reference data - they never bypass the
        confirm-token/kill-switch/lockdown gates (they are background, not commands).
 - AC3: routines are versioned; a routine whose underlying tool schema drifted is
        surfaced as "needs updating" on recall instead of silently replaying.

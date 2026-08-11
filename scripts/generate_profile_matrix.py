@@ -1,8 +1,8 @@
 """Generate the frontend's mirror of the profile matrix.
 
 The matrix lives in Python because the server and Flo are the surfaces that actually
-enforce it. The menus need the same answer, and the alternative — teaching Jest and
-Vite to shell out to Python during a build — buys a build step, a new failure mode on
+enforce it. The menus need the same answer, and the alternative - teaching Jest and
+Vite to shell out to Python during a build - buys a build step, a new failure mode on
 the Amplify runner, and nothing else.
 
 So the mirror is generated and CHECKED IN, and
@@ -30,7 +30,7 @@ from services.profile_matrix import ALL_SCREENS, PROFILE_MATRIX  # noqa: E402
 TARGET = REPO_ROOT / "frontend" / "src" / "lib" / "profileMatrix.generated.js"
 
 HEADER = """/**
- * GENERATED FILE — DO NOT EDIT BY HAND.
+ * GENERATED FILE - DO NOT EDIT BY HAND.
  *
  * Mirror of `backend/services/profile_matrix.py`, which is the source of truth for
  * who may reach what. Regenerate with:

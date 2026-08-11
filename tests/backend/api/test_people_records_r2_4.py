@@ -1,21 +1,21 @@
 from __future__ import annotations
 
-"""R2-4 — who may add, edit, remove and let people in.
+"""R2-4 - who may add, edit, remove and let people in.
 
 Decision 4, 2026-08-10: the management head may add and edit students and staff. He
 may NOT take them off the roll, and he may not create or reset any login.
 Decision 5: the accountant head may create students too.
 
 Before this, `DELETE /api/students/{id}` and `DELETE /api/staff/{id}` asked only
-whether the caller's role was owner or admin — which is every admin desk in the
-school — and the Flo tools `create_student_login` and `set_profile_password` reached
+whether the caller's role was owner or admin - which is every admin desk in the
+school - and the Flo tools `create_student_login` and `set_profile_password` reached
 the management head because the classification loop at the bottom of
 `ai/tool_functions_v2.py` ends in `else: non_finance`. Anything nobody classified
 became his by default.
 
 The delete guard lives in the SERVICE, not on the route, so the screen and Flo inherit
 one answer. A check on the route alone would have left the chat door open, which is
-precisely the drift the shared-service pattern exists to prevent — so there is a test
+precisely the drift the shared-service pattern exists to prevent - so there is a test
 below for each door.
 """
 

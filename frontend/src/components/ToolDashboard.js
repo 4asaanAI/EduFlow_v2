@@ -16,7 +16,7 @@ const T = {
   ...Object.fromEntries(MANAGEMENT_HUBS.map(hub => [hub.id, {
     id: hub.id, name: hub.name, subtitle: hub.subtitle, icon: Compass, color: hub.color,
   }])),
-  // Epic 7 — find any person (students + staff) in one place. Owner + Principal
+  // Epic 7 - find any person (students + staff) in one place. Owner + Principal
   // only; it lives in their tool sets and reads the existing endpoints.
   // 'school-directory' was retired on 2026-08-07 (D-44 cluster D): it and
   // 'student-database' listed the same students, one read-only. One screen now,
@@ -40,7 +40,7 @@ const T = {
   'custom-form-builder':   { id: 'custom-form-builder',   name: 'Form Builder',        subtitle: 'Dynamic forms',         icon: FilePlus,      color: '#737373' },
   'attendance-alerts':     { id: 'attendance-alerts',     name: 'Attendance Alerts',   subtitle: 'SMS below threshold',   icon: MessageSquare, color: '#a78bfa' },
   'query-section':         { id: 'query-section',         name: 'Query & Support',     subtitle: 'Tickets & issues',      icon: LifeBuoy,      color: '#22d3ee' },
-  // Phase 3 — new tool panels
+  // Phase 3 - new tool panels
   'facility-requests':     { id: 'facility-requests',     name: 'Facility Requests',   subtitle: 'Maintenance queue',     icon: Wrench,        color: '#fb923c' },
   'raise-maintenance':     { id: 'raise-maintenance',     name: 'Report an Issue',     subtitle: 'Raise maintenance request', icon: Wrench,    color: '#fb923c' },
   'tech-issues':           { id: 'tech-issues',           name: 'Tech Issues',         subtitle: 'IT request tracker',    icon: Monitor,       color: '#818cf8' },
@@ -126,7 +126,7 @@ const TOOL_SETS = {
   admin_transport_head: [
     'student-database','transport-manager','asset-tracker','custom-form-builder','raise-maintenance',
   ],
-  // D-49: 'id-card-generator' removed — the server refuses a receptionist.
+  // D-49: 'id-card-generator' removed - the server refuses a receptionist.
   admin_receptionist: [
     'student-database','enquiry-register','parent-message',
     'student-transfer','asset-tracker','incident-tracker',
@@ -136,7 +136,7 @@ const TOOL_SETS = {
     'tech-issues','raise-maintenance','custom-form-builder','query-section',
   ],
   // Epic 7 consolidation: the maintenance admin carried BOTH 'facility-requests'
-  // (the queue they manage) and 'raise-maintenance' ("Report an Issue") — two
+  // (the queue they manage) and 'raise-maintenance' ("Report an Issue") - two
   // entry points into the same maintenance queue for the one role that owns it.
   // Kept the queue; dropped the duplicate report shortcut. 'raise-maintenance'
   // still exists for the OTHER roles, where it is their only way in.
@@ -187,7 +187,7 @@ const OWNER_TOOLS = [
   'custom-form-builder','query-section','what-ive-learned','conversation-trace',
 ];
 
-// Exported for tests — the role→tool-id mapping is a security-adjacent surface
+// Exported for tests - the role→tool-id mapping is a security-adjacent surface
 // (Epic 7, Story 7.2/7.3: the Directory is Owner+Principal only, and consolidated
 // sets must not silently regain a duplicate). The server remains the real gate.
 export { OWNER_TOOLS, TOOL_SETS };

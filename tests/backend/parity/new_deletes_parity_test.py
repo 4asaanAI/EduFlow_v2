@@ -2,7 +2,7 @@
 
 Flo could create nine kinds of record and remove none of them. Each new delete is a
 thin adapter over the same domain service its REST route calls, so these prove the two
-doors leave the database in the same state — and that the "still in use" guard fires
+doors leave the database in the same state - and that the "still in use" guard fires
 identically whichever door you come through.
 
 `delete_enquiry` covers records made by both `create_enquiry` and `create_crm_lead`:
@@ -53,7 +53,7 @@ def _is_delete_audit(row) -> bool:
     The setup step creates the record through REST in both halves of each test, and
     creation writes its own rows carrying fresh UUIDs inside `changes` (staff creation
     logs a `credential_issued` row naming the new staff id). Those belong to the create
-    parity tests, not these — comparing them here would fail on identifiers that are
+    parity tests, not these - comparing them here would fail on identifiers that are
     supposed to differ.
     """
     action = str(row.get("action", ""))
@@ -204,7 +204,7 @@ async def test_delete_certificate_ai_and_rest_identical(client, fake_db):
 
 
 async def test_an_issued_certificate_is_refused_through_both_doors(client, fake_db):
-    """The family may be holding the printed copy — its serial must keep meaning something."""
+    """The family may be holding the printed copy - its serial must keep meaning something."""
     _clear(fake_db, "certificates")
     cid = _seed_certificate(fake_db, status="generated")
 

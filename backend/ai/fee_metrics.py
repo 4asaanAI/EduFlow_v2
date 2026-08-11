@@ -52,7 +52,7 @@ async def compute_fee_totals(db, match: dict) -> dict:
     """Canonical collected / outstanding / collection_rate for a fee_transactions filter.
 
     ``match`` must already be tenant/branch scoped by the caller (each caller has a
-    different scoping helper — scoped_query, _tenant_query, _tenant_match).
+    different scoping helper - scoped_query, _tenant_query, _tenant_match).
     """
     pipeline = [
         {"$match": match},

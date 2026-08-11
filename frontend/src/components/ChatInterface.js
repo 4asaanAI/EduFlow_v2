@@ -14,8 +14,8 @@ import ChatFollowup from './ChatFollowup';
 
 
 /* Epic 5 (UX-DR8): ONE left edge and ONE vertical rhythm for everything stacked in a
-   streaming turn. The gutter is the space the assistant avatar occupies — 28px wide
-   plus the 14px flex gap — so a progress panel, a tool badge and the reply body all
+   streaming turn. The gutter is the space the assistant avatar occupies - 28px wide
+   plus the 14px flex gap - so a progress panel, a tool badge and the reply body all
    begin at the same place. Before this they began at 42px, 0px and 42px. */
 export const STREAM_GUTTER = 42;
 export const STREAM_GAP = 8;
@@ -26,7 +26,7 @@ export const STREAM_GAP = 8;
 
    THESE TWO NUMBERS ARE JUDGEMENTS, NOT MEASUREMENTS. They were reasoned from the
    keepalive interval and have never been watched against a real connection at the
-   school on a real morning — they look precise here and are not. Logged as D-32 and
+   school on a real morning - they look precise here and are not. Logged as D-32 and
    on Abhimanyu's checklist. If Flo nags on answers that were always going to arrive,
    raise the first; if people give up before it speaks, lower it. */
 export const STALL_SLOW_MS = 12000;
@@ -55,7 +55,7 @@ async function executeAction(convId, action, params, label) {
 function TypingIndicator() {
   return (
     <div className="assistant-row" style={{ display: 'flex', gap: 14, padding: '12px 0', alignItems: 'flex-start' }}>
-      {/* Same face as every one of Flo's replies — it is Flo who is thinking, and it
+      {/* Same face as every one of Flo's replies - it is Flo who is thinking, and it
           is hidden on a phone for the same reason (owner request 7). The shared
           .assistant-row / .assistant-avatar classes are what keep the two in step. */}
       <div className="assistant-avatar" style={{
@@ -98,7 +98,7 @@ function HealthScoreWidget({ user }) {
       const d = r.data?.summary || {};
       // Epic 4 / Story 4.2: attendance_rate reads "not marked yet" before anyone has
       // taken the register. `parseFloat(...) || 0` would score that as 0% attendance
-      // — a school-is-empty verdict drawn from the absence of data, which is the
+      // - a school-is-empty verdict drawn from the absence of data, which is the
       // exact defect this epic removes. Unmarked attendance is excluded from the
       // score and its weight redistributed, rather than counted as a failure.
       const attMarked = d.attendance_marked_today !== false && !Number.isNaN(parseFloat(d.attendance_rate));
@@ -241,9 +241,9 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   const autoRetryRef = useRef(0);
 
   // R8.1/R8.3: visible, recoverable failure surfaces (never silent).
-  const [sendError, setSendError] = useState('');       // FH2 — couldn't start a turn
-  const [loadError, setLoadError] = useState(false);     // FM3 — history load failed
-  const [rechargeError, setRechargeError] = useState(''); // FH5 — checkout failed
+  const [sendError, setSendError] = useState('');       // FH2 - couldn't start a turn
+  const [loadError, setLoadError] = useState(false);     // FM3 - history load failed
+  const [rechargeError, setRechargeError] = useState(''); // FH5 - checkout failed
 
   // New state variables for thinking, confirm action
   const [thinkingSteps, setThinkingSteps] = useState([]);
@@ -260,7 +260,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   const [tokenExhausted, setTokenExhausted] = useState(false);
 
   // Epic 5 / Story 5.2: the stall watchdog. Every detectable failure was already
-  // handled by epic R8 — a dropped stream, a missing `done`, a 401. What was NOT
+  // handled by epic R8 - a dropped stream, a missing `done`, a 401. What was NOT
   // handled is a connection that is accepted and then goes quiet: `reader.read()`
   // waits forever and the typing dots animate with nothing behind them.
   const [stallState, setStallState] = useState(null);  // null | 'slow' | 'dead'
@@ -283,7 +283,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     ];
   }, []);
 
-  // A timer outliving the component would fire against a dead one — that is where
+  // A timer outliving the component would fire against a dead one - that is where
   // "cannot update state on an unmounted component" and phantom banners come from.
   useEffect(() => () => stallTimersRef.current.forEach(clearTimeout), []);
 
@@ -337,7 +337,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   useEffect(() => {
     if (convId) {
       if (justCreatedRef.current) {
-        // The conversation was just created by an in-flight send — do NOT reset
+        // The conversation was just created by an in-flight send - do NOT reset
         // or reload, that would abort the stream we just started.
         justCreatedRef.current = false;
         return;
@@ -383,7 +383,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
         setTokenCanRecharge(isExhausted && d.self_recharge_enabled !== false);
       }
     } catch {
-      // Non-fatal — token bar just won't show
+      // Non-fatal - token bar just won't show
     }
   }, []);
 
@@ -404,7 +404,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRecharge = async (packId) => {
-    // FH5 (R8.3 AC2): a failed checkout must NOT be swallowed — the user is stuck
+    // FH5 (R8.3 AC2): a failed checkout must NOT be swallowed - the user is stuck
     // with a disabled input otherwise. Surface an error + let them retry.
     setRechargeError('');
     try {
@@ -424,13 +424,13 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
       }
       setRechargeError('Could not start checkout. Please try again.');
     } catch {
-      setRechargeError('Could not start checkout — please check your connection and try again.');
+      setRechargeError('Could not start checkout - please check your connection and try again.');
     }
   };
 
   const loadMessages = async (id) => {
     // FM3 (R8.1 AC3): a failed history load must be distinguishable from an empty
-    // conversation — show a retry affordance instead of a silent blank screen.
+    // conversation - show a retry affordance instead of a silent blank screen.
     setLoadError(false);
     try {
       const res = await getMessages(id);
@@ -464,11 +464,11 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
       try {
         res = await createConversation();
       } catch {
-        setSendError("Couldn't start a new conversation — check your connection and try again.");
+        setSendError("Couldn't start a new conversation - check your connection and try again.");
         return false;
       }
       if (!res || !res.success || !res.data?.id) {
-        setSendError("Couldn't start a new conversation — please try again.");
+        setSendError("Couldn't start a new conversation - please try again.");
         return false;
       }
       cid = res.data.id;
@@ -501,7 +501,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
     setStreaming(true);
     setCurrentStreamMsg(initialStream);
 
-    // FM4 (R8.2 AC2): mutate the stream message via a ref + one setState — never
+    // FM4 (R8.2 AC2): mutate the stream message via a ref + one setState - never
     // with side effects inside a state updater (StrictMode double-invokes them).
     const setStream = (next) => {
       streamMsgRef.current = next;
@@ -510,7 +510,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
 
     let streamErrored = false;
     let producedOutput = false;   // R1.2 AC2: did this turn render anything at all?
-    // Story 5.2: start the clock the moment the turn begins, not on first token —
+    // Story 5.2: start the clock the moment the turn begins, not on first token -
     // a request that is accepted and then never answered is the case being caught.
     noteStreamActivity();
     try {
@@ -521,7 +521,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
         const parsed = event;
 
         // R1.2 AC2: mark that the turn produced *something* user-visible. Purely
-        // internal events (thinking/keepalive) don't count — if only those fire
+        // internal events (thinking/keepalive) don't count - if only those fire
         // and the stream then resolves, the post-await backstop shows a fallback.
         if (!['thinking', 'thinking_clear', 'keepalive'].includes(event.type)) {
           producedOutput = true;
@@ -577,19 +577,19 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           const prev = streamMsgRef.current;
           if (prev) setStream({ ...prev, richBlocks: event.blocks || [], actionButtons: event.action_buttons || [] });
         } else if (event.type === 'recalled_memories') {
-          // R10.4 AC2: memories recalled into this reply — carried on the stream
+          // R10.4 AC2: memories recalled into this reply - carried on the stream
           // message so the "Data used" footer discloses them (commits with `done`).
           const prev = streamMsgRef.current;
           if (prev) setStream({ ...prev, recalledMemories: event.memories || [] });
         } else if (event.type === 'confirm_action') {
           setConfirmAction(parsed);
         } else if (event.type === 'disambiguation') {
-          // I.3: ambiguous match — show selectable candidates; no write, no token.
+          // I.3: ambiguous match - show selectable candidates; no write, no token.
           setFollowup({ kind: 'disambiguation', message: parsed.message, options: parsed.options || [] });
         } else if (event.type === 'navigate') {
           // Legacy direct panel switch (tool_id), OR an E.6 can't-complete
           // fallback carrying a deep-link `url`. The deep-link is shown as a
-          // clickable card (I.3) — never an automatic jump — so nothing moves
+          // clickable card (I.3) - never an automatic jump - so nothing moves
           // under the user after a dead-end.
           if (parsed.tool_id) {
             window.dispatchEvent(new CustomEvent('eduflow-navigate', { detail: { toolId: parsed.tool_id } }));
@@ -597,7 +597,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
             setFollowup({ kind: 'deeplink', message: parsed.message, url: parsed.url });
           }
         } else if (event.type === 'token_exhausted') {
-          // Token budget exhausted — show recharge prompt and disable input
+          // Token budget exhausted - show recharge prompt and disable input
           setTokenExhausted(true);
           setTokenCanRecharge(!!event.can_recharge);
           fetchTokenUsage();
@@ -708,7 +708,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           }
           // Finalize thinking - mark all steps as done
           setThinkingSteps(prev => prev.map(s => ({ ...s, status: 'done' })));
-          // R1.2 AC3: finalize the streamed body whenever there is one — do NOT
+          // R1.2 AC3: finalize the streamed body whenever there is one - do NOT
           // gate on processedMessageIds (an id-only check silently dropped
           // streamed content, audit S10/FM2). The flush effect dedupes by id.
           // FM4: side effects run OUTSIDE the state updater (read from the ref).
@@ -722,7 +722,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           }
           setStreaming(false);
         } else {
-          // R1.1 AC2: an event type the client doesn't recognise — log it (for
+          // R1.1 AC2: an event type the client doesn't recognise - log it (for
           // telemetry / future compatibility) rather than dropping it silently.
           console.warn('unhandled SSE event', event.type, event);
         }
@@ -730,7 +730,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
       if (streamErrored) return;
       // R1.2 AC2: terminal-state backstop (FM4: no side effects inside updaters).
       // If a live stream message is still open, finalize it; if the stream
-      // resolved having produced nothing at all (a silent resolve — audit S12),
+      // resolved having produced nothing at all (a silent resolve - audit S12),
       // render the generic fallback so the turn is never blank.
       {
         const prev = streamMsgRef.current;
@@ -844,7 +844,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
 
   return (
     // .chat-watermark paints The Aaryans' crest faintly behind the whole
-    // conversation — see index.css. Applied here, on the chat shell shared by
+    // conversation - see index.css. Applied here, on the chat shell shared by
     // every role, so it appears once for owner, principal, admin, teacher and
     // student alike rather than being added per profile.
     <div
@@ -882,7 +882,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
             </div>
           )}
 
-          {/* FM3 (R8.1 AC3): history load failed — distinct from an empty chat. */}
+          {/* FM3 (R8.1 AC3): history load failed - distinct from an empty chat. */}
           {loadError && (
             <div data-testid="load-error-banner" style={{
               border: '1px solid var(--border)', background: 'var(--bg-card)',
@@ -898,7 +898,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
             </div>
           )}
 
-          {/* FH2 (R8.1 AC2): couldn't even start a turn — text was restored to input. */}
+          {/* FH2 (R8.1 AC2): couldn't even start a turn - text was restored to input. */}
           {sendError && (
             <div data-testid="send-error-banner" style={{
               border: '1px solid var(--border)', background: 'var(--bg-card)',
@@ -914,9 +914,9 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           {isNewChat && (
             <div className="fade-in" style={{ textAlign: 'center', padding: '60px 0 40px' }}>
               {/* Epic 9: the generic sparkle chip became the marketing site's
-                  robot — Flo now has one recognisable face across the website
+                  robot - Flo now has one recognisable face across the website
                   and the product. Flo appears here, on the sign-in screen,
-                  beside each reply, and on empty/error states — never on a
+                  beside each reply, and on empty/error states - never on a
                   working screen. */}
               <div style={{ margin: '0 auto 10px', display: 'flex', justifyContent: 'center' }}>
                 <BotMascot size={130} data-testid="assistant-mascot" />
@@ -928,7 +928,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
               }}>
                 Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {currentUser.name.split(' ')[0]}
               </h2>
-              {/* Flo says its own name here — this is where someone learns what to
+              {/* Flo says its own name here - this is where someone learns what to
                   call it, and it is the same name used everywhere else. */}
               <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-md)', marginBottom: 28, fontWeight: 500 }}>
                 I'm Flo. How can I help you today?
@@ -941,7 +941,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           {messages.map(msg => {
             // R1.2 AC1: a finalized assistant turn with no content, blocks, or
             // buttons must NOT be filtered out (that silent drop was the visible
-            // half of the incident) — render a fallback line instead.
+            // half of the incident) - render a fallback line instead.
             if (msg.role === 'assistant') {
               const hasContent = msg.content && msg.content.trim();
               const richBlocks = msg.richBlocks || msg.rich_content?.rich_blocks || [];
@@ -984,7 +984,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           {streaming && currentStreamMsg && (() => {
             // Epic 5 / Story 5.1. `thinkingSteps` already carries tool_start and
             // tool_done, so rendering ToolCallBadge alongside the panel announced
-            // the SAME tool twice in two different shapes — owner item 12. The
+            // the SAME tool twice in two different shapes - owner item 12. The
             // panel is the single account of progress; the badge is the fallback
             // for when there is no panel to show.
             const hasProgressPanel = thinkingSteps.some(
@@ -996,7 +996,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
                     (28px + 14px gap), 0 on a phone where the avatar is hidden (owner
                     request 7). Every stacked element reads the same variable, so the
                     progress panel, any badge and the reply body have ONE left edge
-                    instead of three — and on a phone all three sit flush left rather
+                    instead of three - and on a phone all three sit flush left rather
                     than indenting past a face that is not drawn. STREAM_GUTTER stays
                     exported as the desktop number for the tests that assert it. */}
                 {hasProgressPanel ? (
@@ -1032,7 +1032,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
                   >
                     {stallState === 'slow'
                       ? 'Flo is taking longer than usual. Still working…'
-                      : 'No response yet. The connection may have dropped — try sending it again.'}
+                      : 'No response yet. The connection may have dropped - try sending it again.'}
                   </div>
                 )}
               </div>
@@ -1067,7 +1067,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
               isDark={isDark}
               onPick={(opt) => {
                 // Only dismiss the chooser once we actually have something to
-                // send — otherwise a value-less option would leave a dead-end.
+                // send - otherwise a value-less option would leave a dead-end.
                 if (opt && opt.value != null && String(opt.value).trim()) {
                   setFollowup(null);
                   handleSend(String(opt.value));
@@ -1091,7 +1091,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
         padding: '0 24px 4px', zIndex: 39, pointerEvents: 'auto',
       }}>
         {/* FH5 (R8.3 AC2): a failed checkout is shown here (not swallowed); the
-            recharge button stays live so the user can retry — never a dead-end. */}
+            recharge button stays live so the user can retry - never a dead-end. */}
         {rechargeError && (
           <div data-testid="recharge-error" style={{
             width: '100%', margin: '0 auto 6px', fontSize: 12, color: '#f87171',

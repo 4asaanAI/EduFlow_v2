@@ -1,7 +1,7 @@
 """
 Migration 017: Backfill expires_at on ai_rate_limit_overrides rows.
 
-Part 2 (AI Layer) Wave 2 — P10 E11.
+Part 2 (AI Layer) Wave 2 - P10 E11.
 
 The operator override route now requires an explicit `expires_at` value (null
 for permanent, ISO timestamp for time-bounded). Existing rows that pre-date

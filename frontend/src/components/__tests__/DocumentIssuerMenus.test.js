@@ -1,5 +1,5 @@
 /**
- * D-49 — the menus must offer Certificates and ID Cards to exactly the people the
+ * D-49 - the menus must offer Certificates and ID Cards to exactly the people the
  * server lets use them, and nobody else.
  *
  * The bug being locked down: a receptionist saw the ID Cards button, opened it, and
@@ -21,7 +21,7 @@ import { TOOL_SETS, OWNER_TOOLS } from '../ToolDashboard';
 import { TOOLS_BY_ROLE, ADMIN_SUBCATEGORY_TOOLS, getSidebarTools } from '../Sidebar';
 import { ALL_TOOLS } from '../CommandPalette';
 
-// Every admin sub_category the platform recognises — the same list as
+// Every admin sub_category the platform recognises - the same list as
 // SUB_CATEGORIES_BY_ROLE['admin'] in backend/middleware/auth.py.
 const ADMIN_SUB_CATEGORIES = [
   'principal', 'accountant', 'transport_head', 'receptionist',

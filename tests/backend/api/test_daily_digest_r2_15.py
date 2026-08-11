@@ -1,4 +1,4 @@
-"""R2-15 — the day in one page for Aman and Adesh.
+"""R2-15 - the day in one page for Aman and Adesh.
 
 Aman asked that everything on the platform be visible to him. Today that means
 remembering to open the Audit Log and read it row by row. This is the same rows, told

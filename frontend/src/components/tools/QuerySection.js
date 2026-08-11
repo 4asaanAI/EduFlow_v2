@@ -332,7 +332,7 @@ export function QuerySection() {
   return (
     <ToolPage
       title="Query & Support"
-      subtitle="Submit issues and track resolutions — visible to all users"
+      subtitle="Submit issues and track resolutions - visible to all users"
       onRefresh={load}
       loading={loading}
       actions={
@@ -460,7 +460,7 @@ export function QuerySection() {
                   ) : (
                     <>
                       <Paperclip size={14} />
-                      <span style={{ fontSize: 13 }}>mp4, png, jpg — max 20MB</span>
+                      <span style={{ fontSize: 13 }}>mp4, png, jpg - max 20MB</span>
                     </>
                   )}
                 </div>

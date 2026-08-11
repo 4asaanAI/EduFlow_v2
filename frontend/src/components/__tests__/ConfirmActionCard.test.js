@@ -56,7 +56,7 @@ const planAction = {
   token: 'plan-tok-1',
   tool: 'plan',
   is_plan: true,
-  display: "I'll run these steps in order — confirm to proceed:",
+  display: "I'll run these steps in order - confirm to proceed:",
   steps: [
     { idx: 0, tool: 'mark_attendance', kind: 'write', destructive: false, display: 'Mark attendance for Class 4B' },
     { idx: 1, tool: 'create_announcement', kind: 'write', destructive: false, display: 'Post the holiday announcement' },

@@ -1,14 +1,14 @@
-"""R10.5 — the single MEMORY_ROLES policy switch (mirrors `ai_action_policy.LOCKDOWN_ENABLED`).
+"""R10.5 - the single MEMORY_ROLES policy switch (mirrors `ai_action_policy.LOCKDOWN_ENABLED`).
 
 Phase-1 self-learning is **Owner + Principal ONLY** (Story F.11 / FR43). Widening
-memory/skills to other staff roles is a one-line, greppable **CONFIG** change here —
+memory/skills to other staff roles is a one-line, greppable **CONFIG** change here -
 never an engine change (identical spirit to the action-lockdown single switch).
 
 Two tiers, deliberately separated so widening is safe and staged (R10.5 AC1/AC2):
 
-- **Recall** (`can_recall_memories`) — who gets learned notes/routines *read back* into
+- **Recall** (`can_recall_memories`) - who gets learned notes/routines *read back* into
   their turns (read-only; no new data captured).
-- **Capture** (`can_capture_memories`) — who the assistant auto-*learns from* (auto-save,
+- **Capture** (`can_capture_memories`) - who the assistant auto-*learns from* (auto-save,
   skill proposal, inline remember/forget). A newly recall-widened role is **recall-only**
   until a SEPARATE explicit decision also adds it to capture (AC2). Capture ⊆ Recall is a
   hard invariant enforced below and by the parity guard.
@@ -51,7 +51,7 @@ def can_capture_memories(user: Dict[str, Any]) -> bool:
     """True iff the assistant may auto-learn from `user` (save/propose/inline edit).
 
     AC2 invariant: a role can capture ONLY if it is BOTH recall-widened AND explicitly
-    added to the capture set — recall widening alone never enables capture.
+    added to the capture set - recall widening alone never enables capture.
     """
     if is_owner_or_principal(user or {}):
         return True

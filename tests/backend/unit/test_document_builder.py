@@ -1,4 +1,4 @@
-"""UI Sweep Epic 10, Story 10.1 — the shared document builder.
+"""UI Sweep Epic 10, Story 10.1 - the shared document builder.
 
 These assert the bytes are a REAL file of the claimed type, by opening them again with
 the corresponding reader. Asserting "no exception was raised" would pass for a builder
@@ -79,7 +79,7 @@ def test_pdf_is_a_pdf():
 
 def test_office_files_are_valid_zip_containers():
     """A .docx/.xlsx/.pptx is a zip. A truncated write produces bytes that look
-    plausible and fail to open — this catches that without a full parse."""
+    plausible and fail to open - this catches that without a full parse."""
     for doc_type in ("docx", "xlsx", "pptx"):
         doc = build_document(doc_type=doc_type, title="T", paragraphs=["body"])
         assert zipfile.is_zipfile(io.BytesIO(doc.content)), doc_type
@@ -154,8 +154,8 @@ def test_an_absurd_title_is_refused():
 # ── Honest truncation ───────────────────────────────────────────────────────────
 
 def test_too_many_rows_are_cut_and_the_file_says_so():
-    """A silently short export is the Epic 4 defect — a failure that looks like a
-    complete answer — in a new place."""
+    """A silently short export is the Epic 4 defect - a failure that looks like a
+    complete answer - in a new place."""
     rows = [[str(i), "x"] for i in range(MAX_ROWS + 500)]
     doc = build_document(doc_type="csv", headers=["N", "V"], rows=rows)
 
@@ -226,7 +226,7 @@ def test_hindi_reaches_the_page_instead_of_becoming_question_marks():
 
 def test_hindi_in_a_table_reaches_the_page_too():
     """Row and header cells go through a different call than paragraphs do, so they
-    are checked separately — a fix applied to only one of the two is the likelier
+    are checked separately - a fix applied to only one of the two is the likelier
     mistake than no fix at all."""
     doc = build_document(
         doc_type="pdf",
@@ -243,7 +243,7 @@ def test_english_documents_are_unaffected():
     """THIS TEST CAUGHT A REAL REGRESSION, so do not weaken it.
 
     The first attempt registered Noto Sans Devanagari as the only font, assuming it
-    covered Latin too. It does not. This came back as '  .' — every letter of
+    covered Latin too. It does not. This came back as '  .' - every letter of
     "Holiday on Monday." silently dropped, leaving the space and the full stop. Almost
     every document this school generates is in English, so that would have been a far
     worse defect than the Hindi one being fixed."""
@@ -547,7 +547,7 @@ def test_the_logo_ships_with_the_backend():
 def test_the_font_licence_ships_beside_the_font():
     """SIL OFL 1.1 permits redistribution and embedding on condition the licence
     travels with the font. `.ebignore` excludes every *.txt, so this file is only in
-    the deploy because of an explicit exception there — easy to lose by accident."""
+    the deploy because of an explicit exception there - easy to lose by accident."""
     licence = os.path.join(document_builder.FONT_DIR, "OFL.txt")
     assert os.path.exists(licence), "the font's licence file is missing"
     assert "SIL Open Font License" in open(licence, encoding="utf-8").read()
@@ -562,7 +562,7 @@ def test_devanagari_survives_intact_in_the_office_formats():
 
 
 def test_an_excel_sheet_name_cannot_break_the_workbook():
-    """Excel refuses to open a file whose sheet name holds []:*?/\\ — it does not
+    """Excel refuses to open a file whose sheet name holds []:*?/\\ - it does not
     warn, it just fails, so this is silently fatal if unhandled."""
     doc = build_document(doc_type="xlsx", title="Fees [2026]: Class 5/A?", rows=[["x"]])
     from openpyxl import load_workbook

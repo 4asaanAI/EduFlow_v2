@@ -48,7 +48,7 @@ MIGRATIONS = [
     ("015_ai_rate_limit_counters", "AI rate-limit counters + overrides (Story 7-48)"),
     ("016_admin_sub_category_default", "Backfill legacy admin sub_category=support_staff (Part 1 Auth+RBAC)"),
     ("017_backfill_rate_limit_override_expires_at", "Backfill expires_at=null on override rows without the field (Part 2 P10)"),
-    ("018_drop_otps_collection", "Drop the otps collection — zero code references, dead indexes (Part 4)"),
+    ("018_drop_otps_collection", "Drop the otps collection - zero code references, dead indexes (Part 4)"),
     ("019_notifications_index", "Add notifications compound index for unread count and list queries (Part 5)"),
     ("020_file_uploads_add_school_id", "Backfill file_uploads schoolId and add scoped indexes (Part 6)"),
     ("021_audit_log_indexes", "Add audit log scoped query indexes (Part 7)"),
@@ -63,6 +63,11 @@ MIGRATIONS = [
     ("030_profile_notes_index", "Index-only: the (schoolId, author_id, subject_type, subject_id, created_at) index behind private profile notes (owner request 4, 2026-08-06)"),
     ("031_provision_school_leadership_accounts", "Provision the reviewed Aman, Adesh, Sonu, and Lalit profiles and login authority (data-changing; run explicitly only)"),
     ("032_platform_messaging_indexes", "Add index-only leadership platform messaging storage"),
+    # WARNING: 033 RENAMES TWO LIVE LOGINS AND SIGNS THOSE PEOPLE OUT. It is listed
+    # here because every migration file must be, and it is one more reason this
+    # runner must never be pointed at the live school database. Run 033 BY ITSELF,
+    # on the day, with explicit approval, after its dry run. See its docstring.
+    ("033_rename_two_office_logins", "R2-11: accountant -> sonu.ruhal, management -> lalit.thomas, plus the principal display name (data-changing; REVOKES SESSIONS; run explicitly only)"),
 ]
 
 

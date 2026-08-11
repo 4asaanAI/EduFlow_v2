@@ -6,7 +6,7 @@ import { sortClasses } from './classOrder';
 // Vite maps the preferred `VITE_BACKEND_URL` (and the legacy name) to this one
 // compile-time value in `vite.config.js`.
 // It used to be read in 25 files, each re-deriving the same thing, which is how
-// commit 80d803b's https fix reached 13 of them and missed 7 — including the
+// commit 80d803b's https fix reached 13 of them and missed 7 - including the
 // login and token-refresh path. `frontend/src/lib/__tests__/apiBaseUrl.test.js`
 // fails the build if a 26th reader appears.
 const _rawBackend = process.env.REACT_APP_BACKEND_URL || '';
@@ -21,8 +21,8 @@ export const API = `${BACKEND}/api`;
 //
 // There used to be a second base here, UPLOAD_API, built from REACT_APP_UPLOAD_URL. It
 // existed on the belief that CloudFront blocked multipart POST. That belief turned out
-// to be wrong — the D-37 investigation watched multipart requests reach the application
-// through CloudFront — and in the deployed setup both variables held the SAME value
+// to be wrong - the D-37 investigation watched multipart requests reach the application
+// through CloudFront - and in the deployed setup both variables held the SAME value
 // anyway, so the two bases were identical and only one of the five uploads used the
 // second one. Four uploads on one address and one on another, agreeing by accident, is
 // a trap: the day REACT_APP_UPLOAD_URL was pointed anywhere else, four of them would
@@ -78,7 +78,7 @@ export async function apiFetch(url, options = {}) {
 /**
  * List the signed-in person's conversations.
  *
- * Called with NO arguments by the sidebar, which is on every screen — the server
+ * Called with NO arguments by the sidebar, which is on every screen - the server
  * defaults give it exactly what it had before this endpoint learned to page
  * (newest 50, most recent first). The All Chats page passes page/limit/sort/search.
  */
@@ -200,8 +200,8 @@ export function deletePlatformMessage(messageId) {
 
 /**
  * Exchange a generated file's opaque id for a FRESH, short-lived download link
- * (D-37). The signed URL is never carried through the chat message — Flo only
- * writes a short file_id — so the link is minted here, server-side, when the person
+ * (D-37). The signed URL is never carried through the chat message - Flo only
+ * writes a short file_id - so the link is minted here, server-side, when the person
  * taps download, and cannot be stale. Throws on 404/403/network so the caller can
  * show a plain "ask for it again" message rather than a broken link.
  */
@@ -260,7 +260,7 @@ export function sendMessageStream(convId, text, user, onEvent, sessionId = null,
   return doFetch().then(async (res) => {
     if (res.status === 401) {
       // FH1 (R8.1 AC1): a 401 on the initial response means the session expired
-      // BEFORE any assistant output or token debit — so a single refresh + retry
+      // BEFORE any assistant output or token debit - so a single refresh + retry
       // is safe (it cannot duplicate a write). Only if the retry still fails do we
       // surface a VISIBLE error event (never a silent redirect/no-op).
       try {
@@ -316,7 +316,7 @@ export function sendMessageStream(convId, text, user, onEvent, sessionId = null,
       }
       // R8.4 AC4: flush the decoder + buffer tail. A stream whose final frame
       // (often the terminal `done`) is not followed by a trailing "\n\n" would
-      // otherwise be dropped on the floor — a silent-turn tail-loss.
+      // otherwise be dropped on the floor - a silent-turn tail-loss.
       buffer += decoder.decode();
       for (const part of buffer.split('\n\n')) processFrame(part);
     } catch {
@@ -376,7 +376,7 @@ export function subscribeSSE(path, onEvent, { onReconnect, reconnect = true, max
     try {
       let res = await request();
 
-      // NEW-03: this stream is the one call `apiFetch` cannot own — the response body
+      // NEW-03: this stream is the one call `apiFetch` cannot own - the response body
       // is read incrementally and a redirect-on-failure would kill a background
       // subscription. It still has to renew an expired login, and it did not: a 401
       // fell straight into scheduleReconnect(), which retried forever with the same
@@ -538,11 +538,11 @@ export async function deactivateStudent(studentId) {
 }
 
 /**
- * Move a student between on the roll, the NSO list, and TC issued — either direction.
+ * Move a student between on the roll, the NSO list, and TC issued - either direction.
  *
  * Owner requests 9 and 10 (2026-08-06). `state` is one of 'active', 'nso',
  * 'tc_issued'. Restoring is simply state 'active', which is what recovers a student
- * deactivated by mistake — something no call in this file could do before, because the
+ * deactivated by mistake - something no call in this file could do before, because the
  * server had no way to switch `is_active` back on.
  *
  * Owner or principal only on the server. `reason` is optional; it is compulsory only
@@ -618,7 +618,7 @@ export async function getAllClasses() {
   const data = await res.json();
   // Sort once, here, rather than at each of the ~25 places that render a class
   // dropdown. The API returns them in insertion order, which reads as random
-  // ("11th-A, 1st-A, 2nd-C, … LKG-A, NUR-D"), and alphabetical is no better —
+  // ("11th-A, 1st-A, 2nd-C, … LKG-A, NUR-D"), and alphabetical is no better -
   // it puts 10th/11th/12th ahead of 1st. See lib/classOrder.js.
   if (data && Array.isArray(data.data)) {
     return { ...data, data: sortClasses(data.data) };
@@ -785,7 +785,7 @@ export async function applyFeeDiscount(data) {
 }
 
 // NEW-11 (2026-08-04): `approveFeeDiscount` and `rejectFeeDiscount` used to sit here.
-// They called POST /fees/discounts/{id}/approve|reject — wrong path AND wrong method;
+// They called POST /fees/discounts/{id}/approve|reject - wrong path AND wrong method;
 // the server only serves PATCH /fees/discounts/pending-approvals/{id}/approve|reject.
 // Nothing called them: the Fee Collection screen already calls the correct address
 // itself. Deleted rather than corrected, because a helper that looks ready to use and
@@ -863,7 +863,7 @@ export async function getStaffMember(staffId) {
   return res.json();
 }
 
-// Story 1.3 — your own staff record, READ ONLY. Nobody edits their own details;
+// Story 1.3 - your own staff record, READ ONLY. Nobody edits their own details;
 // corrections go through the Owner or Principal on the staff screen. There is
 // deliberately no update counterpart here: the server refuses one, and shipping
 // a client function for a call that always fails invites someone to wire it up.
@@ -872,7 +872,7 @@ export async function getMyStaffProfile() {
   return res.json();
 }
 
-// Epic 8 — ask for a correction; an administrator decides. Asking changes
+// Epic 8 - ask for a correction; an administrator decides. Asking changes
 // nothing, which is the whole point: these never write to the staff record.
 export async function requestMyProfileChange(data) {
   const res = await apiFetch(`${API}/staff/me/change-requests`, {
@@ -886,7 +886,7 @@ export async function getMyProfileChangeRequests() {
   return res.json();
 }
 
-// Owner / Principal only — the queue and the decision.
+// Owner / Principal only - the queue and the decision.
 export async function getProfileChangeRequests(status = 'pending') {
   const res = await apiFetch(`${API}/staff/change-requests?status=${encodeURIComponent(status)}`, {
     headers: getHeaders(),
@@ -964,13 +964,13 @@ export async function getStaffEnrolmentSummary() {
 //
 // Owner and principal only, and PRIVATE TO EACH AUTHOR: each of them sees only the
 // notes they wrote themselves. That is decision 3 of 2026-08-06 and it is deliberate,
-// not an oversight — do not add a "show everyone's" option here.
+// not an oversight - do not add a "show everyone's" option here.
 
 /**
  * Put a file on the server and get back its id and a link.
  *
  * The one generic upload. Note pictures and identity documents both ride on it with
- * a different `entityType`, rather than each growing an endpoint of its own — the
+ * a different `entityType`, rather than each growing an endpoint of its own - the
  * server decides who may read a stored file, and one door is easier to keep honest
  * than three.
  */
@@ -1140,7 +1140,7 @@ export async function markNotificationRead(notificationId) {
 
 /**
  * Marks everything unread that existed BEFORE this request. Anything arriving
- * mid-flight is deliberately left unread — which is why every caller re-reads
+ * mid-flight is deliberately left unread - which is why every caller re-reads
  * the count afterwards rather than assuming it is now zero.
  */
 export async function markAllNotificationsRead() {
@@ -1224,7 +1224,7 @@ export async function uploadChatFile(file) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30000);
   try {
-    // D-43: go through apiFetch — the SAME wrapper every other call uses — so the
+    // D-43: go through apiFetch - the SAME wrapper every other call uses - so the
     // upload refreshes-and-retries on a 401 exactly like the rest of the app instead
     // of failing on a stale in-memory access token. Only the Authorization header is
     // passed; Content-Type is left unset so the browser writes the multipart boundary.
@@ -1238,11 +1238,11 @@ export async function uploadChatFile(file) {
     if (!res.ok) {
       // Say WHAT failed, not just that it failed. 413 = too large (app or nginx
       // cap); 403 with a non-JSON body = blocked at the CDN edge (WAF), which the
-      // user can do nothing about — name it so it gets reported, not retried.
+      // user can do nothing about - name it so it gets reported, not retried.
       let detail = '';
       try { detail = (await res.json()).detail || ''; } catch {}
       if (res.status === 413) throw new Error(detail || 'File is too large (max 20 MB).');
-      if (res.status === 403 && !detail) throw new Error('Upload was blocked by the network edge. Please report this — retrying will not help.');
+      if (res.status === 403 && !detail) throw new Error('Upload was blocked by the network edge. Please report this - retrying will not help.');
       throw new Error(detail || `Upload failed (error ${res.status}).`);
     }
     return res.json();

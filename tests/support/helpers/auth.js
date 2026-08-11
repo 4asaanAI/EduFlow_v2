@@ -1,5 +1,5 @@
 /**
- * Auth Helpers — EduFlow E2E Tests
+ * Auth Helpers - EduFlow E2E Tests
  *
  * Shared helper functions for authentication flows in Playwright tests.
  * Use these when you need to log in/out within a test (outside of the

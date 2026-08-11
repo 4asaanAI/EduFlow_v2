@@ -38,7 +38,7 @@ def hour_bucket(now: datetime) -> str:
 
 
 def hour_bucket_start(bucket: str) -> datetime:
-    """Inverse of hour_bucket — parse a bucket string back to its datetime."""
+    """Inverse of hour_bucket - parse a bucket string back to its datetime."""
     return datetime.strptime(bucket, "%Y-%m-%dT%H:00:00Z").replace(tzinfo=timezone.utc)
 
 
@@ -56,7 +56,7 @@ def _load_yaml_defaults() -> dict[str, int]:
     try:
         mtime = os.path.getmtime(CONFIG_PATH)
     except FileNotFoundError:
-        logger.error("ai_rate_limits.yaml missing at %s — using empty defaults", CONFIG_PATH)
+        logger.error("ai_rate_limits.yaml missing at %s - using empty defaults", CONFIG_PATH)
         return {}
 
     if _config_cache["mtime"] == mtime and _config_cache["data"] is not None:
@@ -66,7 +66,7 @@ def _load_yaml_defaults() -> dict[str, int]:
         with open(CONFIG_PATH, "r") as f:
             parsed = yaml.safe_load(f) or {}
     except yaml.YAMLError:
-        logger.exception("Failed to parse ai_rate_limits.yaml — using empty defaults")
+        logger.exception("Failed to parse ai_rate_limits.yaml - using empty defaults")
         return _config_cache["data"] or {}
 
     roles = parsed.get("roles") or {}
@@ -81,7 +81,7 @@ def _load_yaml_defaults() -> dict[str, int]:
 
 
 def reset_config_cache() -> None:
-    """Test helper — force the next call to re-read disk."""
+    """Test helper - force the next call to re-read disk."""
     _config_cache["mtime"] = None
     _config_cache["data"] = None
 
@@ -119,7 +119,7 @@ async def resolve_limit(
         cursor = cursor.sort([("created_at", -1), ("_id", -1)])
         rows = await cursor.to_list(1)
     except AttributeError:
-        # Collection missing on legacy fake DBs — fall back to defaults.
+        # Collection missing on legacy fake DBs - fall back to defaults.
         return default_limit
     except Exception:
         logger.exception("ai_rate_limit_overrides lookup failed for school=%s role=%s", school_id, role)
@@ -158,13 +158,13 @@ async def increment_and_check(
 ) -> RateLimitResult:
     """Atomically increment the user-hour counter and decide allow/deny.
 
-    Counter is scoped to (user_id, hour_bucket) — NOT per session — to prevent
+    Counter is scoped to (user_id, hour_bucket) - NOT per session - to prevent
     a malicious client from rotating session_id and creating fresh counter
     rows to bypass the limit. Session context is captured in audit log rows
     for forensics.
 
     A role with a limit of 0 always rejects. A non-listed role falls back to
-    the YAML default for that role (also typically 0 — fail closed).
+    the YAML default for that role (also typically 0 - fail closed).
 
     To avoid unbounded counter inflation past the limit (which would skew the
     operator dashboard), we first read the current count and skip the $inc
@@ -191,7 +191,7 @@ async def increment_and_check(
     key = {"user_id": user_id, "hour_bucket": bucket}
 
     # Pre-check: if already at the limit, do NOT increment further. This is
-    # a deliberate TOCTOU window — the worst case is `limit + N_concurrent`
+    # a deliberate TOCTOU window - the worst case is `limit + N_concurrent`
     # rows past the ceiling, which is bounded and acceptable.
     existing = await db.ai_rate_limit_counters.find_one(key)
     existing_count = int((existing or {}).get("count", 0))
@@ -249,7 +249,7 @@ async def decrement_count(
     """Decrement the current-hour rate-limit counter by 1 (floor 0).
 
     Called when a confirmed dispatch is cancelled after the counter was already
-    incremented — e.g., a concurrent replay that lost the token-consume race.
+    incremented - e.g., a concurrent replay that lost the token-consume race.
     The $gt: 0 filter makes the decrement atomic and safe (no underflow).
     """
     bucket = hour_bucket((now_fn or _now)())
@@ -267,10 +267,10 @@ async def get_current_count(
     session_id: Optional[str] = None,
     now_fn: Optional[Callable[[], datetime]] = None,
 ) -> dict[str, Any]:
-    """Read-only — return the current-hour count for a user.
+    """Read-only - return the current-hour count for a user.
 
     `session_id` is accepted for back-compat with Story 7-43's dashboard but
-    is purely informational — counters are scoped per (user_id, hour_bucket).
+    is purely informational - counters are scoped per (user_id, hour_bucket).
     """
     bucket = hour_bucket((now_fn or _now)())
     doc = await db.ai_rate_limit_counters.find_one({

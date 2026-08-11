@@ -358,7 +358,7 @@ def test_set_zone_centroid_wrong_role_returns_403():
     assert resp.status_code == 403
 
 
-# ─── GET /api/transport/suggest-route — 404 for nonexistent student ──────────
+# ─── GET /api/transport/suggest-route - 404 for nonexistent student ──────────
 
 def test_suggest_route_404_when_student_not_found():
     _fake_db.students.docs = []
@@ -381,7 +381,7 @@ def test_suggest_route_does_not_return_other_school_zones():
             "coordinates": {"lat": 28.90, "lng": 78.46},
         }
     ]
-    # Only other-school zone has a centroid — should never appear in results
+    # Only other-school zone has a centroid - should never appear in results
     _fake_db.transport_routes.docs = [
         {
             "id": "zone-other", "route_name": "Other School Zone",

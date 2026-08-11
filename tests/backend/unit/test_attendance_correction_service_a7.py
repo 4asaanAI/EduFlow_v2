@@ -1,4 +1,4 @@
-"""Story A.7 — attendance-correction service: snapshot + status update + audit,
+"""Story A.7 - attendance-correction service: snapshot + status update + audit,
 and the AI-path corrections (audit action, school-wide scoping)."""
 
 from __future__ import annotations

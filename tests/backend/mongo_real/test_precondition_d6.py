@@ -1,7 +1,7 @@
-"""D.6 — precondition revalidation re-reads INSIDE the transaction (real Mongo).
+"""D.6 - precondition revalidation re-reads INSIDE the transaction (real Mongo).
 
 If the underlying record changed between planning and confirmation, the executor
-re-reads it inside the txn and aborts the whole plan with `plan_stale` — and no
+re-reads it inside the txn and aborts the whole plan with `plan_stale` - and no
 partial write is committed.
 """
 
@@ -38,7 +38,7 @@ async def test_stale_precondition_aborts_with_no_partial_write(mongo_real_db, mo
         with pytest.raises(PlanStaleError):
             await plan_executor.run(plan, db=mongo_real_db)
 
-        # No partial write — the update never applied.
+        # No partial write - the update never applied.
         doc = await mongo_real_db.fee_structures.find_one({"id": "f1"})
         assert "amount" not in doc
         assert await mongo_real_db.ai_write_idempotency.count_documents({}) == 0

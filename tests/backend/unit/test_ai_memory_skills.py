@@ -1,7 +1,7 @@
-"""Epic G — AI self-learning (Memory + Skills). Story-by-story AC coverage.
+"""Epic G - AI self-learning (Memory + Skills). Story-by-story AC coverage.
 
 Tier: FakeDb (unit). Tenant/owner isolation is asserted by querying the store with
-different (user_id, schoolId) scopes — FakeDb does NOT auto-scope, so any leak would
+different (user_id, schoolId) scopes - FakeDb does NOT auto-scope, so any leak would
 show up here. Vector path is OFF by default (MEMORY_VECTOR_ENABLED unset) so these
 also prove the keyword-only graceful-degradation path (FR33).
 """
@@ -178,7 +178,7 @@ async def test_g4_memory_http_surface_is_only_the_r10_learning_panel():
     """FR32 was Phase-1: no memory/skills HTTP surface. R10.4 deliberately introduces
     the owner/principal "What I've learned" control surface under `/api/learning/*`.
     This test now asserts the CONTRACT: the ONLY memory/skills-touching routes are the
-    R10.4 learning-panel endpoints — nothing leaked one in elsewhere."""
+    R10.4 learning-panel endpoints - nothing leaked one in elsewhere."""
     import server
 
     paths = [getattr(r, "path", "") for r in server.app.routes]

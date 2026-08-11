@@ -1,5 +1,5 @@
 /**
- * The platform's shared sortable, paginated table — FR82, UX-DR5, UX-DR10.
+ * The platform's shared sortable, paginated table - FR82, UX-DR5, UX-DR10.
  *
  * Built once so FR82 ("any list over 20 rows supports pagination and at
  * minimum one column-level sort") is satisfied once rather than re-implemented
@@ -9,7 +9,7 @@
  *   Sorting is SERVER-SIDE. `onSortChange` asks the API to re-order the whole
  *   result set and hand back page 1. Sorting the 20 rows already on screen
  *   would look identical on a 20-row table and be a lie on a 1,802-row one.
- *   This component therefore never sorts `rows` itself — it renders them in
+ *   This component therefore never sorts `rows` itself - it renders them in
  *   the order it was given. If you find yourself adding `rows.sort(...)` here,
  *   the bug is upstream.
  *
@@ -22,7 +22,7 @@
  *
  * Mobile:
  *   the table stays ONE element and its wrapper scrolls. It is never switched
- *   to display:block with display:table children — that splits a table into
+ *   to display:block with display:table children - that splits a table into
  *   two independently-sized tables and de-aligns every heading from its
  *   column, which is exactly the regression logged as D-01.
  */
@@ -72,7 +72,7 @@ function SortIcon({ state }) {
  *                                  worse than one that does not offer.
  * @param {Array}    props.rows     the current page, in the order the server gave them
  * @param {string}   props.sort           active server sort key
- * @param {Function} props.onSortChange   (sortKey) => void — must refetch from page 1
+ * @param {Function} props.onSortChange   (sortKey) => void - must refetch from page 1
  * @param {number}   props.page
  * @param {number}   props.total          total matching rows across all pages
  * @param {number}   props.pageSize
@@ -110,7 +110,7 @@ export default function DataTable({
     : Math.max(1, Math.ceil(total / (pageSize || 1)));
   const selectId = `${tableId}-page-size`;
 
-  // A failed load must never be dressed up as an empty result — owner item 7.
+  // A failed load must never be dressed up as an empty result - owner item 7.
   if (error) {
     return <EmptyState kind="error" message={error} data-testid={`${tableId}-error`} />;
   }
@@ -141,7 +141,7 @@ export default function DataTable({
                   <th
                     key={col.key}
                     scope="col"
-                    // aria-sort is set on the <th>, not the button — this is
+                    // aria-sort is set on the <th>, not the button - this is
                     // what a screen reader reads out for the column.
                     aria-sort={col.sortKey ? ariaSort : undefined}
                     style={{

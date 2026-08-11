@@ -8,7 +8,7 @@ from jose import JWTError, jwt
 
 from database import get_raw_db
 
-# tenant-scope: intentional — LayaaStat federation is a provider-level read across the
+# tenant-scope: intentional - LayaaStat federation is a provider-level read across the
 # whole deployment, which is why it uses get_raw_db() rather than the scoped db. The
 # payloads are metadata only (tenant names, event counts, incident severity/status);
 # no student, staff, fee or conversation content leaves through here. If a second school
@@ -58,7 +58,7 @@ async def require_federation_auth(request: Request) -> dict:
 
 
 # GET /api/federation/products
-# EduFlow is a single-workspace app — the school itself is the product
+# EduFlow is a single-workspace app - the school itself is the product
 @router.get("/products")
 async def federation_products(_: dict = Depends(require_federation_auth)):
     now = datetime.now(timezone.utc).isoformat()
@@ -94,7 +94,7 @@ async def federation_tenants(_: dict = Depends(require_federation_auth)):
 
 # GET /api/federation/cost?since=ISO&until=ISO
 # token_usage stores created_at as ISO string and tokens_used as a single field.
-# EduFlow tracks prepaid token packs (INR), no USD cost — total_cost_usd is null.
+# EduFlow tracks prepaid token packs (INR), no USD cost - total_cost_usd is null.
 @router.get("/cost")
 async def federation_cost(
     since: str = Query(..., description="ISO datetime"),
@@ -163,7 +163,7 @@ async def federation_incidents(
 
 
 # GET /api/federation/eval-quality
-# EduFlow does not run automated eval suites — return empty array.
+# EduFlow does not run automated eval suites - return empty array.
 @router.get("/eval-quality")
 async def federation_eval_quality(_: dict = Depends(require_federation_auth)):
     return []

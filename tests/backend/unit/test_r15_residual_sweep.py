@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""R15 — Residual Confirmatory Sweep: unit-level regressions.
+"""R15 - Residual Confirmatory Sweep: unit-level regressions.
 
 Covers the localized fixes that don't need the HTTP client:
   * R15.4 (P-L2) idempotency response-body size cap
@@ -62,7 +62,7 @@ async def test_idempotency_stores_small_response(monkeypatch):
 
 async def test_idempotency_skips_oversized_response(monkeypatch):
     from services.idempotency import MAX_IDEMPOTENCY_BODY_BYTES
-    # Build a valid-JSON body that exceeds the cap — must NOT be stored (and must
+    # Build a valid-JSON body that exceeds the cap - must NOT be stored (and must
     # not be truncated, which would replay corrupt).
     big = json.dumps({"blob": "x" * (MAX_IDEMPOTENCY_BODY_BYTES + 1024)}).encode("utf-8")
     assert len(big) > MAX_IDEMPOTENCY_BODY_BYTES
@@ -90,7 +90,7 @@ async def test_actor_context_now_is_timezone_aware_utc():
 
 async def test_house_seed_upsert_is_idempotent_under_repeat():
     """Repeating the seed upsert for the same (schoolId, name) yields one row,
-    not duplicates — the old insert_one path produced two under a concurrent
+    not duplicates - the old insert_one path produced two under a concurrent
     first-load. Backed by the unique (schoolId, name) index in production."""
     coll = FakeCollection()
     coll.indexes["uniq_school_name"] = {"key": [("schoolId", 1), ("name", 1)], "unique": True}

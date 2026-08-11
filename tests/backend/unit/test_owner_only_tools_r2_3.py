@@ -1,17 +1,17 @@
-"""R2-3 — owner-only Flo tools stay owner-only for every other profile.
+"""R2-3 - owner-only Flo tools stay owner-only for every other profile.
 
 The profile overlay in `services/ai_action_policy.py` returns an authoritative
 decision that short-circuits the ordinary role check in `ai/tool_access.py`. It used
 to ask only whether the registry's `roles` list *intersected* {owner, admin}, so a
 tool marked `roles=["owner"]` passed that test and was then handed to any profile
-whose `access_domain` matched — which put `year_end_transition`, the branch CRUD,
+whose `access_domain` matched - which put `year_end_transition`, the branch CRUD,
 `update_school_settings` and the legal-entity CRUD in the hands of the management and
 accountant heads.
 
 This file pins the rule: if the registry names the roles, the gate obeys them.
 
 The principal is deliberately NOT covered by that rule. The school's owner and the
-principal share the complete school-management surface by design — pinned by
+principal share the complete school-management surface by design - pinned by
 `test_epic_k_crud_guardrails.py` and `test_owner_part3_qa.py`, and visible in the
 2026-08-10 baseline where both reach 155 tools. The leak was the two profiles below
 them.

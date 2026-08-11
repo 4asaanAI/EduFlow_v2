@@ -1,9 +1,9 @@
-/* EduFlow — Light Theme overrides
+/* EduFlow - Light Theme overrides
    Epic 9: retuned from neutral grey to the brand's blue-tinted paper, so the
    two themes read as one product rather than two.
 
    Light is checked INDEPENDENTLY of dark (UX-DR2). A pairing that passes on
-   navy tells you nothing about the same pairing on white — most obviously
+   navy tells you nothing about the same pairing on white - most obviously
    --brand-blue #2B8FF0, which measures 5.34:1 on navy but only 3.34:1 on
    white. So light theme uses the deepened #1A6FCE (4.99:1) wherever blue
    carries text. */
@@ -53,7 +53,7 @@
   --color-unread-tint: rgba(26,111,206,0.06);
   --color-accent-blue-subtle: rgba(26,111,206,0.20);
 
-  /* Brand fills keep the SAME text colours in both themes — an orange button
+  /* Brand fills keep the SAME text colours in both themes - an orange button
      that is navy-on-orange in dark and white-on-orange in light would be two
      different buttons. The fills are what shift, not the contract. */
   --brand-blue: #1A6FCE;

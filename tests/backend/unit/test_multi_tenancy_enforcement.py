@@ -147,7 +147,7 @@ def test_no_school_doc_passes_middleware(client):
 
 
 def test_deactivated_school_login_not_blocked(client):
-    """/api/auth/login is in _SKIP_PATHS — deactivated school must not return 402."""
+    """/api/auth/login is in _SKIP_PATHS - deactivated school must not return 402."""
     _fake_db.schools.docs.append({"school_id": "school-a", "status": "deactivated"})
     resp = client.post(
         "/api/auth/login",
@@ -159,7 +159,7 @@ def test_deactivated_school_login_not_blocked(client):
 def test_deactivated_school_refresh_not_blocked(client):
     """AC3: /api/auth/refresh must not return 402 for deactivated schools (sign-out path)."""
     _fake_db.schools.docs.append({"school_id": "school-a", "status": "deactivated"})
-    # Refresh uses a cookie, not a Bearer token — middleware skips school context
+    # Refresh uses a cookie, not a Bearer token - middleware skips school context
     # entirely for requests without a Bearer header, so 402 must never be returned.
     resp = client.post("/api/auth/refresh")
     assert resp.status_code != 402
@@ -173,7 +173,7 @@ def test_no_bearer_token_skips_school_context(client):
 
 
 def test_jwt_without_school_id_skips_school_context(client):
-    """JWT with no school_id claim — middleware skips context injection, route still works."""
+    """JWT with no school_id claim - middleware skips context injection, route still works."""
     _fake_db.schools.docs.append({"school_id": "school-a", "status": "deactivated"})
     headers = _bearer({"user_id": "u1", "role": "owner", "name": "Owner"})
     resp = client.get("/api/students", headers=headers)

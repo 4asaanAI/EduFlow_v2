@@ -1,5 +1,5 @@
 /**
- * E2E Tests: Authentication — EduFlow
+ * E2E Tests: Authentication - EduFlow
  *
  * Tests the login/logout flow and access control.
  *
@@ -14,7 +14,7 @@ const { LoginPage } = require('../support/page-objects/LoginPage');
 const { buildCredentials } = require('../support/helpers/factories');
 const { expectLoginPage } = require('../support/helpers/auth');
 
-// Override project storageState for auth tests — no pre-auth session
+// Override project storageState for auth tests - no pre-auth session
 test.use({ storageState: { cookies: [], origins: [] } });
 
 test.describe('Authentication', () => {

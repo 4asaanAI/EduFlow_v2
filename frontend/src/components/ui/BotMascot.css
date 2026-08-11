@@ -1,5 +1,5 @@
 /* ============================================================
-   "Flo" — idle animations.
+   "Flo" - idle animations.
 
    PORTED VERBATIM from the marketing site so the robot moves identically
    in both places:
@@ -11,7 +11,7 @@
    and is not part of this app's.
 
    Reduced motion is handled by the global rule in index.css, which zeroes
-   every animation-duration — so nothing here needs its own opt-out, and Flo
+   every animation-duration - so nothing here needs its own opt-out, and Flo
    holds still for anyone who has asked the system to stop things moving.
    ============================================================ */
 

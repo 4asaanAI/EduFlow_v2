@@ -1,4 +1,4 @@
-"""Staff CRUD service — the single shared write path for staff records
+"""Staff CRUD service - the single shared write path for staff records
 (AI Layer Hardening, AD7 / AD15 / Epic J, Story J.2).
 
 Both the REST routes (`POST /api/staff/`, `PATCH /api/staff/{id}`) and the new AI
@@ -8,7 +8,7 @@ AI-created/edited staff member is byte-identical to the panel result. The
 here (off `actor_ctx.role`) so both entrypoints apply them identically.
 
 Staff hard-delete (`DELETE /staff/{id}`, a soft-deactivate that revokes sessions)
-is NOT in this service's AI-reachable surface in Phase 1 — any destructive staff
+is NOT in this service's AI-reachable surface in Phase 1 - any destructive staff
 op routes through F.10 (two-step confirm + deletion audit). Epic J ships create/edit only.
 
 Services raise domain exceptions, never `HTTPException`.
@@ -30,18 +30,18 @@ from tenant import scoped_filter
 
 logger = logging.getLogger(__name__)
 
-# Field whitelists — the SAME sets the REST route enforces (keep in lockstep).
+# Field whitelists - the SAME sets the REST route enforces (keep in lockstep).
 PROFILE_FIELDS = {
     "name", "staff_type", "employee_id", "phone", "email", "photo_url",
     "qualification", "specialization", "department", "join_date", "salary",
-    # Owner request 11 (2026-08-06) — where this person lives.
+    # Owner request 11 (2026-08-06) - where this person lives.
     "address",
     "role", "sub_category",
 }
 LEAVE_BALANCE_FIELDS = {"casual_leave_balance", "medical_leave_balance", "earned_leave_balance"}
 OWNER_ONLY_FIELDS = {"role", "sub_category", "salary", "is_active"}
 
-# UI-Sweep Story 1.1 — owner authority is not grantable through this API by
+# UI-Sweep Story 1.1 - owner authority is not grantable through this API by
 # ANYONE, the owner included. Assignment happens out of band only.
 OWNER_AUTHORITY = "owner"
 # Roles this API may write onto a staff record. Derived by subtraction from the
@@ -130,7 +130,7 @@ async def _audit_denial(db, actor_ctx: ActorContext, *, staff_id: str, attempted
             staff_id=staff_id or "unassigned",
             changes={"attempted": attempted, "reason": reason},
         )
-    except Exception:  # noqa: BLE001 — audit must never mask the denial
+    except Exception:  # noqa: BLE001 - audit must never mask the denial
         logger.warning("privilege_escalation_denied audit write failed", exc_info=True)
 
 
@@ -146,7 +146,7 @@ async def _assert_no_owner_authority_change(
 
     Both directions are refused. Granting is the privilege-escalation hole this
     story exists to close (FR4/NFR-S1). Removing is refused because owner cannot
-    be re-granted here either — demoting the last owner would leave the school
+    be re-granted here either - demoting the last owner would leave the school
     with no owner and no in-app way to appoint one.
     """
     existing_role = _norm((existing or {}).get("role"))
@@ -157,7 +157,7 @@ async def _assert_no_owner_authority_change(
             continue
         requested = _norm(params.get(field))
         if requested == existing_value:
-            continue  # unchanged — nothing to police
+            continue  # unchanged - nothing to police
         if OWNER_AUTHORITY not in (requested, existing_value):
             continue  # a change, but not one that touches owner authority
         granting = requested == OWNER_AUTHORITY
@@ -168,21 +168,21 @@ async def _assert_no_owner_authority_change(
             reason="grant_owner_authority" if granting else "remove_owner_authority",
         )
         raise StaffAuthorizationError(
-            "Owner access cannot be granted through this API — it is assigned out of band"
+            "Owner access cannot be granted through this API - it is assigned out of band"
             if granting else
-            "Owner access cannot be removed through this API — it is managed out of band"
+            "Owner access cannot be removed through this API - it is managed out of band"
         )
 
 
 def _validate_role_and_sub_category(params: dict, *, existing: Optional[dict] = None) -> None:
     """Reject role/sub_category values the permission system does not recognize (Story 1.2).
 
-    Validates only what is being WRITTEN. Values already stored are left alone —
+    Validates only what is being WRITTEN. Values already stored are left alone -
     some of the 88 live records may hold a legacy spelling, and an admin fixing a
     phone number on such a record must not be handed an error they cannot clear.
     A field resent with the value it already holds counts as stored, not written:
     the staff form posts every field back, so the owner's own record legitimately
-    resends `role: "owner"` — a value this function would otherwise reject.
+    resends `role: "owner"` - a value this function would otherwise reject.
     """
     existing_role = _norm((existing or {}).get("role"))
     existing_sub = _norm((existing or {}).get("sub_category"))
@@ -193,7 +193,7 @@ def _validate_role_and_sub_category(params: dict, *, existing: Optional[dict] = 
 
     # Judge the record as it will END UP, not the shape of the request. Moving a
     # class_teacher to role "admin" without sending a sub_category leaves
-    # `class_teacher` attached to an admin — the very pairing that matches no
+    # `class_teacher` attached to an admin - the very pairing that matches no
     # permission rule, reached by changing the other half of the pair.
     effective_role = _norm(params["role"]) if "role" in params else existing_role
     effective_sub = _norm(params["sub_category"]) if "sub_category" in params else existing_sub
@@ -245,7 +245,7 @@ async def _assert_login_is_linkable(db, actor_ctx: ActorContext, login: dict) ->
 
     Two ways in: a caller-supplied `user_id`, or a name/email/phone whose derived
     username collides with an existing account. Either would let a staff manager
-    point a new staff record at the OWNER's login — and deactivating that staff
+    point a new staff record at the OWNER's login - and deactivating that staff
     record deactivates the linked login and revokes its sessions, locking the
     owner out of their own school.
     """
@@ -257,7 +257,7 @@ async def _assert_login_is_linkable(db, actor_ctx: ActorContext, login: dict) ->
         raise StaffAuthorizationError(
             "That login belongs to an owner account and cannot be linked to a staff record"
         )
-    # branch-scope: intentional — a login already claimed by a staff record in
+    # branch-scope: intentional - a login already claimed by a staff record in
     # ANOTHER branch is still claimed. Filtering by branch here would let the
     # same login be claimed once per branch, which is the hole this closes.
     claimed = await db.staff.find_one(
@@ -266,7 +266,7 @@ async def _assert_login_is_linkable(db, actor_ctx: ActorContext, login: dict) ->
     if claimed:
         # Reachable without malice: two staff with the same name and no email or
         # phone derive the same username. Previously they silently SHARED one
-        # login — both signing in as the same person. Say what to do about it.
+        # login - both signing in as the same person. Say what to do about it.
         raise StaffAuthorizationError(
             "The login '%s' already belongs to another staff record (%s). Give this "
             "person their own email, phone or employee ID so they get their own login."
@@ -341,7 +341,7 @@ async def create_staff(
     if "sub_category" in params:
         effective["sub_category"] = requested_sub
 
-    # Story 1.1 — owner authority is refused for EVERY caller, the owner included,
+    # Story 1.1 - owner authority is refused for EVERY caller, the owner included,
     # and refused BEFORE any record is written. The login account is the real seat
     # of authority (`auth_users.user_info.role` is what login reads to mint the
     # JWT), so a gate placed after `_create_or_link_user` would leave a privileged
@@ -352,7 +352,7 @@ async def create_staff(
     # that would have been accepted.
     if not _is_owner_or_principal(actor_ctx) and (requested_role == "admin" or requested_sub):
         raise StaffAuthorizationError("Only owner or principal can create privileged staff accounts")
-    # Story 1.2 — a value the permission system does not recognize grants nothing.
+    # Story 1.2 - a value the permission system does not recognize grants nothing.
     _validate_role_and_sub_category(effective, existing=None)
 
     user_id, temp_password = await _create_or_link_user(db, actor_ctx, effective, session=session)
@@ -380,7 +380,7 @@ async def create_staff(
         changes={"created": staff_doc}, session=session,
     )
     if temp_password:
-        # security: intentional — first-time credential delivery, no other channel.
+        # security: intentional - first-time credential delivery, no other channel.
         await write_audit(
             db=db,
             action="credential_issued",
@@ -424,7 +424,7 @@ async def update_staff(
         if field in body:
             body[field] = _norm(body[field])
 
-    # Story 1.1 — a change of owner authority in either direction is a hard 403
+    # Story 1.1 - a change of owner authority in either direction is a hard 403
     # for every caller, checked against what is stored. Deliberately NOT the
     # silent strip below: stripping salary tells a caller "that field isn't
     # yours"; silently stripping an escalation attempt leaves them believing it
@@ -443,13 +443,13 @@ async def update_staff(
 
     update = {k: v for k, v in body.items() if k in allowed}
 
-    # EC-9.4: OWNER_ONLY_FIELDS — non-owners cannot change role/sub_category/salary/is_active.
+    # EC-9.4: OWNER_ONLY_FIELDS - non-owners cannot change role/sub_category/salary/is_active.
     body_had_owner_only = any(f in body for f in OWNER_ONLY_FIELDS)
     if not _is_owner(actor_ctx):
         for field in OWNER_ONLY_FIELDS:
-            update.pop(field, None)  # silent strip — EC-9.4
+            update.pop(field, None)  # silent strip - EC-9.4
 
-    # Story 1.2 — validate exactly what will be WRITTEN, and only that: values
+    # Story 1.2 - validate exactly what will be WRITTEN, and only that: values
     # already stored are left alone, and a field the caller was not allowed to
     # write has been stripped above, so they get no error enumerating the values
     # that would have been accepted.
@@ -506,7 +506,7 @@ async def set_enrolment_state(
     Owner request 10 decision 2, Abhimanyu 2026-08-06: the three states apply to
     staff and teachers exactly as they do to students, not to students only. The
     words are the school's own, so they are kept even where "TC issued" reads oddly
-    for an employee — a member of staff who has formally left is in the same place
+    for an employee - a member of staff who has formally left is in the same place
     in the product as a child who has taken their leaving certificate, and a second
     vocabulary for the same three states is how the two would drift apart.
 
@@ -594,14 +594,14 @@ async def delete_staff(
     *,
     session=None,
 ) -> dict:
-    """Take a colleague off the roll — the shared path behind `DELETE /api/staff/{id}`
+    """Take a colleague off the roll - the shared path behind `DELETE /api/staff/{id}`
     and the AI `delete_staff` tool.
 
-    Owner instruction 2026-08-07 — Flo could add a staff member but had no way to
+    Owner instruction 2026-08-07 - Flo could add a staff member but had no way to
     remove one.
 
     Reversible, like the student equivalent: `set_enrolment_state` puts them back. It
-    closes the door behind them as it goes — `set_enrolment_state` already disables the
+    closes the door behind them as it goes - `set_enrolment_state` already disables the
     login and revokes any refresh token, so an open session cannot outlive the
     decision, and this adds the erasure of what the assistant had learned about them
     (R6.4 / DPDP §12). That erasure is best-effort and never blocks the deactivation.
@@ -647,7 +647,7 @@ async def erase_ai_memory_of_staff(db, actor_ctx: ActorContext, staff: dict) -> 
     REST route cannot drift: before this, only the route did it, so a colleague
     deactivated by any other path left their memories behind.
 
-    Best-effort by design — the deactivation itself has already happened and must not
+    Best-effort by design - the deactivation itself has already happened and must not
     be undone because a memory store was unreachable.
     """
     user_id = staff.get("user_id")

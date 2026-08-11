@@ -1,5 +1,5 @@
-"""Admission-enquiry domain service — single shared write path for enquiry
-creation and pipeline-stage updates (AI Layer Hardening, AD7 — drift-gate
+"""Admission-enquiry domain service - single shared write path for enquiry
+creation and pipeline-stage updates (AI Layer Hardening, AD7 - drift-gate
 remediation for the `create_enquiry` / `update_enquiry_status` AI tools).
 
 Both the REST routes (`POST/PATCH /api/ops/enquiries*`) and the AI tools call
@@ -8,7 +8,7 @@ same field set, same stage-transition guard, same timeline entries.
 
 **Parity decision (case-by-case, canonical = REST):** the legacy AI tool wrote
 extra fields (`notes`, `created_by`, `updated_at`) and skipped the transition
-guard entirely — an AI call could jump an enquiry to any stage. Both now share
+guard entirely - an AI call could jump an enquiry to any stage. Both now share
 the REST behavior: owner may move stages freely (except reverting `enrolled`
 with a linked student), everyone else follows `ALLOWED_TRANSITIONS`.
 
@@ -111,7 +111,7 @@ async def update_enquiry(db, actor_ctx: ActorContext, params: dict, *, session=N
                 )
                 if linked_student:
                     raise EnquiryConflictError(
-                        "Cannot revert enrolled enquiry — student record exists. Delete the student record first."
+                        "Cannot revert enrolled enquiry - student record exists. Delete the student record first."
                     )
         elif new_status not in ALLOWED_TRANSITIONS.get(current, set()):
             raise EnquiryValidationError(f"Invalid enquiry transition from {current} to {new_status}")

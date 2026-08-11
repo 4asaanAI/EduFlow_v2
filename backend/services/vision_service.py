@@ -1,4 +1,4 @@
-"""Understand a photograph — the paid fallback, used only when reading it was not enough.
+"""Understand a photograph - the paid fallback, used only when reading it was not enough.
 
 UI Sweep Epic 10, Story 10.6. Abhimanyu, 2026-07-22: "fall back to the service you
 already pay for only when someone needs a photo genuinely understood."
@@ -8,25 +8,25 @@ READ THIS BEFORE CHANGING ANY OF IT.
 **OCR runs first and this does not.** `services/ocr_service.py` reads printed pages on
 this server for nothing, and the image never leaves the machine. That covers most of
 what a school photographs: fee slips, admission forms, circulars, mark sheets. This
-module exists for the remainder — a handwritten note, or "what is happening in this
-picture" — and it is a FALLBACK, never a parallel attempt. A page whose text was read
+module exists for the remainder - a handwritten note, or "what is happening in this
+picture" - and it is a FALLBACK, never a parallel attempt. A page whose text was read
 successfully must never reach here.
 
 **It adds no new service.** The platform already runs entirely on Azure OpenAI; this
 uses the SAME deployment Flo talks through (`AZURE_OPENAI_DEPLOYMENT`). There is no new
-subscription, no new resource and no standing charge — an image simply costs tokens
+subscription, no new resource and no standing charge - an image simply costs tokens
 like text does. That correction is recorded in D-26, because "don't link us to Azure"
 was said when the platform was already, entirely, on Azure.
 
 **It may not work, and must say so.** The chat deployment may not accept images. When
-it refuses one, that is reported as "this server cannot look at pictures yet" — never
+it refuses one, that is reported as "this server cannot look at pictures yet" - never
 as an empty description, and never as an invented one.
 
 **Proven working 2026-08-06, and the defect that hid until then.** The live deployment
 (`gpt-5.6-luna`) reads images correctly, verified against the real endpoint on both a
 trivial image and a dense, text-heavy screenshot it transcribed accurately. Until that
 date NO photograph could ever be read, because this module sent `max_tokens` while the
-model family requires `max_completion_tokens` — an HTTP 400 on every single call. It
+model family requires `max_completion_tokens` - an HTTP 400 on every single call. It
 stayed hidden because the error landed in the generic `except` below and was reported to
 staff as "the picture could not be examined", which reads like a problem with the photo.
 The screen then advised re-saving the image, so people re-exported files that were never
@@ -45,12 +45,12 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# An image costs tokens. This is a description, not an essay — but length is bounded
+# An image costs tokens. This is a description, not an essay - but length is bounded
 # by the PROMPT ("factually and briefly"), not by a tight ceiling. The ceiling only has
 # to be high enough that hidden reasoning can never consume the whole budget and leave
 # no visible answer; llm_client.py learned that the hard way (R1.6 AC2) and sits at
-# 4000 for the same reason. Billing is on tokens actually emitted — a real description
-# measured 14 — so headroom here is close to free, whereas too little of it produces an
+# 4000 for the same reason. Billing is on tokens actually emitted - a real description
+# measured 14 - so headroom here is close to free, whereas too little of it produces an
 # empty reply that reads as "this page is blank".
 MAX_DESCRIPTION_TOKENS = 2000
 VISION_TIMEOUT_SECONDS = 45
@@ -90,7 +90,7 @@ def describe_image(
     """Ask the model what a picture shows. Never raises.
 
     The image is sent inline as a base64 data URI on the same deployment used for
-    chat — the shape every current vision-capable model accepts.
+    chat - the shape every current vision-capable model accepts.
     """
     available, why = vision_available()
     if not available:
@@ -119,7 +119,7 @@ def describe_image(
             # MUST be max_completion_tokens, NOT max_tokens. The current model family
             # rejects `max_tokens` outright with HTTP 400 `unsupported_parameter`, and
             # because that lands in the exception handler below it surfaced to the
-            # school as "the picture could not be examined" — so every photo anyone
+            # school as "the picture could not be examined" - so every photo anyone
             # sent Flo failed, while the screen advised re-saving the image, which
             # could never have helped. `llm_client.py` has always sent
             # `max_completion_tokens`; this module was written against the older name
@@ -139,7 +139,7 @@ def describe_image(
             if getattr(choice, "finish_reason", None) == "length":
                 logger.error(
                     "vision: budget exhausted before any description was written "
-                    "(finish_reason=length, ceiling=%d) — raise MAX_DESCRIPTION_TOKENS",
+                    "(finish_reason=length, ceiling=%d) - raise MAX_DESCRIPTION_TOKENS",
                     MAX_DESCRIPTION_TOKENS,
                 )
                 return VisionResult(
@@ -163,7 +163,7 @@ def describe_image(
         ):
             logger.error(
                 "vision: the request shape is wrong and NO image can succeed until it "
-                "is fixed — this is a code defect, not a bad photograph | %s", exc,
+                "is fixed - this is a code defect, not a bad photograph | %s", exc,
             )
             return VisionResult(
                 available=False,
@@ -171,7 +171,7 @@ def describe_image(
             )
 
         # A deployment that genuinely cannot take images lands here. Report the
-        # limitation plainly — an invented description would be far worse than an
+        # limitation plainly - an invented description would be far worse than an
         # admission. Note "content" was deliberately REMOVED from this list: it also
         # matches content-filter and content-policy errors, which are not
         # "this model is text-only" and were being mislabelled as such.
@@ -179,7 +179,7 @@ def describe_image(
             logger.warning("vision: deployment rejected an image | %s", exc)
             return VisionResult(
                 available=False,
-                reason="This server cannot look at pictures yet — its AI model only accepts text.",
+                reason="This server cannot look at pictures yet - its AI model only accepts text.",
             )
         # Error opacity (P3): the caller never sees the exception text.
         logger.exception("vision: request failed")

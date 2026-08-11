@@ -68,7 +68,7 @@ class Student(SchoolScopedModel):
     emergency_contact: Optional[str] = None
     # Owner request 11 (2026-08-06): the school had nowhere to record where a child
     # lives, which is the first thing anyone needs when a family stops answering the
-    # phone. One free-text field on purpose — Indian addresses do not fit tidily into
+    # phone. One free-text field on purpose - Indian addresses do not fit tidily into
     # line1/line2/postcode, and a form that fights the address is a form nobody fills in.
     address: Optional[str] = None
     house: Optional[str] = None
@@ -91,7 +91,7 @@ class Staff(SchoolScopedModel):
     employee_id: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
-    # Owner request 11 (2026-08-06) — same field, same reason, on the staff side.
+    # Owner request 11 (2026-08-06) - same field, same reason, on the staff side.
     address: Optional[str] = None
     photo_url: Optional[str] = None
     qualification: Optional[str] = None
@@ -245,7 +245,7 @@ class ConversationUpdate(SchoolScopedModel):
 #
 # These ids go into {"id": {"$in": ids}}. Parsed from a raw request.json(), a
 # caller sending {"ids": [{"$gt": ""}]} produces a query matching EVERY
-# conversation they own — a request that reads "delete these three" and executes
+# conversation they own - a request that reads "delete these three" and executes
 # as "delete everything". `List[str]` makes that a 422 before any query is built.
 #
 # The cap is here rather than in the route so the client can read one number.

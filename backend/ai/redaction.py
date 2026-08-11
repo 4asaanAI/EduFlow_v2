@@ -1,9 +1,9 @@
 """PII minimization for the LLM + trace/audit layer (Stories F.1 / F.2, FR19-23).
 
 DPDP posture: send the model (and persist to traces) the MINIMUM personal data
-necessary. Children's special-category fields — date of birth, contact numbers,
+necessary. Children's special-category fields - date of birth, contact numbers,
 health/medical records, full home address, government IDs (Aadhaar), and secrets
-— are never shipped to Azure OpenAI nor written to chat traces. Identifiers and
+- are never shipped to Azure OpenAI nor written to chat traces. Identifiers and
 references (ids, admission numbers, names used for addressing) are sent instead.
 
 `redact_for_llm()` is THE canonical redactor; `routes/chat.py:_safe_tool_result_for_chat`
@@ -19,7 +19,7 @@ from typing import Any
 
 REDACTED = "[restricted in chat]"
 
-# Exact key names that carry special-category / secret data — fully masked.
+# Exact key names that carry special-category / secret data - fully masked.
 _RESTRICTED_EXACT = {
     "address",
     "home_address",
@@ -36,7 +36,7 @@ _RESTRICTED_EXACT = {
     "guardian_aadhaar",
     # R9.2 AC3: `blood_group` intentionally NOT restricted. It is standard,
     # low-sensitivity operational data already printed on the school's physical
-    # ID cards, and `get_student_profile` legitimately surfaces it — permanently
+    # ID cards, and `get_student_profile` legitimately surfaces it - permanently
     # masking it to "[restricted in chat]" was an over-block. Genuine health data
     # (medical/allergies/disability, below) stays restricted.
     "religion",
@@ -66,9 +66,9 @@ _RESTRICTED_EXACT = {
     "webhook_secret",
 }
 
-# Substring markers — any key containing one of these is masked (covers nested/
+# Substring markers - any key containing one of these is masked (covers nested/
 # prefixed variants like `student_medical_notes`). Deliberately NARROW so we don't
-# over-block non-PII keys (e.g. bare "health" would catch `system_health` — the
+# over-block non-PII keys (e.g. bare "health" would catch `system_health` - the
 # IT-tech dashboard read; health PII is covered by the exact keys above instead).
 _RESTRICTED_SUBSTRINGS = ("medical", "aadhaar", "aadhar", "disabilit")
 
@@ -134,9 +134,9 @@ def redact_text_for_memory(text: str) -> str:
     `redact_for_llm()` masks STRUCTURED tool results by key name; a learned memory
     is a single free-text string, so key-based masking can't apply. This scrubs the
     two raw-PII shapes the trace scanner flags (Aadhaar-shaped 12-digit groups and
-    10-digit Indian phone numbers) plus emails — surgically, so the memory keeps its
+    10-digit Indian phone numbers) plus emails - surgically, so the memory keeps its
     useful, non-special-category content (names, amounts, intents). Calibration note
-    (DPDP guardrails): deliberately NARROW — never blanket-redact the text into
+    (DPDP guardrails): deliberately NARROW - never blanket-redact the text into
     uselessness, only the raw identifiers.
     """
     if not isinstance(text, str) or not text:

@@ -1,4 +1,4 @@
-"""Epic E.5/E.3 — multi-step plan execution + round-counter separation.
+"""Epic E.5/E.3 - multi-step plan execution + round-counter separation.
 
 `plan_from_steps` builds an executable multi-step Plan from the resolved step
 dicts stored on a confirm token; the executor runs every WRITE step in order

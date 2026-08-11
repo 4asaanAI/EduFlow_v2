@@ -189,10 +189,10 @@ def test_thread_membership_and_branch_scope_fail_closed(client, messaging_db):
     assert response.status_code == 404
 
 
-# ── R2-10, 2026-08-11 — the colleague list stopped joining on usernames ──────
+# ── R2-10, 2026-08-11 - the colleague list stopped joining on usernames ──────
 #
 # "0 colleagues available" in the owner's screenshots. The lookup matched four
-# hardcoded usernames — aman.litt, adesh.singh, sonu.ruhal, lalit.thomas — against
+# hardcoded usernames - aman.litt, adesh.singh, sonu.ruhal, lalit.thomas - against
 # `username_lower`. The logins actually in production are `accountant` and
 # `management`, so it matched nobody and the screen truthfully reported nothing.
 #

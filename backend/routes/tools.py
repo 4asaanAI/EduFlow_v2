@@ -1,19 +1,19 @@
-"""Direct tool execution endpoint — the tool-panel (non-chat) door into TOOL_REGISTRY.
+"""Direct tool execution endpoint - the tool-panel (non-chat) door into TOOL_REGISTRY.
 
 UI Sweep Epic 4 rewrote this file. Two defects lived here, both invisible from the
 outside:
 
-1. **Story 4.1 — the double envelope.** Every tool returns `_env()`
+1. **Story 4.1 - the double envelope.** Every tool returns `_env()`
    (`{success, data, meta, message, denied}`) since the R4 epic made that the one
    tool-result envelope. This endpoint then wrapped it again in
    `{"success": True, "data": <envelope>}`, so every tool screen read `r.data.summary`
-   — which was the *envelope*, not the payload — got `undefined`, and fell through to
+   - which was the *envelope*, not the payload - got `undefined`, and fell through to
    its `|| 0` default. Eleven screens showed zeros. The owner reported it as "the
    Board Report shows zeros"; it was never about the Board Report.
 
    The endpoint now returns the tool's own envelope unchanged. There is exactly one.
 
-2. **Story 4.5 — three gaps versus the chat door.** This file had not changed since
+2. **Story 4.5 - three gaps versus the chat door.** This file had not changed since
    Part 1.5 and never learned what the assistant learned afterwards. It gated on
    `user["role"]` alone; it could invoke write tools with no confirm token,
    kill-switch, lockdown or audit; and it passed no `scope`, so a branch-bound caller
@@ -28,7 +28,7 @@ scope resolution or the calling convention.
 
 One real difference the unification removed: this door called every tool with three
 arguments unconditionally, while chat checked the function's signature first. All 112
-registered tools take three today, so nothing was broken — but the first two-argument
+registered tools take three today, so nothing was broken - but the first two-argument
 tool anyone added would have failed here as a generic "Tool execution failed" with a
 TypeError buried in the log, and passed fine through chat.
 """

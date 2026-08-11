@@ -15,7 +15,7 @@ import AdmissionsWorkflow from './AdmissionsWorkflow';
 function h() { return getAuthHeaders(); }
 const tint = (color, amount) => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
 
-// Story 7-41 — Principal reports panel. Attendance trend only (no fees per RBAC).
+// Story 7-41 - Principal reports panel. Attendance trend only (no fees per RBAC).
 export function ReportsTrends() {
   const [attendance, setAttendance] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -38,11 +38,11 @@ export function ReportsTrends() {
       <div style={{ maxWidth: 1000 }}>
         {attendance?.empty ? (
           <div style={{ padding: 24, border: '1px dashed var(--tool-hex-2e2e2e)', borderRadius: 12, color: 'var(--tool-hex-a3a3a3)' }}>
-            Not enough data yet — chart will appear once a month of attendance records exists.
+            Not enough data yet - chart will appear once a month of attendance records exists.
           </div>
         ) : chartData.length > 0 && (
           <LineChartWidget
-            title="Overall attendance % — last 3 months"
+            title="Overall attendance % - last 3 months"
             data={chartData}
             xKey="month"
             lines={[{ key: 'pct', name: 'Attendance %', color: 'var(--tool-hex-4f8ff7)' }]}
@@ -310,7 +310,7 @@ export function FeeTracker() {
               <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--c-text)' }}>Edit Transaction</h3>
               <button onClick={() => setEditTxn(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-muted)' }}><X size={16} /></button>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 12 }}>{editTxn.student_name} — {editTxn.fee_type} — {editTxn.fee_period}</div>
+            <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 12 }}>{editTxn.student_name} - {editTxn.fee_type} - {editTxn.fee_period}</div>
             {actionError && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 10 }}>{actionError}</div>}
             <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <div>
@@ -352,7 +352,7 @@ export function FeeTracker() {
             </div>
             <div style={{ marginTop: 8 }}>
               <div style={{ fontSize: 11, color: 'var(--c-muted)', marginBottom: 4 }}>Reason for change <span style={{ color: 'var(--tool-hex-f87171)' }}>*</span></div>
-              <textarea value={editForm.reason} onChange={e => setEditForm(p => ({ ...p, reason: e.target.value }))} placeholder="Required — explain the correction" style={{ ...ftInputStyle, minHeight: 64, resize: 'vertical' }} />
+              <textarea value={editForm.reason} onChange={e => setEditForm(p => ({ ...p, reason: e.target.value }))} placeholder="Required - explain the correction" style={{ ...ftInputStyle, minHeight: 64, resize: 'vertical' }} />
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
               <button onClick={handleEditSave} disabled={saving} style={{ flex: 1, padding: '9px 0', borderRadius: 7, border: 'none', background: 'var(--tool-hex-4f8ff7)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}>
@@ -392,8 +392,8 @@ export function FeeTracker() {
             t.class_name || 'N/A',
             t.fee_type,
             `₹${(t.amount || 0).toLocaleString('en-IN')}`,
-            t.payment_mode || '—',
-            t.paid_date || '—',
+            t.payment_mode || '-',
+            t.paid_date || '-',
             <Badge text={t.status} color={statusColors[t.status] || 'gray'} />,
             <div style={{ display: 'flex', gap: 4 }}>
               <button onClick={() => { setActionError(''); openEdit(t); }} title="Edit" style={{ background: 'color-mix(in srgb, var(--tool-hex-4f8ff7) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-4f8ff7) 30%, transparent)', borderRadius: 5, padding: '4px 8px', cursor: 'pointer', color: 'var(--tool-hex-4f8ff7)', display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
@@ -519,7 +519,7 @@ export function AttendanceRecorder() {
         </div>
       )}
       {/* D-24: was a hand-rolled <table>. Moved onto the shared DataTable so the register
-          can be ordered by roll number, by name, or by status — "show me everyone still
+          can be ordered by roll number, by name, or by status - "show me everyone still
           marked absent" is the question a teacher actually asks before saving.
           Safe to reorder: each Quick Mark button updates the record by student_id, never
           by its position in the list. `Quick Mark` is not sortable-meaningful but the
@@ -633,7 +633,7 @@ export function AttendanceWhatsAppAlerts() {
 // R2-9: these keys are the canonical document names in
 // `backend/services/certificate_types.py`. This dropdown used to say `transfer`, which
 // the approval rule had never heard of, so a Transfer Certificate raised here was
-// auto-issued to whoever asked — the school's most sensitive document was the one the
+// auto-issued to whoever asked - the school's most sensitive document was the one the
 // mismatch let through. `transfer` and `tc` are still accepted by the server as older
 // spellings of the same thing.
 const CERT_LABELS = { transfer_certificate: 'Transfer Certificate', bonafide: 'Bonafide Certificate', character: 'Character Certificate', sports: 'Sports Certificate', participation: 'Participation Certificate', migration: 'Migration Certificate' };
@@ -646,7 +646,7 @@ const CERT_NEEDS_APPROVAL = new Set(['transfer_certificate', 'transfer', 'tc', '
 // `onError`, so the failure was caught and dropped: the button went from "Generating…"
 // back to normal with no file and no message, and the person retried it as a bug.
 // That silence became reachable the moment issuing was narrowed to Owner + Principal
-// (NEW-01) — office staff who still see these tiles now get a refusal here.
+// (NEW-01) - office staff who still see these tiles now get a refusal here.
 function explainDownloadFailure(status) {
   if (status === 403) {
     // R2-9, 2026-08-11: a 403 here now means one of two things, and both end with the
@@ -833,14 +833,14 @@ export function CertificateGenerator() {
                   existed and then met a refusal on the download button. */}
               <div style={{ fontSize: 11, color: 'var(--tool-hex-34d399)', fontWeight: 700, marginBottom: 10 }} data-testid="certificate-outcome">
                 {generated.status === 'pending_approval'
-                  ? 'Sent for approval — the owner or principal will review it'
+                  ? 'Sent for approval - the owner or principal will review it'
                   : 'Certificate issued'}
               </div>
               <div style={{ fontSize: 12, color: 'var(--c-muted)', lineHeight: 1.8 }}>
                 <div><b style={{ color: 'var(--c-text)' }}>Type:</b> {CERT_LABELS[generated.cert_type] || generated.cert_type}</div>
                 <div><b style={{ color: 'var(--c-text)' }}>Serial:</b> <span style={{ fontFamily: 'monospace' }}>{generated.serial_number}</span></div>
                 <div><b style={{ color: 'var(--c-text)' }}>Student:</b> {generated.content_data?.student_name}</div>
-                <div><b style={{ color: 'var(--c-text)' }}>Date:</b> {generated.issued_date || '—'}</div>
+                <div><b style={{ color: 'var(--c-text)' }}>Date:</b> {generated.issued_date || '-'}</div>
               </div>
               {generated.status !== 'pending_approval' && (
                 <div style={{ marginTop: 12 }}>
@@ -873,14 +873,14 @@ export function CertificateGenerator() {
               <tbody>
                 {certSort.items.map((c, i) => {
                   const isPending = c.status === 'pending_approval';
-                  // R2-9: the status an approved certificate carries is 'generated' —
+                  // R2-9: the status an approved certificate carries is 'generated' -
                   // that is what approve_certificate writes and always has. This line
                   // looked for 'approved', which nothing ever sets, so every issued
                   // certificate in the school's history was shown in red as if it had
                   // been refused.
                   const isApproved = c.status === 'generated' || c.status === 'approved';
                   const statusColor = isApproved ? '#22c55e' : isPending ? '#fbbf24' : '#f87171';
-                  const statusLabel = isApproved ? 'Issued' : isPending ? 'Awaiting approval' : c.status === 'rejected' ? 'Rejected' : c.status || '—';
+                  const statusLabel = isApproved ? 'Issued' : isPending ? 'Awaiting approval' : c.status === 'rejected' ? 'Rejected' : c.status || '-';
                   return (
                   <React.Fragment key={c.id || i}>
                   <tr style={{ borderBottom: rejectingId === c.id ? 'none' : (i < certs.length - 1 ? '1px solid var(--tool-hex-242424)' : 'none') }}>
@@ -1301,7 +1301,7 @@ export function DocumentScanner() {
             </select>
           </div>
 
-          {/* Student dropdown — filtered by class */}
+          {/* Student dropdown - filtered by class */}
           <div style={{ marginBottom: 12 }}>
             {lbl('Student *')}
             <select value={studentId} onChange={e => setStudentId(e.target.value)} style={selStyle}>
@@ -1509,7 +1509,7 @@ export function SmartFeeDefaulter() {
           {selectedDefaulter && (
             <div style={{ background: 'var(--c-bg)', border: '1px solid var(--tool-hex-4f8ff7)', borderRadius: 11, padding: 18, marginBottom: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <h4 style={{ color: 'var(--c-text)', fontSize: 13, fontWeight: 600 }}>Send SMS — {selectedDefaulter.student_name}</h4>
+                <h4 style={{ color: 'var(--c-text)', fontSize: 13, fontWeight: 600 }}>Send SMS - {selectedDefaulter.student_name}</h4>
                 <button onClick={() => { setSelectedDefaulter(null); setSmsResult(null); }} style={{ background: 'transparent', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 16 }}>✕</button>
               </div>
               <form onSubmit={handleSendSingle}>
@@ -1718,12 +1718,12 @@ export function ParentMessage() {
     <ToolPage title="Parent Message Composer" subtitle="Send SMS to parents via Twilio" loading={loading}>
       <div className="tool-split-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 980 }}>
 
-        {/* Left — recipient selector */}
+        {/* Left - recipient selector */}
         <div>
           <div style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 10, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>1. Select Class</label>
             <select value={selectedClass} onChange={e => { setSelectedClass(e.target.value); setSelectedStudents(new Set()); }} style={inp}>
-              <option value="">— All Classes —</option>
+              <option value="">- All Classes -</option>
               {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
             </select>
           </div>
@@ -1755,7 +1755,7 @@ export function ParentMessage() {
           </div>
         </div>
 
-        {/* Right — compose & send */}
+        {/* Right - compose & send */}
         <div>
           <div style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 10, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>3. Compose SMS</label>
@@ -1783,7 +1783,7 @@ export function ParentMessage() {
                   {result.sent > 0 && <span style={{ color: 'var(--tool-hex-34d399)' }}>✓ {result.sent} sent</span>}
                   {result.failed > 0 && <span style={{ color: 'var(--tool-hex-f87171)' }}>✗ {result.failed} failed</span>}
                   {result.no_phone > 0 && <span style={{ color: 'var(--tool-hex-fbbf24)' }}>⚠ {result.no_phone} no phone</span>}
-                  {result.not_configured > 0 && <span style={{ color: 'var(--c-faint)' }}>Twilio not configured — {result.not_configured} logged</span>}
+                  {result.not_configured > 0 && <span style={{ color: 'var(--c-faint)' }}>Twilio not configured - {result.not_configured} logged</span>}
                 </div>
               )}
             </div>
@@ -1794,7 +1794,7 @@ export function ParentMessage() {
               <h4 style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Send History</h4>
               {log.map((l, i) => (
                 <div key={i} style={{ fontSize: 11, color: 'var(--c-faint)', padding: '6px 0', borderBottom: '1px solid var(--c-border)' }}>
-                  <span style={{ color: 'var(--c-text)', fontWeight: 600 }}>{l.time}</span> — {l.count} students selected · {l.sent ?? 0} sent · {l.failed ?? 0} failed
+                  <span style={{ color: 'var(--c-text)', fontWeight: 600 }}>{l.time}</span> - {l.count} students selected · {l.sent ?? 0} sent · {l.failed ?? 0} failed
                   <div style={{ color: 'var(--c-faint)', fontSize: 10, marginTop: 2, fontStyle: 'italic' }}>{l.message.slice(0, 60)}{l.message.length > 60 ? '…' : ''}</div>
                 </div>
               ))}
@@ -1851,7 +1851,7 @@ export function StudentTransfer() {
         if (!res.success) throw new Error(res.detail || 'Failed');
         setDone({ type: 'class_change', student: selectedStudent.name, msg: 'Student moved to new class successfully.' });
       } else {
-        // Transfer or withdrawal — deactivate student
+        // Transfer or withdrawal - deactivate student
         const status = transferType === 'transfer' ? 'transferred' : 'withdrawn';
         const patchRes = await apiFetch(`${API}/students/${selectedStudent.id}`, {
           method: 'PATCH', headers: h(),
@@ -2121,7 +2121,7 @@ export function IdCardGenerator() {
   };
 
   // Asking for approval and then changing the selection would print a batch nobody
-  // approved — the server refuses that, and dropping the stale request here means the
+  // approved - the server refuses that, and dropping the stale request here means the
   // person sees the right button instead of an error.
   const chooseStudent = (id) => {
     setRequest(null);
@@ -2867,7 +2867,7 @@ export function CustomFormBuilder() {
           </div>
           {/* D-24: hand-rolled table moved onto the shared sortable DataTable. The middle
               columns are the form's own questions, so the headers and the cells are both
-              built from `selectedForm.fields` — sorting works on those just as well. */}
+              built from `selectedForm.fields` - sorting works on those just as well. */}
           <DataTable
             tableId="form-responses"
             headers={[

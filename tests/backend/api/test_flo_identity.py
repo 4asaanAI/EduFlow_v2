@@ -3,7 +3,7 @@
 Abhimanyu, 2026-07-22: 'Name the AI assistant "Flo" officially everywhere over the
 platform ... to make it consistent everywhere and not anything else.'
 
-A name drifts one string at a time — someone writes "the assistant" in a new error
+A name drifts one string at a time - someone writes "the assistant" in a new error
 message and nobody notices until the product is calling itself three things. These
 tests fail when that happens.
 """
@@ -40,7 +40,7 @@ def test_flo_is_told_not_to_call_itself_eduflow():
 
 def test_the_refusal_line_uses_the_name():
     prompt = _prompt()
-    assert "I'm Flo — I can only help with school-related queries" in prompt
+    assert "I'm Flo - I can only help with school-related queries" in prompt
     assert "I'm EduFlow AI" not in prompt
 
 
@@ -98,17 +98,37 @@ def test_flo_is_told_not_to_use_long_dashes():
     I help...": the long dash is an AI tell. The first version of these rules left
     that out as marginal; that judgement was wrong."""
     prompt = _prompt()
-    assert "Never use the em-dash" in prompt
-    assert "—" in prompt, "the rule must show the actual em-dash character"
-    assert "–" in prompt, "the rule must show the actual en-dash character"
+    # The wording Flo actually receives comes from the always-on habit in
+    # ai/builtin_skills.py, not from the legacy copy in ai/prompts.py.
+    assert "long dash of any kind" in prompt
+
+    # 2026-08-11: these two lines used to require the rule to PRINT the em dash and the
+    # en dash as examples. That was a fair safeguard when the worry was an ambiguous
+    # rule, and it became a trap for two reasons. First, Abhimanyu asked that no long
+    # dash appear anywhere on the platform, and showing the model the character it must
+    # never use is the worst place to keep one. Second, a sweep removing long dashes
+    # from the codebase silently rewrote the rule into "never use a hyphen" - the
+    # instruction deleted itself and only this test's failure said so.
+    #
+    # The rule now names the characters by their unicode numbers, which cannot be
+    # rewritten by a text sweep, and `ai/writing_style.py` enforces it after the fact so
+    # the wording is no longer the only thing standing between Flo and a long dash.
+    assert "2014" in prompt and "2013" in prompt, (
+        "the rule must still name exactly which characters are banned"
+    )
+    from ai.writing_style import contains_long_dash
+    assert not contains_long_dash(prompt), (
+        "Flo's own instructions contain the character they forbid"
+    )
 
 
 def test_the_hyphen_is_explicitly_still_allowed():
     """A sloppy 'no dashes' rule would break '5-A', 'class-teacher' and '3+ days'
     across every reply. The rule names the characters it bans."""
     prompt = _prompt()
-    assert "The ordinary hyphen is valid" in prompt
-    assert "class labels" in prompt
+    assert "ordinary keyboard hyphen" in prompt
+    # The examples are what stop a model over-applying the rule.
+    assert "5-A" in prompt and "class-teacher" in prompt
 
 
 def test_flo_is_told_not_to_open_with_a_greeting():

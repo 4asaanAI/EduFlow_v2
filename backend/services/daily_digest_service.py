@@ -1,4 +1,4 @@
-"""R2-15 — the day in one page, for the two people who run the school.
+"""R2-15 - the day in one page, for the two people who run the school.
 
 Aman asked that everything on the platform be visible to him. Today that means opening
 the Audit Log and reading it: a screen you have to remember to go and look at, listing
@@ -30,7 +30,7 @@ from typing import Any, Dict, List
 from tenant import scoped_query
 
 # What each action is called when a person reads it. An audit `action` is a machine
-# name — `student_update`, `certificate_delete` — and putting those in front of the
+# name - `student_update`, `certificate_delete` - and putting those in front of the
 # school's owner is how a summary stops being read.
 _ACTION_WORDS = [
     ("undo", "put a change back"),
@@ -184,7 +184,7 @@ def render_digest_text(digest: Dict[str, Any]) -> str:
         lines.append("")
         lines.append("Worth a look:")
         for item in digest["noteworthy"]:
-            tail = f" — reason given: {item['reason_given']}" if item["reason_given"] else ""
+            tail = f" - reason given: {item['reason_given']}" if item["reason_given"] else ""
             lines.append(f"- {item['who']}: {item['what']} ({item['area']}){tail}")
         if digest["noteworthy_total"] > len(digest["noteworthy"]):
             hidden = digest["noteworthy_total"] - len(digest["noteworthy"])

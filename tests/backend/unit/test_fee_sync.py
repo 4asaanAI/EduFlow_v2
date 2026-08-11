@@ -13,7 +13,7 @@ def test_sync_trigger_returns_existing_in_progress_job(client, fake_db):
     """Second sync trigger returns existing job (idempotency)."""
     from tests.backend.conftest import FakeCollection
 
-    # Use a timestamp 1 minute ago — well within the 30-min timeout window
+    # Use a timestamp 1 minute ago - well within the 30-min timeout window
     recent_ts = datetime.now(timezone.utc).replace(second=0, microsecond=0)
     fake_db.fee_sync_jobs = FakeCollection(
         [
@@ -21,12 +21,12 @@ def test_sync_trigger_returns_existing_in_progress_job(client, fake_db):
                 "id": "job-1",
                 "schoolId": "aaryans-joya",
                 "status": "in_progress",
-                "started_at": recent_ts.isoformat(),  # recent — NOT timed out
+                "started_at": recent_ts.isoformat(),  # recent - NOT timed out
             }
         ]
     )
     resp1 = client.post("/api/fees/sync/trigger", json={}, headers=_owner_h())
-    # Should not create a new job — should return existing
+    # Should not create a new job - should return existing
     assert resp1.status_code == 200
     assert len(fake_db.fee_sync_jobs.docs) == 1  # still only 1 job
 
@@ -41,7 +41,7 @@ def test_hung_job_is_expired_and_new_job_created(client, fake_db):
                 "id": "job-old",
                 "schoolId": "aaryans-joya",
                 "status": "in_progress",
-                # Very old timestamp — definitely timed out
+                # Very old timestamp - definitely timed out
                 "started_at": "2020-01-01T00:00:00+00:00",
             }
         ]

@@ -1,4 +1,4 @@
-"""R2-9 — an official document cannot be printed until somebody has approved it.
+"""R2-9 - an official document cannot be printed until somebody has approved it.
 
 Decision 6 of 2026-08-10: the school's owner (Aman Litt) and the principal (Adesh
 Singh) issue a certificate or an ID card directly. The admin office (Lalit Thomas)
@@ -316,7 +316,7 @@ def test_id_card_request_is_refused_to_the_desks_that_cannot_print(client):
     # Deliberately NOT require_role("admin", "owner"): that is every admin desk in the
     # school and would hand a write route to the five dormant profiles, which have none.
     # The accountant head was on this list until 2026-08-11 and is now on the other side
-    # of it — see the accountant tests below.
+    # of it - see the accountant tests below.
     for sub_category in ("receptionist", "it_tech", "maintenance", "support_staff",
                          "transport_head"):
         headers = _bearer({"user_id": "r29-x", "role": "admin",
@@ -329,7 +329,7 @@ def test_id_card_request_is_refused_to_the_desks_that_cannot_print(client):
 # ── The accountant head, added 2026-08-11 ────────────────────────────────────
 #
 # Abhimanyu, 2026-08-11: Sonu hands parents printed documents too, so he gets the same
-# two screens Lalit has. On exactly the same terms — he creates a request and waits.
+# two screens Lalit has. On exactly the same terms - he creates a request and waits.
 # The pair of tests below is the whole instruction: he can reach the routes, and he
 # cannot issue anything on his own.
 

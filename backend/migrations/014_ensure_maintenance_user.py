@@ -4,7 +4,7 @@ Migration 014: RETIRED (2026-07-10).
 This migration previously upserted a demo "Arvind Maintenance" admin account
 (auth login + user profile + staff record, ids user-admin-006 / staff-015).
 That was dummy seed data. It has been purged from the live database and must
-never be re-created — so this migration is now a no-op.
+never be re-created - so this migration is now a no-op.
 
 It is intentionally kept in the ordered list (and importable with the same
 `migrate(db=None)` signature) so the migration ledger and numbering stay
@@ -18,7 +18,7 @@ import asyncio
 
 
 async def migrate(db=None):
-    print("  Migration 014 is RETIRED — no-op (dummy maintenance account is not seeded).")
+    print("  Migration 014 is RETIRED - no-op (dummy maintenance account is not seeded).")
 
 
 if __name__ == "__main__":

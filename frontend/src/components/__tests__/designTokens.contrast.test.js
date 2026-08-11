@@ -1,5 +1,5 @@
 /**
- * The design system's contrast gate — Epic 9, Story 9.1.
+ * The design system's contrast gate - Epic 9, Story 9.1.
  *
  * WHY THIS EXISTS
  *
@@ -15,7 +15,7 @@
  * orange fills carry navy text, and the blue fill deepens for white text.
  *
  * That divergence is invisible in a diff and very easy to "tidy" back into a
- * bug — a future change making an orange button's label white would look like
+ * bug - a future change making an orange button's label white would look like
  * a cleanup and would silently break accessibility for every user. This test
  * computes the ratios so that change fails the build instead.
  *
@@ -49,9 +49,9 @@ export function contrast(fg, bg) {
 /* Mirrors of the token values. Kept here as literals ON PURPOSE: reading them
    out of the stylesheet would make the test agree with whatever the CSS says,
    which is precisely the thing being guarded. If you change a token, you must
-   change it here too — and that is the moment the ratio gets re-checked. */
+   change it here too - and that is the moment the ratio gets re-checked. */
 /* Dark theme is NEUTRAL grey, not navy. The first Epic 9 pass took the
-   brochure's navy literally and Abhimanyu reversed it — too much blue. What
+   brochure's navy literally and Abhimanyu reversed it - too much blue. What
    the brochure contributes to dark is the type and the rounded chunky shapes,
    not the background. These greys are the app's original values, with the
    three text weights raised to clear 4.5:1 (#666666 measured 3.03:1). */
@@ -104,7 +104,7 @@ describe('contrast ratio helper', () => {
     expect(contrast('#FFFFFF', '#FFFFFF')).toBeCloseTo(1, 5);
   });
 
-  it('is symmetric — order of arguments does not matter', () => {
+  it('is symmetric - order of arguments does not matter', () => {
     expect(contrast('#16203A', '#F2811D')).toBeCloseTo(contrast('#F2811D', '#16203A'), 6);
   });
 });
@@ -142,7 +142,7 @@ describe.each([['dark', DARK], ['light', LIGHT]])('%s theme', (themeName, T) => 
       expect(contrast(T.onBrandBlue, T.brandBlueFill)).toBeGreaterThanOrEqual(BODY_TEXT);
     });
 
-    it('accent: NAVY on orange — white would be 2.65:1 and must never be used', () => {
+    it('accent: NAVY on orange - white would be 2.65:1 and must never be used', () => {
       expect(contrast(T.onBrandOrange, T.brandOrange)).toBeGreaterThanOrEqual(BODY_TEXT);
       // The guard rail: prove the tempting "cleanup" is actually a failure.
       expect(contrast('#FFFFFF', T.brandOrange)).toBeLessThan(BODY_TEXT);
@@ -153,7 +153,7 @@ describe.each([['dark', DARK], ['light', LIGHT]])('%s theme', (themeName, T) => 
     it('a secondary button is identified by its border, so the border needs 3:1', () => {
       // Not a pedantic assertion. The secondary button's FILL measures only
       // 1.32:1 against the page in dark theme, so the border is what makes the
-      // control visible at all — which is exactly the case WCAG 1.4.11 covers.
+      // control visible at all - which is exactly the case WCAG 1.4.11 covers.
       // This assertion rejected the original #3A4D7A / #B9C8E4 pair.
       expect(contrast(T.borderStrong, T.page)).toBeGreaterThanOrEqual(NON_TEXT);
       expect(contrast(T.borderStrong, T.surface)).toBeGreaterThanOrEqual(NON_TEXT);

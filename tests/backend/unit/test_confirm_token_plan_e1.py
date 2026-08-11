@@ -1,4 +1,4 @@
-"""Epic E.1 — plan/step schema + plan-hash confirm token.
+"""Epic E.1 - plan/step schema + plan-hash confirm token.
 
 Pins: the same canonical hash helper is used at issue and consume; a tampered
 persisted plan is rejected with `plan_tampered` 409; a legacy token (no plan)
@@ -118,7 +118,7 @@ async def test_consume_tampered_plan_raises_plan_tampered_409():
         "school_id": "sch", "branch_id": "b1", "used": False,
         "expires_at": now + timedelta(minutes=5),
         "plan": tampered,
-        # hash bound to the ORIGINAL plan — the persisted plan was edited.
+        # hash bound to the ORIGINAL plan - the persisted plan was edited.
         "plan_hash": compute_plan_hash(_PLAN, school_id="sch", branch_id="b1"),
     }
     with pytest.raises(HTTPException) as exc:
@@ -135,7 +135,7 @@ async def test_consume_foreign_session_token_is_403_not_401():
     UNAUTHENTICATED. The caller's own login is perfectly valid.
 
     This used to answer 401. Once every screen went through the refreshing wrapper,
-    a 401 meant "renew the login and try again" — the renewal succeeds, the retry is
+    a 401 meant "renew the login and try again" - the renewal succeeds, the retry is
     refused identically, and the person is signed out for tapping a stale Confirm
     button. 403 says what is actually true and leaves the session alone.
     """

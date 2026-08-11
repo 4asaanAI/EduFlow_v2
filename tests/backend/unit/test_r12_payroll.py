@@ -17,7 +17,7 @@ def _accountant_h():
 
 
 def _legacy_accounts_h():
-    # Legacy "accounts" sub_category — should still work for fee domain, not payroll.
+    # Legacy "accounts" sub_category - should still work for fee domain, not payroll.
     t = create_jwt({"user_id": "leg1", "role": "admin", "name": "L", "sub_category": "accounts"})
     return {"Authorization": f"Bearer {t}"}
 

@@ -1,4 +1,4 @@
-"""Story J.2 — dual-entrypoint parity for staff CRUD.
+"""Story J.2 - dual-entrypoint parity for staff CRUD.
 
 Same seed + same actor (owner) through the REST routes (POST /api/staff/,
 PATCH /api/staff/{id}) and the AI tools (`create_staff`, `update_staff`) →

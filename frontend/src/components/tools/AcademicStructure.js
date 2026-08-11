@@ -105,7 +105,7 @@ export default function AcademicStructure() {
         return next;
       });
     } catch {
-      setError('Network error — please try again');
+      setError('Network error - please try again');
     } finally {
       setLoading(false);
     }
@@ -138,7 +138,7 @@ export default function AcademicStructure() {
         setError(res.detail || 'Failed to save class');
       }
     } catch {
-      setError('Network error — please try again');
+      setError('Network error - please try again');
     } finally {
       setBusy(false);
     }
@@ -166,7 +166,7 @@ export default function AcademicStructure() {
         setError(res.detail || 'Failed to save subject');
       }
     } catch {
-      setError('Network error — please try again');
+      setError('Network error - please try again');
     } finally {
       setBusy(false);
     }
@@ -190,7 +190,7 @@ export default function AcademicStructure() {
         setConfirm(null);
       }
     } catch {
-      setError('Network error — please try again');
+      setError('Network error - please try again');
       setConfirm(null);
     } finally {
       setBusy(false);
@@ -205,7 +205,7 @@ export default function AcademicStructure() {
   return (
     <ToolPage
       title="Academic Structure"
-      subtitle={academicYear?.name ? `Classes & subjects — ${academicYear.name}` : 'Manage classes, subjects & teacher links'}
+      subtitle={academicYear?.name ? `Classes & subjects - ${academicYear.name}` : 'Manage classes, subjects & teacher links'}
       onRefresh={loadAll}
       loading={loading}
       actions={actions}
@@ -231,7 +231,7 @@ export default function AcademicStructure() {
                   }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                        {c.name}{c.section ? ` — ${c.section}` : ''}
+                        {c.name}{c.section ? ` - ${c.section}` : ''}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {c.room_number ? `Room ${c.room_number} · ` : ''}{c.class_teacher_id ? (teacherMap[c.class_teacher_id] || 'Teacher assigned') : 'No class teacher'}
@@ -239,7 +239,7 @@ export default function AcademicStructure() {
                     </div>
                     <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
                       <IconBtn icon={<Edit3 size={13} />} title="Edit class" onClick={(e) => { e.stopPropagation(); setClassModal({ mode: 'edit', id: c.id, form: { name: c.name || '', section: c.section || '', room_number: c.room_number || '', class_teacher_id: c.class_teacher_id || '' } }); }} />
-                      <IconBtn icon={<Trash2 size={13} />} title="Delete class" danger onClick={(e) => { e.stopPropagation(); setConfirm({ kind: 'class', id: c.id, label: `${c.name}${c.section ? ' — ' + c.section : ''}` }); }} />
+                      <IconBtn icon={<Trash2 size={13} />} title="Delete class" danger onClick={(e) => { e.stopPropagation(); setConfirm({ kind: 'class', id: c.id, label: `${c.name}${c.section ? ' - ' + c.section : ''}` }); }} />
                     </div>
                   </div>
                 );
@@ -251,7 +251,7 @@ export default function AcademicStructure() {
           <div style={card}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                <BookOpen size={15} /> Subjects{selectedClass ? ` — ${selectedClass.name}${selectedClass.section ? ' ' + selectedClass.section : ''}` : ''}
+                <BookOpen size={15} /> Subjects{selectedClass ? ` - ${selectedClass.name}${selectedClass.section ? ' ' + selectedClass.section : ''}` : ''}
               </div>
               {selectedClass && (
                 <ActionBtn label="Add Subject" icon={<Plus size={12} />} onClick={() => setSubjectModal({ mode: 'create', form: { name: '', teacher_id: '', max_marks: '100', pass_marks: '33' } })} />

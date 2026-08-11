@@ -1,4 +1,4 @@
-"""Parent messaging — dual-entrypoint parity (Flo vs the panel).
+"""Parent messaging - dual-entrypoint parity (Flo vs the panel).
 
 Flo can send real WhatsApp/SMS to families. The whole safety argument for that rests on
 Flo using the SAME code path as a staff member pressing Send, so this pins it: the same
@@ -65,7 +65,7 @@ def _twilio_and_config(monkeypatch, fake_db):
 
     # `_fake_db` is shared for the whole session, so this seed MUST be restored on the
     # way out. Replacing it without restoring broke five unrelated student parity tests
-    # when the suite ran as a whole — invisible when this file ran alone.
+    # when the suite ran as a whole - invisible when this file ran alone.
     _saved = {
         col: list(getattr(fake_db, col).docs)
         for col in ("students", "guardians", "classes")
@@ -185,7 +185,7 @@ async def test_template_pending_approval_cannot_send(fake_db):
 async def test_unconfigured_channel_fails_loudly(monkeypatch, fake_db):
     """The bug this system exists to remove: reporting success having sent nothing.
 
-    Production had exactly this on 2026-08-08 — TWILIO_WHATSAPP_FROM was unset, and the
+    Production had exactly this on 2026-08-08 - TWILIO_WHATSAPP_FROM was unset, and the
     old bulk route recorded every recipient as 'not_configured' and returned success.
     """
     monkeypatch.delenv("TWILIO_WHATSAPP_FROM", raising=False)
@@ -201,7 +201,7 @@ async def test_unconfigured_channel_fails_loudly(monkeypatch, fake_db):
 
 
 async def test_siblings_sharing_a_phone_get_one_message(fake_db):
-    """Two children, one guardian number — the family should not be messaged twice."""
+    """Two children, one guardian number - the family should not be messaged twice."""
     fake_db.students.docs.append(
         {"id": "stu-2", "name": "Priya", "class_id": "cls-1", "section": "A",
          "phone": "9000000001", "schoolId": "aaryans-joya", "branch_id": "branch-a"}

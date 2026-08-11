@@ -200,7 +200,7 @@ def test_create_subscription_session_unknown_plan_400(app_client, autouse_clean)
     assert resp.status_code == 400
 
 
-# ─── AC3 + AC4: Webhook handler — payment_link.paid ───────────────────────────
+# ─── AC3 + AC4: Webhook handler - payment_link.paid ───────────────────────────
 
 async def test_webhook_payment_link_paid_credits_tokens(token_db, monkeypatch):
     token_db.token_balances.docs[:] = [
@@ -216,7 +216,7 @@ async def test_webhook_payment_link_paid_credits_tokens(token_db, monkeypatch):
     await svc.handle_payment_link_paid(link)
 
     # A one-time payment-link top-up credits the *buyer's personal* balance
-    # (`personal_topups.{user_id}`), not the school-wide pool — only subscription
+    # (`personal_topups.{user_id}`), not the school-wide pool - only subscription
     # renewals feed `school_topup_pool` (see test_webhook_subscription_charged_*).
     assert token_db.token_balances.docs[0]["personal_topups"]["owner-1"] == 200_000
     assert token_db.token_balances.docs[0]["school_topup_pool"] == 0
@@ -293,7 +293,7 @@ def test_school_fee_webhook_settles_checkout_without_token_credit(token_db, monk
     assert token_db.token_purchases.docs == []
 
 
-# ─── AC3: Webhook route — invalid signature ───────────────────────────────────
+# ─── AC3: Webhook route - invalid signature ───────────────────────────────────
 
 def test_webhook_invalid_signature_400(token_db, monkeypatch):
     def _raise_sig_error(body, sig):
@@ -316,7 +316,7 @@ def test_webhook_invalid_signature_400(token_db, monkeypatch):
     assert token_db.razorpay_webhook_inbox.docs == []
 
 
-# ─── AC3: Webhook handler — subscription.activated ────────────────────────────
+# ─── AC3: Webhook handler - subscription.activated ────────────────────────────
 
 async def test_webhook_subscription_activated_updates_balance(token_db, monkeypatch):
     token_db.token_balances.docs[:] = []
@@ -340,7 +340,7 @@ async def test_webhook_subscription_activated_updates_balance(token_db, monkeypa
     assert doc["subscription_current_period_end"] is not None
 
 
-# ─── AC3: Webhook handler — subscription.charged (renewal) ────────────────────
+# ─── AC3: Webhook handler - subscription.charged (renewal) ────────────────────
 
 async def test_webhook_subscription_charged_credits_pool(token_db, monkeypatch):
     # monthly_growth grants 3,000,000 tokens/month (SUBSCRIPTION_PLANS in
@@ -380,7 +380,7 @@ async def test_webhook_subscription_charged_idempotent(token_db, monkeypatch):
     assert len(token_db.token_purchases.docs) == 1
 
 
-# ─── AC3: Webhook handler — subscription.cancelled ────────────────────────────
+# ─── AC3: Webhook handler - subscription.cancelled ────────────────────────────
 
 async def test_webhook_subscription_cancelled_marks_canceled(token_db, monkeypatch):
     token_db.token_balances.docs[:] = [
@@ -394,7 +394,7 @@ async def test_webhook_subscription_cancelled_marks_canceled(token_db, monkeypat
     assert token_db.token_balances.docs[0]["subscription_status"] == "canceled"
 
 
-# ─── AC3: Webhook route — unknown event passthrough ───────────────────────────
+# ─── AC3: Webhook route - unknown event passthrough ───────────────────────────
 
 def test_webhook_unknown_event_returns_200(token_db, monkeypatch):
     import routes.tokens as tok_routes
@@ -469,7 +469,7 @@ def test_processed_webhook_delivery_does_not_run_handler_twice(token_db, monkeyp
     assert calls["count"] == 1
 
 
-# ─── AC3: Webhook route — no JWT auth required ────────────────────────────────
+# ─── AC3: Webhook route - no JWT auth required ────────────────────────────────
 
 def test_webhook_no_auth_header_needed(token_db, monkeypatch):
     import routes.tokens as tok_routes

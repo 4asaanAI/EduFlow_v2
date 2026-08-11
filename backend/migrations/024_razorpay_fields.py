@@ -27,4 +27,4 @@ async def migrate(db) -> None:
     try:
         await db.token_purchases.drop_index("token_purchases_stripe_session_id")
     except Exception:
-        pass  # index may not exist (fresh DB or already dropped) — best-effort cleanup
+        pass  # index may not exist (fresh DB or already dropped) - best-effort cleanup

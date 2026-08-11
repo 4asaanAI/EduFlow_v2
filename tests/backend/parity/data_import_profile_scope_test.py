@@ -1,4 +1,4 @@
-"""Spreadsheet import for the accountant and management profiles — segment-scoped.
+"""Spreadsheet import for the accountant and management profiles - segment-scoped.
 
 Owner and principal import the whole student record. On 2026-08-08 import was widened
 to the other two reviewed authority profiles, but NOT to the whole record: the

@@ -1,11 +1,11 @@
-"""Async LayaaStat ingest client — the Python mirror of LayaaStat's `sdk/layaa-monitor.ts`.
+"""Async LayaaStat ingest client - the Python mirror of LayaaStat's `sdk/layaa-monitor.ts`.
 
 A thin, dependency-light client EduFlow's backend uses to *push* telemetry to the
 Layaa AI health-check platform (LayaaStat). It speaks the two documented ingest
 contracts:
 
-- ``POST /api/ingest`` — custom product events  → ``raw_events``  (idempotent on ``insert_id``)
-- ``POST /api/otel``   — GenAI / LLM spans       → ``otel_spans``  (idempotent on ``span_id``)
+- ``POST /api/ingest`` - custom product events  → ``raw_events``  (idempotent on ``insert_id``)
+- ``POST /api/otel``   - GenAI / LLM spans       → ``otel_spans``  (idempotent on ``span_id``)
 
 Both require a tenant-bound ``x-ingest-key`` (``lsk_live_…``) and are **server-side only**.
 
@@ -18,7 +18,7 @@ Design (faithful to the reference SDK):
   in-memory FIFO queue and re-sent on the next flush; on overflow the OLDEST batch is
   dropped (counted via :meth:`dropped_count`). Telemetry must never block or crash the app.
 
-This module knows nothing about configuration or whether the integration is enabled —
+This module knows nothing about configuration or whether the integration is enabled -
 see ``services.layaastat.__init__`` for the env-gated singleton and public helpers.
 """
 
@@ -111,7 +111,7 @@ class LayaaMonitor:
         D-41 (2026-08-04): this used to stamp ``service_id`` with the service NAME
         ("eduflow-api"). The receiving end treats ``service_id`` as a reference to a
         registered service, so a name in that slot failed at the database with
-        ``500 {"error":"Insert failed (quarantined for replay)"}`` — for every span,
+        ``500 {"error":"Insert failed (quarantined for replay)"}`` - for every span,
         which is every LLM call the school makes. Bisected field by field against the
         live endpoint: the identical span sent without ``service_id`` is accepted.
         The ingest key already identifies the tenant, so nothing is lost by omitting it.
@@ -156,7 +156,7 @@ class LayaaMonitor:
 
     # ── Internals ───────────────────────────────────────────────────────────
     async def _deliver_or_buffer(self, batch: _Batch) -> None:
-        # If the queue is already non-empty the endpoint is known-down — buffer directly
+        # If the queue is already non-empty the endpoint is known-down - buffer directly
         # to preserve ordering rather than racing a doomed send.
         res = "unreachable" if self._forward_queue else await self._send(batch["path"], batch["body"])
         if res == "unreachable":
@@ -183,7 +183,7 @@ class LayaaMonitor:
                     resp = await client.post(url, json=body, headers=headers)
                 if resp.status_code < 300:
                     return "ok"
-                # 4xx except 429 = permanent client error (bad key/payload) — don't retry.
+                # 4xx except 429 = permanent client error (bad key/payload) - don't retry.
                 if resp.status_code != 429 and resp.status_code < 500:
                     logger.warning("layaastat ingest rejected (permanent) status=%s path=%s", resp.status_code, path)
                     return "permanent"

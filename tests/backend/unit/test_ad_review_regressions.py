@@ -22,7 +22,7 @@ from tests.backend.conftest import FakeCollection
 pytestmark = pytest.mark.asyncio
 
 
-# ── #1/#2 — create_notification / write_audit_doc enlist the ambient txn session ──
+# ── #1/#2 - create_notification / write_audit_doc enlist the ambient txn session ──
 
 class _SpyCol(FakeCollection):
     def __init__(self):
@@ -68,7 +68,7 @@ async def test_write_audit_doc_picks_up_ambient_session():
     assert db.audit_logs.session_seen is sentinel
 
 
-# ── #4/#5 — idempotency robustness ──
+# ── #4/#5 - idempotency robustness ──
 
 class _IdemDb:
     def __init__(self):
@@ -124,7 +124,7 @@ async def test_dry_run_does_not_claim_idempotency():
     assert await db.ai_write_idempotency.count_documents({}) == 0
 
 
-# ── #6 — saga: a completed side-effect with NO compensator escalates to recon ──
+# ── #6 - saga: a completed side-effect with NO compensator escalates to recon ──
 
 async def test_uncompensatable_completed_side_effect_escalates_to_recon():
     db = _IdemDb()
@@ -151,7 +151,7 @@ async def test_uncompensatable_completed_side_effect_escalates_to_recon():
         await plan_executor.run(plan, db=db)
 
 
-# ── #11/#12 — numeric coercion is a domain (400) error, not an uncaught 500 ──
+# ── #11/#12 - numeric coercion is a domain (400) error, not an uncaught 500 ──
 
 def _ctx():
     return ActorContext(user_id="u1", role="owner", sub_category=None, school_id="aaryans-joya", branch_id=None, actor_name="O")
@@ -186,7 +186,7 @@ async def test_fees_non_numeric_amount_is_domain_error():
         )
 
 
-# ── #3 — attendance bulk: a per-record failure under a txn aborts (all-or-nothing) ──
+# ── #3 - attendance bulk: a per-record failure under a txn aborts (all-or-nothing) ──
 
 async def test_attendance_per_record_failure_raises_under_session():
     from services.attendance_service import mark_attendance
@@ -209,7 +209,7 @@ async def test_attendance_per_record_failure_raises_under_session():
               "records": [{"student_id": "s1", "status": "present"}]}
 
     # With an ambient session (inside the executor txn) the failure must PROPAGATE so
-    # the transaction aborts — not be swallowed into a per-record "error" result.
+    # the transaction aborts - not be swallowed into a per-record "error" result.
     tok = txn_context.set_current_session(object())
     try:
         with pytest.raises(RuntimeError):
@@ -219,7 +219,7 @@ async def test_attendance_per_record_failure_raises_under_session():
 
 
 async def test_attendance_per_record_failure_reported_without_session():
-    """REST path (no session): per-record error is REPORTED, not raised — the A.1
+    """REST path (no session): per-record error is REPORTED, not raised - the A.1
     characterization behavior is preserved."""
     from services.attendance_service import mark_attendance
 
@@ -243,7 +243,7 @@ async def test_attendance_per_record_failure_reported_without_session():
     assert result["results"][0]["status"] == "error"
 
 
-# ── #13 — precondition: nested field + malformed precondition does not silently pass ──
+# ── #13 - precondition: nested field + malformed precondition does not silently pass ──
 
 async def test_precondition_supports_nested_field():
     class _Db:

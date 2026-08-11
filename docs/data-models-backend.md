@@ -1,4 +1,4 @@
-# Data Models — Backend
+# Data Models - Backend
 
 _Generated: 2026-05-15 | Scan: deep | Part: backend_
 
@@ -20,7 +20,7 @@ EduFlow uses a **dual-axis tenancy model**:
 | Axis | Field | Scope | Mechanism |
 |------|-------|-------|-----------|
 | School | `schoolId` | All operational docs | `ScopedCollection` in `database.py` auto-injects `schoolId` on writes and adds `{$or: [{schoolId: X}, {schoolId: {$exists: false}}]}` on reads |
-| Branch | `branch_id` | Per-branch operational docs | `scoped_query()` in `tenant.py` — caller must pass `branch_id` explicitly |
+| Branch | `branch_id` | Per-branch operational docs | `scoped_query()` in `tenant.py` - caller must pass `branch_id` explicitly |
 
 **`ScopedDatabase`** wraps every collection access: `get_db().students` returns a `ScopedCollection` that enforces `schoolId` automatically. System collections bypass scoping.
 
@@ -33,7 +33,7 @@ EduFlow uses a **dual-axis tenancy model**:
 | `_migrations` | Migration run history |
 | `auth_users` | User login credentials and profile |
 | `login_attempts` | Brute-force lockout tracking |
-| `otps` | OTP records (TTL-indexed — auto-deletes on `expires_at`) |
+| `otps` | OTP records (TTL-indexed - auto-deletes on `expires_at`) |
 | `refresh_tokens` | JWT refresh token store |
 
 ---

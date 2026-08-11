@@ -1,4 +1,4 @@
-"""Epic E.5/E.6 — the chat planner SSE path: one confirm card for a valid plan,
+"""Epic E.5/E.6 - the chat planner SSE path: one confirm card for a valid plan,
 graceful deep-link fallback when the assistant can't complete the job."""
 
 from __future__ import annotations
@@ -64,10 +64,10 @@ async def test_disambiguation_emits_structured_options_no_token(monkeypatch):
     async def _fake_resolve(params, db_, scope=None):
         out = dict(params)
         if out.get("student_name"):
-            out["_resolution_error"] = "Multiple students match 'Rahul' — specify the admission number."
+            out["_resolution_error"] = "Multiple students match 'Rahul' - specify the admission number."
             out["_resolution_options"] = [
-                {"label": "Rahul Kumar — Adm 2024-001", "value": "2024-001"},
-                {"label": "Rahul Singh — Adm 2024-002", "value": "2024-002"},
+                {"label": "Rahul Kumar - Adm 2024-001", "value": "2024-001"},
+                {"label": "Rahul Singh - Adm 2024-002", "value": "2024-002"},
             ]
         return out
 

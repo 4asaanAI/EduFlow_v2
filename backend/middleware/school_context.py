@@ -1,4 +1,4 @@
-"""School context middleware — injects per-request school_id from JWT."""
+"""School context middleware - injects per-request school_id from JWT."""
 
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ def _clear_school_status_cache(school_id: Optional[str] = None) -> None:
         _school_status_cache.pop(school_id, None)
 
 # Paths that bypass school-context injection entirely (health + login only).
-# /api/auth/refresh and /api/auth/logout are NOT in _SKIP_PATHS — they go through the
+# /api/auth/refresh and /api/auth/logout are NOT in _SKIP_PATHS - they go through the
 # full middleware so school context is injected, but the deactivated-school 402 gate
 # explicitly exempts them (inner bypass below) so deactivated users can sign out cleanly.
 _SKIP_PATHS = {
@@ -108,7 +108,7 @@ class SchoolContextMiddleware(BaseHTTPMiddleware):
                     except Exception:
                         # DELIBERATE FAIL-OPEN (see module docstring above).
                         logger.warning(
-                            "school status check failed school_id=%s — failing open", school_id, exc_info=True
+                            "school status check failed school_id=%s - failing open", school_id, exc_info=True
                         )
                         cached_status = "active"
 

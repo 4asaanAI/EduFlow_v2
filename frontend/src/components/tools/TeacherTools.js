@@ -356,7 +356,7 @@ export function QuestionPaperCreator() {
 
   const downloadPdf = async () => {
     const liveContent = editorRef.current?.innerHTML || editedContent;
-    // Create a visible overlay — html2canvas cannot capture off-screen/fixed elements
+    // Create a visible overlay - html2canvas cannot capture off-screen/fixed elements
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--tool-hex-ffffff);overflow:auto;display:flex;justify-content:center;';
     const inner = document.createElement('div');

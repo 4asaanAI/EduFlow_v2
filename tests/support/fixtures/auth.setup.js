@@ -1,5 +1,5 @@
 /**
- * Auth Setup — Playwright global setup
+ * Auth Setup - Playwright global setup
  *
  * Logs in as admin once and saves the browser storage state so all tests
  * can reuse the authenticated session without repeating the login flow.
@@ -26,7 +26,7 @@ setup('authenticate as admin', async ({ page }) => {
 
   await page.goto(`${baseURL}/login`);
 
-  // Fill login form — using data-testid selectors (EduFlow convention)
+  // Fill login form - using data-testid selectors (EduFlow convention)
   await page.getByTestId('login-username').fill(username);
   await page.getByTestId('login-password').fill(password);
   await page.getByTestId('login-submit').click();

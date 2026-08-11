@@ -1,9 +1,9 @@
-"""UI Sweep Epic 4, Story 4.2 — a zero means zero.
+"""UI Sweep Epic 4, Story 4.2 - a zero means zero.
 
 The school has ONE fee transaction for 1,802 students and no attendance marked on a
 typical morning. Once the double envelope was fixed and real figures started flowing,
 "0%" attendance and "₹0" collected would have been indistinguishable from the broken
-zeros this epic set out to remove — so the numbers themselves have to be honest, not
+zeros this epic set out to remove - so the numbers themselves have to be honest, not
 just the cards that render them.
 
 These assert the tool output, because the assistant reads the same fields as the
@@ -22,7 +22,7 @@ def _owner():
     return {"Authorization": f"Bearer {create_jwt({'user_id': 'e4h-owner', 'role': 'owner', 'name': 'Owner'})}"}
 
 
-# Snapshot/restore, not a blanket wipe — the FakeDb is a session-wide singleton and
+# Snapshot/restore, not a blanket wipe - the FakeDb is a session-wide singleton and
 # other test files seed rows into these same collections.
 _TOUCHED = ("students", "staff", "student_attendance", "staff_attendance",
             "fee_transactions", "leave_requests", "classes")
@@ -83,7 +83,7 @@ def test_marked_attendance_still_reports_a_real_percentage(client, fake_db):
 
 
 def test_a_genuine_zero_percent_is_still_reported(client, fake_db):
-    """Everyone marked absent IS 0% — and must not be hidden by the honesty fix."""
+    """Everyone marked absent IS 0% - and must not be hidden by the honesty fix."""
     from datetime import date
 
     _seed_students(fake_db, 2)
@@ -139,7 +139,7 @@ def test_attendance_average_is_reported_when_records_exist(client, fake_db):
 # ── Fees: a real ₹0 must be able to say why ──────────────────────────────────
 
 def test_fee_summary_reports_how_many_records_exist(client, fake_db):
-    """The school's ₹0 is TRUE — one transaction for 1,802 students. Without this
+    """The school's ₹0 is TRUE - one transaction for 1,802 students. Without this
     count the screen cannot tell him a real zero from a failed request."""
     resp = client.post(TOOL_URL.format("get_fee_summary"), json={"params": {}}, headers=_owner())
     stats = resp.json()["data"]["stats"]
@@ -166,7 +166,7 @@ def test_unrecorded_gender_is_counted_separately_from_other(client, fake_db):
     assert classify_gender("") == "not_recorded"
     assert classify_gender("   ") == "not_recorded"
 
-    # A recorded gender of other IS "other" — a real, different answer.
+    # A recorded gender of other IS "other" - a real, different answer.
     assert classify_gender("other") == "other"
     assert classify_gender("Transgender") == "other"
 
@@ -176,7 +176,7 @@ def test_unrecorded_gender_is_counted_separately_from_other(client, fake_db):
         assert classify_gender(female) == "girls", female
 
     # The school's actual data: every student unrecorded. Under the old rule all
-    # 1,802 landed in "other", so Other == Total on every row — the exact symptom
+    # 1,802 landed in "other", so Other == Total on every row - the exact symptom
     # the owner reported. Under the new rule none of them do.
     school_as_it_stands = [classify_gender(g) for g in [None] * 50]
     assert set(school_as_it_stands) == {"not_recorded"}
@@ -187,7 +187,7 @@ def test_strength_endpoint_reports_the_not_recorded_bucket(client, fake_db):
     """The endpoint must expose the fourth count, or the screen cannot draw it.
 
     NOTE: the in-memory test double cannot evaluate `$cond`/`$toLower`/`$trim`, so
-    the *arithmetic* of the aggregation is not asserted here — that would be
+    the *arithmetic* of the aggregation is not asserted here - that would be
     measuring the fake rather than the code. The rule itself is covered
     exhaustively by `classify_gender` above, and the pipeline mirrors it.
     """
@@ -208,7 +208,7 @@ def test_strength_pipeline_counts_unrecorded_separately():
 
     src = inspect.getsource(students_module.class_strength_stats)
     assert '"not_recorded"' in src
-    # `other` is total minus the three known buckets, INCLUDING not_recorded —
+    # `other` is total minus the three known buckets, INCLUDING not_recorded -
     # if not_recorded is dropped from that subtraction the old defect returns.
     assert '"$not_recorded"' in src
 

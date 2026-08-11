@@ -89,8 +89,8 @@ export function GuardianPortal() {
         </form>
         <div style={panel}><h3 style={heading}>Recent announcements</h3>{(dashboard.announcements || []).slice(0, 5).map(item => <div key={item.id} style={noticeRow}><strong>{item.title}</strong><span>{item.message || item.body}</span></div>)}{!dashboard.announcements?.length && <span style={empty}>No announcements</span>}</div>
       </div>
-      <DataTable title="Results" headers={['Exam', 'Subject', 'Marks', 'Grade']} rows={(dashboard.results || []).map(item => [item.exam_name || item.exam_id, item.subject_name || item.subject_id, item.marks_obtained ?? item.marks, item.grade || '—'])} emptyMsg="No results published" />
-      <DataTable title="Assignments" headers={['Assignment', 'Due', 'Status']} rows={(dashboard.assignments || []).map(item => [item.title, item.due_date || '—', <Badge text={item.status || 'assigned'} color="blue" />])} emptyMsg="No assignments" />
+      <DataTable title="Results" headers={['Exam', 'Subject', 'Marks', 'Grade']} rows={(dashboard.results || []).map(item => [item.exam_name || item.exam_id, item.subject_name || item.subject_id, item.marks_obtained ?? item.marks, item.grade || '-'])} emptyMsg="No results published" />
+      <DataTable title="Assignments" headers={['Assignment', 'Due', 'Status']} rows={(dashboard.assignments || []).map(item => [item.title, item.due_date || '-', <Badge text={item.status || 'assigned'} color="blue" />])} emptyMsg="No assignments" />
       <DataTable title="Library loans" headers={['Title', 'Issued', 'Due', 'Status']} rows={(dashboard.library_loans || []).map(item => [item.title, item.issued_at?.slice(0, 10), item.due_at?.slice(0, 10), <Badge text={item.status} color={item.status === 'returned' ? 'green' : 'yellow'} />])} emptyMsg="No library loans" />
       <DataTable title="Leave requests" headers={['Dates', 'Reason', 'Status']} rows={(dashboard.leave_requests || []).map(item => [`${item.start_date} to ${item.end_date}`, item.reason, <Badge text={item.status?.replace('_', ' ')} color={item.status === 'approved' ? 'green' : item.status === 'rejected' ? 'red' : 'yellow'} />])} emptyMsg="No leave requests" />
     </>}

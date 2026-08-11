@@ -1,10 +1,10 @@
 /**
- * Network Helpers — EduFlow E2E Tests
+ * Network Helpers - EduFlow E2E Tests
  *
  * Utilities for intercepting, mocking, and waiting for network requests
  * in Playwright tests.
  *
- * Pattern: Network-first — always wait for the real API response in tests
+ * Pattern: Network-first - always wait for the real API response in tests
  * unless you explicitly need to mock it (error states, slow responses, etc.)
  */
 

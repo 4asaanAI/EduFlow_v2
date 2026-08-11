@@ -16,7 +16,7 @@ from typing import Any
 # WEB_CONCURRENCY > 1 and no shared broker (REDIS_URL) will silently drop
 # notifications for users whose SSE connection landed on a different worker.
 #
-# Chosen posture: OPTION B — enforce single-worker at startup.
+# Chosen posture: OPTION B - enforce single-worker at startup.
 # Startup refuses to start when WEB_CONCURRENCY > 1 unless REDIS_URL is set.
 # See `validate_multi_worker_config()` below; called from server.py startup.
 # To move to a broker in future, set REDIS_URL and swap `publish` for

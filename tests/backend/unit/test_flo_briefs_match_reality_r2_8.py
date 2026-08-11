@@ -1,4 +1,4 @@
-"""R2-8 — what Flo tells a person about their job has to be true.
+"""R2-8 - what Flo tells a person about their job has to be true.
 
 Flo's brief per profile is prose, so nothing checks it. That is how, by 2026-08-11,
 every one of the five dormant profiles' briefs was wrong in BOTH directions at once:
@@ -86,7 +86,7 @@ def test_a_dormant_brief_never_claims_a_write(profile):
 @pytest.mark.parametrize("profile", DORMANT)
 def test_a_dormant_brief_names_somebody_to_ask(profile):
     # The refusal these five give all day must send the person somewhere, not stop at
-    # "not available to me" — the wording this project has already been bitten by.
+    # "not available to me" - the wording this project has already been bitten by.
     brief = _brief(profile)
     assert any(who in brief for who in ("Sonu Ruhal", "Lalit Thomas", "Adesh Singh",
                                         "the Principal", "the school's owner")), (

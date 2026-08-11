@@ -1019,7 +1019,7 @@ async def delete_legal_entity(db, actor: ActorContext, params: dict, *, session=
     # attributed to. Deleting it would orphan the school's own books.
     if existing.get("is_default") or existing.get("owns_legacy_records"):
         raise CommercialConflictError(
-            "This is the school's operating entity — make another one the default before deleting it"
+            "This is the school's operating entity - make another one the default before deleting it"
         )
 
     children = await db.legal_entities.count_documents(
@@ -1052,7 +1052,7 @@ async def delete_crm_lead(db, actor: ActorContext, params: dict, *, session=None
     """Delete an admission enquiry. Blocked once it has become a real application.
 
     Releases the phone/email reservation the enquiry held, so the same family can be
-    entered again afterwards — without this the contact stays locked forever against
+    entered again afterwards - without this the contact stays locked forever against
     an enquiry that no longer exists.
 
     params: ``{enquiry_id}``  returns: ``{"deleted": True, "enquiry_id": <id>}``
@@ -1065,7 +1065,7 @@ async def delete_crm_lead(db, actor: ActorContext, params: dict, *, session=None
 
     if existing.get("student_id") or existing.get("application_id"):
         raise CommercialConflictError(
-            "This enquiry has already become an application or an enrolled student — "
+            "This enquiry has already become an application or an enrolled student - "
             "it cannot be deleted"
         )
 
@@ -1108,7 +1108,7 @@ async def delete_product(db, actor: ActorContext, params: dict, *, session=None)
     )
     if sold:
         raise CommercialConflictError(
-            f"Cannot delete a product that appears on {sold} sale(s) — mark it inactive instead"
+            f"Cannot delete a product that appears on {sold} sale(s) - mark it inactive instead"
         )
 
     await db.commercial_products.delete_one(_scope(actor, {"id": product_id}), **kwargs)

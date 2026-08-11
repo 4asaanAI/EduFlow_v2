@@ -1,4 +1,4 @@
-"""R2-18 — put back your own mistake, on the same day, or be told why you cannot.
+"""R2-18 - put back your own mistake, on the same day, or be told why you cannot.
 
 Lalit types the school's data all day and, by decision 4, cannot delete anything. He
 will make mistakes. He and Sonu can now reverse their OWN change from TODAY. Anything
@@ -7,7 +7,7 @@ older, or anybody else's, goes to Adesh.
 **The reason this refuses so much.** The plan said an undo is "a write-back of the
 previous value" because audit rows carry `{field: {"previous": …, "new": …}}`, and told
 whoever built it to check that shape first. Checking it found at least eight different
-shapes across the write paths, most carrying no previous value at all — bulk attendance
+shapes across the write paths, most carrying no previous value at all - bulk attendance
 records a count, a delete records the whole document, an import records a batch id. An
 undo written against the assumed shape would have appeared to work and done nothing on
 most paths, which is worse than no undo: the person believes the mistake is fixed and

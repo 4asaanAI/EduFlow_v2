@@ -3,7 +3,7 @@
  *
  * R2-1 (2026-08-10): this module used to grant access by SUBTRACTION. "Management"
  * meant *everything not tagged finance*, and anything a profile was not explicitly
- * refused, it got — the last line of the old `canUseTool` was `return true`. That is
+ * refused, it got - the last line of the old `canUseTool` was `return true`. That is
  * how the management head came to be offered the school settings screen, and it is
  * why every screen built next month would have landed in his menu silently.
  *
@@ -12,7 +12,7 @@
  * profile that is not in it, or a screen that is not named for that profile, is
  * refused. Adding a screen now requires somebody to decide who owns it.
  *
- * The server is still the real gate — this only decides what is offered. The two
+ * The server is still the real gate - this only decides what is offered. The two
  * must agree, and R2-13's sweep is what proves they do.
  *
  * D-49 (closed 2026-08-04) is the reason this module exists at all: the menus offered
@@ -44,14 +44,14 @@ export const FINANCE_TOOL_IDS = new Set([
  * Screens no one outside the matrix may ever be offered, whatever their role.
  *
  * The matrix answers for the school's owner and the eight admin desks. It says
- * nothing about teachers, students and guardians, who have their own role lists — so
+ * nothing about teachers, students and guardians, who have their own role lists - so
  * those roles are passed through rather than refused, or a teacher's sidebar would
  * come back empty. These three screens are the exception: their server routes accept
  * only a named set of office profiles, so offering them to a teacher or a student
  * produces a button that answers "no".
  *
- *   certificate-generator, id-card-generator — D-49, `routes/image_gen.py`
- *   audit-log — owner request 10, 2026-08-06, `routes/audit.py`
+ *   certificate-generator, id-card-generator - D-49, `routes/image_gen.py`
+ *   audit-log - owner request 10, 2026-08-06, `routes/audit.py`
  */
 const OFFICE_DESK_ONLY_TOOLS = new Set([...DOCUMENT_ISSUER_TOOLS, 'audit-log']);
 
@@ -72,7 +72,7 @@ function profileOf(user) {
 /**
  * May this user be OFFERED this screen?
  *
- * Default deny. Note the owner check resolves before any sub_category test — the
+ * Default deny. Note the owner check resolves before any sub_category test - the
  * school owner's sub_category is 'owner', so testing it against an admin list would
  * hide the screen from the one person who certainly may use it. Same trap as on the
  * server.
@@ -101,13 +101,13 @@ export function canUseTool(user, toolId) {
  *
  * R2-2 / decision 1, 2026-08-10: the management head never sees an amount anywhere.
  * He sees whether a child's fees are paid, as a flag, and that is all. So screens he
- * shares with the office — School Pulse, Smart Alerts — must show him the attendance
+ * shares with the office - School Pulse, Smart Alerts - must show him the attendance
  * and staffing half and leave the money out, rather than being hidden from him
  * entirely, because he needs the rest of what is on them.
  *
  * Derived from the matrix rather than listed again here: a profile sees money exactly
  * when it holds the finance domain. Teachers, students and guardians are not in the
- * matrix and are told no — their own screens show them their own fees through their
+ * matrix and are told no - their own screens show them their own fees through their
  * own routes.
  *
  * This decides what is DISPLAYED. The server decides what is sent, and it is the one

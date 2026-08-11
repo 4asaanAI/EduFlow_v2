@@ -95,7 +95,7 @@ def profile_authorization_decision(
     if (user or {}).get("role") not in roles:
         return False
     # R2-5: the matrix may name individual tools, in both directions. The four domains
-    # cannot express "the accountant head yes, the management head no" — both would
+    # cannot express "the accountant head yes, the management head no" - both would
     # have to be called finance, and a school bus route is not money. A denial wins
     # over a grant, always, because the safe answer to a contradiction is no.
     from services.profile_matrix import PROFILE_MATRIX, profile_of

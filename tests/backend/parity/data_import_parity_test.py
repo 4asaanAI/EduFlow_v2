@@ -1,8 +1,8 @@
-"""Spreadsheet import — dual-entrypoint parity, and the rules protecting real records.
+"""Spreadsheet import - dual-entrypoint parity, and the rules protecting real records.
 
 This path writes to 1,876 children's records from a file, so the guarantees matter as
 much as the feature:
-  * EVERY row is read — the whole reason this exists is that the chat attachment showed
+  * EVERY row is read - the whole reason this exists is that the chat attachment showed
     Flo 3.4% of the school's export and it answered as if it had read all of it.
   * Blanks are filled; information already on record is NOT overwritten unless asked.
   * Rows are matched on admission number, never on name.
@@ -56,7 +56,7 @@ ROWS = [
 def _seed(fake_db, monkeypatch):
     saved = {c: list(getattr(fake_db, c).docs) for c in ("students", "audit_logs")}
     fake_db.students.docs[:] = [
-        # Aryan already HAS a mobile — that value must survive the import.
+        # Aryan already HAS a mobile - that value must survive the import.
         {"id": "s1", "schoolId": "aaryans-joya", "branch_id": "branch-a",
          "admission_number": "ADM-1", "name": "Aryan", "phone": "9999999999"},
         {"id": "s2", "schoolId": "aaryans-joya", "branch_id": "branch-a",

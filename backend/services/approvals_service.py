@@ -1,4 +1,4 @@
-"""Approval-request decision service — the single shared write path for deciding
+"""Approval-request decision service - the single shared write path for deciding
 an approval request (AI Layer Hardening, AD7 / Epic A, Story A.3).
 
 Both `PATCH /api/operations/approval-requests/{id}/decide` (REST) and the AI
@@ -7,10 +7,10 @@ Both `PATCH /api/operations/approval-requests/{id}/decide` (REST) and the AI
 **Parity decision (case-by-case, canonical = REST):**
 - The REST route's authorization is *record-level and routing-dependent*: it uses
   `Depends(get_current_user)` (no static role gate) and decides authz from the loaded
-  record — owner may decide ANY request; a principal may decide ONLY `owner_and_principal`
+  record - owner may decide ANY request; a principal may decide ONLY `owner_and_principal`
   routings; anyone else is forbidden. The old AI tool **dropped this check** (a P6 comment
   claimed the registry gate covers it, but `_is_tool_authorized` can't see `approval.routing`,
-  so an admin-accountant or a principal could decide an `owner_only` request via chat — a real
+  so an admin-accountant or a principal could decide an `owner_only` request via chat - a real
   hole). The check is centralized here so BOTH entrypoints enforce it identically. (Static
   role/sub_category authz still lives in the adapters per architecture P2; this is the
   dynamic, record-dependent gate that was already a route body check.)
@@ -81,14 +81,14 @@ async def decide_approval_request(
     if not approval_id:
         raise ApprovalValidationError("approval_id is required")
 
-    # branch-scope: intentional — approval_requests are school-wide (routed to owner/principal).
+    # branch-scope: intentional - approval_requests are school-wide (routed to owner/principal).
     approval = await db.approval_requests.find_one(
         scoped_filter({"id": approval_id}, actor_ctx.school_id), {"_id": 0}
     )
     if not approval:
         raise ApprovalNotFoundError("Approval request not found")
 
-    # Record-level (routing-dependent) authorization — identical for both entrypoints.
+    # Record-level (routing-dependent) authorization - identical for both entrypoints.
     is_principal = actor_ctx.role == "admin" and actor_ctx.sub_category == "principal"
     if actor_ctx.role != "owner" and not (is_principal and approval.get("routing") == "owner_and_principal"):
         raise ApprovalAuthorizationError("Forbidden")
@@ -101,7 +101,7 @@ async def decide_approval_request(
         "unread_for": [],
     }
     await db.approval_requests.update_one(
-        # branch-scope: intentional — approval_requests are school-wide (routed to owner/principal).
+        # branch-scope: intentional - approval_requests are school-wide (routed to owner/principal).
         scoped_filter({"id": approval_id}, actor_ctx.school_id),
         {"$set": update},
         **_session_kwargs(session),
@@ -136,7 +136,7 @@ async def decide_approval_request(
         source_type="approval_request",
     )
 
-    # branch-scope: intentional — approval_requests are school-wide (routed to owner/principal).
+    # branch-scope: intentional - approval_requests are school-wide (routed to owner/principal).
     updated = await db.approval_requests.find_one(
         scoped_filter({"id": approval_id}, actor_ctx.school_id), {"_id": 0}
     )

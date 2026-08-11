@@ -120,7 +120,7 @@ def test_whatsapp_defaulters_accountant_returns_ok():
 
 
 def test_whatsapp_defaulters_resolves_class_name_not_uuid():
-    """class_id is a random UUID — the modal must show "5-A", never the raw id.
+    """class_id is a random UUID - the modal must show "5-A", never the raw id.
 
     The older tests here seeded readable class_ids ("X", "IX"), which is exactly
     why emitting the id raw looked fine in tests and showed a UUID to the owner.
@@ -228,7 +228,7 @@ def test_fee_reminders_teacher_returns_403():
 
 
 def test_fee_reminders_principal_allowed():
-    """The principal can also send the reminders, not just see the list —
+    """The principal can also send the reminders, not just see the list -
     otherwise the screen loads and then refuses at the last click."""
     _fake_db.sms_logs.docs = []
     recipient = {
@@ -337,7 +337,7 @@ def test_attendance_alerts_unauthenticated_returns_401():
 
 
 def test_attendance_alerts_accountant_returns_403():
-    """Accountant cannot send attendance alerts — only owner or principal."""
+    """Accountant cannot send attendance alerts - only owner or principal."""
     resp = client.post(
         "/api/sms/whatsapp-attendance-alerts",
         json={"recipients": [{"student_id": "s1", "phone": "+919000000001"}]},
@@ -428,7 +428,7 @@ def test_attendance_alerts_over_500_returns_400():
     assert resp.status_code == 400
 
 
-# ─── GET /api/sms/config-status — WhatsApp fields ─────────────────────────────
+# ─── GET /api/sms/config-status - WhatsApp fields ─────────────────────────────
 
 def test_config_status_includes_whatsapp_fields():
     env_override = {

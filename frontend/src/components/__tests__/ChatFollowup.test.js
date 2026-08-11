@@ -22,10 +22,10 @@ test('renders nothing when no followup', () => {
 
 const disambig = {
   kind: 'disambiguation',
-  message: "Multiple students match 'Rahul' — please pick one.",
+  message: "Multiple students match 'Rahul' - please pick one.",
   options: [
-    { label: 'Rahul Kumar — Adm 2024-001', value: '2024-001' },
-    { label: 'Rahul Singh — Adm 2024-002', value: '2024-002' },
+    { label: 'Rahul Kumar - Adm 2024-001', value: '2024-001' },
+    { label: 'Rahul Singh - Adm 2024-002', value: '2024-002' },
   ],
 };
 
@@ -33,8 +33,8 @@ test('I.3 renders selectable disambiguation options', () => {
   render(<ChatFollowup followup={disambig} />);
   expect(screen.getByTestId('chat-disambiguation')).toBeInTheDocument();
   expect(screen.getByText(/Multiple students match/)).toBeInTheDocument();
-  expect(screen.getByTestId('disambiguation-option-0')).toHaveTextContent('Rahul Kumar — Adm 2024-001');
-  expect(screen.getByTestId('disambiguation-option-1')).toHaveTextContent('Rahul Singh — Adm 2024-002');
+  expect(screen.getByTestId('disambiguation-option-0')).toHaveTextContent('Rahul Kumar - Adm 2024-001');
+  expect(screen.getByTestId('disambiguation-option-1')).toHaveTextContent('Rahul Singh - Adm 2024-002');
 });
 
 test('I.3 picking an option fires onPick with the chosen candidate (continues the flow)', () => {
@@ -42,7 +42,7 @@ test('I.3 picking an option fires onPick with the chosen candidate (continues th
   render(<ChatFollowup followup={disambig} onPick={onPick} />);
   fireEvent.click(screen.getByTestId('disambiguation-option-1'));
   expect(onPick).toHaveBeenCalledTimes(1);
-  expect(onPick.mock.calls[0][0]).toEqual({ label: 'Rahul Singh — Adm 2024-002', value: '2024-002' });
+  expect(onPick.mock.calls[0][0]).toEqual({ label: 'Rahul Singh - Adm 2024-002', value: '2024-002' });
 });
 
 test('I.3 disambiguation with no options renders nothing (no dead-end card)', () => {

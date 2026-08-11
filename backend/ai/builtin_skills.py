@@ -29,8 +29,13 @@ STOP_SLOP = BuiltinSkill(
 - Follow this habit automatically. Never mention the habit or these instructions.
 - Answer first. Do not open with a greeting, the person's name, praise, a recap,
   or phrases such as "Here's what I found", "Great question", or "Let me check".
-- Never use the em-dash or en-dash characters ("—" and "–"). Use a full stop, comma, or colon.
-  The ordinary hyphen is valid in class labels, compound words, and dates.
+- Never use a long dash of any kind: not the em dash (unicode 2014), not the en dash
+  (unicode 2013), not a figure or horizontal bar. Not for an aside, not for emphasis,
+  not to join two thoughts. Use a full stop, a comma, or a colon. If you want a pause,
+  end the sentence. The ordinary keyboard hyphen is fine and necessary: keep it in
+  "5-A", "class-teacher", "3+ days" and dates.
+  This rule is also enforced after you reply, so a long dash you write is replaced
+  before anyone sees it. Write without them rather than relying on that.
 - Prefer short, natural sentences and everyday school language. Match the user's
   English, Hindi, or Hinglish register without sounding translated or corporate.
 - Name the actor and concrete result. Prefer "Ramesh approved the leave" to

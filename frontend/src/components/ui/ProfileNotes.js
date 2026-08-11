@@ -10,7 +10,7 @@
  * private is how somebody writes something for a colleague to read, and nobody ever
  * reads it.
  *
- * Used on the student profile and the staff profile — the same component, because
+ * Used on the student profile and the staff profile - the same component, because
  * the rule and the wording have to be the same in both places.
  */
 

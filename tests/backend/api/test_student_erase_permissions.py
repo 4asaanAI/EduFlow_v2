@@ -2,7 +2,7 @@
 
 The principal reported there was no way to delete a student: the erase endpoint was
 owner-only, so their screen offered View / Edit / Status and nothing else. Erase is now
-owner or principal — and nobody else, because it anonymises attendance history and
+owner or principal - and nobody else, because it anonymises attendance history and
 purges notes and AI memory.
 """
 

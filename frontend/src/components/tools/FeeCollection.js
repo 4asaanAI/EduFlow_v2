@@ -225,7 +225,7 @@ export default function FeeCollection() {
   ], []);
   const payrollSort = useColumnSort(disbursements, payrollSortAccessors);
 
-  // Receipt and Actions are controls, not data — no sorting offered on them.
+  // Receipt and Actions are controls, not data - no sorting offered on them.
   const overdueSortAccessors = useMemo(() => [
     (t) => t.student_name || t.student_id || '',
     (t) => t.class_name || '',
@@ -676,7 +676,7 @@ export default function FeeCollection() {
 
       {/* Payroll Disbursements */}
       <div style={panelStyle}>
-        <h2 style={panelTitle}>Payroll — This Month</h2>
+        <h2 style={panelTitle}>Payroll - This Month</h2>
         {loadingPayroll ? (
           <div style={emptyStyle}>Loading payroll...</div>
         ) : disbursements.length === 0 ? (
@@ -728,7 +728,7 @@ export default function FeeCollection() {
           ) : (
             pendingApprovals.map(p => (
               <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid color-mix(in srgb, var(--tool-hex-fbbf24) 20%, transparent)' }}>
-                <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>Student: {p.student_id} — {money(p.discount_amount)}</span>
+                <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>Student: {p.student_id} - {money(p.discount_amount)}</span>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={() => approveDiscount(p.id)}
                     style={{ ...primaryButton('var(--tool-hex-34d399)'), minHeight: 32, padding: '5px 12px', fontSize: 12 }}>Approve</button>
@@ -749,7 +749,7 @@ export default function FeeCollection() {
               <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' }}>Edit overdue record</h3>
               <button onClick={() => setOverdueEditTxn(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)' }}><X size={16} /></button>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 12 }}>{overdueEditTxn.student_name || overdueEditTxn.student_id} — {overdueEditTxn.fee_head || overdueEditTxn.fee_type}</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 12 }}>{overdueEditTxn.student_name || overdueEditTxn.student_id} - {overdueEditTxn.fee_head || overdueEditTxn.fee_type}</div>
             {overdueActionError && <div style={alertStyle('var(--tool-hex-f87171)')}><AlertTriangle size={14} />{overdueActionError}</div>}
             <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <div>
@@ -769,7 +769,7 @@ export default function FeeCollection() {
               <div>
                 <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4 }}>Payment mode</div>
                 <select value={overdueEditForm.payment_mode} onChange={e => setOverdueEditForm(p => ({ ...p, payment_mode: e.target.value }))} style={inputStyle}>
-                  <option value="">— unchanged —</option>
+                  <option value="">- unchanged -</option>
                   <option value="cash">Cash</option>
                   <option value="upi">UPI</option>
                   <option value="cheque">Cheque</option>
@@ -788,7 +788,7 @@ export default function FeeCollection() {
             </div>
             <div style={{ marginTop: 4 }}>
               <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4 }}>Reason for change <span style={{ color: 'var(--tool-hex-f87171)' }}>*</span></div>
-              <textarea value={overdueEditForm.reason} onChange={e => setOverdueEditForm(p => ({ ...p, reason: e.target.value }))} placeholder="Required — describe correction" style={textareaStyle} />
+              <textarea value={overdueEditForm.reason} onChange={e => setOverdueEditForm(p => ({ ...p, reason: e.target.value }))} placeholder="Required - describe correction" style={textareaStyle} />
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
               <button onClick={saveOverdueEdit} disabled={saving} style={{ ...primaryButton('var(--tool-hex-4f8ff7)'), flex: 1, minHeight: 38, fontSize: 12 }}>{saving ? 'Saving…' : 'Save changes'}</button>
@@ -868,7 +868,7 @@ export default function FeeCollection() {
         )}
       </div>
 
-      {/* WhatsApp fee reminders — owner/accountant only */}
+      {/* WhatsApp fee reminders - owner/accountant only */}
       {(currentUser?.role === 'owner' || currentUser?.sub_category === 'accountant') && (
         <div style={{ ...panelStyle, marginTop: 18 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>

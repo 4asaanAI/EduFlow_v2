@@ -163,7 +163,7 @@ async def seed(pdf_path: Path) -> None:
             "is_active": True,
         })
 
-        # auth_users — username = student name (+ admission no if duplicate), password = admission number
+        # auth_users - username = student name (+ admission no if duplicate), password = admission number
         auth_docs.append({
             "id": gid(),
             "schoolId": SCHOOL_ID,

@@ -1,4 +1,4 @@
-"""Asset/inventory domain service — single shared write path (AD7).
+"""Asset/inventory domain service - single shared write path (AD7).
 
 Both the REST routes (`POST/PATCH/DELETE /api/ops/assets*`) and the AI tools
 (`create_asset`, `update_asset`, `delete_asset`) call these functions.
@@ -119,6 +119,6 @@ async def delete_asset(db, actor_ctx: ActorContext, params: dict) -> dict:
     if not existing:
         raise AssetNotFoundError(asset_id)
     await db.assets.delete_one(scoped_query({"id": asset_id}, branch_id=actor_ctx.branch_id))
-    # F.10: actor-tagged deletion audit — who deleted what, when.
+    # F.10: actor-tagged deletion audit - who deleted what, when.
     await _audit(db, actor_ctx, action="delete", asset_id=asset_id, changes={"deleted": existing})
     return {"deleted": True, "asset": existing}

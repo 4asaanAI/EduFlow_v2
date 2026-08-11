@@ -1,8 +1,8 @@
-"""Spreadsheet import — the full-file path into the school's live records.
+"""Spreadsheet import - the full-file path into the school's live records.
 
 Why this exists (2026-08-08). Attaching a spreadsheet to the chat gave Flo at most
 40,000 characters of it. On the school's own 1,878-row student export that was 63
-children — 3.4% — so "is anything in this file missing from the database?" was answered
+children - 3.4% - so "is anything in this file missing from the database?" was answered
 from a fragment, confidently and wrongly. The answer is NOT a bigger slice: a 1.1 MB
 sheet does not belong in a conversation at any size, and a language model re-typing
 1,878 rows will eventually mistype one. So the file goes to a parser instead.
@@ -10,7 +10,7 @@ sheet does not belong in a conversation at any size, and a language model re-typ
 This service reads **every row**, deterministically, and never through the model:
 
 * `preview_import()` writes nothing and reports exactly what would change, row by row.
-  It is what the confirm card is built from — a person approves real numbers.
+  It is what the confirm card is built from - a person approves real numbers.
 * `apply_import()` performs that same plan. Same code, same matching, so what was
   approved is what happens.
 
@@ -136,7 +136,7 @@ FINANCE_IMPORT_FIELDS = frozenset({
 _FINANCE_ONLY_FIELDS = frozenset({"bank_name", "bank_account_number", "bank_ifsc"})
 NON_FINANCE_IMPORT_FIELDS = frozenset(STUDENT_FIELD_MAP.values()) - _FINANCE_ONLY_FIELDS
 
-# None means "no field restriction" — not "no access". Access itself is decided
+# None means "no field restriction" - not "no access". Access itself is decided
 # by the route gate and the tool registry, never here.
 IMPORT_FIELD_SCOPES: Dict[str, "frozenset | None"] = {
     "leadership": None,
@@ -391,7 +391,7 @@ async def _apply_plan(db, actor_ctx: ActorContext, rows: List[Dict[str, str]], f
             "Nothing was imported: the columns in this file are outside your access ("
             + ", ".join(outside) + "). Someone with wider access needs to import these."
             if outside and not plan.get("fields_to_fill")
-            else "Nothing to change — the database already has this information."
+            else "Nothing to change - the database already has this information."
         )
         plan.update({"filename": record.get("filename", ""), "applied": 0, "message": reason})
         return plan

@@ -1,5 +1,5 @@
 """
-Tool functions v2 — extends the original 14 tools with 15 new scope-aware tools.
+Tool functions v2 - extends the original 14 tools with 15 new scope-aware tools.
 Imports all originals from tool_functions and exposes a combined TOOL_REGISTRY (29 tools).
 """
 from __future__ import annotations
@@ -372,7 +372,7 @@ def _ok(data: list, query_time_ms: float, message: str = "", total: int | None =
     }
 
 
-# NEW-05/T6 — the cap for reads over collections that can exceed the school's
+# NEW-05/T6 - the cap for reads over collections that can exceed the school's
 # roll (1,802 students today). Fetching `limit + 1` rows is how we learn there
 # was more without paying for a count on every call.
 ROW_CAP = 500
@@ -410,7 +410,7 @@ async def _map_by_id(collection, ids, projection: dict | None = None) -> dict:
 
 
 def _denied(message: str, query_time_ms: float = 0) -> dict:
-    """R4.3/M2: an authorization/permission failure — NOT an empty result.
+    """R4.3/M2: an authorization/permission failure - NOT an empty result.
 
     `denied: True` + `success: False` so the LLM relays "you don't have access"
     honestly instead of answering "there are none"."""
@@ -425,7 +425,7 @@ def _denied(message: str, query_time_ms: float = 0) -> dict:
 
 def _failed(message: str, query_time_ms: float = 0) -> dict:
     """R4.3/L1: an operation that could not complete (bad input, not-found on a
-    write, downstream error) — `success: False` but NOT a denial. Distinct from an
+    write, downstream error) - `success: False` but NOT a denial. Distinct from an
     empty read so a failed write is never reported as a benign empty success."""
     return {
         "success": False,
@@ -471,7 +471,7 @@ async def tool_get_student_database(params: dict, user: dict, scope: dict = None
 
     # If a specific class filter is supplied by the user (and scope allows it).
     # Owner report 2026-08-07: this used to regex the `name` field alone, so "4-C"
-    # — the form every screen displays — matched nothing, and the filter was then
+    # - the form every screen displays - matched nothing, and the filter was then
     # SILENTLY DROPPED, answering about the whole school. A miss now says so.
     if params.get("class_name"):
         class_scope = scoped_query({}, branch_id=_branch_id(user, scope))
@@ -648,7 +648,7 @@ async def tool_get_leave_requests(params: dict, user: dict, scope: dict = None) 
     for lr in leaves:
         staff = lr_staff_map.get(lr.get("staff_id"))
         results.append({
-            # L3/R4.4: include the leave id — approve_leave needs it to act.
+            # L3/R4.4: include the leave id - approve_leave needs it to act.
             "id": lr.get("id"),
             "leave_id": lr.get("id"),
             "staff_name": staff.get("name", "Unknown") if staff else "Unknown",
@@ -1040,7 +1040,7 @@ async def tool_get_today_class_attendance(params: dict, user: dict, scope: dict 
     class_scope = scoped_query({}, branch_id=_branch_id(user, scope))
     if not class_id and params.get("class_name"):
         # Attendance is for ONE class, so an ambiguous label ("4th", three sections)
-        # must not silently pick a section — resolve_class returns None for that.
+        # must not silently pick a section - resolve_class returns None for that.
         cls = await resolve_class(db, params["class_name"], class_scope)
         if not cls:
             all_classes = await db.classes.find(class_scope, {"_id": 0}).to_list(200)
@@ -1185,7 +1185,7 @@ async def tool_get_house_details(params: dict, user: dict, scope: dict = None) -
     # member list is capped explicitly and `member_count` reports the TRUE total.
     #
     # 2026-08-06: this used to filter students on `house_id`, which NO student record
-    # has — the student side of the link is `house`, holding the house NAME ("Atulya"),
+    # has - the student side of the link is `house`, holding the house NAME ("Atulya"),
     # written by student_service and rendered by StudentDatabase.js. So every house
     # reported zero members no matter how many children were in it. Found while
     # restoring the 1,204 house assignments the owner reported as missing; the empty
@@ -1196,7 +1196,7 @@ async def tool_get_house_details(params: dict, user: dict, scope: dict = None) -
     members_raw, members_total = await _find_capped(db.students, member_filter)
     members = [{"name": m.get("name", ""), "class": m.get("class_id", ""), "role": m.get("house_role", "member")} for m in members_raw]
     # NEW-05/T6: captains are asked for BY ROLE, never sliced out of the capped member
-    # page — a captain sitting past row 500 would otherwise vanish while member_count
+    # page - a captain sitting past row 500 would otherwise vanish while member_count
     # confidently reported the full roll. There are at most a handful per house.
     captains_raw = await db.students.find({
         **member_filter,
@@ -1271,7 +1271,7 @@ async def tool_award_house_points(params: dict, user: dict, scope: dict = None) 
         elapsed = (time.time() - t0) * 1000
         return _failed("student_name and points are required parameters.", elapsed)
 
-    # Find the student — R5.2 (H4): branch-scope so a branch-bound user cannot
+    # Find the student - R5.2 (H4): branch-scope so a branch-bound user cannot
     # award points to (or misfire a write against) another branch's student.
     student = await db.students.find_one(scoped_query(
         {"name": {"$regex": re.escape(student_name), "$options": "i"}, "is_active": True},
@@ -1294,7 +1294,7 @@ async def tool_award_house_points(params: dict, user: dict, scope: dict = None) 
 
     # Story B.3: route through the shared house-points service so the AI award updates
     # the real standings (houses.points + house_points_log + audit) exactly like the
-    # panel — replacing the old un-audited `house_points`-only write.
+    # panel - replacing the old un-audited `house_points`-only write.
     actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
     service_params = {"house_id": house_id, "delta": points, "reason": reason}
     try:
@@ -1414,7 +1414,7 @@ async def tool_get_library_status(params: dict, user: dict, scope: dict = None) 
 
     # Role-specific detail
     detail = []
-    truncation_notes: list = []  # NEW-05/T6 — never truncate this read in silence
+    truncation_notes: list = []  # NEW-05/T6 - never truncate this read in silence
 
     if _scope_student_id(scope):
         # Student: show own issued books
@@ -1648,7 +1648,7 @@ async def tool_initiate_substitution(params: dict, user: dict, scope: dict = Non
         return {"success": False, "message": "absent_staff_id, substitute_staff_id, class_id, and period_id are required."}
     db = get_db()
     # Resolve the timetable slot (AI-only convenience) to derive subject/period, then
-    # delegate to the shared service — the SAME write path as the REST route (Story A.6).
+    # delegate to the shared service - the SAME write path as the REST route (Story A.6).
     slot = await db.timetable_slots.find_one({"id": params["period_id"]}, {"_id": 0})
     actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
     service_params = {
@@ -1667,7 +1667,7 @@ async def tool_correct_attendance(params: dict, user: dict, scope: dict = None) 
     required = ("record_id", "correction_type", "reason")
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "record_id, correction_type, and reason are required."}
-    # Thin adapter over services.attendance_correction_service — the SAME write path
+    # Thin adapter over services.attendance_correction_service - the SAME write path
     # as the REST correct route (Story A.7): snapshot + status update + canonical
     # 'correct' audit. School-wide scoping fixes the prior branch_id mismatch.
     db = get_db()
@@ -1701,7 +1701,7 @@ async def tool_log_contact_event(params: dict, user: dict, scope: dict = None) -
         txn = txns[0] if txns else None
     if not txn:
         return _empty_result("No fee transaction found for this student.")
-    # Thin adapter over services.contact_log_service — the SAME write path as the REST
+    # Thin adapter over services.contact_log_service - the SAME write path as the REST
     # contact-log route (Story A.5). Txn resolution above is AI-only convenience; the
     # service writes an identical record + canonical 'contact_log' audit.
     actor_ctx = actor_ctx_from_user(user, branch_id=bid)
@@ -1718,10 +1718,10 @@ async def tool_log_contact_event(params: dict, user: dict, scope: dict = None) -
 
 
 async def tool_apply_discount(params: dict, user: dict, scope: dict = None) -> dict:
-    # Thin adapter over services.discount_service.apply_discount — the SAME write path
+    # Thin adapter over services.discount_service.apply_discount - the SAME write path
     # as POST /api/fees/discounts/apply. Story B.2: the AI path now honours the owner
     # approval threshold (large discounts park in pending_discount_approvals instead of
-    # applying directly — closing the bypass on children's fees).
+    # applying directly - closing the bypass on children's fees).
     required = ("student_id", "discount_type_id", "effective_from")
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "student_id, discount_type_id, and effective_from are required."}
@@ -1753,10 +1753,10 @@ async def tool_apply_discount(params: dict, user: dict, scope: dict = None) -> d
 
 
 async def tool_decide_approval_request(params: dict, user: dict, scope: dict = None) -> dict:
-    # Thin adapter over services.approvals_service.decide_approval_request — the SAME
+    # Thin adapter over services.approvals_service.decide_approval_request - the SAME
     # write path as the REST decide route. Story A.3: the routing-dependent authority
     # check (owner decides any; principal only owner_and_principal) is now enforced in
-    # the service for the AI path too (it was previously skipped — a real hole).
+    # the service for the AI path too (it was previously skipped - a real hole).
     required = ("request_id", "decision", "reason")
     if any(not params.get(field) for field in required):
         return {"success": False, "message": "request_id, decision, and reason are required."}
@@ -1784,7 +1784,7 @@ async def tool_decide_approval_request(params: dict, user: dict, scope: dict = N
 async def tool_confirm_resolution(params: dict, user: dict, scope: dict = None) -> dict:
     if not params.get("request_id") or not params.get("confirmation_note"):
         return {"success": False, "message": "request_id and confirmation_note are required."}
-    # Thin adapter over services.incident_service.confirm_resolution — the SAME write
+    # Thin adapter over services.incident_service.confirm_resolution - the SAME write
     # path as POST /api/issues/facility/{id}/confirm-resolution (Story C.3).
     db = get_db()
     bid = _branch_id(user, scope)
@@ -1802,7 +1802,7 @@ async def tool_confirm_resolution(params: dict, user: dict, scope: dict = None) 
 
 
 async def tool_record_fee_payment(params: dict, user: dict, scope: dict = None) -> dict:
-    # Thin adapter over services.fees_service.record_payment — the SAME write path as
+    # Thin adapter over services.fees_service.record_payment - the SAME write path as
     # POST /api/fees/transactions. Story B.1: the AI path now supports partial payments,
     # is idempotent (no double-charge on confirm retry), and emits the SSE update.
     required = ("student_id", "amount", "fee_head", "mode")
@@ -1831,7 +1831,7 @@ async def tool_record_fee_payment(params: dict, user: dict, scope: dict = None) 
 
 
 async def tool_create_student(params: dict, user: dict, scope: dict = None) -> dict:
-    # Thin adapter over services.student_service.create_student — the SAME write path
+    # Thin adapter over services.student_service.create_student - the SAME write path
     # as POST /api/students/ (Story J.1 / AD7). School-scoped (no branch); the
     # student result is DPDP-redacted by _safe_tool_result_for_chat before re-entering the LLM.
     if not (params.get("name") and params.get("class_id")):
@@ -1850,7 +1850,7 @@ async def tool_create_student(params: dict, user: dict, scope: dict = None) -> d
 
 
 async def tool_update_student(params: dict, user: dict, scope: dict = None) -> dict:
-    # Thin adapter over services.student_service.update_student — the SAME write path
+    # Thin adapter over services.student_service.update_student - the SAME write path
     # as PATCH /api/students/{id} (Story J.1 / AD7).
     if not params.get("student_id"):
         return _failed("student_id is required.")
@@ -1871,7 +1871,7 @@ async def tool_update_student(params: dict, user: dict, scope: dict = None) -> d
 
 
 async def tool_set_student_status(params: dict, user: dict, scope: dict = None) -> dict:
-    # Thin adapter over services.student_service.set_student_status — a soft status
+    # Thin adapter over services.student_service.set_student_status - a soft status
     # change (e.g. active → withdrawn) via the update path. NOT a delete/erase: those
     # stay UI-only (AD15) and have no AI tool.
     if not params.get("student_id") or not params.get("status"):
@@ -1889,7 +1889,7 @@ async def tool_set_student_status(params: dict, user: dict, scope: dict = None) 
 
 
 async def tool_manage_student_guardians(params: dict, user: dict, scope: dict = None) -> dict:
-    # Thin adapter over services.student_service.upsert_guardians — the SAME write path
+    # Thin adapter over services.student_service.upsert_guardians - the SAME write path
     # as PUT /api/students/{id}/guardians (Story J.1 / AD7). Replaces all guardians.
     if not params.get("student_id"):
         return _failed("student_id is required.")
@@ -1908,9 +1908,9 @@ async def tool_manage_student_guardians(params: dict, user: dict, scope: dict = 
 
 
 async def tool_create_staff(params: dict, user: dict, scope: dict = None) -> dict:
-    # Thin adapter over services.staff_service.create_staff — the SAME write path as
+    # Thin adapter over services.staff_service.create_staff - the SAME write path as
     # POST /api/staff/ (Story J.2 / AD7). The plaintext temporary password is NEVER
-    # surfaced to the LLM/chat — it is delivered out-of-band via the panel.
+    # surfaced to the LLM/chat - it is delivered out-of-band via the panel.
     if not (params.get("name") and params.get("staff_type")):
         return {"success": False, "message": "name and staff_type are required."}
     if not params.get("username"):
@@ -1982,7 +1982,7 @@ async def tool_set_profile_password(params: dict, user: dict, scope: dict = None
 
 
 async def tool_update_staff(params: dict, user: dict, scope: dict = None) -> dict:
-    # Thin adapter over services.staff_service.update_staff — the SAME write path as
+    # Thin adapter over services.staff_service.update_staff - the SAME write path as
     # PATCH /api/staff/{id} (Story J.2 / AD7). OWNER_ONLY_FIELDS protections preserved.
     if not params.get("staff_id"):
         return {"success": False, "message": "staff_id is required."}
@@ -2004,7 +2004,7 @@ async def tool_update_staff(params: dict, user: dict, scope: dict = None) -> dic
 
 
 async def tool_create_fee_structure(params: dict, user: dict, scope: dict = None) -> dict:
-    # Thin adapter over services.fee_config_service.create_fee_structure — the SAME
+    # Thin adapter over services.fee_config_service.create_fee_structure - the SAME
     # write path as POST /api/fees/structures (Story K.1 / AD7). School-scoped.
     if not params.get("name"):
         return {"success": False, "message": "name is required."}
@@ -2265,7 +2265,7 @@ async def tool_mark_attendance(params: dict, user: dict, scope: dict = None) -> 
     if not class_id:
         return _empty_result("Class not found.")
     # R5.2 defense-in-depth: whether class_id was supplied directly or resolved
-    # by name, confirm it exists in the caller's branch before writing —
+    # by name, confirm it exists in the caller's branch before writing -
     # student_attendance carries no branch_id, so the service cannot re-check.
     class_in_branch = await db.classes.find_one(
         scoped_query({"id": class_id}, branch_id=bid), {"_id": 0, "id": 1}
@@ -2303,7 +2303,7 @@ async def tool_query_attendance_status(params: dict, user: dict, scope: dict = N
     db = get_db()
     target_date = params.get("date", date.today().isoformat())
     bid = _branch_id(user, scope)
-    # NEW-05/T6 audit: one row per staff member per day — the school has ~90 staff,
+    # NEW-05/T6 audit: one row per staff member per day - the school has ~90 staff,
     # so 500 is far above the real ceiling. Capped read reports a total anyway.
     records, total = await _find_capped(
         db.staff_attendance, scoped_query({"date": target_date}, branch_id=bid), {"_id": 0}
@@ -2401,7 +2401,7 @@ async def _resolve_note_subject(db, params: dict, bid: str | None) -> tuple:
 
     name = str(params.get("name") or "").strip()
     if not name:
-        raise ValueError("Tell me who the note is about — a name is enough.")
+        raise ValueError("Tell me who the note is about - a name is enough.")
     matches = await collection.find(
         scoped_query({"name": {"$regex": re.escape(name), "$options": "i"}}, branch_id=bid), {"_id": 0}
     ).to_list(10)
@@ -2453,7 +2453,7 @@ async def tool_get_profile_notes(params: dict, user: dict, scope: dict = None) -
 async def tool_add_profile_note(params: dict, user: dict, scope: dict = None) -> dict:
     """Write a note about a student or a member of staff, as the person asking.
 
-    The note belongs to whoever asked for it — the same privacy rule as the screen,
+    The note belongs to whoever asked for it - the same privacy rule as the screen,
     for the same reason. Confirmed before it lands, like every other write.
     """
     from services.profile_notes_service import add_note, ProfileNoteValidationError
@@ -2485,7 +2485,7 @@ async def tool_add_profile_note(params: dict, user: dict, scope: dict = None) ->
 
 
 async def tool_get_enrolment_summary(params: dict, user: dict, scope: dict = None) -> dict:
-    """How many are on the roll, on the NSO list, and gone — students and staff.
+    """How many are on the roll, on the NSO list, and gone - students and staff.
 
     Owner request 10, 2026-08-06. Without this, the honest answer to "how many
     students does the school have" cannot be given: every other tool counts
@@ -2542,7 +2542,7 @@ async def tool_query_audit_log(params: dict, user: dict, scope: dict = None) -> 
 
     The 2026-08-06 owner request restricted the action log to the owner and the
     principal. That was applied to `routes/audit.py`, to the menu (`Sidebar.js`) and to
-    the per-tool allow-list (`toolPermissions.js`) — but NOT here, so an `it_tech` or
+    the per-tool allow-list (`toolPermissions.js`) - but NOT here, so an `it_tech` or
     `management` admin who could no longer see the log on screen could still ask Flo
     for it. That is the same half-applied-rule defect the original request was about,
     surviving in the one place nobody looked.
@@ -2639,7 +2639,7 @@ async def tool_get_timetable(params: dict, user: dict, scope: dict = None) -> di
         })
 
     elapsed = (time.time() - t0) * 1000
-    return _ok(results, elapsed, f"Timetable for {cls.get('name')} {cls.get('section','')} — {day_name}")
+    return _ok(results, elapsed, f"Timetable for {cls.get('name')} {cls.get('section','')} - {day_name}")
 
 
 async def tool_get_exam_results_summary(params: dict, user: dict, scope: dict = None) -> dict:
@@ -2681,7 +2681,7 @@ async def tool_get_exam_results_summary(params: dict, user: dict, scope: dict = 
 
     results = []
     # NEW-04/T7 + NEW-05/T6: one read for all 5 exams (was one query per exam, each
-    # capped at 200 rows — a whole-school exam would have been cut in silence).
+    # capped at 200 rows - a whole-school exam would have been cut in silence).
     exam_ids = [e["id"] for e in exams if e.get("id")]
     all_exam_results = await db.exam_results.find(
         scoped_query({"exam_id": {"$in": exam_ids}}, branch_id=bid),
@@ -2698,7 +2698,7 @@ async def tool_get_exam_results_summary(params: dict, user: dict, scope: dict = 
             continue
 
         marks = [r["marks_obtained"] for r in exam_results if r.get("marks_obtained") is not None]
-        # M7/AC2: use the ACTUAL max_marks — exam's, else each result's own — and
+        # M7/AC2: use the ACTUAL max_marks - exam's, else each result's own - and
         # never silently assume /100. Pass rate is only reported when max is known.
         exam_max = exam.get("max_marks")
 
@@ -2713,7 +2713,7 @@ async def tool_get_exam_results_summary(params: dict, user: dict, scope: dict = 
         scorable = [r for r in exam_results
                     if r.get("marks_obtained") is not None and _row_max(r) not in (None, 0)]
         passed = sum(1 for r in scorable if r["marks_obtained"] >= _row_max(r) * 0.33)
-        # Report a pass-rate ONLY when every graded student is scorable — otherwise
+        # Report a pass-rate ONLY when every graded student is scorable - otherwise
         # a rate computed over a subset would read as if it covered all `students`
         # (shown alongside), which is misleading. Partial coverage → "N/A".
         pass_rate = (
@@ -2735,7 +2735,7 @@ async def tool_get_exam_results_summary(params: dict, user: dict, scope: dict = 
         })
 
     elapsed = (time.time() - t0) * 1000
-    return _ok(results, elapsed, f"Exam results summary — {len(results)} exam(s)")
+    return _ok(results, elapsed, f"Exam results summary - {len(results)} exam(s)")
 
 
 async def tool_get_upcoming_events(params: dict, user: dict, scope: dict = None) -> dict:
@@ -2761,10 +2761,10 @@ async def tool_get_upcoming_events(params: dict, user: dict, scope: dict = None)
     ).sort("exam_date", 1).to_list(20)
 
     for e in exams:
-        events.append({"date": e.get("exam_date"), "type": "exam", "title": f"{e.get('name')} — {e.get('subject')}"})
+        events.append({"date": e.get("exam_date"), "type": "exam", "title": f"{e.get('name')} - {e.get('subject')}"})
 
     # Upcoming announcements / events (from announcements collection).
-    # M6: match the SAME visibility rule as tool_get_announcements — announcements
+    # M6: match the SAME visibility rule as tool_get_announcements - announcements
     # are stored with status "active" and sent_at set (never "published"), so the
     # old status="published" filter matched nothing AI-created. Use event_date when
     # present, else fall back to the send date, and window-filter in Python.
@@ -2788,7 +2788,7 @@ async def tool_get_upcoming_events(params: dict, user: dict, scope: dict = None)
     elapsed = (time.time() - t0) * 1000
     if not events:
         return _empty_result(f"No events scheduled in the next {days_ahead} days.", elapsed)
-    return _ok(events, elapsed, f"Upcoming events — next {days_ahead} days")
+    return _ok(events, elapsed, f"Upcoming events - next {days_ahead} days")
 
 
 async def tool_draft_parent_message(params: dict, user: dict, scope: dict = None) -> dict:
@@ -2853,7 +2853,7 @@ async def tool_draft_parent_message(params: dict, user: dict, scope: dict = None
     }
 
     elapsed = (time.time() - t0) * 1000
-    return _ok([result], elapsed, f"Parent message draft — {message_type} for {student_name}")
+    return _ok([result], elapsed, f"Parent message draft - {message_type} for {student_name}")
 
 
 async def tool_preview_data_import(params: dict, user: dict, scope: dict = None) -> dict:
@@ -2876,7 +2876,7 @@ async def tool_preview_data_import(params: dict, user: dict, scope: dict = None)
         msg += f" {plan['not_found_in_database']} rows match no student on record."
     if plan["rows_without_admission_number"]:
         msg += (f" {plan['rows_without_admission_number']} rows have no admission number "
-                "and were skipped — I will not guess which child they belong to.")
+                "and were skipped - I will not guess which child they belong to.")
     # Said BEFORE the person confirms, not after: a column outside their segment is
     # indistinguishable from an imported one unless it is named.
     if plan.get("columns_outside_your_access"):
@@ -2901,7 +2901,7 @@ async def tool_import_data_file(params: dict, user: dict, scope: dict = None) ->
 async def tool_search_tools(params: dict, user: dict, scope: dict = None) -> dict:
     """Fetch the full schemas for deferred tools so the model can then call them.
 
-    Purely a lookup over the registry the caller is ALREADY authorized for — it reveals
+    Purely a lookup over the registry the caller is ALREADY authorized for - it reveals
     instructions, never permission. Authorization is re-checked at dispatch as always.
     """
     from ai import tool_search as _ts
@@ -2939,7 +2939,7 @@ async def tool_search_tools(params: dict, user: dict, scope: dict = None) -> dic
 
 
 # ─── Parent messaging (send + templates) ─────────────────────────────────────
-# Thin adapters over services.messaging_service — the SAME write path as the
+# Thin adapters over services.messaging_service - the SAME write path as the
 # /api/parent-messaging REST routes, pinned by messaging_parity_test.py.
 
 def _messaging_ctx(user: dict, scope: dict = None):
@@ -2955,7 +2955,7 @@ async def tool_send_parent_message(params: dict, user: dict, scope: dict = None)
     try:
         # `_recipients` (injected at confirm-resolution time) is the list the confirm
         # card counted, carried through the token so the person approves and the system
-        # sends the SAME set — not a re-query that may have drifted between the two.
+        # sends the SAME set - not a re-query that may have drifted between the two.
         result = await _msg.send_messages(db, ctx, params)
     except _msg.MessagingNotConfiguredError as exc:
         return {"success": False, "message": str(exc)}
@@ -3072,7 +3072,7 @@ async def tool_create_announcement(params: dict, user: dict, scope: dict = None)
         audience_type = "all"
     audience_roles = _AUDIENCE_ROLE_MAP[audience_type]
 
-    # Story A.4: moderation gate centralized in services.announcement_service — the SAME
+    # Story A.4: moderation gate centralized in services.announcement_service - the SAME
     # decision the REST route makes (EC-9.1 owner/principal broadcast directly; others gated).
     # This replaces the previously-duplicated inline gate, which over-moderated owner/principal.
     actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
@@ -3099,7 +3099,7 @@ async def tool_create_announcement(params: dict, user: dict, scope: dict = None)
         "is_draft": False,
         "status": initial_status,
         # M6: persist an optional event_date so calendar-style announcements surface
-        # in get_upcoming_events. Normalize to ISO (YYYY-MM-DD) — the events window
+        # in get_upcoming_events. Normalize to ISO (YYYY-MM-DD) - the events window
         # does a lexicographic compare, so a non-ISO date (e.g. "15/07/2026") would
         # be silently dropped/mis-ordered. Unparseable → dateless (falls back to
         # sent_at), never a corrupt sort key.
@@ -3125,7 +3125,7 @@ async def tool_create_announcement(params: dict, user: dict, scope: dict = None)
 async def tool_get_announcements(params: dict, user: dict, scope: dict = None) -> dict:
     """Read published school announcements visible to the caller (R3.3/H2).
 
-    Previously advertised to students but ABSENT from the registry — a guaranteed
+    Previously advertised to students but ABSENT from the registry - a guaranteed
     dead tool call. Now implemented student-safe: only announcements that have
     actually been sent (never drafts or pending-approval) whose audience includes
     the caller's role. School-scoped automatically via the scoped db; the
@@ -3138,7 +3138,7 @@ async def tool_get_announcements(params: dict, user: dict, scope: dict = None) -
         days = 7
     role = user.get("role", "")
     # A published announcement is one that is not a draft and has been sent
-    # (sent_at set) — pending-approval / draft announcements are never visible.
+    # (sent_at set) - pending-approval / draft announcements are never visible.
     query = {
         "is_draft": {"$ne": True},
         "sent_at": {"$ne": None},
@@ -3170,7 +3170,7 @@ async def tool_get_announcements(params: dict, user: dict, scope: dict = None) -
 
 
 # =========================================================================
-#  G.5 — On-demand recall & synthesis (the pre-meeting briefing)
+#  G.5 - On-demand recall & synthesis (the pre-meeting briefing)
 # =========================================================================
 
 async def tool_recall_history(params: dict, user: dict, scope: dict = None) -> dict:
@@ -3180,7 +3180,7 @@ async def tool_recall_history(params: dict, user: dict, scope: dict = None) -> d
     Authorization parity (hard AC): this tool performs NO direct DB reads of
     operational records. It delegates to the EXACT existing read tools
     (`tool_get_student_profile`, `tool_get_fee_transactions`, `tool_get_enquiries`),
-    passing the SAME `(user, scope)` — so the assistant can never see anything here
+    passing the SAME `(user, scope)` - so the assistant can never see anything here
     it couldn't see by calling those tools directly. Memory recall is additionally
     `(user_id, schoolId)`-isolated. Minor-record reads are audited by chat.py's
     `_audit_minor_read` because `recall_history` is in `MINOR_READ_TOOLS` and this
@@ -3255,7 +3255,7 @@ async def tool_recall_history(params: dict, user: dict, scope: dict = None) -> d
 
 
 # =========================================================================
-#  Missing tool functions — transport, inventory, branch comparison
+#  Missing tool functions - transport, inventory, branch comparison
 # =========================================================================
 
 async def tool_get_transport_status(params: dict, user: dict, scope: dict = None) -> dict:
@@ -3370,14 +3370,14 @@ async def tool_get_branch_comparison(params: dict, user: dict, scope: dict = Non
 
         if metric in ("all", "attendance"):
             # M3: attendance lives in student_attendance (not `attendance`), and that
-            # collection has no branch_id — scope it via this branch's classes.
+            # collection has no branch_id - scope it via this branch's classes.
             branch_classes = await db.classes.find(
                 scoped_query({}, branch_id=bid), {"_id": 0, "id": 1}
             ).to_list(200)
             branch_class_ids = [c["id"] for c in branch_classes if c.get("id")]
             if branch_class_ids:
                 att_filter = {"class_id": {"$in": branch_class_ids}, "date": today_str}
-                # branch-scope: intentional — student_attendance has no branch_id;
+                # branch-scope: intentional - student_attendance has no branch_id;
                 # branch isolation is enforced by restricting class_id to this branch's classes.
                 total_today = await db.student_attendance.count_documents(
                     scoped_filter(att_filter)
@@ -3595,7 +3595,7 @@ async def tool_correct_fee_transaction(params: dict, user: dict, scope: dict = N
 
 async def tool_delete_fee_transaction(params: dict, user: dict, scope: dict = None) -> dict:
     # Thin adapter over fees_service.delete_transaction (AD7 shared write path).
-    # DESTRUCTIVE: F.10 two-step confirm + deletion audit. Soft delete — the
+    # DESTRUCTIVE: F.10 two-step confirm + deletion audit. Soft delete - the
     # record is kept with deleted=True for the financial trail.
     if not params.get("transaction_id"):
         return {"success": False, "message": "transaction_id is required (use get_fee_transactions to find it)"}
@@ -3610,7 +3610,7 @@ async def tool_delete_fee_transaction(params: dict, user: dict, scope: dict = No
         return {"success": False, "message": str(e)}
     except FeeValidationError as e:
         return {"success": False, "message": str(e)}
-    return {"success": True, "data": result["data"], "message": "Fee transaction deleted (soft — kept in the financial trail)."}
+    return {"success": True, "data": result["data"], "message": "Fee transaction deleted (soft - kept in the financial trail)."}
 
 
 async def tool_trigger_fee_sync(params: dict, user: dict, scope: dict = None) -> dict:
@@ -3629,12 +3629,12 @@ async def tool_trigger_fee_sync(params: dict, user: dict, scope: dict = None) ->
         return {"success": True, "data": job, "message": "A fee sync is already in progress."}
     status = job.get("status")
     if status == "conflict":
-        msg = (f"Fee sync finished with {job.get('conflict_count', 0)} conflict(s) — "
+        msg = (f"Fee sync finished with {job.get('conflict_count', 0)} conflict(s) - "
                f"{job.get('synced_count', 0)} record(s) synced. Resolve conflicts in the Fee Sync panel.")
     elif status == "failed":
         msg = f"Fee sync failed: {job.get('error', 'unknown error')}"
     else:
-        msg = f"Fee sync completed — {job.get('synced_count', 0)} record(s) synced."
+        msg = f"Fee sync completed - {job.get('synced_count', 0)} record(s) synced."
     return {"success": True, "data": job, "message": msg}
 
 
@@ -3652,7 +3652,7 @@ async def tool_get_fee_sync_status(params: dict, user: dict, scope: dict = None)
         return {"success": True, "data": {"jobs": []}, "meta": {"count": 0, "query_time_ms": round(elapsed, 2)},
                 "message": "No fee sync has been run yet.", "denied": False}
     latest = jobs[0]
-    msg = (f"Latest sync: {latest.get('status')} — {latest.get('synced_count', 0)} synced, "
+    msg = (f"Latest sync: {latest.get('status')} - {latest.get('synced_count', 0)} synced, "
            f"{latest.get('conflict_count', 0)} conflict(s).")
     return {"success": True, "data": {"jobs": jobs, "latest": latest},
             "meta": {"count": len(jobs), "query_time_ms": round(elapsed, 2)}, "message": msg, "denied": False}
@@ -3713,7 +3713,7 @@ async def tool_log_visitor(params: dict, user: dict, scope: dict = None) -> dict
         result = await svc_log_visitor(db, actor_ctx, params)
     except VisitorDuplicateError as e:
         return {"success": False,
-                "message": f"{e} (existing entry: {e.existing_id}) — re-run with force=true to override."}
+                "message": f"{e} (existing entry: {e.existing_id}) - re-run with force=true to override."}
     except VisitorRateLimitError as e:
         return {"success": False, "message": str(e)}
     except VisitorValidationError as e:
@@ -3765,7 +3765,7 @@ async def tool_create_certificate(params: dict, user: dict, scope: dict = None) 
         return {"success": False, "message": str(e)}
     cert = result["certificate"]
     # R2-9: say who is being waited on, and use the one shared name for the document.
-    # "queued for principal approval" was also incomplete — the school's owner approves
+    # "queued for principal approval" was also incomplete - the school's owner approves
     # these too, and stands above the principal in the school's own hierarchy.
     state = (
         "issued"
@@ -3988,7 +3988,7 @@ async def tool_draft_document(params: dict, user: dict, scope: dict = None) -> d
     what the caller already has, and everything Flo knows it obtained through other
     tools that applied their own role gates. So the gate here is the union of roles
     that can export anything at all (owner, admin, teacher) and students are excluded
-    — matching `routes/exports.py`, where no export is open to a student.
+    - matching `routes/exports.py`, where no export is open to a student.
 
     If this tool is ever changed to fetch data itself, that reasoning collapses and
     the gate must become the specific one for the data it reads.
@@ -4200,7 +4200,7 @@ async def tool_post_pos_sale(params: dict, user: dict, scope: dict = None) -> di
     # once: the confirm token is single-use and a replay is refused with 409 before
     # dispatch. The key still matters when the model supplies one, so a reused key
     # replays the original sale instead of surfacing a raw database error in chat
-    # (audit A-2, 2026-08-05 — this mirrors routes/commercial.py's handling).
+    # (audit A-2, 2026-08-05 - this mirrors routes/commercial.py's handling).
     key = str(params.get("idempotency_key") or f"flo-sale-{uuid.uuid4()}")
     payload = {k: v for k, v in params.items() if k != "idempotency_key"}
     actor = _commercial_actor(user, scope)
@@ -4583,7 +4583,7 @@ async def tool_get_my_school_hub(params: dict, user: dict, scope: dict = None) -
 
 
 async def tool_delete_student(params: dict, user: dict, scope: dict = None) -> dict:
-    # Thin adapter over student_service.delete_student — takes the child OFF THE ROLL,
+    # Thin adapter over student_service.delete_student - takes the child OFF THE ROLL,
     # reversibly. Permanent erasure is deliberately not reachable from chat.
     if not params.get("student_id"):
         return {"success": False, "message": "student_id is required (use search_students to find it)."}
@@ -4604,7 +4604,7 @@ async def tool_delete_student(params: dict, user: dict, scope: dict = None) -> d
 
 
 async def tool_delete_staff(params: dict, user: dict, scope: dict = None) -> dict:
-    # Thin adapter over staff_service.delete_staff — deactivates, closes the login and
+    # Thin adapter over staff_service.delete_staff - deactivates, closes the login and
     # revokes live sessions. Reversible from the screen.
     if not params.get("staff_id"):
         return {"success": False, "message": "staff_id is required."}
@@ -4749,7 +4749,7 @@ TOOL_REGISTRY = {
         "roles": ["owner", "admin", "teacher"],
         "dispatch_type": "read",
         "description": (
-            "Create a real downloadable file from content you have written — a Word "
+            "Create a real downloadable file from content you have written - a Word "
             "document, Excel workbook, PowerPoint deck, PDF, CSV, Markdown or plain "
             "text. Use this whenever someone asks for a circular, notice, letter, fee "
             "sheet, report, template or presentation as a FILE they can print, sign, "
@@ -5547,7 +5547,7 @@ TOOL_REGISTRY = {
         "fn": tool_set_student_status,
         "roles": ["owner", "admin"],
         "sub_categories": ["principal"],
-        "description": "Set a student's status (e.g. active, withdrawn). Soft status change only — never a delete or DPDP-erase.",
+        "description": "Set a student's status (e.g. active, withdrawn). Soft status change only - never a delete or DPDP-erase.",
         "dispatch_type": "write",
         "requires_confirmation": True,
         "params_schema": {
@@ -5780,7 +5780,7 @@ TOOL_REGISTRY = {
             "house_id": {"type": "string", "description": "House ID to delete (required)"},
         },
     },
-    # ---- Epic K.3: org-config CRUD (Owner authority only — even in Phase 2) ----
+    # ---- Epic K.3: org-config CRUD (Owner authority only - even in Phase 2) ----
     "create_branch": {
         "fn": tool_create_branch,
         "roles": ["owner"],
@@ -5821,7 +5821,7 @@ TOOL_REGISTRY = {
     "update_school_settings": {
         "fn": tool_update_school_settings,
         "roles": ["owner"],
-        "description": "Update school-level settings (name, board, city, attendance threshold, AI context) — owner only.",
+        "description": "Update school-level settings (name, board, city, attendance threshold, AI context) - owner only.",
         "dispatch_type": "write",
         "requires_confirmation": True,
         "params_schema": {
@@ -5861,7 +5861,7 @@ TOOL_REGISTRY = {
         "fn": tool_query_dashboard_summary,
         # R2-3: stays owner-only. Widening `roles` to admin would hand it to the
         # management head as well, because its access_domain is non_finance and the
-        # profile gate widens on domain — and this summary carries fee status.
+        # profile gate widens on domain - and this summary carries fee status.
         # The principal's equivalent lives on the principal-daily screen.
         "roles": ["owner"],
         "description": "Composite summary of open incidents, pending approvals, attendance, and fee status.",
@@ -5932,7 +5932,7 @@ TOOL_REGISTRY = {
         "params_schema": {
             "name": {"type": "string", "description": "Who the notes are about"},
             "subject_id": {"type": "string", "description": "Optional exact student or staff ID"},
-            "subject_type": {"type": "string", "description": "'student' or 'staff' — defaults to student"},
+            "subject_type": {"type": "string", "description": "'student' or 'staff' - defaults to student"},
         },
     },
     "add_profile_note": {
@@ -5944,7 +5944,7 @@ TOOL_REGISTRY = {
             "name": {"type": "string", "description": "Who the note is about"},
             "note": {"type": "string", "description": "What to write"},
             "subject_id": {"type": "string", "description": "Optional exact student or staff ID"},
-            "subject_type": {"type": "string", "description": "'student' or 'staff' — defaults to student"},
+            "subject_type": {"type": "string", "description": "'student' or 'staff' - defaults to student"},
         },
         "requires_confirmation": True,
         "dispatch_type": "write",
@@ -5977,7 +5977,7 @@ TOOL_REGISTRY = {
         "params_schema": {
             "title": {"type": "string", "description": "Announcement title"},
             "content": {"type": "string", "description": "Full announcement message"},
-            "audience_type": {"type": "string", "description": "all, parents, students, staff — default: all"},
+            "audience_type": {"type": "string", "description": "all, parents, students, staff - default: all"},
         },
         "requires_confirmation": True,
         "dispatch_type": "write",
@@ -5998,7 +5998,7 @@ TOOL_REGISTRY = {
     "get_exam_results_summary": {
         "fn": tool_get_exam_results_summary,
         "roles": ["owner", "admin", "teacher"],
-        "description": "Get exam performance analytics for a class or subject — averages, pass rate, highest/lowest marks.",
+        "description": "Get exam performance analytics for a class or subject - averages, pass rate, highest/lowest marks.",
         "params_schema": {
             "exam_name": {"type": "string", "description": "exam name filter"},
             "class_name": {"type": "string", "description": "class name"},
@@ -6026,12 +6026,12 @@ TOOL_REGISTRY = {
         "description": (
             "Read EVERY row of an attached spreadsheet (file_id from the attachment) and "
             "report exactly what is missing from the database. Use this whenever someone "
-            "asks whether a file's data is already in the system — never answer that from "
+            "asks whether a file's data is already in the system - never answer that from "
             "the attachment text, which may be only a small fraction of the file."
         ),
         "params_schema": {
             "file_id": {"type": "string", "description": "the file_id returned when the file was attached"},
-            "overwrite": {"type": "boolean", "description": "default false — replace values already in the database"},
+            "overwrite": {"type": "boolean", "description": "default false - replace values already in the database"},
         },
         "requires_confirmation": False,
     },
@@ -6054,7 +6054,7 @@ TOOL_REGISTRY = {
         "requires_confirmation": True,
         "params_schema": {
             "file_id": {"type": "string", "description": "the file_id returned when the file was attached"},
-            "overwrite": {"type": "boolean", "description": "default false — replace values already in the database"},
+            "overwrite": {"type": "boolean", "description": "default false - replace values already in the database"},
         },
     },
     "search_tools": {
@@ -6097,7 +6097,7 @@ TOOL_REGISTRY = {
             "student_ids": {"type": "array", "items": {"type": "string"}, "description": "student ids when audience=students"},
             "class_id": {"type": "string", "description": "class id when audience=class"},
             "template_name": {"type": "string", "description": "name of a saved template (REQUIRED for whatsapp)"},
-            "body": {"type": "string", "description": "free wording — SMS only"},
+            "body": {"type": "string", "description": "free wording - SMS only"},
         },
     },
     "get_messaging_status": {
@@ -6130,7 +6130,7 @@ TOOL_REGISTRY = {
             "name": {"type": "string", "description": "template name"},
             "channel": {"type": "string", "description": "whatsapp or sms"},
             "body": {"type": "string", "description": "wording; may use {student_name} {guardian_name} {class_section} {amount} {date}"},
-            "twilio_template_sid": {"type": "string", "description": "required for whatsapp — the Meta-approved template SID"},
+            "twilio_template_sid": {"type": "string", "description": "required for whatsapp - the Meta-approved template SID"},
             "variables": {"type": "array", "items": {"type": "string"}, "description": "ordered placeholder names for whatsapp variables"},
         },
     },
@@ -6141,7 +6141,7 @@ TOOL_REGISTRY = {
         "access_domain": "communication",
         "description": (
             "Change a saved template's wording. For SMS this changes what parents "
-            "receive. For WhatsApp it changes only the local preview — the delivered "
+            "receive. For WhatsApp it changes only the local preview - the delivered "
             "wording lives in the Meta-approved template and needs re-approval."
         ),
         "dispatch_type": "write",
@@ -6239,7 +6239,7 @@ TOOL_REGISTRY = {
             "parent_name": {"type": "string", "description": "parent or guardian name"},
             "phone": {"type": "string", "description": "contact phone number"},
             "class_applying": {"type": "string", "description": "class applying for e.g. 'Class 5'"},
-            "source": {"type": "string", "description": "walk_in | referral | online | phone — default: walk_in"},
+            "source": {"type": "string", "description": "walk_in | referral | online | phone - default: walk_in"},
             "notes": {"type": "string", "description": "optional notes"},
         },
         "requires_confirmation": True,
@@ -6264,9 +6264,9 @@ TOOL_REGISTRY = {
         "description": "Log a new incident (disciplinary, visitor, safety, etc.).",
         "params_schema": {
             "title": {"type": "string", "description": "brief incident title"},
-            "description": {"type": "string", "description": "full incident description — required"},
+            "description": {"type": "string", "description": "full incident description - required"},
             "severity": {"type": "string", "description": "low | medium | high (high auto-assigns to principal)"},
-            "category": {"type": "string", "description": "general | disciplinary | financial | safety | visitor — default: general"},
+            "category": {"type": "string", "description": "general | disciplinary | financial | safety | visitor - default: general"},
             "involved_parties": {"type": "string", "description": "names of people involved"},
             "assigned_to": {"type": "string", "description": "optional staff member to assign"},
         },
@@ -6281,7 +6281,7 @@ TOOL_REGISTRY = {
         "dispatch_type": "write",
         "requires_confirmation": True,
         "params_schema": {
-            "expense_id": {"type": "string", "description": "Expense ID to update (required — use get_expenses to find it)"},
+            "expense_id": {"type": "string", "description": "Expense ID to update (required - use get_expenses to find it)"},
             "category": {"type": "string", "description": "Updated category"},
             "amount": {"type": "number", "description": "Updated amount in INR"},
             "description": {"type": "string", "description": "Updated description"},
@@ -6298,7 +6298,7 @@ TOOL_REGISTRY = {
         "requires_confirmation": True,
         "destructive": True,
         "params_schema": {
-            "expense_id": {"type": "string", "description": "Expense ID to delete (required — use get_expenses to find it)"},
+            "expense_id": {"type": "string", "description": "Expense ID to delete (required - use get_expenses to find it)"},
         },
     },
     "mark_staff_attendance": {
@@ -6309,7 +6309,7 @@ TOOL_REGISTRY = {
         "requires_confirmation": True,
         "params_schema": {
             "date": {"type": "string", "description": "YYYY-MM-DD (defaults to today)"},
-            "status": {"type": "string", "description": "present | absent | late | half_day | leave — applied to all active staff when records is omitted"},
+            "status": {"type": "string", "description": "present | absent | late | half_day | leave - applied to all active staff when records is omitted"},
             "records": {"type": "array", "description": "Per-staff records: [{staff_id, status, check_in?, check_out?}]"},
         },
     },
@@ -6321,7 +6321,7 @@ TOOL_REGISTRY = {
         "dispatch_type": "write",
         "requires_confirmation": True,
         "params_schema": {
-            "transaction_id": {"type": "string", "description": "Fee transaction ID (required — use get_fee_transactions to find it)"},
+            "transaction_id": {"type": "string", "description": "Fee transaction ID (required - use get_fee_transactions to find it)"},
             "reason": {"type": "string", "description": "Why the correction is needed (required)"},
             "amount": {"type": "number", "description": "Corrected amount"},
             "status": {"type": "string", "description": "Corrected status, e.g. paid | pending | partial | overdue"},
@@ -6341,7 +6341,7 @@ TOOL_REGISTRY = {
         "requires_confirmation": True,
         "destructive": True,
         "params_schema": {
-            "transaction_id": {"type": "string", "description": "Fee transaction ID to delete (required — use get_fee_transactions to find it)"},
+            "transaction_id": {"type": "string", "description": "Fee transaction ID to delete (required - use get_fee_transactions to find it)"},
             "reason": {"type": "string", "description": "Why it is being deleted (e.g. duplicate entry)"},
         },
     },
@@ -6451,7 +6451,7 @@ TOOL_REGISTRY = {
         "dispatch_type": "write",
         "requires_confirmation": True,
         "params_schema": {
-            "student_id": {"type": "string", "description": "Student ID (required — use search_students)"},
+            "student_id": {"type": "string", "description": "Student ID (required - use search_students)"},
             # R2-9: the canonical names in services/certificate_types.py. `transfer` and
             # `tc` are accepted and both mean transfer_certificate.
             "cert_type": {"type": "string", "description": "transfer_certificate | bonafide | character | migration | merit | sports | participation (default bonafide)"},
@@ -6557,7 +6557,7 @@ TOOL_REGISTRY = {
         "dispatch_type": "write",
         "requires_confirmation": True,
         "params_schema": {
-            "route_id": {"type": "string", "description": "Route ID (required — use get_transport_status)"},
+            "route_id": {"type": "string", "description": "Route ID (required - use get_transport_status)"},
             "route_name": {"type": "string", "description": "Updated name"},
             "driver_name": {"type": "string", "description": "Updated driver"},
             "driver_phone": {"type": "string", "description": "Updated driver phone"},
@@ -6618,14 +6618,14 @@ TOOL_REGISTRY = {
     # ── Deletes added on the owner's instruction, 2026-08-07 ─────────────────
     # Flo could create these records and remove none of them. All destructive, so the
     # F.10 two-step confirmation stands in front of each. `delete_enquiry` covers the
-    # records made by BOTH `create_enquiry` and `create_crm_lead` — one collection.
+    # records made by BOTH `create_enquiry` and `create_crm_lead` - one collection.
     "delete_student": {
         "fn": tool_delete_student,
         "roles": ["owner", "admin"],
         "sub_categories": ["principal"],
         "description": (
             "Record that a student has left the school, taking them off the roll and off "
-            "every screen. Reversible from the Student Database. Destructive — requires a "
+            "every screen. Reversible from the Student Database. Destructive - requires a "
             "confirmation. This does NOT permanently erase the child's record; "
             "erasure is done on the screen, by a person, with a written reason."
         ),
@@ -6643,7 +6643,7 @@ TOOL_REGISTRY = {
         "sub_categories": ["principal"],
         "description": (
             "Record that a member of staff has left, closing their login and ending any "
-            "open session. Reversible from the staff screen. Destructive — requires a "
+            "open session. Reversible from the staff screen. Destructive - requires a "
             "confirmation."
         ),
         "dispatch_type": "write",
@@ -6659,7 +6659,7 @@ TOOL_REGISTRY = {
         "roles": ["owner", "admin"],
         "sub_categories": ["principal", "accountant"],
         "description": (
-            "Permanently delete a fee structure. Destructive — requires a second "
+            "Permanently delete a fee structure. Destructive - requires a second "
             "confirmation. Blocked once any charge has been raised against it."
         ),
         "dispatch_type": "write",
@@ -6674,7 +6674,7 @@ TOOL_REGISTRY = {
         "roles": ["owner", "admin"],
         "sub_categories": ["principal"],
         "description": (
-            "Permanently delete an incident logged in error. Destructive — requires a "
+            "Permanently delete an incident logged in error. Destructive - requires a "
             "confirmation. Blocked once the incident has been resolved, because a "
             "resolved incident is part of the school's safeguarding record."
         ),
@@ -6691,7 +6691,7 @@ TOOL_REGISTRY = {
         "roles": ["owner", "admin"],
         "sub_categories": ["principal"],
         "description": (
-            "Permanently delete a certificate raised in error. Destructive — requires a "
+            "Permanently delete a certificate raised in error. Destructive - requires a "
             "confirmation. Blocked once the certificate has been issued, because "
             "the family may be holding the printed copy."
         ),
@@ -6709,7 +6709,7 @@ TOOL_REGISTRY = {
         "sub_categories": ["principal", "admission", "receptionist"],
         "description": (
             "Permanently delete an admission enquiry entered in error, freeing the phone "
-            "and email so the family can be entered again. Destructive — requires a "
+            "and email so the family can be entered again. Destructive - requires a "
             "confirmation. Blocked once the enquiry has become an application or "
             "an enrolled student."
         ),
@@ -6725,7 +6725,7 @@ TOOL_REGISTRY = {
         "fn": tool_delete_legal_entity,
         "roles": ["owner"],
         "description": (
-            "Permanently delete a legal entity. Destructive — requires a second "
+            "Permanently delete a legal entity. Destructive - requires a second "
             "confirmation. Blocked while it is the operating default or while any sale, "
             "enquiry, product or till shift is booked to it."
         ),
@@ -6741,7 +6741,7 @@ TOOL_REGISTRY = {
         "roles": ["owner", "admin"],
         "sub_categories": ["principal", "accountant"],
         "description": (
-            "Permanently delete a shop product. Destructive — requires a second "
+            "Permanently delete a shop product. Destructive - requires a second "
             "confirmation. Blocked once it appears on any sale; retire it instead."
         ),
         "dispatch_type": "write",
@@ -6761,7 +6761,7 @@ FINANCE_TOOL_NAMES = frozenset({
     "correct_salary_disbursement", "create_accounting_period",
     "change_accounting_period_status",
     "get_financial_report", "get_fee_transactions",
-    # NOT "get_fee_structures" — see SHARED_LOOKUP_TOOL_NAMES. The rate card is public.
+    # NOT "get_fee_structures" - see SHARED_LOOKUP_TOOL_NAMES. The rate card is public.
     "get_fee_defaulters", "query_fee_status", "get_expenses", "create_expense",
     "update_expense", "delete_expense", "apply_discount", "record_fee_payment",
     "create_fee_structure", "update_fee_structure", "delete_fee_structure",
@@ -6788,13 +6788,13 @@ SHARED_LOOKUP_TOOL_NAMES = frozenset({
     # belongs to a child, and Sonu is the one who meets the family at admission.
     #
     # Shared, NOT finance: this must stay reachable by the management head too, whose
-    # daily job it is. Only the CREATE is shared — taking a child off the roll stays
+    # daily job it is. Only the CREATE is shared - taking a child off the roll stays
     # with the school's leadership (R2-4, guarded in `student_service.delete_student`).
     "create_student",
     # Abhimanyu, 2026-08-10: the fee RATE CARD is public. It is what a class is charged
     # per year, printed on the school's own fee sheet and handed to any parent who
     # asks. Everyone on the staff may look it up, including the management head, whose
-    # rule is that he never sees a rupee figure — this is the one exception, and it is
+    # rule is that he never sees a rupee figure - this is the one exception, and it is
     # an exception because it is not the school's money, it is the school's price list.
     #
     # `get_fee_structures` returns exactly that: class group, the named components,
@@ -6803,7 +6803,7 @@ SHARED_LOOKUP_TOOL_NAMES = frozenset({
     # Everything that IS the school's money stays finance-only and stays away from him:
     # `get_fee_summary` (what has been collected), `get_fee_defaulters` (who is behind),
     # `get_fee_transactions` (individual payments) and `get_financial_report`. Only
-    # WRITING the rate card is finance too — `create_fee_structure`,
+    # WRITING the rate card is finance too - `create_fee_structure`,
     # `update_fee_structure` and `delete_fee_structure` are all still in the list above.
     "get_fee_structures",
 })
@@ -6812,8 +6812,8 @@ LEADERSHIP_ONLY_TOOL_NAMES = frozenset({
     "recall_history", "query_audit_log", "get_profile_notes", "add_profile_note",
     # R2-4 / decision 4, 2026-08-10: handing someone a way into the platform, or
     # changing the password that guards 1,876 children's records, belongs to the two
-    # people who run the school. The management head maintains the people records —
-    # add and edit, yes — but he does not create or reset a login.
+    # people who run the school. The management head maintains the people records -
+    # add and edit, yes - but he does not create or reset a login.
     #
     # These two were `non_finance` only because the loop below is a SUBTRACTION: the
     # last branch is `else: non_finance`, so anything nobody classified became his by
@@ -6878,7 +6878,7 @@ WRITE_TOOL_NAMES = {
 def openai_tool_schema(name: str, tool_def: dict, required: "tuple | list" = ()) -> dict:
     """R11.2 AC2: derive a native function-calling schema from ONE registry entry.
 
-    TOOL_REGISTRY is the single source of truth — the same `params_schema` that
+    TOOL_REGISTRY is the single source of truth - the same `params_schema` that
     documents each tool becomes the JSON Schema the provider validates against.
     Because the provider constrains the model to the advertised tool names,
     invented tool names become impossible (AC3), and the R3 prompt↔registry

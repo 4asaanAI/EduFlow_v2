@@ -74,7 +74,7 @@ tests/
 │
 ├── e2e/                              # Playwright E2E tests
 │   ├── auth.spec.js                  # Login / logout / access control
-│   ├── chat.spec.js                  # Chat interface — core flow
+│   ├── chat.spec.js                  # Chat interface - core flow
 │   └── students.spec.js              # Student management flows
 │
 ├── support/
@@ -137,7 +137,7 @@ Copy `.env.test.example` to `.env.test` and configure:
 ### E2E Tests (Playwright)
 
 ```bash
-# Headless (default — CI mode)
+# Headless (default - CI mode)
 make test-e2e
 # or:
 npx playwright test --config=playwright.config.js
@@ -145,7 +145,7 @@ npx playwright test --config=playwright.config.js
 # Headed (see the browser)
 make test-e2e-headed
 
-# Debug mode (Playwright Inspector — step through tests)
+# Debug mode (Playwright Inspector - step through tests)
 make test-e2e-debug
 
 # UI mode (interactive test runner)
@@ -202,7 +202,7 @@ cd backend && python -m pytest ../tests/backend -m "unit" -v
 playwright.config.js
 ├── testDir: ./tests/e2e
 ├── projects:
-│   ├── setup (runs auth.setup.js — saves admin session)
+│   ├── setup (runs auth.setup.js - saves admin session)
 │   ├── chromium (depends on setup)
 │   ├── firefox (depends on setup)
 │   └── webkit (depends on setup)
@@ -212,7 +212,7 @@ playwright.config.js
 
 **Key patterns:**
 
-- **Auth session reuse:** `auth.setup.js` logs in once per run and saves `storageState` to `tests/support/fixtures/.auth/admin.json`. All tests in the `chromium/firefox/webkit` projects load this state automatically — no repeated logins.
+- **Auth session reuse:** `auth.setup.js` logs in once per run and saves `storageState` to `tests/support/fixtures/.auth/admin.json`. All tests in the `chromium/firefox/webkit` projects load this state automatically - no repeated logins.
 - **Page Objects:** Use classes in `tests/support/page-objects/` to encapsulate locators. Always prefer `data-testid` selectors.
 - **Custom fixtures:** Import `{ test, expect }` from `tests/support/fixtures/index.js` (not from `@playwright/test`) to get `apiRequest` and `authedPage` fixtures.
 - **Network helpers:** Use `waitForApiResponse()` in `network.js` for network-first assertions.
@@ -226,12 +226,12 @@ pytest.ini
 └── asyncio_mode: auto
 
 tests/backend/conftest.py
-├── client          — FastAPI TestClient (sync, session-scoped)
-├── async_client    — httpx AsyncClient (async tests)
-├── auth_token      — JWT from POST /api/auth/login (session-scoped)
-├── auth_headers    — { Authorization: Bearer <token> } (session-scoped)
-├── student_data    — Factory: minimal student payload
-└── staff_data      — Factory: minimal staff payload
+├── client          - FastAPI TestClient (sync, session-scoped)
+├── async_client    - httpx AsyncClient (async tests)
+├── auth_token      - JWT from POST /api/auth/login (session-scoped)
+├── auth_headers    - { Authorization: Bearer <token> } (session-scoped)
+├── student_data    - Factory: minimal student payload
+└── staff_data      - Factory: minimal staff payload
 ```
 
 **Test categories:**
@@ -308,14 +308,14 @@ class TestMyEndpoint:
 
 ### Selectors (E2E)
 
-Always prefer `data-testid` attributes — they're stable and communicate intent:
+Always prefer `data-testid` attributes - they're stable and communicate intent:
 
 ```javascript
 // Good
 page.getByTestId('login-submit')
 page.getByTestId('student-name')
 
-// Avoid — brittle
+// Avoid - brittle
 page.locator('.btn.primary')
 page.locator('button:nth-child(2)')
 ```
@@ -327,14 +327,14 @@ Add `data-testid` to React components when writing new UI:
 
 ### Test Isolation
 
-- Each test should be independent — do not rely on other tests' side effects.
+- Each test should be independent - do not rely on other tests' side effects.
 - Use `test.beforeEach` / `test.afterEach` for setup/cleanup.
 - Auth state is shared per run (via `auth.setup.js`) but individual tests must not modify it.
 - For tests that modify data (POST/PUT/DELETE), clean up in `afterEach` or use unique identifiers from factories.
 
 ### Factory Usage
 
-Always use factory functions for test data — never hardcode:
+Always use factory functions for test data - never hardcode:
 
 ```javascript
 const { buildStudent, buildCredentials } = require('../support/helpers/factories');
@@ -342,7 +342,7 @@ const { buildStudent, buildCredentials } = require('../support/helpers/factories
 // Good
 const student = buildStudent({ class_name: 'Class 10' });
 
-// Avoid — hardcoded, brittle
+// Avoid - hardcoded, brittle
 const student = { name: 'John', class_name: 'Class 5', ... };
 ```
 

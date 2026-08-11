@@ -1,13 +1,13 @@
-"""AI feedback store (R10.2) — Helpful/Improve verdicts + candidate corrections.
+"""AI feedback store (R10.2) - Helpful/Improve verdicts + candidate corrections.
 
 Every 👍 Helpful / 👎 Improve click on an assistant reply is persisted here as a
 tenant-scoped record. An "Improve" click may carry a one-line reason; when it does,
 the reason + turn context is parked as a **candidate correction** (`status="pending"`)
-— it is NOT auto-activated and is NOT recalled into any reply. Owner/Principal
+- it is NOT auto-activated and is NOT recalled into any reply. Owner/Principal
 activate or reject pending corrections via the "What I've learned" surface (R10.4);
 only an activated correction becomes a real (fenced, per R6.3) memory.
 
-DPDP: feedback is tenant-scoped and erasable — `erase_owner_feedback` is wired into
+DPDP: feedback is tenant-scoped and erasable - `erase_owner_feedback` is wired into
 the same lifecycle-end path as memories/skills.
 
 Collection: `ai_feedback`.
@@ -47,7 +47,7 @@ async def record_feedback(
     """Persist one feedback record (R10.2 AC1). Returns the stored doc.
 
     On an "Improve" verdict WITH a reason, the reason is parked as a pending
-    candidate correction (AC2) — never auto-active, never recalled until an
+    candidate correction (AC2) - never auto-active, never recalled until an
     owner/principal activates it via the R10.4 surface.
     """
     school_id = get_school_id()
@@ -104,13 +104,13 @@ async def activate_correction(db, actor: Dict[str, Any], *, feedback_id: str) ->
 
     The correction text becomes a real memory for the reviewer who authored it
     (source='correction', high confidence) so it benefits *their* future turns. On
-    recall it is injected inside the R6.3 instruction-inert fence — it can NEVER
+    recall it is injected inside the R6.3 instruction-inert fence - it can NEVER
     override role permissions, confirm/kill-switch/lockdown gates, tenancy scope, or
     school policy. The feedback row is marked 'activated' (leaves the pending queue)
     ONLY when a memory was actually created. Returns the created memory, or None.
 
     `actor` is the reviewing owner/principal; the correction is scoped to the actor's
-    OWN pending queue — an owner/principal reviews the corrections THEY flagged, so
+    OWN pending queue - an owner/principal reviews the corrections THEY flagged, so
     another staff member's free-text notes are never exposed cross-user. Route enforces
     role.
     """
@@ -132,7 +132,7 @@ async def activate_correction(db, actor: Dict[str, Any], *, feedback_id: str) ->
     saved = await memory_store.add_memory(
         db, ctx, text=text, category="preference", source="correction", confidence=0.95,
     )
-    # Only leave the pending queue when a memory was actually created — a
+    # Only leave the pending queue when a memory was actually created - a
     # redacted-empty or otherwise-dropped correction must NOT be silently consumed.
     if not saved:
         return None
@@ -153,7 +153,7 @@ async def activate_correction(db, actor: Dict[str, Any], *, feedback_id: str) ->
 
 
 async def reject_correction(db, actor: Dict[str, Any], *, feedback_id: str) -> bool:
-    """R10.2 AC3: reject a pending candidate correction — it never becomes a memory.
+    """R10.2 AC3: reject a pending candidate correction - it never becomes a memory.
 
     Scoped to the actor's OWN pending queue (parity with activate)."""
     school_id = get_school_id()
@@ -166,7 +166,7 @@ async def reject_correction(db, actor: Dict[str, Any], *, feedback_id: str) -> b
 
 
 async def feedback_ratio(db, *, school_id: str) -> Dict[str, Any]:
-    """Per-school helpful-rate (AC5). {helpful, total, ratio} — ratio None if no data."""
+    """Per-school helpful-rate (AC5). {helpful, total, ratio} - ratio None if no data."""
     total = await db.ai_feedback.count_documents({"schoolId": school_id})
     helpful = await db.ai_feedback.count_documents({"schoolId": school_id, "verdict": VERDICT_HELPFUL})
     return {"helpful": helpful, "total": total,

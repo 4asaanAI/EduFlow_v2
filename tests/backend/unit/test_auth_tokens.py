@@ -82,7 +82,7 @@ async def test_revoke_user_refresh_tokens():
     assert db.refresh_tokens.docs[1]["revoked_at"] is None
 
 
-# ─── Part 1 (Auth + RBAC) — adversarial concurrency tests ──────────────────
+# ─── Part 1 (Auth + RBAC) - adversarial concurrency tests ──────────────────
 
 
 @pytest.mark.asyncio
@@ -94,7 +94,7 @@ async def test_concurrent_refresh_only_one_succeeds():
     Part 1.5 Patch C: the previous version of this test ran on a FakeCollection
     whose async methods had no await yield points, so `asyncio.gather` ran the
     two consumers strictly sequentially and the test passed *for the wrong
-    reason* — it would have remained green even if the atomic guard
+    reason* - it would have remained green even if the atomic guard
     `update_one({revoked_at: None}, ...)` were dropped from production code.
 
     The RaceyCollection below interleaves the two consumers deterministically:
@@ -107,7 +107,7 @@ async def test_concurrent_refresh_only_one_succeeds():
     class RaceyCollection(FakeCollection):
         """Forces the two consumers to both reach update_one before either applies.
 
-        Strategy: a barrier counter — when the first update_one arrives we
+        Strategy: a barrier counter - when the first update_one arrives we
         suspend until the second one arrives; then both proceed and the
         `revoked_at: None` predicate eliminates the loser.
         """
@@ -168,7 +168,7 @@ async def test_concurrent_revoke_and_consume_revoke_wins():
 
 @pytest.mark.asyncio
 async def test_double_revoke_is_idempotent():
-    """Revoke twice — second call is a no-op (no exception, no second update)."""
+    """Revoke twice - second call is a no-op (no exception, no second update)."""
     db = FakeDb()
     raw = await auth_tokens.issue_refresh_token(db, "user-1")
 
@@ -219,7 +219,7 @@ def test_clear_refresh_cookie_evicts_both_paths():
     assert len(paths) == 2, f"expected 2 delete-cookie headers, got: {paths}"
     joined = b" || ".join(paths).decode("utf-8")
     assert "Path=/api/auth" in joined
-    # `Path=/` will substring-match both — assert a header exists with exactly Path=/;
+    # `Path=/` will substring-match both - assert a header exists with exactly Path=/;
     assert any(b"Path=/;" in h or h.rstrip(b"; ").endswith(b"Path=/") for h in paths), joined
 
 
@@ -255,7 +255,7 @@ def test_production_refresh_cookie_is_secure_because_none_requires_it(monkeypatc
 
 @pytest.mark.parametrize("environment", [None, "development", "staging", "test"])
 def test_non_production_keeps_the_stricter_setting(monkeypatch, environment):
-    # Off production the site and the API are both on localhost — same site — so
+    # Off production the site and the API are both on localhost - same site - so
     # strict works and is the better choice. Secure would break plain http there.
     assert _samesite_with_environment(monkeypatch, environment) == "strict"
     assert auth_tokens.cookie_secure() is False

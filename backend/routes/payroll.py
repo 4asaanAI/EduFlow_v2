@@ -1,5 +1,5 @@
 from __future__ import annotations
-"""Payroll routes — salary structures and disbursements.
+"""Payroll routes - salary structures and disbursements.
 
 Migration 009 created salary_structures and salary_disbursements collections
 but no routes existed. This file provides the foundational payroll API.
@@ -46,7 +46,7 @@ def _may_read_payroll(user: dict) -> bool:
     Decision 9, 2026-08-10: Aman and Adesh both see everyone's salary. The principal
     was added to the screen gate below but NOT to the payslip check further down, so
     Adesh could open the payroll screen and then be refused the moment he clicked a
-    payslip — the dead-button shape this sub-part exists to remove (R2-6, plan §1.8).
+    payslip - the dead-button shape this sub-part exists to remove (R2-6, plan §1.8).
     One helper now, so the screen and the record cannot disagree again.
     """
     is_principal = (user or {}).get("role") == "admin" and (user or {}).get("sub_category") == "principal"

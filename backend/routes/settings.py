@@ -66,11 +66,11 @@ def require_custom_form_reader(request: Request) -> dict:
 
 
 def _settings_query(extra: dict | None = None) -> dict:
-    # branch-scope: intentional — school-level configuration (the school's own
+    # branch-scope: intentional - school-level configuration (the school's own
     # identity, its class list, its academic year) is shared by every branch. A
     # branch filter here would give each branch a different school. Annotated during
     # the Epic 4 audit; the behaviour is unchanged and pre-existing.
-    return scoped_filter(extra or {}, get_school_id())  # branch-scope: intentional — this file's school-scope helper; it scopes to the school only, and callers pass branch_id through scoped_query where a query is branch-sensitive
+    return scoped_filter(extra or {}, get_school_id())  # branch-scope: intentional - this file's school-scope helper; it scopes to the school only, and callers pass branch_id through scoped_query where a query is branch-sensitive
 
 
 # --- Token Usage Tracking ---
@@ -120,7 +120,7 @@ async def get_token_usage_admin(request: Request, user: dict = Depends(require_o
     db = get_db()
     DEFAULT_LIMIT = 50000
 
-    # NEW-07/T13: usage_records is returned as the response data — exclude the
+    # NEW-07/T13: usage_records is returned as the response data - exclude the
     # internal id. custom_limits never leaves this function (it becomes limit_map).
     usage_records = await db.token_usage.find(_settings_query(), {"_id": 0}).to_list(None)
     custom_limits = await db.token_limits.find(_settings_query()).to_list(None)
@@ -243,7 +243,7 @@ async def upsert_branch(branch_id: str, request: Request, user: dict = Depends(r
 @router.delete("/branches/{branch_id}")
 async def delete_branch(branch_id: str, request: Request, user: dict = Depends(require_owner)):
     """Owner-only: delete a branch. Parity reference for the AI `delete_branch`
-    tool (destructive — F.10 two-step at the chat layer)."""
+    tool (destructive - F.10 two-step at the chat layer)."""
     db = get_db()
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
     try:
@@ -324,7 +324,7 @@ async def get_classes(request: Request, user: dict = Depends(require_role("admin
     return {"success": True, "data": classes}
 
 
-# ── Class CRUD (Story K.2) — service-backed parity reference for the AI tools ──
+# ── Class CRUD (Story K.2) - service-backed parity reference for the AI tools ──
 # No new UI: these wrap the academic_structure_service single write path.
 @router.post("/classes")
 async def create_class(request: Request, user: dict = Depends(require_owner_principal_or_management)):

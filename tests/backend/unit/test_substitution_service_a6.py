@@ -1,4 +1,4 @@
-"""Story A.6 — substitution service: canonical doc + audit + notification, and the
+"""Story A.6 - substitution service: canonical doc + audit + notification, and the
 AI-path corrections (status, upsert-dedup, audit action, dropped period_id)."""
 
 from __future__ import annotations

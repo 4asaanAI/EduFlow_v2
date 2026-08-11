@@ -1,4 +1,4 @@
-"""Story A.3 — approval-decision service: routing-dependent authz + fan-out parity.
+"""Story A.3 - approval-decision service: routing-dependent authz + fan-out parity.
 
 Pins the SERVICE behavior and proves the AI path now enforces the routing-dependent
 authority gate it previously skipped (owner decides any; principal only
@@ -105,7 +105,7 @@ async def test_decision_audits_and_notifies(fake_db):
 # ─── AI-path closed-hole regression guards ────────────────────────────────────
 
 async def test_ai_principal_cannot_decide_owner_only(fake_db, monkeypatch):
-    """Regression: the old AI tool skipped the routing check — a principal could
+    """Regression: the old AI tool skipped the routing check - a principal could
     decide an owner_only request via chat. Now refused."""
     _seed(fake_db, approval_id="ap-9", routing="owner_only")
     monkeypatch.setattr(tool_functions_v2, "get_db", lambda: fake_db)

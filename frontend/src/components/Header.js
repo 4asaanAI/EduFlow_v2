@@ -16,7 +16,7 @@ import { API, apiFetch,
 } from '../lib/api';
 
 
-/* Every icon button in the header — menu, search, bell — uses THIS, so they
+/* Every icon button in the header - menu, search, bell - uses THIS, so they
    share one size and one baseline.
 
    They previously each carried their own numbers (padding 6 with an 18px icon,
@@ -99,7 +99,7 @@ function SearchPanel({ user, onClose, isDark }) {
             data-focus-ring="none"
             style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: text, fontFamily: 'var(--font-body)', fontSize: 16, fontWeight: 400 }} />
           {loading && <div className="spinner" style={{ width: 14, height: 14 }} />}
-          {/* Another key cap — same treatment as the Ctrl/ hint. */}
+          {/* Another key cap - same treatment as the Ctrl/ hint. */}
           <button onClick={onClose} aria-label="Close search" style={{
             background: 'var(--color-page)', border: '1px solid var(--color-border)',
             color: 'var(--color-text-secondary)', cursor: 'pointer',
@@ -151,13 +151,13 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
   const [fetchError, setFetchError] = useState(false);
   const [readIds, setReadIds] = useState(new Set());
   const [markingAll, setMarkingAll] = useState(false);
-  // Across EVERY page, from the server — not the count of rows this panel holds.
+  // Across EVERY page, from the server - not the count of rows this panel holds.
   // The panel shows 20; the honest answer is often larger.
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [total, setTotal] = useState(0);
   // Set when "mark all read" completes and the server still reports unread items.
-  // That is correct — mark-all-read deliberately spares anything that arrived
-  // mid-request — but a bare non-zero number reads as "the button failed".
+  // That is correct - mark-all-read deliberately spares anything that arrived
+  // mid-request - but a bare non-zero number reads as "the button failed".
   const [arrivedDuringMarkAll, setArrivedDuringMarkAll] = useState(0);
 
   const load = () => {
@@ -183,7 +183,7 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
 
   useEffect(() => { load(); }, [user.id, user.role]); // eslint-disable-line
 
-  // Epic 6 (D-22): these were nine `isDark ? '#hex' : '#hex'` pairs — the last
+  // Epic 6 (D-22): these were nine `isDark ? '#hex' : '#hex'` pairs - the last
   // component in the shell still deciding its own colours in JavaScript, which
   // Epic 9 removed everywhere else. Switching theme recoloured the text and left
   // the surfaces behind.
@@ -366,7 +366,7 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
         )}
       </div>
 
-      {/* Footer — this was a dead label reading "N notifications total", which was
+      {/* Footer - this was a dead label reading "N notifications total", which was
           the only thing standing where the way to the rest of them belonged. The
           panel shows the newest 20 and, until Epic 6, nothing in the product
           could reach number 21. */}
@@ -416,12 +416,12 @@ export default function Header({ activeTool, onBack, canGoBack, onOpenProfile, o
    * How many notifications are actually waiting.
    *
    * This has never been right. It used to fetch page 1 of the list and count
-   * `!n.is_read` — a field that does not exist anywhere in the product; the
+   * `!n.is_read` - a field that does not exist anywhere in the product; the
    * stored field is `read`. So the test was true for EVERY notification, read or
    * not, and the dot appeared whenever the signed-in person had any notification
    * at all and never cleared. It also only ever saw the newest twenty, while
-   * `/notifications/unread-count` — written for exactly this question, and
-   * counting across every page — was called by nothing.
+   * `/notifications/unread-count` - written for exactly this question, and
+   * counting across every page - was called by nothing.
    */
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -429,7 +429,7 @@ export default function Header({ activeTool, onBack, canGoBack, onOpenProfile, o
     getUnreadNotificationCount()
       .then(res => {
         // Only overwrite on a real answer. Showing 0 because a request failed
-        // would claim "nothing is waiting" on the strength of a network error —
+        // would claim "nothing is waiting" on the strength of a network error -
         // the Epic 4 defect (a failure that looks like a figure) in a new place.
         if (res?.success) setUnreadCount(res.data?.unread_count ?? 0);
       })
@@ -506,7 +506,7 @@ export default function Header({ activeTool, onBack, canGoBack, onOpenProfile, o
 
               It used to be desktop-only, on the reasoning that the hamburger already
               gets you out of a tool on a phone. That is true for leaving a tool and
-              false for stepping back through one, which is the whole complaint — so
+              false for stepping back through one, which is the whole complaint - so
               it now shows at every width. On a phone it collapses to the arrow alone,
               which is what keeps the search box and bell on screen; the accessible
               name carries the word either way. */}
@@ -535,7 +535,7 @@ export default function Header({ activeTool, onBack, canGoBack, onOpenProfile, o
               record count and its action buttons. Repeating it here showed the
               title TWICE, one line apart, on every tool and in every role.
 
-              A first attempt kept the header title on phones — which missed the
+              A first attempt kept the header title on phones - which missed the
               point entirely, because a phone is where Abhimanyu was looking, so
               the duplicate survived everywhere he could see it. The name is now
               gone from the header at every width and for every role, and the
@@ -665,7 +665,7 @@ export default function Header({ activeTool, onBack, canGoBack, onOpenProfile, o
               {/* The number, not a dot. A badge meaning 3 and a badge meaning 47
                   must not look identical, and the state must not be carried by
                   colour alone (WCAG color-not-only). Nothing unread means no
-                  badge at all — not a zero, not a grey dot. */}
+                  badge at all - not a zero, not a grey dot. */}
               {unreadCount > 0 && (
                 <span
                   data-testid="notif-badge"
@@ -701,7 +701,7 @@ export default function Header({ activeTool, onBack, canGoBack, onOpenProfile, o
             )}
           </div>
 
-          {/* Owner request 15 (2026-08-06): search, bell, then the account button —
+          {/* Owner request 15 (2026-08-06): search, bell, then the account button -
               left to right, in that order. It used to sit at the foot of the sidebar,
               where on a phone it was part of a stack of fixed furniture that left
               Tools and Recent Chats about two rows each. */}

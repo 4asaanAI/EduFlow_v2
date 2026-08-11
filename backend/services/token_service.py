@@ -5,7 +5,7 @@ Tracks LLM token usage per user per branch and enforces monthly limits
 by role. Supports personal top-ups (Razorpay) and school-level top-ups.
 
 Collections used:
-  - token_balances   : one doc per branch — monthly plan pool + top-ups
+  - token_balances   : one doc per branch - monthly plan pool + top-ups
   - token_usage      : append-only log of every LLM call
   - token_purchases  : payment receipts for top-up packs
 
@@ -40,12 +40,12 @@ DEFAULT_ROLE_LIMITS = {
     "student": 1_000_000,
 }
 
-# Sub-category overrides — checked before the role-level limit
+# Sub-category overrides - checked before the role-level limit
 DEFAULT_SUBCATEGORY_LIMITS: dict[str, int] = {
     "principal": 1_000_000,
 }
 
-# Warning threshold — flag when usage exceeds this fraction of the limit
+# Warning threshold - flag when usage exceeds this fraction of the limit
 WARNING_THRESHOLD = 0.80
 
 
@@ -90,12 +90,12 @@ async def check_and_reserve_tokens(
     # 1. Fetch branch token balance document
     balance_doc = await db.token_balances.find_one({"branch_id": branch_id})
 
-    # Graceful fallback — no balance doc means unlimited (dev / new branch)
+    # Graceful fallback - no balance doc means unlimited (dev / new branch)
     if not balance_doc:
         return {
             "allowed": True,
             "source": "unlimited",
-            "message": "No token budget configured — unlimited mode.",
+            "message": "No token budget configured - unlimited mode.",
             "can_recharge": False,
         }
 
@@ -167,7 +167,7 @@ async def check_and_reserve_tokens(
             "can_recharge": True,
         }
 
-    # 7. Exhausted — determine if self-recharge is possible
+    # 7. Exhausted - determine if self-recharge is possible
     self_recharge_enabled = balance_doc.get("self_recharge_enabled", True)
 
     return {
@@ -229,7 +229,7 @@ async def record_usage(
             # R15.1 (P-L6): floor the debit at 0 so a burst of concurrent calls
             # can never drive a personal top-up balance negative. An aggregation
             # pipeline update keeps this atomic (single server-side op) while
-            # clamping — mirrors R12.3's atomic credit path on the spend side.
+            # clamping - mirrors R12.3's atomic credit path on the spend side.
             field = f"personal_topups.{user_id}"
             await db.token_balances.update_one(
                 {"branch_id": branch_id},
@@ -248,7 +248,7 @@ async def record_usage(
             logger.error("school_topup_pool_update_failed", exc_info=True)
 
     # For "plan" and "unlimited" sources, the usage is tracked in
-    # token_usage only — the plan quota is computed dynamically from
+    # token_usage only - the plan quota is computed dynamically from
     # the aggregation in check_and_reserve_tokens.
 
     # 3. Check if approaching limit and flag for notification
@@ -343,7 +343,7 @@ async def get_usage_stats(
             personal_topup = balance_doc.get("personal_topups", {}).get(user_id, 0)
             self_recharge_enabled = balance_doc.get("self_recharge_enabled", True)
         else:
-            # No budget doc — use default limits (dev / new branch), never -1
+            # No budget doc - use default limits (dev / new branch), never -1
             if sub_category and sub_category in DEFAULT_SUBCATEGORY_LIMITS:
                 role_limit = DEFAULT_SUBCATEGORY_LIMITS[sub_category]
             else:
