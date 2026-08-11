@@ -41,10 +41,43 @@ class AcademicStructureConflictError(Exception):
 
 CLASS_UPDATABLE_FIELDS = {
     "name", "section", "academic_year_id", "class_teacher_id", "room_number",
+    # Release 2, step 2 (2026-08-11). 11th and 12th are charged 4,800 a year apart
+    # depending on Commerce or Science, and until now the only place that fact was
+    # recorded was a class name inside the school's fee ledger.
+    #
+    # It sits on the CLASS as well as on the student because a fee structure is keyed
+    # by class_id (`fee_config_service.create_fee_structure`), so the class is what
+    # decides the band. The student also carries `stream`, which is the authority for
+    # that individual child: the school's own records hold one senior student whose
+    # documented stream does not match the stream of the section they sit in, so the
+    # two cannot be assumed to agree and the child's own record wins.
+    "stream",
 }
+
+# The only two values the school uses. A class with no stream is every class below 11th,
+# and that is correct rather than missing.
+VALID_STREAMS = {"Commerce", "Science"}
 SUBJECT_UPDATABLE_FIELDS = {"name", "class_id", "teacher_id", "max_marks", "pass_marks"}
 HOUSE_UPDATABLE_FIELDS = {"name", "colour"}
 _IMMUTABLE_KEYS = {"_id", "id", "schoolId", "branch_id"}
+
+
+def _clean_stream(value) -> str:
+    """Normalise a stream, or refuse it.
+
+    Empty is allowed and means "this class has no stream", which is true of every class
+    below 11th. Anything that is not Commerce or Science is refused rather than stored,
+    because a stream nobody recognises would silently fall out of the fee band lookup and
+    the family would be charged the wrong amount with nothing on screen looking wrong.
+    """
+    if value in (None, ""):
+        return ""
+    text = str(value).strip().title()
+    if text not in VALID_STREAMS:
+        raise AcademicStructureValidationError(
+            f"stream must be one of {sorted(VALID_STREAMS)}, or left empty; got {value!r}"
+        )
+    return text
 
 
 def _session_kwargs(session) -> dict:
@@ -92,6 +125,7 @@ async def create_class(db, actor_ctx: ActorContext, params: dict, *, session=Non
     """
     if not params.get("name"):
         raise AcademicStructureValidationError("name is required")
+    stream = _clean_stream(params.get("stream"))
     # A class belongs to a branch. Only an owner (cross-branch authority) may target
     # an arbitrary branch via params; a branch-scoped actor (e.g. principal) is pinned
     # to their own branch so they cannot create a class outside their scope (NFR5).
@@ -112,6 +146,7 @@ async def create_class(db, actor_ctx: ActorContext, params: dict, *, session=Non
         "id": str(uuid.uuid4()),
         "name": params["name"],
         "section": params.get("section", ""),
+        "stream": stream,
         "academic_year_id": academic_year_id,
         "branch_id": branch_id,
         "class_teacher_id": params.get("class_teacher_id"),
@@ -137,6 +172,8 @@ async def update_class(db, actor_ctx: ActorContext, params: dict, *, session=Non
     if not class_id:
         raise AcademicStructureValidationError("class_id is required")
     changes = {k: v for k, v in params.items() if k in CLASS_UPDATABLE_FIELDS}
+    if "stream" in changes:
+        changes["stream"] = _clean_stream(changes["stream"])
     existing = await db.classes.find_one(
         scoped_query({"id": class_id}, branch_id=actor_ctx.branch_id), {"_id": 0},
         **_session_kwargs(session),

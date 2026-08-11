@@ -68,6 +68,12 @@ MIGRATIONS = [
     # runner must never be pointed at the live school database. Run 033 BY ITSELF,
     # on the day, with explicit approval, after its dry run. See its docstring.
     ("033_rename_two_office_logins", "R2-11: accountant -> sonu.ruhal, management -> lalit.thomas, plus the principal display name (data-changing; REVOKES SESSIONS; run explicitly only)"),
+    # 034 sets a stream on senior classes and students. Listed here because every
+    # migration file must be. It has ALREADY been applied by hand on 2026-08-11 and is
+    # recorded in `_migrations`, so it is a no-op if it ever runs again; it also reads
+    # two spreadsheets out of `aaryans_database/` and does nothing without them. Like
+    # everything above it, run it by itself and never through this runner.
+    ("034_senior_streams", "Release 2 step 2: Commerce/Science stream on the six senior classes and 186 senior students (data-changing; ALREADY APPLIED 2026-08-11; run explicitly only)"),
 ]
 
 
