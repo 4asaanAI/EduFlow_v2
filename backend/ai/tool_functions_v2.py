@@ -1856,7 +1856,17 @@ async def tool_create_student(params: dict, user: dict, scope: dict = None) -> d
         return _empty_result("Class not found.")
     except (StudentValidationError, ClassValidationError) as e:
         return {"success": False, "message": str(e)}
-    return {"success": True, "data": result["student"], "message": "Student created."}
+    joining = result.get("joining_charges") or {}
+    raised = joining.get("raised") or []
+    if raised:
+        listed = ", ".join(f"{row['fee_head']} {row['amount']:,.0f}" for row in raised)
+        note = f" The school's joining charges were raised: {listed}."
+    elif joining.get("skipped_because"):
+        note = f" No joining charge was raised: {joining['skipped_because']}"
+    else:
+        note = ""
+    return {"success": True, "data": result["student"],
+            "message": "Student created." + note}
 
 
 async def tool_update_student(params: dict, user: dict, scope: dict = None) -> dict:
@@ -2635,6 +2645,31 @@ async def tool_get_enrolment_summary(params: dict, user: dict, scope: dict = Non
         "but are still marked on the daily register. Give both numbers; they are not the same thing."
     )
     return _ok(rows, (time.time() - t0) * 1000, message)
+
+
+async def tool_get_school_summary(params: dict, user: dict, scope: dict = None) -> dict:
+    """The whole school on one page, behind the SAME gate as the screen and the log.
+
+    Abhimanyu, 2026-08-12. `AUDIT_READER_SUB_CATEGORIES` is imported rather than restated,
+    so the chat and the screen cannot drift apart the way the action log once did.
+    """
+    from routes.audit import AUDIT_READER_SUB_CATEGORIES
+    from services.school_summary_service import summary_for_day
+
+    role = user.get("role")
+    allowed = role == "owner" or (
+        role == "admin" and user.get("sub_category", "") in AUDIT_READER_SUB_CATEGORIES
+    )
+    if not allowed:
+        return _denied(
+            "The school summary is only available to the school's owner and principal. "
+            "For the money half ask the Accountant Head, and for the rest the Admin Office."
+        )
+
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    summary = await summary_for_day(db, actor_ctx, day=params.get("day"))
+    return _ok([summary], 0, summary.get("text") or "The school summary is ready.")
 
 
 async def tool_query_audit_log(params: dict, user: dict, scope: dict = None) -> dict:
@@ -6179,6 +6214,23 @@ TOOL_REGISTRY = {
         "description": "How many students and staff are on the roll, on the NSO list, and have left with a TC.",
         "params_schema": {},
     },
+    "get_school_summary": {
+        "fn": tool_get_school_summary,
+        # Owner and principal only, the same gate as the action log and for the same
+        # reason: this carries money, the roll and what everyone changed. The narrowing
+        # for admins lives in the tool, sharing routes/audit.py's reader list.
+        "roles": ["owner", "admin"],
+        "dispatch_type": "read",
+        "description": (
+            "The whole school on one page for a given day: the roll, today's attendance, "
+            "what was collected and what is outstanding, everything waiting for you to "
+            "approve, and what everyone changed. Use this for 'how is the school doing', "
+            "'give me a summary', or 'what do I need to look at today'."
+        ),
+        "params_schema": {
+            "day": {"type": "string", "description": "Optional YYYY-MM-DD, default today"},
+        },
+    },
     "query_audit_log": {
         "fn": tool_query_audit_log,
         # Owner and principal only (owner request, 2026-08-06). `admin` stays in this
@@ -7039,6 +7091,9 @@ SHARED_LOOKUP_TOOL_NAMES = frozenset({
 
 LEADERSHIP_ONLY_TOOL_NAMES = frozenset({
     "recall_history", "query_audit_log", "get_profile_notes", "add_profile_note",
+    # The school on one page. Money, the roll and everyone's changes in a single answer,
+    # so it belongs exactly where the action log does (Abhimanyu, 2026-08-12).
+    "get_school_summary",
     # R2-4 / decision 4, 2026-08-10: handing someone a way into the platform, or
     # changing the password that guards 1,876 children's records, belongs to the two
     # people who run the school. The management head maintains the people records -

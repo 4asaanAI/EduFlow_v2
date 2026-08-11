@@ -22,6 +22,7 @@ from typing import Optional
 from models.schemas import Guardian, Student
 from services import enrolment_status
 from services.actor_context import ActorContext
+from services.admission_charge_service import raise_joining_charges
 from services.audit_service import write_audit_doc
 from services.txn_context import session_kwargs as _txn_session_kwargs
 from tenant import scoped_filter
@@ -245,7 +246,18 @@ async def create_student(
         db, actor_ctx, action="create", student_id=student.id,
         changes={"created": student_doc}, session=session,
     )
-    return {"student": student_doc}
+
+    # Abhimanyu, 2026-08-12: the school's registration and admission fees are raised
+    # automatically when a child joins. The caller passes `raise_joining_charges=False`
+    # when it is LOADING existing children rather than admitting new ones - a bulk import
+    # of the roll must never bill 1,842 families for joining years ago. See
+    # `services/admission_charge_service.py`, which is deliberately its own file so that
+    # rule is written down in one place rather than implied by a call site.
+    joining = {"raised": [], "skipped_because": "not requested"}
+    if params.get("raise_joining_charges", True):
+        joining = await raise_joining_charges(db, actor_ctx, student_doc, session=session)
+
+    return {"student": student_doc, "joining_charges": joining}
 
 
 async def update_student(

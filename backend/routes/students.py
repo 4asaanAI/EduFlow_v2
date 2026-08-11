@@ -415,7 +415,11 @@ async def create_student(body: StudentCreate, request: Request):
         raise HTTPException(409, str(e))
     except (ClassValidationError, StudentValidationError) as e:
         raise HTTPException(400, str(e))
-    return {"success": True, "data": result["student"]}
+    # The joining charges the school raises on a new admission, and the reason if none
+    # were raised. Reported rather than left silent: whoever admits the child is the
+    # person who would otherwise have to remember to raise them by hand.
+    return {"success": True, "data": result["student"],
+            "joining_charges": result.get("joining_charges")}
 
 
 @router.get("/me")

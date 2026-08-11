@@ -278,6 +278,12 @@ class StudentCreate(SchoolScopedModel):
     mother_phone: Optional[str] = None
     mother_occupation: Optional[str] = None
     annual_income: Optional[float] = None
+    # The school's registration and admission fees are raised automatically for a child
+    # who JOINS (Abhimanyu, 2026-08-12). Pass false when LOADING a child who is already
+    # on the roll, so a data load never bills a family for joining years ago. It is on
+    # the model rather than only in the service because a safety flag that the request
+    # model silently drops is not a safety flag.
+    raise_joining_charges: bool = True
 
 
 class AttendanceBulkRecord(SchoolScopedModel):

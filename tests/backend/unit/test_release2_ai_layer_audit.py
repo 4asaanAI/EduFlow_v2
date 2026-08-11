@@ -290,3 +290,18 @@ def test_an_indian_sender_draws_no_warning(monkeypatch):
     monkeypatch.setenv("TWILIO_PHONE_NUMBER", "+919876543210")
 
     assert messaging_service.channel_status("sms")["warnings"] == []
+
+
+# ── The school on one page (Abhimanyu, 2026-08-12) ─────────────────────────
+
+
+def test_only_the_two_who_run_the_school_reach_the_summary():
+    tool = TOOL_REGISTRY["get_school_summary"]
+    assert tool["access_domain"] == "leadership"
+    for who in ("owner", "principal"):
+        assert is_tool_authorized(FINANCE_DESKS[who], tool)
+    for who in EVERYONE_ELSE:
+        assert not is_tool_authorized(EVERYONE_ELSE[who], tool)
+    # The accountant head runs the school's money and still does not get the whole page:
+    # it carries the roll and everyone's changes as well.
+    assert not is_tool_authorized(FINANCE_DESKS["accountant"], tool)

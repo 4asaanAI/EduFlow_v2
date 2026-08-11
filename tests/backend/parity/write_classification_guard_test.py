@@ -116,6 +116,10 @@ READ_ONLY_ALLOWLIST = frozenset({
     # collection at all. Neither can change a school record.
     "explain_student_fee",
     "calculate_late_fine",
+    # The school on one page. Reads six areas and writes one thing: the day's summary is
+    # KEPT the first time it is produced, so tomorrow's reading of today cannot quietly
+    # differ from today's. No school record changes.
+    "get_school_summary",
 })
 
 # Read tools follow a small set of naming conventions. A tool on the read-only

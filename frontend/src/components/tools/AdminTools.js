@@ -3,7 +3,7 @@
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
-import { API, apiFetch, getStudents, getAllStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, correctFeeTransaction, deleteFeeTransaction, getPendingLeaves, updateLeave, getWhatsappDefaulters, sendAttendanceAlerts, getSchoolSettings } from '../../lib/api';
+import { API, apiFetch, getStudents, getAllStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, correctFeeTransaction, deleteFeeTransaction, getPendingLeaves, updateLeave, getWhatsappDefaulters, sendAttendanceAlerts, getSchoolSettings, getSchoolSummary, getSchoolSummaryHistory } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 import { canIssueDocumentsDirectly } from '../../lib/toolPermissions';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, ErrorCard, LineChartWidget, useColumnSort, SortableHeaderRow } from './ToolPage';
@@ -2685,28 +2685,106 @@ export function TransportManager() {
   );
 }
 export function AutomatedReport() {
-  // R2 audit finding, 2026-08-12. This screen showed two rows, "Weekly Attendance Report"
-  // and "Monthly Fee Summary", each with a green "Active" badge. Both were hardcoded. No
-  // schedule existed, nothing was ever sent, and the screen told the school's owner and
-  // the admin office that two reports were running. A green badge on something that does
-  // not exist is worse than an empty screen, because nobody goes looking for what they
-  // believe they already have.
+  // Abhimanyu, 2026-08-12: build the scheduled reports, at least for Aman and Adesh, so
+  // they have a summary of everything in one place.
   //
-  // The rows are gone. The screen now says plainly that nothing is scheduled and where
-  // the same figures can be had today. Building the real thing is its own piece of work.
+  // What this screen showed BEFORE was two hardcoded rows with green "Active" badges for
+  // reports that had never existed and were never sent. What it shows now is the real
+  // thing: the school on one page, produced and KEPT the first time either of them opens
+  // it each day, with every earlier day still readable exactly as it was produced.
+  //
+  // It does not arrive by itself in an inbox, and the screen says so in those words.
+  // There is no scheduler on this platform and no sender the school can use yet.
+  const [summary, setSummary] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refused, setRefused] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [today, past] = await Promise.all([
+        getSchoolSummary().catch(() => null),
+        getSchoolSummaryHistory().catch(() => null),
+      ]);
+      if (cancelled) return;
+      if (!today?.success) setRefused(true);
+      else setSummary(today.data);
+      if (past?.success) setHistory(past.data || []);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const money = summary?.money || {};
+  const attendance = summary?.attendance || {};
+  const waiting = summary?.waiting_for_you || {};
+  const changed = summary?.what_changed || {};
+  const rupees = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
+
   return (
-    <ToolPage title="Automated Reports" subtitle="Scheduled reports">
-      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16, maxWidth: 600 }}>
-        <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 10 }}>Nothing is scheduled yet</h3>
-        <p style={{ fontSize: 12, color: 'var(--c-muted)', lineHeight: 1.6, marginBottom: 10 }}>
-          No report is being sent to anyone on a schedule, and nobody is receiving one.
-          Scheduled delivery has not been built yet.
-        </p>
-        <p style={{ fontSize: 12, color: 'var(--c-muted)', lineHeight: 1.6 }}>
-          The same figures are available now: the daily summary on the dashboard, the
-          Export buttons on each screen, and asking Flo for any report you want as a file.
-        </p>
-      </div>
+    <ToolPage title="Daily Summary" subtitle="The whole school on one page">
+      {loading ? (
+        <div style={{ color: 'var(--c-faint)', fontSize: 13 }}>Loading…</div>
+      ) : refused ? (
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, maxWidth: 640 }}>
+          <p style={{ fontSize: 13, color: 'var(--c-muted)', lineHeight: 1.6 }}>
+            This page is for the school&apos;s owner and the Principal. It brings together
+            money, the roll and everyone&apos;s changes in one place. Your own screens
+            carry the part that is yours.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16, maxWidth: 640 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
+              <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600 }}>
+                {summary?.day}
+              </h3>
+              <span style={{ fontSize: 11, color: 'var(--c-faint)' }}>
+                {summary?.freshly_produced ? 'produced just now' : 'produced earlier today'}
+              </span>
+            </div>
+
+            {[
+              ['On the roll', `${(summary?.school?.students_on_the_roll || 0).toLocaleString('en-IN')} children, ${(summary?.school?.staff || 0).toLocaleString('en-IN')} staff`],
+              ['Attendance', attendance.marked
+                ? `${attendance.present} of ${attendance.children_marked} present (${attendance.present_percent}%), ${attendance.absent} absent`
+                : 'Not marked yet today'],
+              ['Collected today', `${rupees(money.collected_today)} across ${money.receipts_today || 0} receipts`],
+              ['Outstanding', `${rupees(money.outstanding_in_total)} across ${money.children_with_something_outstanding || 0} children`],
+              ['Past their due date', `${money.bills_past_their_due_date || 0} bills`],
+              ['Waiting for you', waiting.total ? `${waiting.total} thing(s) to approve` : 'Nothing'],
+              ['Changes today', changed.total ? `${changed.total}, of which ${changed.money_changes || 0} touched money` : 'None'],
+            ].map(([label, value]) => (
+              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '9px 0', borderBottom: '1px solid var(--c-border)' }}>
+                <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>{label}</span>
+                <span style={{ fontSize: 12, color: 'var(--c-text)', fontWeight: 500, textAlign: 'right' }}>{value}</span>
+              </div>
+            ))}
+
+            <p style={{ fontSize: 11, color: 'var(--c-faint)', marginTop: 14, lineHeight: 1.6 }}>
+              This page is put together and kept the first time you open it each day. It
+              is not emailed or sent to you: nothing on the platform can send it yet.
+            </p>
+          </div>
+
+          {history.length > 1 && (
+            <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, maxWidth: 640 }}>
+              <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 10 }}>Earlier days</h3>
+              {history.map((row) => (
+                <div key={row.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--c-border)' }}>
+                  <span style={{ fontSize: 12, color: 'var(--c-text)' }}>{row.day}</span>
+                  <span style={{ fontSize: 11, color: 'var(--c-muted)' }}>
+                    collected {rupees(row.money?.collected_today)}
+                    {row.attendance?.marked ? ` · ${row.attendance.present_percent}% present` : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </ToolPage>
   );
 }

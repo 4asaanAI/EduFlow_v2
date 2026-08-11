@@ -258,9 +258,13 @@ def test_only_leadership_reaches_the_private_leadership_tools():
 # card). All five are in FINANCE_TOOL_NAMES by name, which is why the management head and
 # the five dormant profiles are unchanged: every one of them either names a rupee figure on
 # a family's bill or decides whether one is owed.
+# 2026-08-12: +1 READ tool for the two leadership profiles and nobody else,
+# `get_school_summary` (Abhimanyu: build the scheduled reports so Aman and Adesh have a
+# summary of everything in one place). It carries money, the roll and everyone's changes
+# in one answer, so it sits behind the same gate as the action log.
 EXPECTED_REACH = {
-    "owner":          (160, 103),
-    "principal":      (160, 103),
+    "owner":          (161, 103),
+    "principal":      (161, 103),
     # 56/31 until 2026-08-11. +1 tool, +1 write: update_staff, named in
     # PROFILE_MATRIX["accountant"]["extra_tools"], scoped by the SERVICE to salary
     # only (Abhimanyu, relaying Aman's and Adesh's instruction).

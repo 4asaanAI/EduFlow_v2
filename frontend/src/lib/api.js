@@ -750,6 +750,19 @@ export async function getStudentFeeStatus(studentId) {
   return res.json();
 }
 
+// The whole school on one page, for the owner and the principal only (Abhimanyu,
+// 2026-08-12). Produced and kept the first time one of them opens it each day.
+export async function getSchoolSummary(day) {
+  const query = day ? `?day=${encodeURIComponent(day)}` : '';
+  const res = await apiFetch(`${API}/audit-log/school-summary${query}`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function getSchoolSummaryHistory(limit = 30) {
+  const res = await apiFetch(`${API}/audit-log/school-summary/history?limit=${limit}`, { headers: getHeaders() });
+  return res.json();
+}
+
 // R2 step 10. Why one family's bill is the figure it is: band, concessions and what each
 // is worth, Right to Education, brothers and sisters, the bus, and what has been paid.
 // Finance profiles only - the same service Flo's explain_student_fee calls.

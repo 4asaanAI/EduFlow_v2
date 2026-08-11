@@ -110,6 +110,48 @@ async def daily_digest(
     return {"success": True, "data": {**digest, "text": render_digest_text(digest)}}
 
 
+@router.get("/school-summary")
+async def school_summary(
+    request: Request,
+    day: str = None,
+    user: dict = Depends(require_role("owner", "admin")),
+):
+    """The whole school on one page (Abhimanyu, 2026-08-12).
+
+    Gated exactly like the action log and the daily digest, and for the same reason: it
+    carries money, the roll and what everyone changed. The accountant head and the admin
+    office each already have the half that is theirs; this is the whole, and it belongs
+    to the two people who run the school.
+    """
+    from services.actor_context import actor_ctx_from_user
+    from services.school_summary_service import summary_for_day
+
+    if user.get("role") != "owner" and user.get("sub_category") not in AUDIT_READER_SUB_CATEGORIES:
+        raise HTTPException(403, "Forbidden")
+
+    db = get_db()
+    return {"success": True,
+            "data": await summary_for_day(db, actor_ctx_from_user(user), day=day)}
+
+
+@router.get("/school-summary/history")
+async def school_summary_history(
+    request: Request,
+    limit: int = 30,
+    user: dict = Depends(require_role("owner", "admin")),
+):
+    """Every day's summary that has been kept, newest first."""
+    from services.actor_context import actor_ctx_from_user
+    from services.school_summary_service import list_summaries
+
+    if user.get("role") != "owner" and user.get("sub_category") not in AUDIT_READER_SUB_CATEGORIES:
+        raise HTTPException(403, "Forbidden")
+
+    db = get_db()
+    rows = await list_summaries(db, actor_ctx_from_user(user), limit=limit)
+    return {"success": True, "data": rows, "meta": {"count": len(rows)}}
+
+
 # ── R2-18 - same-day undo of your own change ─────────────────────────────────
 #
 # Deliberately in this file and NOT behind `AUDIT_READER_SUB_CATEGORIES`. The action log

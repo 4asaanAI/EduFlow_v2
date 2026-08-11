@@ -594,6 +594,8 @@ class FakeDb:
         ])
         self.guardians = FakeCollection()
         self.staff = FakeCollection()
+        # The school on one page, kept once a day (2026-08-12).
+        self.school_summaries = FakeCollection()
         self.leave_requests = FakeCollection()
         self.staff_availability = FakeCollection()
         self.approval_requests = FakeCollection()
