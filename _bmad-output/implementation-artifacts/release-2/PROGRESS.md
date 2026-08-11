@@ -41,21 +41,17 @@ up by three or four on the 2026-08-10 baseline. The accountant head's +1 tool an
 write is `update_staff`, salary only, explained in the last session entry. No dormant
 profile has gained anything at any point.
 
-**Do this next.** The school's fee ledger is the school's most urgent need and
-Abhimanyu has approved writing it to the live database.
+**Do this next: `FINISHING-PLAN-2026-08-11.md`, in this folder, step 1.**
 
-1. Read the eight fee documents in `aaryans_database/`, above all
-   `Transport-Fees-Structure-Report-Summary-06-08-2026-16-58.pdf` (the missing transport
-   rates), `Ledger-Report-06-08-2026-01-03.xlsx` and
-   `Students-Fees-Structure-Report-06-08-2026-12-49.xlsx`.
-2. Reconcile them against the official fee sheet transcribed in plan R2-16, and against the
-   per-student `fee_snapshot` figures that describe themselves as *not* the ledger. Report
-   any disagreement to Abhimanyu **before** writing.
-3. Create the 11th and 12th Commerce and Science class records. Do **not** guess which
-   student belongs to which stream; that needs the school.
-4. Write the fee structure, with a rollback file saved first. `fee_structures` is empty, so
-   the undo is deleting exactly what you inserted.
-5. Then R2-19: prove Flo can do the same work through the same services.
+That document replaces the five bullets that used to sit here. It breaks everything left
+in Release 2 into eleven steps, says what each needs from a person, and says what is
+blocked and on whom. The fee rules themselves are settled and written down separately in
+`fee-rules-from-sonu-2026-08-11.md`, which is the authority on how the school charges.
+
+The short version: **steps 1 to 9 are the fee ledger**, step 10 is Flo parity (R2-19),
+step 11 is the deploy and handover (R2-14). Step 1 reconciles nine documents and writes
+nothing, so it needs no approval. Late fines are held to step 9 on Abhimanyu's explicit
+instruction, so that a wrong fine never reaches a family while the rest is being settled.
 
 Everything else in this file still applies.
 
@@ -1086,6 +1082,79 @@ clean with lint.
 4. **R2-14**, the handover itself.
 
 Everything else in Release 2 is built and green.
+
+### 2026-08-11 (fifth run) - the fee rules settled, the student columns carried across, and the finishing plan (Claude, Opus 5)
+
+**Has the code shipped? No.** 34 commits on the branch, pushed to GitHub for the first
+time this run, nothing deployed. The only thing that has ever touched production is the
+login rename (R2-11).
+
+**Did.** Finished the accountant salary work left half-done in the working folder; got the
+school's fee rules out of Sonu through Abhimanyu and checked every one of them against the
+school's own ledger; carried the remaining student columns across; and wrote the finishing
+plan for everything left.
+
+#### The new fee log changed the picture
+
+`Fees-log-detailed-11-08-2026-17-36.xlsx`, added by Abhimanyu mid-run: **10,720 fee lines,
+3,177 receipts, 1,723 children, 3.56 crore collected**, 23 January to 7 August. It is the
+real ledger rather than an export of estimates, and it independently confirms the
+photographed fee sheet to the rupee on all seven bands.
+
+It also answers three things that were about to be asked of the school: the senior streams
+are recorded in it (158 students), 1,235 children demonstrably use the bus while the
+platform says none do, and transport runs eleven months with **no June line in 5,587
+rows**.
+
+#### The rules, all checked rather than transcribed
+
+`fee-rules-from-sonu-2026-08-11.md` is now the authority. 853 ledger lines sit at exactly
+one of the seven sibling band values; 154 at exactly half a quarterly fee; **all 1,217
+fine lines are exact multiples of 10**. The rules are real and in daily use.
+
+**The one to build carefully** is the late fine, because the previous system gets it
+wrong: it keeps a quarter's daily fine running after the next quarter starts, so two
+accrue at once and families are overcharged. Only one daily fine ever runs. The 1,000 at
+quarter end, however, repeats: four times over a full year of arrears. That was queried
+because Abhimanyu's own worked example read the other way, and he confirmed it against a
+number.
+
+#### Two defects found by looking at the school's real columns
+
+Both are the same shape, and the second was live.
+
+1. **Eleven import columns pointed at fields the student record does not have** -
+   `whatsapp_phone` beside the real `whatsapp`, `aadhaar_number` beside `aadhaar_no`.
+   Importing the school's own export would have written a second copy of each and every
+   screen reads the first, so it would have reported success and changed nothing visible.
+2. **The messaging service had the same fault, in production.** It asked only for
+   `whatsapp_phone` on the student record, so the WhatsApp number the school holds for
+   **1,096 children was never looked at**. Messages still went out on the general contact
+   number, so nothing appeared broken.
+
+All 122 columns of the school's export now have a decision: 75 mapped, 47 refused by name
+with the reason on the line. A test asserts there is no third category.
+
+**Right to Education, and the list nobody had looked for.** The export carries an
+`IsRteStudent` column with **21 children marked**, and the school marks them again inside
+the child's name. Of the 13 who appear in the ledger, not one was charged a school fee. It
+is recorded as its own mark and deliberately NOT as a 100% discount, and deliberately not
+importable in bulk: it decides whether a child owes any school fee at all.
+
+#### Measured
+
+| | Before this run | Now | Why |
+|---|---|---|---|
+| Flo tools / writes: accountant | 56 / 31 | **57 / 32** | `update_staff`, salary only. |
+| everything else, all nine profiles | unchanged | unchanged | Nothing else moved on any surface. |
+
+**Proved.** Backend 2,999 passed / 0 failed / 15 deselected. Frontend 592 passed /
+0 failed. Build clean with lint.
+
+**Left.** `FINISHING-PLAN-2026-08-11.md`, eleven steps, about fourteen days. Five things
+wait on a person: the senior streams, confirming the 21 Right to Education children,
+confirming the sibling groups, what happens to the 1,844 unvouched fee figures, and the
+go-ahead to deploy. Nothing else is blocked.
 
 ### 2026-08-11 (fourth run) - Sonu gets the salary figure, and a grant that had never worked (Claude, Opus 5)
 
