@@ -106,6 +106,11 @@ export const MANAGEMENT_HUBS = [
       ['audit-log', 'Audit Log', 'Who changed what and when', 'both'],
       ['incident-tracker', 'Incidents & Visitors', 'Safety and visitor records', 'both'],
       ['query-section', 'Query & Support', 'Requests, issues and resolutions', 'both'],
+      // R2-7, 2026-08-11: this screen was granted to the management head and appeared in
+      // no group at all, so the only people who could open it were the profiles that
+      // navigate by the flat sidebar list. A granted screen nobody can find is the same
+      // defect as a button that refuses when pressed, only quieter.
+      ['tech-issues', 'Tech Issues', 'Raise and track IT problems', 'both'],
       ['school-settings', 'School Settings', 'Identity and profile settings', 'owner'],
       ['custom-form-builder', 'Form Builder', 'Build school forms and surveys', 'both'],
     ],

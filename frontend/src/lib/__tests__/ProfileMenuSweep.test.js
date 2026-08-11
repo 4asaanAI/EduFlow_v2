@@ -34,7 +34,10 @@ const EXPECTED_SCREEN_COUNT = {
   // 23 until 2026-08-11; +2 = the certificate and ID-card screens Abhimanyu gave the
   // accountant head, which he may open and request from but not issue (R2-9).
   accountant: 25,
-  management: 48,
+  // 48 until 2026-08-11. +1 governance-ai-hub (the group holding seven screens he was
+  // granted and could not reach), -2 board-report and custom-report-builder (both carry
+  // money, decision 1). See the named tests below.
+  management: 47,
   transport_head: 6,
   receptionist: 9,
   it_tech: 4,
@@ -129,7 +132,26 @@ test('the management head is offered no finance screen at all', () => {
 });
 
 test('the management head is offered no leadership-private screen', () => {
-  ['audit-log', 'what-ive-learned', 'conversation-trace', 'ai-health-report', 'governance-ai-hub']
+  // R2-7, 2026-08-11: 'governance-ai-hub' came OFF this list. It is the department
+  // GROUP, not a screen — the four screens above are what is private, and holding the
+  // group does not reveal them because the rows inside are filtered one by one. While
+  // the group was on this list the management head was granted seven screens that live
+  // inside it and could open none of them: the grant was real and the door was missing.
+  ['audit-log', 'what-ive-learned', 'conversation-trace', 'ai-health-report']
+    .forEach((id) => expect(canUseTool(userFor('management'), id)).toBe(false));
+});
+
+test('holding the governance group still hides the four private screens inside it', () => {
+  expect(canUseTool(userFor('management'), 'governance-ai-hub')).toBe(true);
+  ['audit-log', 'what-ive-learned', 'conversation-trace', 'ai-health-report']
+    .forEach((id) => expect(canUseTool(userFor('management'), id)).toBe(false));
+});
+
+test('the management head is offered no money-bearing report screen', () => {
+  // Removed 2026-08-11. Board Report totals the school's expenses; Custom Reports
+  // offers Fee Transactions and Expenses as data sources. Decision 1: he never sees a
+  // rupee figure.
+  ['board-report', 'custom-report-builder']
     .forEach((id) => expect(canUseTool(userFor('management'), id)).toBe(false));
 });
 

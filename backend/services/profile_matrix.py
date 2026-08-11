@@ -249,9 +249,19 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
             "raise-maintenance",
             # NOT 'vendor-log', and NOT the transport screens. Decision 2, 2026-08-10
             # hands both to the accountant head until Release 3 (R2-5).
-            # Reporting and the odds and ends.
-            "custom-report-builder",
-            "board-report",
+            # Reporting and the odds and ends. R2-7, 2026-08-11: the GROUP these live in
+            # was missing, so all seven were granted and none could be opened. Holding
+            # the group is not the same as seeing everything in it — the rows are
+            # filtered one by one, so the four leadership-private screens below stay
+            # hidden from him exactly as before.
+            "governance-ai-hub",
+            # NOT 'custom-report-builder' and NOT 'board-report', removed 2026-08-11.
+            # Both are money and decision 1 says he never sees a rupee figure. Board
+            # Report totals the school's expenses. Custom Reports offers Fee
+            # Transactions and Expenses as data sources, and the server already refuses
+            # him six of its seven sources, so the screen was mostly a row of buttons
+            # that answer no. Taking them off is the safe direction and matches the
+            # decision; nothing else about his access changed.
             "automated-report",
             "incident-tracker",
             "query-section",
