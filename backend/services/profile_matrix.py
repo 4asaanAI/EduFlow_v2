@@ -436,6 +436,88 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
             "until then it is deny-by-default with the two screens any employee needs."
         ),
     },
+
+    # ── R4-6: the three roles that were outside this table until now ─────────
+    #
+    # Decision 9, 2026-08-12: a tool a profile may not use does not appear in that
+    # profile's directory at all.
+    #
+    # Until R4-6 the eight office desks were default-deny off this table while
+    # teachers, students and guardians were passed straight through: `canUseTool`
+    # returned true for anything not on a short office-only list, and their menus were
+    # hand-written arrays in `Sidebar.js` with nothing checking them against what the
+    # server accepts. That is where a dead button lives - offered on screen, refused on
+    # press - and it is about to matter, because Release 5 is teachers and Release 6 is
+    # students.
+    #
+    # These lists are TAKEN FROM the menus as they stood, not invented. Nobody gains a
+    # screen here and nobody loses one; the point is that the list is now written down
+    # in the same place as everybody else's, so the next screen added has to be granted
+    # to these roles on purpose rather than by falling through.
+    #
+    # `tool_domains` is empty for all three: those domains describe the office's Flo
+    # tools, and a teacher's or a child's own screens are reached through their own
+    # routes. Giving them a domain here would widen Flo, which is not what a menu
+    # change is for.
+    "teacher": {
+        "person": None,
+        "title": "Teacher",
+        "status": "dormant",
+        "screens": _screens(
+            "class-attendance-marker", "assignment-generator", "question-paper-creator",
+            "quiz-manager", "report-card-builder", "student-performance-viewer",
+            "leave-application", "my-payslips", "lesson-plan-generator",
+            "worksheet-creator", "class-performance-analytics", "substitution-viewer",
+            "ptm-notes", "curriculum-tracker", "exam-manager", "form-submissions",
+            "resource-calendar", "library-circulation", "raise-maintenance",
+        ),
+        "tool_domains": frozenset(),
+        "may_write": False,
+        "extra_tools": frozenset(),
+        "denied_tools": frozenset(),
+        "may_delete_people": False,
+        "notes": (
+            "Outside this table until R4-6, with a hand-written menu and nothing "
+            "checking it against the server. Listed here exactly as it stood. Release 5 "
+            "is when teachers sign in, and settling what they hold is that release's "
+            "work, not a menu change's."
+        ),
+    },
+    "student": {
+        "person": None,
+        "title": "Student",
+        "status": "dormant",
+        "screens": _screens(
+            "ai-tutor", "doubt-solver", "homework-viewer", "attendance-self-check",
+            "result-viewer", "practice-test", "study-planner", "career-guidance",
+            "fee-status-viewer", "student-leave-request", "library-circulation",
+            "ptm-summary-viewer", "form-submissions", "raise-maintenance",
+        ),
+        "tool_domains": frozenset(),
+        "may_write": False,
+        "extra_tools": frozenset(),
+        "denied_tools": frozenset(),
+        "may_delete_people": False,
+        "notes": (
+            "Outside this table until R4-6. Every screen here shows a child only their "
+            "own record, through their own routes. Release 6 is when students sign in."
+        ),
+    },
+    "parent": {
+        "person": None,
+        "title": "Guardian",
+        "status": "dormant",
+        "screens": _screens("guardian-portal"),
+        "tool_domains": frozenset(),
+        "may_write": False,
+        "extra_tools": frozenset(),
+        "denied_tools": frozenset(),
+        "may_delete_people": False,
+        "notes": (
+            "One screen, which shows a guardian their own wards and nothing else. "
+            "Release 7 is when families sign in."
+        ),
+    },
 }
 
 LIVE_PROFILES = tuple(
@@ -468,9 +550,17 @@ def profile_of(user: Dict[str, Any]) -> str:
     in this table at all and keep ordinary registry role semantics.
     """
     user = user or {}
-    if user.get("role") == "owner":
+    role = user.get("role")
+    if role == "owner":
         return "owner"
-    if user.get("role") != "admin":
+    # R4-6: teachers, students and guardians are named by ROLE, not by sub_category.
+    # They were outside this table entirely until now, which is why their menus were
+    # hand-written and unchecked. Their entries carry no tool domains and may_write
+    # False, exactly matching what the old "" answer produced, so recognising them
+    # changes what the MENU offers and nothing about what anybody may do.
+    if role in ("teacher", "student", "parent"):
+        return role
+    if role != "admin":
         return ""
     sub_category = user.get("sub_category")
     return sub_category if sub_category in PROFILE_MATRIX else ""

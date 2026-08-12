@@ -43,6 +43,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict
 
+from services import audit_changes
 from services.actor_context import ActorContext
 from services.audit_service import write_audit_doc
 from tenant import scoped_query
@@ -119,15 +120,21 @@ NON_FIELD_ACTIONS = {"delete", "erase", "create"}
 
 
 def _is_reversible_shape(changes: Any) -> bool:
-    """Does this ``changes`` value actually carry a before AND an after per field?"""
-    if not isinstance(changes, dict) or not changes:
-        return False
-    for value in changes.values():
-        if not isinstance(value, dict):
-            return False
-        if "previous" not in value or "new" not in value:
-            return False
-    return True
+    """Does this ``changes`` value actually carry a before AND an after per field?
+
+    R4-1: this used to hand-check one shape, ``{field: {"previous", "new"}}``, and refuse
+    everything else - including two shapes that DO carry a before-value in different
+    words (``{"before":…, "after":…}`` and the nested ``previous_state`` form). So it
+    refused changes it could honestly have reversed, and a person was sent to the
+    principal for no reason.
+
+    It now asks ``audit_changes``, which reads every shape the platform has ever written
+    and, crucially, reports a field whose earlier value was NEVER RECORDED as
+    irreversible rather than as one that used to be empty. Writing an unrecorded
+    before-value back would erase a real value while reporting success - the single most
+    damaging thing an undo could do - so widening the reader does not widen the risk.
+    """
+    return bool(audit_changes.reversible_fields(changes))
 
 
 def _same_day(created_at: Any, now: datetime) -> bool:
@@ -182,14 +189,19 @@ def explain_refusal(entry: dict, actor_ctx: ActorContext, now: datetime) -> str:
             "there is no earlier value to put back. Ask the principal."
         )
     changes = entry.get("changes")
-    if not _is_reversible_shape(changes):
+    reversible = audit_changes.reversible_fields(changes)
+    if not reversible:
         return (
             "The record of this change does not include what the value was before, so "
             "there is nothing to put back. Ask the principal to correct it by hand."
         )
-    restorable = {f for f in changes if f not in PROTECTED_FIELDS}
+    # Read the field names off the CANONICAL form, not the raw row. On a
+    # `{"before":…, "after":…}` row the raw keys are the words "before" and "after",
+    # so the old code compared those against PROTECTED_FIELDS and named them back to
+    # the user in the refusal message.
+    restorable = {f for f in reversible if f not in PROTECTED_FIELDS}
     if not restorable:
-        blocked = ", ".join(sorted(changes))
+        blocked = ", ".join(sorted(reversible))
         return (
             f"This change is to {blocked}, which cannot be put back this way. Fees, "
             "salary, whether somebody is on the roll and login details are the owner's "
@@ -199,15 +211,41 @@ def explain_refusal(entry: dict, actor_ctx: ActorContext, now: datetime) -> str:
 
 
 def undoable_fields(entry: dict) -> Dict[str, Any]:
-    """The fields this undo would write back, and the value each would return to."""
-    changes = entry.get("changes") or {}
-    if not _is_reversible_shape(changes):
-        return {}
+    """The fields this undo would write back, and the value each would return to.
+
+    Two filters, and both are load-bearing. ``audit_changes`` drops fields whose earlier
+    value was never recorded, because putting None back would erase rather than restore.
+    ``PROTECTED_FIELDS`` then drops money, enrolment and login fields, because those are
+    somebody else's decision and a mistyped name is not a reason to reopen one.
+    """
+    restorable = audit_changes.reversible_fields(entry.get("changes") or {})
     return {
-        field: value.get("previous")
-        for field, value in changes.items()
+        field: previous
+        for field, previous in restorable.items()
         if field not in PROTECTED_FIELDS
     }
+
+
+def _user_from(actor_ctx: ActorContext) -> dict:
+    """The shape `undo_scope` and the permission table expect."""
+    return {
+        "role": actor_ctx.role,
+        "sub_category": actor_ctx.sub_category,
+        "id": actor_ctx.user_id,
+    }
+
+
+def help_for(entry: dict) -> Dict[str, Any]:
+    """R4-4: how to put this change back by hand, when the platform will not do it.
+
+    Decision 4 is two halves and this is the larger one. Without it, everything outside
+    the narrow automatic path gets "ask the principal", which throws away the before
+    value the platform already holds and sends somebody who is fixing their own mistake
+    to interrupt a colleague.
+    """
+    from services import undo_scope
+
+    return undo_scope.guidance(entry)
 
 
 async def list_my_undoable_changes(db, actor_ctx: ActorContext, limit: int = 20) -> dict:
@@ -237,6 +275,10 @@ async def list_my_undoable_changes(db, actor_ctx: ActorContext, limit: int = 20)
             "can_undo": not reason,
             "reason": reason,
             "would_restore": undoable_fields(entry) if not reason else {},
+            # R4-4 / decision 4: where the platform will not reverse it, say how to do
+            # it by hand. Attached to the REFUSED rows specifically, because those are
+            # the ones a person is stuck on and the only ones this can help with.
+            "how_to_undo_by_hand": help_for(entry) if reason else None,
         })
         if len(out) >= limit:
             break

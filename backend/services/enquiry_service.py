@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import uuid
 
+from services import audit_changes
 from services.actor_context import ActorContext
+from services.audit_service import write_audit
 from services.txn_context import session_kwargs as _txn_session_kwargs
 from tenant import scoped_query
 
@@ -78,6 +80,21 @@ async def create_enquiry(db, actor_ctx: ActorContext, params: dict, *, session=N
         **(extra_fields or {}),
     }
     await db.enquiries.insert_one({**enquiry, "_id": enquiry["id"]}, **_session_kwargs(session))
+    # R4-2: a family enquiring about a place is the first record the school holds about
+    # a child, and it recorded nothing. When two people take the same call, or an
+    # enquiry goes missing, there was no way to see who entered what.
+    await write_audit(
+        db,
+        action="enquiry_create",
+        entity_id=enquiry["id"],
+        collection="enquiries",
+        changed_by=actor_ctx.user_id or "",
+        changed_by_role=actor_ctx.role or "",
+        school_id=actor_ctx.school_id,
+        branch_id=actor_ctx.branch_id or "",
+        changes=audit_changes.created(enquiry),
+        reason=f"Enquiry for {enquiry.get('student_name')}",
+    )
     return {"enquiry": enquiry}
 
 
@@ -135,5 +152,19 @@ async def update_enquiry(db, actor_ctx: ActorContext, params: dict, *, session=N
     )
     updated = await db.enquiries.find_one(
         scoped_query({"id": enquiry_id}, branch_id=bid), {"_id": 0}, **_session_kwargs(session)
+    )
+    # R4-2. `existing` was read at the top of this function, so this is one of the paths
+    # that can honestly record what the enquiry said BEFORE the change, not only after.
+    await write_audit(
+        db,
+        action="enquiry_update",
+        entity_id=enquiry_id,
+        collection="enquiries",
+        changed_by=actor_ctx.user_id or "",
+        changed_by_role=actor_ctx.role or "",
+        school_id=actor_ctx.school_id,
+        branch_id=bid or "",
+        changes=audit_changes.edit(existing, update),
+        reason=params.get("note") or "",
     )
     return {"enquiry": updated}

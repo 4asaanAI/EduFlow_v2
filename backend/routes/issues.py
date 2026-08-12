@@ -14,6 +14,7 @@ from middleware.auth import get_current_user, require_owner, require_role, requi
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
 from services.actor_context import actor_ctx_from_user
+from services import platform_ticket_service
 from services.incident_service import (
     confirm_resolution as svc_confirm_resolution,
     IncidentValidationError,
@@ -538,6 +539,93 @@ async def update_tech_request(request_id: str, request: Request):
     await _write_audit(db, "tech_request_update", "tech_requests", request_id, user, {"changes": updates})
     updated = await db.tech_requests.find_one(scoped_query({"id": request_id}, branch_id=bid), {"_id": 0})
     return {"success": True, "data": updated}
+
+
+# ─── Platform tickets: telling Layaa AI (R4-5) ────────────────────────────────
+#
+# The two above stay inside the school. This one leaves it. Every profile may raise
+# one, owner down to student, because the person most likely to see a screen that will
+# not load is whoever was using it, and a report we refuse to accept is a fault we hear
+# about a week later instead.
+#
+# There is therefore NO role gate on raising a ticket, and that is a decision rather
+# than an omission. Reading OTHER people's tickets is gated: you see your own, and the
+# owner and principal see all of them, which is the same rule the merged view below
+# already uses.
+#
+# Every one of these is a thin shell over `platform_ticket_service`. The screen and Flo
+# reach the same function, so a change to how a ticket is recorded cannot land in one
+# entrance and miss the other.
+
+@router.post("/platform")
+async def raise_platform_ticket(request: Request, user: dict = Depends(get_current_user)):
+    """Report a platform problem to Layaa AI. Open to every signed-in profile."""
+    db = get_db()
+    body = await request.json()
+    try:
+        ticket = await platform_ticket_service.raise_ticket(
+            db,
+            user,
+            title=body.get("title", ""),
+            detail=body.get("detail"),
+            kind=body.get("kind", "support"),
+            priority=body.get("priority", "normal"),
+            context=body.get("context") or {},
+            app_url=body.get("app_url"),
+            screenshot_base64=body.get("screenshot_base64"),
+            screenshot_mime=body.get("screenshot_mime"),
+        )
+    except platform_ticket_service.PlatformTicketError as exc:
+        raise HTTPException(400, str(exc))
+    return {"success": True, "data": ticket}
+
+
+@router.get("/platform")
+async def list_platform_tickets(
+    request: Request,
+    status: str = None,
+    page: int = 1,
+    limit: int = 20,
+    user: dict = Depends(get_current_user),
+):
+    db = get_db()
+    page = clamp_page(page)
+    limit = clamp_page_size(limit)
+    result = await platform_ticket_service.list_tickets(
+        db,
+        user,
+        # The one place that decides who sees everybody's. The service never guesses.
+        mine_only=not _can_view_all(user),
+        status=status,
+        skip=(page - 1) * limit,
+        limit=limit,
+    )
+    return {
+        "success": True,
+        "data": result["items"],
+        "meta": {"page": page, "limit": limit, "total": result["total"]},
+    }
+
+
+@router.post("/platform/{ticket_id}/resend")
+async def resend_platform_ticket(ticket_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Try again to deliver a ticket that is saved here but never reached Layaa AI."""
+    db = get_db()
+    existing = await db.platform_tickets.find_one(
+        scoped_query({"id": ticket_id}, branch_id=user.get("branch_id")), {"_id": 0}
+    )
+    if not existing:
+        raise HTTPException(404, "Ticket not found")
+    # You may push your own along; the owner and principal may push anybody's. Without
+    # this a student could re-send a colleague's ticket, which is a small thing, but it
+    # is somebody else's report and not theirs to act on.
+    if existing.get("raised_by") != user.get("id") and not _can_view_all(user):
+        raise HTTPException(403, "Forbidden")
+    try:
+        ticket = await platform_ticket_service.resend_ticket(db, user, ticket_id)
+    except platform_ticket_service.PlatformTicketError as exc:
+        raise HTTPException(404, str(exc))
+    return {"success": True, "data": ticket}
 
 
 # ─── Merged view (Owner / Principal) ─────────────────────────────────────────

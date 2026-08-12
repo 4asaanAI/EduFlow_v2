@@ -22,7 +22,9 @@ from pydantic import BaseModel
 
 from database import get_db, get_raw_db, get_txn_session
 from middleware.auth import hash_password, require_owner
+from services import audit_changes
 from services.ai_rate_limiter import get_current_count, resolve_limit
+from services.audit_service import write_audit
 from tenant import scoped_filter, get_school_id
 
 logger = logging.getLogger(__name__)
@@ -177,6 +179,21 @@ async def upsert_ai_rate_limit_override(
         logger.exception("ai_rate_limit_overrides insert failed school=%s role=%s", school_id, role)
         raise HTTPException(status_code=500, detail="Failed to persist override") from exc
 
+    # R4-2: an operator raising or lowering how much AI a whole role may use is a
+    # decision, unlike the hourly counter it governs, which is machinery. The counter
+    # stays unaudited (see audit_coverage); the decision to change its ceiling does not.
+    await write_audit(
+        db,
+        action="ai_rate_limit_override",
+        entity_id=document["id"],
+        collection="ai_rate_limit_overrides",
+        changed_by=user.get("id", ""),
+        changed_by_role=user.get("role", ""),
+        school_id=school_id,
+        changes=audit_changes.created(document),
+        reason=reason or f"AI limit for {role} set to {limit}",
+    )
+
     effective = await resolve_limit(role=role, school_id=school_id, db=db)
     return {
         "success": True,
@@ -315,6 +332,29 @@ async def create_school(request: Request, user: dict = Depends(require_owner)):
                 "created_at": now,
             }, session=session)
 
+    # R4-2: creating a whole school and its owner login was the largest unrecorded act
+    # on the platform. Written after the transaction commits, so a rolled-back
+    # provisioning never leaves a row claiming a school exists.
+    #
+    # The snapshot deliberately omits the temporary password and its hash. An audit
+    # trail is read by more people than a password should be, and a record of who
+    # created an account does not require a copy of how to sign in to it.
+    await write_audit(
+        get_db(),
+        action="school_provision",
+        entity_id=school_id,
+        collection="schools",
+        changed_by=user.get("id", ""),
+        changed_by_role=user.get("role", ""),
+        school_id=school_id,
+        changes=audit_changes.created({
+            "school_id": school_id, "school_name": school_name,
+            "owner_email": owner_email, "plan_tier": plan_tier,
+            "owner_user_id": owner_user_id, "status": "onboarding",
+        }),
+        reason=f"Provisioned {school_name}",
+    )
+
     # Welcome notice is best-effort - provisioning must not fail if it raises.
     try:
         send_welcome_email(owner_email, owner_email, temp_password)
@@ -353,6 +393,20 @@ async def get_onboarding_status(school_id: str, user: dict = Depends(require_own
         await raw_db.schools.update_one(
             {"school_id": school_id},
             {"$set": {"status": "active", "activated_at": now}},
+        )
+        # R4-2. A school going from onboarding to live changes who can do what across
+        # the whole platform, and it happens automatically once the steps are done - so
+        # without this line nobody could tell when, or why, it flipped.
+        await write_audit(
+            get_db(),
+            action="school_activated",
+            entity_id=school_id,
+            collection="schools",
+            changed_by=user.get("id", ""),
+            changed_by_role=user.get("role", ""),
+            school_id=school_id,
+            changes=audit_changes.edit(school, {"status": "active", "activated_at": now.isoformat()}),
+            reason="Every onboarding step completed",
         )
         try:
             send_operator_completion_email(school.get("school_name") or school_id)

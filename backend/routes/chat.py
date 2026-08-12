@@ -193,6 +193,12 @@ WRITE_TOOL_REQUIRED_PARAMS = {
     "set_student_concession": ("student_id", "concession"),
     "record_admission_concession": ("student_id", "amount", "authorised_by"),
     "set_right_to_education": ("student_id", "reason"),
+    # R4-5. `title` because a ticket with no title is a ticket nobody can triage, and
+    # `tried` because a report that does not say what was already attempted makes us
+    # start from the beginning, and is also the honest record of whether Flo did the
+    # work with the person before escalating. Requiring it is the cheapest way to stop
+    # tickets for things the receptionist could have fixed in ten seconds.
+    "report_platform_problem": ("title", "tried"),
     "create_message_template": ("name", "channel", "body"),
     "update_message_template": ("template_id",),
     "delete_message_template": ("template_id",),

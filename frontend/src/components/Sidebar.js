@@ -255,32 +255,65 @@ export { TOOLS_BY_ROLE, ADMIN_SUBCATEGORY_TOOLS, getSidebarTools, getGroupConfig
 //   2. Nothing is dropped. A tool with no hub is still shown, under "More", rather
 //      than silently vanishing - a menu that quietly loses an entry looks identical
 //      to access being taken away.
+//
+// R4-6 / decision 9 (2026-08-12): ONE layout, for everybody.
+//
+// There used to be three. The owner and the principal got their hubs painted as flat
+// top-level entries; the other office desks got hubs followed by a flat tail of
+// everything with no hub; teachers and students got real tabs. Three arrangements of one
+// platform, so what somebody learned on one profile did not transfer to the next.
+//
+// Everyone now gets the tab layout. The two rules above still hold, and the second one
+// does real work here: a hub's OWN screen (Governance, Finance, and so on) is a tool in
+// its own right, and `groupToolsIntoHubs` matches a hub's MEMBER screens rather than the
+// hub itself - so left alone, every hub screen would have fallen into "More" and looked
+// misplaced, or worse, been filtered out and looked withdrawn. Each hub's own screen is
+// therefore placed at the top of its own tab, where a person would look for it.
 function getGroupConfig(user, tools) {
-  if (user.role === 'owner') return TOOL_GROUPS.owner;
-  if (user.role === 'admin' && user.sub_category === 'principal') return TOOL_GROUPS.principal;
-  if (user.role === 'admin') {
-    // The office profiles. `getSidebarTools` already hands them their hubs followed by
-    // every individual screen; listing the hubs as `top` is what stops the flat tail
-    // being painted underneath them.
-    //
-    // The orphans matter. A screen can be in a profile's list and in no hub - Staff
-    // Tracker is exactly that, because the Directory was made the sole front door to
-    // staff records and the tile was dropped from the hub. Painting hubs alone would
-    // have quietly removed it from the management head's menu, which looks identical
-    // to the access being withdrawn. So anything with no hub is still listed.
-    const { ungrouped } = groupToolsIntoHubs((tools || []).filter(t => !MANAGEMENT_HUB_IDS.includes(t.id)));
-    return { top: [...MANAGEMENT_HUB_IDS, ...ungrouped.map(tool => tool.id)], groups: [] };
-  }
-  const { groups, ungrouped } = groupToolsIntoHubs(tools);
-  const asGroup = hub => ({
-    id: hub.id, name: hub.name, color: hub.color, icon: HUB_ICON_BY_ID[hub.id], tools: hub.tools,
-  });
+  const all = tools || [];
+  const { groups, ungrouped } = groupToolsIntoHubs(all);
+  const offeredIds = new Set(all.map(tool => tool.id));
+
+  const asGroup = (hub) => {
+    // The hub's own screen leads its tab, when this profile holds it.
+    const own = offeredIds.has(hub.id) ? [hub.id] : [];
+    return {
+      id: hub.id,
+      name: hub.name,
+      color: hub.color,
+      icon: HUB_ICON_BY_ID[hub.id],
+      tools: [...own, ...hub.tools.filter(id => id !== hub.id)],
+    };
+  };
+
+  const placedHubIds = new Set(groups.map(hub => hub.id));
+  // A hub screen this profile holds whose members it does NOT hold. The tab would not
+  // exist otherwise and the screen would silently vanish, which reads exactly like the
+  // access being taken away.
+  const lonelyHubs = MANAGEMENT_HUB_IDS
+    .filter(id => offeredIds.has(id) && !placedHubIds.has(id))
+    .map(id => {
+      const hub = MANAGEMENT_HUBS.find(h => h.id === id);
+      return {
+        id, name: hub?.name || id, color: hub?.color,
+        icon: HUB_ICON_BY_ID[id], tools: [id],
+      };
+    });
+
+  const placedInGroups = new Set([
+    ...groups.flatMap(hub => hub.tools),
+    ...groups.filter(hub => offeredIds.has(hub.id)).map(hub => hub.id),
+    ...lonelyHubs.map(hub => hub.id),
+  ]);
+  const leftOver = ungrouped.filter(tool => !placedInGroups.has(tool.id));
+
   return {
     top: [],
     groups: [
       ...groups.map(asGroup),
-      ...(ungrouped.length
-        ? [{ id: 'more', name: 'More', color: 'var(--color-text-secondary)', icon: MoreHorizontal, tools: ungrouped.map(tool => tool.id) }]
+      ...lonelyHubs,
+      ...(leftOver.length
+        ? [{ id: 'more', name: 'More', color: 'var(--color-text-secondary)', icon: MoreHorizontal, tools: leftOver.map(tool => tool.id) }]
         : []),
     ],
   };
@@ -378,7 +411,13 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   const [openGroups, setOpenGroups] = useState(() => {
     if (!groupConfig) return new Set();
     const active = groupConfig.groups.find(g => g.tools.includes(activeTool));
-    return active ? new Set([active.id]) : new Set();
+    if (active) return new Set([active.id]);
+    // R4-6: fall back to the first tab rather than leaving every one shut. Before the
+    // layouts were unified, the owner and the principal saw their hubs painted flat and
+    // always visible; under one tab layout, opening nothing would greet them with a
+    // column of closed headers and no screens, which reads as a menu that has lost its
+    // contents rather than one that needs a click.
+    return groupConfig.groups.length ? new Set([groupConfig.groups[0].id]) : new Set();
   });
   const userMenuRef = useRef(null);
 
@@ -386,12 +425,26 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
     loadConversations();
   }, [currentUser.id, convRefresh]);
 
-  // Auto-open the group that contains the currently active tool
+  // Auto-open the tab that holds the currently active screen.
+  //
+  // R4-6: this effect used to depend on `groupConfig` itself, and `getGroupConfig`
+  // returned a STABLE module-level constant for the owner and the principal, so it
+  // settled after one pass. Once every profile's layout became derived, that object was
+  // rebuilt on every render, and because the update below always allocated a new Set the
+  // state changed identity each time: render, new object, effect, setState, render. An
+  // endless loop that hangs the page rather than showing an error, which is the hardest
+  // kind to attribute to a menu change.
+  //
+  // Two fixes, both needed. Depend on the id string, which is stable across renders, and
+  // return the previous Set unchanged when the tab is already open so a no-op update
+  // cannot trigger another render.
+  const activeGroupId = (groupConfig?.groups || [])
+    .find(g => g.tools.includes(activeTool))?.id || '';
+
   useEffect(() => {
-    if (!groupConfig) return;
-    const active = groupConfig.groups.find(g => g.tools.includes(activeTool));
-    if (active) setOpenGroups(prev => new Set([...prev, active.id]));
-  }, [activeTool, groupConfig]);
+    if (!activeGroupId) return;
+    setOpenGroups(prev => (prev.has(activeGroupId) ? prev : new Set([...prev, activeGroupId])));
+  }, [activeGroupId]);
 
   useEffect(() => {
     const handleNavigate = (e) => {

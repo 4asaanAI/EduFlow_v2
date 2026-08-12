@@ -94,6 +94,10 @@ PARITY_CORPUS = {
     "close_pos_shift": "commercial_parity_test.py",
     "post_pos_sale": "commercial_parity_test.py",
     "post_pos_return": "commercial_parity_test.py",
+    # R4-5: the only write that leaves the school. Parity matters more here than
+    # anywhere, because a difference between the button and Flo is invisible from
+    # inside the school - both say "reported" - and only shows up at our end.
+    "report_platform_problem": "platform_ticket_parity_test.py",
     # Finance administration added for the four reviewed Flo profiles.
     "upsert_salary_structure": "finance_admin_parity_test.py",
     "disburse_salary": "finance_admin_parity_test.py",

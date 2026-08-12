@@ -81,9 +81,31 @@ async def set_ai_writes_enabled(db, *, enabled: bool, actor_id: str = "", school
     doc = {"key": FLAG_KEY, "enabled": bool(enabled)}
     if school_id is not None:
         doc["schoolId"] = school_id
+    previous = await db.system_flags.find_one({"key": FLAG_KEY}, {"_id": 0})
     await db.system_flags.update_one(
         {"key": FLAG_KEY},
         {"$set": {**doc, "updated_by": actor_id}},
         upsert=True,
+    )
+    # R4-2: turning every AI write on or off across the whole school is one of the most
+    # consequential switches on the platform, and it recorded nothing. Somebody finding
+    # the AI unable to write anything had no way to see that a person had turned it off,
+    # which looks exactly like the AI being broken.
+    #
+    # Imported here rather than at module scope on purpose: this module is checked on the
+    # hot path before every AI write, and audit_service imports the database layer.
+    from services import audit_changes
+    from services.audit_service import write_audit
+
+    await write_audit(
+        db,
+        action="ai_writes_enabled" if enabled else "ai_writes_disabled",
+        entity_id=FLAG_KEY,
+        collection="system_flags",
+        changed_by=actor_id,
+        changed_by_role="",
+        school_id=school_id or "",
+        changes=audit_changes.edit(previous, {"enabled": bool(enabled)}),
+        reason=("AI writes turned back on" if enabled else "AI writes turned off for the whole school"),
     )
     reset_cache()

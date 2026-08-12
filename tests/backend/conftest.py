@@ -614,6 +614,9 @@ class FakeDb:
         self.staff = FakeCollection()
         # The school on one page, kept once a day (2026-08-12).
         self.school_summaries = FakeCollection()
+        # R4-5: problems the school reported to Layaa AI. Declared here rather than
+        # left to __getattr__ so a test can seed and clear it like any other.
+        self.platform_tickets = FakeCollection()
         self.leave_requests = FakeCollection()
         self.staff_availability = FakeCollection()
         self.approval_requests = FakeCollection()

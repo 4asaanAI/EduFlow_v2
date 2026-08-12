@@ -14,6 +14,9 @@ import uuid
 from datetime import datetime, timezone
 
 from pymongo.errors import DuplicateKeyError
+
+from services import audit_changes
+from services.audit_service import write_audit
 from tenant import scoped_query
 
 
@@ -53,6 +56,7 @@ async def disburse_salary(
     paid_by: str,
     school_id: str,
     branch_id: str | None = None,
+    actor_role: str = "",
 ) -> tuple[dict, bool]:
     """Record a salary disbursement.
 
@@ -103,7 +107,24 @@ async def disburse_salary(
         )
         return existing or doc, True
 
-    return {k: v for k, v in doc.items() if k != "_id"}, False
+    clean = {k: v for k, v in doc.items() if k != "_id"}
+    # R4-2: paying somebody their salary is exactly the kind of thing the school asks
+    # "who did that, and when?" about, and it recorded nothing at all until now. Written
+    # AFTER the insert succeeds, so a duplicate that returned early above never produces
+    # an audit row for a payment that did not happen.
+    await write_audit(
+        db,
+        action="salary_disbursement_create",
+        entity_id=doc["id"],
+        collection="salary_disbursements",
+        changed_by=paid_by,
+        changed_by_role=actor_role,
+        school_id=school_id,
+        branch_id=branch_id or "",
+        changes=audit_changes.created(clean),
+        reason=f"Salary for {staff_id}, {month}",
+    )
+    return clean, False
 
 
 async def upsert_salary_structure(
@@ -118,6 +139,7 @@ async def upsert_salary_structure(
     updated_by: str,
     school_id: str,
     branch_id: str | None = None,
+    actor_role: str = "",
 ) -> dict:
     """Upsert a salary structure for a staff member (one canonical record per staff_id)."""
     now = _now_iso()
@@ -149,7 +171,26 @@ async def upsert_salary_structure(
         {"$set": doc, "$setOnInsert": {"_id": doc["id"]}},
         upsert=True,
     )
-    return {k: v for k, v in doc.items() if k != "_id"}
+    clean = {k: v for k, v in doc.items() if k != "_id"}
+    # R4-2. `existing` was read a few lines up, so this is one of the few paths that can
+    # record what somebody's salary actually WAS before it changed, rather than only
+    # what it became. When there was no earlier record it is a create, and saying so is
+    # not the same as saying the old salary was empty.
+    await write_audit(
+        db,
+        action="salary_structure_upsert",
+        entity_id=doc["id"],
+        collection="salary_structures",
+        changed_by=updated_by,
+        changed_by_role=actor_role,
+        school_id=school_id,
+        branch_id=branch_id or "",
+        changes=(
+            audit_changes.edit(existing, clean) if existing else audit_changes.created(clean)
+        ),
+        reason=f"Salary structure for {staff_id}",
+    )
+    return clean
 
 
 async def build_payslip(db, disbursement: dict, *, branch_id: str | None) -> dict:
@@ -189,7 +230,7 @@ async def build_payslip(db, disbursement: dict, *, branch_id: str | None) -> dic
 
 async def correct_disbursement(db, *, disbursement_id: str, changes: dict,
                                reason: str, corrected_by: str,
-                               branch_id: str | None) -> dict:
+                               branch_id: str | None, actor_role: str = "") -> dict:
     if not str(reason or "").strip():
         raise PayrollValidationError("reason is required")
     original = await db.salary_disbursements.find_one(
@@ -236,4 +277,19 @@ async def correct_disbursement(db, *, disbursement_id: str, changes: dict,
     if result.matched_count == 0:
         await db.salary_disbursement_corrections.delete_one({"id": correction_id})
         raise PayrollValidationError("Disbursement changed; refresh and retry")
+    # R4-2. Written only after the guarded update actually matched. The two lines above
+    # undo the correction row when it did not, so auditing any earlier would record a
+    # correction to somebody's pay that was then rolled back.
+    await write_audit(
+        db,
+        action="salary_disbursement_correct",
+        entity_id=disbursement_id,
+        collection="salary_disbursements",
+        changed_by=corrected_by,
+        changed_by_role=actor_role,
+        school_id=original.get("schoolId") or "",
+        branch_id=branch_id or "",
+        changes=audit_changes.edit(original, update),
+        reason=reason.strip(),
+    )
     return {**original, **update, "correction_id": correction_id}

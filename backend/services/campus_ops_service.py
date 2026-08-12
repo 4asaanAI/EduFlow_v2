@@ -5,8 +5,10 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
+from services import audit_changes
 from services.actor_context import ActorContext
 from services.accounting_period_service import AccountingPeriodClosedError, assert_posting_allowed
+from services.audit_service import write_audit
 from tenant import scoped_query
 
 
@@ -53,6 +55,36 @@ def _parse_timestamp(value, key: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+async def _audit(db, actor_ctx: ActorContext, action: str, collection: str,
+                 entity_id: str, changes: dict, reason: str = "") -> None:
+    """R4-2: record a campus-operations change.
+
+    This module was the largest single gap on the platform: twenty-three writes and not
+    one audit row. It covers the school's rooms, its equipment, its stock, what it buys
+    and its library - all of it school property, and all of it the kind of thing someone
+    asks "who took that, and when?" about. A missing bookshelf with no record looks
+    exactly like a bookshelf nobody ever bought.
+
+    Every caller passes `actor_ctx`, so the person is always known here. The one
+    exception is `_post_stock_movement`, which is deliberately NOT audited: a stock
+    movement row already carries who, what, how many and when, so it IS the record, and
+    the DECISION that caused it (`adjust_stock`, `receive_purchase_order`) is audited by
+    its own function (decision 13, record once).
+    """
+    await write_audit(
+        db,
+        action=action,
+        entity_id=entity_id,
+        collection=collection,
+        changed_by=actor_ctx.user_id or "",
+        changed_by_role=actor_ctx.role or "",
+        school_id=actor_ctx.school_id,
+        branch_id=actor_ctx.branch_id or "",
+        changes=changes,
+        reason=reason,
+    )
+
+
 async def create_resource(db, actor_ctx: ActorContext, params: dict) -> dict:
     name = _text(params, "name")
     resource_type = str(params.get("resource_type") or "room").strip().lower()
@@ -73,7 +105,10 @@ async def create_resource(db, actor_ctx: ActorContext, params: dict) -> dict:
         "is_active": True, "created_by": actor_ctx.user_id, "created_at": _now(),
     }
     await db.resources.insert_one(doc)
-    return {key: value for key, value in doc.items() if key != "_id"}
+    clean = {key: value for key, value in doc.items() if key != "_id"}
+    await _audit(db, actor_ctx, "resource_create", "resources", doc["id"],
+                 audit_changes.created(clean))
+    return clean
 
 
 async def create_booking(db, actor_ctx: ActorContext, params: dict) -> dict:
@@ -109,7 +144,10 @@ async def create_booking(db, actor_ctx: ActorContext, params: dict) -> dict:
     if doc["attendees"] < 0 or doc["attendees"] > resource.get("capacity", 1):
         raise CampusValidationError("attendees exceeds resource capacity")
     await db.resource_bookings.insert_one(doc)
-    return {key: value for key, value in doc.items() if key != "_id"}
+    clean = {key: value for key, value in doc.items() if key != "_id"}
+    await _audit(db, actor_ctx, "booking_create", "resource_bookings", doc["id"],
+                 audit_changes.created(clean))
+    return clean
 
 
 async def cancel_booking(db, actor_ctx: ActorContext, booking_id: str) -> dict:
@@ -126,6 +164,8 @@ async def cancel_booking(db, actor_ctx: ActorContext, booking_id: str) -> dict:
         scoped_query({"id": booking_id}, branch_id=actor_ctx.branch_id),
         {"$set": {"status": "cancelled", "cancelled_by": actor_ctx.user_id, "cancelled_at": _now()}},
     )
+    await _audit(db, actor_ctx, "booking_cancel", "resource_bookings", booking_id,
+                 audit_changes.edit(booking, {"status": "cancelled"}))
     return {**booking, "status": "cancelled"}
 
 
@@ -157,7 +197,10 @@ async def checkout_asset(db, actor_ctx: ActorContext, asset_id: str, params: dic
         scoped_query({"id": asset_id}, branch_id=actor_ctx.branch_id),
         {"$set": {"custody_status": "checked_out", "current_holder": holder_id, "updated_at": _now()}},
     )
-    return {key: value for key, value in doc.items() if key != "_id"}
+    clean = {key: value for key, value in doc.items() if key != "_id"}
+    await _audit(db, actor_ctx, "asset_checkout", "asset_custody", doc["id"],
+                 audit_changes.created(clean))
+    return clean
 
 
 async def return_asset(db, actor_ctx: ActorContext, custody_id: str, params: dict) -> dict:
@@ -178,6 +221,8 @@ async def return_asset(db, actor_ctx: ActorContext, custody_id: str, params: dic
         scoped_query({"id": custody["asset_id"]}, branch_id=actor_ctx.branch_id),
         {"$set": {"custody_status": "available", "current_holder": None, "updated_at": now}},
     )
+    await _audit(db, actor_ctx, "asset_return", "asset_custody", custody_id,
+                 audit_changes.edit(custody, {"status": "returned", "returned_at": now}))
     return {**custody, "status": "returned", "returned_at": now}
 
 
@@ -205,7 +250,10 @@ async def create_inventory_item(db, actor_ctx: ActorContext, params: dict) -> di
     await db.inventory_items.insert_one(doc)
     if opening:
         await _post_stock_movement(db, actor_ctx, doc, "opening", opening, "opening_balance", item_id)
-    return {key: value for key, value in doc.items() if key != "_id"}
+    clean = {key: value for key, value in doc.items() if key != "_id"}
+    await _audit(db, actor_ctx, "inventory_item_create", "inventory_items", doc["id"],
+                 audit_changes.created(clean))
+    return clean
 
 
 async def _post_stock_movement(db, actor_ctx: ActorContext, item: dict, movement_type: str,
@@ -261,6 +309,13 @@ async def adjust_stock(db, actor_ctx: ActorContext, item_id: str, params: dict) 
         params.get("reference_type") or "manual", params.get("reference_id") or item_id,
         params.get("notes"),
     )
+    # The stock MOVEMENT row is the record of the quantity; this records the decision
+    # to change stock, with the level before and after, which the movement alone does
+    # not make obvious to somebody scanning a day of changes.
+    await _audit(db, actor_ctx, "stock_adjust", "inventory_items", item_id,
+                 audit_changes.edit({"on_hand": current_stock},
+                                    {"on_hand": current_stock + delta}),
+                 reason=str(params.get("notes") or movement_type))
     return {"movement": {key: value for key, value in movement.items() if key != "_id"},
             "on_hand": current_stock + delta}
 
@@ -289,7 +344,10 @@ async def create_requisition(db, actor_ctx: ActorContext, params: dict) -> dict:
         "created_at": now, "updated_at": now,
     }
     await db.purchase_requisitions.insert_one(doc)
-    return {key: value for key, value in doc.items() if key != "_id"}
+    clean = {key: value for key, value in doc.items() if key != "_id"}
+    await _audit(db, actor_ctx, "requisition_create", "purchase_requisitions", doc["id"],
+                 audit_changes.created(clean))
+    return clean
 
 
 async def decide_requisition(db, actor_ctx: ActorContext, requisition_id: str, params: dict) -> dict:
@@ -311,6 +369,9 @@ async def decide_requisition(db, actor_ctx: ActorContext, requisition_id: str, p
         {"$set": {"status": status, "decision_reason": params.get("reason"),
                   "decided_by": actor_ctx.user_id, "decided_at": _now(), "updated_at": _now()}},
     )
+    await _audit(db, actor_ctx, "requisition_decide", "purchase_requisitions", requisition_id,
+                 audit_changes.edit(requisition, {"status": status}),
+                 reason=str(params.get("note") or ""))
     return {**requisition, "status": status}
 
 
@@ -343,7 +404,10 @@ async def create_purchase_order(db, actor_ctx: ActorContext, requisition_id: str
         scoped_query({"id": requisition_id}, branch_id=actor_ctx.branch_id),
         {"$set": {"status": "ordered", "purchase_order_id": order_id, "updated_at": now}},
     )
-    return {key: value for key, value in doc.items() if key != "_id"}
+    clean = {key: value for key, value in doc.items() if key != "_id"}
+    await _audit(db, actor_ctx, "purchase_order_create", "purchase_orders", doc["id"],
+                 audit_changes.created(clean))
+    return clean
 
 
 async def receive_purchase_order(db, actor_ctx: ActorContext, order_id: str) -> dict:
@@ -388,6 +452,8 @@ async def receive_purchase_order(db, actor_ctx: ActorContext, order_id: str) -> 
         scoped_query({"id": order["requisition_id"]}, branch_id=actor_ctx.branch_id),
         {"$set": {"status": "received", "updated_at": now}},
     )
+    await _audit(db, actor_ctx, "purchase_order_receive", "purchase_orders", order_id,
+                 audit_changes.edit(order, {"status": "received", "received_at": now}))
     return {**order, "status": "received", "received_at": now}
 
 
@@ -418,7 +484,10 @@ async def create_library_title(db, actor_ctx: ActorContext, params: dict) -> dic
         "created_at": now, "updated_at": now,
     }
     await db.library_titles.insert_one(doc)
-    return {key: value for key, value in doc.items() if key != "_id"}
+    clean = {key: value for key, value in doc.items() if key != "_id"}
+    await _audit(db, actor_ctx, "library_title_create", "library_titles", doc["id"],
+                 audit_changes.created(clean))
+    return clean
 
 
 async def issue_library_title(db, actor_ctx: ActorContext, title_id: str, params: dict) -> dict:
@@ -459,7 +528,10 @@ async def issue_library_title(db, actor_ctx: ActorContext, title_id: str, params
         "status": "issued", "issued_by": actor_ctx.user_id,
     }
     await db.library_loans.insert_one(doc)
-    return {key: value for key, value in doc.items() if key != "_id"}
+    clean = {key: value for key, value in doc.items() if key != "_id"}
+    await _audit(db, actor_ctx, "library_issue", "library_loans", doc["id"],
+                 audit_changes.created(clean))
+    return clean
 
 
 async def return_library_loan(db, actor_ctx: ActorContext, loan_id: str, params: dict) -> dict:
@@ -488,6 +560,9 @@ async def return_library_loan(db, actor_ctx: ActorContext, loan_id: str, params:
         scoped_query({"id": loan["title_id"]}, branch_id=actor_ctx.branch_id),
         {"$inc": {"copies_available": 1}, "$set": {"updated_at": now}},
     )
+    await _audit(db, actor_ctx, "library_return", "library_loans", loan_id,
+                 audit_changes.edit(loan, {"status": "returned", "returned_at": now,
+                                           "overdue_days": overdue_days, "fine_amount": fine}))
     return {**loan, "status": "returned", "returned_at": now,
             "overdue_days": overdue_days, "fine_amount": fine}
 
@@ -510,5 +585,7 @@ async def renew_library_loan(db, actor_ctx: ActorContext, loan_id: str, params: 
         {"$set": {"due_at": new_due.isoformat(), "renewed_at": _now(),
                   "renewed_by": actor_ctx.user_id}, "$inc": {"renewal_count": 1}},
     )
+    await _audit(db, actor_ctx, "library_renew", "library_loans", loan_id,
+                 audit_changes.edit(loan, {"due_at": new_due.isoformat()}))
     return {**loan, "due_at": new_due.isoformat(),
             "renewal_count": int(loan.get("renewal_count") or 0) + 1}

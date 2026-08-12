@@ -4,7 +4,8 @@ import re
 from fastapi import APIRouter, Request, HTTPException, Depends
 from pagination import clamp_page, clamp_page_size
 from database import TimedQuery, get_db
-from middleware.auth import get_current_user, require_role
+from middleware.auth import get_current_user, require_owner, require_role
+from services import audit_changes, audit_retention
 from tenant import get_school_id, scoped_filter
 
 router = APIRouter(prefix="/api/audit-log", tags=["audit"])
@@ -21,6 +22,29 @@ AUDIT_READER_SUB_CATEGORIES = ("principal",)
 
 def get_user(req: Request):
     return get_current_user(req)
+
+
+def _with_one_shape(entry: dict) -> dict:
+    """R4-1: hand the screen ONE shape, plus a sentence, whatever was written down.
+
+    The school's existing history is written in eight different shapes and is NOT
+    rewritten - old rows stay exactly as they are on disk and are translated here, on
+    the way out. Two fields are added and the original `changes` is left untouched, so
+    nothing that reads the raw value today breaks:
+
+      `changes_normalised` - the one shape, always carrying a `kind`.
+      `changes_summary`    - one plain sentence for a person reading a list.
+
+    The sentence matters more than it looks. On most of the school's existing rows the
+    earlier value was never recorded, and a screen that renders a blank "before" column
+    is telling the reader the field used to be empty. It did not. It says so now.
+    """
+    normalised = audit_changes.normalise(entry.get("changes"))
+    return {
+        **entry,
+        "changes_normalised": normalised,
+        "changes_summary": audit_changes.describe(entry.get("changes")),
+    }
 
 
 @router.get("")
@@ -81,7 +105,7 @@ async def list_audit_log(
         total = await db.audit_logs.count_documents(scoped)
     async with TimedQuery(collection_name="audit_logs", operation="find", query_shape="audit_log_list"):
         items = await db.audit_logs.find(scoped, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
-    return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
+    return {"success": True, "data": [_with_one_shape(i) for i in items], "meta": {"page": page, "limit": limit, "total": total}}
 
 
 @router.get("/daily-digest")
@@ -194,6 +218,50 @@ async def undo_my_change(audit_id: str, request: Request, user: dict = Depends(g
     return {"success": True, "data": result}
 
 
+
+
+# ─── R4-3: two years in full, a monthly summary forever ──────────────────────
+#
+# These two routes are deliberately separate. `plan` looks and changes nothing;
+# `run` acts. Thinning is the only thing on this platform that deletes the school's
+# history, so seeing the numbers must never be one careless click away from applying
+# them, and there is no combined "preview and confirm" endpoint on purpose.
+#
+# Owner only. Not the principal: decision 5 already keeps Aman's changes out of Adesh's
+# view of the audit trail, and a principal who could thin the trail could remove the
+# very entries that decision protects.
+#
+# Declared BEFORE `/{record_id}` for the reason spelled out below it: that route matches
+# any single path segment, so anything registered after it is never reached. Placed at
+# the end of the file these two answered as a record lookup for a record called
+# "retention", which 404s and reads like the feature was never built.
+
+@router.get("/retention/plan")
+async def retention_plan(request: Request, user: dict = Depends(require_owner)):
+    """What thinning WOULD do. Changes nothing, safe to call any time."""
+    return {"success": True, "data": await audit_retention.plan(get_db())}
+
+
+@router.post("/retention/run")
+async def retention_run(
+    request: Request,
+    max_months: int = 1,
+    user: dict = Depends(require_owner),
+):
+    """Summarise months past the two-year window, oldest first.
+
+    `max_months` defaults to ONE. Thinning years of history in a single call is not
+    something anybody should get by leaving a parameter off, and doing a month at a time
+    means an unexpected result is one month's worth rather than the whole archive.
+    """
+    if max_months < 1:
+        raise HTTPException(400, "max_months must be at least 1")
+    result = await audit_retention.run(
+        get_db(), get_school_id(), max_months=max_months
+    )
+    return {"success": True, "data": result}
+
+
 # NOTE: the two R2-18 routes above are declared BEFORE this one deliberately.
 # `/{record_id}` matches any single path segment, so a route registered after it
 # is never reached - `/my-changes-today` was answered by this handler and refused
@@ -227,5 +295,4 @@ async def get_record_history(
         total = await db.audit_logs.count_documents(scoped)
     async with TimedQuery(collection_name="audit_logs", operation="find", query_shape="record_history"):
         items = await db.audit_logs.find(scoped, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
-    return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
-
+    return {"success": True, "data": [_with_one_shape(i) for i in items], "meta": {"page": page, "limit": limit, "total": total}}

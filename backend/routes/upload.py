@@ -5,6 +5,8 @@ from pagination import clamp_page, clamp_page_size
 from database import get_db
 from middleware.auth import get_current_user
 from tenant import add_school_id, get_school_id, scoped_filter
+from services import audit_changes
+from services.audit_service import write_audit
 from services.s3_storage import (
     PRESIGNED_URL_EXPIRY_SECONDS,
     build_upload_key,
@@ -382,4 +384,25 @@ async def delete_file(file_id: str, request: Request):
         delete_object(record["s3_key"])
     # branch-scope: intentional - file_uploads is school-scoped, not branch-scoped.
     await db.file_uploads.delete_one(scoped_filter({"id": file_id}, get_school_id()))  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
+    # R4-2: a deleted document is the one file event nobody can reconstruct afterwards.
+    # The upload itself leaves a row in `file_uploads` that IS the record; a deletion
+    # removes that row and, until now, left nothing at all. A parent asking what happened
+    # to a scanned certificate had no answer, and "it was never uploaded" and "somebody
+    # deleted it" looked identical.
+    #
+    # The snapshot deliberately excludes the file's bytes - `{"data": 0}` above already
+    # dropped them - so the audit row records WHICH document went and who removed it,
+    # without storing a second copy of every file the school ever deletes (decision 13).
+    await write_audit(
+        db,
+        action="file_delete",
+        entity_id=file_id,
+        collection="file_uploads",
+        changed_by=user.get("id", ""),
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes=audit_changes.removed({k: v for k, v in record.items() if k != "_id"}),
+        reason=f"Deleted {record.get('filename') or file_id}",
+    )
     return {"success": True}

@@ -6,7 +6,9 @@ import random
 import uuid
 from datetime import datetime, timezone
 
+from services import audit_changes
 from services.actor_context import ActorContext
+from services.audit_service import write_audit
 from tenant import scoped_query
 
 
@@ -83,7 +85,25 @@ async def create_quiz(db, actor_ctx: ActorContext, params: dict) -> dict:
         "created_at": now, "updated_at": now,
     }
     await db.quizzes.insert_one(doc)
-    return {key: value for key, value in doc.items() if key != "_id"}
+    clean = {key: value for key, value in doc.items() if key != "_id"}
+    # R4-2: a quiz carries marks, so who set it and who changed it is a school record.
+    # Attempts are deliberately NOT audited: an attempt row already carries the student,
+    # the answers, the score and the time, so it IS the record, and copying every
+    # attempt into the audit trail would multiply storage by the size of the school for
+    # no new information (decision 13).
+    await write_audit(
+        db,
+        action="quiz_create",
+        entity_id=doc["id"],
+        collection="quizzes",
+        changed_by=actor_ctx.user_id or "",
+        changed_by_role=actor_ctx.role or "",
+        school_id=actor_ctx.school_id,
+        branch_id=actor_ctx.branch_id or "",
+        changes=audit_changes.created(clean),
+        reason=f"Quiz: {doc.get('title') or doc['id']}",
+    )
+    return clean
 
 
 async def publish_quiz(db, actor_ctx: ActorContext, quiz_id: str) -> dict:
@@ -100,6 +120,20 @@ async def publish_quiz(db, actor_ctx: ActorContext, quiz_id: str) -> dict:
     await db.quizzes.update_one(
         scoped_query({"id": quiz_id, "status": "draft"}, branch_id=actor_ctx.branch_id),
         {"$set": {"status": "published", "published_at": now, "updated_at": now}},
+    )
+    # R4-2. Publishing is the moment a quiz becomes real to students, and it is the
+    # change most likely to be queried later ("this went out before we were ready").
+    await write_audit(
+        db,
+        action="quiz_publish",
+        entity_id=quiz_id,
+        collection="quizzes",
+        changed_by=actor_ctx.user_id or "",
+        changed_by_role=actor_ctx.role or "",
+        school_id=actor_ctx.school_id,
+        branch_id=actor_ctx.branch_id or "",
+        changes=audit_changes.edit(quiz, {"status": "published", "published_at": now}),
+        reason=f"Published {quiz.get('title') or quiz_id}",
     )
     return {**quiz, "status": "published", "published_at": now}
 

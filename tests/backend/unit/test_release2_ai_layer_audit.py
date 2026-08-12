@@ -97,6 +97,13 @@ def test_the_confirm_set_did_not_grow_to_accommodate_them():
     assert EXPLICIT_CONFIRMATION_TOOL_NAMES == destructive | set(BULK_TOOL_NAMES) | {
         "post_pos_return", "correct_fee_transaction", "correct_salary_disbursement",
         "change_accounting_period_status", "set_profile_password",
+        # R4-5, 2026-08-12. The set grew by one, and the Release 2 concern this test
+        # guards is unharmed: it was written to stop the confirm set being widened to
+        # make ORDINARY SCHOOL WRITES feel safer, which is a design change dressed as a
+        # tidy-up. `report_platform_problem` is not a school write at all. It is the only
+        # tool that sends anything out of the school, and the confirm card is how a
+        # person tells "Flo helped me" from "Flo told my supplier what I was doing".
+        "report_platform_problem",
     }
 
 

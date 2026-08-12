@@ -52,6 +52,43 @@
 > `_bmad-output/planning-artifacts/inspection-findings-2026-08-04.md`.
 > Logs in `_bmad-output/implementation-artifacts/inspection-2026-08-04/`.
 
+> ## 🚧 CURRENT INITIATIVE - Release 4: the platform can account for itself (2026-08-12) - branch `release-4-2026-08-12`
+>
+> **Start here:** `_bmad-output/implementation-artifacts/release-4/PROGRESS.md` is the ONLY
+> record of what is done. The work itself is
+> `_bmad-output/planning-artifacts/release-4-audit-undo-and-honest-menus-2026-08-12.md`.
+>
+> **Release 4 is NOT just "audit and undo".** That one line is all that was ever copied
+> into these notes and it is about a quarter of what was agreed on 12 August. It is six
+> parts: one shape for a recorded change, record everything, two-year retention with a
+> monthly summary kept forever, undo what hurts and let Flo guide the rest, Flo watching
+> storage and raising Layaa AI tickets in LayaaStat, and honest menus in one layout.
+>
+> **The one idea.** Release 3's faults were all "a query that quietly returned less than
+> it should". Release 4's are the same shape moved sideways: **the platform quietly says
+> less about itself than it should.** A change never written down looks exactly like a
+> quiet day. A button that will be refused looks exactly like a working feature. The test
+> for every part: can a person tell "nothing happened" from "we did not record it"?
+>
+> **Nine settled decisions are in Part 1 of the plan. Do not reopen them.** The two that
+> catch people out: **Adesh must NOT see Aman's changes** in the audit trail, and **undo
+> covers only what hurts the platform** while Flo talks people through the rest by hand.
+>
+> **What was found by reading, not assuming.** *(Corrected: the first count said "16 of 39
+> areas", which was route files only. Counting every module that writes to the database it
+> was 55 of 75, with 20 modules holding 108 unrecorded writes.)* R4-1 and R4-2 are now DONE:
+> 64 modules record, 15 are excused in writing, 0 undecided. Entries are kept forever and nothing deletes one. Undo is narrow because
+> there are **eight different shapes** a change gets written in and only one carries a
+> before value. The route from the school to Layaa AI **does not exist** (LayaaStat is
+> telemetry one way, not a ticket inbox, and needs a piece in another repository). Menus
+> are better than expected: the eight office desks are already default-deny off
+> `profile_matrix.py` in all three places tools are shown, but **teachers, students and
+> guardians are outside that table** with hand-written menus, and there are three
+> different layouts where there should be one.
+>
+> **Grouping never grants, and nothing is ever dropped.** Both rules carry over from the
+> post-Release-3 work and neither may be relaxed for a layout change.
+
 > ## ✅ SHIPPED - Release 3: the whole list, on any device (2026-08-12)
 >
 > **LIVE.** All thirteen items shipped together on 2026-08-12, as Abhimanyu decided.
