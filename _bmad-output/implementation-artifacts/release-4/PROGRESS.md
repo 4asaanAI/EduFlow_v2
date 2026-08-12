@@ -21,9 +21,14 @@ reports after it are live.
 | R4-5 | Flo watches the platform and can reach us | **Built and green** (not deployed; see the four steps below) |
 | R4-6 | Honest menus, one layout | **Done** (not deployed) |
 
-Five of six parts built and green. **Nothing deployed. No live school data has been
-read or changed.** R4-5 (Flo watching storage, and the ticket route to Layaa AI) is the
-only part not started, and it is the one that reaches outside this repository.
+All six parts are built and green. **Nothing is deployed. No live school data has been
+read or changed.**
+
+R4-5 is the one that reaches outside this repository, so "built" means less here than it
+does for the other five: the code is done and tested, and four things still have to
+happen by hand before a ticket can actually travel. They are listed at the foot of this
+file. **Do not report R4-5 as working until one real ticket has been watched all the way
+to the inbox.**
 
 ---
 
