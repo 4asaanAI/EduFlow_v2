@@ -93,3 +93,31 @@ detail.
 
 **Cost is now decision 13 and Part 4a**, a constraint on every part rather than a review at
 the end. The rule is the cheapest way to the same result, never a smaller result.
+
+### 2026-08-12 (later still) - screenshots go unblanked, and the Peppermint numbers
+
+**Decision 14.** Screenshots are sent **unblanked**. Abhimanyu's reason is correct: Layaa AI
+already holds most of the school's records, so a picture of a screen is not a new category
+of exposure. The blanking proposal is dropped and is not to be reopened.
+
+What that decision does **not** settle is where the picture travels, which is a different
+question. Email leaves any system we control and stays in inboxes, and LayaaStat's own
+`0004_seed.sql` auto-grants every new authenticated user access to the default tenant. So
+the full picture is stored in LayaaStat behind its login and **the email carries a link,
+not the image**. That is exactly the flow Abhimanyu described, costs him nothing, and keeps
+email small for decision 13. Attaching the image to the mail later is one line of config.
+
+**Peppermint, measured rather than described.** Abhimanyu made the fair argument that we
+inherit security patches either way, so cloning still puts us ahead. The GitHub API answers
+it: **archived and read-only, last code change 21 September 2025** (eleven months before
+today, so it was dead long before it was archived), **101 issues open forever**, **licence
+reported as "Other", meaning GitHub could not identify the terms**, and **112 MB** of code
+for a feature of which we need about a tenth. "Keep it updated" is not available because
+there is nothing upstream to update from, so cloning does not move maintenance off us, it
+moves 112 MB onto us. It would also fight decision 11, since Peppermint's idea of clients
+does not match LayaaStat's product-and-tenant registry.
+
+**Proposal, awaiting a yes, not blocking R4-1:** read Peppermint's code and take its data
+model and ticket states, adopt nothing. Free, no licence question, no second login. If
+Abhimanyu would rather adopt something maintained, **FreeScout is the honest candidate**
+and would be costed properly rather than argued against.

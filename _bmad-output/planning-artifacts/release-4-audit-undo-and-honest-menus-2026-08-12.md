@@ -49,6 +49,7 @@ All of these are Abhimanyu's, recorded on 12 August 2026. **Settled. Do not reop
 | 11 | **A ticket attaches to the CLIENT, not the product.** The Aaryans, not EduFlow. EduFlow will have more schools. *(2026-08-12.)* |
 | 12 | **Delivery is LayaaStat first, then n8n, then email** to `abhimanyu.singh@layaa.ai` and `shubham.sharma@layaa.ai`. Store before notify, always. *(2026-08-12.)* |
 | 13 | **Keep costs as low as possible without giving up any feature.** *(2026-08-12.)* Cost is a design constraint on every part of this release, not a review at the end. It is not a reason to drop something Abhimanyu asked for; it is a reason to reach the same result the cheaper way. Rules in Part 4a. |
+| 14 | **Screenshots are sent unblanked.** *(2026-08-12.)* Layaa AI already holds most of the school's records, so a picture of a screen is not a new category of exposure. The blanking proposal is dropped. See R4-5e for the one thing this does not settle, which is where the picture travels. |
 
 Read-only permission to measure the live database size was granted (question 5,
 answered "sure"). **That is permission to READ. Nothing on the live database is written,
@@ -285,19 +286,33 @@ nothing for them to fetch. They solve a different problem and are not the answer
 The right answer is to **capture the page inside the person's own browser** and attach the
 image to the ticket, which is a solved, ordinary thing to do.
 
-**⚠️ The hard part is not capturing it.** A screenshot of an EduFlow screen contains real
-children: names, fee amounts, guardians' phone numbers, addresses. Attaching it to a ticket
-sends that **out of the school's system and into Layaa AI's**. That is a real decision
-about minors' data and it is Abhimanyu's, not an implementation detail.
+**Screenshots go UNBLANKED. Decision 14, Abhimanyu, 2026-08-12.** The concern raised was
+that a screenshot of an EduFlow screen carries real children's names, fee amounts and
+guardians' phone numbers out of the school's system and into Layaa AI's. **Abhimanyu's
+answer: Layaa AI already holds most of the school's records, so a screenshot is not a new
+category of exposure.** That is factually correct and the blanking proposal is dropped.
+Do not reopen it.
 
-**Proposal, to be confirmed before this part is built:** capture the screen, **blank out
-personal details automatically before it leaves the browser**, and **show the person
-exactly what is about to be sent** with the option to send without the picture at all.
-Nothing is attached that the sender has not seen. EduFlow already has a redaction module
-(`ai/redaction.py`) whose approach can be reused.
+**One thing that decision does NOT settle, and it is a different question.** Decision 14 is
+about *Layaa AI* seeing the data. It is not about *where the picture travels*. Two places
+are looser than LayaaStat:
 
-**Done when** a ticket reaches us with enough to act on and nothing in it that a child's
-parent would object to.
+* **Email.** An attached picture lands in mail servers and inboxes, outside any system we
+  control, and stays there.
+* **LayaaStat's own sign-up.** `0004_seed.sql` auto-grants **every new authenticated user**
+  access to the default tenant. Whoever signs up can see what is there.
+
+**So: the full picture is stored in LayaaStat, behind its login, and the email carries a
+LINK rather than the image.** This costs Abhimanyu nothing, because it is exactly the flow
+he described ("whenever we receive an email we can directly open LayaaStat to check the
+details"). It also keeps email small, which serves decision 13. If he later wants the
+image attached to the mail itself, that is one line of configuration.
+
+The screenshot is still **shown to the sender before it goes**, not to protect the data but
+because a person should know what they just sent.
+
+**Done when** a ticket reaches us with enough to act on, and the picture lives in one place
+we control rather than in everybody's inbox.
 
 ### R4-6 - Honest menus, one layout
 
@@ -380,7 +395,8 @@ Where the money in this release actually goes, and what to do about it:
 | Item | Who | Note |
 |---|---|---|
 | The exact list of "things that hurt the platform" for R4-4 | Abhimanyu | Proposal is in R4-4. Confirm or change it before that part starts. |
-| **Screenshots and children's data** | **Abhimanyu** | **The one genuine decision left. A screenshot of an EduFlow screen carries real children's names, fees and phone numbers out of the school's system. Proposal in R4-5e: blank personal details automatically, show the sender exactly what goes, allow sending without the picture. Confirm before R4-5 is built.** |
+| ~~Screenshots and children's data~~ | Closed 2026-08-12 | Decision 14. Sent unblanked. Not to be reopened. |
+| Borrowing Peppermint's design | Abhimanyu | Peppermint is archived, last code change 21 Sep 2025, 101 issues open forever, licence unidentified by GitHub, 112 MB for a tenth of which we need. Proposal: **read its code and take its data model and ticket states**, adopt nothing. Costs no licence, no hosting, no second login. Awaiting a yes. Does not block R4-1. |
 | Does an `eduflow` product and an Aaryans tenant exist in LayaaStat? | Verify | Only `layaa-internal` is in the seed file, so the rest were made at runtime and cannot be read from the repository. Check, do not assume. |
 | Does the LIVE EduFlow ingest key point at that tenant? | Verify | A key pointing at `layaa-internal` files every school's ticket under Layaa's own tenant and looks like it is working. |
 | Reading live database and audit size | Granted, read only | Nothing written, migrated or deleted without a fresh yes. |
