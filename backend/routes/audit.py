@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from pagination import clamp_page, clamp_page_size
 from database import TimedQuery, get_db
 from middleware.auth import get_current_user, require_role
+from services import audit_changes
 from tenant import get_school_id, scoped_filter
 
 router = APIRouter(prefix="/api/audit-log", tags=["audit"])
@@ -21,6 +22,29 @@ AUDIT_READER_SUB_CATEGORIES = ("principal",)
 
 def get_user(req: Request):
     return get_current_user(req)
+
+
+def _with_one_shape(entry: dict) -> dict:
+    """R4-1: hand the screen ONE shape, plus a sentence, whatever was written down.
+
+    The school's existing history is written in eight different shapes and is NOT
+    rewritten - old rows stay exactly as they are on disk and are translated here, on
+    the way out. Two fields are added and the original `changes` is left untouched, so
+    nothing that reads the raw value today breaks:
+
+      `changes_normalised` - the one shape, always carrying a `kind`.
+      `changes_summary`    - one plain sentence for a person reading a list.
+
+    The sentence matters more than it looks. On most of the school's existing rows the
+    earlier value was never recorded, and a screen that renders a blank "before" column
+    is telling the reader the field used to be empty. It did not. It says so now.
+    """
+    normalised = audit_changes.normalise(entry.get("changes"))
+    return {
+        **entry,
+        "changes_normalised": normalised,
+        "changes_summary": audit_changes.describe(entry.get("changes")),
+    }
 
 
 @router.get("")
@@ -81,7 +105,7 @@ async def list_audit_log(
         total = await db.audit_logs.count_documents(scoped)
     async with TimedQuery(collection_name="audit_logs", operation="find", query_shape="audit_log_list"):
         items = await db.audit_logs.find(scoped, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
-    return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
+    return {"success": True, "data": [_with_one_shape(i) for i in items], "meta": {"page": page, "limit": limit, "total": total}}
 
 
 @router.get("/daily-digest")
@@ -227,5 +251,5 @@ async def get_record_history(
         total = await db.audit_logs.count_documents(scoped)
     async with TimedQuery(collection_name="audit_logs", operation="find", query_shape="record_history"):
         items = await db.audit_logs.find(scoped, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
-    return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
+    return {"success": True, "data": [_with_one_shape(i) for i in items], "meta": {"page": page, "limit": limit, "total": total}}
 
