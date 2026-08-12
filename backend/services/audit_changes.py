@@ -191,19 +191,35 @@ def is_canonical(changes: Any) -> bool:
 
 
 def _fields_from_previous_new(changes: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
-    """Legacy shape 1: {field: {"previous": …, "new": …}} - the reversible one."""
+    """Legacy shape 1: {field: {"previous": …, "new": …}} - the reversible one.
+
+    Handled PER FIELD, not all-or-nothing. A row can carry a real before-value for some
+    fields and only a new value for others, because different code paths wrote different
+    halves of the same edit. Rejecting the whole row on one incomplete field threw away
+    every good before-value beside it, so a change that was half reversible became
+    entirely irreversible, and the person was told nothing could be put back when most of
+    it could.
+
+    Returns None only when NO field carries a before-value, which is the plain
+    new-values-only shape and belongs to the catch-all branch instead.
+    """
     out: Dict[str, Any] = {}
+    any_known = False
     for key, value in changes.items():
         if not isinstance(value, Mapping):
             return None
-        if "previous" not in value or "new" not in value:
+        if "previous" in value and "new" in value:
+            any_known = True
+            out[key] = {
+                "previous": value.get("previous"),
+                "new": value.get("new"),
+                "previous_known": True,
+            }
+        elif "new" in value:
+            out[key] = {"previous": None, "new": value.get("new"), "previous_known": False}
+        else:
             return None
-        out[key] = {
-            "previous": value.get("previous"),
-            "new": value.get("new"),
-            "previous_known": True,
-        }
-    return out or None
+    return out if any_known else None
 
 
 def normalise(changes: Any) -> Dict[str, Any]:

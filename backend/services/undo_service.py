@@ -226,6 +226,28 @@ def undoable_fields(entry: dict) -> Dict[str, Any]:
     }
 
 
+def _user_from(actor_ctx: ActorContext) -> dict:
+    """The shape `undo_scope` and the permission table expect."""
+    return {
+        "role": actor_ctx.role,
+        "sub_category": actor_ctx.sub_category,
+        "id": actor_ctx.user_id,
+    }
+
+
+def help_for(entry: dict) -> Dict[str, Any]:
+    """R4-4: how to put this change back by hand, when the platform will not do it.
+
+    Decision 4 is two halves and this is the larger one. Without it, everything outside
+    the narrow automatic path gets "ask the principal", which throws away the before
+    value the platform already holds and sends somebody who is fixing their own mistake
+    to interrupt a colleague.
+    """
+    from services import undo_scope
+
+    return undo_scope.guidance(entry)
+
+
 async def list_my_undoable_changes(db, actor_ctx: ActorContext, limit: int = 20) -> dict:
     """Today's changes by this person, each marked as reversible or not, with a reason.
 
@@ -253,6 +275,10 @@ async def list_my_undoable_changes(db, actor_ctx: ActorContext, limit: int = 20)
             "can_undo": not reason,
             "reason": reason,
             "would_restore": undoable_fields(entry) if not reason else {},
+            # R4-4 / decision 4: where the platform will not reverse it, say how to do
+            # it by hand. Attached to the REFUSED rows specifically, because those are
+            # the ones a person is stuck on and the only ones this can help with.
+            "how_to_undo_by_hand": help_for(entry) if reason else None,
         })
         if len(out) >= limit:
             break

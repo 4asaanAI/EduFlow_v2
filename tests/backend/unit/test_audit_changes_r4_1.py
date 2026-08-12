@@ -142,6 +142,22 @@ def test_legacy_new_values_only_shape_is_marked_unrecorded_not_empty():
     assert ac.reversible_fields(out) == {}
 
 
+def test_a_half_recorded_row_keeps_the_half_it_recorded():
+    """Different code paths wrote different halves of the same edit.
+
+    Rejecting the whole row on one incomplete field threw away every good before-value
+    beside it, so a change that was half reversible became entirely irreversible and the
+    person was told nothing could be put back when most of it could.
+    """
+    out = ac.normalise({
+        "house": {"previous": "Red", "new": "Blue"},
+        "roll_number": {"new": "13"},
+    })
+    assert out["fields"]["house"]["previous_known"] is True
+    assert out["fields"]["roll_number"]["previous_known"] is False
+    assert ac.reversible_fields(out) == {"house": "Red"}
+
+
 def test_a_row_with_no_details_says_so():
     for empty in ({}, None, "", []):
         assert ac.normalise(empty)["kind"] == "none"
