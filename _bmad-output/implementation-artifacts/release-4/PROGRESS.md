@@ -17,11 +17,13 @@ reports after it are live.
 | R4-1 | One shape for a recorded change | **Done** (not deployed) |
 | R4-2 | Everything is recorded | **Done** (not deployed) |
 | R4-3 | Two years in full, a summary forever | Not started |
-| R4-4 | Undo what hurts, guide the rest | Not started |
+| R4-4 | Undo what hurts, guide the rest | **Done** (not deployed) |
 | R4-5 | Flo watches the platform and can reach us | Not started |
-| R4-6 | Honest menus, one layout | Not started |
+| R4-6 | Honest menus, one layout | **Done** (not deployed) |
 
-Nothing built. Nothing deployed. No live school data has been read or changed.
+Five of six parts built and green. **Nothing deployed. No live school data has been
+read or changed.** R4-5 (Flo watching storage, and the ticket route to Layaa AI) is the
+only part not started, and it is the one that reaches outside this repository.
 
 ---
 
@@ -192,3 +194,84 @@ wording is gone with no sign anything changed. Same reasoning for uploads: the u
 its own record, the deletion is not.
 
 **Left.** R4-3 (two-year retention) next. Nothing is deployed.
+
+---
+
+### 2026-08-12 - R4-3, R4-4 and R4-6 built and green (Claude, Opus 5)
+
+Backend **3579 passed / 0 failed / 15 deselected** (baseline was 3454). Frontend **771
+passed**. Production build and lint clean. Not deployed. No live school data touched.
+
+#### R4-3 - two years in full, a monthly summary forever
+
+`services/audit_retention.py`. **The rule that decides the whole design: summarise,
+verify, THEN delete.** Read the month, write the summary, read the summary back and
+confirm it landed, and only then remove the detail. The audit writer elsewhere is
+deliberately fail-open, and fail-open plus delete-first is exactly how a year of records
+would vanish with nobody noticing until they went looking.
+
+Decisions worth knowing: the cutoff steps back whole calendar years, not 365 days, so the
+boundary cannot drift a day per leap year and eventually eat a live month. Dates compare
+as text, so an unreadable value only reaches the plan when it sorts BELOW the cutoff; one
+sorting above reads as recent and is kept in full, which is the safe direction. Oldest
+month first, so an interrupted run leaves a clean boundary. Idempotent. A summary holds
+counts, not copies, which is what makes "forever" affordable.
+
+**The thinning writes its own audit row.** History that quietly shrinks is the same
+failure as history never written.
+
+Two routes, deliberately separate: `plan` looks, `run` acts and defaults to ONE month.
+Owner only, not the principal, because decision 5 keeps Aman's changes out of Adesh's
+view and a principal who could thin the trail could remove those very entries. Both
+declared ABOVE `/{record_id}`, which matches any single segment and would otherwise have
+answered them as a record lookup, 404ing in a way that reads like the feature was never
+built.
+
+#### R4-4 - undo what hurts, guide the rest
+
+`services/undo_scope.py`. **Eligibility is always two questions, never one:** is this the
+kind of change that hurts, and may THIS person make that kind of change at all. A fee
+entry hurts, so it is undoable, but the management head may not touch money - with only
+the first question, undo would have become a back door into fees for exactly the person
+the Release 2 table keeps out, and it would have looked like a feature. The second
+question is answered by that same table.
+
+Seven kinds are on the list, each with a written reason. `guidance()` turns a recorded
+change into the exact values to type back, and returns **no steps at all** when it cannot
+be specific: a confident instruction built on a value nobody wrote down would send
+somebody to overwrite a good value with a blank, and they would trust it because it came
+from the platform. Fields with no recorded before value are named out loud beside the
+steps that do work.
+
+Fixed a real gap in the R4-1 reader on the way: a row carrying a real before value for
+some fields and only a new value for others was rejected whole, so a half-reversible
+change became entirely irreversible.
+
+#### R4-6 - honest menus, one layout
+
+Teachers, students and guardians are in the permission table. Lists copied verbatim from
+the old hand-written menus; a test asserts screen for screen that **nobody gained or lost
+one**, they hold no Flo domains, `may_write` stays False, and all three are dormant.
+
+One layout replaces three. Each hub's own screen leads its own tab, because
+`groupToolsIntoHubs` matches a hub's MEMBER screens and not the hub itself, so hub screens
+would otherwise have fallen into "More" or vanished.
+
+**Two real bugs, both found by tests, both mine.**
+
+1. The auto-open effect depended on the whole layout object. That was a stable module
+   constant for the owner, so it settled; once every layout became derived it was rebuilt
+   each render, and the update always allocated a new Set, so state changed identity every
+   time. **An endless render loop that hangs the page rather than erroring.** Now keyed on
+   the group id string with a no-op update when already open.
+2. **Teachers lost their attendance and results downloads.** The export gate fell through
+   to an explicit role list precisely because teachers had no profile; giving them a
+   dormant one meant the dormant-profile refusal caught them and two working features
+   started answering 403. A menu change had quietly removed a feature, which is the exact
+   failure this release exists to end. The explicit grant is asked first now.
+
+Pinned profile counts moved nine to twelve and dormant five to eight, in both sweeps, each
+with the reason beside the number.
+
+**Left.** R4-5 only. It reaches outside this repository (LayaaStat, and an n8n workflow),
+so it needs its own run. Nothing in Release 4 is deployed.
