@@ -385,3 +385,76 @@ the confirm card its own description promised.
 3. **Add a `webhook` alert route** for The Aaryans pointing at the n8n address above.
 4. **Deploy** both, then **watch one real ticket travel the whole way**. Until that has been
    seen, this is built, not working.
+
+---
+
+### 2026-08-13 - R4-5 proven as far as it can be, and what it cost
+
+**The route works.** A real ticket travels: the school's key is accepted, LayaaStat
+stores it, a re-send lands once rather than twice, the alert route fires, and the n8n
+workflow receives it with the correct link. The ONLY hop not yet seen working is the
+final email, because n8n's Gmail sign-in has expired and only Abhimanyu can renew it.
+
+#### Three faults, none of which any test could have caught
+
+Every one lived outside the code the tests call, which is exactly why the plan insisted
+on watching a real ticket rather than trusting a green suite.
+
+1. **The endpoint was behind the login wall.** `/api/tickets` carries its own key, like
+   `/api/ingest`, but was not in `PUBLIC_PREFIXES`, so a machine POST got a redirect to
+   the sign-in page. The route tests call the handler directly and never touch the
+   middleware, so all eight passed while nothing could reach it. **A route test proves
+   the handler, not that anything can get to the handler.**
+2. **Every insert failed with a bare 500.** The idempotency index was written PARTIAL
+   (`where external_ref is not null`) and Postgres will not infer a partial index for
+   `on conflict`. It never needed to be partial: NULLs are already distinct in a unique
+   index. Migration 0053.
+3. **The link in the email was wrong twice before it was right.** First it said "no
+   dashboard address is configured" although the variable WAS set, because Amplify hands
+   server-only variables to the build and not to the running function. Then the fix for
+   that emailed a link to `localhost:3000`, because behind a proxy the function is handed
+   the request on an internal address. **The second version was worse than the first: a
+   broken link looks like it should work, a missing one does not.** Now resolved from the
+   forwarded headers, with a localhost address refused outright rather than sent.
+
+#### The database was rebuilt, and that is on me
+
+The old LayaaStat Supabase project **ran out of disk and stopped answering**. On the free
+plan the disk cannot be enlarged and there are no backups, so it could be neither repaired
+nor copied, and it was replaced by a fresh project (`jwttleaqpcfsqmblolqw`).
+
+**What tipped it over was mine.** Writing off 405,000 quarantined rows with an UPDATE made
+Postgres write a second copy of every one of them, which is how Postgres updates work, and
+that duplicated the largest table in a database already at its limit. A DELETE would have
+been a fraction of the cost. **Check free space before a bulk write, and never UPDATE where
+a DELETE will do.**
+
+**What had already put it near the limit was not mine, and is the more useful finding.**
+Two runaways nobody had noticed, roughly 780,000 junk rows between them:
+- Four incidents imported from EduFlow in May were never closed, and the notification job
+  re-enqueued all four EVERY MINUTE against a tenant with no alert route, each instantly
+  skipped and written again. 376,000 rows, still growing after two months. Closing the
+  four incidents stopped it in one minute.
+- A month of AI spans quarantined by the already-fixed `service_id` bug. 405,000 rows,
+  stopped on 7 August, never cleared.
+
+Both are absent from the new project. **The lesson: a job that writes on a timer needs a
+stopping condition, and a quarantine table needs something that eventually empties it.**
+
+**Lost:** all telemetry history, deliberately, as the alternative was paying to keep charts
+of a period when the reporting was half broken. **Not lost:** anything about the school.
+The registry was rebuilt, and the ingest key was recreated from the SAME raw key the live
+EduFlow server already holds, so **nothing at The Aaryans changed and nothing restarted.**
+
+EduFlow is sending to the new database and it lands under The Aaryans. Zero rejected
+records, where the old one had 405,000.
+
+#### Left
+
+1. **Abhimanyu reconnects the Gmail credential in n8n.** Then the email hop is proven.
+2. **Deploy EduFlow's backend**, which is the only way the button inside the school's
+   platform starts working. Not done: it touches the live platform and needs his say-so.
+3. **Delete the old Supabase project** once 1 is confirmed.
+4. **The Resend key is dead** (403, invalid) and has been for a while, so LayaaStat's
+   direct alert emails have been failing silently. Not caused by any of this, and worth
+   renewing.
