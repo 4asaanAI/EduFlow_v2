@@ -16,7 +16,7 @@ reports after it are live.
 |---|---|---|
 | R4-1 | One shape for a recorded change | **Done** (not deployed) |
 | R4-2 | Everything is recorded | **Done** (not deployed) |
-| R4-3 | Two years in full, a summary forever | Not started |
+| R4-3 | Two years in full, a summary forever | **Done** (not deployed) |
 | R4-4 | Undo what hurts, guide the rest | **Done** (not deployed) |
 | R4-5 | Flo watches the platform and can reach us | Not started |
 | R4-6 | Honest menus, one layout | **Done** (not deployed) |
