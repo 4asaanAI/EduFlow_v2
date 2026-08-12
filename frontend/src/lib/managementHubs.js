@@ -119,6 +119,82 @@ export const MANAGEMENT_HUBS = [
 
 export const MANAGEMENT_HUB_IDS = MANAGEMENT_HUBS.map(hub => hub.id);
 
+/**
+ * Where a classroom-side screen belongs, for the teacher, student and guardian menus.
+ *
+ * Reported 2026-08-12: every profile except the owner's and the principal's showed one
+ * long flat list, and the decision was that all profiles carry THE SAME tab names, with
+ * each profile seeing only what it is allowed to open.
+ *
+ * The hubs above already name every owner and office screen. These are the ones that
+ * exist only for a teacher, a student or a guardian, so they had no hub to fall into.
+ *
+ * This map grants NOTHING. It answers "which tab does this sit under" and nothing else.
+ * Who may open a screen is still decided by the profile's own tool list, exactly as
+ * before, so regrouping a menu can never widen anybody's reach - a thing worth keeping
+ * true, because a menu is the easiest place to hand out access by accident.
+ */
+export const HUB_FOR_CLASSROOM_TOOL = {
+  // People & Attendance - being present, and being away.
+  'class-attendance-marker': 'people-operations-hub',
+  'substitution-viewer': 'people-operations-hub',
+  'leave-application': 'people-operations-hub',
+  'attendance-self-check': 'people-operations-hub',
+  'student-leave-request': 'people-operations-hub',
+
+  // Academics & Activities - teaching, learning, and being assessed.
+  'lesson-plan-generator': 'academics-activities-hub',
+  'curriculum-tracker': 'academics-activities-hub',
+  'assignment-generator': 'academics-activities-hub',
+  'worksheet-creator': 'academics-activities-hub',
+  'question-paper-creator': 'academics-activities-hub',
+  'report-card-builder': 'academics-activities-hub',
+  'student-performance-viewer': 'academics-activities-hub',
+  'class-performance-analytics': 'academics-activities-hub',
+  'ai-tutor': 'academics-activities-hub',
+  'doubt-solver': 'academics-activities-hub',
+  'homework-viewer': 'academics-activities-hub',
+  'practice-test': 'academics-activities-hub',
+  'result-viewer': 'academics-activities-hub',
+  'study-planner': 'academics-activities-hub',
+  'career-guidance': 'academics-activities-hub',
+
+  // Admissions & Communication - talking to families.
+  'ptm-notes': 'admissions-communication-hub',
+  'ptm-summary-viewer': 'admissions-communication-hub',
+
+  // Finance - money that concerns the person looking.
+  'my-payslips': 'finance-commercial-hub',
+  'fee-status-viewer': 'finance-commercial-hub',
+
+  // Reports, AI & Governance - forms and records.
+  'form-submissions': 'governance-ai-hub',
+
+  // School Overview - the guardian's single front door.
+  'guardian-portal': 'overview-hub',
+};
+
+/**
+ * Bucket a profile's OWN tool list into the shared hubs, in hub order.
+ *
+ * Takes the exact list the profile already gets and only decides which tab each one
+ * sits under. Anything with no hub is returned in `ungrouped` rather than dropped:
+ * a tool that quietly disappears from a menu is indistinguishable from one that was
+ * taken away, and that is the mistake this whole release was written to stop.
+ */
+export function groupToolsIntoHubs(tools) {
+  const grouped = MANAGEMENT_HUBS.map(hub => {
+    const hubItemIds = new Set(hub.items.map(([id]) => id));
+    const inHub = (tools || []).filter(
+      tool => hubItemIds.has(tool?.id) || HUB_FOR_CLASSROOM_TOOL[tool?.id] === hub.id,
+    );
+    return inHub.length ? { ...hub, tools: inHub.map(tool => tool.id) } : null;
+  }).filter(Boolean);
+
+  const placed = new Set(grouped.flatMap(hub => hub.tools));
+  return { groups: grouped, ungrouped: (tools || []).filter(tool => !placed.has(tool?.id)) };
+}
+
 export function hubsForUser(user) {
   if (user?.role === 'owner') return MANAGEMENT_HUBS;
   if (user?.role === 'admin' && user?.sub_category === 'principal') return MANAGEMENT_HUBS;

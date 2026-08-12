@@ -11,9 +11,9 @@ import {
   Package, Printer, FilePlus, HelpCircle, Target, Compass, FileCheck,
   Edit2, X, ChevronDown, ChevronRight, MessageCircle, Settings, User,
   LifeBuoy, Database, RefreshCw, Wrench, Monitor, AlertTriangle, ScrollText, Trophy,
-  Search,
+  Search, MoreHorizontal,
 } from 'lucide-react';
-import { MANAGEMENT_HUBS, MANAGEMENT_HUB_IDS } from '../lib/managementHubs';
+import { MANAGEMENT_HUBS, MANAGEMENT_HUB_IDS, groupToolsIntoHubs } from '../lib/managementHubs';
 
 const HUB_ICON_BY_ID = {
   'overview-hub': Activity,
@@ -241,15 +241,49 @@ const TOOL_GROUPS = {
 // Exported for tests - D-49: the menus and the server have to agree about who is
 // offered Certificates and ID Cards, and the only way to keep them agreeing is for a
 // test to be able to read the menu definition.
-export { TOOLS_BY_ROLE, ADMIN_SUBCATEGORY_TOOLS, getSidebarTools };
+export { TOOLS_BY_ROLE, ADMIN_SUBCATEGORY_TOOLS, getSidebarTools, getGroupConfig };
 
-function getGroupConfig(user) {
+// Reported 2026-08-12: only the owner's and the principal's menus were clubbed into
+// tabs. Every other profile - the accountant head, the management head, the office
+// desks, teachers, students and guardians - got one long flat list, which is the same
+// list rendered as an unreadable ribbon. The decision was that ALL profiles carry the
+// SAME tab names, each showing only what that profile may already open.
+//
+// Two rules hold this together and neither may be relaxed:
+//   1. Grouping NEVER grants. Each profile's tool list is resolved exactly as before
+//      by `getSidebarTools`; this only decides which tab each entry sits under.
+//   2. Nothing is dropped. A tool with no hub is still shown, under "More", rather
+//      than silently vanishing - a menu that quietly loses an entry looks identical
+//      to access being taken away.
+function getGroupConfig(user, tools) {
   if (user.role === 'owner') return TOOL_GROUPS.owner;
   if (user.role === 'admin' && user.sub_category === 'principal') return TOOL_GROUPS.principal;
-  if (user.role === 'teacher') return TOOL_GROUPS.teacher;
-  if (user.role === 'student') return TOOL_GROUPS.student;
-  if (user.role === 'parent') return TOOL_GROUPS.parent;
-  return null;
+  if (user.role === 'admin') {
+    // The office profiles. `getSidebarTools` already hands them their hubs followed by
+    // every individual screen; listing the hubs as `top` is what stops the flat tail
+    // being painted underneath them.
+    //
+    // The orphans matter. A screen can be in a profile's list and in no hub - Staff
+    // Tracker is exactly that, because the Directory was made the sole front door to
+    // staff records and the tile was dropped from the hub. Painting hubs alone would
+    // have quietly removed it from the management head's menu, which looks identical
+    // to the access being withdrawn. So anything with no hub is still listed.
+    const { ungrouped } = groupToolsIntoHubs((tools || []).filter(t => !MANAGEMENT_HUB_IDS.includes(t.id)));
+    return { top: [...MANAGEMENT_HUB_IDS, ...ungrouped.map(tool => tool.id)], groups: [] };
+  }
+  const { groups, ungrouped } = groupToolsIntoHubs(tools);
+  const asGroup = hub => ({
+    id: hub.id, name: hub.name, color: hub.color, icon: HUB_ICON_BY_ID[hub.id], tools: hub.tools,
+  });
+  return {
+    top: [],
+    groups: [
+      ...groups.map(asGroup),
+      ...(ungrouped.length
+        ? [{ id: 'more', name: 'More', color: 'var(--color-text-secondary)', icon: MoreHorizontal, tools: ungrouped.map(tool => tool.id) }]
+        : []),
+    ],
+  };
 }
 
 function getSidebarTools(user) {
@@ -336,16 +370,17 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   const [toolsSectionOpen, setToolsSectionOpen] = useState(true);
   const [schoolName, setSchoolName] = useState('');
   const [schoolMeta, setSchoolMeta] = useState({ city: '', state: '', phone: '', email: '' });
+  // Resolved before `openGroups`, because the tab layout for every profile below
+  // leadership is now derived from that profile's own tool list.
+  const tools = getSidebarTools(currentUser);
+  const groupConfig = getGroupConfig(currentUser, tools);
+
   const [openGroups, setOpenGroups] = useState(() => {
-    const cfg = getGroupConfig(currentUser);
-    if (!cfg) return new Set();
-    const active = cfg.groups.find(g => g.tools.includes(activeTool));
+    if (!groupConfig) return new Set();
+    const active = groupConfig.groups.find(g => g.tools.includes(activeTool));
     return active ? new Set([active.id]) : new Set();
   });
   const userMenuRef = useRef(null);
-
-  const tools = getSidebarTools(currentUser);
-  const groupConfig = getGroupConfig(currentUser);
 
   useEffect(() => {
     loadConversations();

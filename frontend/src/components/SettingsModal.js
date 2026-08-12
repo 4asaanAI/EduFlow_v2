@@ -3,6 +3,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useUser } from '../contexts/UserContext';
 import { X, Sun, Moon, Bell, Lock, Check, KeyRound, Eye, EyeOff } from 'lucide-react';
 import { API, apiFetch, getSchoolSettings, getAcademicYear } from '../lib/api';
+import { readIdleMinutes, writeIdleMinutes } from '../lib/idleLogout';
 
 
 function Toggle({ active, onToggle, isDark }) {
@@ -59,6 +60,7 @@ export default function SettingsModal({ onClose }) {
       return { push: true, leave: true, fee: true, attendance: true, announcements: true };
     }
   });
+  const [idleMinutes, setIdleMinutes] = useState(() => readIdleMinutes());
   const [saved, setSaved] = useState(false);
   const [pwForm, setPwForm] = useState({ new_password: '', confirm_password: '' });
   const [pwSaving, setPwSaving] = useState(false);
@@ -172,9 +174,18 @@ export default function SettingsModal({ onClose }) {
             control={<span style={{ fontSize: 12, color: '#34d399', fontWeight: 600 }}>Active</span>}
             styles={styles}
           />
-          <Row label="Session timeout" subtitle="Auto-logout after inactivity" noBorder
-            control={<select style={{ background: 'var(--color-surface-raised)', border: `1px solid ${border}`, borderRadius: 8, padding: '5px 10px', color: text, fontSize: 13, outline: 'none', cursor: 'pointer' }}>
-              <option>30 min</option><option>1 hour</option><option>2 hours</option>
+          {/* This control used to save nothing and nothing read it, while displaying
+              "30 min / 1 hour / 2 hours" as though a timeout were in force. Nothing
+              signed anybody out at all. It is real now: the choice is stored and the
+              idle watch reads it. Default one hour, decided 2026-08-12. */}
+          <Row label="Session timeout" subtitle="Sign out automatically after this long doing nothing" noBorder
+            control={<select
+              value={idleMinutes}
+              onChange={e => setIdleMinutes(writeIdleMinutes(Number(e.target.value)))}
+              aria-label="Session timeout"
+              style={{ background: 'var(--color-surface-raised)', border: `1px solid ${border}`, borderRadius: 8, padding: '5px 10px', color: text, fontSize: 13, outline: 'none', cursor: 'pointer' }}
+            >
+              <option value={30}>30 min</option><option value={60}>1 hour</option><option value={120}>2 hours</option>
             </select>}
             styles={styles}
           />

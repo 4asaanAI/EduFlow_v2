@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { startIdleWatch } from '../lib/idleLogout';
 import {
   clearAuthSession,
   clearLegacyLongLivedTokens,
@@ -119,6 +120,23 @@ export function UserProvider({ children }) {
   const clearMustChangePassword = useCallback(() => {
     setMustChangePassword(false);
   }, []);
+
+  // Sign out after a stretch of doing nothing. Decided 2026-08-12: one hour, every
+  // profile, the school's owner included. Until this landed nothing signed anybody
+  // out at all, while Settings displayed a timeout control that saved nothing - so
+  // the protection was believed to be in place and was not. See lib/idleLogout.js.
+  useEffect(() => {
+    if (!isAuthenticated) return undefined;
+    return startIdleWatch({
+      onIdle: () => {
+        // `logout` already clears the stored session and tells the server. The
+        // reason is put where the sign-in page can read it, so the person is told
+        // why they are being asked for a password rather than left guessing.
+        try { window.sessionStorage.setItem('eduflow.signedOutReason', 'idle'); } catch {}
+        logout();
+      },
+    });
+  }, [isAuthenticated, logout]);
 
 
   return (

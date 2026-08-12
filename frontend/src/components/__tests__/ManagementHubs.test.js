@@ -56,3 +56,78 @@ describe('owner and principal management hubs', () => {
     expect(principalItems.has('school-settings')).toBe(true);
   });
 });
+
+describe('every profile gets the same tab names, 2026-08-12', () => {
+  // Reported live: only Aman's and Adesh's menus were clubbed into tabs. Lalit, Sonu,
+  // the office desks, teachers and students all got one long flat list. The decision
+  // was that ALL profiles carry the SAME tab names, each showing only what it may
+  // already open.
+  const { getSidebarTools } = require('../Sidebar');
+  const { groupToolsIntoHubs } = require('../../lib/managementHubs');
+
+  const PROFILES = [
+    ['management head (Lalit)', { role: 'admin', sub_category: 'management' }],
+    ['accountant head (Sonu)', { role: 'admin', sub_category: 'accountant' }],
+    ['teacher', { role: 'teacher' }],
+    ['student', { role: 'student' }],
+  ];
+
+  const { getGroupConfig } = require('../Sidebar');
+
+  // Everywhere a screen can be reached from the menu: the top strip, the contents of
+  // each expandable tab, and the contents of each hub tile the profile can open.
+  const menuFor = (user) => {
+    const tools = getSidebarTools(user);
+    const cfg = getGroupConfig(user, tools);
+    const insideHubs = MANAGEMENT_HUBS.flatMap(hub => hubItemsForUser(hub, user).map(item => item[0]));
+    return new Set([...cfg.top, ...cfg.groups.flatMap(group => group.tools), ...insideHubs]);
+  };
+
+  test.each(PROFILES)('%s loses nothing to the regrouping', (_label, user) => {
+    // The real risk of clubbing a menu is that a screen falls between two tabs and
+    // is never painted again. To the person looking, a screen that vanished from the
+    // menu and a screen that was taken away are the same event. Staff Tracker is the
+    // live example: it sits in the management head's list and in no hub.
+    const tools = getSidebarTools(user);
+    const painted = menuFor(user);
+
+    tools.forEach(tool => expect(painted.has(tool.id)).toBe(true));
+  });
+
+  test.each(PROFILES)('%s gets a grouped menu, not one long list', (_label, user) => {
+    const tools = getSidebarTools(user).filter(t => !MANAGEMENT_HUB_IDS.includes(t.id));
+    const { groups } = groupToolsIntoHubs(tools);
+    expect(groups.length).toBeGreaterThan(1);
+  });
+
+  test.each(PROFILES)('%s uses only the shared tab names, never invented ones', (_label, user) => {
+    const tools = getSidebarTools(user).filter(t => !MANAGEMENT_HUB_IDS.includes(t.id));
+    const shared = MANAGEMENT_HUBS.map(hub => hub.name);
+
+    groupToolsIntoHubs(tools).groups.forEach(group => {
+      expect(shared).toContain(group.name);
+    });
+  });
+
+  test('grouping never hands anybody a screen they did not already have', () => {
+    // The whole point: this rearranges a menu, it does not grant. If a tab ever
+    // contains something outside the profile's own resolved list, access has been
+    // widened by a layout change, which is the quietest way to break a permission
+    // table nobody meant to touch.
+    PROFILES.forEach(([, user]) => {
+      const tools = getSidebarTools(user).filter(t => !MANAGEMENT_HUB_IDS.includes(t.id));
+      const own = new Set(tools.map(t => t.id));
+      groupToolsIntoHubs(tools).groups.flatMap(g => g.tools).forEach(id => {
+        expect(own.has(id)).toBe(true);
+      });
+    });
+  });
+
+  test('a teacher is not offered fee collection or payroll by the regrouping', () => {
+    const tools = getSidebarTools({ role: 'teacher' }).filter(t => !MANAGEMENT_HUB_IDS.includes(t.id));
+    const inTabs = groupToolsIntoHubs(tools).groups.flatMap(g => g.tools);
+    ['fee-collection', 'payroll-manager', 'audit-log', 'accounting-periods'].forEach(id => {
+      expect(inTabs).not.toContain(id);
+    });
+  });
+});
