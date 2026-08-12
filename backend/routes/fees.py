@@ -1048,8 +1048,12 @@ async def fees_upsert_salary_structure(request: Request, user: dict = Depends(re
         updated_by=user["id"],
         school_id=get_school_id(),
         branch_id=user.get("branch_id"),
+        actor_role=user.get("role", ""),
     )
-    await _audit(db, action="salary_structure_upsert", entity_id=staff_id, user=user, changes=doc)
+    # R4-2: the audit row for this is written by payroll_service, the single shared
+    # write path that REST and Flo both go through. It used to be written here as
+    # well, so every salary change produced two identical rows in the school's
+    # history and Aman's digest counted each one twice.
     return {"success": True, "data": doc}
 
 
@@ -1086,9 +1090,12 @@ async def fees_create_salary_disbursement(request: Request, user: dict = Depends
         paid_by=user["id"],
         school_id=get_school_id(),
         branch_id=user.get("branch_id"),
+        actor_role=user.get("role", ""),
     )
-    if not idempotent:
-        await _audit(db, action="salary_disbursement_create", entity_id=doc["id"], user=user, changes={"created": doc})
+    # R4-2: the audit row for this is written by payroll_service, the single shared
+    # write path that REST and Flo both go through. It used to be written here as
+    # well, so every salary change produced two identical rows in the school's
+    # history and Aman's digest counted each one twice.
     return {"success": True, "data": doc, **({"idempotent": True} if idempotent else {})}
 
 

@@ -4687,11 +4687,14 @@ async def tool_upsert_salary_structure(params: dict, user: dict, scope: dict = N
             effective_from=params.get("effective_from"),
             is_active=params.get("is_active", True), updated_by=user["id"],
             school_id=get_school_id(), branch_id=bid,
+            actor_role=user.get("role", ""),
         )
     except (TypeError, ValueError):
         return _failed("base_salary must be a non-negative number")
-    actor = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=bid)
-    await _audit_payroll_write(db, actor, "salary_structure_upsert", row["id"], row)
+    # R4-2: the audit row for this is written by payroll_service, the single shared
+    # write path that REST and Flo both go through. It used to be written here as
+    # well, so every salary change produced two identical rows in the school's
+    # history and Aman's digest counted each one twice.
     return {"success": True, "data": row, "message": "Salary structure saved."}
 
 
@@ -4711,14 +4714,16 @@ async def tool_disburse_salary(params: dict, user: dict, scope: dict = None) -> 
             payment_mode=params.get("payment_mode") or "bank_transfer",
             reference=params.get("reference"), status=params.get("status") or "paid",
             paid_by=user["id"], school_id=get_school_id(), branch_id=bid,
+            actor_role=user.get("role", ""),
         )
     except (TypeError, ValueError):
         return _failed("Salary amounts must be numbers")
     except AccountingPeriodClosedError as exc:
         return _failed(str(exc))
-    if not idempotent:
-        actor = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=bid)
-        await _audit_payroll_write(db, actor, "salary_disbursement_create", row["id"], row)
+    # R4-2: the audit row for this is written by payroll_service, the single shared
+    # write path that REST and Flo both go through. It used to be written here as
+    # well, so every salary change produced two identical rows in the school's
+    # history and Aman's digest counted each one twice.
     return {"success": True, "data": row, "message": "Salary was already recorded for that month." if idempotent else "Salary disbursement recorded."}
 
 
@@ -4738,6 +4743,7 @@ async def tool_correct_salary_disbursement(params: dict, user: dict, scope: dict
         row = await svc_correct_salary_disbursement(
             db, disbursement_id=disbursement_id, changes=params.get("changes") or {},
             reason=params.get("reason") or "", corrected_by=user["id"], branch_id=bid,
+            actor_role=user.get("role", ""),
         )
     except AccountingPeriodClosedError as exc:
         return _failed(str(exc))
@@ -4745,8 +4751,10 @@ async def tool_correct_salary_disbursement(params: dict, user: dict, scope: dict
         return _empty_result("Salary disbursement not found.")
     except PayrollValidationError as exc:
         return _failed(str(exc))
-    actor = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=bid)
-    await _audit_payroll_write(db, actor, "salary_disbursement_correct", disbursement_id, {"reason": params.get("reason"), "changes": params.get("changes") or {}})
+    # R4-2: payroll_service writes this audit row now, on the single shared write path
+    # that REST and Flo both go through. Written here as well, Flo produced two rows
+    # for one correction while the same correction through the screen produced one -
+    # so the school's history said the AI corrected somebody's pay twice.
     return {"success": True, "data": row, "message": "Salary disbursement corrected."}
 
 

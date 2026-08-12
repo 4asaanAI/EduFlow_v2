@@ -14,8 +14,8 @@ reports after it are live.
 
 | Part | What it is | State |
 |---|---|---|
-| R4-1 | One shape for a recorded change | Not started |
-| R4-2 | Everything is recorded | Not started |
+| R4-1 | One shape for a recorded change | **Done** (not deployed) |
+| R4-2 | Everything is recorded | **Done** (not deployed) |
 | R4-3 | Two years in full, a summary forever | Not started |
 | R4-4 | Undo what hurts, guide the rest | Not started |
 | R4-5 | Flo watches the platform and can reach us | Not started |
@@ -121,3 +121,74 @@ does not match LayaaStat's product-and-tenant registry.
 model and ticket states, adopt nothing. Free, no licence question, no second login. If
 Abhimanyu would rather adopt something maintained, **FreeScout is the honest candidate**
 and would be costed properly rather than argued against.
+
+---
+
+### 2026-08-12 - R4-1 and R4-2 built and green (Claude, Opus 5)
+
+Baseline before starting: 3454 passed / 0 failed. After: **3503 passed / 0 failed / 15
+credentialed deselected.** Not deployed. No live school data read or changed.
+
+#### The count in the earlier note was wrong, and the real one is better
+
+That note said "16 of 39 areas write audit lines". That was **route files only**. Counting
+every module that writes to the database, it was **55 of 75**, and the gap was 20 modules
+holding 108 writes. The shortfall was real but smaller than first reported, and it is
+recorded here rather than quietly corrected.
+
+#### R4-1 - one shape
+
+`services/audit_changes.py`. Five kinds (`edit`, `create`, `delete`, `bulk`, `none`), each
+carrying a `kind` so no reader sniffs keys. `normalise()` translates all eight legacy
+shapes; existing rows are NOT rewritten, they are translated on the way out.
+
+**The distinction the whole module exists for:** "the value used to be empty" and "nobody
+wrote down what the value was" were byte-identical in every legacy shape. Every canonical
+field now carries `previous`, `new` AND `previous_known`.
+
+`undo_service` now asks it instead of hand-checking one shape, which made undo both
+**wider** (`before`/`after` and nested `previous_state` rows carry a real previous value
+and are now reversible) and **more honest** (new-values-only rows are still refused,
+because writing None back would ERASE rather than restore). It also fixed a refusal
+message that named the words "before" and "after" back to the user as if they were fields.
+
+`routes/audit.py` adds `changes_normalised` and `changes_summary` beside the untouched
+original, so the screen stops rendering an unrecorded previous value as a blank that reads
+like "it used to be empty".
+
+#### R4-2 - everything is recorded, and the gaps are published
+
+`services/audit_coverage.py` gives **every** writing module a verdict: RECORDS or EXCUSED
+with a written reason. There is no third state, and
+`test_audit_coverage_r4_2.py::test_every_writing_module_has_a_verdict` fails on a module in
+neither list, so a new gap cannot be added without somebody writing down why.
+`test_the_register_is_published` prints the whole picture including gaps. **Counts are
+printed, never asserted** - a pinned number goes stale and is then read as a target.
+
+Now: **64 modules record, 15 excused, 0 undecided.**
+
+Closed: campus operations (23 writes, the largest gap: rooms, equipment, stock, purchasing,
+library), staff messaging, Razorpay school fees, operator provisioning, payroll, quizzes,
+enquiries, file deletions, the AI kill switch.
+
+Excused with reasons: token counters, confirm tokens, refresh tokens, idempotency, AI rate
+counters, AI metrics, shadow mode, the plan executor, Flo's four memory stores, notifications,
+generated summaries, and SMS.
+
+#### Two things worth knowing
+
+**Payroll was already audited, by its routes, not its service.** Adding a service-level row
+would have made every salary change appear twice in the school's history and counted twice
+in Aman's digest. The audit moved INTO `payroll_service`, the one shared path REST and Flo
+both use, and the five route-level and AI-level copies were removed.
+
+**A parity test caught a real bug.** `test_salary_correction_ai_and_rest_have_same_state`
+failed because Flo still wrote its own correction row while the screen did not, so Flo
+appeared to correct somebody's pay twice. That test earned its keep.
+
+**Sending a message is deliberately NOT audited**, but **editing one is**. A message row is
+already the record of what was said; an edit REPLACES it, so without a record the earlier
+wording is gone with no sign anything changed. Same reasoning for uploads: the upload is
+its own record, the deletion is not.
+
+**Left.** R4-3 (two-year retention) next. Nothing is deployed.

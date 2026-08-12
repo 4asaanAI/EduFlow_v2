@@ -88,8 +88,12 @@ async def create_salary_structure(request: Request, user: dict = Depends(_requir
         updated_by=user["id"],
         school_id=get_school_id(),
         branch_id=user.get("branch_id"),
+        actor_role=user.get("role", ""),
     )
-    await _audit_payroll_write(db, user, "salary_structure_upsert", doc["id"], doc)
+    # R4-2: the audit row for this is written by payroll_service, the single shared
+    # write path that REST and Flo both go through. It used to be written here as
+    # well, so every salary change produced two identical rows in the school's
+    # history and Aman's digest counted each one twice.
     return {"success": True, "data": doc}
 
 
@@ -184,10 +188,14 @@ async def create_disbursement(request: Request):
         paid_by=user["id"],
         school_id=get_school_id(),
         branch_id=bid,
+        actor_role=user.get("role", ""),
     )
     if idempotent:
         return {"success": True, "data": doc, "idempotent": True}
-    await _audit_payroll_write(db, user, "salary_disbursement_create", doc["id"], doc)
+    # R4-2: the audit row for this is written by payroll_service, the single shared
+    # write path that REST and Flo both go through. It used to be written here as
+    # well, so every salary change produced two identical rows in the school's
+    # history and Aman's digest counted each one twice.
     return {"success": True, "data": doc}
 
 
@@ -255,6 +263,7 @@ async def patch_disbursement_correction(disbursement_id: str, request: Request,
             db, disbursement_id=disbursement_id,
             changes=body.get("changes") or {}, reason=body.get("reason") or "",
             corrected_by=user["id"], branch_id=bid,
+            actor_role=user.get("role", ""),
         )
     except AccountingPeriodClosedError as exc:
         raise HTTPException(409, str(exc))
@@ -262,8 +271,8 @@ async def patch_disbursement_correction(disbursement_id: str, request: Request,
         raise HTTPException(404, str(exc))
     except PayrollValidationError as exc:
         raise HTTPException(400, str(exc))
-    await _audit_payroll_write(
-        db, user, "salary_disbursement_correct", disbursement_id,
-        {"reason": body.get("reason"), "changes": body.get("changes") or {}},
-    )
+    # R4-2: the audit row for this is written by payroll_service, the single shared
+    # write path that REST and Flo both go through. It used to be written here as
+    # well, so every salary change produced two identical rows in the school's
+    # history and Aman's digest counted each one twice.
     return {"success": True, "data": row}

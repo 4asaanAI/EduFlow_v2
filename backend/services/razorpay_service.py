@@ -27,6 +27,8 @@ import razorpay
 from pymongo.errors import DuplicateKeyError
 
 from database import get_db, get_raw_db, get_txn_session
+from services import audit_changes
+from services.audit_service import write_audit
 from services.token_service import DEFAULT_ROLE_LIMITS, PACKS
 from tenant import _school_id_var
 
@@ -175,6 +177,22 @@ async def create_school_fee_checkout(
         "updated_at": now,
     }
     await db.school_fee_checkouts.insert_one({**doc, "_id": checkout_id})
+    # R4-2: a family being asked to pay online is a school money record and recorded
+    # nothing. The webhook plumbing in this module stays unaudited on purpose (see
+    # audit_coverage): a dedupe inbox row and a token-balance counter are machinery
+    # nobody asks "who did that?" about. A fee demand sent to a family is not.
+    await write_audit(
+        db,
+        action="school_fee_checkout_create",
+        entity_id=checkout_id,
+        collection="school_fee_checkouts",
+        changed_by=doc.get("created_by") or "system",
+        changed_by_role="",
+        school_id=doc.get("schoolId") or "",
+        branch_id=doc.get("branch_id") or "",
+        changes=audit_changes.created(doc),
+        reason=f"Online payment link for {total} raised",
+    )
     return doc
 
 
@@ -244,6 +262,25 @@ async def handle_school_fee_payment_link_paid(link: dict) -> None:
                             "status": "paid", "paid_at": now, "updated_at": now,
                             "razorpay_reference_id": reference_id,
                         }}, session=session,
+                    )
+                    # R4-2. Money arriving from a family is the single most disputed
+                    # kind of record a school holds. Written INSIDE the transaction, so
+                    # a settlement that rolls back cannot leave an audit row claiming a
+                    # family paid when they did not.
+                    await write_audit(
+                        db,
+                        action="school_fee_checkout_paid",
+                        entity_id=checkout_id,
+                        collection="school_fee_checkouts",
+                        changed_by="razorpay",
+                        changed_by_role="system",
+                        school_id=checkout.get("schoolId") or "",
+                        branch_id=checkout.get("branch_id") or "",
+                        changes=audit_changes.bulk(
+                            {"reference_id": reference_id, "paid_at": now},
+                            affected=len(checkout.get("transaction_ids", [])),
+                        ),
+                        reason="Online fee payment settled",
                     )
         finally:
             reset_current_session(session_token)

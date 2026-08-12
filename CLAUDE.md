@@ -74,8 +74,10 @@
 > catch people out: **Adesh must NOT see Aman's changes** in the audit trail, and **undo
 > covers only what hurts the platform** while Flo talks people through the rest by hand.
 >
-> **What was found by reading, not assuming.** 16 of 39 areas write audit lines; the rest
-> record nothing. Entries are kept forever and nothing deletes one. Undo is narrow because
+> **What was found by reading, not assuming.** *(Corrected: the first count said "16 of 39
+> areas", which was route files only. Counting every module that writes to the database it
+> was 55 of 75, with 20 modules holding 108 unrecorded writes.)* R4-1 and R4-2 are now DONE:
+> 64 modules record, 15 are excused in writing, 0 undecided. Entries are kept forever and nothing deletes one. Undo is narrow because
 > there are **eight different shapes** a change gets written in and only one carries a
 > before value. The route from the school to Layaa AI **does not exist** (LayaaStat is
 > telemetry one way, not a ticket inbox, and needs a piece in another repository). Menus

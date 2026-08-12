@@ -13,6 +13,8 @@ from pymongo.errors import DuplicateKeyError
 
 from pagination import clamp_page, clamp_page_size
 from database import get_db
+from services import audit_changes
+from services.audit_service import write_audit
 from middleware.auth import require_school_staff
 from services.sse import (
     KEEPALIVE_COMMENT,
@@ -470,6 +472,21 @@ async def update_group_thread(
             raise HTTPException(400, "One or more selected profiles cannot use messaging")
         changes["member_ids"] = member_ids
     await db.platform_message_threads.update_one(_scope({"id": thread_id}, user), {"$set": changes})
+    # R4-2: sending a message is NOT audited - the message row itself carries who, what
+    # and when, so it IS the record and copying it would store every message twice
+    # (decision 13). Changing a group's membership is different: it decides who can read
+    # the conversation from here on, and nothing else on the platform records it.
+    await write_audit(
+        db,
+        action="message_thread_update",
+        entity_id=thread_id,
+        collection="platform_message_threads",
+        changed_by=user.get("id", ""),
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes=audit_changes.edit(thread, changes),
+    )
     updated = {**thread, **changes}
     await _publish_to_users(
         list(set(thread.get("member_ids", [])) | set(updated.get("member_ids", []))),
@@ -660,6 +677,21 @@ async def edit_message(
     edited_at = _now()
     await db.platform_messages.update_one(
         _scope({"id": message_id}, user), {"$set": {"text": body.text, "edited_at": edited_at}}
+    )
+    # R4-2. An edit REPLACES what was said. The message row afterwards shows only the
+    # new wording, so without this the earlier wording is gone and there is no sign a
+    # change ever happened. This is the one part of messaging the message table cannot
+    # tell you about itself.
+    await write_audit(
+        db,
+        action="message_edit",
+        entity_id=message_id,
+        collection="platform_messages",
+        changed_by=user.get("id", ""),
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes=audit_changes.edit(message, {"text": body.text, "edited_at": edited_at}),
     )
     thread = await db.platform_message_threads.find_one(_scope({"id": message["thread_id"]}, user), {"_id": 0})
     if thread and (thread.get("last_message") or {}).get("id") == message_id:
