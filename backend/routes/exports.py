@@ -140,12 +140,25 @@ def require_export(export_key: str):
     a whole-roll download is a bigger thing than a paged screen. Switching a
     profile on therefore includes deciding what it may export, as a decision
     somebody writes down rather than a side effect.
+
+    **R4-6 (2026-08-12): the extra-role check runs FIRST, and that ordering is
+    load-bearing.** Until R4-6 teachers were not in the permission table at all, so
+    `profile_of` returned "" for them and this fell straight through to `extra_roles`.
+    Bringing teachers, students and guardians into the table gave them a profile - a
+    DORMANT one, because their logins are not switched on yet - so the dormant-profile
+    refusal above started catching them and the two exports teachers have always had
+    began answering 403. A menu change had silently taken away a working feature, which
+    is the exact failure this release exists to end. Asking the explicit grant first
+    restores it without weakening the dormant rule for anybody else.
     """
     screens = EXPORT_SCREENS.get(export_key, ())
     extra_roles = EXPORT_EXTRA_ROLES.get(export_key, ())
 
     def _gate(request: Request) -> dict:
         user = get_current_user(request)
+        # The explicit grant first. See the R4-6 note above.
+        if user.get("role") in extra_roles:
+            return user
         profile = profile_matrix.profile_of(user)
         if profile:
             if profile_matrix.PROFILE_MATRIX[profile]["status"] != "live":
@@ -528,12 +541,17 @@ def may_export(user: dict, export_key: str) -> bool:
     """
     screens = EXPORT_SCREENS.get(export_key, ())
     extra_roles = EXPORT_EXTRA_ROLES.get(export_key, ())
+    # Same order as `require_export`, including the R4-6 extra-role check first. These
+    # two answer the same question and drifting apart is how one door opens while the
+    # other stays shut.
+    if user.get("role") in extra_roles:
+        return True
     profile = profile_matrix.profile_of(user)
     if profile:
         if profile_matrix.PROFILE_MATRIX[profile]["status"] != "live":
             return False
         return any(profile_matrix.may_open_screen(user, s) for s in screens)
-    return user.get("role") in extra_roles
+    return False
 
 
 async def build_export(export_key: str, user: dict, params: dict = None):

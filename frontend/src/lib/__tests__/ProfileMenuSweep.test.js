@@ -17,11 +17,16 @@
 import { canUseTool, filterToolsForUser, canSeeMoney } from '../toolPermissions';
 import { PROFILE_MATRIX, ALL_SCREENS, LIVE_PROFILES, DORMANT_PROFILES } from '../profileMatrix.generated';
 
-const userFor = (name) => (
-  name === 'owner'
-    ? { id: 'u-owner', role: 'owner', sub_category: 'owner' }
-    : { id: `u-${name}`, role: 'admin', sub_category: name }
-);
+// R4-6: three of the profiles are named by ROLE, not by an admin sub_category.
+// Building them as `{role:'admin', sub_category:'teacher'}` resolves to nobody, and
+// every assertion below then passes against an empty menu rather than a real one.
+const ROLE_NAMED_PROFILES = ['teacher', 'student', 'parent'];
+
+const userFor = (name) => {
+  if (name === 'owner') return { id: 'u-owner', role: 'owner', sub_category: 'owner' };
+  if (ROLE_NAMED_PROFILES.includes(name)) return { id: `u-${name}`, role: name };
+  return { id: `u-${name}`, role: 'admin', sub_category: name };
+};
 
 const PROFILE_NAMES = Object.keys(PROFILE_MATRIX);
 
@@ -46,12 +51,23 @@ const EXPECTED_SCREEN_COUNT = {
   it_tech: 4,
   maintenance: 3,
   support_staff: 2,
+  // R4-6, 2026-08-12. These three were OUTSIDE the matrix until now, with hand-written
+  // menus in Sidebar.js that nothing checked against the server - which is where a dead
+  // button lives. The lists were copied from those menus exactly, so these three numbers
+  // are a record of what the school already had, not a new grant. All three stay dormant
+  // until Releases 5, 6 and 7.
+  teacher: 19,
+  student: 14,
+  parent: 1,
 };
 
-test('all nine profiles are in the matrix, four live and five dormant', () => {
-  expect(PROFILE_NAMES.length).toBe(9);
+test('all twelve profiles are in the matrix, four live and eight dormant', () => {
+  // Nine until R4-6 (2026-08-12), when teacher, student and parent joined - the last
+  // three roles that were outside the table. Nobody gained or lost a screen; see
+  // EXPECTED_SCREEN_COUNT above and the backend test_menus_are_honest_r4_6.py.
+  expect(PROFILE_NAMES.length).toBe(12);
   expect(LIVE_PROFILES.sort()).toEqual(['accountant', 'management', 'owner', 'principal']);
-  expect(DORMANT_PROFILES.length).toBe(5);
+  expect(DORMANT_PROFILES.length).toBe(8);
 });
 
 test('the matrix is default deny - an unknown screen reaches nobody but leadership', () => {

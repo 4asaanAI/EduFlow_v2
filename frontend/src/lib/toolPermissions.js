@@ -43,12 +43,15 @@ export const FINANCE_TOOL_IDS = new Set([
 /**
  * Screens no one outside the matrix may ever be offered, whatever their role.
  *
- * The matrix answers for the school's owner and the eight admin desks. It says
- * nothing about teachers, students and guardians, who have their own role lists - so
- * those roles are passed through rather than refused, or a teacher's sidebar would
- * come back empty. These three screens are the exception: their server routes accept
- * only a named set of office profiles, so offering them to a teacher or a student
- * produces a button that answers "no".
+ * R4-6 (2026-08-12) shrank this list's job. It used to be the ONLY thing standing
+ * between a teacher or a student and every screen on the platform, because those
+ * roles were not in the matrix and fell through to `return true`. They are in the
+ * matrix now, so they are answered by their own default-deny list like everybody
+ * else and never reach this set.
+ *
+ * It still matters for a role the matrix does not name at all - a login carrying
+ * some role nobody has defined. Such a user is refused these three outright rather
+ * than being offered a button their server route will reject:
  *
  *   certificate-generator, id-card-generator - D-49, `routes/image_gen.py`
  *   audit-log - owner request 10, 2026-08-06, `routes/audit.py`
@@ -65,6 +68,13 @@ const OFFICE_DESK_ONLY_TOOLS = new Set([...DOCUMENT_ISSUER_TOOLS, 'audit-log']);
 function profileOf(user) {
   if (!user) return null;
   if (user.role === 'owner') return 'owner';
+  // R4-6 / decision 9 (2026-08-12): teachers, students and guardians are named by ROLE.
+  // They were outside the matrix until now, so `canUseTool` passed them through and
+  // their menus were hand-written arrays in Sidebar.js with nothing checking them
+  // against what the server accepts. That is exactly where a dead button lives.
+  if (user.role === 'teacher' || user.role === 'student' || user.role === 'parent') {
+    return PROFILE_MATRIX[user.role] ? user.role : null;
+  }
   if (user.role !== 'admin') return null;
   return PROFILE_MATRIX[user.sub_category] ? user.sub_category : null;
 }
@@ -77,17 +87,18 @@ function profileOf(user) {
  * hide the screen from the one person who certainly may use it. Same trap as on the
  * server.
  *
- * Roles outside the matrix (teacher, student, parent) are not this module's business:
- * their menus come from their own role lists, so they are passed through rather than
- * refused. Refusing them here would empty a teacher's sidebar.
+ * R4-6: teachers, students and guardians ARE in the matrix now, so they are answered
+ * by the default-deny branch below like everybody else. The pass-through that used to
+ * carry them is now reached only by a role nobody has defined.
  */
 export function canUseTool(user, toolId) {
   if (!user) return false;
   const profile = profileOf(user);
   if (!profile) {
-    // Not an owner and not a recognised admin sub-category. An admin whose
-    // sub_category we do not recognise is refused (that is the default-deny half);
-    // a teacher or student falls through to their own role list.
+    // A role the matrix does not name. An admin with an unrecognised sub_category is
+    // refused outright; anything else keeps the old pass-through so an undefined role
+    // does not land on an empty sidebar, minus the three office-only screens whose
+    // server routes would refuse it anyway.
     if (user.role === 'admin') return false;
     return !OFFICE_DESK_ONLY_TOOLS.has(toolId);
   }

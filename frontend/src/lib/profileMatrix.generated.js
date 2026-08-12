@@ -183,6 +183,19 @@ export const PROFILE_MATRIX = {
       "shared"
     ]
   },
+  "parent": {
+    "deniedTools": [],
+    "extraTools": [],
+    "mayDeletePeople": false,
+    "mayWrite": false,
+    "person": null,
+    "screens": [
+      "guardian-portal"
+    ],
+    "status": "dormant",
+    "title": "Guardian",
+    "toolDomains": []
+  },
   "principal": {
     "deniedTools": [],
     "extraTools": [],
@@ -218,6 +231,32 @@ export const PROFILE_MATRIX = {
     "title": "Front desk",
     "toolDomains": []
   },
+  "student": {
+    "deniedTools": [],
+    "extraTools": [],
+    "mayDeletePeople": false,
+    "mayWrite": false,
+    "person": null,
+    "screens": [
+      "ai-tutor",
+      "attendance-self-check",
+      "career-guidance",
+      "doubt-solver",
+      "fee-status-viewer",
+      "form-submissions",
+      "homework-viewer",
+      "library-circulation",
+      "practice-test",
+      "ptm-summary-viewer",
+      "raise-maintenance",
+      "result-viewer",
+      "student-leave-request",
+      "study-planner"
+    ],
+    "status": "dormant",
+    "title": "Student",
+    "toolDomains": []
+  },
   "support_staff": {
     "deniedTools": [],
     "extraTools": [],
@@ -230,6 +269,37 @@ export const PROFILE_MATRIX = {
     ],
     "status": "dormant",
     "title": "Support staff",
+    "toolDomains": []
+  },
+  "teacher": {
+    "deniedTools": [],
+    "extraTools": [],
+    "mayDeletePeople": false,
+    "mayWrite": false,
+    "person": null,
+    "screens": [
+      "assignment-generator",
+      "class-attendance-marker",
+      "class-performance-analytics",
+      "curriculum-tracker",
+      "exam-manager",
+      "form-submissions",
+      "leave-application",
+      "lesson-plan-generator",
+      "library-circulation",
+      "my-payslips",
+      "ptm-notes",
+      "question-paper-creator",
+      "quiz-manager",
+      "raise-maintenance",
+      "report-card-builder",
+      "resource-calendar",
+      "student-performance-viewer",
+      "substitution-viewer",
+      "worksheet-creator"
+    ],
+    "status": "dormant",
+    "title": "Teacher",
     "toolDomains": []
   },
   "transport_head": {
@@ -254,4 +324,4 @@ export const PROFILE_MATRIX = {
 
 export const LIVE_PROFILES = ["accountant", "management", "owner", "principal"];
 
-export const DORMANT_PROFILES = ["it_tech", "maintenance", "receptionist", "support_staff", "transport_head"];
+export const DORMANT_PROFILES = ["it_tech", "maintenance", "parent", "receptionist", "student", "support_staff", "teacher", "transport_head"];

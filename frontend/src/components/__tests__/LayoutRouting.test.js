@@ -105,8 +105,11 @@ test('tool selection updates URL search param', async () => {
   expect(await screen.findByTestId('attendance-recorder-tool')).toBeInTheDocument();
   expect(screen.getByTestId('location-search')).toHaveTextContent('tool=attendance-recorder');
 
-  // Owner navigation is intentionally compact: open the Finance hub, then the
-  // existing Fee Sync deep screen. The old URL remains the canonical destination.
+  // R4-6 (2026-08-12): every profile now uses the SAME tab layout, so the owner's hubs
+  // live inside tabs rather than sitting flat at the top of the sidebar. The Finance hub
+  // is reached by opening its tab first. Only the route to the button changed; the deep
+  // link below is unchanged and is still the canonical destination.
+  fireEvent.click(await screen.findByTestId('tool-group-finance-commercial-hub'));
   fireEvent.click(await screen.findByTestId('tool-btn-finance-commercial-hub'));
   expect(await screen.findByTestId('management-hub-finance-commercial-hub')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Open Fee Sync' }));

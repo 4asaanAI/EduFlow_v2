@@ -70,9 +70,22 @@ def test_all_nine_profiles_are_defined():
     )
 
 
-def test_four_are_live_and_five_are_dormant():
+def test_four_are_live_and_eight_are_dormant():
+    """R4-6, 2026-08-12: dormant went from five to eight, and here is the reason.
+
+    A count moving without a written reason means somebody's access changed and nobody
+    decided to. This one moved on purpose: teacher, student and parent were added to the
+    matrix because they were the last three roles outside it, with hand-written menus
+    that nothing checked against the server. Their lists were copied from those menus
+    exactly, they carry no tool domains and may_write False, and all three are dormant
+    until Releases 5, 6 and 7 respectively.
+
+    **Nobody gained or lost a screen.** `test_r4_6_no_role_gained_or_lost_a_screen` is
+    what actually proves that; this only records why the number moved.
+    """
     assert set(LIVE_PROFILES) == {"owner", "principal", "accountant", "management"}
-    assert len(DORMANT_PROFILES) == 5
+    assert len(DORMANT_PROFILES) == 8
+    assert {"teacher", "student", "parent"} <= set(DORMANT_PROFILES)
 
 
 def test_every_profile_states_what_it_may_do():
