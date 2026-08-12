@@ -45,6 +45,10 @@ All of these are Abhimanyu's, recorded on 12 August 2026. **Settled. Do not reop
 | 7 | Flo raises a concern **before** storage fills, works with the office to solve platform problems, and raises a Layaa AI ticket when it is beyond Flo and the staff. |
 | 8 | **Full history kept for two years. A monthly summary kept forever.** *(2026-08-12. Two years covers a full school session plus the one before it, which is as far back as a fee or attendance dispute realistically reaches. The summary means nothing is ever truly gone.)* |
 | 9 | **A tool a profile may not use does not appear in that profile's tool directory at all.** Only that profile's own tools, and every profile arranged the same way, in one unified layout. *(2026-08-12.)* |
+| 10 | **Do not clone an open-source helpdesk.** Tickets are built inside LayaaStat, reusing its registry, dashboard, login and alert routing. Reasoning and the rejected candidates are in R4-5a. *(2026-08-12.)* |
+| 11 | **A ticket attaches to the CLIENT, not the product.** The Aaryans, not EduFlow. EduFlow will have more schools. *(2026-08-12.)* |
+| 12 | **Delivery is LayaaStat first, then n8n, then email** to `abhimanyu.singh@layaa.ai` and `shubham.sharma@layaa.ai`. Store before notify, always. *(2026-08-12.)* |
+| 13 | **Keep costs as low as possible without giving up any feature.** *(2026-08-12.)* Cost is a design constraint on every part of this release, not a review at the end. It is not a reason to drop something Abhimanyu asked for; it is a reason to reach the same result the cheaper way. Rules in Part 4a. |
 
 Read-only permission to measure the live database size was granted (question 5,
 answered "sure"). **That is permission to READ. Nothing on the live database is written,
@@ -185,15 +189,115 @@ guidance rather than "ask the principal".
 - Flo raises a concern **before** storage becomes a problem, not after, with a number
   and a plain sentence.
 - Flo helps the office work through a platform problem, using what it can actually see.
-- When it is beyond Flo and the staff, Flo raises a **ticket to Layaa AI in LayaaStat**.
-  This needs the EduFlow side to send a ticket and the **LayaaStat side to show it and let
-  us reply**. The LayaaStat piece is in another repository and is its own task, sized
-  separately.
+- When it is beyond Flo and the staff, a **ticket goes to Layaa AI in LayaaStat**.
 - A ticket must never be raised silently. The person sees it was raised and can see its
   state.
 
 **Done when** a problem the school cannot solve reaches us without anyone needing to
 telephone, and the school can see that it did.
+
+#### R4-5a - The decision not to clone a helpdesk
+
+*Researched 2026-08-12 at Abhimanyu's request, and he agreed with the outcome.*
+
+Cloning an existing open-source helpdesk was the right question to ask and the wrong
+answer for us:
+
+- **Peppermint** was the closest fit on paper (Next.js, Postgres, webhooks on ticket
+  creation, 3,081 stars). **Archived 17 July 2026, read-only.** Adopting it means owning
+  every future security patch.
+- **Helpin** is our exact stack (Next.js, Supabase, Vercel) with 159 stars and **six
+  commits in total**, described by its author as a weekend project. A template, not a
+  product.
+- **Zammad** wants 4 to 8 GB plus Postgres, Redis and Elasticsearch. **FreeScout** is PHP
+  and Laravel and genuinely light. **Frappe Helpdesk** is Python and Frappe. All three are
+  whole products in a different stack.
+
+The cost is not the cloning. Every one of them is a **second application** with its own
+database, login, hosting, updates and bill, sitting *beside* LayaaStat rather than inside
+it, which contradicts decision 6. Two dashboards to answer one question. Note also that
+**Azure Container Apps will not provision in our subscription**, so "just run the Docker
+image" is not available to us.
+
+#### R4-5b - The ticket lands on the CLIENT, never on the product
+
+**Abhimanyu, 2026-08-12, and he is right to have raised it.** EduFlow will have more
+schools. A ticket from The Aaryans must attach to *The Aaryans*, not to *EduFlow*.
+
+**LayaaStat's registry already has exactly this shape**, so nothing needs inventing:
+
+```
+products  →  tenants  →  environments  →  monitored_services
+(EduFlow)    (The Aaryans)  (prod)
+```
+
+`0002_registry.sql`. A ticket therefore carries `tenant_id`, never `product_id` alone.
+Rolling up to "all EduFlow tickets" is then a question you ask of the data, not a shape
+baked into it, which is the way round that survives the second school.
+
+**The identity is already carried correctly.** The EduFlow client sends a **tenant-bound
+ingest key**: `client.py` says in as many words that the key identifies the tenant. So a
+ticket sent with the school's key is already on the school.
+
+**Two things to VERIFY before building, not assume:**
+1. That an `eduflow` product and an Aaryans tenant actually exist in LayaaStat. The seed
+   file creates only `layaa-internal`, so the rest were made at runtime and cannot be read
+   from the repository.
+2. That the ingest key configured on the **live** EduFlow server points at that tenant. A
+   key pointing at `layaa-internal` would file every school's ticket under Layaa's own
+   internal tenant, and it would look like it was working.
+
+#### R4-5c - Delivery: LayaaStat, then n8n, then email
+
+*Abhimanyu, 2026-08-12.* Ticket raised → LayaaStat stores it → webhook to n8n → n8n emails
+`abhimanyu.singh@layaa.ai` and `shubham.sharma@layaa.ai` → we open LayaaStat to read and
+resolve it.
+
+**Almost none of this needs building.** LayaaStat already has alert routing with four
+delivery channels: `slack`, `email`, `webhook`, `ntfy` (`0047_ntfy_channel.sql`,
+`alerting/actions.ts`), a delivery cron (`api/cron/notify`), a settings screen, and working
+email through Resend. A ticket becomes another thing that fires an alert route.
+
+n8n is reached through the **existing `webhook` channel**. It buys the freedom to add
+Slack or WhatsApp later without a code change, at the cost of one more moving part between
+a raised ticket and our inbox. **If n8n is down, the ticket is still safely in LayaaStat.**
+That ordering is deliberate: store first, notify second. A notification that fails must
+never lose the ticket.
+
+#### R4-5d - Raising a ticket from EduFlow
+
+- **A button on the screen, for every profile**, owner down to student. Everyone who can
+  hit a problem can report one.
+- **Flo can raise one too**, when asked and when it judges the problem is ours. Written in
+  plain human language, with what the person was doing, what happened, and what was
+  expected.
+- **Flo must know WHEN not to.** A ticket for something the receptionist could have fixed
+  in ten seconds trains everybody to ignore tickets. Flo tries the school's own remedies
+  first and says what it tried.
+- Every ticket is recorded in the audit trail like any other action.
+
+#### R4-5e - Screenshots, and the privacy problem in them
+
+**Web search and web crawling do not take screenshots.** They fetch pages from the public
+internet. They cannot see the screen the person is looking at, and behind a login there is
+nothing for them to fetch. They solve a different problem and are not the answer here.
+
+The right answer is to **capture the page inside the person's own browser** and attach the
+image to the ticket, which is a solved, ordinary thing to do.
+
+**⚠️ The hard part is not capturing it.** A screenshot of an EduFlow screen contains real
+children: names, fee amounts, guardians' phone numbers, addresses. Attaching it to a ticket
+sends that **out of the school's system and into Layaa AI's**. That is a real decision
+about minors' data and it is Abhimanyu's, not an implementation detail.
+
+**Proposal, to be confirmed before this part is built:** capture the screen, **blank out
+personal details automatically before it leaves the browser**, and **show the person
+exactly what is about to be sent** with the option to send without the picture at all.
+Nothing is attached that the sender has not seen. EduFlow already has a redaction module
+(`ai/redaction.py`) whose approach can be reused.
+
+**Done when** a ticket reaches us with enough to act on and nothing in it that a child's
+parent would object to.
 
 ### R4-6 - Honest menus, one layout
 
@@ -217,6 +321,34 @@ offered to `support_staff`.
 button it had, and the menus all read the same way.
 
 ---
+
+## Part 4a - Cost is a constraint on every part, not a review at the end
+
+**Decision 13.** The rule is *cheapest way to the same result*, never *a smaller result*.
+If a saving would cost a feature Abhimanyu asked for, it is not a saving, and the trade is
+brought to him rather than taken quietly.
+
+Where the money in this release actually goes, and what to do about it:
+
+- **Storage is the big one, and it is exactly what R4-3 exists for.** Recording everything
+  is what fills the disk. Two years in full plus a monthly summary forever is already the
+  cost control. Do not soften it into "keep everything and see".
+- **Record once, not twice.** An audit line, a notification and a ticket about the same
+  event are three copies of one fact if written carelessly. Point at the audit line.
+- **Store what changed, not the whole record.** A copy of an entire student row on every
+  edit is the most expensive possible way to record a single changed phone number.
+- **Reuse what is already paid for.** LayaaStat's registry, login, dashboard, alert routes
+  and Resend email all exist and are already funded. Every one of them used is a service
+  not bought. This is the single largest saving in the release and it is why decision 10
+  went the way it did.
+- **No new paid service.** Nothing in this release should add a subscription. If something
+  seems to need one, stop and ask.
+- **Screenshots are the quiet cost.** Images are far larger than text. Compress them, cap
+  the size, and let them age out sooner than the ticket text does.
+- **Flo's watching costs tokens.** Have it check on a schedule against figures already
+  collected, not by thinking about the platform continuously.
+- **Measure before optimising.** The live audit and database sizes are readable under the
+  permission already given. Get the real number before designing around a guess.
 
 ## Part 4 - Rules for whoever picks this up
 
@@ -248,8 +380,11 @@ button it had, and the menus all read the same way.
 | Item | Who | Note |
 |---|---|---|
 | The exact list of "things that hurt the platform" for R4-4 | Abhimanyu | Proposal is in R4-4. Confirm or change it before that part starts. |
-| The LayaaStat ticket inbox | Layaa AI side | Different repository. Size it before R4-5 starts, do not discover it mid-part. |
+| **Screenshots and children's data** | **Abhimanyu** | **The one genuine decision left. A screenshot of an EduFlow screen carries real children's names, fees and phone numbers out of the school's system. Proposal in R4-5e: blank personal details automatically, show the sender exactly what goes, allow sending without the picture. Confirm before R4-5 is built.** |
+| Does an `eduflow` product and an Aaryans tenant exist in LayaaStat? | Verify | Only `layaa-internal` is in the seed file, so the rest were made at runtime and cannot be read from the repository. Check, do not assume. |
+| Does the LIVE EduFlow ingest key point at that tenant? | Verify | A key pointing at `layaa-internal` files every school's ticket under Layaa's own tenant and looks like it is working. |
 | Reading live database and audit size | Granted, read only | Nothing written, migrated or deleted without a fresh yes. |
+| LayaaStat and n8n changes | Different repositories | The LayaaStat work is real work in `E:\Github\Aasaan AI\LayaaStat`, and the n8n workflow lives outside both. Neither is covered by EduFlow's test suite, so each needs its own proof that it works. |
 
 Three items are still open from 12 August and are not Release 4 scope unless asked:
 Aman showing as online with nobody signed in, no warning before the one hour sign-out,

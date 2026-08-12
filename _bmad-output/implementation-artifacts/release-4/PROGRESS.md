@@ -55,5 +55,41 @@ No profile is offered a tool it may not use, and every profile is arranged the s
 (decision 9).
 
 **Left.** R4-1 is next and everything else waits on it. Before R4-4 starts, Abhimanyu
-confirms the list of "things that hurt the platform". Before R4-5 starts, the LayaaStat
-side needs sizing, and it is in a different repository.
+confirms the list of "things that hurt the platform".
+
+### 2026-08-12 (later) - the ticket route is designed, and it is smaller than feared
+
+**Did.** Researched open-source helpdesks as asked, and read LayaaStat properly. Recorded
+decisions 10 to 13 and wrote R4-5a through R4-5e.
+
+**Do not clone a helpdesk.** Peppermint was the closest fit and was **archived on 17 July
+2026**. Helpin is our exact stack with **six commits in total**. Zammad, FreeScout and
+Frappe are whole products in other stacks. Each would be a second application beside
+LayaaStat rather than tickets inside it, and Azure Container Apps will not provision in
+our subscription anyway.
+
+**Almost nothing needs building for delivery.** LayaaStat already has alert routing with
+`slack`, `email`, `webhook` and `ntfy` channels, a delivery cron, a settings screen and
+working Resend email. A ticket becomes another thing that fires a route. n8n hangs off the
+**existing webhook channel**. Store first, notify second: if n8n is down the ticket is
+still safe.
+
+**Abhimanyu's client-versus-product concern was right and LayaaStat already answers it.**
+`0002_registry.sql` has `products → tenants → environments`. EduFlow is the product, The
+Aaryans is the tenant. The ingest key is **already tenant-bound**, so a ticket sent with
+the school's key is already on the school. Two things must be VERIFIED rather than
+assumed: that an `eduflow` product and Aaryans tenant exist at all (only `layaa-internal`
+is in the seed), and that the **live** key points at that tenant rather than at Layaa's
+own internal one, which would look like it was working while filing everything in the
+wrong place.
+
+**Web search and crawling cannot take a screenshot.** They fetch public pages and cannot
+see a screen behind a login. The page is captured inside the person's own browser instead.
+
+**Raised, needs an answer before R4-5 is built:** a screenshot of an EduFlow screen carries
+real children's names, fees and guardians' phone numbers **out of the school's system into
+Layaa AI's**. Proposal in R4-5e. This is Abhimanyu's decision, not an implementation
+detail.
+
+**Cost is now decision 13 and Part 4a**, a constraint on every part rather than a review at
+the end. The rule is the cheapest way to the same result, never a smaller result.
