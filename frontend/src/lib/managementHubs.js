@@ -70,7 +70,6 @@ export const MANAGEMENT_HUBS = [
       ['staff-attendance-tracker', 'Staff Attendance', 'Presence and late patterns', 'owner'],
       ['staff-performance', 'Staff Performance', 'Performance overview and trends', 'both'],
       ['staff-leave-manager', 'Staff Leave', 'Review and decide leave requests', 'both'],
-      ['attendance-alerts', 'Attendance Alerts', 'Threshold alerts and messages', 'both'],
     ],
   },
   {
@@ -95,14 +94,14 @@ export const MANAGEMENT_HUBS = [
     ],
   },
   {
-    id: 'governance-ai-hub', name: 'Reports, AI & Governance', subtitle: 'Reports, Flo, audit and settings', color: 'var(--color-text-secondary)',
+    id: 'governance-ai-hub', name: 'Reports, AI & Governance', subtitle: 'Reports, EduFlow, audit and settings', color: 'var(--color-text-secondary)',
     items: [
       ['custom-report-builder', 'Custom Reports', 'Build operational reports', 'owner'],
       ['board-report', 'Board Report', 'Trust and management reporting', 'owner'],
       ['automated-report', 'Automated Reports', 'Scheduled report delivery', 'principal'],
-      ['ai-health-report', 'AI Health', 'Flo reliability and usage summary', 'owner'],
-      ['what-ive-learned', "What Flo Has Learned", 'Review memories and routines', 'both'],
-      ['conversation-trace', 'Conversation Trace', 'Inspect whether Flo replied', 'owner'],
+      ['ai-health-report', 'AI Health', 'EduFlow reliability and usage summary', 'owner'],
+      ['what-ive-learned', "What EduFlow Has Learned", 'Review memories and routines', 'both'],
+      ['conversation-trace', 'Conversation Trace', 'Inspect whether EduFlow replied', 'owner'],
       ['audit-log', 'Audit Log', 'Who changed what and when', 'both'],
       ['incident-tracker', 'Incidents & Visitors', 'Safety and visitor records', 'both'],
       ['query-section', 'Query & Support', 'Requests, issues and resolutions', 'both'],

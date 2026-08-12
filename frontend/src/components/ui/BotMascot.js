@@ -45,7 +45,7 @@ export default function BotMascot({ size = 180, mood = 'happy', wave = false, va
       className={`eh-mascot ${isAvatar ? 'eh-mascot-avatar' : ''} ${className}`}
       style={{ width: size, ...style }}
       role="img"
-      aria-label="Flo, the EduFlow AI assistant"
+      aria-label="EduFlow AI assistant"
       {...rest}
     >
       {/* height comes from CSS, not an attribute: SVG's `height` attribute

@@ -577,7 +577,7 @@ function DetailPanel({ studentId, onClose, onEdit, canManage, canKeepNotes }) {
     <div style={{ position: 'fixed', inset: 0, zIndex: 190, display: 'flex' }}
       onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div style={{ flex: 1, background: 'rgba(0,0,0,0.45)' }} onClick={onClose} />
-      <div style={{ width: 420, maxWidth: '95vw', background: 'var(--c-input)', borderLeft: '1px solid var(--c-border)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+      <div style={{ width: 420, maxWidth: '95vw', background: 'var(--c-input)', borderLeft: '1px solid var(--c-border)', display: 'flex', flexDirection: 'column', overflowY: 'auto', height: '100vh' }}>
         {/* Header */}
         <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--c-border)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           {loading ? (
@@ -1263,9 +1263,14 @@ export default function StudentDatabase() {
     }
   };
 
-  const openEdit = (student) => {
+  const openEdit = async (student) => {
     setDetailId(null);
-    setEditing(student);
+    if (!student.guardians) {
+      const res = await getStudent(student.id);
+      setEditing(res.success ? res.data : student);
+    } else {
+      setEditing(student);
+    }
   };
 
   return (

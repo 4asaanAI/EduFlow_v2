@@ -158,7 +158,7 @@ export default function ConversationTrace() {
   return (
     <ToolPage
       title="Conversation Trace"
-      subtitle="Support & diagnostics: check whether Flo replied to a conversation, and if not, why."
+      subtitle="Support & diagnostics: check whether EduFlow replied to a conversation, and if not, why."
       loading={loading}
     >
       {/* One-line explanation */}
@@ -214,7 +214,7 @@ export default function ConversationTrace() {
           <MessageSquare size={30} color={muted} />
           <div style={{ fontSize: 14, fontWeight: 600, color: text }}>No conversation loaded</div>
           <div style={{ fontSize: 13, maxWidth: 380 }}>
-            Enter a conversation id above and press “Load trace” to see every turn and whether Flo replied.
+            Enter a conversation id above and press “Load trace” to see every turn and whether EduFlow replied.
           </div>
         </div>
       ) : turns.length === 0 ? (

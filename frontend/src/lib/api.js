@@ -489,7 +489,8 @@ export async function getAllStudents(params = {}) {
     if (batch.length < STUDENTS_PAGE_MAX || collected.length >= total) break;
     page += 1;
   }
-  return { success: true, data: collected, meta: { total: total || collected.length } };
+  const deduped = [...new Map(collected.map(s => [s.id, s])).values()];
+  return { success: true, data: deduped, meta: { total: total || deduped.length } };
 }
 
 export async function createStudent(data) {

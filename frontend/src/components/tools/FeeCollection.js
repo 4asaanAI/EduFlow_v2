@@ -14,6 +14,7 @@ import { API, apiFetch,
   getFeeSummary,
   getFeeTransactions,
   getStudents,
+  getAllClasses,
   getWhatsappDefaulters,
   listPayrollDisbursements,
   recordFeePayment,
@@ -83,6 +84,18 @@ export default function FeeCollection() {
   const [summary, setSummary] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [students, setStudents] = useState([]);
+  const [classes, setClasses] = useState([]);
+  // per-form class + student pickers
+  const [paymentClass, setPaymentClass] = useState('');
+  const [paymentStudents, setPaymentStudents] = useState([]);
+  const [paymentStudentsLoading, setPaymentStudentsLoading] = useState(false);
+  const [correctionClass, setCorrectionClass] = useState('');
+  const [correctionStudent, setCorrectionStudent] = useState('');
+  const [correctionStudents, setCorrectionStudents] = useState([]);
+  const [correctionStudentsLoading, setCorrectionStudentsLoading] = useState(false);
+  const [discountClass, setDiscountClass] = useState('');
+  const [discountStudents, setDiscountStudents] = useState([]);
+  const [discountStudentsLoading, setDiscountStudentsLoading] = useState(false);
   const [overdueDays, setOverdueDays] = useState(30);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -176,7 +189,7 @@ export default function FeeCollection() {
         getFeeSummary(payment.fee_period ? { fee_period: payment.fee_period } : {}),
         getFeeTransactions({}),
         getFeeTransactions({ overdue_days: overdueDays }),
-        getStudents({ limit: 500 }),
+        getStudents({ limit: 20 }),
         getDiscountTypes(),
         getDiscountSummary(),
       ]);
@@ -196,6 +209,28 @@ export default function FeeCollection() {
   }, [payment.fee_period, overdueDays]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Load class list once
+  useEffect(() => { getAllClasses().then(r => { if (r.success) setClasses(r.data || []); }); }, []);
+
+  // Fetch students when a class is selected in each form
+  useEffect(() => {
+    if (!paymentClass) { setPaymentStudents([]); setPayment(p => ({ ...p, student_id: '' })); return; }
+    setPaymentStudentsLoading(true);
+    getStudents({ class_id: paymentClass, limit: 500 }).then(r => { if (r.success) setPaymentStudents(r.data || []); }).finally(() => setPaymentStudentsLoading(false));
+  }, [paymentClass]);
+
+  useEffect(() => {
+    if (!correctionClass) { setCorrectionStudents([]); setCorrectionStudent(''); return; }
+    setCorrectionStudentsLoading(true);
+    getStudents({ class_id: correctionClass, limit: 500 }).then(r => { if (r.success) setCorrectionStudents(r.data || []); }).finally(() => setCorrectionStudentsLoading(false));
+  }, [correctionClass]);
+
+  useEffect(() => {
+    if (!discountClass) { setDiscountStudents([]); setDiscountApply(d => ({ ...d, student_id: '' })); return; }
+    setDiscountStudentsLoading(true);
+    getStudents({ class_id: discountClass, limit: 500 }).then(r => { if (r.success) setDiscountStudents(r.data || []); }).finally(() => setDiscountStudentsLoading(false));
+  }, [discountClass]);
 
   useEffect(() => {
     const interval = setInterval(() => setClockTick(t => t + 1), 30000);
@@ -539,9 +574,13 @@ export default function FeeCollection() {
       <div className="fee-section-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: 14, marginBottom: 18 }}>
         <section style={panelStyle}>
           <h2 style={panelTitle}><Save size={16} />Record payment</h2>
-          <select value={payment.student_id} onChange={e => setPayment(prev => ({ ...prev, student_id: e.target.value }))} style={inputStyle}>
-            <option value="">Select student</option>
-            {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          <select value={paymentClass} onChange={e => setPaymentClass(e.target.value)} style={inputStyle}>
+            <option value="">-- Select class --</option>
+            {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
+          </select>
+          <select value={payment.student_id} onChange={e => setPayment(prev => ({ ...prev, student_id: e.target.value }))} style={inputStyle} disabled={!paymentClass || paymentStudentsLoading}>
+            <option value="">{paymentStudentsLoading ? 'Loading...' : paymentClass ? 'Select student' : '-- Select class first --'}</option>
+            {paymentStudents.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
           <div style={twoCol}>
             <input value={payment.fee_period} onChange={e => setPayment(prev => ({ ...prev, fee_period: e.target.value }))} placeholder="2026-05" style={inputStyle} />
@@ -572,9 +611,17 @@ export default function FeeCollection() {
 
         <section style={panelStyle}>
           <h2 style={panelTitle}><Edit3 size={16} />Correct record</h2>
-          <select value={correction.transaction_id} onChange={e => setCorrection(prev => ({ ...prev, transaction_id: e.target.value }))} style={inputStyle}>
-            <option value="">Select transaction</option>
-            {transactions.map(t => <option key={t.id} value={t.id}>{t.student_name || t.student_id} - {t.fee_type} - {money(t.amount)}</option>)}
+          <select value={correctionClass} onChange={e => { setCorrectionClass(e.target.value); setCorrectionStudent(''); setCorrection(initialCorrection); }} style={inputStyle}>
+            <option value="">-- Select class --</option>
+            {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
+          </select>
+          <select value={correctionStudent} onChange={e => { setCorrectionStudent(e.target.value); setCorrection(initialCorrection); }} style={inputStyle} disabled={!correctionClass || correctionStudentsLoading}>
+            <option value="">{correctionStudentsLoading ? 'Loading...' : correctionClass ? 'Select student' : '-- Select class first --'}</option>
+            {correctionStudents.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <select value={correction.transaction_id} onChange={e => setCorrection(prev => ({ ...prev, transaction_id: e.target.value }))} style={inputStyle} disabled={!correctionStudent}>
+            <option value="">{correctionStudent ? 'Select transaction' : '-- Select student first --'}</option>
+            {transactions.filter(t => t.student_id === correctionStudent).map(t => <option key={t.id} value={t.id}>{t.fee_type} - {money(t.amount)} - {t.status}</option>)}
           </select>
           {selectedTxn && <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>Current: {selectedTxn.status} / {money(selectedTxn.amount)}</div>}
           <div style={twoCol}>
@@ -648,12 +695,16 @@ export default function FeeCollection() {
 
         <section style={panelStyle}>
           <h2 style={panelTitle}>Apply discount</h2>
+          <select value={discountClass} onChange={e => { setDiscountClass(e.target.value); setDiscountApply(d => ({ ...d, student_id: '' })); }} style={inputStyle}>
+            <option value="">-- Select class --</option>
+            {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
+          </select>
           <select value={discountApply.student_id} onChange={e => {
             setDiscountApply(prev => ({ ...prev, student_id: e.target.value }));
             if (e.target.value) loadDiscountBreakdown(e.target.value);
-          }} style={inputStyle}>
-            <option value="">Select student</option>
-            {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          }} style={inputStyle} disabled={!discountClass || discountStudentsLoading}>
+            <option value="">{discountStudentsLoading ? 'Loading...' : discountClass ? 'Select student' : '-- Select class first --'}</option>
+            {discountStudents.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
           <select value={discountApply.discount_type_id} onChange={e => setDiscountApply(prev => ({ ...prev, discount_type_id: e.target.value }))} style={inputStyle}>
             <option value="">Select discount type</option>
