@@ -67,8 +67,10 @@ One judgement, stated rather than buried
 
 A family paying on the 20th is charged for the 16th to the 20th **inclusive**, so five
 days. "10 rupees a day from the 16th" does not say whether the day of payment counts.
-Inclusive is the ordinary reading and is what the office would do by hand. It is worth a
-sentence from Sonu, and it is one day's fine either way.
+Inclusive is the ordinary reading and is what the office would do by hand.
+
+**Confirmed by Abhimanyu on 2026-08-12: the 20th counts as five days.** This was carried
+as an open question until then; it is settled, and the code already did it this way.
 """
 
 from __future__ import annotations
