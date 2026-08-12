@@ -8,6 +8,7 @@ from datetime import date as _date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Request, HTTPException, Depends
 
+from pagination import clamp_page, clamp_page_size
 from database import get_db
 from middleware.auth import get_current_user, require_owner, require_role, require_access, require_owner_or_principal
 from services.audit_service import write_audit_doc
@@ -238,8 +239,9 @@ async def list_facility_requests(
     if is_self_only:
         query["logged_by"] = user["id"]
     # Maintenance admin sees ALL school facility requests (not filtered to self)
-    limit = min(max(limit, 1), 100)
-    skip = max(page - 1, 0) * limit
+    page = clamp_page(page)
+    limit = clamp_page_size(limit)
+    skip = (page - 1) * limit
     total = await db.facility_requests.count_documents(scoped_query(query, branch_id=bid))
     items = await db.facility_requests.find(scoped_query(query, branch_id=bid), {"_id": 0}).sort([("priority", 1), ("created_at", -1)]).skip(skip).limit(limit).to_list(limit)
     # Fix 12.8: rename overdue → is_overdue
@@ -491,8 +493,9 @@ async def list_tech_requests(
     query = {}
     if status:
         query["status"] = status
-    limit = min(max(limit, 1), 50)
-    skip = max(page - 1, 0) * limit
+    page = clamp_page(page)
+    limit = clamp_page_size(limit)
+    skip = (page - 1) * limit
     total = await db.tech_requests.count_documents(scoped_query(query, branch_id=bid))
     items = await db.tech_requests.find(scoped_query(query, branch_id=bid), {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
@@ -720,8 +723,9 @@ async def list_maintenance_schedule(request: Request, page: int = 1, limit: int 
     bid = user.get("branch_id")
     if not _can_view_all(user) and not _is_maint(user):
         raise HTTPException(403, "Forbidden")
-    limit = min(max(limit, 1), 100)
-    skip = max(page - 1, 0) * limit
+    page = clamp_page(page)
+    limit = clamp_page_size(limit)
+    skip = (page - 1) * limit
     total = await db.maintenance_schedule.count_documents(scoped_query({}, branch_id=bid))
     items = await db.maintenance_schedule.find(scoped_query({}, branch_id=bid), {"_id": 0}).sort("scheduled_date", 1).skip(skip).limit(limit).to_list(limit)
     for item in items:
@@ -805,8 +809,9 @@ async def list_vendors(request: Request, page: int = 1, limit: int = 20):
     bid = user.get("branch_id")
     if not _can_view_all(user) and not _is_maint(user):
         raise HTTPException(403, "Forbidden")
-    limit = min(max(limit, 1), 100)
-    skip = max(page - 1, 0) * limit
+    page = clamp_page(page)
+    limit = clamp_page_size(limit)
+    skip = (page - 1) * limit
     total = await db.maintenance_vendors.count_documents(scoped_query({}, branch_id=bid))
     items = await db.maintenance_vendors.find(scoped_query({}, branch_id=bid), {"_id": 0}).sort("name", 1).skip(skip).limit(limit).to_list(limit)
     return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
@@ -822,7 +827,7 @@ async def preferred_vendors(request: Request, category: str = None, limit: int =
     query = {"is_active": True}
     if category:
         query["category"] = category
-    vendors = await db.maintenance_vendors.find(scoped_query(query, branch_id=bid), {"_id": 0}).sort("rating", -1).limit(min(max(limit, 1), 20)).to_list(20)
+    vendors = await db.maintenance_vendors.find(scoped_query(query, branch_id=bid), {"_id": 0}).sort("rating", -1).limit(clamp_page_size(limit, 20)).to_list(20)
     return {"success": True, "data": vendors}
 
 

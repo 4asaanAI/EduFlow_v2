@@ -69,7 +69,12 @@ OWNER_ONLY_ENDPOINTS = (
         None,
     ),
     ("GET", "/api/operator/ai-action-counts?user_id=teacher-1&session_id=session-1", None, None),
-    ("GET", "/api/export/expenses", None, None),
+    # `/api/export/expenses` was here until 2026-08-12 and was never owner-only in
+    # the permission table: the principal holds every screen and the finance domain,
+    # so he holds the expense export. Release 3 made the exports read that table
+    # instead of their own role checks. The principal's access is asserted directly
+    # in tests/backend/api/test_exports_xlsx.py, and the management head being
+    # refused it - the wall that actually matters - is asserted there too.
 )
 
 

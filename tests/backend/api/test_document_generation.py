@@ -284,12 +284,43 @@ def test_the_cap_shares_its_counter_with_certificate_generation(client, fake_db)
 
 
 def test_a_truncated_document_says_so_in_the_reply(client, monkeypatch):
+    """A very long table in something somebody READS is still cut, and still says so.
+
+    This test used to use `csv`. It was moved to `docx` on 2026-08-12, when Abhimanyu
+    ruled that a SPREADSHEET must never be trimmed - see the test directly below. The
+    behaviour under test here did not change: a five-thousand-row table in a letter is
+    not a document anyone reads, so it is cut, and the reply says it was.
+    """
     from services import document_builder
 
     monkeypatch.setattr(document_builder, "MAX_ROWS", 3)
     resp = client.post(TOOL_URL, headers=_owner(), json={"params": {
-        "doc_type": "csv", "headers": ["N"], "rows": [[str(i)] for i in range(10)],
+        "doc_type": "docx", "headers": ["N"], "rows": [[str(i)] for i in range(10)],
     }})
     body = resp.json()
     assert body["data"]["truncated"] is True
     assert "only the first" in body["message"]
+
+
+@pytest.mark.parametrize("doc_type", ["xlsx", "csv"])
+def test_a_spreadsheet_is_never_trimmed(client, monkeypatch, doc_type):
+    """A spreadsheet is opened to be counted, filtered and reconciled against.
+
+    Abhimanyu, 2026-08-12: a person who asks for data in Excel gets ALL of it. A
+    trimmed sheet is a wrong answer wearing the clothes of a right one - it opens, it
+    looks ordinary, and it is missing rows. So Excel and CSV carry the export ceiling,
+    which refuses rather than trims and sits far above the school's longest list.
+
+    The builder's own ceiling is dropped to 3 here, so what is under test is that it no
+    longer applies, not openpyxl's speed.
+    """
+    from services import document_builder
+
+    monkeypatch.setattr(document_builder, "MAX_ROWS", 3)
+    resp = client.post(TOOL_URL, headers=_owner(), json={"params": {
+        "doc_type": doc_type, "headers": ["N"], "rows": [[str(i)] for i in range(10)],
+    }})
+    body = resp.json()
+    assert body["data"]["truncated"] is False
+    # Nothing to warn about, so nothing is said about it.
+    assert "only the first" not in body["message"]

@@ -2,6 +2,7 @@ from __future__ import annotations
 """Audit Log UI - Story 33"""
 import re
 from fastapi import APIRouter, Request, HTTPException, Depends
+from pagination import clamp_page, clamp_page_size
 from database import TimedQuery, get_db
 from middleware.auth import get_current_user, require_role
 from tenant import get_school_id, scoped_filter
@@ -44,10 +45,8 @@ async def list_audit_log(
         raise HTTPException(403, "Forbidden")
 
     query = {}
-    if page < 1:
-        raise HTTPException(400, "page must be >= 1")
-    if not 1 <= limit <= 100:
-        raise HTTPException(400, "limit must be between 1 and 100")
+    page = clamp_page(page)
+    limit = clamp_page_size(limit)
 
     if collection:
         query["collection"] = collection
@@ -211,10 +210,8 @@ async def get_record_history(
     db = get_db()
     if user.get("role") == "admin" and user.get("sub_category", "") not in AUDIT_READER_SUB_CATEGORIES:
         raise HTTPException(403, "Forbidden")
-    if page < 1:
-        raise HTTPException(400, "page must be >= 1")
-    if not 1 <= limit <= 100:
-        raise HTTPException(400, "limit must be between 1 and 100")
+    page = clamp_page(page)
+    limit = clamp_page_size(limit)
     query = {
         "$or": [
             {"entity_id": record_id},

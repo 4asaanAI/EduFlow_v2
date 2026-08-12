@@ -35,6 +35,21 @@ READ_ONLY_ALLOWLIST = frozenset({
     # certificate generation. It was renamed FROM `generate_document` because this
     # guard was right that "generate_" reads as mutating.
     "draft_document",
+    # Release 3, 2026-08-12. Same considered classification as `draft_document`
+    # directly above, and for the same reason: it stores a file, a `file_uploads` row
+    # and an audit row, and changes NO school record. It reads rows the caller may
+    # already read - through `may_export`, which is `require_export`'s own rule rather
+    # than a copy of it - and formats them. There is nothing to undo, and Abhimanyu's
+    # decision of 2026-08-12 is explicit that an export needs no confirm window on a
+    # screen or through Flo. If this tool is ever changed to WRITE anything about a
+    # student, a fee or a staff member, it leaves this list.
+    "export_data_file",
+    # Release 3 item B, 2026-08-12. The whole school as one workbook. Identical
+    # classification to `export_data_file` directly above and for identical reasons: it
+    # stores a file, a `file_uploads` row and an audit row, and changes no school
+    # record. It is a bigger READ, not a different kind of act. Same rule applies - if
+    # it is ever changed to write anything about a person, it leaves this list.
+    "export_whole_school_workbook",
     "draft_parent_message",
     # Deferred tool loading: reveals tool INSTRUCTIONS the caller is already
     # authorized for. Reads the registry, writes nothing.
@@ -135,8 +150,13 @@ READ_ONLY_ALLOWLIST = frozenset({
 # and neither can name a mutating tool without lying about what it does. They were named
 # this way on purpose rather than as `query_…`, because these are the words a person and a
 # model both reach for, and a tool the model does not recognise is a tool nobody uses.
+# `export_` added 2026-08-12 for `export_data_file` (Release 3). It is a read verb in
+# the same narrow sense as the two above: an export takes data OUT and cannot name a
+# tool that changes a record without lying about what it does. It was named this way
+# rather than `get_…` because "export" and "download" are the words a person and a
+# model both reach for, and a tool the model does not recognise is a tool nobody uses.
 _READ_PREFIXES = ("get_", "query_", "search_", "recall_", "draft_", "preview_",
-                  "explain_", "calculate_")
+                  "explain_", "calculate_", "export_")
 
 
 def _is_flagged_write(tool_def: dict) -> bool:

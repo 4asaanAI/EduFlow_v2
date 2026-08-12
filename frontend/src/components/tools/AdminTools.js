@@ -3,7 +3,8 @@
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
-import { API, apiFetch, getStudents, getAllStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, correctFeeTransaction, deleteFeeTransaction, getPendingLeaves, updateLeave, getWhatsappDefaulters, sendAttendanceAlerts, getSchoolSettings, getSchoolSummary, getSchoolSummaryHistory } from '../../lib/api';
+import PeopleLoadNotice, { loadStudentsInto } from '../ui/PeopleLoadNotice';
+import { API, apiFetch, getStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, correctFeeTransaction, deleteFeeTransaction, getPendingLeaves, updateLeave, getWhatsappDefaulters, sendAttendanceAlerts, getSchoolSettings, getSchoolSummary, getSchoolSummaryHistory } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 import { canIssueDocumentsDirectly } from '../../lib/toolPermissions';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, ErrorCard, LineChartWidget, useColumnSort, SortableHeaderRow } from './ToolPage';
@@ -684,6 +685,9 @@ async function downloadBlobAsPdf(url, body, filename, onStart, onDone, onError) 
 export function CertificateGenerator() {
   const { currentUser } = useUser();
   const [students, setStudents] = useState([]);
+  // Release 3, item C. An empty picker used to be the only sign that the roll had
+  // failed to load, and on a school of 1,876 children that reads as "nobody".
+  const [studentsError, setStudentsError] = useState('');
   const [certs, setCerts] = useState([]);
   const [form, setForm] = useState({ student_id: '', cert_type: 'bonafide' });
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
@@ -736,7 +740,7 @@ export function CertificateGenerator() {
 
   useEffect(() => {
     Promise.all([
-      getAllStudents().then(r => { if (r.success) setStudents(r.data || []); }),
+      loadStudentsInto(setStudents, setStudentsError),
       loadCerts(),
       // Epic 4 / Story 4.3: the affiliation line on a certificate used to be a
       // hard-coded string in this file. A CBSE certificate carries the school's
@@ -794,6 +798,7 @@ export function CertificateGenerator() {
 
   return (
     <ToolPage title="Certificate Generator" subtitle="Generate & download TC, Bonafide, Character certificates" loading={loading}>
+      <PeopleLoadNotice error={studentsError} />
       <div className="responsive-split-grid" style={{ display: 'grid', gridTemplateColumns: 'min(340px, 100%) 1fr', gap: 20 }}>
         {/* Generator form */}
         <div>
@@ -1232,6 +1237,7 @@ export function DocumentScanner() {
   const [files, setFiles] = useState([]);
   const [classes, setClasses] = useState([]);
   const [allStudents, setAllStudents] = useState([]);
+  const [studentsError, setStudentsError] = useState('');
   const [selectedClass, setSelectedClass] = useState('');
   const [studentId, setStudentId] = useState('');
   const [docType, setDocType] = useState('aadhar');
@@ -1243,7 +1249,7 @@ export function DocumentScanner() {
   useEffect(() => {
     Promise.all([
       getAllClasses().then(r => { if (r.success) setClasses(r.data || []); }),
-      getAllStudents().then(r => { if (r.success) setAllStudents(r.data || []); }),
+      loadStudentsInto(setAllStudents, setStudentsError),
     ]).finally(() => setLoading(false));
   }, [currentUser]);
 
@@ -1288,6 +1294,7 @@ export function DocumentScanner() {
 
   return (
     <ToolPage title="Document Scanner & Extractor" subtitle="Upload and file student documents by class" loading={loading}>
+      <PeopleLoadNotice error={studentsError} />
       <div className="tool-split-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 900 }}>
         <div>
           <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 600, color: 'var(--c-text)', marginBottom: 14 }}>Upload Document</h3>
@@ -1640,6 +1647,7 @@ export function ParentMessage() {
   const { currentUser } = useUser();
   const [classes, setClasses] = useState([]);
   const [allStudents, setAllStudents] = useState([]);
+  const [studentsError, setStudentsError] = useState('');
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedStudents, setSelectedStudents] = useState(new Set());
   const [message, setMessage] = useState('');
@@ -1650,12 +1658,11 @@ export function ParentMessage() {
 
   useEffect(() => {
     Promise.all([
-      apiFetch(`${API}/settings/classes`, { headers: h() }).then(r => r.json()),
-      getAllStudents(),
-    ]).then(([cls, stu]) => {
-      if (cls.success) setClasses(cls.data || []);
-      if (stu.success) setAllStudents(stu.data || []);
-    }).finally(() => setLoading(false));
+      apiFetch(`${API}/settings/classes`, { headers: h() })
+        .then(r => r.json())
+        .then(cls => { if (cls.success) setClasses(cls.data || []); }),
+      loadStudentsInto(setAllStudents, setStudentsError),
+    ]).finally(() => setLoading(false));
   }, [currentUser]);
 
   const studentsInClass = selectedClass
@@ -1718,6 +1725,7 @@ export function ParentMessage() {
 
   return (
     <ToolPage title="Parent Message Composer" subtitle="Send SMS to parents via Twilio" loading={loading}>
+      <PeopleLoadNotice error={studentsError} />
       <div className="tool-split-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 980 }}>
 
         {/* Left - recipient selector */}
@@ -2036,6 +2044,7 @@ export function StudentTransfer() {
 export function IdCardGenerator() {
   const { currentUser } = useUser();
   const [students, setStudents] = useState([]);
+  const [studentsError, setStudentsError] = useState('');
   const [classes, setClasses] = useState([]);
   const [filterClass, setFilterClass] = useState('');
   const [loading, setLoading] = useState(true);
@@ -2056,7 +2065,7 @@ export function IdCardGenerator() {
       // Owner note, 2026-08-07: this was a raw fetch with no limit, so the server
       // answered with its default 20 rows and the card list silently stopped at the
       // first twenty of 1,802 students.
-      getAllStudents().then(r => { if (r.success) setStudents(r.data || []); }),
+      loadStudentsInto(setStudents, setStudentsError),
       // Was a raw fetch, which bypassed api.js and so skipped the class ordering
       // applied in getAllClasses. Project convention is that all API calls go
       // through api.js for exactly this reason.
@@ -2142,6 +2151,7 @@ export function IdCardGenerator() {
 
   return (
     <ToolPage title="ID Card Generator" subtitle="Generate printable student ID cards" loading={loading}>
+      <PeopleLoadNotice error={studentsError} />
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
         <input
           value={search}
@@ -2485,6 +2495,7 @@ export function TransportManager() {
   const { currentUser } = useUser();
   const [routes, setRoutes] = useState([]);
   const [students, setStudents] = useState([]);
+  const [studentsError, setStudentsError] = useState('');
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState('routes');
   const [selectedRoute, setSelectedRoute] = useState(null);
@@ -2500,12 +2511,11 @@ export function TransportManager() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [routesRes, studentsRes] = await Promise.all([
+      const [routesRes] = await Promise.all([
         apiFetch(`${API}/ops/transport`, { headers: h() }).then(r => r.json()),
-        getAllStudents()
+        loadStudentsInto(setStudents, setStudentsError),
       ]);
       if (routesRes.success) setRoutes(routesRes.data || []);
-      if (studentsRes.success) setStudents(studentsRes.data || []);
     } catch {}
     setLoading(false);
   }, []);
@@ -2577,6 +2587,7 @@ export function TransportManager() {
     <ToolPage title="Transport Manager" subtitle="Routes, vehicles & student assignments" loading={loading}
       actions={viewMode === 'routes' && <ActionBtn label="Add Route" onClick={() => { setShowForm(true); setEditingId(null); setForm({ route_name: '', start_point: '', end_point: '', driver_name: '', driver_phone: '', vehicle_no: '', capacity: '', fare: '' }); }} icon={<Plus size={11} />} />}>
 
+      <PeopleLoadNotice error={studentsError} />
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, borderBottom: '1px solid var(--c-border)', paddingBottom: 12 }}>
         <button onClick={() => { setViewMode('routes'); setSelectedRoute(null); }} style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === 'routes' ? '1px solid var(--tool-hex-4f8ff7)' : '1px solid var(--c-border)', background: viewMode === 'routes' ? 'rgba(59,130,246,0.1)' : 'var(--c-bg)', color: viewMode === 'routes' ? 'var(--tool-hex-4f8ff7)' : 'var(--c-muted)', fontSize: 12, cursor: 'pointer' }}>Routes</button>
         <button onClick={() => { setViewMode('assignments'); setSelectedRoute(null); }} style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === 'assignments' ? '1px solid var(--tool-hex-34d399)' : '1px solid var(--c-border)', background: viewMode === 'assignments' ? 'rgba(16,185,129,0.1)' : 'var(--c-bg)', color: viewMode === 'assignments' ? 'var(--tool-hex-34d399)' : 'var(--c-muted)', fontSize: 12, cursor: 'pointer' }}>Student Assignments</button>
@@ -3015,6 +3026,7 @@ export function ReportCardBuilder() {
 export function StudentPerformanceViewer() {
   const { currentUser } = useUser();
   const [students, setStudents] = useState([]);
+  const [studentsError, setStudentsError] = useState('');
   const [results, setResults] = useState([]);
   const [attendance, setAttendance] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -3024,7 +3036,7 @@ export function StudentPerformanceViewer() {
 
   useEffect(() => {
     Promise.all([
-      getAllStudents().then(r => { if (r.success) setStudents(r.data || []); }),
+      loadStudentsInto(setStudents, setStudentsError),
       apiFetch(`${API}/academics/results`, { headers: h() }).then(r => r.json()).then(r => { if (r.success) setResults(r.data || []); }),
     ]).finally(() => setLoading(false));
   }, [currentUser]);
@@ -3056,6 +3068,7 @@ export function StudentPerformanceViewer() {
 
   return (
     <ToolPage title="Student Performance" subtitle="Marks, grades & attendance analytics" loading={loading}>
+      <PeopleLoadNotice error={studentsError} />
       <div className="stat-grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 18, maxWidth: 700 }}>
         <StatCard value={students.length} label="STUDENTS" color="var(--tool-hex-4f8ff7)" />
         <StatCard value={results.length} label="EXAM ENTRIES" color="var(--tool-hex-a78bfa)" />

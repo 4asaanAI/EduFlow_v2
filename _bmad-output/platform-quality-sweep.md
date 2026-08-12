@@ -79,6 +79,23 @@ User-confirmed order: **3 → 1 → 2 → 4 → 5 → 6 → 7 → 8 → 9 → ..
 - `export_results` N+1 — **RESOLVED in Round 2 review**
 - `issues.py`/`operations.py` branch isolation — **RESOLVED via 3-wave migration**
 
+## Releases shipped after the sweep
+
+| Release | State | Record |
+|---|---|---|
+| Release 2 - person profiles for Sonu and Lalit | **LIVE** (`eduflow-release2-20260812-accfc64`) | `implementation-artifacts/release-2/PROGRESS.md` |
+| Release 3 - the whole list, on any device | **code-complete, green, NOT deployed** | `implementation-artifacts/release-3/PROGRESS.md` |
+
+Release 3 closed one class of fault across the platform: **a query that quietly returned
+less than it should.** "All" that showed one row, exports that stopped at a hardcoded
+limit with no warning, lists with no filter, pickers that went empty in silence, and a
+tablet that had never been tested as a tablet. The invariants it left behind are in
+`project-context.md` under "Release 3 Invariants"; the one that matters most is that **an
+export is complete or refused, never short**, because a file leaves the building and gets
+filed as a record.
+
+Release 4 is audit and undo, and is deliberately separate.
+
 ## Next Steps (Product Backlog)
 
 1. **NEXT: Story 7-39** — Teacher/student login activation (gates all teacher+student features)

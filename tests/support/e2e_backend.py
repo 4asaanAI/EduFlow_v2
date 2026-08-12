@@ -63,7 +63,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def _headers(self, status=200, content_type="application/json"):
         self.send_response(status)
-        self.send_header("Access-Control-Allow-Origin", "http://localhost:3000")
+        # The origin is echoed back rather than pinned to port 3000.
+        #
+        # It was pinned, and that cost most of an afternoon on 2026-08-12: running the
+        # suite against the app on any other port made the browser silently DROP every
+        # reply, so the sign-in page just sat there with no error on it. A dropped
+        # response looks exactly like a server that never answered, which is this
+        # release's own lesson arriving in the test harness.
+        #
+        # Widening it is safe: this file is a stand-in that serves fixed fake data on a
+        # developer's own machine. It never runs anywhere near the school's records.
+        self.send_header(
+            "Access-Control-Allow-Origin",
+            self.headers.get("Origin") or "http://localhost:3000",
+        )
         self.send_header("Access-Control-Allow-Credentials", "true")
         self.send_header("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Authorization,Content-Type")

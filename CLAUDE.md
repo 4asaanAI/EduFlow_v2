@@ -52,10 +52,65 @@
 > `_bmad-output/planning-artifacts/inspection-findings-2026-08-04.md`.
 > Logs in `_bmad-output/implementation-artifacts/inspection-2026-08-04/`.
 
-> ## 🚧 CURRENT INITIATIVE - Release 2: person profiles for Sonu and Lalit (2026-08-10)
+> ## 🚧 CURRENT INITIATIVE - Release 3: the whole list, on any device (2026-08-12)
 >
-> The school's accountant head (Sonu Ruhal) and management person (Lalit Thomas) get their
-> own logins so they keep the data current. **Start here, in this order:**
+> **CODE-COMPLETE, GREEN, AND NOT DEPLOYED.** Thirteen items done, all in the working tree
+> and uncommitted. `main` is still at `0b74b6e` (Release 2). Abhimanyu's decision is that
+> **Release 3 ships all together** - nothing goes out on its own.
+>
+> **Start here:** `_bmad-output/implementation-artifacts/release-3/PROGRESS.md` is the ONLY
+> record of what is done. Read it first, update it last, every run. There is no separate
+> planning artifact for Release 3; the PROGRESS file carries the reasoning too.
+>
+> **The one idea behind the whole release.** Every serious fault found on 11 and 12 August
+> was the same shape: **a query that quietly returned less than it should.** A lookup
+> matching nobody looks like a lookup with nothing to do. A colleague missing to a 50-row
+> cap looks like a colleague who left. "All" showing one row looks like a school with one
+> student. An export stopping at 2,000 looks like a school with 2,000 children. So wherever
+> this release added a filter, an "all" view, a download or a scroll, **the count is visible
+> and a partial answer is impossible to mistake for a complete one.**
+>
+> **A truncated file is worse than a truncated screen**, because it leaves the building and
+> gets filed as a record. That is why every export is now COMPLETE OR REFUSED, never short.
+>
+> Settled decisions, do not reopen: "All" on every table; exports need no confirm window;
+> exports MUST respect the Release 2 permission table; the whole-school workbook is Aman and
+> Adesh only; **a spreadsheet is NEVER trimmed** (Word and PDF still trim and still say so);
+> audit and undo work is Release 4 and separate.
+>
+> ### What Release 3 changed that you will trip over
+>
+> | Thing | Where | Why it matters |
+> |---|---|---|
+> | One page-size ceiling, 500 | `backend/pagination.py`, 16 clamp sites | A page size below 1 is **refused with a 400**, never turned into 1. `max(1, -1)` used to make "All" show ONE ROW. |
+> | Every export complete or refused | `routes/exports.py` `_read_all`, ceiling 100,000 | Nothing is ever silently dropped. Past the ceiling the request fails and says no file was made. |
+> | Nine export builders, one dictionary | `EXPORT_BUILDERS` | The screen download, Flo, and the whole-school workbook all read through these. **Add a data set here, never beside a route.** |
+> | Export permission | `require_export` / `may_export`, derived from `profile_matrix` | One rule asked two ways. Never write a second list of role names. |
+> | Download on every table | `lib/exportTable.js`, `ui/ExportButton.js`, `POST /api/export/table` | The control refuses to save a file holding fewer rows than the table says it has. |
+> | Filters on every tool table | `ToolPage.DataTable` | Written once for ~70 tables. **The download follows the filter.** |
+> | Rows drawn as you scroll | `ui/DataTable` | "All" fetches everything; painting is spread out. The count says drawn AND loaded. |
+> | Touch floor: 40px, 16px fields | `index.css` §7 (≤768px) and §7c (`pointer: coarse` + ≥769px) | §7c is NEW. A tablet is 810px wide, so it used to fall off the end of every touch rule and inherit desktop sizes. |
+> | Real device tests | `playwright.config.js` projects `phone-pixel`, `tablet-ipad` | The old "responsive" project was Desktop Chrome made narrow: no touch, no pixel ratio. That is why the owner's iPhone report was missed. |
+>
+> **Never bind a module constant as a default argument** (`max_rows: int = MAX_ROWS`). Python
+> evaluates it once at import, so the constant stops being live and every test that changes
+> it is silently ignored. This cost a real failure on 12 August. Default to `None` and
+> resolve inside the function.
+
+---
+
+> ## ✅ SHIPPED - Release 2: person profiles for Sonu and Lalit (2026-08-10)
+>
+> Merged and live as `eduflow-release2-20260812-accfc64`. `main` is at `0b74b6e`.
+> **Permissions are now granted by a written-down table, not by subtraction** -
+> `backend/services/profile_matrix.py` is the source of truth and
+> `frontend/src/lib/toolPermissions.js` is a GENERATED mirror of it. Never hand-edit the
+> mirror. The pinned per-profile reach counts in
+> `tests/backend/unit/test_all_nine_profiles_sweep_r2_13.py` are the alarm: a count moving
+> without a written reason means somebody's access changed and nobody decided to.
+>
+> The school's accountant head (Sonu Ruhal) and management person (Lalit Thomas) have their
+> own logins. **Reference, in this order:**
 >
 > 1. `_bmad-output/implementation-artifacts/release-2/PROGRESS.md` ← the ONLY record of
 >    what is done. Read it first, update it last, every single run.
@@ -78,8 +133,8 @@
 > grant table, default deny, read by the menu, the server and Flo alike. Do not patch the
 > symptoms without it.
 >
-> One sub-part per run. Suite green before the next. Eight decisions from Abhimanyu are
-> recorded in the plan and are settled; do not re-open them.
+> Eight decisions from Abhimanyu are recorded in the plan and are settled; do not re-open
+> them.
 
 ---
 
@@ -607,6 +662,22 @@ cd frontend && npm run build
 
 # Frontend E2E
 npx playwright test
+
+# Phone and tablet (Release 3, item E). These are REAL device profiles - touch,
+# `isMobile`, and a proper device pixel ratio. The older `responsive-chromium` project is
+# Desktop Chrome with the window made narrow, which is a small desktop and not a phone;
+# that is why the owner's iPhone 15 Pro report of 2026-08-06 was not caught by a green
+# suite. Phone and tablet are the PRIMARY devices; desktop is secondary.
+npx playwright test --project=phone-pixel --project=tablet-ipad
+
+# ⚠️ Running the E2E suite against the app on a port OTHER than 3000
+# `tests/support/e2e_backend.py` is a stand-in server. It used to pin its allowed origin
+# to `http://localhost:3000`, so on any other port the browser SILENTLY DROPPED every
+# reply and the sign-in page just sat there with no error on it - a dropped response
+# looks exactly like a server that never answered. It now echoes the caller's origin
+# back, so any port works. If something else on this machine already holds :3000 (it
+# often does), build the frontend with `REACT_APP_BACKEND_URL=http://localhost:8000`,
+# serve it with `npx vite preview --port 3100`, and pass `BASE_URL=http://localhost:3100`.
 
 # Dev server
 cd backend && uvicorn server:app --reload --port 8000

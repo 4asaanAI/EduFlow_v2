@@ -665,3 +665,78 @@ The AI will ask for confirmation before making any changes, so you won't acciden
 | A tool is not working | Use **Query & Support** inside EduFlow |
 | Wrong data needs to be corrected | Principal or Owner |
 | Feature request or bug report | Platform operator (via Query & Support) |
+
+---
+
+## Downloading records (Release 3, 2026-08-12)
+
+### Every table has a Download
+
+Every list on the platform now has **Excel** and **CSV** buttons beside it. Two plain
+buttons rather than a menu, because a phone is the main device here and a menu is one more
+thing to mis-tap.
+
+**A download holds the whole list, not the page you are looking at.** If you are on page 3
+of the unpaid fees and you press Download, you get the unpaid fees, all of them. It also
+tells you how many rows it saved, so you can tell at a glance whether it looks right.
+
+**If a filter or a search is on, the file matches what you filtered to.** Narrow the list
+to class 5 A and the file holds class 5 A. This works in both directions: you never get a
+short file, and you never get the whole school in a file you meant to be one class.
+
+**A download is never silently cut short.** If a list is too big for one file, the download
+is refused and says plainly that no file was made and what to do instead. It will never
+hand you a file that stops partway with nothing on it to say so, because that file leaves
+the building and gets filed as a record.
+
+### Who can download what
+
+The same rules as who can open a screen. A download is not a way around them.
+
+| Person | Can download |
+|---|---|
+| Aman (owner) and Adesh (principal) | everything, including the whole-school file below |
+| Sonu (accountant head) | children, staff, the payment ledger, expenses |
+| Lalit (management) | children, staff, enquiries. **Not** fees or expenses |
+| Teachers | their own classes' attendance and results |
+
+### The whole school in one file
+
+At the top of the **School Directory**, Aman and Adesh have a **Download the whole school**
+button. It produces one Excel file with a separate sheet for each area:
+
+children, staff, fees and payments, attendance, exam results, classes, transport, expenses,
+enquiries.
+
+Each sheet says how many rows it holds on its first line, and the screen reads the counts
+back to you after it saves. Money comes through as numbers, not text, so the office can add
+it up in Excel.
+
+Nobody else sees this button, and the server refuses anyone else even if they find the
+address. Sonu can download the ledger and Lalit can download the children; neither can have
+the file that holds both plus everything else.
+
+### Asking Flo for a file
+
+You can also just ask. "Send me the student list in Excel", "download all the staff", "the
+fee ledger as a spreadsheet". Flo reads the records straight from the school's database, so
+the file holds **every** matching row, not only the ones that came up in the conversation.
+It tells you the row count as well.
+
+Aman and Adesh can also ask Flo for the whole school in one file.
+
+**A spreadsheet is never shortened.** If you ask for records in Excel you get all of them.
+Word documents and PDFs still shorten a very long table and say so on the page, because a
+five-thousand-row table in a letter is not something anyone reads.
+
+Downloads need no approval and no confirmation step, on screen or through Flo. What is
+guarded is who may see the records, and that was settled before you pressed anything.
+
+### On a phone or tablet
+
+Long lists load fully and draw as you scroll, so the student list stays smooth. The line
+under the table tells you how many rows are drawn and how many are loaded, so a list that
+is still painting is never mistaken for a short one.
+
+A wide table scrolls sideways inside its own box. The page itself never does, so nothing
+slides off the edge of the screen.

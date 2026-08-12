@@ -1,5 +1,6 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import MessageRenderer from '../MessageRenderer';
+import * as exportTable from '../../lib/exportTable';
 
 test('renders assistant markdown smoke test', () => {
   render(<MessageRenderer message={{ role: 'assistant', content: 'Hello **school**' }} />);
@@ -39,6 +40,35 @@ test('R8.4 AC3: markdown tables render as <table> elements', () => {
   expect(container.querySelector('table')).not.toBeNull();
   expect(container.querySelector('th')).toHaveTextContent('Name');
   expect(container.querySelector('tbody td')).toHaveTextContent('Rahul');
+});
+
+test('a table Flo drew in an answer can be downloaded like any other', async () => {
+  // This is where somebody ends up when they asked a question instead of opening a
+  // screen. Before Release 3 the only way to get it into Excel was to retype it.
+  const spy = jest.spyOn(exportTable, 'downloadTableRows').mockResolvedValue();
+
+  render(
+    <MessageRenderer
+      message={{
+        role: 'assistant',
+        content: 'Here are the children you asked about.',
+        richBlocks: [{
+          type: 'table',
+          title: 'Class 5A',
+          headers: ['Name', 'Class'],
+          rows: [['Rahul', '5A']],
+        }],
+      }}
+    />,
+  );
+
+  fireEvent.click(screen.getByTestId('chat-table-export-csv'));
+
+  await waitFor(() => expect(spy).toHaveBeenCalled());
+  const sent = spy.mock.calls[0][0];
+  expect(sent.headers).toEqual(['Name', 'Class']);
+  expect(sent.rows).toEqual([['Rahul', '5A']]);
+  spy.mockRestore();
 });
 
 // R8.4 AC3: security invariants still hold - AI-authored content cannot inject a

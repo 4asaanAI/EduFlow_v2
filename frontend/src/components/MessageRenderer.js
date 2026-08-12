@@ -5,7 +5,8 @@ import { ThumbsUp, ThumbsDown, Download, FileText, Pencil } from 'lucide-react';
 import BotMascot from './ui/BotMascot';
 import DocumentEditor from './ui/DocumentEditor';
 import { emitFeedback, getGeneratedFileLink, getGeneratedFileContent } from '../lib/api';
-import { useColumnSort, SortableHeaderRow } from './tools/ToolPage';
+import { useColumnSort, SortableHeaderRow, sortableCellText } from './tools/ToolPage';
+import ExportButton from './ui/ExportButton';
 
 /**
  * A file Flo made, as something you can tap (Epic 10, Story 10.3).
@@ -300,7 +301,25 @@ function RichDataTable({ title, headers, rows, isDark }) {
   const hc = isDark ? '#f5f5f5' : '#171717';
   return (
     <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 12, overflow: 'hidden', margin: '14px 0' }}>
-      {title && <div style={{ padding: '10px 16px', borderBottom: `1px solid ${border}` }}><span style={{ fontWeight: 600, fontSize: 14, color: hc, letterSpacing: '-0.01em' }}>{title}</span></div>}
+      {/* A table Flo drew in an answer is still one of the school's tables, so it can
+          be downloaded like any other. This is often where somebody ends up when they
+          asked a question rather than opened a screen, and retyping the answer into
+          Excel by hand is what they were doing before. */}
+      {(title || sort.items.length > 0) && (
+        <div style={{ padding: '10px 16px', borderBottom: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 600, fontSize: 14, color: hc, letterSpacing: '-0.01em' }}>{title}</span>
+          {sort.items.length > 0 && headers.length > 0 && (
+            <ExportButton
+              title={title || 'Answer'}
+              testId="chat-table-export"
+              columns={headers.map((h, i) => ({ key: String(i), label: typeof h === 'string' ? h : `Column ${i + 1}` }))}
+              getRows={async () => sort.items.map(
+                (row) => Object.fromEntries((row || []).map((cell, i) => [String(i), sortableCellText(cell)])),
+              )}
+            />
+          )}
+        </div>
+      )}
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>

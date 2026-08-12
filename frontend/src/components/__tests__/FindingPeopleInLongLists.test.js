@@ -77,8 +77,24 @@ describe('fetching the whole list, not the first page of it', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('returns what it managed to collect if a later page fails', async () => {
-    // Half a list clearly marked partial beats an error that throws away 500 records.
+  it('fails outright if a later page fails, rather than handing back half a roll', async () => {
+    /**
+     * REVERSED DELIBERATELY on 2026-08-12 (Release 3).
+     *
+     * This test used to assert the opposite: 500 of 900 students returned as a
+     * SUCCESS carrying `meta.partial = true`, on the reasoning that "half a list
+     * clearly marked partial beats an error that throws away 500 records".
+     *
+     * The premise was false in practice. Nothing in the codebase ever read
+     * `meta.partial` - every caller was `if (r.success) setStudents(r.data)` - so
+     * "clearly marked" marked nothing, and the screen showed 500 of 900 children
+     * with no indication that 400 were missing. In a picker used to find a child,
+     * that reports a genuinely enrolled student as not there.
+     *
+     * That is the exact shape of every fault found on 11 and 12 August: a query
+     * that quietly returns less than it should. So it fails now, and the failure
+     * is the caller's problem to show rather than ours to hide.
+     */
     let call = 0;
     global.fetch = jest.fn(() => {
       call += 1;
@@ -94,9 +110,10 @@ describe('fetching the whole list, not the first page of it', () => {
 
     const res = await getAllStudents();
 
-    expect(res.success).toBe(true);
-    expect(res.data).toHaveLength(STUDENTS_PAGE_MAX);
-    expect(res.meta.partial).toBe(true);
+    expect(res.success).toBe(false);
+    expect(res.data).toHaveLength(0);
+    // The reason travels with the failure so a screen can say what went wrong.
+    expect(res.detail).toBe('Server fell over');
   });
 });
 

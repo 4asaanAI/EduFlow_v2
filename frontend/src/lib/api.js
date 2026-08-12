@@ -1,5 +1,6 @@
 import { getAccessToken, redirectToLoginOnce, refreshAccessToken } from './authSession';
 import { sortClasses } from './classOrder';
+import { fetchAllRows } from './fetchAllRows';
 
 // ─── The ONE place the server's address is decided (NEW-08) ──────────────────
 // `REACT_APP_BACKEND_URL` must not be read anywhere else in application code.
@@ -452,10 +453,21 @@ export async function getStudents(params = {}) {
 }
 
 /**
- * The most rows `GET /api/students` returns in one request. `per_page` is clamped to
- * 500 in backend/routes/students.py; if that cap ever moves, this moves with it.
+ * The most rows ANY list endpoint returns in one request.
+ *
+ * Release 3, 2026-08-12: there used to be a different figure per route - 500 for
+ * students and staff, 100 for chats and maintenance, 50 for notifications - and a
+ * screen had no way to know which one applied to it. The server now has a single
+ * ceiling in `backend/pagination.py`; this is its mirror. If that number moves,
+ * this moves with it and nothing else has to.
  */
-export const STUDENTS_PAGE_MAX = 500;
+export const PAGE_MAX = 500;
+
+/**
+ * Named per-list aliases, kept so existing screens read naturally. They are all the
+ * same number on purpose - a per-list figure here is what allowed them to drift.
+ */
+export const STUDENTS_PAGE_MAX = PAGE_MAX;
 
 /**
  * EVERY student, not the first page of them.
@@ -466,31 +478,32 @@ export const STUDENTS_PAGE_MAX = 500;
  * 1,802 students that is a list that looks complete and is not, and there is nothing
  * on the screen to say so, which is the worst version of the bug.
  *
- * This walks the pages and joins them. It stops as soon as a page comes back short or
- * the running count reaches the reported total, so a wrong total cannot spin forever.
+ * The page walking lives in `fetchAllRows` now (Release 3), shared with every other
+ * "All" on the platform. That changed one behaviour deliberately: a page that fails
+ * mid-walk used to return the rows collected so far as a SUCCESS carrying
+ * `partial: true`, and no caller checked that flag. Half a roll offered as a whole
+ * one is the exact fault this release is about, so it is a failure now.
+ *
  * Use it anywhere a person needs to FIND someone (a dropdown, a pick list); use plain
  * `getStudents` with an explicit limit where the screen paginates properly itself.
  */
 export async function getAllStudents(params = {}) {
-  const collected = [];
-  let page = 1;
-  let total = 0;
-  for (;;) {
-    // eslint-disable-next-line no-await-in-loop
-    const res = await getStudents({ ...params, page, limit: STUDENTS_PAGE_MAX });
-    if (!res.success) {
-      return collected.length
-        ? { success: true, data: collected, meta: { total: collected.length, partial: true } }
-        : res;
-    }
-    const batch = res.data || [];
-    collected.push(...batch);
-    total = res.meta?.total || collected.length;
-    if (batch.length < STUDENTS_PAGE_MAX || collected.length >= total) break;
-    page += 1;
-  }
-  const deduped = [...new Map(collected.map(s => [s.id, s])).values()];
-  return { success: true, data: deduped, meta: { total: total || deduped.length } };
+  const walk = await fetchAllRows(
+    ({ page, limit }) => getStudents({ ...params, page, limit }),
+    { pageMax: STUDENTS_PAGE_MAX },
+  );
+  if (!walk.success) return { success: false, data: [], detail: walk.detail };
+  // Paging a list that is being written to while we read it can hand back the same
+  // child twice. Dropping the duplicate is safe; it is the same record.
+  const deduped = [...new Map(walk.data.map(s => [s.id, s])).values()];
+  return {
+    success: true,
+    data: deduped,
+    // `truncated` is carried through rather than dropped. A caller that shows a
+    // count has to be able to say "1,876 of 40,000" instead of presenting what it
+    // holds as the whole roll.
+    meta: { total: Math.max(walk.total, deduped.length), truncated: walk.truncated },
+  };
 }
 
 export async function createStudent(data) {
@@ -897,6 +910,9 @@ export async function executeTool(toolId, params) {
 }
 
 // --- Staff ---
+/** See PAGE_MAX. */
+export const STAFF_PAGE_MAX = PAGE_MAX;
+
 export async function getStaff(params = {}) {
   const qs = new URLSearchParams(params).toString();
   const res = await apiFetch(`${API}/staff/?${qs}`, { headers: getHeaders() });
@@ -1165,6 +1181,13 @@ export async function getAcademicYear() {
  *   in a table with a row count and a page indicator they would be fabricated
  *   records among real ones. The bell panel passes nothing and keeps them.
  */
+/**
+ * See PAGE_MAX. This route was the tightest on the platform at 50, which meant a
+ * person's own notification history took ten times as many round trips as the
+ * student roll. It shares the common ceiling now.
+ */
+export const NOTIFICATIONS_PAGE_MAX = PAGE_MAX;
+
 export async function getNotifications(params = {}) {
   const qs = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {

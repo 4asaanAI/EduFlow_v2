@@ -143,6 +143,28 @@ function AttendanceBar({ pct }) {
   );
 }
 
+/**
+ * What the substitution plan puts in a downloaded file (Release 3, item 4).
+ *
+ * The office prints this and pins it up, so the file has to say the same thing the
+ * screen does: who is away, which period, and who is covering. "Suggested Sub" on
+ * screen shows the assigned teacher if there is one and the top candidate if there is
+ * not, and the file makes that distinction in words rather than losing it.
+ */
+const SUBSTITUTION_EXPORT_COLUMNS = [
+  { key: 'absent_teacher_name', label: 'Absent teacher' },
+  { key: 'period_number', label: 'Period', exportValue: (i) => `P${i.period_number}` },
+  { key: 'class_name', label: 'Class' },
+  { key: 'subject_name', label: 'Subject' },
+  { key: 'status', label: 'Status', exportValue: (i) => (i.assigned_substitute ? 'Covered' : 'Not covered') },
+  {
+    key: 'substitute', label: 'Substitute',
+    exportValue: (i) => (i.assigned_substitute
+      ? (i.assigned_substitute.name || i.assigned_substitute)
+      : (i.candidate_substitutes?.[0]?.name ? `Suggested: ${i.candidate_substitutes[0].name}` : '')),
+  },
+];
+
 function SubRow({ item, onAssign }) {
   const assigned = item.assigned_substitute;
   const candidate = item.candidate_substitutes?.[0];
@@ -376,7 +398,19 @@ export default function PrincipalDailyOps() {
 
       {/* Substitution Plan */}
       <div style={{ background: 'var(--tool-hex-1e1e1e)', border: '1px solid var(--tool-hex-2e2e2e)', borderRadius: 12, padding: '16px 18px', marginBottom: 24 }}>
-        <SectionHeader title="Substitution Plan" count={items.length} color="#fb923c" icon={UserCheck} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <SectionHeader title="Substitution Plan" count={items.length} color="#fb923c" icon={UserCheck} />
+          {items.length > 0 && (
+            <ExportButton
+              // The date is part of what this plan IS, so it goes in the filename.
+              // A substitution plan with no date on it is not a record of anything.
+              title={`Substitution plan ${date}`}
+              testId="substitutions-export"
+              columns={SUBSTITUTION_EXPORT_COLUMNS}
+              getRows={async () => conflictSort.items}
+            />
+          )}
+        </div>
         {loading ? (
           <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--tool-hex-555)', fontSize: 12 }}>
             <RefreshCw size={14} style={{ animation: 'spin 0.8s linear infinite', display: 'block', margin: '0 auto 6px' }} />

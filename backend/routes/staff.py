@@ -7,6 +7,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 
+from pagination import clamp_page, clamp_page_size
 from database import get_db
 from middleware.auth import get_current_user, require_owner, require_owner_or_principal, require_role
 from services.audit_service import write_audit_doc
@@ -290,7 +291,8 @@ async def list_staff(
                 raise HTTPException(403, "Forbidden")
 
     page = max(1, page)
-    per_page = max(1, min(limit, 500))
+    page = clamp_page(page)
+    per_page = clamp_page_size(limit)
     if enrolment_state:
         query = dict(enrolment_status.view_filter(enrolment_state))
     else:

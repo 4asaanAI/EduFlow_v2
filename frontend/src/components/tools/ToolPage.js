@@ -4,6 +4,7 @@
 import React from 'react';
 import { RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
+import ExportButton from '../ui/ExportButton';
 
 export function ToolPage({ title, subtitle, actions, children, onRefresh, loading }) {
   const { isDark } = useTheme();
@@ -24,9 +25,12 @@ export function ToolPage({ title, subtitle, actions, children, onRefresh, loadin
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {actions}
           {onRefresh && (
+            // 40px minimum. Phone and tablet are the primary devices here, and a
+            // 36px control is one a thumb mis-hits. Set here rather than on each
+            // screen because every tool page shares this one button.
             <button onClick={onRefresh} style={{
               background: btnBg, border: `1px solid ${btnBorder}`, borderRadius: 10,
-              padding: '8px 14px', color: secondary, fontSize: 13, fontWeight: 500,
+              padding: '8px 14px', minHeight: 40, color: secondary, fontSize: 13, fontWeight: 500,
               cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
               transition: 'all var(--transition-fast)',
             }}
@@ -150,12 +154,28 @@ export function ErrorCard({ message = 'Unable to load data.', onRetry }) {
  * or a React element such as `<span style={...}>₹12,400</span>`. Sorting has to see
  * through the element to the text a person actually reads, or half the columns on
  * the platform would sort by "[object Object]".
+ *
+ * DOWNLOADS USE THIS TOO (Release 3, item 4), which is why it gained the prop
+ * fallback below. A cell holding `<Badge text="Draft" />` keeps its only readable
+ * word in a PROP rather than in its children, so reading children alone returned an
+ * empty string - which sorted every Badge column as blank, and would have put an
+ * empty column into every downloaded file. A blank column in a spreadsheet reads as
+ * missing data rather than as something that could not be converted.
  */
 export function sortableCellText(cell) {
   if (cell === null || cell === undefined) return '';
   if (typeof cell === 'string' || typeof cell === 'number') return String(cell);
-  if (Array.isArray(cell)) return cell.map(sortableCellText).join(' ');
-  if (typeof cell === 'object' && cell.props) return sortableCellText(cell.props.children);
+  if (typeof cell === 'boolean') return cell ? 'Yes' : 'No';
+  if (Array.isArray(cell)) return cell.map(sortableCellText).join(' ').replace(/\s+/g, ' ');
+  if (typeof cell === 'object' && cell.props) {
+    const fromChildren = sortableCellText(cell.props.children).trim();
+    if (fromChildren) return fromChildren;
+    // The props a component in this codebase uses to carry its one word of text.
+    for (const key of ['text', 'label', 'title', 'value', 'name']) {
+      const held = cell.props[key];
+      if (typeof held === 'string' || typeof held === 'number') return String(held);
+    }
+  }
   return '';
 }
 
@@ -294,10 +314,23 @@ export function SortableHeaderRow({ headers, sort, accessors, thStyle, trStyle, 
  *
  * Pass `sortable={false}` for a table whose row order is itself the information -
  * a ranked list, or a timetable.
+ *
+ * EVERY ONE OF THESE TABLES CAN BE DOWNLOADED (Release 3, item 4), and the button is
+ * here rather than on each screen for the same reason the sort is: about seventy
+ * tables render through this one component. `exportable={false}` turns it off for a
+ * table that is a control panel rather than a record.
+ *
+ * These screens hand over their COMPLETE result set, so the file holds everything the
+ * table holds. Where a screen deliberately shows a summary - "Top 10 defaulters", the
+ * ten most recent expenses - the file holds that same summary, and the table's own
+ * title travels with it into the filename so the file says which it is. A screen that
+ * wants the full list downloadable instead should pass `exportRows`.
  */
-export function DataTable({ title, headers, rows, emptyMsg = 'No data found', actions, loading = false, sortable = true, tableId = 'tool-table' }) {
+export function DataTable({ title, headers, rows, emptyMsg = 'No data found', actions, loading = false, sortable = true, tableId = 'tool-table', exportable = true, exportRows = null, filterable = true }) {
   const { isDark } = useTheme();
   const [sortState, setSortState] = React.useState({ index: null, direction: 'ascending' });
+  const [search, setSearch] = React.useState('');
+  const [picked, setPicked] = React.useState({});
   const bg = isDark ? 'var(--color-surface)' : 'var(--color-surface)';
   const border = isDark ? 'var(--color-border)' : 'var(--color-border)';
   const rowBorder = isDark ? 'var(--color-surface-raised)' : 'var(--color-border)';
@@ -308,12 +341,101 @@ export function DataTable({ title, headers, rows, emptyMsg = 'No data found', ac
   // Memoised because `sortedRows` below depends on it: without this, the `: []`
   // branch would produce a brand-new array every render and re-sort on every render.
   const safeRows = React.useMemo(() => (Array.isArray(rows) ? rows : []), [rows]);
+
+  // ── Filtering (Release 3, item C) ──────────────────────────────────────────
+  //
+  // Here rather than on each screen, for the third time and the same reason: about
+  // seventy tables render through this one component. Sorting arrived this way in
+  // July and the download in item 5 of this release; a filter written seventy times
+  // by hand would be seventy chances to filter the screen and not the file.
+  //
+  // TWO KINDS, because a person filters in two ways. They type a name or a number,
+  // or they pick a value out of a column: a status, a class, a category. The typed
+  // search reads every cell; the pickers appear on their own, for any column whose
+  // values repeat enough to be worth choosing between.
+  //
+  // THE THRESHOLD IS LOW ON PURPOSE. Abhimanyu asked for filters wherever the data
+  // is OR COULD BECOME too much to go through by hand, so this is not reserved for
+  // the tables that are long today - eight rows is enough for the controls to earn
+  // their place, and a list of eight is a list of eighty next term.
+  const FILTER_FROM = 8;
+
+  // A column is worth a picker when its values repeat: a handful of distinct values
+  // across many rows is a status or a category. Many distinct values is a name or an
+  // amount, where a dropdown of 300 options is worse than typing.
+  const columnFilters = React.useMemo(() => {
+    if (!filterable || safeRows.length < FILTER_FROM) return [];
+    return (headers || []).map((h, i) => {
+      const values = new Set();
+      for (const row of safeRows) {
+        const text = sortableCellText((row || [])[i]);
+        if (text !== '') values.add(text);
+        if (values.size > 12) return null;
+      }
+      if (values.size < 2 || values.size > safeRows.length * 0.6) return null;
+      return { index: i, label: typeof h === 'string' ? h : `Column ${i + 1}`, values: [...values].sort() };
+    }).filter(Boolean);
+  }, [filterable, headers, safeRows]);
+
+  const filteredRows = React.useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    const active = Object.entries(picked).filter(([, v]) => v !== '');
+    if (!needle && active.length === 0) return safeRows;
+    return safeRows.filter((row) => {
+      for (const [index, want] of active) {
+        if (sortableCellText((row || [])[Number(index)]) !== want) return false;
+      }
+      if (!needle) return true;
+      return (row || []).some((cell) => sortableCellText(cell).toLowerCase().includes(needle));
+    });
+  }, [safeRows, search, picked]);
+
   const sortedRows = React.useMemo(() => {
-    if (!sortable || sortState.index === null) return safeRows;
+    if (!sortable || sortState.index === null) return filteredRows;
     const factor = sortState.direction === 'descending' ? -1 : 1;
     // Copy before sorting: mutating the caller's array would reorder their state.
-    return [...safeRows].sort((ra, rb) => factor * compareCells(ra[sortState.index], rb[sortState.index]));
-  }, [safeRows, sortable, sortState]);
+    return [...filteredRows].sort((ra, rb) => factor * compareCells(ra[sortState.index], rb[sortState.index]));
+  }, [filteredRows, sortable, sortState]);
+
+  const isFiltered = sortedRows.length !== safeRows.length;
+  const showFilters = filterable && safeRows.length >= FILTER_FROM;
+
+  // What a download holds. The rows are already the complete set this table was
+  // given, so this is not a page: it is the table. `exportRows` lets a screen hand
+  // over plain values where its cells are drawn rather than written.
+  const showExport = exportable && safeRows.length > 0 && (headers || []).length > 0;
+  const exportColumns = React.useMemo(
+    () => (headers || []).map((h, i) => ({ key: String(i), label: typeof h === 'string' ? h : `Column ${i + 1}` })),
+    [headers],
+  );
+
+  // WHAT A DOWNLOAD HOLDS WHEN A FILTER IS ON, and it is the whole point of doing the
+  // filtering here. A file that quietly holds the whole list when the screen was
+  // filtered is the same fault as a short file, in the other direction: somebody
+  // narrows to one class, downloads, and files a document about the whole school
+  // under that class's name.
+  //
+  // `exportRows` is a screen's plain-value copy of the same rows, so it is followed
+  // by POSITION while a filter is on. If a screen ever hands over a differently sized
+  // list, the positions do not line up and the safe answer is the rows on screen,
+  // which are the ones the person is actually looking at.
+  const parallelExport = exportRows && exportRows.length === safeRows.length ? exportRows : null;
+  const downloadRows = React.useCallback(
+    async () => {
+      let source;
+      if (!isFiltered) {
+        source = exportRows || sortedRows;
+      } else if (parallelExport) {
+        source = sortedRows.map((row) => parallelExport[safeRows.indexOf(row)] || row);
+      } else {
+        source = sortedRows;
+      }
+      return source.map(
+        (row) => Object.fromEntries((row || []).map((cell, i) => [String(i), sortableCellText(cell)])),
+      );
+    },
+    [exportRows, sortedRows, isFiltered, parallelExport, safeRows],
+  );
 
   const toggleSort = (i) => setSortState((prev) => (
     prev.index === i
@@ -323,14 +445,99 @@ export function DataTable({ title, headers, rows, emptyMsg = 'No data found', ac
 
   return (
     <div className="responsive-table-card" style={{ background: bg, border: `1px solid ${border}`, borderRadius: 14, overflow: 'hidden', marginBottom: 16 }}>
-      {(title || actions) && (
-        <div style={{ padding: '12px 18px', borderBottom: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {(title || actions || showExport) && (
+        <div className="tool-header-row" style={{ padding: '12px 18px', borderBottom: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           {title && <span style={{ fontWeight: 600, fontSize: 14, color: hc, letterSpacing: '-0.01em' }}>{title}</span>}
-          {actions && <div>{actions}</div>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            {actions && <div>{actions}</div>}
+            {showExport && (
+              <ExportButton
+                title={title || 'Export'}
+                testId={`${tableId}-export`}
+                getRows={downloadRows}
+                columns={exportColumns}
+              />
+            )}
+          </div>
+        </div>
+      )}
+      {showFilters && (
+        <div
+          className="tool-filter-row"
+          data-testid={`${tableId}-filters`}
+          style={{
+            padding: '10px 18px', borderBottom: `1px solid ${border}`,
+            display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          }}
+        >
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            data-testid={`${tableId}-search`}
+            aria-label={`Search ${title || 'this table'}`}
+            placeholder="Search this table"
+            style={{
+              // 16px so a phone does not zoom the page in when the field is tapped.
+              // That magnification is exactly what the owner reported on 6 August.
+              flex: '1 1 180px', maxWidth: 260, fontSize: 16, padding: '8px 12px',
+              minHeight: 40, borderRadius: 8, border: `1px solid ${border}`,
+              background: bg, color: hc, outline: 'none',
+            }}
+          />
+          {columnFilters.map((f) => (
+            <select
+              key={f.index}
+              value={picked[f.index] || ''}
+              onChange={(e) => setPicked((p) => ({ ...p, [f.index]: e.target.value }))}
+              data-testid={`${tableId}-filter-${f.index}`}
+              aria-label={`Filter by ${f.label}`}
+              style={{
+                fontSize: 16, padding: '8px 10px', minHeight: 40, borderRadius: 8,
+                border: `1px solid ${border}`, background: bg, color: hc, outline: 'none',
+              }}
+            >
+              <option value="">All {f.label.toLowerCase()}</option>
+              {f.values.map((v) => <option key={v} value={v}>{v}</option>)}
+            </select>
+          ))}
+          {/* THE COUNT IS ALWAYS VISIBLE. This whole release is about a query that
+              quietly returns less than it should, and a filter is the one control
+              whose entire job is to return less. Saying "24 of 1,876" is what stops
+              a narrowed screen from being read, or downloaded, as the whole list. */}
+          <span
+            aria-live="polite"
+            data-testid={`${tableId}-filter-count`}
+            style={{ fontSize: 12, color: 'var(--color-text-muted)', marginLeft: 'auto' }}
+          >
+            {isFiltered
+              ? `Showing ${sortedRows.length.toLocaleString('en-IN')} of ${safeRows.length.toLocaleString('en-IN')}`
+              : `${safeRows.length.toLocaleString('en-IN')} rows`}
+          </span>
+          {isFiltered && (
+            <button
+              type="button"
+              onClick={() => { setSearch(''); setPicked({}); }}
+              data-testid={`${tableId}-filter-clear`}
+              style={{
+                background: 'none', border: 'none', padding: '8px 4px', minHeight: 40,
+                cursor: 'pointer', color: 'var(--color-accent-blue)', font: 'inherit', fontSize: 12,
+              }}
+            >
+              Clear
+            </button>
+          )}
         </div>
       )}
       {loading && safeRows.length === 0 ? (
         <LoadingCard />
+      ) : sortedRows.length === 0 && safeRows.length > 0 ? (
+        // A filtered-to-nothing table must not say "No data found". That reads as an
+        // empty school rather than a narrow filter, which is this release's fault in
+        // miniature.
+        <div data-testid={`${tableId}-no-match`} style={{ padding: 36, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 13 }}>
+          Nothing here matches that filter. {safeRows.length.toLocaleString('en-IN')} rows are hidden.
+        </div>
       ) : safeRows.length === 0 ? (
         <div style={{ padding: 36, textAlign: 'center', color: isDark ? 'var(--color-text-muted)' : 'var(--color-text-muted)', fontSize: 13 }}>{emptyMsg}</div>
       ) : (
@@ -476,7 +683,11 @@ export function ActionBtn({ label, onClick, variant = 'primary', icon, disabled,
   const s = styles[variant] || styles.primary;
   return (
     <button type={type} onClick={onClick} disabled={disabled} data-testid={testId} aria-busy={ariaBusy} style={{
-      ...s, ...extraStyle, borderRadius: 10, padding: '8px 16px', fontSize: 13, fontWeight: 600,
+      // `minHeight: 40` comes BEFORE the spread of `extraStyle` deliberately, so a
+      // screen that has its own reason to be taller still wins. What it stops is a
+      // control coming out SHORTER than a thumb can reliably hit, which the phone
+      // sweep found on Add Student, Add Staff and Load defaulters (Release 3, item E).
+      ...s, minHeight: 40, ...extraStyle, borderRadius: 10, padding: '8px 16px', fontSize: 13, fontWeight: 600,
       cursor: disabled ? 'not-allowed' : 'pointer', display: 'inline-flex',
       alignItems: 'center', gap: 6, opacity: disabled ? 0.5 : 1,
       transition: 'all var(--transition-fast)', letterSpacing: '-0.01em',

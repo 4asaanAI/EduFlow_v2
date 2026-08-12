@@ -52,6 +52,14 @@ CORE_TOOL_NAMES = frozenset({
     "get_timetable",
     "create_announcement",
     "draft_document",
+    # CORE on purpose, 2026-08-12, on Abhimanyu's instruction that a person who asks
+    # for records in Excel gets ALL of them. Everything else in this file is a token
+    # trade; this one is a correctness guard. If Flo has to go and look this tool up,
+    # the failure when it does not bother is silent and bad: it falls back to
+    # `draft_document` and builds a sheet out of the rows already in the conversation,
+    # which is short, looks complete, and gets filed as a record. Keeping it always
+    # described means Flo cannot forget the honest option exists.
+    "export_data_file",
     "get_smart_alerts",
     # Sending to families is high-stakes and frequently asked for by name; keeping it
     # core means Flo can never "forget" it exists mid-conversation.
@@ -77,6 +85,22 @@ _SYNONYMS = {
     "library": ("get_library_status",),
     "house": ("get_house_standings", "award_house_points"),
     "certificate": ("draft_document",),
+    # Release 3, 2026-08-12. The everyday words for "give me the whole list as a file"
+    # must reach the tool that READS every row, never the one that formats the rows
+    # already in the conversation. Getting this wrong produces a short spreadsheet
+    # with nothing on it to say so, which is the fault the release exists to remove.
+    "excel": ("export_data_file", "export_whole_school_workbook"),
+    "spreadsheet": ("export_data_file", "export_whole_school_workbook"),
+    "download": ("export_data_file", "export_whole_school_workbook"),
+    "export": ("export_data_file", "export_whole_school_workbook"),
+    "xlsx": ("export_data_file",),
+    "sheet": ("export_data_file", "draft_document"),
+    "csv": ("export_data_file",),
+    # "everything" and "whole school" are how somebody asks for the one file with
+    # every area in it. They must not land on the single-data-set tool, which would
+    # answer "everything" with one sheet and look like it had complied.
+    "everything": ("export_whole_school_workbook",),
+    "backup": ("export_whole_school_workbook",),
     "visitor": ("log_visitor",),
     "complaint": ("query_incidents", "update_incident_status"),
     "incident": ("query_incidents", "update_incident_status"),

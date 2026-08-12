@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, field_validator
 from pymongo.errors import DuplicateKeyError
 
+from pagination import clamp_page, clamp_page_size
 from database import get_db
 from middleware.auth import require_school_staff
 from services.sse import (
@@ -491,7 +492,7 @@ async def list_messages(
 ):
     db = get_db()
     await _thread_for_member(db, thread_id, user)
-    limit = min(max(limit, 1), 100)
+    limit = clamp_page_size(limit)
     query = {"thread_id": thread_id}
     if before:
         query["created_at"] = {"$lt": before}

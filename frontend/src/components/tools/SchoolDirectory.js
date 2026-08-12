@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useUser } from '../../contexts/UserContext';
-import { getStaff, getStudents } from '../../lib/api';
+import { getAllClasses, getStaff, getStudents, STAFF_PAGE_MAX, STUDENTS_PAGE_MAX } from '../../lib/api';
+import { fetchAllRows } from '../../lib/fetchAllRows';
+import { collectAllRows } from '../../lib/exportTable';
 import { EnrolmentBadge } from '../ui/EnrolmentControls';
 import { readState } from '../../lib/enrolmentStates';
 import DataTable, { cellValue } from '../ui/DataTable';
-import { useTablePageSize } from '../../hooks/useTablePrefs';
+import WholeSchoolExportButton from '../ui/WholeSchoolExportButton';
+import { ALL_ROWS, useTablePageSize } from '../../hooks/useTablePrefs';
 import { ArrowRight, RefreshCw, Search, Users } from 'lucide-react';
 
 // ─── The school's own staff vocabulary (Epic 7, owner decision 2026-07-23) ──────
@@ -100,6 +103,13 @@ export default function SchoolDirectory() {
         <div style={{ color: 'var(--c-faint)', fontSize: 12, marginTop: 3 }}>
           Find any person in the school - students and staff, in one place.
         </div>
+        {/* The whole school as one workbook. It lives here because this is the screen
+            about the school's own records, and it hides itself for anyone but the
+            owner and the principal. The server refuses them too - the hiding is a
+            courtesy, not the rule. */}
+        <div style={{ marginTop: 12 }}>
+          <WholeSchoolExportButton user={currentUser} />
+        </div>
       </div>
 
       {/* Tabs - reflected in the URL */}
@@ -164,6 +174,13 @@ function StudentsTab({ user, onOpen, onOpenFullScreen }) {
   // so it needs to be searchable. The search goes to the SERVER, not to the rows
   // already on screen, or it would only ever find people on the current page.
   const [search, setSearch] = useState('');
+  // Release 3, item C. Search alone is not a filter: it finds a child you can already
+  // name. A class filter is how somebody works THROUGH a group - the register for 5 A,
+  // the fee chase for 6 B - and 1,876 children is far past what anyone reads by hand.
+  // It goes to the SERVER for the same reason the search does: filtering the rows on
+  // screen would narrow one page and quietly hide the rest.
+  const [classId, setClassId] = useState('');
+  const [classList, setClassList] = useState([]);
   // Keyed per tab so sizing students does not resize staff (UX-DR10).
   const [pageSize, setPageSize] = useTablePageSize('directory-students');
   const changeSort = useCallback((next) => { setSort(next); setPage(1); }, []);
@@ -173,7 +190,19 @@ function StudentsTab({ user, onOpen, onOpenFullScreen }) {
     setLoading(true);
     setError('');
     try {
-      const res = await getStudents({ page, sort, limit: pageSize, ...(search ? { search } : {}) });
+      // "All" is a sentinel (-1), never a limit to send. Passed through, every
+      // server clamps it with max(1, ...) and answers with a SINGLE ROW.
+      if (pageSize === ALL_ROWS) {
+        const all = await fetchAllRows(
+          ({ page: cursor, limit }) => getStudents({ page: cursor, sort, limit, ...(search ? { search } : {}), ...(classId ? { class_id: classId } : {}) }),
+          { pageMax: STUDENTS_PAGE_MAX },
+        );
+        if (all.success) { setRows(all.data); setTotal(all.total); }
+        else { setError(all.detail || 'Unable to load students'); }
+        setLoading(false);
+        return;
+      }
+      const res = await getStudents({ page, sort, limit: pageSize, ...(search ? { search } : {}), ...(classId ? { class_id: classId } : {}) });
       if (res.success) {
         setRows(res.data || []);
         setTotal(res.meta?.total || 0);
@@ -184,7 +213,25 @@ function StudentsTab({ user, onOpen, onOpenFullScreen }) {
       setError(err.message || 'Unable to load students');
     }
     setLoading(false);
-  }, [page, sort, pageSize, search]);
+  }, [page, sort, pageSize, search, classId]);
+
+  // The class list for the filter. Loaded once; it does not change while somebody
+  // is looking at the directory.
+  useEffect(() => {
+    getAllClasses().then((r) => { if (r.success) setClassList(r.data || []); }).catch(() => {});
+  }, []);
+
+  // The download takes BOTH FILTERS with it. Someone who has narrowed to 5 A and
+  // searched for "Sharma" and presses Download means those children, not all 1,876 -
+  // and a file that quietly holds the whole roll instead is as wrong as one that
+  // holds a page, and worse, because it leaves the building under the wrong name.
+  const exportRows = useCallback(
+    () => collectAllRows(
+      ({ page: cursor, limit }) => getStudents({ page: cursor, sort, limit, ...(search ? { search } : {}), ...(classId ? { class_id: classId } : {}) }),
+      { pageMax: STUDENTS_PAGE_MAX, what: 'students' },
+    ),
+    [sort, search, classId],
+  );
 
   useEffect(() => { load(); }, [load]);
 
@@ -204,15 +251,20 @@ function StudentsTab({ user, onOpen, onOpenFullScreen }) {
     // payload - it loads with the profile - so it is deliberately not a column
     // here rather than a column that always reads "not recorded". Sort is
     // server-side (sortKey: 'class').
-    { key: 'class', label: 'Class', sortKey: 'class', render: (s) => (s.class_info ? `${s.class_info.name}-${s.class_info.section}` : cellValue(null)) },
-    { key: 'roll', label: 'Roll', render: (s) => cellValue(s.roll_number) },
-    { key: 'phone', label: 'Phone', render: (s) => cellValue(s.primary_phone) },
+    // `exportValue` wherever the cell is drawn from something other than a field of
+    // the same name. Without it the column reads correctly on screen and comes out
+    // BLANK in the downloaded file, which nobody would think to check.
+    { key: 'class', label: 'Class', sortKey: 'class', exportValue: (s) => (s.class_info ? `${s.class_info.name}-${s.class_info.section}` : ''), render: (s) => (s.class_info ? `${s.class_info.name}-${s.class_info.section}` : cellValue(null)) },
+    { key: 'roll', label: 'Roll', exportValue: (s) => s.roll_number, render: (s) => cellValue(s.roll_number) },
+    { key: 'phone', label: 'Phone', exportValue: (s) => s.primary_phone, render: (s) => cellValue(s.primary_phone) },
     { key: 'house', label: 'House', sortKey: 'house', render: (s) => cellValue(s.house) },
     // Owner request 10: the Directory is the single place now, so it has to say
     // whether somebody is on the roll, on the NSO list, or has left.
-    { key: 'status', label: 'Status', render: (s) => <EnrolmentBadge state={readState(s)} /> },
+    { key: 'status', label: 'Status', exportValue: (s) => readState(s), render: (s) => <EnrolmentBadge state={readState(s)} /> },
     {
       key: 'open', label: '',
+      // A link, not data.
+      exportSkip: true,
       render: () => (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--tool-hex-4f8ff7)', fontSize: 12 }}>
           Open <ArrowRight size={12} />
@@ -238,6 +290,18 @@ function StudentsTab({ user, onOpen, onOpenFullScreen }) {
             style={{ ...selectStyle, paddingLeft: 32, width: '100%' }}
           />
         </div>
+        <select
+          data-testid="directory-students-class"
+          value={classId}
+          onChange={(e) => { setClassId(e.target.value); setPage(1); }}
+          aria-label="Filter students by class"
+          style={selectStyle}
+        >
+          <option value="">All classes</option>
+          {classList.map((c) => (
+            <option key={c.id} value={c.id}>{`${c.name || ''} ${c.section || ''}`.trim()}</option>
+          ))}
+        </select>
         <select
           data-testid="directory-students-sort"
           value={sort}
@@ -271,6 +335,7 @@ function StudentsTab({ user, onOpen, onOpenFullScreen }) {
         pageSize={pageSize}
         onPageChange={setPage}
         onPageSizeChange={changePageSize}
+        exportTable={{ title: 'Students', getRows: exportRows }}
         emptyTitle="No students found"
         emptyMessage="Try a different sort."
       />
@@ -296,6 +361,16 @@ function StaffTab({ onOpen, onOpenFullScreen }) {
     setLoading(true);
     setError('');
     try {
+      if (pageSize === ALL_ROWS) {
+        const all = await fetchAllRows(
+          ({ page: cursor, limit }) => getStaff({ page: cursor, sort, limit, ...(search ? { search } : {}) }),
+          { pageMax: STAFF_PAGE_MAX },
+        );
+        if (all.success) { setRows(all.data); setTotal(all.total); }
+        else { setError(all.detail || 'Unable to load staff'); }
+        setLoading(false);
+        return;
+      }
       const res = await getStaff({ page, sort, limit: pageSize, ...(search ? { search } : {}) });
       if (res.success) {
         setRows(res.data || []);
@@ -309,6 +384,14 @@ function StaffTab({ onOpen, onOpenFullScreen }) {
     setLoading(false);
   }, [page, sort, pageSize, search]);
 
+  const exportRows = useCallback(
+    () => collectAllRows(
+      ({ page: cursor, limit }) => getStaff({ page: cursor, sort, limit, ...(search ? { search } : {}) }),
+      { pageMax: STAFF_PAGE_MAX, what: 'staff' },
+    ),
+    [sort, search],
+  );
+
   useEffect(() => { load(); }, [load]);
 
   const columns = useMemo(() => [
@@ -321,13 +404,14 @@ function StaffTab({ onOpen, onOpenFullScreen }) {
         </div>
       ),
     },
-    { key: 'designation', label: 'Designation', sortKey: 'designation', render: (p) => <DesignationCell profile={p} /> },
+    { key: 'designation', label: 'Designation', sortKey: 'designation', exportValue: (p) => p.designation, render: (p) => <DesignationCell profile={p} /> },
     { key: 'department', label: 'Department', sortKey: 'department', render: (p) => cellValue(p.department) },
     { key: 'phone', label: 'Phone', render: (p) => cellValue(p.phone) },
     { key: 'email', label: 'Email', render: (p) => cellValue(p.email) },
-    { key: 'status', label: 'Status', render: (p) => <EnrolmentBadge state={readState(p)} /> },
+    { key: 'status', label: 'Status', exportValue: (p) => readState(p), render: (p) => <EnrolmentBadge state={readState(p)} /> },
     {
       key: 'open', label: '',
+      exportSkip: true,
       render: () => (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--tool-hex-4f8ff7)', fontSize: 12 }}>
           Open <ArrowRight size={12} />
@@ -399,6 +483,7 @@ function StaffTab({ onOpen, onOpenFullScreen }) {
         pageSize={pageSize}
         onPageChange={setPage}
         onPageSizeChange={changePageSize}
+        exportTable={{ title: 'Staff', getRows: exportRows }}
         emptyTitle="No staff found"
         emptyMessage="Try a different sort."
       />

@@ -13,6 +13,7 @@ Usage:
 
 import os
 import asyncio
+import itertools
 import pytest
 import pytest_asyncio
 from pathlib import Path
@@ -889,11 +890,29 @@ def auth_headers(auth_token) -> dict:
 
 # ─── Test data factories ───────────────────────────────────────────────────
 
+# A counter, not a random number, and the difference is not stylistic.
+#
+# THE DEFECT THIS CLOSES (nightly CI on main was red on 10, 11 and 12 August 2026).
+# Both factories below used `random.randint(1000, 9999)` for the identity fields, and
+# `fake_db` is shared for the WHOLE test session with nothing clearing it between
+# tests. So every staff record ever created in a run piles up in one database, and two
+# draws landing on the same four digits produce the same email, phone and employee ID.
+# The second create is then correctly refused with "that login already belongs to Test
+# Teacher 7011", and a test that was testing something else entirely fails.
+#
+# It was a coin toss, not a constant failure - about forty creations out of nine
+# thousand possible numbers - which is the worst kind of red build: it passes often
+# enough that people start re-running it instead of reading it.
+#
+# A counter cannot collide. It also makes a failure message say which record was the
+# eleventh one created, which a random number never did.
+_FACTORY_SEQUENCE = itertools.count(1)
+
+
 @pytest.fixture
 def student_data() -> dict:
     """Build a minimal student payload for POST /api/students."""
-    import random
-    suffix = random.randint(1000, 9999)
+    suffix = next(_FACTORY_SEQUENCE)
     return {
         "name": f"Test Student {suffix}",
         "class_id": "class-1",
@@ -907,8 +926,7 @@ def student_data() -> dict:
 @pytest.fixture
 def staff_data() -> dict:
     """Build a minimal staff payload for POST /api/staff."""
-    import random
-    suffix = random.randint(1000, 9999)
+    suffix = next(_FACTORY_SEQUENCE)
     return {
         "name": f"Test Teacher {suffix}",
         "role": "teacher",

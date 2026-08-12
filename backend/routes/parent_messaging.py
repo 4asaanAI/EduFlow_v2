@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
+from pagination import clamp_page, clamp_page_size
 from database import get_db
 from middleware.auth import (
     require_owner_accountant_or_principal,
@@ -173,7 +174,7 @@ async def get_logs(request: Request, limit: int = 100, batch_id: str = "",
     q = {"schoolId": get_school_id()}
     if batch_id:
         q["batch_id"] = batch_id
-    rows = await db.message_logs.find(q, {"_id": 0}).sort("sent_at", -1).to_list(min(limit, 500))
+    rows = await db.message_logs.find(q, {"_id": 0}).sort("sent_at", -1).to_list(clamp_page_size(limit))
     return {"success": True, "data": rows, "meta": {"count": len(rows)}}
 
 

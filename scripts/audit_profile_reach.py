@@ -114,6 +114,25 @@ def _allows(guard: str, role: str, sub: str):
     m = re.match(r"require_owner_or_subs\((.*)\)$", guard)
     if m:
         return role == "owner" or (role == "admin" and sub in m.group(1).split(","))
+    # Release 3: the export gates are derived from the permission table rather than
+    # re-stated as role names, so this asks the table the same question the route
+    # does instead of keeping a second copy of the answer here.
+    m = re.match(r"require_export\((.*)\)$", guard)
+    if m:
+        from routes.exports import EXPORT_EXTRA_ROLES, EXPORT_SCREENS
+        from services import profile_matrix
+
+        key = m.group(1)
+        user = {"role": role, "sub_category": sub}
+        profile = profile_matrix.profile_of(user)
+        if profile:
+            if profile_matrix.PROFILE_MATRIX[profile]["status"] != "live":
+                return False
+            return any(
+                profile_matrix.may_open_screen(user, s)
+                for s in EXPORT_SCREENS.get(key, ())
+            )
+        return role in EXPORT_EXTRA_ROLES.get(key, ())
     fixed = {
         "require_owner": lambda: role == "owner",
         "require_owner_or_principal": lambda: role == "owner" or (role == "admin" and sub == "principal"),

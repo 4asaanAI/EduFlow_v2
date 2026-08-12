@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { adminResetPassword, createStaff, deactivateStaff, decideProfileChangeRequest, eraseStaff, getPendingLeaves, getProfileChangeRequests, getStaff, getStaffEnrolmentSummary, getStaffMember, setStaffEnrolment, subscribeSSE, updateLeave, updateStaff } from '../../lib/api';
+import { adminResetPassword, createStaff, deactivateStaff, decideProfileChangeRequest, eraseStaff, getPendingLeaves, getProfileChangeRequests, getStaff, getStaffEnrolmentSummary, getStaffMember, setStaffEnrolment, STAFF_PAGE_MAX, subscribeSSE, updateLeave, updateStaff } from '../../lib/api';
 import {
   EnrolmentBadge,
   EnrolmentStateModal,
@@ -15,7 +15,9 @@ import { Pill } from '../ui/primitives';
 import { useUser } from '../../contexts/UserContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import DataTable, { cellValue } from '../ui/DataTable';
-import { useTablePageSize } from '../../hooks/useTablePrefs';
+import { ALL_ROWS, useTablePageSize } from '../../hooks/useTablePrefs';
+import { fetchAllRows } from '../../lib/fetchAllRows';
+import { collectAllRows } from '../../lib/exportTable';
 
 const blankForm = {
   name: '',
@@ -112,7 +114,9 @@ function ActionButton({ children, onClick, disabled, variant = 'primary', type =
       onClick={onClick}
       disabled={disabled}
       style={{
-        minHeight: 38,
+        // 40px, the platform's thumb floor. Phone and tablet are the primary
+        // devices; the phone sweep in Release 3 item E found this one short.
+        minHeight: 40,
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -491,17 +495,23 @@ export default function StaffTracker() {
     setLeavesLoading(true);
     setError('');
     try {
+      // "All" is a sentinel (-1), never a limit to send: the server clamps it
+      // with max(1, ...) and answers with a SINGLE colleague. Walk the pages.
+      const staffQuery = { sort, enrolment_state: enrolmentView, ...(search ? { search } : {}) };
+      const staffFetch = pageSize === ALL_ROWS
+        ? fetchAllRows(
+            ({ page: cursor, limit }) => getStaff({ ...staffQuery, page: cursor, limit }),
+            { pageMax: STAFF_PAGE_MAX },
+          ).then((all) => (all.success
+            ? { success: true, data: all.data, meta: { total: all.total } }
+            : { success: false, detail: all.detail }))
+        : getStaff({ ...staffQuery, page, limit: pageSize });
+
       const [staffRes, leavesRes, requestsRes] = await Promise.all([
         // The page size goes to the API so the SERVER paginates (UX-DR10). The view
         // and the search term go the same way, so the answer is the whole school's
         // worth of matches rather than whatever happened to be on this page.
-        getStaff({
-          page,
-          sort,
-          limit: pageSize,
-          enrolment_state: enrolmentView,
-          ...(search ? { search } : {}),
-        }),
+        staffFetch,
         getPendingLeaves().catch(() => ({ data: [] })),
         canReviewChanges ? getProfileChangeRequests('pending').catch(() => ({ data: [] }))
                          : Promise.resolve({ data: [] }),
@@ -520,6 +530,18 @@ export default function StaffTracker() {
     setLoading(false);
     setLeavesLoading(false);
   }, [page, sort, pageSize, canReviewChanges, enrolmentView, search]);
+
+  // The download carries the view (on the roll, off it) and the search box with it,
+  // so the file matches the screen rather than quietly holding everyone.
+  const exportRows = useCallback(
+    () => collectAllRows(
+      ({ page: cursor, limit }) => getStaff({
+        sort, enrolment_state: enrolmentView, ...(search ? { search } : {}), page: cursor, limit,
+      }),
+      { pageMax: STAFF_PAGE_MAX, what: 'staff' },
+    ),
+    [sort, enrolmentView, search],
+  );
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -697,6 +719,7 @@ export default function StaffTracker() {
             pageSize={pageSize}
             onPageChange={setPage}
             onPageSizeChange={changePageSize}
+            exportTable={{ title: 'Staff', getRows: exportRows }}
             emptyTitle={enrolmentView === OFF_ROLL_VIEW ? 'The recycle bin is empty' : 'No staff records found'}
             emptyMessage={enrolmentView === OFF_ROLL_VIEW
               ? 'Nobody has been taken off the staff roll. Anyone moved to NSO or marked as having left will appear here, and can be put back.'

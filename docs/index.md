@@ -48,7 +48,7 @@ _Generated: 2026-05-15 | Mode: initial_scan | Scan level: deep_
 
 ### Development Guides
 - [Development Guide - Backend](./development-guide-backend.md) - Python setup, env vars, running tests, migrations, code conventions
-- [Development Guide - Frontend](./development-guide-frontend.md) - Node/Yarn setup, path aliases, adding tools/API calls, shadcn/ui usage
+- [Development Guide - Frontend](./development-guide-frontend.md) - Node/Yarn setup, path aliases, adding tools/API calls, shadcn/ui usage, and **tables: filters, downloads, "All", and the phone/tablet floors** (Release 3)
 
 ---
 

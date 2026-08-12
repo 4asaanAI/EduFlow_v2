@@ -615,6 +615,46 @@ export default function ExamManager() {
             const subjects = restrictToOwn ? allSubjects.filter(s => s.can_edit) : allSubjects;
             const showTotal = !restrictToOwn;
 
+            // What a download of the marks grid holds. Built from the same values the
+            // cells are drawn from - the draft where somebody has typed one, the saved
+            // result otherwise - so the file matches the screen rather than the server.
+            const markFor = (st, sub) => {
+              const key = `${st.id}|${sub.id}`;
+              const draftVal = marksDraft[key];
+              if (draftVal !== undefined && draftVal !== '') return Number(draftVal);
+              const existing = resultMap[key];
+              const saved = existing?.marks_obtained;
+              return saved === null || saved === undefined ? '' : Number(saved);
+            };
+            const marksExportColumns = [
+              { key: 'student', label: 'Student' },
+              ...subjects.map((sub) => ({
+                key: `subject_${sub.id}`,
+                // The maximum is part of the heading on screen ("/100"), and a mark
+                // without its maximum beside it is not a result anyone can read.
+                label: `${sub.name} (out of ${scheduleDraft[sub.id]?.max_marks ?? sub.max_marks ?? 100})`,
+              })),
+              ...(showTotal ? [{ key: 'total', label: 'Total' }] : []),
+            ];
+            const marksExportRows = students.map((st) => {
+              const row = { student: st.name };
+              let obtained = 0; let outOf = 0; let any = false;
+              for (const sub of subjects) {
+                const value = markFor(st, sub);
+                row[`subject_${sub.id}`] = value;
+                if (value !== '' && !Number.isNaN(value)) {
+                  obtained += value;
+                  outOf += Number(scheduleDraft[sub.id]?.max_marks) || sub.max_marks || 100;
+                  any = true;
+                }
+              }
+              // A child with nothing entered gets a blank total, not a zero. A zero is
+              // a mark somebody scored; a blank is a paper not yet entered, and a
+              // report that confuses the two accuses a child of failing.
+              row.total = any ? `${obtained} / ${outOf}` : '';
+              return row;
+            });
+
             const updateMark = (sid, subId, val) => {
               if (val !== '' && !/^\d*\.?\d*$/.test(val)) return;
               setMarksDraft(d => ({ ...d, [`${sid}|${subId}`]: val }));
@@ -651,9 +691,26 @@ export default function ExamManager() {
                     <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
                       <Calendar size={14} color="#4f8ff7" /> Datesheet & Max Marks
                     </span>
-                    {canEdit && (
-                      <Btn label={savingSchedule ? 'Saving…' : 'Save Datesheet'} icon={<Save size={13} />} size="sm" onClick={handleSaveSchedule} disabled={savingSchedule} />
-                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                      {canEdit && (
+                        <Btn label={savingSchedule ? 'Saving…' : 'Save Datesheet'} icon={<Save size={13} />} size="sm" onClick={handleSaveSchedule} disabled={savingSchedule} />
+                      )}
+                      {subjects.length > 0 && (
+                        <ExportButton
+                          title={`Datesheet ${selectedClass?.name || ''}`.trim()}
+                          testId="datesheet-export"
+                          columns={DATESHEET_EXPORT_COLUMNS}
+                          // What is ON SCREEN, unsaved edits included. Someone who has
+                          // typed the dates in and downloads before pressing Save must
+                          // get what they are looking at, not the older saved copy.
+                          getRows={async () => subjects.map((sub) => ({
+                            name: sub.name,
+                            exam_date: scheduleDraft[sub.id]?.exam_date ?? sub.exam_date ?? '',
+                            max_marks: Number(scheduleDraft[sub.id]?.max_marks ?? sub.max_marks ?? 100),
+                          }))}
+                        />
+                      )}
+                    </div>
                   </div>
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -704,9 +761,24 @@ export default function ExamManager() {
                     <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
                       <BarChart2 size={14} color="#34d399" /> Marks - {students.length} student{students.length === 1 ? '' : 's'}
                     </span>
-                    {canEdit && (
-                      <Btn label={savingMarks ? 'Saving…' : 'Save Marks'} icon={<Save size={13} />} size="sm" onClick={handleSaveMarks} disabled={savingMarks} />
-                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                      {canEdit && (
+                        <Btn label={savingMarks ? 'Saving…' : 'Save Marks'} icon={<Save size={13} />} size="sm" onClick={handleSaveMarks} disabled={savingMarks} />
+                      )}
+                      {students.length > 0 && (
+                        <ExportButton
+                          title={`Marks ${selectedClass?.name || ''}`.trim()}
+                          testId="exam-marks-export"
+                          // One column per subject, so the columns are built from the
+                          // subjects this person may actually see. A teacher who only
+                          // teaches two subjects gets a file with two subject columns,
+                          // exactly as the screen shows them - the download must not be
+                          // the way round the privacy rule the grid enforces.
+                          columns={marksExportColumns}
+                          getRows={async () => marksExportRows}
+                        />
+                      )}
+                    </div>
                   </div>
                   {saveMsg && (
                     <div style={{ marginBottom: 10, fontSize: 12, color: saveMsg.toLowerCase().includes('fail') || saveMsg.toLowerCase().includes('error') || saveMsg.toLowerCase().includes('skipped') ? '#f87171' : '#34d399', fontWeight: 600 }}>

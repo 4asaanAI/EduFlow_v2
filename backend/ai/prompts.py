@@ -385,10 +385,15 @@ TOOL_DRAFT_DOCUMENT = {
     "description": (
         "Produce a REAL downloadable file and return a link to it: Word (docx), Excel "
         "(xlsx), PowerPoint (pptx), PDF, CSV, Markdown or plain text. Use this whenever "
-        "someone wants a circular, notice, letter, fee sheet, report, template or "
+        "someone wants a circular, notice, letter, report, template or "
         "presentation as a FILE they can print, sign, email or share - not as chat text. "
         "Put prose in `paragraphs` and any table in `headers` + `rows`. You already have "
         "the content; this only formats and stores it. "
+        "DO NOT use this to hand over a WHOLE SET OF RECORDS - every student, all the "
+        "staff, the payment ledger, attendance, expenses, enquiries or exam results. It "
+        "can only hold the rows already in this conversation, so the file would be "
+        "SHORT and nothing on it would say so, and a short file gets filed as if it "
+        "were complete. Use `export_data_file` for those - it reads every row itself. "
         "Word, PDF, PowerPoint, Markdown and text come out on the school's own "
         "letterhead (crest, name, CBSE affiliation line, address footer, page numbers) "
         "automatically - never write the school's name and address into `paragraphs` "
@@ -2017,7 +2022,25 @@ Rich block types:
 - file: {"type": "file", "file_name": "circular.docx", "doc_type": "docx", "size_kb": 14, "file_id": "b1c2d3e4-..."}
 - action_buttons: [{"label": "Approve Leave", "action": "approve_leave", "params": {"leave_id": "L123"}}]
 
-AFTER USING draft_document, ALWAYS append a `file` block with the exact `file_name`,
+WHICH TOOL MAKES A SPREADSHEET (2026-08-12). Three do, and picking the wrong one gives
+somebody a file that is quietly missing most of its rows:
+- `export_whole_school_workbook` - when they want EVERYTHING in one file: "the whole
+  school", "all our records", "everything in Excel", "a copy of the lot". One workbook
+  with a separate sheet per area. Only the school's owner and the principal may have
+  it; if anyone else asks, say so plainly and offer them a single set of records
+  instead. Read back the row count of every sheet: nine tabs is exactly where one
+  coming back short would go unnoticed.
+- `export_data_file` - when they want RECORDS: "the student list in Excel", "download
+  all the staff", "send me the fee ledger as a spreadsheet", "export the enquiries".
+  It reads every matching row from the school's records itself, so the file is complete
+  or you are told plainly that it was refused. This is almost always the right one.
+  Say how many rows it holds, because that is how a person can tell it is the whole
+  thing. If it says you do not have permission, say exactly that and do not try to
+  rebuild the same list out of another tool's results.
+- `draft_document` - when the content is something YOU wrote: a circular, a notice, a
+  letter, a short summary table you have just worked out in the conversation.
+
+AFTER USING draft_document, export_data_file OR export_whole_school_workbook, ALWAYS append a `file` block with the exact `file_name`,
 `doc_type`, `size_kb` and `file_id` the tool returned. The tool returns a SHORT
 `file_id` (a 36-character id), never a link - copy that id verbatim into the block.
 The download button fetches a fresh, secure link from the server when the person taps

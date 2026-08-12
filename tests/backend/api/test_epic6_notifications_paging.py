@@ -10,6 +10,7 @@ panel needs.
 import pytest
 
 from middleware.auth import create_jwt
+from pagination import MAX_PAGE_SIZE
 
 SCHOOL_ID = "aaryans-joya"
 
@@ -167,12 +168,32 @@ def test_include_digest_false_never_invents_an_all_good_row(client, auth_headers
 # ── Clamping ─────────────────────────────────────────────────────────────────
 
 def test_limit_is_clamped_server_side(client, auth_headers, fake_db):
+    """Over-asking is capped, and the cap is now the platform-wide one.
+
+    Release 3, 2026-08-12: this used to be 50 while students and staff allowed
+    500, which is why the All Notifications screen could not show a person their
+    own history without ten round trips. The ceiling lives in
+    `backend/pagination.py` and is the same for every list.
+    """
     fake_db.notifications.docs.extend([_notif(i) for i in range(60)])
 
     body = client.get("/api/notifications?limit=5000&include_digest=false", headers=auth_headers).json()
 
-    assert body["meta"]["limit"] == 50
-    assert len(body["data"]) == 50
+    assert body["meta"]["limit"] == MAX_PAGE_SIZE
+    # All 60 fit inside one page now, where the old cap cut them to 50.
+    assert len(body["data"]) == 60
+
+
+def test_a_negative_limit_is_refused_rather_than_returning_one_row(client, auth_headers, fake_db):
+    """The live defect of 2026-08-12: the rows menu offered "All" as -1, this
+    endpoint computed `max(-1, 1)` = 1, and the screen showed ONE notification
+    out of the person's whole history without a word of complaint."""
+    fake_db.notifications.docs.extend([_notif(i) for i in range(60)])
+
+    resp = client.get("/api/notifications?limit=-1", headers=auth_headers)
+
+    assert resp.status_code == 400
+    assert "1 or more" in resp.json()["detail"]
 
 
 # ── Standing endpoint conventions ────────────────────────────────────────────

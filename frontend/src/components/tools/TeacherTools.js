@@ -3,7 +3,8 @@
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useUser } from '../../contexts/UserContext';
-import { API, apiFetch, getAllClasses, getAllStudents, getTodayAttendance, bulkMarkAttendance } from '../../lib/api';
+import { API, apiFetch, getAllClasses, getTodayAttendance, bulkMarkAttendance } from '../../lib/api';
+import PeopleLoadNotice, { loadStudentsInto } from '../ui/PeopleLoadNotice';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, ErrorCard } from './ToolPage';
 import { Plus, CheckCircle, Save, Bold, Underline, List } from 'lucide-react';
@@ -952,6 +953,8 @@ export function PtmNotes() {
   const [notes, setNotes] = useState([]);
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
+  // Release 3, item C: an empty picker must not be the only sign of a failed load.
+  const [studentsError, setStudentsError] = useState('');
   const [filteredStudents, setFilteredStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -969,7 +972,7 @@ export function PtmNotes() {
     if (!scopeReady(scope)) return;
     Promise.all([
       getAllClasses().then(r => { if (r.success) setClasses(filterClasses(r.data || [], scope, 'all')); }),
-      getAllStudents().then(r => { if (r.success) setStudents(r.data || []); }),
+      loadStudentsInto(setStudents, setStudentsError),
       load(),
     ]).finally(() => setLoading(false));
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1009,6 +1012,7 @@ export function PtmNotes() {
   return (
     <ToolPage title="PTM Notes" subtitle="Record parent-teacher meeting notes" loading={loading}
       actions={<ActionBtn label="New Note" onClick={openCreate} icon={<Plus size={11} />} />}>
+      <PeopleLoadNotice error={studentsError} />
       {showForm && (
         <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16, maxWidth: 520 }}>
           <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>{editingId ? 'Edit PTM Note' : 'New PTM Note'}</h3>

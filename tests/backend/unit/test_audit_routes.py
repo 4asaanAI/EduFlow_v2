@@ -170,7 +170,10 @@ def test_audit_log_rejects_invalid_pagination(client):
     page_zero = client.get("/api/audit-log?page=0", headers=headers)
     negative_limit = client.get("/api/audit-log?limit=-5", headers=headers)
 
+    # Still refused, still a 400. Release 3 moved the check into the shared
+    # `backend/pagination.py` so that every list refuses the same things the same
+    # way, which changed the wording; the assertion now pins the substance.
     assert page_zero.status_code == 400
-    assert page_zero.json()["detail"] == "page must be >= 1"
+    assert "page must be 1 or more" in page_zero.json()["detail"]
     assert negative_limit.status_code == 400
-    assert negative_limit.json()["detail"] == "limit must be between 1 and 100"
+    assert "limit must be 1 or more" in negative_limit.json()["detail"]

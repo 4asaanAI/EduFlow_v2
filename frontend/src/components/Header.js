@@ -384,7 +384,7 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               width: '100%', background: 'transparent', border: 'none',
               borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-              padding: '7px 10px', minHeight: 36,
+              padding: '7px 10px', minHeight: 40,
               fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 700,
               color: 'var(--color-accent-blue)',
             }}
@@ -521,7 +521,7 @@ export default function Header({ activeTool, onBack, canGoBack, onOpenProfile, o
                 cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
                 fontSize: 13, fontWeight: 500,
                 padding: isMobile ? '7px 8px' : '5px 10px',
-                minHeight: isMobile ? 34 : undefined,
+                minHeight: isMobile ? 40 : undefined,
                 borderRadius: 8, transition: 'var(--transition-fast)',
               }}
               onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}

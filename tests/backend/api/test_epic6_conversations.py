@@ -14,6 +14,7 @@ plausible-looking wrong implementation of the neighbouring code:
 import pytest
 
 from middleware.auth import create_jwt
+from pagination import MAX_PAGE_SIZE
 
 SCHOOL_ID = "aaryans-joya"
 
@@ -129,7 +130,8 @@ def test_limit_is_clamped_server_side(client, fake_db):
 
     body = client.get("/api/chat/conversations?limit=100000", headers=_headers(MINE)).json()
 
-    assert body["meta"]["limit"] == 100
+    # The ceiling is the platform-wide one now (Release 3), not a per-route figure.
+    assert body["meta"]["limit"] == MAX_PAGE_SIZE
 
 
 # ── Search ───────────────────────────────────────────────────────────────────

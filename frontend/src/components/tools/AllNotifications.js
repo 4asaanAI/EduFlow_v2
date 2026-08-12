@@ -21,12 +21,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCheck, ExternalLink, Inbox } from 'lucide-react';
 import { useUser } from '../../contexts/UserContext';
-import { getNotifications, markAllNotificationsRead, markNotificationRead } from '../../lib/api';
+import { getNotifications, markAllNotificationsRead, markNotificationRead, NOTIFICATIONS_PAGE_MAX } from '../../lib/api';
 import { getToolForNotification, TOOL_LABELS } from '../../lib/notifRouting';
 import NotificationDetailModal from '../NotificationDetailModal';
 import DataTable from '../ui/DataTable';
 import { Button, EmptyState, Pill } from '../ui/primitives';
-import { useTablePageSize } from '../../hooks/useTablePrefs';
+import { ALL_ROWS, useTablePageSize } from '../../hooks/useTablePrefs';
+import { fetchAllRows } from '../../lib/fetchAllRows';
+import { collectAllRows } from '../../lib/exportTable';
 
 const TONE_BY_TYPE = { info: 'blue', warning: 'yellow', success: 'green', error: 'red' };
 
@@ -68,11 +70,33 @@ export default function AllNotifications() {
     setLoading(true);
     setError('');
     try {
-      const res = await getNotifications({
-        page, limit: pageSize, sort,
+      const query = {
+        sort,
         unread_only: unreadOnly ? 'true' : undefined,
         include_digest: 'false',
-      });
+      };
+      // "All" is a sentinel (-1), never a limit to send: this server clamps with
+      // min(max(limit,1),50) and would answer with a SINGLE notification. Note the
+      // page width here is 50, not 500 - this route's cap is the tightest we have.
+      if (pageSize === ALL_ROWS) {
+        const all = await fetchAllRows(
+          ({ page: cursor, limit }) => getNotifications({ ...query, page: cursor, limit }),
+          { pageMax: NOTIFICATIONS_PAGE_MAX },
+        );
+        if (all.success) {
+          setRows(all.data);
+          setTotal(all.total);
+          // Every row is in hand, so the unread count is counted rather than taken
+          // from a page's `meta`. Leaving the previous page's figure standing here
+          // is how a badge starts disagreeing with the list beneath it.
+          setUnreadTotal(all.data.filter((n) => !n.read).length);
+        } else {
+          setError(all.detail || 'We could not load your notifications.');
+        }
+        setLoading(false);
+        return;
+      }
+      const res = await getNotifications({ ...query, page, limit: pageSize });
       if (res.success) {
         setRows(res.data || []);
         setTotal(res.meta?.total ?? 0);
@@ -85,6 +109,17 @@ export default function AllNotifications() {
     }
     setLoading(false);
   }, [page, pageSize, sort, unreadOnly]);
+
+  const exportRows = useCallback(
+    () => collectAllRows(
+      ({ page: cursor, limit }) => getNotifications({
+        sort, unread_only: unreadOnly ? 'true' : 'false', include_digest: 'false',
+        page: cursor, limit,
+      }),
+      { pageMax: NOTIFICATIONS_PAGE_MAX, what: 'notifications' },
+    ),
+    [sort, unreadOnly],
+  );
 
   useEffect(() => { load(); }, [load]);
 
@@ -110,6 +145,9 @@ export default function AllNotifications() {
   const columns = useMemo(() => [
     {
       key: 'title', label: 'Notification',
+      // The screen shows the heading and the message together. A file that held only
+      // the heading would lose the part someone actually needs to read back.
+      exportValue: (n) => [n.title, n.message].filter(Boolean).join(' - '),
       render: (n) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, maxWidth: 460 }}>
           {!n.read && (
@@ -144,10 +182,12 @@ export default function AllNotifications() {
     },
     {
       key: 'type', label: 'Kind',
+      exportValue: (n) => n.type || 'info',
       render: (n) => <Pill tone={TONE_BY_TYPE[n.type] || 'neutral'}>{n.type || 'info'}</Pill>,
     },
     {
       key: 'read', label: 'Status',
+      exportValue: (n) => (n.read ? 'Read' : 'Unread'),
       // Status carries a word, never colour alone (WCAG color-not-only).
       render: (n) => <Pill tone={n.read ? 'neutral' : 'blue'}>{n.read ? 'Read' : 'Unread'}</Pill>,
     },
@@ -157,10 +197,13 @@ export default function AllNotifications() {
       // SERVER re-orders the whole result set and hands back page 1. Ordering
       // only the rows already on screen would be a lie on 300 notifications.
       key: 'created_at', label: 'When', sortKey: 'created_at',
+      exportValue: (n) => n.created_at,
       render: (n) => formatWhen(n.created_at),
     },
     {
       key: 'go', label: '',
+      // A button, not data.
+      exportSkip: true,
       render: (n) => {
         const toolId = getToolForNotification(n, currentUser.role);
         return (
@@ -186,7 +229,7 @@ export default function AllNotifications() {
       aria-pressed={active}
       onClick={onClick}
       style={{
-        padding: '7px 14px', minHeight: 36,
+        padding: '7px 14px', minHeight: 40,
         background: active ? 'var(--color-surface-raised)' : 'transparent',
         border: `1px solid ${active ? 'var(--color-accent-blue)' : 'var(--color-border)'}`,
         borderRadius: 'var(--radius-full)',
@@ -313,6 +356,7 @@ export default function AllNotifications() {
           pageSize={pageSize}
           onPageChange={setPage}
           onPageSizeChange={changePageSize}
+          exportTable={{ title: 'Notifications', getRows: exportRows }}
         />
       )}
 

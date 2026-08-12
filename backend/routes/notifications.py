@@ -1,6 +1,7 @@
 from __future__ import annotations
 """Notifications API - Story 16: persistent in-app notifications + role-scoped digest"""
 from fastapi import APIRouter, Request, HTTPException, Depends
+from pagination import clamp_page, clamp_page_size
 from database import get_db
 from middleware.auth import get_current_user, require_role
 from services.notification_service import create_notification as create_persistent_notification
@@ -67,8 +68,9 @@ async def get_notifications(
     """
     db = get_db()
     user = get_user(request)
-    limit = min(max(limit, 1), 50)
-    skip = max(page - 1, 0) * limit
+    page = clamp_page(page)
+    limit = clamp_page_size(limit)
+    skip = (page - 1) * limit
     direction = SORT_ORDERS.get(sort, SORT_ORDERS[DEFAULT_SORT])
 
     # Persistent notifications from the notifications collection

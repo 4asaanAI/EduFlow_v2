@@ -1,5 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle, Plus, RefreshCw, UserPlus } from 'lucide-react';
+import ExportButton from '../ui/ExportButton';
+
+/**
+ * What the applications list puts in a downloaded file (Release 3, item 4).
+ *
+ * The guardian's name and phone are on the record and are the whole point of an
+ * enquiry list somebody works through, so they go in the file even though the screen
+ * shows the name only as a small line under the applicant.
+ */
+const APPLICATION_EXPORT_COLUMNS = [
+  { key: 'applicant_name', label: 'Applicant' },
+  { key: 'guardian_name', label: 'Guardian' },
+  { key: 'guardian_phone', label: 'Guardian phone' },
+  { key: 'class_label', label: 'Class' },
+  { key: 'status', label: 'Status', exportValue: (a) => (a.status || '').replace('_', ' ') },
+];
 import { API, apiFetch } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 
@@ -121,6 +137,23 @@ export default function AdmissionsWorkflow({ compact = false }) {
           </select>
           <button type="submit" disabled={busy === 'new'} style={primary}>Save draft</button>
         </form>
+      )}
+      {applications.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+          <ExportButton
+            title="Admission applications"
+            testId="applications-export"
+            columns={APPLICATION_EXPORT_COLUMNS}
+            getRows={async () => applications.map((a) => ({
+              ...a,
+              // The class name is looked up against the class list on screen, so the
+              // lookup has to happen here too. Exporting the raw class id would give
+              // the office a column of identifiers nobody can read.
+              class_label: classes.find((c) => c.id === a.class_id)?.name
+                || a.class_applying || 'Not assigned',
+            }))}
+          />
+        </div>
       )}
       <div className="responsive-table-region" style={{ overflowX: 'auto' }}>
         <table style={table}>

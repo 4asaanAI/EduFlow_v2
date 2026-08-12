@@ -260,6 +260,21 @@ export default function AttendanceRecorder() {
         ))}
       </div>
 
+      {records.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+          {/* THIS DAY's register. The icon button in the header above downloads the
+              whole MONTH, which is a different file - so both say which they are, in
+              their filename, rather than leaving somebody to work out afterwards which
+              of two downloads they are holding. */}
+          <ExportButton
+            title={`Attendance ${selectedClassLabel || ''} ${date}`.replace(/\s+/g, ' ').trim()}
+            testId="attendance-day-export"
+            columns={REGISTER_EXPORT_COLUMNS}
+            getRows={async () => recordSort.items}
+          />
+        </div>
+      )}
+
       <div className="responsive-table-region" style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
         {loading ? (
           <div style={{ padding: 36, color: 'var(--c-faint)', textAlign: 'center', fontSize: 13 }}>Loading attendance...</div>
@@ -442,8 +457,8 @@ const primaryButton = background => ({
 });
 
 const iconButton = active => ({
-  minWidth: 36,
-  minHeight: 36,
+  minWidth: 40,
+  minHeight: 40,
   display: 'grid',
   placeItems: 'center',
   background: active ? 'rgba(79,143,247,.16)' : 'transparent',

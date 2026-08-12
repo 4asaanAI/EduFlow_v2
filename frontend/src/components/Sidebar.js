@@ -771,7 +771,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
                   style={{
                     display: 'flex', alignItems: 'center', gap: 6,
                     width: 'calc(100% - 12px)', margin: '0 6px 4px',
-                    padding: '6px 8px', minHeight: 30,
+                    padding: '6px 8px', minHeight: 40,
                     background: 'transparent', border: 'none',
                     borderRadius: 'var(--radius-sm)', cursor: 'pointer',
                     fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 700,

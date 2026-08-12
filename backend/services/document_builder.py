@@ -131,16 +131,22 @@ def _validate(doc_type: str, title: str) -> None:
         raise DocumentBuildError("Title is too long (max 300 characters).")
 
 
-def _normalise_table(headers: Optional[List[Any]], rows: Optional[List[List[Any]]]):
+def _normalise_table(headers: Optional[List[Any]], rows: Optional[List[List[Any]]],
+                     max_rows: Optional[int] = None):
     """Return (headers, rows, truncated). Ragged rows are padded, not rejected -
     real data is ragged, and refusing the whole document over one short row would
-    be worse than filling a blank."""
+    be worse than filling a blank.
+
+    `max_rows` is read at CALL time, not bound as a default. Binding it would freeze
+    MAX_ROWS at import and quietly break every test and every caller that changes the
+    constant - which is exactly what happened when this argument was first added."""
+    max_rows = MAX_ROWS if max_rows is None else max_rows
     hdrs = [_clean_cell(h) for h in (headers or [])][:MAX_COLUMNS]
     raw = rows or []
-    truncated = len(raw) > MAX_ROWS
+    truncated = len(raw) > max_rows
     out: List[List[str]] = []
     width = len(hdrs)
-    for row in raw[:MAX_ROWS]:
+    for row in raw[:max_rows]:
         if not isinstance(row, (list, tuple)):
             row = [row]
         cells = [_clean_cell(c) for c in row][:MAX_COLUMNS]
@@ -1033,6 +1039,114 @@ def _build_text(doc_type, title, paragraphs, headers, rows, truncated_note, lett
 
 # ── The one entry point ─────────────────────────────────────────────────────────
 
+def _workbook_cell(value: Any):
+    """A cell value Excel will treat as what it is.
+
+    NUMBERS STAY NUMBERS. Everywhere else in this module a cell is stringified, which
+    is harmless in a letter and wrong in a workbook: the office downloads the fee sheet
+    in order to ADD IT UP, and "12400" as text will not add. The same rule was already
+    settled for the hand-wired downloads in Release 3 item 6; this is that rule where
+    the whole school's money lands.
+
+    Booleans are deliberately NOT passed through as numbers - Excel would show TRUE as
+    1 next to a column of rupees, which reads as an amount.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    if isinstance(value, (int, float)):
+        return value
+    return _clean_cell(value)
+
+
+def build_workbook(
+    *,
+    sheets: List[Dict[str, Any]],
+    filename: str = "",
+    max_rows: Optional[int] = None,
+) -> BuiltDocument:
+    """One Excel file holding several sheets, one per area of the school.
+
+    `sheets` is a list of `{"name": str, "headers": [...], "rows": [[...]]}`.
+
+    WHY THIS IS NOT `build_document` CALLED SEVEN TIMES. openpyxl can only write one
+    workbook per save, so a per-sheet loop would produce seven separate files. The
+    whole point of the whole-school download is that the office opens ONE file and
+    tabs across it.
+
+    NOTHING IS EVER TRIMMED HERE. `max_rows` is a REFUSAL ceiling: a sheet over it
+    raises rather than dropping rows, because this file leaves the building and gets
+    filed as the school's record. A short sheet inside a workbook is the worst version
+    of this release's defining fault - nobody scrolls to the bottom of tab five to
+    check whether it stopped early.
+
+    Each sheet says its own row count on its first line, above the headings, for the
+    same reason: a person cannot count 1,876 rows by eye, so the file has to tell them.
+    """
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+    except ImportError as exc:  # pragma: no cover
+        raise DocumentBuildError("Excel support is not installed on this server.") from exc
+
+    if not sheets:
+        raise DocumentBuildError("A workbook needs at least one sheet.")
+
+    ceiling = MAX_ROWS if max_rows is None else max_rows
+
+    wb = Workbook()
+    wb.remove(wb.active)
+    used: set = set()
+    for sheet in sheets:
+        raw_name = str(sheet.get("name") or "Sheet")
+        # Excel refuses to OPEN a file with an illegal or duplicated sheet name rather
+        # than complaining about it, so this is silently fatal if not handled.
+        name = (re.sub(r"[\[\]:*?/\\]", "-", raw_name)[:31]) or "Sheet"
+        suffix = 2
+        while name.lower() in used:
+            tail = f" {suffix}"
+            name = name[: 31 - len(tail)] + tail
+            suffix += 1
+        used.add(name.lower())
+
+        headers = [_clean_cell(h) for h in (sheet.get("headers") or [])][:MAX_COLUMNS]
+        rows = sheet.get("rows") or []
+        if len(rows) > ceiling:
+            raise DocumentBuildError(
+                f"The '{raw_name}' sheet has {len(rows):,} rows, which is more than the "
+                f"{ceiling:,} one file may hold. No file was produced, and nothing was "
+                "left out of one: narrow it with a date range and download in parts."
+            )
+
+        ws = wb.create_sheet(title=name)
+        ws.append([f"{raw_name}: {len(rows):,} rows"])
+        ws.cell(row=1, column=1).font = Font(bold=True)
+        ws.append([])
+        if headers:
+            ws.append(headers)
+            for cell in ws[ws.max_row]:
+                cell.font = Font(bold=True)
+        for row in rows:
+            if not isinstance(row, (list, tuple)):
+                row = [row]
+            ws.append([_workbook_cell(c) for c in row][:MAX_COLUMNS])
+
+        for idx, column_cells in enumerate(ws.columns, start=1):
+            longest = max((len(str(c.value)) for c in column_cells if c.value is not None), default=0)
+            ws.column_dimensions[ws.cell(row=1, column=idx).column_letter].width = min(60, max(10, longest + 2))
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return BuiltDocument(
+        content=buf.getvalue(),
+        content_type=CONTENT_TYPES["xlsx"],
+        filename=safe_filename(filename or "whole-school", "xlsx"),
+        doc_type="xlsx",
+        truncated=False,
+    )
+
+
 def build_document(
     *,
     doc_type: str,
@@ -1043,6 +1157,7 @@ def build_document(
     rows: Optional[List[List[Any]]] = None,
     slides: Optional[List[Dict[str, Any]]] = None,
     letterhead: bool = True,
+    max_rows: Optional[int] = None,
 ) -> BuiltDocument:
     """Build a document and return its bytes. Never touches the database or S3.
 
@@ -1052,6 +1167,16 @@ def build_document(
     something purely internal.
 
     EXCEPT for spreadsheets - see `UNBRANDED_TYPES` below.
+
+    `max_rows` is the row ceiling for the table. Left unset it is MAX_ROWS (5,000),
+    which is a TRUNCATION point: rows past it are dropped and the file carries a note
+    saying so. That trade is right for Flo's generated documents, where a reader is
+    looking at a summary. **It is wrong for an export**, which leaves the building and
+    gets filed as a record - the fee ledger alone is about 10,700 rows, so an Excel
+    download of it was quietly losing more than half. `routes/exports.py` therefore
+    passes its own refusal ceiling here, so the only limit an export can hit is the
+    one that refuses the request outright rather than shipping a short file.
+
 
     Raises DocumentBuildError for anything malformed, before any caller has stored
     something it would then have to clean up.
@@ -1069,12 +1194,13 @@ def build_document(
     if not any([title, paragraphs, rows, slides]):
         raise DocumentBuildError("Nothing to put in the document - provide a title, text, rows or slides.")
 
-    hdrs, norm_rows, truncated = _normalise_table(headers, rows)
+    hdrs, norm_rows, truncated = _normalise_table(headers, rows, max_rows)
     note = ""
     if truncated:
         # Say it in the file itself. A silently short export is the Epic 4 defect
         # (a failure that looks like a complete answer) in a new place.
-        note = f"Note: only the first {MAX_ROWS:,} rows are included. {len(rows):,} rows matched."
+        applied = MAX_ROWS if max_rows is None else max_rows
+        note = f"Note: only the first {applied:,} rows are included. {len(rows):,} rows matched."
 
     if doc_type == "docx":
         content = _build_docx(title, paragraphs, hdrs, norm_rows, note, letterhead)

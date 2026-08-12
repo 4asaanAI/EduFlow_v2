@@ -27,6 +27,7 @@ from datetime import datetime, date, timedelta, timezone
 from typing import Any, Optional
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse, JSONResponse
+from pagination import MAX_PAGE_SIZE, clamp_page, clamp_page_size
 from database import get_db
 from models.schemas import (
     Conversation,
@@ -662,7 +663,11 @@ CONVERSATION_SORTS = {
 DEFAULT_CONVERSATION_SORT = "recent"
 # The sidebar has always shown the newest 50 and still does when called bare.
 DEFAULT_CONVERSATION_LIMIT = 50
-MAX_CONVERSATION_LIMIT = 100
+# Release 3, 2026-08-12: this was 100 while students and staff allowed 500, so a
+# screen could not know what it was permitted to ask for. Every list now shares
+# one ceiling; see `backend/pagination.py`. Conversation rows are small metadata
+# documents, so the higher figure costs little.
+MAX_CONVERSATION_LIMIT = MAX_PAGE_SIZE
 # Escaping a search term bounds what it MEANS, not what it COSTS: a 100 KB
 # escaped literal is still a 100 KB pattern.
 MAX_CONVERSATION_SEARCH = 200
@@ -690,8 +695,9 @@ async def list_conversations(
     """
     db = get_db()
     user = get_current_user(request)
-    per_page = max(1, min(limit, MAX_CONVERSATION_LIMIT))
-    skip = max(page - 1, 0) * per_page
+    page = clamp_page(page)
+    per_page = clamp_page_size(limit, MAX_CONVERSATION_LIMIT)
+    skip = (page - 1) * per_page
     sort_field, sort_dir = CONVERSATION_SORTS.get(sort, CONVERSATION_SORTS[DEFAULT_CONVERSATION_SORT])
 
     # branch-scope: intentional - a conversation belongs to ONE user, and user_id

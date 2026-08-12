@@ -35,6 +35,8 @@ import { ON_ROLL_VIEW, OFF_ROLL_VIEW, readState } from '../../lib/enrolmentState
 import ProfileNotes from '../ui/ProfileNotes';
 import ProfileDocuments from '../ui/ProfileDocuments';
 import { ALL_ROWS, useTablePageSize } from '../../hooks/useTablePrefs';
+import { fetchAllRows } from '../../lib/fetchAllRows';
+import { collectAllRows } from '../../lib/exportTable';
 // The staff finder from the retired School Directory screen (D-44 cluster D).
 import { StaffTab } from './SchoolDirectory';
 
@@ -93,7 +95,9 @@ function Btn({ children, onClick, disabled, variant = 'primary', type = 'button'
       onClick={onClick}
       disabled={disabled}
       style={{
-        minHeight: 36,
+        // 40px, the platform's thumb floor. Phone and tablet are the primary
+        // devices; the phone sweep in Release 3 item E found this one short.
+        minHeight: 40,
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -1002,6 +1006,10 @@ export default function StudentDatabase() {
     },
     {
       key: 'class', label: 'Class', sortKey: 'class',
+      // The class lives on a nested object, so a download needs telling where to
+      // look. Without this the column would come out blank in the file while
+      // reading correctly on screen - a difference nobody would think to check.
+      exportValue: (s) => (s.class_info ? `${s.class_info.name}-${s.class_info.section}` : ''),
       render: (s) => (s.class_info ? `${s.class_info.name}-${s.class_info.section}` : cellValue(null)),
     },
     { key: 'primary_phone', label: 'Phone', render: (s) => cellValue(s.primary_phone) },
@@ -1035,6 +1043,9 @@ export default function StudentDatabase() {
       // ("withdrawn"), which is the platform's vocabulary rather than the school's,
       // and it could not tell an NSO child from one who has taken their TC.
       key: 'status', label: 'Status',
+      // The same derived state the badge shows, in words. The raw stored field says
+      // "withdrawn" for a child who has taken their TC and for one on NSO alike.
+      exportValue: (s) => readState(s),
       render: (s) => <EnrolmentBadge state={readState(s)} data-testid={`student-state-${s.id}`} />,
     },
     {
@@ -1048,6 +1059,9 @@ export default function StudentDatabase() {
       // an accessible name. Mixed icon-only and labelled buttons in one row is the
       // pattern that produced the complaint; do not go back to it.
       key: 'actions', label: 'Actions',
+      // Buttons are not data. A column of empty cells in a downloaded file reads as
+      // missing information rather than as a control that did not apply.
+      exportSkip: true,
       render: (student) => (
         <div style={{ display: 'flex', gap: 5, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
           <Btn variant="secondary" onClick={() => setDetailId(student.id)} title="View this student's profile" aria-label={`View ${student.name}`}>
@@ -1146,17 +1160,52 @@ export default function StudentDatabase() {
     if (res.success) setClasses(res.data || []);
   }, []);
 
+  /**
+   * The filters in force right now.
+   *
+   * Pulled out of `loadData` so that the DOWNLOAD uses exactly the same ones. A
+   * download of "class 5 A, searched for Sharma" that quietly comes back as the whole
+   * roll is the same class of fault as a short file, in the other direction, and the
+   * only way to be sure the two agree is for there to be one of them.
+   */
+  const currentFilters = useCallback(() => {
+    const filters = {};
+    if (search) filters.search = search;
+    if (filterClass) filters.class_id = filterClass;
+    // The server takes the view by name and answers with the derived state on each
+    // row, so the screen never has to work out from `is_active` and `status` which
+    // of the three a student is in.
+    filters.enrolment_state = enrolmentView;
+    return filters;
+  }, [search, filterClass, enrolmentView]);
+
+  /**
+   * Every child matching those filters, for the download.
+   *
+   * This walks the person's OWN list endpoint rather than calling
+   * `/api/export/students`. Two reasons, and the second is the important one:
+   *   - the export route takes no filters, so it would hand back the whole roll
+   *     whatever the screen was showing;
+   *   - the list route is where the filtering, the branch scoping and the teacher
+   *     narrowing already live. Restating any of that in a second place is how the
+   *     screen and the file start disagreeing, which is the drift this release has
+   *     spent most of its time undoing.
+   * `fetchAllRows` throws rather than returning a short list, so a file is never
+   * built from a partial walk.
+   */
+  const exportRows = useCallback(
+    () => collectAllRows(
+      ({ page: cursor, limit }) => getStudents({ ...currentFilters(), page: cursor, sort, limit }),
+      { pageMax: SERVER_MAX_LIMIT, what: 'students' },
+    ),
+    [currentFilters, sort],
+  );
+
   const loadData = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const filters = {};
-      if (search) filters.search = search;
-      if (filterClass) filters.class_id = filterClass;
-      // The server takes the view by name and answers with the derived state on each
-      // row, so the screen never has to work out from `is_active` and `status` which
-      // of the three a student is in.
-      filters.enrolment_state = enrolmentView;
+      const filters = currentFilters();
 
       // "All" (owner request 13, 2026-08-06). The server refuses more than
       // SERVER_MAX_LIMIT in one request, so this walks the pages and joins them
@@ -1164,20 +1213,16 @@ export default function StudentDatabase() {
       // a page comes back short or the running count reaches the reported total,
       // so a wrong total on the server cannot spin this forever.
       if (pageSize === ALL_ROWS) {
-        const collected = [];
-        let cursor = 1;
-        let reportedTotal = 0;
-        for (;;) {
-          const res = await getStudents({ ...filters, page: cursor, sort, limit: SERVER_MAX_LIMIT });
-          if (!res.success) { setError(res.detail || 'Unable to load students'); break; }
-          const batch = res.data || [];
-          collected.push(...batch);
-          reportedTotal = res.meta?.total || collected.length;
-          if (batch.length < SERVER_MAX_LIMIT || collected.length >= reportedTotal) break;
-          cursor += 1;
+        const all = await fetchAllRows(
+          ({ page: cursor, limit }) => getStudents({ ...filters, page: cursor, sort, limit }),
+          { pageMax: SERVER_MAX_LIMIT },
+        );
+        if (!all.success) {
+          setError(all.detail || 'Unable to load students');
+        } else {
+          setStudents(all.data);
+          setTotal(all.total);
         }
-        setStudents(collected);
-        setTotal(reportedTotal || collected.length);
         setLoading(false);
         return;
       }
@@ -1196,7 +1241,7 @@ export default function StudentDatabase() {
       setError(err.message || 'Unable to load students');
     }
     setLoading(false);
-  }, [search, filterClass, enrolmentView, sort, page, pageSize]);
+  }, [currentFilters, sort, page, pageSize]);
 
   useEffect(() => { loadClasses(); }, [loadClasses]);
   useEffect(() => { loadData(); }, [loadData]);
@@ -1380,6 +1425,9 @@ export default function StudentDatabase() {
                 page={1}
                 total={sortedStrengthRows.length}
                 pageSize={sortedStrengthRows.length || 1}
+                // The whole summary is already in hand - one page, no server paging -
+                // so the file is the table.
+                exportTable={{ title: 'Class strength', getRows: async () => sortedStrengthRows }}
                 emptyTitle="No student data available"
                 emptyMessage="Class strength appears here once students are assigned to classes."
               />
@@ -1454,6 +1502,7 @@ export default function StudentDatabase() {
               pageSize={pageSize}
               onPageChange={setPage}
               onPageSizeChange={changePageSize}
+              exportTable={{ title: 'Students', getRows: exportRows }}
               emptyTitle={enrolmentView === OFF_ROLL_VIEW ? 'The recycle bin is empty' : 'No students match these filters'}
               emptyMessage={enrolmentView === OFF_ROLL_VIEW
                 ? 'Nobody has been taken off the roll. Anyone moved to NSO or marked as having left will appear here, and can be put back.'

@@ -1,6 +1,7 @@
 """File upload routes backed by private S3 objects."""
 from fastapi import APIRouter, Depends, Request, UploadFile, File, Form, HTTPException, Query
 from fastapi.responses import RedirectResponse
+from pagination import clamp_page, clamp_page_size
 from database import get_db
 from middleware.auth import get_current_user
 from tenant import add_school_id, get_school_id, scoped_filter
@@ -326,7 +327,7 @@ async def list_uploads(
     entity_type: str = None,
     entity_id: str = None,
     page: int = Query(default=1, ge=1),
-    limit: int = Query(default=50, ge=1, le=100),
+    limit: int = Query(default=50),
 ):
     db = get_db()
     user = get_user(request)
@@ -347,6 +348,8 @@ async def list_uploads(
             query["linked_id"] = entity_id
     # branch-scope: intentional - file_uploads is school-scoped, not branch-scoped.
     query = scoped_filter(query, get_school_id())  # branch-scope: intentional - see the note directly above this line
+    page = clamp_page(page)
+    limit = clamp_page_size(limit)
     skip = (page - 1) * limit
     total = await db.file_uploads.count_documents(query)
     files = await db.file_uploads.find(

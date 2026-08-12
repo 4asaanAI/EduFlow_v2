@@ -262,19 +262,34 @@ def test_only_leadership_reaches_the_private_leadership_tools():
 # `get_school_summary` (Abhimanyu: build the scheduled reports so Aman and Adesh have a
 # summary of everything in one place). It carries money, the roll and everyone's changes
 # in one answer, so it sits behind the same gate as the action log.
+# EVERY PROFILE GAINED EXACTLY ONE READ TOOL ON 2026-08-12 (Release 3, item 4):
+# `export_data_file`, which hands over a whole data set as an Excel workbook or CSV.
+# It is classified `shared`, so it reaches everyone, and NO write count moved.
+#
+# Reaching the tool is not the same as getting the file. Its own gate, `may_export`,
+# is `require_export`'s rule rather than a copy of it, and it asks the permission table
+# per DATA SET: management is refused the ledger and gets the children and the staff,
+# the accountant gets both, and **every dormant profile is refused everything** even
+# though the five below can now see the tool exists. That is why five zero-write
+# profiles gained a tool and gained no access.
+# 2026-08-12 (Release 3, item B): +1 READ tool for the two leadership profiles and NOBODY
+# else, `export_whole_school_workbook` - the whole school as one Excel file with a sheet
+# per area. Abhimanyu's decision is that it is Aman's and Adesh's only, so it is in
+# LEADERSHIP_ONLY_TOOL_NAMES, which is the domain that means exactly those two. No write
+# count moved: it reads and formats, and changes no school record.
 EXPECTED_REACH = {
-    "owner":          (161, 103),
-    "principal":      (161, 103),
+    "owner":          (163, 103),
+    "principal":      (163, 103),
     # 56/31 until 2026-08-11. +1 tool, +1 write: update_staff, named in
     # PROFILE_MATRIX["accountant"]["extra_tools"], scoped by the SERVICE to salary
     # only (Abhimanyu, relaying Aman's and Adesh's instruction).
-    "accountant":     (62, 35),
-    "management":     (98, 59),
-    "transport_head": (28, 0),
-    "receptionist":   (28, 0),
-    "it_tech":        (28, 0),
-    "maintenance":    (28, 0),
-    "support_staff":  (27, 0),
+    "accountant":     (63, 35),
+    "management":     (99, 59),
+    "transport_head": (29, 0),
+    "receptionist":   (29, 0),
+    "it_tech":        (29, 0),
+    "maintenance":    (29, 0),
+    "support_staff":  (28, 0),
 }
 
 

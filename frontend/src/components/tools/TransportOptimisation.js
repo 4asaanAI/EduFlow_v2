@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { MapPin, Navigation, AlertTriangle, CheckCircle, Search, RefreshCw, Zap } from 'lucide-react';
+import ExportButton from '../ui/ExportButton';
 import {
   geocodeAddress,
   setStudentCoordinates,
@@ -77,6 +78,27 @@ const thStyle = {
   color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.06em',
   background: 'var(--c-deep)', borderBottom: '1px solid var(--c-border)',
 };
+/**
+ * What the zone review puts in a downloaded file (Release 3, item 4).
+ *
+ * Distances go out as NUMBERS, without the " km" the screen prints. The transport
+ * head downloads this to add the savings up and decide which children to move, and
+ * "3.4 km" is text to a spreadsheet: it will not add.
+ */
+const SUBOPTIMAL_EXPORT_COLUMNS = [
+  { key: 'student_name', label: 'Student' },
+  { key: 'admission_number', label: 'Admission no.' },
+  { key: 'current_zone_name', label: 'Current zone' },
+  { key: 'current_distance_km', label: 'Current distance (km)', exportValue: (r) => Number(r.current_distance_km || 0) },
+  { key: 'nearest_zone_name', label: 'Nearest zone' },
+  { key: 'nearest_distance_km', label: 'Nearest distance (km)', exportValue: (r) => Number(r.nearest_distance_km || 0) },
+  // The SERVER'S figure, the same one the screen prints, not this side's own
+  // subtraction of the two distances. Recomputing it here would be a second opinion
+  // about the same number, and the day the two disagree the file is the one nobody
+  // can check.
+  { key: 'savings_km', label: 'Saving (km)', exportValue: (r) => Number(r.savings_km) || 0 },
+];
+
 const tdStyle = { padding: '10px 14px', fontSize: 12, color: 'var(--c-text)', borderBottom: '1px solid var(--c-border)' };
 
 // Resolve admission number → student_id
@@ -419,6 +441,17 @@ function ClusterAnalysisTab() {
         <div style={noticeBox('var(--tool-hex-34d399)')}>
           <CheckCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
           All students with GPS coordinates are already in their nearest zone.
+        </div>
+      )}
+
+      {suboptimal.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+          <ExportButton
+            title="Students not in their nearest zone"
+            testId="transport-suboptimal-export"
+            columns={SUBOPTIMAL_EXPORT_COLUMNS}
+            getRows={async () => suboptimalSort.items}
+          />
         </div>
       )}
 

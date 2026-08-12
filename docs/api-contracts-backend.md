@@ -211,6 +211,30 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 | `GET` | `/expenses` | Bearer | Export expense records. |
 | `GET` | `/enquiries` | Bearer | Export enquiry records. |
 | `GET` | `/exam-results` | Bearer | Export exam results. |
+| `GET` | `/school-workbook` | Bearer, **owner or principal** | The whole school as ONE Excel file, a sheet per area (children, staff, fees, attendance, exam results, classes, transport, expenses, enquiries). Returns the per-sheet counts on an `X-Export-Row-Counts` header. |
+| `POST` | `/table` | Bearer | Package rows a screen already holds (`{title, headers, rows, format}`) into a CSV or Excel file. **Reads nothing** - it formats what the caller sent back to the caller, which they could only have obtained by passing the gate on the endpoint the rows came from. |
+
+**Three rules govern all of these (Release 3, 2026-08-12).**
+
+1. **Complete or refused, never short.** Each read asks for one row more than it will
+   accept, so it can tell "that is all of them" from "there were more". Past
+   `EXPORT_MAX_ROWS` (100,000) the request fails with a **413 that says no file was
+   produced**. Nothing is ever silently dropped. `POST /table` refuses over 50,000 rows
+   and over 60 columns the same way.
+2. **The permission gate comes from the Release 2 table**, not from hand-written role
+   checks. `require_export(key)` derives it from `services/profile_matrix.py` by asking
+   whether the caller may open a screen that shows that data; `may_export(user, key)` is
+   the same rule asked as a plain question, for Flo. **Dormant profiles are refused even
+   where the table grants them the screen.** A download is not a way around who may see
+   what. `/school-workbook` uses `require_owner_or_principal`, which is Aman and Adesh
+   exactly.
+3. **No confirm step and no approval window**, on a screen or through Flo (Abhimanyu,
+   2026-08-12). Reading what you may already read is not the thing that needs guarding.
+
+The queries live in `EXPORT_BUILDERS` (nine entries, each returning
+`(headers, rows, title)`). The routes are three lines each. **Add a new data set to that
+dictionary, never beside a route**, and give it an `EXPORT_SCREENS` entry or `may_export`
+default-denies it and the feature reads as broken.
 
 ### AI Tools - `/api/tools`
 

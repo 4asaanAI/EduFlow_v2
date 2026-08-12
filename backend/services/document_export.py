@@ -186,6 +186,37 @@ async def store_document(
     }
 
 
+async def store_built_document(
+    *,
+    user: dict,
+    built: BuiltDocument,
+    source: str = "",
+    audit_action: str = "document_generated",
+) -> Dict[str, Any]:
+    """Store a file the caller has ALREADY built, with the same guards as building one.
+
+    `create_document` below builds and stores in one call, which cannot serve the
+    whole-school workbook: that file is several sheets and is put together by
+    `document_builder.build_workbook`, not by `build_document`. Rather than let the
+    workbook skip past storage being switched off and the daily cap, both checks live
+    here and both paths go through them.
+    """
+    if not storage_configured():
+        raise DocumentStorageUnavailable(
+            "Saving files is not set up on this server yet, so I cannot give you a "
+            "download. Everything else works normally - this needs file storage "
+            "switching on."
+        )
+    db = get_db()
+    school_id = get_school_id()
+    if not await _enforce_daily_cap(db, school_id):
+        raise DocumentQuotaExceeded(
+            f"This school has already generated {DAILY_DOCUMENT_CAP} documents today. "
+            "The allowance resets tomorrow."
+        )
+    return await store_document(built, user=user, source=source, audit_action=audit_action)
+
+
 async def create_document(
     *,
     user: dict,
@@ -198,6 +229,7 @@ async def create_document(
     slides: Optional[List[Dict[str, Any]]] = None,
     source: str = "",
     audit_action: str = "document_generated",
+    max_rows: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Build + store in one call. Raises DocumentBuildError or DocumentQuotaExceeded.
 
@@ -229,6 +261,10 @@ async def create_document(
         headers=headers,
         rows=rows,
         slides=slides,
+        # Left unset the builder trims a long table at 5,000 rows and adds a note,
+        # which is the right trade for a document somebody reads. An EXPORT passes its
+        # own ceiling, which refuses instead of trimming - see `tool_export_data_file`.
+        max_rows=max_rows,
     )
     return await store_document(
         built, user=user, source=source, audit_action=audit_action

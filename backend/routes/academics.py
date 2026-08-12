@@ -1131,6 +1131,309 @@ async def delete_timetable_slot(slot_id: str, request: Request, user: dict = Dep
     return {"success": True}
 
 
+# ── Working a timetable out, rather than typing it in ────────────────────────
+#
+# Ported from the standalone timetable builder Abhimanyu supplied on 2026-08-12. The
+# search itself lives in `services/timetable_solver.py`; everything here is the part
+# that connects it to THIS school: its own subjects, its own teachers, its own
+# permission rules, and its own saved timetables for every other class.
+#
+# WHO. `require_owner_or_principal` - Aman and Adesh. Adesh writes the school's
+# timetables himself, so this is his tool (Abhimanyu, 2026-08-12); Aman holds it
+# because the owner is never shut out of his own school. Every generate and every
+# apply writes an audit row, which is how Aman sees the tool being used on live data.
+# Lalit keeps the timetable SCREEN he has today and can still hand-edit it; nobody
+# asked for that to be taken away, so it has not been.
+#
+# GENERATING NEVER SAVES. It returns a proposal. A person looks at it and applies it,
+# as a separate deliberate act, because the saved timetable is what the substitution
+# plan reads when a teacher is away - and a timetable that appeared on its own is one
+# nobody has checked.
+
+# Monday first, matching `datetime.weekday()`, which is what `day_of_week` holds
+# everywhere else in this file. Saturday is a school day here; Sunday is not.
+TIMETABLE_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+MAX_PERIODS_PER_DAY = 12
+
+
+def _day_number(day_name: str) -> int:
+    return TIMETABLE_DAYS.index(day_name)
+
+
+async def _build_solver_request(db, body: dict, user: dict):
+    """Turn what the screen asked for into something the solver understands.
+
+    Reads the school's OWN records: the subjects set up against this class, and the
+    teacher already named on each of them. There is no second place to tell the
+    platform who teaches what, and adding one would be a way for the two to disagree.
+    """
+    from services import timetable_solver as solver
+
+    class_id = (body.get("class_id") or "").strip()
+    if not class_id:
+        raise HTTPException(400, "Choose a class first.")
+
+    bid = user.get("branch_id")
+    klass = await db.classes.find_one(scoped_query({"id": class_id}, branch_id=bid), {"_id": 0})
+    if not klass:
+        raise HTTPException(404, "Class not found")
+
+    days = body.get("days") or TIMETABLE_DAYS
+    unknown = [d for d in days if d not in TIMETABLE_DAYS]
+    if unknown:
+        raise HTTPException(400, "Not a school day: " + ", ".join(unknown))
+
+    try:
+        periods = int(body.get("periods_per_day") or 8)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "periods_per_day must be a whole number")
+    if not 1 <= periods <= MAX_PERIODS_PER_DAY:
+        raise HTTPException(400, f"periods_per_day must be between 1 and {MAX_PERIODS_PER_DAY}")
+
+    subject_rows = await db.subjects.find(
+        _academic_query({"class_id": class_id}), {"_id": 0}
+    ).to_list(200)
+    if not subject_rows:
+        raise HTTPException(400, "This class has no subjects set up yet, so there is nothing to place.")
+
+    # How many periods a week each subject wants, and which want the morning.
+    wanted = body.get("periods_per_week") or {}
+    morning = set(body.get("prefer_morning") or [])
+
+    subjects = []
+    teacher_ids = set()
+    for row in subject_rows:
+        count = wanted.get(row["id"])
+        if count in (None, "", 0):
+            continue  # not asked for this time round
+        try:
+            count = int(count)
+        except (TypeError, ValueError):
+            raise HTTPException(400, "Periods a week for " + str(row.get("name")) + " must be a whole number")
+        if count < 0:
+            raise HTTPException(400, "Periods a week for " + str(row.get("name")) + " cannot be negative")
+        subjects.append(solver.Subject(
+            id=row["id"],
+            name=row.get("name") or "Subject",
+            periods_per_week=count,
+            prefer_morning=row["id"] in morning,
+        ))
+        if row.get("teacher_id"):
+            teacher_ids.add(row["teacher_id"])
+
+    if not subjects:
+        raise HTTPException(400, "No subject was given any periods, so there is nothing to place.")
+
+    # Which subjects each teacher may take, from the school's own subject records.
+    teaches = {}
+    for row in subject_rows:
+        if row.get("teacher_id"):
+            teaches.setdefault(row["teacher_id"], []).append(row["id"])
+
+    staff_rows = await db.staff.find(
+        scoped_query({"id": {"$in": list(teacher_ids)}}, branch_id=bid),
+        {"_id": 0, "id": 1, "name": 1, "is_active": 1},
+    ).to_list(500) if teacher_ids else []
+    teachers = [
+        solver.Teacher(id=r["id"], name=r.get("name") or "Teacher", subject_ids=teaches.get(r["id"], []))
+        for r in staff_rows if r.get("is_active", True)
+    ]
+
+    # WHAT EVERY OTHER CLASS HAS ALREADY BOOKED. Without this the solver would happily
+    # put Mr Sharma in front of two classes at once: the saved timetable would then be
+    # impossible, the save step would refuse it row by row, and the substitution plan
+    # would offer a cover teacher who is already teaching.
+    busy = {}
+    others = await db.timetable_slots.find(
+        {"class_id": {"$ne": class_id}},
+        {"_id": 0, "teacher_id": 1, "day_of_week": 1, "period_number": 1},
+    ).to_list(5000)
+    for row in others:
+        tid = row.get("teacher_id")
+        day = row.get("day_of_week")
+        period = row.get("period_number")
+        if not tid or day is None or period is None:
+            continue
+        if not 0 <= day < len(TIMETABLE_DAYS):
+            continue
+        busy.setdefault(tid, set()).add((TIMETABLE_DAYS[day], int(period) - 1))
+
+    breaks = set()
+    labels = {}
+    for entry in body.get("breaks") or []:
+        day = entry.get("day")
+        try:
+            period = int(entry.get("period_number")) - 1
+        except (TypeError, ValueError):
+            continue
+        if day in TIMETABLE_DAYS and 0 <= period < periods:
+            breaks.add((day, period))
+            labels[(day, period)] = entry.get("label") or "Break"
+
+    request_obj = solver.TimetableRequest(
+        days=[d for d in TIMETABLE_DAYS if d in days],
+        periods_per_day=periods,
+        subjects=subjects,
+        teachers=teachers,
+        breaks=breaks,
+        break_labels=labels,
+        busy_teacher_slots=busy,
+    )
+    return request_obj, klass
+
+
+@router.post("/timetable/generate")
+async def generate_timetable(request: Request, user: dict = Depends(require_owner_or_principal)):
+    """Work out a timetable for one class. Proposes; never saves."""
+    from services import timetable_solver as solver
+
+    db = get_db()
+    body = await request.json()
+    solver_request, klass = await _build_solver_request(db, body, user)
+
+    seed = body.get("seed")
+    result = solver.generate(solver_request, seed=int(seed) if seed not in (None, "") else None)
+
+    # Names, so the screen and the person reading it never have to look up an id.
+    subject_names = {s.id: s.name for s in solver_request.subjects}
+    teacher_names = {t.id: t.name for t in solver_request.teachers}
+    for slot in result["slots"]:
+        slot["day_of_week"] = _day_number(slot["day"])
+        slot["subject_name"] = subject_names.get(slot["subject_id"], "")
+        slot["teacher_name"] = teacher_names.get(slot["teacher_id"], "")
+
+    class_label = (str(klass.get("name") or "") + " " + str(klass.get("section") or "")).strip()
+    await write_audit_doc(db, {
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "schoolId": get_school_id(),
+        "entity_type": "timetable",
+        "entity_id": klass["id"],
+        "action": "timetable_generated" if result["solved"] else "timetable_generate_failed",
+        "changed_by": user.get("id"),
+        "changed_by_role": user.get("role"),
+        "changes": {
+            "class_name": class_label,
+            "periods_proposed": len(result["slots"]),
+            "score": (result["score"] or {}).get("total"),
+            "seconds": result["seconds"],
+            # Nothing was saved. Recorded explicitly so the log cannot be misread as a
+            # change to the school's timetable.
+            "saved": False,
+        },
+        "created_at": datetime.now().isoformat(),
+    }, school_id=get_school_id(), branch_id=user.get("branch_id"))
+
+    return {"success": True, "data": result, "meta": {"count": len(result["slots"])}}
+
+
+@router.post("/timetable/apply")
+async def apply_generated_timetable(request: Request, user: dict = Depends(require_owner_or_principal)):
+    """Replace one class's timetable with a proposal somebody has looked at.
+
+    REPLACE, not merge. A generated timetable is a whole week; leaving yesterday's
+    periods behind wherever the new one happens to have a gap would produce a week
+    that is half one plan and half another, and nothing on screen would say which
+    period came from where.
+
+    Every row still goes through the same field checks a hand-typed period passes, and
+    is checked against what every OTHER class has booked. The solver already avoids a
+    teacher who is busy elsewhere, so this should never refuse - and if it ever does,
+    that disagreement is exactly what somebody needs to be told about rather than have
+    papered over.
+    """
+    db = get_db()
+    body = await request.json()
+    class_id = (body.get("class_id") or "").strip()
+    slots = body.get("slots") or []
+    if not class_id:
+        raise HTTPException(400, "Choose a class first.")
+    if not isinstance(slots, list) or not slots:
+        raise HTTPException(400, "There is no timetable to apply.")
+
+    bid = user.get("branch_id")
+    klass = await db.classes.find_one(scoped_query({"id": class_id}, branch_id=bid), {"_id": 0})
+    if not klass:
+        raise HTTPException(404, "Class not found")
+
+    prepared = []
+    for entry in slots:
+        candidate = {
+            "class_id": class_id,
+            "subject_id": entry.get("subject_id"),
+            "teacher_id": entry.get("teacher_id"),
+            "day_of_week": entry.get("day_of_week"),
+            "period_number": entry.get("period_number"),
+            "start_time": entry.get("start_time"),
+            "end_time": entry.get("end_time"),
+            "room": entry.get("room"),
+        }
+        try:
+            validated = normalise_timetable_fields(candidate)
+        except TimetableValidationError as exc:
+            raise HTTPException(400, str(exc))
+        prepared.append({"id": str(uuid.uuid4()), **validated})
+
+    existing = await db.timetable_slots.find({"class_id": class_id}, {"_id": 0, "id": 1}).to_list(500)
+
+    # Check every new period against what OTHER classes hold. This class's own old
+    # periods are about to go, so they must not be counted as a clash with the new.
+    other_rows = await db.timetable_slots.find(
+        {"class_id": {"$ne": class_id}},
+        {"_id": 0, "teacher_id": 1, "day_of_week": 1, "period_number": 1},
+    ).to_list(5000)
+    taken = {
+        (r.get("teacher_id"), r.get("day_of_week"), r.get("period_number"))
+        for r in other_rows if r.get("teacher_id")
+    }
+    seen_in_class = set()
+    for slot in prepared:
+        key = (slot["day_of_week"], slot["period_number"])
+        if key in seen_in_class:
+            raise HTTPException(400, "The proposal puts two subjects in the same period.")
+        seen_in_class.add(key)
+        if slot.get("teacher_id") and (slot["teacher_id"], slot["day_of_week"], slot["period_number"]) in taken:
+            raise HTTPException(
+                409,
+                "A teacher in this timetable is already teaching another class in the "
+                "same period. Generate it again - the school's timetables have changed "
+                "since this one was worked out.",
+            )
+
+    if existing:
+        await db.timetable_slots.delete_many({"class_id": class_id})
+    for slot in prepared:
+        await db.timetable_slots.update_one(
+            {"class_id": slot["class_id"], "day_of_week": slot["day_of_week"],
+             "period_number": slot["period_number"]},
+            {"$set": slot, "$setOnInsert": {"_id": slot["id"]}}, upsert=True,
+        )
+
+    class_label = (str(klass.get("name") or "") + " " + str(klass.get("section") or "")).strip()
+    await write_audit_doc(db, {
+        "_id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
+        "schoolId": get_school_id(),
+        "entity_type": "timetable",
+        "entity_id": class_id,
+        "action": "timetable_applied",
+        "changed_by": user.get("id"),
+        "changed_by_role": user.get("role"),
+        "changes": {
+            "class_name": class_label,
+            "periods_replaced": len(existing),
+            "periods_saved": len(prepared),
+        },
+        "created_at": datetime.now().isoformat(),
+    }, school_id=get_school_id(), branch_id=user.get("branch_id"))
+
+    return {
+        "success": True,
+        "data": prepared,
+        "meta": {"count": len(prepared), "replaced": len(existing)},
+    }
+
+
 @router.put("/timetable/import")
 async def bulk_import_timetable(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     """Bulk import timetable entries - duplicates (same class+period+day) are replaced."""

@@ -30,6 +30,7 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { Button, EmptyState } from './primitives';
+import ExportButton from './ExportButton';
 import { ALL_ROWS, PAGE_SIZES, pageSizeLabel } from '../../hooks/useTablePrefs';
 
 const srOnly = {
@@ -80,6 +81,12 @@ function SortIcon({ state }) {
  * @param {Function} props.onPageSizeChange
  * @param {boolean}  props.loading
  * @param {string}   props.error          message if the fetch failed
+ * @param {object}   props.exportTable    optional download control for this table.
+ *                   `{ title, getRows }` to package the rows the screen holds, or
+ *                   `{ title, serverExport: { path, params } }` to use one of the
+ *                   server's own exports. `getRows` must return EVERY row matching
+ *                   the filters in force - see ExportButton for why the page on
+ *                   screen is never the right answer.
  */
 export default function DataTable({
   columns,
@@ -101,6 +108,7 @@ export default function DataTable({
   emptyTitle,
   emptyMessage,
   tableId = 'table',
+  exportTable = null,
 }) {
   // ALL_ROWS (-1) means "one page holding everything", so the page count is 1 and
   // Prev/Next are both disabled. Without this the arithmetic divides by -1 and the
@@ -109,6 +117,49 @@ export default function DataTable({
     ? 1
     : Math.max(1, Math.ceil(total / (pageSize || 1)));
   const selectId = `${tableId}-page-size`;
+
+  // ── Rows drawn as you scroll (Release 3, item D) ───────────────────────────
+  //
+  // "All" means ALL THE DATA, drawn as you scroll (Abhimanyu, 2026-08-12). Every row
+  // is fetched and held; what changes is that the browser is not asked to lay out
+  // 1,876 table rows in one go, which is what makes the student list and the School
+  // Directory stutter on a phone.
+  //
+  // WHY GROW-ON-SCROLL RATHER THAN A VIRTUAL WINDOW. A windowed list draws a fixed
+  // slice and moves it, which needs every row to be the same known height. These rows
+  // are not: a child's cell carries a name and an admission number under it, and a
+  // wrapped name on a phone is taller again. Guessing the height wrong makes the
+  // scrollbar lie about how much is left, and this release is about not lying about
+  // how much there is. Growing the list keeps the browser's own scrollbar honest.
+  //
+  // IT NEVER HIDES ANYTHING. Ctrl+F is the thing people actually use to find a name,
+  // so an undrawn row would be a row that is not there as far as the person is
+  // concerned. That is why the count below says how many are drawn AND how many
+  // there are, and why there is a button as well as the scroll: an IntersectionObserver
+  // that never fires would otherwise strand the rest of the list silently.
+  const DRAW_STEP = 100;
+  const [drawn, setDrawn] = React.useState(DRAW_STEP);
+  const sentinelRef = React.useRef(null);
+
+  // Back to the top of the list whenever the rows themselves change - a new page, a
+  // new filter, a new sort. Keeping the old figure would draw 900 rows of a list the
+  // person has just narrowed to twelve.
+  React.useEffect(() => { setDrawn(DRAW_STEP); }, [rows]);
+
+  const visibleRows = rows.length > drawn ? rows.slice(0, drawn) : rows;
+  const moreToDraw = rows.length - visibleRows.length;
+
+  React.useEffect(() => {
+    const node = sentinelRef.current;
+    // No IntersectionObserver (older Safari, and jsdom in the tests) means the button
+    // below is the only way on. It is always rendered, so nothing is unreachable.
+    if (!node || moreToDraw <= 0 || typeof IntersectionObserver === 'undefined') return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) setDrawn((n) => n + DRAW_STEP);
+    }, { rootMargin: '400px' });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [moreToDraw]);
 
   // A failed load must never be dressed up as an empty result - owner item 7.
   if (error) {
@@ -203,7 +254,7 @@ export default function DataTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, i) => (
+            {visibleRows.map((row, i) => (
               <tr
                 key={rowKey(row, i)}
                 className="tool-table-row"
@@ -236,6 +287,39 @@ export default function DataTable({
         </table>
       </div>
 
+      {/* HOW MANY ARE DRAWN, AND HOW MANY THERE ARE. Without this line a list that has
+          only painted its first hundred rows is indistinguishable from a list of a
+          hundred rows, which is this release's defining fault wearing a new hat. The
+          button is here as well as the scroll because a scroll that does not fire
+          would otherwise strand the rest of the list with nothing to say so. */}
+      {moreToDraw > 0 && (
+        <div
+          ref={sentinelRef}
+          data-testid={`${tableId}-draw-more`}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 10, flexWrap: 'wrap', padding: '10px 4px',
+          }}
+        >
+          <span
+            aria-live="polite"
+            data-testid={`${tableId}-drawn-count`}
+            style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}
+          >
+            {`Showing ${visibleRows.length.toLocaleString('en-IN')} of `
+             + `${rows.length.toLocaleString('en-IN')} loaded rows. Scroll for more.`}
+          </span>
+          <Button
+            size="sm"
+            variant="secondary"
+            data-testid={`${tableId}-draw-more-button`}
+            onClick={() => setDrawn((n) => n + DRAW_STEP)}
+          >
+            Show more
+          </Button>
+        </div>
+      )}
+
       {/* Pagination + rows-per-page (UX-DR10): the size selector sits beside
           the pagination control and shows its active value. */}
       <div
@@ -266,7 +350,7 @@ export default function DataTable({
               fontFamily: 'var(--font-body)',
               fontSize: 'var(--text-sm)',
               padding: '7px 10px',
-              minHeight: 36,
+              minHeight: 40,
             }}
           >
             {/* `pageSizes` lets a table offer a narrower menu than the full set.
@@ -280,6 +364,22 @@ export default function DataTable({
             of {total.toLocaleString('en-IN')}
           </span>
         </div>
+
+        {/* The download control, when the screen supplies one. It lives beside the
+            row count on purpose: the count is what tells a person how much the file
+            should hold, which is the only way to notice a short one. */}
+        {exportTable ? (
+          <ExportButton
+            title={exportTable.title || caption || tableId}
+            columns={exportTable.columns || columns}
+            getRows={exportTable.getRows}
+            serverExport={exportTable.serverExport}
+            // The count this table is already showing, so a download that comes back
+            // short of it is refused rather than saved. See ExportButton.
+            total={total}
+            testId={`${tableId}-export`}
+          />
+        ) : null}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Button

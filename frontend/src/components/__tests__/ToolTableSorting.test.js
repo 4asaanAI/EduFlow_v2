@@ -10,7 +10,7 @@
  * the fix goes in the shared component.
  */
 import { render, screen, fireEvent, within } from '@testing-library/react';
-import { DataTable, sortableCellText } from '../tools/ToolPage';
+import { DataTable, sortableCellText, Badge } from '../tools/ToolPage';
 
 jest.mock('../../contexts/ThemeContext', () => ({ useTheme: () => ({ isDark: true }) }));
 
@@ -90,7 +90,10 @@ test('blank and never-recorded values sort last, not first', () => {
 test('sorting never mutates the array the screen passed in', () => {
   const rows = [['C'], ['A'], ['B']];
   render(<DataTable headers={['X']} rows={rows} />);
-  fireEvent.click(screen.getByRole('button', { name: /x/i }));
+  // Targeted by test id rather than by accessible name. Every one of these tables
+  // gained an Excel and a CSV button in Release 3, and "Excel" also matches /x/i -
+  // so the old lookup became ambiguous. The behaviour under test is unchanged.
+  fireEvent.click(screen.getByTestId('tool-table-sort-0'));
   expect(rows).toEqual([['C'], ['A'], ['B']]);
 });
 
@@ -105,4 +108,34 @@ test('sortableCellText digs text out of nested elements', () => {
   expect(sortableCellText(42)).toBe('42');
   expect(sortableCellText(null)).toBe('');
   expect(sortableCellText(<span><b>12</b> days</span>)).toContain('12');
+});
+
+
+// ── The download control every one of these tables gained (Release 3, item 4) ──
+
+test('every tool table offers a download, and it holds the whole table', () => {
+  render(<DataTable title="Vendors" headers={['Name']} rows={[['Sharma Works'], ['Joya Stationers']]} />);
+  expect(screen.getByTestId('tool-table-export-xlsx')).toBeInTheDocument();
+  expect(screen.getByTestId('tool-table-export-csv')).toBeInTheDocument();
+});
+
+test('a table that is a control panel rather than a record can opt out', () => {
+  render(<DataTable title="Actions" headers={['Do']} rows={[['x']]} exportable={false} />);
+  expect(screen.queryByTestId('tool-table-export-xlsx')).not.toBeInTheDocument();
+});
+
+test('an empty table offers no download', () => {
+  // A file with headings and no rows is indistinguishable from a school with no
+  // vendors. There is nothing to save, so nothing is offered.
+  render(<DataTable title="Vendors" headers={['Name']} rows={[]} />);
+  expect(screen.queryByTestId('tool-table-export-xlsx')).not.toBeInTheDocument();
+});
+
+test('a cell that is drawn rather than written still reaches the file', () => {
+  // Half the columns on these screens are coloured spans and Badges. Reading only
+  // the children left every Badge column blank, and a blank column in a spreadsheet
+  // reads as missing data.
+  expect(sortableCellText(<Badge text="Draft" color="gray" />)).toBe('Draft');
+  expect(sortableCellText(<span style={{ color: 'red' }}>{45} days</span>)).toBe('45 days');
+  expect(sortableCellText(<span><b>12</b></span>)).toBe('12');
 });

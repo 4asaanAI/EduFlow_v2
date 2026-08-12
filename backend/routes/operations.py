@@ -1,6 +1,7 @@
 """Routes: certificates, expenses, visitors, assets, transport, announcements, incidents"""
 from __future__ import annotations
 from fastapi import APIRouter, Depends, Request, HTTPException
+from pagination import clamp_page, clamp_page_size
 from database import get_db
 from middleware.auth import (
     get_current_user,
@@ -223,8 +224,9 @@ async def list_leave_requests(request: Request, status: str = None, page: int = 
     query = {"status": status} if status else {}
     if not _can_decide(user):
         query["user_id"] = user["id"]
-    limit = min(max(limit, 1), 20)
-    skip = max(page - 1, 0) * limit
+    page = clamp_page(page)
+    limit = clamp_page_size(limit)
+    skip = (page - 1) * limit
     # Branch-scoped for deciders (principal sees own branch; owner has no branch_id so sees all).
     # Non-deciders already have query["user_id"] set, so branch further scopes them correctly.
     bid = user.get("branch_id")
@@ -570,8 +572,9 @@ async def list_incidents(request: Request, status: str = None, q: str = None, pa
     is_principal = user.get("role") == "admin" and user.get("sub_category") == "principal"
     if is_principal:
         query["category"] = {"$ne": "financial"}
-    limit = min(max(limit, 1), 50)
-    skip = max(page - 1, 0) * limit
+    page = clamp_page(page)
+    limit = clamp_page_size(limit)
+    skip = (page - 1) * limit
     total = await db.incidents.count_documents(scoped_query(query, branch_id=bid))
     items = await db.incidents.find(scoped_query(query, branch_id=bid), {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
@@ -1213,8 +1216,9 @@ async def list_announcements(request: Request, page: int = 1, limit: int = 20, u
     """Story 14: returns announcements targeted at the calling user's role."""
     db = get_db()
     role = user.get("role", "")
-    limit = min(max(limit, 1), 50)
-    skip = max(page - 1, 0) * limit
+    page = clamp_page(page)
+    limit = clamp_page_size(limit)
+    skip = (page - 1) * limit
     # Story 7-47: only `active` rows (or legacy rows missing `status`) are visible
     # to recipients. Pending and rejected announcements are hidden.
     # Owners/admins also see announcements they created so they can review sent items.

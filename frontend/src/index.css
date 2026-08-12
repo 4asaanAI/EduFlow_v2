@@ -1026,6 +1026,87 @@ img, video, canvas, svg { max-width: 100%; }
   }
 }
 
+/* ---------- 7c. Tablets: a touch device WIDER than a phone ----------
+   Release 3, item E, 2026-08-12.
+
+   THE GAP THIS CLOSES. Every touch rule above stops at 768px. An iPad is 810px
+   wide, so a tablet fell off the end of all of them and inherited the DESKTOP
+   sizes: 36px buttons, 13px form fields. Phone and tablet are the primary devices
+   here, and the whole tablet was being treated as a small desktop.
+
+   It went unnoticed because there was no tablet in the test suite until this item
+   added one. The old "responsive" project was Desktop Chrome with the window made
+   narrow - no touch, no device pixel ratio - so nothing ever loaded these screens
+   the way an iPad does.
+
+   WHY `pointer: coarse` IS RIGHT HERE, AND WAS WRONG IN JULY. Keying off input
+   modality alone is what caused D-01: it fired in Chrome's device simulator and
+   put 16px dropdowns beside 12px labels on a desktop. Two things are different
+   now. It is paired with a WIDTH, so it cannot catch a desktop with a touchscreen
+   at a desktop size; and firing in device emulation is exactly what is wanted,
+   because that is how the tablet is now tested. A mouse-driven desktop matches
+   `pointer: fine` and is untouched at any width.
+
+   AND THE LABELS MOVE WITH THE CONTROLS. That was the other half of D-01: raising
+   controls on their own just breaks their alignment with the text beside them. */
+@media (pointer: coarse) and (min-width: 769px) {
+  :root {
+    --text-xs: 12px;
+    --text-sm: 14px;
+    --text-base: 16px;
+  }
+
+  /* The iOS zoom floor. Safari force-zooms a focused field under 16px and never
+     zooms back out, and it does that on an iPad exactly as it does on an iPhone.
+     `!important` because this codebase styles inline, and only `!important`
+     outranks an inline style - see the long note in section 7. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: max(16px, var(--text-base)) !important;
+    font-family: inherit;
+  }
+
+  /* 40px, the thumb floor. A 25px control is one a finger mis-hits, and mis-hitting
+     a row on a fee screen opens the wrong family. */
+  button, select, [role="button"],
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]) {
+    min-height: 40px !important;
+  }
+
+  /* NOT the chat composer. A height floor on its one-line box top-aligns the text
+     against centred icons and stretches the icon buttons oval; the pill already
+     clears 40px on its own padding, so the target is not lost. Same exception the
+     phone scale carries, for the same reason. */
+  .composer-shell textarea,
+  .composer-shell button {
+    min-height: 0 !important;
+  }
+
+  /* A tick box is sized by width and height, not by a height floor - stretching
+     one with min-height gives an oval box in some browsers rather than a bigger
+     target. The default is about 13px, which is genuinely hard to hit with a
+     finger, and on the spreadsheet-import screen a mis-hit tick box means
+     importing a column somebody did not choose. */
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 22px !important;
+    height: 22px !important;
+  }
+
+  /* A slider is dragged, not tapped, so a 16px-tall one is worse than a small
+     button: a finger that lands beside the track moves nothing at all. The height
+     is given to the whole control rather than to the thumb, which keeps the track
+     centred in it and leaves the thumb's own appearance alone - restyling the thumb
+     needs a different vendor rule per browser and is how sliders end up invisible
+     in one of them. The attendance-alerts screen sets its threshold this way. */
+  input[type="range"] {
+    height: 40px !important;
+  }
+
+  label, .field-label, .tool-label { font-size: var(--text-sm); }
+}
+
 @media (min-width: 769px) {
   .mobile-menu-btn { display: none !important; }
   .mobile-overlay  { display: none !important; }

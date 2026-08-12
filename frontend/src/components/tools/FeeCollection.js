@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle, Edit3, Percent, Phone, RefreshCw, Save, Fil
 import { getAuthHeaders } from '../../lib/authSession';
 import { useUser } from '../../contexts/UserContext';
 import { useColumnSort, SortableHeaderRow } from './ToolPage';
+import ExportButton from '../ui/ExportButton';
 import { API, apiFetch,
   correctFeeTransaction,
   deleteFeeTransaction,
@@ -70,6 +71,36 @@ const initialDiscountApply = { student_id: '', discount_type_id: '', original_am
 function money(value) {
   return `Rs ${Number(value || 0).toLocaleString('en-IN')}`;
 }
+
+/**
+ * What the two money tables put in a downloaded file (Release 3, item 4).
+ *
+ * MONEY GOES OUT AS A NUMBER, not as the `money()` string the screen shows. "Rs
+ * 12,400" is text to a spreadsheet: it will not add up, and the office downloads
+ * these precisely in order to add them up. The rupee sign belongs on the screen.
+ *
+ * The receipt link and the row's Edit and Delete buttons are left out. They are
+ * controls, not records, and a column of empty cells in a file reads as missing data.
+ */
+const PAYROLL_EXPORT_COLUMNS = [
+  { key: 'staff', label: 'Staff', exportValue: (d) => d.staff_name || d.staff_id },
+  { key: 'month', label: 'Month' },
+  { key: 'gross', label: 'Gross', exportValue: (d) => Number(d.gross || 0) },
+  { key: 'net', label: 'Net', exportValue: (d) => Number(d.net || 0) },
+  { key: 'status', label: 'Status' },
+];
+
+const OVERDUE_EXPORT_COLUMNS = [
+  { key: 'student', label: 'Student', exportValue: (t) => t.student_name || t.student_id },
+  { key: 'class_name', label: 'Class' },
+  { key: 'head', label: 'Head', exportValue: (t) => t.fee_head || t.fee_type },
+  { key: 'amount', label: 'Amount', exportValue: (t) => Number(t.amount || 0) },
+  { key: 'due_date', label: 'Due' },
+  { key: 'status', label: 'Status' },
+  // Shown on screen since Release 2 at Sonu's request, so the sibling concession is
+  // visible where the fee is. It belongs in the file for the same reason.
+  { key: 'siblings', label: 'Siblings', exportValue: (t) => (t.siblings || []).join(', ') },
+];
 
 function lastUpdatedLabel(value) {
   if (!value) return 'Waiting for live updates';
@@ -741,7 +772,17 @@ export default function FeeCollection() {
 
       {/* Payroll Disbursements */}
       <div style={panelStyle}>
-        <h2 style={panelTitle}>Payroll - This Month</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <h2 style={{ ...panelTitle, margin: 0 }}>Payroll - This Month</h2>
+          {disbursements.length > 0 && (
+            <ExportButton
+              title="Payroll this month"
+              testId="payroll-export"
+              columns={PAYROLL_EXPORT_COLUMNS}
+              getRows={async () => payrollSort.items}
+            />
+          )}
+        </div>
         {loadingPayroll ? (
           <div style={emptyStyle}>Loading payroll...</div>
         ) : disbursements.length === 0 ? (
@@ -881,7 +922,21 @@ export default function FeeCollection() {
       <div style={panelStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
           <h2 style={panelTitle}>Overdue records</h2>
-          <input value={overdueDays} onChange={e => setOverdueDays(e.target.value)} type="number" min="1" style={{ ...inputStyle, width: 120 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <input value={overdueDays} onChange={e => setOverdueDays(e.target.value)} type="number" min="1" style={{ ...inputStyle, width: 120 }} />
+            {overdue.length > 0 && (
+              <ExportButton
+                // The threshold is part of what this list IS, so it goes in the
+                // filename. A file called "overdue records" that silently used a
+                // different number of days than the one on screen is a record
+                // nobody can reconcile afterwards.
+                title={`Overdue records over ${overdueDays} days`}
+                testId="overdue-export"
+                columns={OVERDUE_EXPORT_COLUMNS}
+                getRows={async () => overdueSort.items}
+              />
+            )}
+          </div>
         </div>
         {loading ? (
           <div style={emptyStyle}>Loading fee records...</div>
@@ -952,7 +1007,8 @@ export default function FeeCollection() {
             <button
               onClick={loadWaDefaulters}
               disabled={waLoading}
-              style={{ ...primaryButton('var(--tool-hex-4f8ff7)'), minHeight: 36, padding: '7px 14px', fontSize: 12 }}
+              // 40px thumb floor (Release 3, item E).
+              style={{ ...primaryButton('var(--tool-hex-4f8ff7)'), minHeight: 40, padding: '7px 14px', fontSize: 12 }}
             >
               {waLoading ? 'Loading…' : 'Load defaulters'}
             </button>
@@ -966,7 +1022,7 @@ export default function FeeCollection() {
                 <button
                   onClick={sendFeeWaReminders}
                   disabled={waSending}
-                  style={{ ...primaryButton('var(--tool-hex-34d399)'), minHeight: 36, padding: '7px 14px', fontSize: 12 }}
+                  style={{ ...primaryButton('var(--tool-hex-34d399)'), minHeight: 40, padding: '7px 14px', fontSize: 12 }}
                 >
                   {waSending ? 'Sending…' : `Send reminders to ${waDefaulters.fee_defaulters.length} guardian(s)`}
                 </button>

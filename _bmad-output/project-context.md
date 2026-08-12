@@ -605,3 +605,57 @@ These are the new invariants the hardening initiative added. Each has a single e
 | **Phase-1 action lockdown** (F.11/FR43) | `services/ai_action_policy.py` (single switch `LOCKDOWN_ENABLED`) applied in `routes/chat.py:_is_tool_authorized` | AI write/action tools = Owner + Principal only during Phase 1; reads (incl. all student tools) unaffected. Phase 2 (Epic H) widens by editing the one policy — no engine change. |
 
 **Operator runbook** (kill-switch, shadow mode, reverting a bad AI write): `docs/deployment-runbook.md` §8.
+
+---
+
+## Release 3 Invariants - "the whole list, on any device" (2026-08-12)
+
+Code-complete, green, **uncommitted**. Live record:
+`_bmad-output/implementation-artifacts/release-3/PROGRESS.md`.
+
+**The one idea.** Every serious fault found on 11 and 12 August was the same shape: a
+query that quietly returned less than it should. A lookup matching nobody looks like a
+lookup with nothing to do. "All" showing one row looks like a school with one student. An
+export stopping at 2,000 looks like a school with 2,000 children. So every invariant below
+exists to make a partial answer impossible to mistake for a complete one.
+
+**A truncated FILE is worse than a truncated screen.** A screen is an annoyance; a file
+leaves the building, gets mailed to the trust and filed as a record, and nothing on its
+face admits it is partial.
+
+| Invariant | Enforcement point | Notes |
+|---|---|---|
+| **One page-size ceiling** | `backend/pagination.py` (`MAX_PAGE_SIZE = 500`, `clamp_page_size`, `clamp_page`) | Applied at all 16 clamp sites. A page size **below 1 is refused with a 400**, never coerced to 1: `max(1, -1)` is what made "All" show ONE ROW on four screens. `page = 0` and negative pages are refused the same way. Frontend mirror is `PAGE_MAX` in `lib/api.js`; per-list names are aliases of it, never their own figures. |
+| **"All" never returns a short list** | `frontend/src/lib/fetchAllRows.js` | Walks the pages, never sends the sentinel (-1), **fails on a mid-walk error instead of returning what it has**, cannot loop on a server that over-reports its total, and sets `truncated` with the real total at a 25,000-row ceiling. Nothing may reintroduce a "partial success". |
+| **An export is COMPLETE OR REFUSED** | `routes/exports.py:_read_all`, `EXPORT_MAX_ROWS = 100_000` | Asks for one row more than it will accept, so it can tell "that is all of them" from "there were more". Past the ceiling: 413 saying **no file was produced**. Never trims. |
+| **One definition of each data set** | `EXPORT_BUILDERS` in `routes/exports.py` | Nine builders returning `(headers, rows, title)`. The screen download, Flo's `export_data_file`, and the whole-school workbook all read through them. **Add a data set here, never beside a route** - a second query is the next thing to drift. A new entry also needs an `EXPORT_SCREENS` line or `may_export` default-denies it and it reads as broken. |
+| **An export respects who is looking** | `require_export` (dependency) and `may_export` (the same rule as a question), both derived from `services/profile_matrix.py` | A download is not a way around the Release 2 permission table, and neither is Flo. Dormant profiles are refused **even where the table grants them the screen**: switching a profile on must include deciding what it may export. Never write a second list of role names. |
+| **A spreadsheet is NEVER trimmed** | `document_builder.build_document(max_rows=...)`, `build_workbook` | Abhimanyu, 2026-08-12. Excel and CSV carry the export's REFUSING ceiling. **Word, PDF and PowerPoint still trim and still say so**, on purpose: a 5,000-row table in a letter is not a document anybody reads, whereas a spreadsheet is opened to be counted. |
+| **No file holds fewer rows than the screen says** | `ui/ExportButton.js` | Compares what came back against the table's own total and **refuses to save**, for every screen at once, rather than trusting whoever wired each one. |
+| **A download follows the filter** | `ToolPage.DataTable`, and each screen's `exportRows` | A file quietly holding the whole list when the screen was narrowed is the same fault in the other direction: it gets filed under the wrong name. |
+| **The count is always visible** | filter bar, drawn-count line, `X-Export-Row-Counts` header, Flo's reply | A person cannot count 1,876 rows by eye. "Showing 24 of 1,876", "Showing 100 of 260 loaded rows", and every workbook sheet printing its own count on line 1. |
+| **A filtered-to-nothing table does not say "No data found"** | `ToolPage.DataTable` | That reads as an empty school. It says how many rows are hidden. |
+| **Touch floor** | `frontend/src/index.css` §7 (≤768px), §7b (≤420px), **§7c (`pointer: coarse` AND ≥769px)** | 40px tap targets, 16px form fields. §7c is new and is the tablet: an iPad is **810px wide**, so it fell off the end of every touch rule and inherited desktop sizes. Tick boxes get width/height (stretching a square with `min-height` gives an oval); sliders get 40px because they are DRAGGED, and a finger beside a thin track moves nothing. `!important` is required throughout - this codebase styles inline, and only `!important` outranks an inline style. |
+| **Real devices in the E2E suite** | `playwright.config.js` projects `phone-pixel` (Pixel 7) and `tablet-ipad` (iPad gen 7); `tests/e2e/tables-on-a-phone.spec.js` | Both carry touch, `isMobile` and a real pixel ratio. Both run on **Chromium** (WebKit is not installed), so they prove layout and touch, not Safari's engine - the zoom rule is asserted by measuring computed font size instead. |
+
+### Traps this release paid for, in full
+
+- **Never bind a module constant as a default argument.** `max_rows: int = MAX_ROWS` is
+  evaluated once at import, so the constant stops being live and every test that changes
+  it is silently ignored. Default to `None` and resolve inside the function.
+- **A new AI tool fires four guards, and every one wants a written decision.**
+  `write_classification_guard_test.py` (classify it, or allowlist it with reasoning), the
+  same file's read-verb prefix rule, `test_release2_ai_layer_audit.py` (put it on a
+  permission segment; unclassified reaches leadership only, on purpose), and
+  `test_all_nine_profiles_sweep_r2_13.py` (update the pinned reach counts BY HAND and say
+  why). A count moving without a reason means somebody's access changed and nobody
+  decided to.
+- **Keying CSS off `pointer: coarse` alone caused D-01** in July: it fired in Chrome's
+  simulator and put 16px dropdowns beside 12px labels on a desktop. It is safe when paired
+  with a WIDTH, and when the labels move with the controls. Both halves matter.
+- **The E2E stand-in backend pinned its allowed origin to port 3000.** On any other port
+  the browser silently dropped every reply and the sign-in page sat there with no error -
+  the release's own lesson, in its own test harness. It echoes the origin now.
+- **Test factories built identities from a 4-digit random number** in a fake DB that is
+  never cleared between tests, so two draws eventually collided and an unrelated test
+  failed. That was the nightly CI red on `main` for 10-12 August. They count upwards now.

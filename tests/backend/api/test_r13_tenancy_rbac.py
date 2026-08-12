@@ -171,9 +171,16 @@ def test_export_students_plain_admin_returns_403(client):
     assert resp.status_code == 403
 
 
-def test_export_students_accountant_returns_403(client):
+def test_export_students_accountant_returns_200(client):
+    """CHANGED on 2026-08-12 (Release 3): was 403.
+
+    The Release 2 permission table gives the accountant head the School Directory,
+    because a fee belongs to a child and he reconciles the two. The old gate was a
+    hand-written owner-or-principal check that predated the table, so he could read
+    the list on screen all day and not download it. Exports read the table now.
+    """
     resp = client.get("/api/export/students", headers=_accountant())
-    assert resp.status_code == 403
+    assert resp.status_code == 200
 
 
 def test_export_students_owner_returns_200(client):

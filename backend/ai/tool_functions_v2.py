@@ -4152,6 +4152,19 @@ async def tool_draft_document(params: dict, user: dict, scope: dict = None) -> d
     if isinstance(paragraphs, str):
         paragraphs = [paragraphs]
 
+    # A SPREADSHEET IS NEVER TRIMMED (Abhimanyu, 2026-08-12). The shared builder's
+    # default is to cut a table at 5,000 rows and add a note, which is the right trade
+    # for a Word document or a PDF - a 5,000-row table in a letter is not something
+    # anybody reads - and the wrong one for data. A spreadsheet is opened to be counted,
+    # filtered and reconciled, so a trimmed one is a wrong answer wearing the clothes of
+    # a right one. Excel and CSV therefore carry the export ceiling, which REFUSES
+    # rather than trims and sits far above the school's longest list.
+    #
+    # This does NOT make a `draft_document` spreadsheet complete on its own: the rows
+    # here are whatever is already in the conversation. That is why the description of
+    # this tool sends whole data sets to `export_data_file` instead.
+    from routes.exports import EXPORT_MAX_ROWS
+
     try:
         result = await create_document(
             user=user,
@@ -4163,6 +4176,7 @@ async def tool_draft_document(params: dict, user: dict, scope: dict = None) -> d
             rows=rows,
             slides=params.get("slides"),
             source="assistant",
+            max_rows=EXPORT_MAX_ROWS if doc_type in ("xlsx", "csv") else None,
         )
     except (DocumentQuotaExceeded, DocumentStorageUnavailable) as exc:
         return {"success": False, "denied": False, "data": {}, "meta": {"count": 0},
@@ -4181,6 +4195,161 @@ async def tool_draft_document(params: dict, user: dict, scope: dict = None) -> d
         "data": result,
         "meta": {"count": 1},
         "message": message,
+    }
+
+
+async def tool_export_data_file(params: dict, user: dict, scope: dict = None) -> dict:
+    """Download a whole data set as an Excel workbook or a CSV, complete or not at all.
+
+    WHY THIS EXISTS, and why `draft_document` was not enough (2026-08-12). Flo could
+    already build a spreadsheet, but only out of rows it was holding in the
+    conversation: it would fetch a page of students with a read tool and hand those
+    rows over. Ask for "all 1,876 children in Excel" and you would get a sheet holding
+    whatever it had seen, with nothing on the sheet to say so. A short screen is an
+    annoyance; a short FILE leaves the building, gets mailed to the trust and filed as
+    a record. That is the fault this whole release exists to remove.
+
+    So this tool does not take rows. It names a data set, and the rows are read from
+    the database by the same builder the download button on the screen uses. Nothing
+    passes through the model, so nothing can be dropped on the way.
+
+    THE GATE IS THE SAME ONE, not a copy. `may_export` is `require_export`'s rule
+    asked as a plain question, so Flo cannot become a way around the permission table.
+    A download is not a way around who may see what - that is Abhimanyu's decision of
+    2026-08-12 and it applies to Flo exactly as it applies to a screen.
+
+    NO CONFIRM STEP, on purpose, and it must not be given one: the same decision says
+    an export needs no approval window. Reading what you may already read is not the
+    thing that needs guarding.
+    """
+    from fastapi import HTTPException
+    from routes.exports import EXPORT_BUILDERS, build_export, may_export, EXPORT_MAX_ROWS
+    from services.document_builder import DocumentBuildError
+    from services.document_export import (
+        DocumentQuotaExceeded,
+        DocumentStorageUnavailable,
+        create_document,
+    )
+
+    dataset = (params.get("dataset") or params.get("data_set") or "").strip().lower()
+    if not dataset:
+        return {"success": False, "denied": False, "data": {}, "meta": {"count": 0},
+                "message": "Which records? Choose one of: " + ", ".join(sorted(EXPORT_BUILDERS)) + "."}
+    if dataset not in EXPORT_BUILDERS:
+        return {"success": False, "denied": False, "data": {}, "meta": {"count": 0},
+                "message": (f"I do not have an export called '{dataset}'. I can download: "
+                            + ", ".join(sorted(EXPORT_BUILDERS)) + ".")}
+
+    if not may_export(user, dataset):
+        # `denied` rather than a bare failure, so the reply says this is a permission
+        # answer and not a fault. See the AI reliability rules on honest refusals.
+        return {"success": False, "denied": True, "data": {}, "meta": {"count": 0},
+                "message": "You do not have permission to download these records."}
+
+    fmt = (params.get("format") or "xlsx").strip().lower()
+    if fmt in ("excel", "spreadsheet", "sheet", "xls"):
+        fmt = "xlsx"
+    if fmt not in ("xlsx", "csv"):
+        fmt = "xlsx"
+
+    try:
+        headers, rows, title = await build_export(dataset, user, {
+            k: params.get(k) for k in ("status", "fee_period", "start_date", "end_date")
+            if params.get(k)
+        })
+    except HTTPException as exc:
+        # The 413 from `_read_all`: too many rows for one file. Its wording already
+        # says that NO file was produced and what to do instead, so it is passed
+        # through rather than replaced with something vaguer.
+        return {"success": False, "denied": False, "data": {}, "meta": {"count": 0},
+                "message": str(exc.detail)}
+
+    try:
+        result = await create_document(
+            user=user,
+            doc_type=fmt,
+            filename=f"{dataset.replace('-', '_')}_{date.today()}",
+            title=title,
+            headers=headers,
+            rows=rows,
+            source="assistant",
+            # The builder's own default trims at 5,000 rows and adds a note. An export
+            # must never ship short, so the export's ceiling - which REFUSES - is the
+            # only one that applies. Without this the payment ledger would quietly
+            # lose more than half of itself.
+            max_rows=EXPORT_MAX_ROWS,
+        )
+    except (DocumentQuotaExceeded, DocumentStorageUnavailable) as exc:
+        return {"success": False, "denied": False, "data": {}, "meta": {"count": 0},
+                "message": str(exc)}
+    except DocumentBuildError as exc:
+        return {"success": False, "denied": False, "data": {}, "meta": {"count": 0},
+                "message": str(exc)}
+
+    # THE COUNT IS PART OF THE ANSWER. Saying how many rows are in the file is what
+    # lets somebody notice a wrong one; "here is your file" does not.
+    return {
+        "success": True,
+        "denied": False,
+        "data": {**result, "row_count": len(rows)},
+        "meta": {"count": len(rows)},
+        "message": f"Created {result['file_name']} with all {len(rows):,} rows.",
+    }
+
+
+async def tool_export_whole_school_workbook(params: dict, user: dict, scope: dict = None) -> dict:
+    """The whole school as ONE Excel file, a sheet per area. Owner and principal only.
+
+    Same rules as `export_data_file`: it reads the rows itself through the builders in
+    `routes/exports.py`, so nothing passes through the model and nothing can be lost on
+    the way. No confirm window, like every other export.
+
+    The gate is the route's own gate asked as a question, not a second copy of it. Aman
+    (owner) and Adesh (principal) only, which is Abhimanyu's decision of 2026-08-12.
+    """
+    from routes.exports import build_school_workbook, WHOLE_SCHOOL_SHEETS
+    from fastapi import HTTPException
+    from services.document_builder import DocumentBuildError
+    from services.document_export import (
+        DocumentQuotaExceeded,
+        DocumentStorageUnavailable,
+        store_built_document,
+    )
+
+
+    if not (user.get("role") == "owner" or _is_principal(user)):
+        return {"success": False, "denied": True, "data": {}, "meta": {"count": 0},
+                "message": ("The whole-school download is for the school's owner and the "
+                            "principal only. I can download a single set of records for "
+                            "you instead.")}
+
+    try:
+        built, counts = await build_school_workbook(user)
+    except HTTPException as exc:
+        return {"success": False, "denied": False, "data": {}, "meta": {"count": 0},
+                "message": str(exc.detail)}
+    except DocumentBuildError as exc:
+        return {"success": False, "denied": False, "data": {}, "meta": {"count": 0},
+                "message": str(exc)}
+
+    try:
+        result = await store_built_document(user=user, built=built, source="assistant")
+    except (DocumentQuotaExceeded, DocumentStorageUnavailable) as exc:
+        return {"success": False, "denied": False, "data": {}, "meta": {"count": 0},
+                "message": str(exc)}
+
+    total = sum(c for _n, c in counts)
+    # EVERY SHEET SAYS ITS SIZE. Nine tabs is exactly the shape where one sheet coming
+    # back empty or short would go unnoticed, so the reply lists them all.
+    breakdown = ", ".join(f"{name} {count:,}" for name, count in counts)
+    return {
+        "success": True,
+        "denied": False,
+        "data": {**result, "row_counts": {name: count for name, count in counts},
+                 "sheets": len(WHOLE_SCHOOL_SHEETS)},
+        "meta": {"count": total},
+        "message": (f"Created {result['file_name']} with {len(counts)} sheets and "
+                    f"{total:,} rows in total: {breakdown}."),
     }
 
 
@@ -4890,13 +5059,19 @@ TOOL_REGISTRY = {
         "roles": ["owner", "admin", "teacher"],
         "dispatch_type": "read",
         "description": (
-            "Create a real downloadable file from content you have written - a Word "
+            "Create a real downloadable file from content YOU have written - a Word "
             "document, Excel workbook, PowerPoint deck, PDF, CSV, Markdown or plain "
-            "text. Use this whenever someone asks for a circular, notice, letter, fee "
-            "sheet, report, template or presentation as a FILE they can print, sign, "
+            "text. Use this whenever someone asks for a circular, notice, letter, "
+            "report, template or presentation as a FILE they can print, sign, "
             "email or share. Put prose in `paragraphs` and tabular data in "
             "`headers` + `rows`. Returns a short `file_id` (not a link); append it in a "
-            "`file` rich block and the download button fetches a fresh link on tap."
+            "`file` rich block and the download button fetches a fresh link on tap. "
+            "DO NOT use this to hand over a whole data set - every student, all the "
+            "staff, the payment ledger, attendance, expenses, enquiries or results. "
+            "The rows would only be the ones already mentioned in this conversation, "
+            "so the file would be SHORT and nothing on it would say so. Use "
+            "`export_data_file` for those (find it with search_tools): it reads every "
+            "row itself."
         ),
         "params_schema": {
             "doc_type": {"type": "string", "description": "docx, xlsx, pptx, pdf, csv, md or txt"},
@@ -4907,6 +5082,56 @@ TOOL_REGISTRY = {
             "rows": {"type": "array", "description": "Rows of tabular data; each row is an array of cells"},
             "slides": {"type": "array", "description": "For pptx: [{title, bullets:[...]}]"},
         },
+    },
+    # Read-class for the same reason as `draft_document`: it changes no school record.
+    # It is NOT gated by the roles list below alone - `may_export` inside the function
+    # asks the permission table per data set, so an admin who may not see money cannot
+    # download the ledger. The roles here are only the outer fence.
+    "export_data_file": {
+        "fn": tool_export_data_file,
+        "roles": ["owner", "admin", "teacher"],
+        "dispatch_type": "read",
+        "description": (
+            "Download a WHOLE data set as an Excel workbook or CSV - every student, "
+            "every staff member, the payment ledger, attendance, expenses, enquiries "
+            "or exam results. Use this, NOT draft_document, whenever someone asks for "
+            "records 'in Excel', 'as a spreadsheet', 'as a file' or 'to download'. It "
+            "reads the rows itself, so the file holds every matching row rather than "
+            "only the ones already mentioned in this conversation. Returns a short "
+            "`file_id` (not a link); append it in a `file` rich block and the download "
+            "button fetches a fresh link on tap."
+        ),
+        "params_schema": {
+            "dataset": {
+                "type": "string",
+                "description": ("Which records: students, staff, fee-transactions, "
+                                "attendance, expenses, enquiries or exam-results"),
+            },
+            "format": {"type": "string", "description": "xlsx (default) or csv"},
+            "status": {"type": "string", "description": "fee-transactions only: e.g. paid, unpaid"},
+            "fee_period": {"type": "string", "description": "fee-transactions only: e.g. April"},
+            "start_date": {"type": "string", "description": "attendance only: YYYY-MM-DD"},
+            "end_date": {"type": "string", "description": "attendance only: YYYY-MM-DD"},
+        },
+    },
+    # Read-class, same as `export_data_file`, and gated INSIDE the function to the
+    # school's owner and the principal (Abhimanyu, 2026-08-12). The roles list below
+    # cannot express that on its own - it cannot say "admin, but only the principal
+    # desk" - so the outer fence is admin and the real gate is in the function.
+    "export_whole_school_workbook": {
+        "fn": tool_export_whole_school_workbook,
+        "roles": ["owner", "admin"],
+        "dispatch_type": "read",
+        "description": (
+            "Download the WHOLE SCHOOL as one Excel file with a separate sheet per "
+            "area: children, staff, fees and payments, attendance, exam results, "
+            "classes, transport, expenses and enquiries. For the school's owner and "
+            "the principal only. Use this when someone asks for 'everything', 'the "
+            "whole school' or 'all our records' in one file; use export_data_file for "
+            "a single set of records. Reads every row itself, so no sheet is short. "
+            "Returns a short `file_id` (not a link); append it in a `file` rich block."
+        ),
+        "params_schema": {},
     },
     # ---- 14 original tools (from tool_functions.py) ----
     "get_school_pulse": {
@@ -7054,6 +7279,14 @@ FINANCE_TOOL_NAMES = frozenset({
 })
 
 SHARED_LOOKUP_TOOL_NAMES = frozenset({
+    # Release 3, 2026-08-12. `export_data_file` is shared for the same reason the
+    # spreadsheet import below is: the TOOL is neutral and the DATA SET decides. Its
+    # own gate, `may_export`, asks the permission table per data set, so the management
+    # head can download the children and the staff and is refused the ledger, while the
+    # accountant head gets the ledger. Classifying the whole tool as finance would take
+    # the student list away from management; classifying it as non-finance would hand
+    # the ledger to them. Neither is what the table says.
+    "export_data_file",
     "draft_document", "search_students", "get_student_database",
     "get_student_profile", "query_student_record", "get_staff_list",
     "get_class_list",
@@ -7109,6 +7342,16 @@ LEADERSHIP_ONLY_TOOL_NAMES = frozenset({
     # an owner's (`account_management_service.py`). This puts the outer door in front
     # of them.
     "create_student_login", "set_profile_password",
+    # Release 3, 2026-08-12. The whole school in one file - the roll, the payroll-free
+    # staff list, the payment ledger and the spending, all in the same workbook. It is
+    # Aman's and Adesh's only by Abhimanyu's decision, and `leadership` is the domain
+    # that means exactly those two.
+    #
+    # The tool ALSO checks owner-or-principal inside itself. That is deliberate
+    # doubling, not an oversight: this is the single largest copy of the school's data
+    # the platform can produce, and the domain floor and the function gate would have
+    # to fail together for it to reach the wrong desk.
+    "export_whole_school_workbook",
 })
 
 # Every tool that is the ADMIN OFFICE's: students, staff administration, admissions,

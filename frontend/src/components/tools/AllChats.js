@@ -28,9 +28,11 @@ import {
   bulkDeleteConversations,
   deleteConversation,
   getConversations,
+  PAGE_MAX,
   updateConversation,
 } from '../../lib/api';
 import DataTable from '../ui/DataTable';
+import { collectAllRows } from '../../lib/exportTable';
 import { Button, EmptyState, Pill, inputStyle } from '../ui/primitives';
 import { BULK_SAFE_PAGE_SIZES, useTablePageSize } from '../../hooks/useTablePrefs';
 
@@ -234,6 +236,18 @@ export default function AllChats() {
     setLoading(false);
   }, [page, pageSize, sort, search]);
 
+  // The download carries the search box with it, and walks every page rather than
+  // saving the one on screen. The rows-per-page menu here is deliberately capped at
+  // 100 (bulk delete cannot take more), which is a limit on SELECTING rows, not on
+  // reading them - so a download of the whole list is still the right answer.
+  const exportRows = useCallback(
+    () => collectAllRows(
+      ({ page: cursor, limit }) => getConversations({ page: cursor, limit, sort, search }),
+      { pageMax: PAGE_MAX, what: 'conversations' },
+    ),
+    [sort, search],
+  );
+
   useEffect(() => { load(); }, [load]);
 
   const openChat = useCallback((conv) => {
@@ -361,6 +375,8 @@ export default function AllChats() {
   const columns = useMemo(() => [
     {
       key: 'select',
+      // A tick box, not data.
+      exportSkip: true,
       label: (
         <input
           type="checkbox"
@@ -385,6 +401,7 @@ export default function AllChats() {
     },
     {
       key: 'title', label: 'Chat', sortKey: 'title',
+      exportValue: (conv) => conv.title,
       render: (conv) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <MessageCircle size={14} aria-hidden="true" style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
@@ -404,9 +421,10 @@ export default function AllChats() {
         </div>
       ),
     },
-    { key: 'updated_at', label: 'Last used', sortKey: 'recent', render: (conv) => formatWhen(conv.updated_at) },
+    { key: 'updated_at', label: 'Last used', sortKey: 'recent', exportValue: (conv) => conv.updated_at, render: (conv) => formatWhen(conv.updated_at) },
     {
       key: 'actions', label: 'Actions',
+      exportSkip: true,
       render: (conv) => (
         <div style={{ display: 'flex', gap: 5 }} onClick={e => e.stopPropagation()}>
           <Button
@@ -560,6 +578,7 @@ export default function AllChats() {
           pageSizes={BULK_SAFE_PAGE_SIZES}
           onPageChange={changePage}
           onPageSizeChange={changePageSize}
+          exportTable={{ title: 'Chats', getRows: exportRows }}
         />
       )}
 

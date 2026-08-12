@@ -6,13 +6,289 @@ import { useUser } from '../../contexts/UserContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, ActionBtn, FormField } from './ToolPage';
-import { Plus, Trash2, Edit2, Save, X } from 'lucide-react';
+import { Plus, Trash2, Edit2, Save, X, Wand2 } from 'lucide-react';
+import ExportButton from '../ui/ExportButton';
 import { API, apiFetch } from '../../lib/api';
 
 function h() { return getAuthHeaders(); }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8];
+
+/** The timetable keeps its grid shape in a file: a column per day. */
+const TIMETABLE_EXPORT_COLUMNS = [
+  { key: 'period', label: 'Period' },
+  ...DAYS.map((day) => ({ key: day, label: day })),
+];
+
+/**
+ * Work the week out, instead of typing it in.
+ *
+ * Ported from the standalone timetable builder Abhimanyu supplied on 2026-08-12. The
+ * search runs on the SERVER, where it can see what every other class has already
+ * booked - see `services/timetable_solver.py`. Doing it here would mean shipping the
+ * whole school's timetables to the browser and would still get teacher clashes wrong.
+ *
+ * THE RULE ON THIS PANEL: generating shows you a week. It does not save one. The
+ * saved timetable is what the substitution plan reads when a teacher is away, so the
+ * person looks at the proposal, sees its marks out of 100, and then decides. Nothing
+ * reaches the school's records without that second, deliberate tap.
+ */
+function TimetableGenerator({ classId, className, subjects, days, periods, onApplied, styles }) {
+  const { card, border, text, muted, accent } = styles;
+  const [periodsPerDay, setPeriodsPerDay] = React.useState(8);
+  const [perWeek, setPerWeek] = React.useState({});
+  const [morning, setMorning] = React.useState({});
+  const [proposal, setProposal] = React.useState(null);
+  const [problems, setProblems] = React.useState([]);
+  const [busy, setBusy] = React.useState('');
+  const [note, setNote] = React.useState('');
+  const [error, setError] = React.useState('');
+
+  // A new class means the previous class's proposal is meaningless. Leaving it on
+  // screen is how somebody applies 5A's week to 6B.
+  React.useEffect(() => {
+    setProposal(null);
+    setProblems([]);
+    setNote('');
+    setError('');
+    setPerWeek({});
+    setMorning({});
+  }, [classId]);
+
+  const asked = Object.values(perWeek).reduce((sum, n) => sum + (Number(n) || 0), 0);
+  const available = days.length * periodsPerDay;
+
+  async function generate() {
+    setBusy('generate');
+    setError('');
+    setNote('');
+    setProblems([]);
+    try {
+      const res = await apiFetch(`${API}/academics/timetable/generate`, {
+        method: 'POST',
+        headers: { ...h(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          class_id: classId,
+          days,
+          periods_per_day: periodsPerDay,
+          periods_per_week: perWeek,
+          prefer_morning: Object.keys(morning).filter((id) => morning[id]),
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.detail || 'The timetable could not be worked out.');
+      if (body.data.solved) {
+        setProposal(body.data);
+      } else {
+        setProposal(null);
+        // The server's own wording says what to change. Replacing it with "failed"
+        // would throw away the only useful part of the answer.
+        setProblems(body.data.problems || []);
+      }
+    } catch (err) {
+      setError(err.message || 'The timetable could not be worked out.');
+    }
+    setBusy('');
+  }
+
+  async function apply() {
+    if (!proposal) return;
+    setBusy('apply');
+    setError('');
+    try {
+      const res = await apiFetch(`${API}/academics/timetable/apply`, {
+        method: 'POST',
+        headers: { ...h(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ class_id: classId, slots: proposal.slots }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.detail || 'The timetable could not be saved.');
+      setNote(
+        `Saved. ${className} now has ${body.meta.count} periods`
+        + (body.meta.replaced ? `, replacing ${body.meta.replaced}.` : '.'),
+      );
+      setProposal(null);
+      onApplied();
+    } catch (err) {
+      setError(err.message || 'The timetable could not be saved.');
+    }
+    setBusy('');
+  }
+
+  const cell = {
+    background: card, border: `1px solid ${border}`, borderRadius: 7,
+    padding: '6px 9px', color: text, fontSize: 12, width: 70,
+  };
+
+  return (
+    <div
+      data-testid="timetable-generator"
+      style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 16, marginBottom: 20 }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div>
+          <span style={{ fontWeight: 700, fontSize: 14, color: text, display: 'flex', alignItems: 'center', gap: 7 }}>
+            <Wand2 size={15} color={accent} /> Work out a timetable
+          </span>
+          <div style={{ color: muted, fontSize: 12, marginTop: 4 }}>
+            Say how many periods a week each subject needs. Nothing is saved until you
+            look at the result and choose to keep it.
+          </div>
+        </div>
+        <label style={{ color: muted, fontSize: 12, display: 'flex', alignItems: 'center', gap: 7 }}>
+          Periods a day
+          <input
+            type="number" min="1" max="12" value={periodsPerDay}
+            data-testid="generator-periods-per-day"
+            onChange={(e) => setPeriodsPerDay(Math.max(1, Math.min(12, Number(e.target.value) || 1)))}
+            style={cell}
+          />
+        </label>
+      </div>
+
+      {subjects.length === 0 ? (
+        <div style={{ color: muted, fontSize: 12 }}>
+          This class has no subjects set up yet, so there is nothing to place. Add its
+          subjects first, each with the teacher who takes it.
+        </div>
+      ) : (
+        <>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+            {subjects.map((sub) => (
+              <div
+                key={sub.id}
+                style={{ border: `1px solid ${border}`, borderRadius: 9, padding: '8px 10px', minWidth: 170 }}
+              >
+                <div style={{ color: text, fontSize: 12, fontWeight: 600, marginBottom: 6 }}>{sub.name}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="number" min="0" max="40" placeholder="0"
+                    data-testid={`generator-count-${sub.id}`}
+                    value={perWeek[sub.id] ?? ''}
+                    onChange={(e) => setPerWeek((p) => ({ ...p, [sub.id]: e.target.value }))}
+                    style={cell}
+                  />
+                  <label style={{ color: muted, fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <input
+                      type="checkbox"
+                      checked={!!morning[sub.id]}
+                      onChange={(e) => setMorning((m) => ({ ...m, [sub.id]: e.target.checked }))}
+                    />
+                    Morning
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* The two numbers side by side, because "asked for more than the week
+              holds" is the commonest reason this cannot be done, and seeing it before
+              pressing the button saves the person a round trip. */}
+          <div style={{ color: asked > available ? 'var(--tool-hex-f87171)' : muted, fontSize: 12, marginBottom: 12 }}>
+            {asked} period{asked === 1 ? '' : 's'} asked for, {available} available in the week.
+            {asked > available ? ' That is more than the week holds.' : ''}
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <ActionBtn
+              label={busy === 'generate' ? 'Working it out...' : 'Work it out'}
+              icon={<Wand2 size={13} />}
+              onClick={generate}
+              disabled={!!busy || asked === 0}
+              data-testid="generator-run"
+            />
+            {proposal && (
+              <ActionBtn
+                label={busy === 'apply' ? 'Saving...' : 'Use this timetable'}
+                icon={<Save size={13} />}
+                onClick={apply}
+                disabled={!!busy}
+                data-testid="generator-apply"
+              />
+            )}
+          </div>
+        </>
+      )}
+
+      {error && (
+        <div role="alert" data-testid="generator-error" style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginTop: 10 }}>
+          {error}
+        </div>
+      )}
+
+      {problems.length > 0 && (
+        <div data-testid="generator-problems" style={{ marginTop: 12 }}>
+          <div style={{ color: 'var(--tool-hex-fbbf24)', fontSize: 12, fontWeight: 600, marginBottom: 5 }}>
+            No timetable fits all of this at once:
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18, color: muted, fontSize: 12, lineHeight: 1.6 }}>
+            {problems.map((p, i) => <li key={i}>{p}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {note && (
+        <div role="status" data-testid="generator-note" style={{ color: 'var(--tool-hex-34d399)', fontSize: 12, marginTop: 10 }}>
+          {note}
+        </div>
+      )}
+
+      {proposal && (
+        <div data-testid="generator-proposal" style={{ marginTop: 14, borderTop: `1px solid ${border}`, paddingTop: 12 }}>
+          <div style={{ color: text, fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
+            {proposal.slots.length} periods worked out. Nothing is saved yet.
+          </div>
+          {/* The four marks, in words rather than only a number, so a person can see
+              WHICH part is weak and change that one thing rather than guessing. */}
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 11, color: muted, marginBottom: 10 }}>
+            <span style={{ color: text, fontWeight: 700 }}>Overall {proposal.score.total}/100</span>
+            <span>Spread across the week {proposal.score.distribution}</span>
+            <span>Teachers&apos; preferred periods {proposal.score.teacher_preference}</span>
+            <span>Morning subjects in the morning {proposal.score.morning_preference}</span>
+            <span>No subject twice running {proposal.score.consecutive_avoidance}</span>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+              <thead>
+                <tr>
+                  <th style={{ padding: '6px 8px', textAlign: 'left', color: muted, border: `1px solid ${border}` }}>Period</th>
+                  {days.map((d) => (
+                    <th key={d} style={{ padding: '6px 8px', color: muted, border: `1px solid ${border}` }}>{d.slice(0, 3)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: periodsPerDay }, (_, i) => i + 1).map((period) => (
+                  <tr key={period}>
+                    <td style={{ padding: '6px 8px', color: muted, border: `1px solid ${border}` }}>P{period}</td>
+                    {days.map((day, dayIdx) => {
+                      const found = proposal.slots.find(
+                        (s) => s.day_of_week === dayIdx && s.period_number === period,
+                      );
+                      return (
+                        <td key={day} style={{ padding: '6px 8px', border: `1px solid ${border}`, color: text }}>
+                          {found ? (
+                            <>
+                              <div style={{ fontWeight: 600 }}>{found.subject_name}</div>
+                              <div style={{ color: muted, fontSize: 10 }}>{found.teacher_name}</div>
+                            </>
+                          ) : (
+                            <span style={{ color: muted }}>-</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function TimetableBuilder() {
   const { currentUser } = useUser();
@@ -29,6 +305,13 @@ export default function TimetableBuilder() {
   const [saving, setSaving] = useState(false);
 
   const canEdit = currentUser.role === 'owner' || currentUser.role === 'admin';
+  // Working a whole week out is Adesh's tool - he writes the school's timetables
+  // himself (Abhimanyu, 2026-08-12) - and Aman's, because the owner is never shut out
+  // of his own school. The server gate is the one that decides; this only avoids
+  // showing somebody a button that would refuse them. Lalit keeps the screen and can
+  // still hand-edit a period, exactly as he does today.
+  const canGenerate = currentUser.role === 'owner'
+    || (currentUser.role === 'admin' && currentUser.sub_category === 'principal');
 
   // Use --c-* semantic variables that work correctly for both themes
   const bg = 'var(--c-deep)';
@@ -178,6 +461,49 @@ export default function TimetableBuilder() {
               would still be a grid of the right cells and would be read as the school's
               actual schedule, which is the worst possible outcome. The same rule is
               written on `DataTable`'s `sortable={false}` option in ToolPage.js. */}
+          {canGenerate && (
+            <TimetableGenerator
+              classId={selectedClass}
+              className={(() => {
+                const cls = classes.find(x => x.id === selectedClass);
+                return `${cls?.name || ''}-${cls?.section || ''}`;
+              })()}
+              subjects={subjects}
+              days={DAYS}
+              periods={PERIODS}
+              onApplied={() => loadTimetable(selectedClass)}
+              styles={{ card, border, text, muted, accent }}
+            />
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+            {/* A timetable is a GRID, not a list, so the file keeps the grid: one row
+                per period, one column per day. Flattening it into a list of slots
+                would be a different document from the one on the wall, and the point
+                of downloading a timetable is to print the one on the wall. */}
+            <ExportButton
+              title={(() => {
+                const cls = classes.find(c => c.id === selectedClass);
+                return `Timetable ${cls?.name || ''} ${cls?.section || ''}`.replace(/\s+/g, ' ').trim();
+              })()}
+              testId="timetable-export"
+              columns={TIMETABLE_EXPORT_COLUMNS}
+              getRows={async () => PERIODS.map((period) => {
+                const row = { period: `P${period}` };
+                DAYS.forEach((day, dayIdx) => {
+                  const slot = getSlot(dayIdx, period);
+                  row[day] = slot
+                    ? [
+                        slot.subject_name || subjectName(slot.subject_id),
+                        teacherName(slot.teacher_id),
+                        slot.start_time ? `${slot.start_time}-${slot.end_time}` : '',
+                      ].filter(Boolean).join(' / ')
+                    : '';
+                });
+                return row;
+              })}
+            />
+          </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>

@@ -7,6 +7,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
+from pagination import clamp_page, clamp_page_size
 from database import get_db
 from middleware.auth import get_current_user, require_owner, require_owner_or_principal, require_role
 from models.schemas import StudentCreate
@@ -302,8 +303,8 @@ async def list_students(
             if not _may_see_inactive:
                 raise HTTPException(403, "Forbidden")
 
-    page = max(page, 1)
-    per_page = max(1, min(limit, 500))
+    page = clamp_page(page)
+    per_page = clamp_page_size(limit)
     if enrolment_state:
         query = dict(enrolment_status.view_filter(enrolment_state))
     else:
